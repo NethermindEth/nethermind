@@ -2,6 +2,8 @@
 //! bundle, probing its snapshots newest first, each behind its bloom.
 //!
 //! The hit labels and skip-time observations C# records around these loops are taken by the bundle that owns the stack.
+//! A slot probe tells a hit from the self-destruct boundary ([`StackSlot`]), which C# answers alike, so the bundle can
+//! label only the hits, as C# does.
 
 use super::TierResult;
 use super::bloom_keys;
@@ -27,6 +29,17 @@ pub trait PersistedLayer {
     fn try_load_storage_node_rlp(&self, address_hash: &Hash256, path: &TreePath) -> TierResult<Option<Vec<u8>>>;
 }
 
+/// What [`PersistedSnapshotStack::try_get_slot`] found.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StackSlot {
+    /// A snapshot holds the slot; `None` for a deleted slot.
+    Found(Option<U256>),
+    /// The probe reached the self-destruct boundary without a hit, so the slot reads as cleared.
+    Cleared,
+    /// No snapshot decides the slot: the read falls through to persistence.
+    Missing,
+}
+
 pub struct PersistedSnapshotStack<S> {
     snapshots: PersistedSnapshotList<S>,
 }
@@ -42,6 +55,11 @@ impl<S: PersistedLayer> PersistedSnapshotStack<S> {
 
     pub fn is_empty(&self) -> bool {
         self.snapshots.is_empty()
+    }
+
+    /// The snapshots, oldest first.
+    pub fn snapshots(&self) -> &PersistedSnapshotList<S> {
+        &self.snapshots
     }
 
     /// `TryGetAccount`: the newest snapshot holding the address decides, `Some(None)` being a deletion; `None` falls
@@ -71,14 +89,8 @@ impl<S: PersistedLayer> PersistedSnapshotStack<S> {
     }
 
     /// `TryGetSlot`: newest first, stopping at the self-destruct boundary: once the probe reaches the snapshot at
-    /// `self_destruct_index` (an index in the stack, −1 for none) without a hit, the slot reads as cleared, `Some(None)`.
-    /// `None` falls through to persistence.
-    pub fn try_get_slot(
-        &self,
-        address: &Address,
-        slot: &U256,
-        self_destruct_index: isize,
-    ) -> TierResult<Option<Option<U256>>> {
+    /// `self_destruct_index` (an index in the stack, −1 for none) without a hit, the slot reads as cleared.
+    pub fn try_get_slot(&self, address: &Address, slot: &U256, self_destruct_index: isize) -> TierResult<StackSlot> {
         let address_key = bloom_keys::address_key(address);
         let slot_key = bloom_keys::slot_key(address_key, &slot.to_be_bytes());
         for (index, snapshot) in self.snapshots.iter().enumerate().rev() {
@@ -87,13 +99,13 @@ impl<S: PersistedLayer> PersistedSnapshotStack<S> {
                 && bloom.might_contain(slot_key)
                 && let Some(value) = snapshot.try_get_slot(address, slot)?
             {
-                return Ok(Some(value));
+                return Ok(StackSlot::Found(value));
             }
             if index as isize <= self_destruct_index {
-                return Ok(Some(None));
+                return Ok(StackSlot::Cleared);
             }
         }
-        Ok(None)
+        Ok(StackSlot::Missing)
     }
 
     /// `TryLoadStateRlp`.

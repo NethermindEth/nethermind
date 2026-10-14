@@ -21,7 +21,7 @@ use flatdb_core::persisted::list::PersistedSnapshotList;
 use flatdb_core::persisted::reader::{read_blob_range, read_ref_ids};
 use flatdb_core::persisted::scanner::Scanner;
 use flatdb_core::persisted::sorted::table_builder::SortedTableBuilder;
-use flatdb_core::persisted::stack::{PersistedLayer, PersistedSnapshotStack};
+use flatdb_core::persisted::stack::{PersistedLayer, PersistedSnapshotStack, StackSlot};
 use flatdb_core::persisted::{TierError, bloom_keys, merger};
 use flatdb_core::snapshot::content::SnapshotContentBuilder;
 use flatdb_core::snapshot::{Snapshot, SnapshotTier};
@@ -496,17 +496,17 @@ fn stack_probes_newest_first_across_all_kinds() {
             .try_get_slot(&address(0xA), &U256::from_u64(slot), boundary)
             .unwrap()
     };
-    assert_eq!(slot(2, -1), Some(Some(U256::from_u64(0x22))));
-    assert_eq!(slot(1, -1), Some(Some(U256::from_u64(0x11))));
+    assert_eq!(slot(2, -1), StackSlot::Found(Some(U256::from_u64(0x22))));
+    assert_eq!(slot(1, -1), StackSlot::Found(Some(U256::from_u64(0x11))));
     assert_eq!(
         slot(999, 0),
-        Some(None),
+        StackSlot::Cleared,
         "below the self-destruct boundary the slot is cleared"
     );
-    assert_eq!(slot(999, -1), None);
+    assert_eq!(slot(999, -1), StackSlot::Missing);
     assert_eq!(
         slot(1, 1),
-        Some(None),
+        StackSlot::Cleared,
         "a boundary at the newer snapshot hides the older value"
     );
 

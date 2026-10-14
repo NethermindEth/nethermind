@@ -9,6 +9,7 @@
 //! [`snapshot`] is one persisted snapshot over its arena reservation and blob files, [`bucket`] the snapshots of one
 //! tier, and [`loader`] converts in-memory snapshots into the tier ([`validate`] checking them on request) and opens the
 //! tier again at startup. [`compactor`] merges the snapshots of the tier into wider ones on threads of its own.
+//! [`tier`] wires them for one manager.
 //!
 //! The readers and writers work over plain byte slices and sinks ([`io`]), so the same code serves memory-mapped arena
 //! files and the in-memory buffers of the tests. [`storage`] holds the files and the catalog, [`sys`] their system
@@ -34,6 +35,7 @@ pub mod sorted;
 pub mod stack;
 pub mod storage;
 pub mod sys;
+pub mod tier;
 pub mod validate;
 
 use thiserror::Error;
@@ -65,6 +67,17 @@ pub enum TierError {
 }
 
 pub type TierResult<T> = Result<T, TierError>;
+
+/// The C# exception a [`TierError`] other than a catalog failure stands for, kept when it travels as a
+/// [`crate::persistence::PersistenceError::Tier`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TierErrorKind {
+    Io,
+    Corrupt,
+    InvalidOperation,
+    InvalidArgument,
+    Validation,
+}
 
 /// The `IFlatDbConfig` members the loader reads, and the processor count C# sizes its parallel loops with.
 #[derive(Clone, Copy, Debug)]

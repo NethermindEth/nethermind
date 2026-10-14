@@ -1,11 +1,18 @@
 //! Port of `Nethermind.State.Flat/ReadOnlySnapshotBundle.cs`: reads at a state through the chain of in-memory
-//! snapshots above the persisted state, newest first, then the persistence reader.
+//! snapshots above the persisted state, newest first, then the snapshots of the persisted-snapshot tier below them
+//! (long finality), newest first behind their blooms, then the persistence reader.
 //!
-//! The C# bundle also searches a persisted-snapshot stack between the two; that tier belongs to long finality and is
-//! not ported yet, so snapshot indexes here are in-memory indexes (C#'s `_persistedSnapshotCount` is 0).
+//! Snapshot indexes number the `p` persisted snapshots `[0, p)` and the in-memory ones `[p, p + m)`, as C# numbers them
+//! after `_persistedSnapshotCount`. A self-destruct index in the tier ends a slot read where the tier's probe reaches it.
+//! Every persisted snapshot built in this session knows whether it may clear a storage, and one loaded from disk is
+//! assumed to, so [`ReadOnlySnapshotBundle::has_self_destructs`] can over-report but never misses a clear.
 //!
-//! Trie nodes come back as RLP. A hash-only placeholder found in a snapshot shadows the older snapshots and the read
-//! falls through to persistence, as C# resolves a placeholder `TryFindStateNodes` returns through `TryLoadStateRlp`.
+//! A probe of the tier that finds nothing is observed as `ReadOnlySnapshotBundleSkipTime` when detailed metrics are on;
+//! the hit labels are the caller's, which knows the [`ReadSource`]. A hit counts as no node load at all, as in C#.
+//!
+//! Trie nodes come back as RLP. A hash-only placeholder found in an in-memory snapshot shadows the older in-memory
+//! snapshots and the read falls through below them, as C# resolves a placeholder `TryFindStateNodes` returns through
+//! `TryLoadStateRlp`.
 //! The loads come in two flavours: unchecked, the read-only adapters' path-keyed read, and checked, the read of a
 //! scope's adapters, whose `FindCachedOrUnknown` rejects a node of another hash.
 //!
@@ -25,12 +32,15 @@ use thiserror::Error;
 
 use crate::bloom::BloomFilter;
 use crate::kv::ReadFlags;
+use crate::persisted::list::PersistedSnapshotList;
+use crate::persisted::snapshot::PersistedSnapshot;
+use crate::persisted::stack::{PersistedSnapshotStack, StackSlot};
 use crate::persistence::{NoopPersistenceReader, PersistenceError, PersistenceReader, PersistenceResult};
 use crate::seam::BundleRead;
 use crate::snapshot::Snapshot;
 use crate::snapshot::content::TrieNodeRlp;
 use crate::snapshot::keys::StorageKey;
-use crate::stats::{FlatStats, Histogram};
+use crate::stats::{FlatStats, Histogram, HistogramLabel};
 use crate::types::{Account, Address, Hash256, StateId, TreePath, U256};
 
 const SLOT_FILTER_NOT_BUILT: u8 = 0;
@@ -54,6 +64,8 @@ pub enum ReadSource {
     Persistence = 4,
     /// Nothing: a self-destruct cut the slot off.
     SelfDestructed = 5,
+    /// A snapshot of the persisted-snapshot tier of the bundle.
+    Persisted = 6,
 }
 
 /// Failure of a checked trie node load.
@@ -72,6 +84,7 @@ pub enum NodeLoadError {
 
 pub struct ReadOnlySnapshotBundle<R> {
     snapshots: Vec<Arc<Snapshot>>,
+    persisted: PersistedSnapshotStack<PersistedSnapshot>,
     /// `None` for [`ReadOnlySnapshotBundle::empty`], which reads as `NoopPersistenceReader`.
     persistence_reader: Option<R>,
     has_self_destructs: bool,
@@ -83,9 +96,15 @@ pub struct ReadOnlySnapshotBundle<R> {
 }
 
 impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
-    /// A bundle over `snapshots`, oldest first, above `persistence_reader`. `slot_filter_bits_per_key` sizes the
-    /// negative slot filter of [`ReadOnlySnapshotBundle::get_slot_filtered`]; 0 never builds one.
-    pub fn new(snapshots: Vec<Arc<Snapshot>>, persistence_reader: R, slot_filter_bits_per_key: f64) -> Self {
+    /// A bundle over the in-memory `snapshots` above the `persisted` snapshots, both oldest first, above
+    /// `persistence_reader`. `slot_filter_bits_per_key` sizes the negative slot filter of the in-memory snapshots
+    /// [`ReadOnlySnapshotBundle::get_slot_filtered`] reads through; 0 never builds one.
+    pub fn new(
+        snapshots: Vec<Arc<Snapshot>>,
+        persisted: Vec<Arc<PersistedSnapshot>>,
+        persistence_reader: R,
+        slot_filter_bits_per_key: f64,
+    ) -> Self {
         let slot_filter_state = if slot_filter_bits_per_key > 0.0 && snapshots.len() >= MIN_SNAPSHOTS_FOR_SLOT_FILTER {
             SLOT_FILTER_NOT_BUILT
         } else {
@@ -93,9 +112,13 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
         };
         let has_self_destructs = snapshots
             .iter()
-            .any(|snapshot| snapshot.counts().self_destructed_storage_addresses > 0);
+            .any(|snapshot| snapshot.counts().self_destructed_storage_addresses > 0)
+            || persisted
+                .iter()
+                .any(|snapshot| snapshot.header().may_have_self_destructs);
         Self {
             snapshots,
+            persisted: PersistedSnapshotStack::new(PersistedSnapshotList::new(persisted)),
             persistence_reader: Some(persistence_reader),
             has_self_destructs,
             slot_filter_bits_per_key,
@@ -110,6 +133,7 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
     pub fn empty() -> Self {
         Self {
             snapshots: Vec::new(),
+            persisted: PersistedSnapshotStack::new(PersistedSnapshotList::empty()),
             persistence_reader: None,
             has_self_destructs: false,
             slot_filter_bits_per_key: 0.0,
@@ -120,19 +144,26 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
         }
     }
 
-    /// The bundle recording its slot filter's builds, failures and memory into `stats`.
+    /// The bundle recording its slot filter's builds, failures and memory, and the skips of its persisted snapshots,
+    /// into `stats`.
     pub fn with_stats(mut self, stats: Arc<FlatStats>) -> Self {
         self.stats = Some(stats);
         self
     }
 
+    /// `SnapshotCount`: the persisted snapshots and the in-memory ones.
     pub fn snapshot_count(&self) -> usize {
-        self.snapshots.len()
+        self.persisted.len() + self.snapshots.len()
     }
 
     /// The in-memory snapshots, oldest first.
     pub fn snapshots(&self) -> &[Arc<Snapshot>] {
         &self.snapshots
+    }
+
+    /// The snapshots of the persisted-snapshot tier, below the in-memory ones.
+    pub fn persisted(&self) -> &PersistedSnapshotStack<PersistedSnapshot> {
+        &self.persisted
     }
 
     /// The persistence reader; `None` for [`ReadOnlySnapshotBundle::empty`].
@@ -148,8 +179,8 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
         }
     }
 
-    /// Whether any snapshot clears a storage, so [`ReadOnlySnapshotBundle::determine_self_destruct_snapshot_idx`] can
-    /// find one.
+    /// Whether any snapshot may clear a storage, so [`ReadOnlySnapshotBundle::determine_self_destruct_snapshot_idx`]
+    /// can find one; `false` only when none does.
     pub fn has_self_destructs(&self) -> bool {
         self.has_self_destructs
     }
@@ -160,6 +191,14 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
                 BundleRead::AccountSnapshot.count();
                 return Ok((account, ReadSource::Snapshot));
             }
+        }
+        if !self.persisted.is_empty() {
+            let started = self.skip_timer();
+            if let Some(account) = self.persisted.try_get_account(address)? {
+                BundleRead::AccountPersisted.count();
+                return Ok((account, ReadSource::Persisted));
+            }
+            self.observe_skip(started, HistogramLabel::Account);
         }
         let account = match &self.persistence_reader {
             Some(reader) => reader.get_account(address)?,
@@ -173,14 +212,21 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
     }
 
     /// The index of the newest snapshot that cleared the storage of `address`, or -1.
-    pub fn determine_self_destruct_snapshot_idx(&self, address: &Address) -> i32 {
+    pub fn determine_self_destruct_snapshot_idx(&self, address: &Address) -> PersistenceResult<i32> {
         if !self.has_self_destructs {
-            return -1;
+            return Ok(-1);
         }
-        self.snapshots
+        if let Some(index) = self
+            .snapshots
             .iter()
             .rposition(|snapshot| snapshot.has_self_destruct(address))
-            .map_or(-1, |index| index as i32)
+        {
+            return Ok((self.persisted.len() + index) as i32);
+        }
+        Ok(self
+            .persisted
+            .try_get_self_destruct(address)?
+            .map_or(-1, |index| index as i32))
     }
 
     /// The slot, with zero and absent distinct: `None` when no snapshot newer than the clear at the caller's
@@ -191,20 +237,48 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
         slot: &U256,
         self_destruct_snapshot_idx: i32,
     ) -> PersistenceResult<(Option<U256>, ReadSource)> {
+        let persisted_count = self.persisted.len() as i64;
         for (index, snapshot) in self.snapshots.iter().enumerate().rev() {
             if let Some(value) = snapshot.try_get_storage(address, slot) {
                 BundleRead::StorageSnapshot.count();
                 return Ok((value, ReadSource::Snapshot));
             }
-            if index as i64 <= i64::from(self_destruct_snapshot_idx) {
+            if persisted_count + index as i64 <= i64::from(self_destruct_snapshot_idx) {
                 BundleRead::StorageSelfDestructed.count();
                 return Ok((None, ReadSource::SelfDestructed));
             }
         }
-        self.persisted_slot(address, slot)
+        self.slot_below_in_memory(address, slot, self_destruct_snapshot_idx)
     }
 
-    fn persisted_slot(&self, address: &Address, slot: &U256) -> PersistenceResult<(Option<U256>, ReadSource)> {
+    /// `GetSlotBelowInMemory`: the persisted snapshots, newest first down to the self-destruct index, then persistence.
+    fn slot_below_in_memory(
+        &self,
+        address: &Address,
+        slot: &U256,
+        self_destruct_snapshot_idx: i32,
+    ) -> PersistenceResult<(Option<U256>, ReadSource)> {
+        if !self.persisted.is_empty() {
+            let started = self.skip_timer();
+            match self
+                .persisted
+                .try_get_slot(address, slot, self_destruct_snapshot_idx as isize)?
+            {
+                StackSlot::Found(value) => {
+                    BundleRead::StoragePersisted.count();
+                    return Ok((value, ReadSource::Persisted));
+                }
+                StackSlot::Cleared => {
+                    BundleRead::StorageSelfDestructed.count();
+                    return Ok((None, ReadSource::SelfDestructed));
+                }
+                StackSlot::Missing => self.observe_skip(started, HistogramLabel::Slot),
+            }
+        }
+        self.persistence_slot(address, slot)
+    }
+
+    fn persistence_slot(&self, address: &Address, slot: &U256) -> PersistenceResult<(Option<U256>, ReadSource)> {
         let value = match &self.persistence_reader {
             Some(reader) => reader.try_get_slot(address, slot)?,
             None => None,
@@ -216,8 +290,8 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
         Ok((value, ReadSource::Persistence))
     }
 
-    /// Exactly what [`ReadOnlySnapshotBundle::get_slot`] returns, but a negative filter over the snapshots' slot keys
-    /// answers a slot none of them wrote at one probe. The first call builds the filter, once per bundle; reads
+    /// Exactly what [`ReadOnlySnapshotBundle::get_slot`] returns, but a negative filter over the in-memory snapshots'
+    /// slot keys answers a slot none of them wrote at one probe. The first call builds the filter, once per bundle; reads
     /// racing that build take the plain loop instead of waiting.
     pub fn get_slot_filtered(
         &self,
@@ -239,16 +313,16 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
             return self.get_slot(address, slot, self_destruct_snapshot_idx);
         }
 
-        // No snapshot holds the key, so only a clear in one of them could end the loop; that cut-off fires at some
-        // snapshot exactly when the clear is at or above the oldest one.
-        if self_destruct_snapshot_idx >= 0 {
+        // No in-memory snapshot holds the key, so only a clear in one of them could end the loop; that cut-off fires at
+        // some snapshot exactly when the clear is at or above the oldest one.
+        if self_destruct_snapshot_idx >= self.persisted.len() as i32 {
             BundleRead::StorageSelfDestructed.count();
             return Ok((None, ReadSource::SelfDestructed));
         }
-        self.persisted_slot(address, slot)
+        self.slot_below_in_memory(address, slot, self_destruct_snapshot_idx)
     }
 
-    /// Port of `TryFindStateNodes`: the newest snapshot's node at `path`, which can be a placeholder.
+    /// Port of `TryFindStateNodes`: the newest in-memory snapshot's node at `path`, which can be a placeholder.
     pub fn find_state_node(&self, path: &TreePath) -> Option<TrieNodeRlp<'_>> {
         self.snapshots
             .iter()
@@ -265,9 +339,9 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
             .find_map(|snapshot| snapshot.try_get_storage_node(address_hash, path))
     }
 
-    /// Calls `read` with the RLP of the state trie node at `path`: the newest snapshot's node, or the persisted one
-    /// when no snapshot holds it or the newest holds a placeholder. Port of the read-only adapter's `TryLoadRlp`, which
-    /// returned the path-keyed node without comparing its hash.
+    /// Calls `read` with the RLP of the state trie node at `path`: the newest in-memory snapshot's node, or the one
+    /// below them when none holds it or the newest holds a placeholder. Port of the read-only adapter's `TryLoadRlp`,
+    /// which returned the path-keyed node without comparing its hash.
     pub fn load_state_rlp_unchecked<T>(
         &self,
         path: &TreePath,
@@ -279,7 +353,7 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
                 BundleRead::StateNodeSnapshot.count();
                 Ok((Some(read(node.rlp)), ReadSource::Snapshot))
             }
-            _ => self.load_persisted_state_rlp(path, flags, read),
+            _ => self.load_below_in_memory_state_rlp(path, flags, read),
         }
     }
 
@@ -297,7 +371,7 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
                 BundleRead::StorageNodeSnapshot.count();
                 Ok((Some(read(node.rlp)), ReadSource::Snapshot))
             }
-            _ => self.load_persisted_storage_rlp(address_hash, path, flags, read),
+            _ => self.load_below_in_memory_storage_rlp(address_hash, path, flags, read),
         }
     }
 
@@ -316,7 +390,7 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
                 BundleRead::StateNodeSnapshot.count();
                 Ok((Some(read(node.rlp)), ReadSource::Snapshot))
             }
-            _ => Ok(self.load_persisted_state_rlp(path, flags, read)?),
+            _ => Ok(self.load_below_in_memory_state_rlp(path, flags, read)?),
         }
     }
 
@@ -336,17 +410,26 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
                 BundleRead::StorageNodeSnapshot.count();
                 Ok((Some(read(node.rlp)), ReadSource::Snapshot))
             }
-            _ => Ok(self.load_persisted_storage_rlp(address_hash, path, flags, read)?),
+            _ => Ok(self.load_below_in_memory_storage_rlp(address_hash, path, flags, read)?),
         }
     }
 
-    /// The persisted state trie node at `path`, past every snapshot.
-    pub fn load_persisted_state_rlp<T>(
+    /// Port of `TryLoadStateRlp`: the state trie node at `path` below the in-memory snapshots, in the newest persisted
+    /// snapshot holding it, else in persistence. The tier holds no placeholders.
+    pub fn load_below_in_memory_state_rlp<T>(
         &self,
         path: &TreePath,
         flags: ReadFlags,
         read: impl FnOnce(&[u8]) -> T,
     ) -> PersistenceResult<(Option<T>, ReadSource)> {
+        if !self.persisted.is_empty() {
+            let started = self.skip_timer();
+            if let Some(rlp) = self.persisted.try_load_state_rlp(path)? {
+                BundleRead::StateNodePersisted.count();
+                return Ok((Some(read(&rlp)), ReadSource::Persisted));
+            }
+            self.observe_skip(started, HistogramLabel::StateRlp);
+        }
         BundleRead::StateNodePersistence.count();
         let rlp = match &self.persistence_reader {
             Some(reader) => reader.load_state_rlp(path, flags, read)?,
@@ -355,14 +438,23 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
         Ok((rlp, ReadSource::Persistence))
     }
 
-    /// The persisted node at `path` of the storage trie of the account hashing to `address_hash`, past every snapshot.
-    pub fn load_persisted_storage_rlp<T>(
+    /// Port of `TryLoadStorageRlp`: as [`ReadOnlySnapshotBundle::load_below_in_memory_state_rlp`], in the storage trie
+    /// of the account hashing to `address_hash`.
+    pub fn load_below_in_memory_storage_rlp<T>(
         &self,
         address_hash: &Hash256,
         path: &TreePath,
         flags: ReadFlags,
         read: impl FnOnce(&[u8]) -> T,
     ) -> PersistenceResult<(Option<T>, ReadSource)> {
+        if !self.persisted.is_empty() {
+            let started = self.skip_timer();
+            if let Some(rlp) = self.persisted.try_load_storage_rlp(address_hash, path)? {
+                BundleRead::StorageNodePersisted.count();
+                return Ok((Some(read(&rlp)), ReadSource::Persisted));
+            }
+            self.observe_skip(started, HistogramLabel::StorageRlp);
+        }
         BundleRead::StorageNodePersistence.count();
         let rlp = match &self.persistence_reader {
             Some(reader) => reader.load_storage_rlp(address_hash, path, flags, read)?,
@@ -372,7 +464,7 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
     }
 
     /// `false` when [`ReadOnlySnapshotBundle::get_slot_filtered`] can only take the plain loop: no bits per key,
-    /// fewer than two snapshots, or a build that failed.
+    /// fewer than two in-memory snapshots, or a build that failed.
     pub fn may_filter_slots(&self) -> bool {
         self.slot_filter_state.load(Ordering::Acquire) != SLOT_FILTER_SKIPPED
     }
@@ -387,6 +479,25 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
         self.slot_filter
             .get()
             .map(|filter| filter.might_contain(self.slot_filter_key(address, slot)))
+    }
+
+    /// The start of a probe of the persisted snapshots, when their skips are observed.
+    fn skip_timer(&self) -> Option<Instant> {
+        self.stats
+            .as_ref()
+            .filter(|stats| stats.records_observations())
+            .map(|_| Instant::now())
+    }
+
+    /// `ReadOnlySnapshotBundleSkipTime`: a probe of the persisted snapshots started at `started` found nothing.
+    fn observe_skip(&self, started: Option<Instant>, label: HistogramLabel) {
+        if let (Some(stats), Some(started)) = (&self.stats, started) {
+            stats.observe(
+                Histogram::ReadOnlySnapshotBundleSkipTime,
+                label,
+                started.elapsed().as_nanos() as f64,
+            );
+        }
     }
 
     fn slot_filter_key(&self, address: &Address, slot: &U256) -> u64 {

@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use flatdb_core::bloom::BloomFilter;
 use flatdb_core::persisted::bloom_keys::PersistedBloom;
 use flatdb_core::persisted::builder::{self, BuildOutput};
-use flatdb_core::persisted::compactor::{CompactorConfig, PersistedSnapshotCompactor};
+use flatdb_core::persisted::compactor::{CompactorConfig, CompactorHooks, PersistedSnapshotCompactor};
 use flatdb_core::persisted::io::ByteReader;
 use flatdb_core::persisted::loader::PersistedSnapshotLoader;
 use flatdb_core::persisted::merger;
@@ -374,7 +374,10 @@ impl StorageTier {
                 schedule,
                 tier: self.config,
             },
-            move |job| panicked.lock().unwrap().push(job.to_owned()),
+            CompactorHooks {
+                on_fatal_error: Box::new(|_| {}),
+                on_job_panic: Box::new(move |job| panicked.lock().unwrap().push(job.to_owned())),
+            },
         )
     }
 }

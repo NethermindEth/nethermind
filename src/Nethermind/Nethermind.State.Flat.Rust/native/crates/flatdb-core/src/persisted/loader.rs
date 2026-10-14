@@ -63,6 +63,10 @@ impl PersistedSnapshotLoader {
         }
     }
 
+    pub fn config(&self) -> PersistedTierConfig {
+        self.config
+    }
+
     /// `Load`: registers the blob and arena files on disk, opens a snapshot for every catalog row whose arena file
     /// exists, deletes the blob files none of them names, and rebuilds the blooms of the widest chain.
     ///

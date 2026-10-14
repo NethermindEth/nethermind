@@ -1,11 +1,15 @@
-//! Port of `Nethermind.State.Flat/FlatDbManager.cs` (`IFlatDbManager.cs`) with long finality off: adds block snapshots,
-//! compacts and persists them on worker threads, and gathers read-only bundles over them.
+//! Port of `Nethermind.State.Flat/FlatDbManager.cs` (`IFlatDbManager.cs`): adds block snapshots, compacts and persists
+//! them on worker threads, and gathers read-only bundles over them and, with long finality, over the persisted-snapshot
+//! tier below them, which the persistence manager carries and which is opened before the manager starts.
 //!
 //! The C# workers are tasks over bounded channels; here they are threads (`fdb-compactor`, `fdb-persist` and
 //! `fdb-housekeeping`, which clears the bundle cache periodically and warns about slow jobs) over bounded crossbeam
 //! channels. Process exit and the manager's own cancellation are broadcast by dropping the sender of a channel nobody
 //! sends on. The trie node cache populator, `TrieNodeCache.Clear()` and the `TransientResource` leases stay in the C#
 //! shell.
+//!
+//! Shutdown follows the C# disposal order: the queues drain, then the persisted compactor finishes its queue and the
+//! files of every persisted snapshot are marked to survive, before anything is released.
 //!
 //! The `ResourcePool.Usage` overloads of `HasStateForBlock` and `GatherSnapshotBundle` are default interface methods
 //! that `FlatDbManager` leaves alone, so they reduce to [`FlatDbManager::has_state_for_block`] and
@@ -116,7 +120,7 @@ pub type SharedBundle<P> = Arc<ReadOnlySnapshotBundle<<P as Persistence>::Reader
 type Work = Box<dyn FnOnce() + Send>;
 
 /// Called with the name of a worker job that panicked.
-pub(crate) type PanicHook = Box<dyn Fn(&str) + Send + Sync>;
+pub type PanicHook = Box<dyn Fn(&str) + Send + Sync>;
 
 pub struct FlatDbManager<P: Persistence> {
     shared: Arc<Shared<P>>,
@@ -407,9 +411,10 @@ impl<P: Persistence> FlatDbManager<P> {
             }
 
             log::trace!(
-                "Gathered {base_block}. Got {} known states, 0 persisted, Reader state: {reader_state}. Persistence \
+                "Gathered {base_block}. Got {} known states, {} persisted, Reader state: {reader_state}. Persistence \
                  state: {}",
-                assembled.snapshot_count(),
+                assembled.in_memory.len(),
+                assembled.persisted.len(),
                 shared
                     .persistence_manager
                     .get_current_persisted_state_id()
@@ -424,7 +429,7 @@ impl<P: Persistence> FlatDbManager<P> {
                 0.0
             };
             let bundle = Arc::new(
-                ReadOnlySnapshotBundle::new(assembled.in_memory, reader, bits_per_key)
+                ReadOnlySnapshotBundle::new(assembled.in_memory, assembled.persisted, reader, bits_per_key)
                     .with_stats(Arc::clone(&shared.stats)),
             );
             if shareable {
@@ -434,7 +439,7 @@ impl<P: Persistence> FlatDbManager<P> {
         }
     }
 
-    /// Whether a base snapshot ends at `state_id` or it is the persisted state.
+    /// Whether a base snapshot, in memory or persisted, ends at `state_id` or it is the persisted state.
     pub fn has_state_for_block(&self, state_id: &StateId) -> Result<bool, ManagerError> {
         let shared = &self.shared;
         Ok(shared.repository.has_state(state_id)
@@ -471,13 +476,15 @@ impl<P: Persistence> FlatDbManager<P> {
     }
 
     /// Process exit started: a block waiting for room in the compaction queue gives up, and one arriving with the
-    /// queue full is added without being queued. The workers keep running until [`FlatDbManager::shutdown`].
+    /// queue full is added without being queued; a conversion stops and the persisted compactor drops its queue. The
+    /// workers keep running until [`FlatDbManager::shutdown`].
     pub fn signal_exit(&self) {
         self.shared.process_exit.raise();
+        self.shared.persistence_manager.signal_exit();
     }
 
     /// Port of `DisposeAsync`: drains the queues in feed order, the compaction queue first since it feeds the
-    /// persistence one, then stops every worker. Idempotent.
+    /// persistence one, then stops every worker, then shuts the persisted tier down. Idempotent.
     ///
     /// The unfinalized tail is not flushed, which would break reorgs across the restart. A worker that stops before
     /// draining cancels its siblings instead; a failed job does not stop a worker.
@@ -498,6 +505,7 @@ impl<P: Persistence> FlatDbManager<P> {
 
         shared.cancel.raise();
         join_worker(workers.housekeeping);
+        shared.persistence_manager.shut_down_persisted_tier();
     }
 }
 
@@ -692,9 +700,13 @@ impl<P: Persistence> Shared<P> {
         }
     }
 
-    /// Port of `ReportBundleMetrics`; the persisted part stays empty until the persisted tier exists.
+    /// Port of `ReportBundleMetrics`.
     fn report_bundle_metrics(&self, assembled: &AssembledSnapshots) {
         let in_memory_depth = match (assembled.in_memory.first(), assembled.in_memory.last()) {
+            (Some(oldest), Some(newest)) => newest.to().block_number.wrapping_sub(oldest.from().block_number) as i32,
+            _ => 0,
+        };
+        let persisted_depth = match (assembled.persisted.first(), assembled.persisted.last()) {
             (Some(oldest), Some(newest)) => newest.to().block_number.wrapping_sub(oldest.from().block_number) as i32,
             _ => 0,
         };
@@ -706,13 +718,19 @@ impl<P: Persistence> Shared<P> {
         self.stats.observe(
             Histogram::SnapshotBundleBlockNumberDepth,
             HistogramLabel::Persisted,
-            0.0,
+            f64::from(persisted_depth),
         );
 
         let counters = &self.stats.counters;
-        FlatStats::set(&counters.snapshot_bundle_size, assembled.snapshot_count() as i64);
-        FlatStats::set(&counters.snapshot_bundle_persisted_snapshot_size, 0);
-        FlatStats::set(&counters.snapshot_bundle_persisted_snapshot_memory, 0);
+        FlatStats::set(&counters.snapshot_bundle_size, assembled.in_memory.len() as i64);
+        FlatStats::set(
+            &counters.snapshot_bundle_persisted_snapshot_size,
+            assembled.persisted.len() as i64,
+        );
+        FlatStats::set(
+            &counters.snapshot_bundle_persisted_snapshot_memory,
+            assembled.persisted.iter().map(|snapshot| snapshot.size()).sum(),
+        );
     }
 }
 
@@ -727,7 +745,7 @@ enum JobError {
 impl From<PersistError> for JobError {
     fn from(error: PersistError) -> Self {
         match error {
-            PersistError::Host(HostError::Cancelled) => JobError::Cancelled,
+            PersistError::Host(HostError::Cancelled) | PersistError::Cancelled => JobError::Cancelled,
             error => JobError::Failed(error.to_string()),
         }
     }
@@ -882,12 +900,14 @@ mod tests {
                 min_reorg_depth: 128,
                 max_reorg_depth: 256,
                 max_in_memory_snapshot_bytes: 0,
+                long_finality: None,
             },
             schedule,
             host,
             Arc::new(persistence),
             Arc::clone(&repository),
             Arc::new(PersistedNodeEvents::new(false)),
+            None,
         ));
         (
             Arc::new(SnapshotCompactor::new(schedule, repository)),

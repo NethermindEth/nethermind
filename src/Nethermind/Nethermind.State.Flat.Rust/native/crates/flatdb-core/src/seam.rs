@@ -17,7 +17,7 @@ pub const CAPACITY: usize = 96;
 
 /// Where a read of a [`crate::bundle::ReadOnlySnapshotBundle`] or a [`crate::scope_bundle::ScopeBundle`] was served
 /// from, after the read-time labels of `ReadOnlySnapshotBundle.cs` (`Metrics.ReadOnlySnapshotBundleTimes`), then the
-/// layers only a scope has.
+/// layers only a scope has, then the labels of `PersistedSnapshotStack.cs`.
 ///
 /// The C# bundle of the Rust backend has no snapshots of its own, so it labels every read the native bundle serves as
 /// a persistence read and counts every trie node as loaded from the database; these counters tell the snapshot hits
@@ -57,10 +57,18 @@ pub enum BundleRead {
     StateNodeOwn,
     StorageNodeCurrent,
     StorageNodeOwn,
+    /// `account_persisted_snapshot`: an account, or its deletion, in a persisted snapshot.
+    AccountPersisted,
+    /// `storage_persisted_snapshot`.
+    StoragePersisted,
+    /// `state_rlp_persisted_snapshot`.
+    StateNodePersisted,
+    /// `storage_rlp_persisted_snapshot`.
+    StorageNodePersisted,
 }
 
 impl BundleRead {
-    pub const COUNT: usize = 19;
+    pub const COUNT: usize = 23;
     pub const NAMES: [&str; Self::COUNT] = [
         "bundle_account_snapshot",
         "bundle_account_persistence",
@@ -81,6 +89,10 @@ impl BundleRead {
         "bundle_state_node_own",
         "bundle_storage_node_current",
         "bundle_storage_node_own",
+        "bundle_account_persisted",
+        "bundle_storage_persisted",
+        "bundle_state_node_persisted",
+        "bundle_storage_node_persisted",
     ];
 
     pub fn count(self) {

@@ -1,12 +1,15 @@
-//! The manager: port of the long-finality-off parts of `FlatDbManagerTests` and `FlatDbManagerPersistedTests` over the
+//! The manager: port of `FlatDbManagerTests` and `FlatDbManagerPersistedTests` over the
 //! real repository, compactor and persistence manager with a fake host, and a stress test of adds, gathers, flushes and
 //! drops from many threads checked against a model of the chain.
 //!
 //! The C# tests mock the persistence manager and the repository; here their effects are observed instead: the readers
 //! the recording persistence created, the bundles' identity, the host's reads and the persisted state.
 //!
-//! Not ported: the history cases (`*_below_barrier_*`, `*_floor_*`, `HistoricalFlatDbManager`), which are out of scope,
-//! and `GatherReadOnlySnapshotBundle_IncludesPersistedSnapshots`, which needs the persisted tier.
+//! With long finality, the persisted tier is real, in a temporary directory: the `FlatDbManagerPersistedTests` and the
+//! manager cases of `LongFinalityIntegrationTests`, shutdown with the persisted compactor busy, its fatal catalog
+//! failures, and the next session opening what shutdown left.
+//!
+//! Not ported: the history cases (`*_below_barrier_*`, `*_floor_*`, `HistoricalFlatDbManager`), which are out of scope.
 
 mod common;
 
@@ -17,16 +20,25 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use common::any_kv::Backend;
-use common::manager::{BLOCK0, Fixture, PM_CONFIG, TestPersistence, account, logged_warnings, state};
+use common::manager::{
+    BLOCK0, FakeHost, Fixture, FixtureOptions, PM_CONFIG, PM_CONFIG_LF, TestPersistence, WrapCatalog, account,
+    decision, logged_warnings, state, tier_settings,
+};
+use common::persisted::pack_rows;
 use common::snapshots::{address, read_slot, snapshot};
 use flatdb_core::bundle::ReadSource;
 use flatdb_core::compactor::{Compactor, SnapshotCompactor};
 use flatdb_core::host::HostError;
 use flatdb_core::keccak::account_path;
 use flatdb_core::kv::ReadFlags;
+use flatdb_core::kv::{KvError, KvResult};
 use flatdb_core::manager::{AddSnapshotOutcome, FlatDbManager, ManagerConfig, ManagerError};
+use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv};
+use flatdb_core::persisted::tier::PersistedTier;
+use flatdb_core::persistence::PersistenceError;
 use flatdb_core::persistence::{Persistence, PersistenceReader, ReaderFlags};
-use flatdb_core::persistence_manager::PersistenceManagerConfig;
+use flatdb_core::persistence_manager::{LongFinalityConfig, PersistError, PersistenceManagerConfig};
+use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::snapshot::SnapshotTier;
 use flatdb_core::stats::{Histogram, HistogramLabel};
 use flatdb_core::types::{Account, Address, EMPTY_TREE_HASH, Hash256, StateId, TreePath, U256};
@@ -401,6 +413,7 @@ const PERSIST_EVERY_BLOCK: PersistenceManagerConfig = PersistenceManagerConfig {
     min_reorg_depth: 0,
     max_reorg_depth: 90_000,
     max_in_memory_snapshot_bytes: 1,
+    long_finality: None,
 };
 
 /// How the first, held persist ends.
@@ -835,6 +848,7 @@ fn concurrent_adds_gathers_flushes_and_drops_agree_with_the_model(
             min_reorg_depth: 4,
             max_reorg_depth: 90_000,
             max_in_memory_snapshot_bytes: 0,
+            long_finality: None,
         },
         Some(BLOCK0),
     ) else {
@@ -966,7 +980,7 @@ fn concurrent_adds_gathers_flushes_and_drops_agree_with_the_model(
     let head = chain.last().unwrap();
     assert_eq!(fixture.db_state(), head.to);
     let reader = fixture.persistence.create_reader(ReaderFlags::NONE).unwrap();
-    let persisted = flatdb_core::bundle::ReadOnlySnapshotBundle::new(Vec::new(), reader, 0.0);
+    let persisted = flatdb_core::bundle::ReadOnlySnapshotBundle::new(Vec::new(), Vec::new(), reader, 0.0);
     check_reads(&persisted, &head.after, &mut Rng(seed), head.to);
 
     manager.shutdown();
@@ -1018,4 +1032,373 @@ fn concurrent_adds_gathers_flushes_and_drops_agree_with_the_model(
         counters.total_snapshot_memory.load(Ordering::Relaxed),
         fixture.repository.in_memory_bytes()
     );
+}
+
+// ---- Long finality: the persisted-snapshot tier under the manager ----
+
+/// A long-finality fixture with the real persisted compactor and the catalog of `wrap_catalog`.
+fn long_finality_fixture(schedule: CompactionSchedule, wrap_catalog: WrapCatalog) -> Fixture {
+    let options = FixtureOptions {
+        schedule,
+        record_persisted_compactions: false,
+        wrap_catalog,
+    };
+    Fixture::with_options(Backend::Mem, PM_CONFIG_LF, Some(BLOCK0), options).unwrap()
+}
+
+fn default_schedule() -> CompactionSchedule {
+    CompactionSchedule::new(16, 1 << 20, 0).unwrap()
+}
+
+/// Converts the base `from -> to` setting account `0xA1..` to `balance` and the state node at `path`.
+fn convert(fixture: &Fixture, from: StateId, to: StateId, balance: u64, path: &str) {
+    let base = snapshot(from, to, |content| {
+        content.set_account(address(0xA1), Some(account(balance)));
+        content.set_state_node(TreePath::from_hex(path), [balance as u8; 32], &[0xC1, balance as u8]);
+    });
+    fixture.tier().tier.loader.convert_and_register(&base).unwrap();
+}
+
+/// `GatherReadOnlySnapshotBundle_IncludesPersistedSnapshots` and `FlatDbManager_EndToEnd_WithPersistedSnapshots`: a
+/// gather above the persisted state reaches into the tier, numbers its snapshots first and reads a node only the tier
+/// holds; the bundle metrics count the tier's snapshots, their bytes and their depth.
+#[test]
+fn gather_reads_through_the_persisted_tier_and_reports_it() {
+    let fixture = long_finality_fixture(default_schedule(), FixtureOptions::default().wrap_catalog);
+    let manager = fixture.manager(config(true));
+    convert(&fixture, BLOCK0, state("1"), 1, "ab");
+    convert(&fixture, state("1"), state("2"), 2, "cd");
+    fixture.add(state("2"), state("3"), false);
+    fixture.repository.stats().drain_observations(usize::MAX);
+
+    let bundle = manager
+        .gather_read_only_snapshot_bundle(&state("3"), ReaderFlags::NONE)
+        .unwrap();
+
+    assert_eq!((bundle.persisted().len(), bundle.snapshot_count()), (2, 3));
+    assert_eq!(
+        bundle
+            .load_state_rlp_unchecked(&TreePath::from_hex("ab"), ReadFlags::NONE, <[u8]>::to_vec)
+            .unwrap(),
+        (Some(vec![0xC1, 1]), ReadSource::Persisted)
+    );
+    assert_eq!(
+        bundle.get_account(&address(0xA1)).unwrap(),
+        (Some(account(100)), ReadSource::Snapshot)
+    );
+    let persisted_bytes: i64 = bundle
+        .persisted()
+        .snapshots()
+        .iter()
+        .map(|snapshot| snapshot.size())
+        .sum();
+    let counters = &fixture.repository.stats().counters;
+    assert_eq!(
+        [
+            counters.snapshot_bundle_size.load(Ordering::Relaxed),
+            counters.snapshot_bundle_persisted_snapshot_size.load(Ordering::Relaxed),
+            counters
+                .snapshot_bundle_persisted_snapshot_memory
+                .load(Ordering::Relaxed),
+        ],
+        [1, 2, persisted_bytes]
+    );
+    let depths: Vec<(u16, f64)> = fixture
+        .repository
+        .stats()
+        .drain_observations(usize::MAX)
+        .into_iter()
+        .filter(|observation| observation.metric == Histogram::SnapshotBundleBlockNumberDepth as u16)
+        .map(|observation| (observation.label, observation.value))
+        .collect();
+    assert_eq!(
+        depths,
+        [
+            (HistogramLabel::InMemory as u16, 1.0),
+            (HistogramLabel::Persisted as u16, 2.0)
+        ]
+    );
+    assert!(
+        manager.has_state_for_block(&state("1")).unwrap(),
+        "a persisted base is a state"
+    );
+    manager.shutdown();
+}
+
+/// `MaxInMemoryBaseSnapshotCount_GatesConversionToPersistedTier`, `LongFinalityMaxReorgDepth_TriggersForcePersist
+/// Backstop` and `FinalizedBoundary_PersistsWithinLongFinalityRange`: Phase 2 converts only past
+/// `MaxInMemoryBaseSnapshotCount`, `LongFinalityMaxReorgDepth` is the backstop, and a finalized boundary deep inside
+/// the long-finality window still persists, the repository pruning against the same boundary.
+///
+/// `settings` are `CompactSize`, `MinReorgDepth`, `MaxInMemoryBaseSnapshotCount` and `LongFinalityMaxReorgDepth`; the
+/// chain has a base at each of blocks `1..=bases`.
+#[rstest]
+#[case::conversion_at_the_in_memory_floor([16, 64, 4, 90_000], 0, 4, 4, None)]
+#[case::conversion_past_the_in_memory_floor([16, 64, 4, 90_000], 0, 5, 5, Some("base"))]
+#[case::depth_at_the_long_finality_backstop([16, 8, 100_000, 100], 0, 1, 100, None)]
+#[case::depth_past_the_long_finality_backstop([16, 8, 100_000, 100], 0, 1, 101, Some("memory"))]
+#[case::finalized_boundary_inside_the_window([4, 0, 100_000, 90_000], 4, 4, 4, Some("memory"))]
+fn long_finality_settings_decide_conversion_and_persistence(
+    #[case] settings: [u64; 4],
+    #[case] finalized_block: u64,
+    #[case] bases: u64,
+    #[case] latest_block: u64,
+    #[case] expected: Option<&str>,
+) {
+    let [
+        compact_size,
+        min_reorg_depth,
+        max_in_memory_base_snapshot_count,
+        long_finality_max_reorg_depth,
+    ] = settings;
+    let config = PersistenceManagerConfig {
+        min_reorg_depth,
+        max_reorg_depth: 256,
+        max_in_memory_snapshot_bytes: 0,
+        long_finality: Some(LongFinalityConfig {
+            max_reorg_depth: long_finality_max_reorg_depth,
+            max_in_memory_base_snapshot_count,
+        }),
+    };
+    let options = FixtureOptions {
+        schedule: CompactionSchedule::new(compact_size, 1 << 20, 0).unwrap(),
+        ..FixtureOptions::default()
+    };
+    let fixture = Fixture::with_options(Backend::Mem, config, Some(BLOCK0), options).unwrap();
+    let edges: Vec<String> = (0..bases).map(|block| format!("{block}-{}", block + 1)).collect();
+    fixture.add_edges(&edges.join(" "));
+    fixture.host.set_finalized_block_number(finalized_block);
+    fixture
+        .host
+        .set_finalized_state_root_at(finalized_block, state(&finalized_block.to_string()).state_root);
+
+    let decided = fixture
+        .persistence_manager
+        .determine_snapshot_action(&state(&latest_block.to_string()))
+        .unwrap();
+
+    assert_eq!(decided.as_ref().map(|action| decision(action).0), expected);
+    if let Some(action) = &decided {
+        assert_eq!(decision(action).1, BLOCK0);
+    }
+    if finalized_block > 0 {
+        let orphan = state(&format!("{finalized_block}r9"));
+        fixture.persist_base(BLOCK0, orphan);
+        fixture
+            .repository
+            .set_last_committed_state_id(state(&bases.to_string()));
+        fixture.repository.remove_finalized_persisted_forks(&BLOCK0).unwrap();
+        assert!(
+            !fixture.repository.has_base_persisted_snapshot(&orphan),
+            "the repository must use the same finalized boundary as the manager"
+        );
+    }
+}
+
+/// A catalog that counts in `entered` the rows of merged snapshots it is asked to write, waits on `gate` before writing
+/// one, and fails such writes with `failure`.
+fn compaction_catalog(gate: Arc<Mutex<()>>, entered: Arc<AtomicUsize>, failure: Option<KvError>) -> WrapCatalog {
+    Arc::new(move |rows| {
+        Box::new(CompactionCatalog {
+            rows,
+            gate: gate.clone(),
+            entered: entered.clone(),
+            failure: failure.clone(),
+        })
+    })
+}
+
+struct CompactionCatalog {
+    rows: MemCatalogKv,
+    gate: Arc<Mutex<()>>,
+    entered: Arc<AtomicUsize>,
+    failure: Option<KvError>,
+}
+
+impl CatalogKv for CompactionCatalog {
+    fn put(&self, key: &[u8], value: &[u8]) -> KvResult<()> {
+        // The tier byte ends the row; 2 is a base, written by a conversion.
+        if value.last() != Some(&2) {
+            self.entered.fetch_add(1, Ordering::SeqCst);
+            drop(self.gate.lock());
+            if let Some(failure) = &self.failure {
+                return Err(failure.clone());
+            }
+        }
+        self.rows.put(key, value)
+    }
+
+    fn key_exists(&self, key: &[u8]) -> KvResult<bool> {
+        self.rows.key_exists(key)
+    }
+
+    fn remove(&self, key: &[u8]) -> KvResult<()> {
+        self.rows.remove(key)
+    }
+}
+
+/// Shutdown with the persisted compactor busy: it waits for the merge under way, then for the batches queued after it,
+/// unless process exit was signalled first, which drops them.
+#[rstest]
+fn shutdown_waits_for_the_persisted_compactor_unless_process_exit_drops_its_queue(
+    #[values(false, true)] process_exit: bool,
+) {
+    let (gate, entered) = (Arc::new(Mutex::new(())), Arc::new(AtomicUsize::new(0)));
+    let fixture = long_finality_fixture(
+        CompactionSchedule::new(4, 16, 0).unwrap(),
+        compaction_catalog(gate.clone(), entered.clone(), None),
+    );
+    let manager = fixture.manager(config(true));
+    for block in 1..=8u64 {
+        convert(
+            &fixture,
+            state(&(block - 1).to_string()),
+            state(&block.to_string()),
+            block,
+            &format!("{block:x}"),
+        );
+    }
+    let compactor = &fixture.tier().tier.compactor;
+    let small = |block: &str| {
+        fixture
+            .repository
+            .try_lease_persisted_state(&state(block), SnapshotTier::PersistedSmallCompacted)
+            .is_some()
+    };
+
+    let closed = gate.lock();
+    compactor.enqueue(vec![state("2")], 0).unwrap();
+    wait_until("the merge writes its row", || entered.load(Ordering::SeqCst) == 1);
+    compactor.enqueue(vec![state("6")], 0).unwrap();
+    if process_exit {
+        manager.signal_exit();
+    }
+    thread::scope(|scope| {
+        let shutdown = scope.spawn(|| manager.shutdown());
+        thread::sleep(Duration::from_millis(20));
+        assert!(!shutdown.is_finished(), "the merge under way holds the shutdown");
+        drop(closed);
+        shutdown.join().unwrap();
+    });
+
+    assert!(small("2"), "the merge under way completes");
+    assert_eq!(small("6"), !process_exit, "process exit drops the queued batches");
+}
+
+/// A fatal catalog failure of a persisted compaction is recorded as the manager's fatal error, handed out once, after
+/// which every persist fails with it; a failure that is not fatal is only logged.
+#[rstest]
+#[case::fatal("IO error: No space left on device", true)]
+#[case::not_fatal("Busy: ", false)]
+fn a_fatal_catalog_failure_of_a_persisted_compaction_stops_every_later_persist(
+    #[case] message: &str,
+    #[case] fatal: bool,
+) {
+    let failure = KvError::rocks(message.to_owned());
+    let fixture = long_finality_fixture(
+        CompactionSchedule::new(4, 16, 0).unwrap(),
+        compaction_catalog(Arc::default(), Arc::default(), Some(failure.clone())),
+    );
+    for block in 1..=2u64 {
+        convert(
+            &fixture,
+            state(&(block - 1).to_string()),
+            state(&block.to_string()),
+            block,
+            &format!("{block:x}"),
+        );
+    }
+    fixture.add(state("2"), state("3"), false);
+
+    fixture.tier().tier.compactor.enqueue(vec![state("2")], 0).unwrap();
+    fixture.tier().tier.compactor.dispose();
+
+    let expected = PersistError::Persistence(PersistenceError::Catalog(failure));
+    let persist = fixture.persistence_manager.add_to_persistence(&state("3"));
+    if fatal {
+        assert_eq!(persist, Err(expected.clone()));
+        assert_eq!(fixture.persistence_manager.take_fatal_error(), Some(expected.clone()));
+        assert_eq!(fixture.persistence_manager.take_fatal_error(), None, "handed out once");
+        assert_eq!(fixture.persistence_manager.flush_to_persistence(), Err(expected));
+        assert_eq!(fixture.db_state(), BLOCK0);
+    } else {
+        assert_eq!(persist, Ok(()));
+        assert_eq!(fixture.persistence_manager.take_fatal_error(), None);
+        assert_eq!(fixture.persistence_manager.flush_to_persistence(), Ok(state("3")));
+    }
+}
+
+/// The next session opens what shutdown left: every snapshot of the tier and its reads; a snapshot pruned while a
+/// bundle held it stays readable through the bundle across shutdown, is released with it, and is not loaded again.
+#[test]
+fn shutdown_leaves_the_tier_for_the_next_session_but_what_was_pruned() {
+    let fixture = long_finality_fixture(default_schedule(), FixtureOptions::default().wrap_catalog);
+    let manager = fixture.manager(config(true));
+    for block in 1..=3u64 {
+        convert(
+            &fixture,
+            state(&(block - 1).to_string()),
+            state(&block.to_string()),
+            block,
+            &format!("{block:x}"),
+        );
+    }
+    let held = manager
+        .gather_read_only_snapshot_bundle(&state("2"), ReaderFlags::NONE)
+        .unwrap();
+    let pruned = Arc::downgrade(&held.persisted().snapshots().iter().next().unwrap().clone());
+    fixture.repository.remove_persisted_states_until(2).unwrap();
+
+    manager.shutdown();
+    drop(manager);
+    let Fixture {
+        tier,
+        persistence_manager,
+        repository,
+        ..
+    } = fixture;
+    let tier = tier.unwrap();
+    let (directory, catalog_kv) = (tier.directory, tier.catalog_kv);
+    drop((persistence_manager, repository, tier.tier, tier.recorder));
+
+    assert_eq!(
+        held.get_account(&address(0xA1)).unwrap(),
+        (Some(account(2)), ReadSource::Persisted)
+    );
+    assert!(pruned.upgrade().is_some(), "the bundle holds the pruned snapshot");
+    drop(held);
+    assert!(pruned.upgrade().is_none(), "released with the bundle");
+
+    let (repository, reopened) = PersistedTier::open(
+        &tier_settings(directory.path(), default_schedule()),
+        Box::new(catalog_kv.clone()),
+        &pack_rows(&catalog_kv.rows()),
+        Arc::new(FakeHost::default()),
+        Arc::new(flatdb_core::stats::FlatStats::default()),
+        Arc::default(),
+        Box::new(|job| panic!("{job} panicked")),
+    )
+    .unwrap();
+    assert_eq!(
+        repository.persisted_snapshot_count(),
+        2,
+        "every snapshot but the pruned one"
+    );
+    let bundle = flatdb_core::bundle::ReadOnlySnapshotBundle::new(
+        Vec::new(),
+        repository.assemble_snapshots(&state("3"), &state("1"), 2).persisted,
+        common::snapshots::DictionaryReader::default(),
+        0.0,
+    );
+    assert_eq!(
+        bundle.get_account(&address(0xA1)).unwrap(),
+        (Some(account(3)), ReadSource::Persisted)
+    );
+    assert_eq!(
+        bundle
+            .load_state_rlp_unchecked(&TreePath::from_hex("2"), ReadFlags::NONE, <[u8]>::to_vec)
+            .unwrap(),
+        (Some(vec![0xC1, 2]), ReadSource::Persisted)
+    );
+    reopened.loader.mark_for_shutdown();
 }

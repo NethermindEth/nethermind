@@ -44,7 +44,7 @@ pub fn read_slot<R: PersistenceReader>(
     slot: &U256,
     filtered: bool,
 ) -> PersistenceResult<Option<U256>> {
-    let self_destruct_snapshot_idx = bundle.determine_self_destruct_snapshot_idx(address);
+    let self_destruct_snapshot_idx = bundle.determine_self_destruct_snapshot_idx(address)?;
     let (value, _) = if filtered {
         bundle.get_slot_filtered(address, slot, self_destruct_snapshot_idx)?
     } else {

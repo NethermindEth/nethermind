@@ -31,9 +31,9 @@ pub struct FlatCounters {
     pub total_snapshot_memory: AtomicI64,
     /// `Metrics.SnapshotBundleSize`: in-memory snapshots of the last assembled read-only bundle.
     pub snapshot_bundle_size: AtomicI64,
-    /// `Metrics.SnapshotBundlePersistedSnapshotSize`: its persisted snapshots, 0 until the persisted tier exists.
+    /// `Metrics.SnapshotBundlePersistedSnapshotSize`: its persisted snapshots.
     pub snapshot_bundle_persisted_snapshot_size: AtomicI64,
-    /// `Metrics.SnapshotBundlePersistedSnapshotMemory`: their bytes, 0 until the persisted tier exists.
+    /// `Metrics.SnapshotBundlePersistedSnapshotMemory`: their table bytes.
     pub snapshot_bundle_persisted_snapshot_memory: AtomicI64,
     /// `Metrics.InMemorySlotFilterMemory`: bytes of the live slot filters of read-only bundles.
     pub in_memory_slot_filter_memory: AtomicI64,
@@ -183,12 +183,17 @@ pub enum Histogram {
     SnapshotBundleBlockNumberDepth = 4,
     /// `Metrics.InMemorySlotFilterBuildTime`, nanoseconds.
     InMemorySlotFilterBuildTime = 5,
+    /// `Metrics.PersistedSnapshotConvertTime`, nanoseconds of converting a base into the persisted tier.
+    PersistedSnapshotConvertTime = 6,
     /// `Metrics.PersistedSnapshotSize`, table bytes of a converted base.
     PersistedSnapshotSize = 7,
     /// `Metrics.PersistedSnapshotCompactedSize`, table bytes of a merge, labelled by compact size.
     PersistedSnapshotCompactedSize = 8,
     /// `Metrics.PersistedSnapshotCompactTime`, nanoseconds, labelled by compact size.
     PersistedSnapshotCompactTime = 9,
+    /// `Metrics.ReadOnlySnapshotBundleSkipTime`, nanoseconds of a probe of the persisted tier that found nothing,
+    /// labelled by key kind.
+    ReadOnlySnapshotBundleSkipTime = 10,
 }
 
 /// The label id of `CompactSizeLabel(1)`; `CompactSizeLabel(2^n)` is this plus `n`.
@@ -207,6 +212,14 @@ pub enum HistogramLabel {
     InMemory = 3,
     /// `part="persisted"`.
     Persisted = 4,
+    /// `account`.
+    Account = 5,
+    /// `slot`.
+    Slot = 6,
+    /// `state_rlp`.
+    StateRlp = 7,
+    /// `storage_rlp`.
+    StorageRlp = 8,
 }
 
 /// One histogram observation, `fdb_drain_observations`' record.
@@ -241,6 +254,11 @@ impl FlatStats {
             content_hints: ContentHints::default(),
             observations: (observation_capacity > 0).then(|| crossbeam_channel::bounded(observation_capacity)),
         }
+    }
+
+    /// Whether observations are queued, as the C# detailed metrics are recorded only when enabled.
+    pub fn records_observations(&self) -> bool {
+        self.observations.is_some()
     }
 
     /// Queues an observation of `metric`, dropping it when the queue is full.

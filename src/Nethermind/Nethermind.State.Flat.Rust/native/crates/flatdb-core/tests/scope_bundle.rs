@@ -1,7 +1,7 @@
 //! A scope's bundle against a plain transcription of the C# reads it ports (`SnapshotBundle.cs` `DoGetAccount`,
 //! `DetermineSelfDestructSnapshotIdx`, `GetSlot`, `ClearStorage`, `CollectAndApplySnapshot` and the
 //! `ReadOnlySnapshotBundle.cs` reads below them), with the checked loads of the scope's trie adapters and the unchecked
-//! loads of the read-only ones; and the named cases of those rules.
+//! loads of the read-only ones; and the named cases of those rules, one with the chain reaching into the persisted tier.
 
 mod common;
 
@@ -9,11 +9,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use common::persisted::TemporaryTier;
 use common::scope_model::{
     ADDRESSES, HASHES, Layer, ModelAccount, PATHS, Persisted, SLOTS, account_strategy, layer_strategy, model_account,
     model_address, model_address_hash, model_hash, model_path, model_slot, persisted_strategy,
 };
-use common::snapshots::{DictionaryReader, state_id};
+use common::snapshots::{DictionaryReader, snapshot, state_id};
 use flatdb_core::bundle::{NodeLoadError, ReadOnlySnapshotBundle, ReadSource};
 use flatdb_core::kv::ReadFlags;
 use flatdb_core::persistence::PersistenceResult;
@@ -229,7 +230,7 @@ fn scope(
             .map(|(layer, block)| layer.snapshot(state_id(block, 0), state_id(block + 1, 0)))
             .collect::<Vec<_>>()
     };
-    let chain_bundle = ReadOnlySnapshotBundle::new(snapshots(chain, 0), persisted.reader(), BITS_PER_KEY);
+    let chain_bundle = ReadOnlySnapshotBundle::new(snapshots(chain, 0), Vec::new(), persisted.reader(), BITS_PER_KEY);
     ScopeBundle::new(Arc::new(chain_bundle), snapshots(own, chain.len() as u64), flags, stats)
 }
 
@@ -285,7 +286,7 @@ fn run(
                 prop_assert_eq!(slot_value(read), model.slot(a, k, cleared), "{:?} at {}", op, cleared);
             }
             Op::SelfDestructIdx(a) => {
-                let index = bundle.self_destruct_idx(&model_address(a));
+                let index = bundle.self_destruct_idx(&model_address(a)).unwrap();
                 prop_assert_eq!(index, model.self_destruct_idx(a), "{:?}", op);
                 reported_indexes.push(index);
             }
@@ -469,10 +470,14 @@ fn commits_append_kept_or_not_and_a_kept_main_commit_moves_to_post_main(
 
     bundle.set_slot(&a, &slot, &U256::from_u64(7));
     bundle.clear_storage(&a, &model_address_hash(1))?;
-    assert_eq!(bundle.self_destruct_idx(&a), 2, "the current content is the tip");
+    assert_eq!(
+        bundle.self_destruct_idx(&a).unwrap(),
+        2,
+        "the current content is the tip"
+    );
     assert!(bundle.commit(state_id(2, 0), state_id(3, 0), false).is_none());
     assert_eq!(
-        bundle.self_destruct_idx(&a),
+        bundle.self_destruct_idx(&a).unwrap(),
         2,
         "the uncommitted clear is own snapshot 0"
     );
@@ -542,5 +547,88 @@ fn a_scope_may_have_self_destructs_exactly_when_a_clear_is_below_it(
     );
 
     assert_eq!(bundle.may_have_self_destructs(), expected);
-    assert_eq!(bundle.self_destruct_idx(&model_address(1)) != -1, expected);
+    assert_eq!(bundle.self_destruct_idx(&model_address(1)).unwrap() != -1, expected);
+}
+
+/// A chain whose clear is in the persisted tier: the scope's index numbers the persisted snapshots first, a fresh index
+/// cuts the slots off at the tier's clear, and a stale one, taken before a clear or pointing below it, reads what that
+/// index allows, as C# reads with the index its caller holds.
+#[test]
+fn a_clear_inside_the_persisted_tier_cuts_off_reads_by_the_callers_index() -> PersistenceResult<()> {
+    let tier = TemporaryTier::new();
+    let (a, other) = (model_address(1), model_address(2));
+    let slot = |k: u64| U256::from_u64(k);
+    let block = |number: u64| (state_id(number, 0), state_id(number + 1, 0));
+    let layer = |number: u64, fill: &dyn Fn(&mut flatdb_core::snapshot::content::SnapshotContentBuilder)| {
+        let (from, to) = block(number);
+        snapshot(from, to, fill)
+    };
+    let persisted = vec![
+        tier.convert(&layer(0, &|s| {
+            s.set_storage(a, slot(1), Some(slot(7)));
+            s.set_storage(a, slot(2), Some(slot(8)));
+        })),
+        tier.convert(&layer(1, &|s| {
+            s.set_self_destruct(a, false);
+            s.set_storage(a, slot(2), Some(slot(9)));
+        })),
+    ];
+    let in_memory = vec![layer(2, &|s| s.set_storage(other, slot(1), Some(slot(5))))];
+    let mut reader = DictionaryReader::default();
+    reader.slots.insert((a, slot(1)), slot(11));
+    reader.slots.insert((a, slot(4)), slot(12));
+    let chain = Arc::new(ReadOnlySnapshotBundle::new(in_memory, persisted, reader, BITS_PER_KEY));
+    let own = vec![layer(3, &|s| s.set_storage(a, slot(3), Some(slot(10))))];
+    let flags = ScopeFlags {
+        filter_in_memory_slot_reads: false,
+        usage: Usage::MainBlockProcessing,
+    };
+    let bundle = ScopeBundle::new(chain, own, flags, Arc::new(FlatStats::default()));
+    let read = |k: u64, index: i32| {
+        bundle
+            .get_slot(&a, &slot(k), index)
+            .map(|(value, source)| (value.map(|v| v.0[0]), source))
+    };
+
+    let fresh = bundle.self_destruct_idx(&a)?;
+    assert_eq!(
+        fresh, 1,
+        "persisted snapshot 1, below the in-memory one and the own one"
+    );
+    assert_eq!(
+        read(1, fresh)?,
+        (None, ReadSource::SelfDestructed),
+        "written before the clear"
+    );
+    assert_eq!(
+        read(2, fresh)?,
+        (Some(9), ReadSource::Persisted),
+        "written with the clear, after it"
+    );
+    assert_eq!(read(3, fresh)?, (Some(10), ReadSource::Own));
+    assert_eq!(
+        read(4, fresh)?,
+        (None, ReadSource::SelfDestructed),
+        "persistence is below the clear"
+    );
+
+    assert_eq!(read(1, -1)?, (Some(7), ReadSource::Persisted), "stale: no clear known");
+    assert_eq!(read(4, -1)?, (Some(12), ReadSource::Persistence));
+    assert_eq!(
+        read(1, 0)?,
+        (Some(7), ReadSource::Persisted),
+        "stale: snapshot 0 is still probed"
+    );
+    assert_eq!(read(4, 0)?, (None, ReadSource::SelfDestructed));
+
+    bundle.clear_storage(&a, &model_address_hash(1))?;
+    let tip = bundle.self_destruct_idx(&a)?;
+    assert_eq!(tip, 4, "the current content above three chain snapshots and one own");
+    assert_eq!(read(2, tip)?, (None, ReadSource::SelfDestructed));
+    assert_eq!(
+        read(2, fresh)?,
+        (Some(9), ReadSource::Persisted),
+        "stale: taken before the clear in the scope"
+    );
+    Ok(())
 }

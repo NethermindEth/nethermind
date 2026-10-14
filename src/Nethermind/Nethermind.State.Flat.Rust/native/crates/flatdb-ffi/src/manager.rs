@@ -66,6 +66,7 @@ impl FdbManager {
                 min_reorg_depth: cfg.min_reorg_depth,
                 max_reorg_depth: cfg.max_reorg_depth,
                 max_in_memory_snapshot_bytes: cfg.max_in_memory_snapshot_bytes,
+                long_finality: None,
             },
             schedule,
             host,
@@ -75,6 +76,7 @@ impl FdbManager {
             }),
             Arc::clone(&repository),
             Arc::clone(&events),
+            None,
         ));
         let compactor: Arc<dyn Compactor> = Arc::new(SnapshotCompactor::new(schedule, repository));
         #[cfg(any(test, feature = "test-api"))]

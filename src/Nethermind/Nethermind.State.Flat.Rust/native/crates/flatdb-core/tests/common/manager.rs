@@ -1,5 +1,6 @@
 //! Persistence manager and manager test support: a scriptable host, a persistence recording what is asked of it, and
-//! the components wired over a real persistence on any backend.
+//! the components wired over a real persistence on any backend, with long finality over a persisted tier in a
+//! temporary directory whose compactor only records what it is handed, as the C# tests substitute it.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -11,15 +12,22 @@ use flatdb_core::events::PersistedNodeEvents;
 use flatdb_core::host::{Host, HostError};
 use flatdb_core::kv::{ReadFlags, WriteFlags};
 use flatdb_core::manager::{FlatDbManager, ManagerConfig};
+use flatdb_core::persisted::PersistedTierConfig;
+use flatdb_core::persisted::compactor::{EnqueueError, PersistedCompactor};
+use flatdb_core::persisted::snapshot::PersistedSnapshot;
+use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv};
+use flatdb_core::persisted::tier::{PersistedTier, TierSettings};
 use flatdb_core::persistence::layouts::KvPersistence;
 use flatdb_core::persistence::{
     Persistence, PersistenceError, PersistenceReader, PersistenceResult, PersistenceWriteBatch, ReaderFlags,
 };
-use flatdb_core::persistence_manager::{PersistenceManager, PersistenceManagerConfig};
+use flatdb_core::persistence_manager::{
+    LongFinalityConfig, PersistenceManager, PersistenceManagerConfig, SnapshotAction,
+};
 use flatdb_core::repository::{SnapshotRepository, StateHeaderProvider};
 use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::snapshot::{Snapshot, SnapshotTier};
-use flatdb_core::stats::FlatStats;
+use flatdb_core::stats::{FlatStats, TierStats};
 use flatdb_core::types::{Account, Address, EMPTY_TREE_HASH, FlatLayout, Hash256, StateId, TreePath, U256};
 use hashbrown::HashMap;
 use parking_lot::Mutex;
@@ -450,9 +458,166 @@ pub const PM_CONFIG: PersistenceManagerConfig = PersistenceManagerConfig {
     min_reorg_depth: 64,
     max_reorg_depth: 90_000,
     max_in_memory_snapshot_bytes: 0,
+    long_finality: None,
 };
 
+/// The C# fixture's settings: long finality on, `MaxInMemoryBaseSnapshotCount = 128 + 32`.
+pub const PM_CONFIG_LF: PersistenceManagerConfig = PersistenceManagerConfig {
+    min_reorg_depth: 64,
+    max_reorg_depth: 256,
+    max_in_memory_snapshot_bytes: 0,
+    long_finality: Some(LongFinalityConfig {
+        max_reorg_depth: 90_000,
+        max_in_memory_base_snapshot_count: 160,
+    }),
+};
+
+/// [`PM_CONFIG_LF`] with long finality on, else [`PM_CONFIG`]: the same backstop either way.
+pub fn pm_config(long_finality: bool) -> PersistenceManagerConfig {
+    if long_finality { PM_CONFIG_LF } else { PM_CONFIG }
+}
+
+/// What a [`RecordingCompactor`] runs on every batch it is handed.
+type OnEnqueue = Box<dyn Fn(&[StateId]) + Send + Sync>;
+
+/// A persisted compactor that only records the batches it is handed, running `on_enqueue` on each first, as the C#
+/// tests substitute `IPersistedSnapshotCompactor`.
+#[derive(Default)]
+pub struct RecordingCompactor {
+    batches: Mutex<Vec<(Vec<StateId>, u64)>>,
+    on_enqueue: Mutex<Option<OnEnqueue>>,
+    exit_signalled: AtomicUsize,
+    disposed: AtomicUsize,
+}
+
+impl RecordingCompactor {
+    pub fn batches(&self) -> Vec<(Vec<StateId>, u64)> {
+        self.batches.lock().clone()
+    }
+
+    pub fn set_on_enqueue(&self, on_enqueue: impl Fn(&[StateId]) + Send + Sync + 'static) {
+        *self.on_enqueue.lock() = Some(Box::new(on_enqueue));
+    }
+
+    pub fn disposals(&self) -> usize {
+        self.disposed.load(Ordering::SeqCst)
+    }
+
+    pub fn exit_signals(&self) -> usize {
+        self.exit_signalled.load(Ordering::SeqCst)
+    }
+}
+
+impl PersistedCompactor for RecordingCompactor {
+    /// Refuses as the compactor does once process exit is signalled.
+    fn enqueue(&self, batch: Vec<StateId>, persisted_block_number: u64) -> Result<(), EnqueueError> {
+        if self.exit_signals() > 0 {
+            return Err(EnqueueError::Cancelled);
+        }
+        if let Some(on_enqueue) = &*self.on_enqueue.lock() {
+            on_enqueue(&batch);
+        }
+        self.batches.lock().push((batch, persisted_block_number));
+        Ok(())
+    }
+
+    fn signal_exit(&self) {
+        self.exit_signalled.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn dispose(&self) {
+        self.disposed.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+/// The persisted tier of a long-finality [`Fixture`]: 64 KiB arena files, 14 bloom bits per key, validation on, and
+/// the real persisted compactor or one that only records.
+pub struct FixtureTier {
+    pub tier: PersistedTier,
+    /// `None` with the real persisted compactor.
+    pub recorder: Option<Arc<RecordingCompactor>>,
+    pub catalog_kv: MemCatalogKv,
+    pub stats: Arc<TierStats>,
+    pub directory: tempfile::TempDir,
+}
+
+impl FixtureTier {
+    /// The recording persisted compactor.
+    pub fn recorder(&self) -> &RecordingCompactor {
+        self.recorder
+            .as_ref()
+            .expect("a fixture recording its persisted compactions")
+    }
+
+    /// The tier as a persistence manager takes it.
+    pub fn persisted_tier(&self) -> PersistedTier {
+        PersistedTier {
+            arena: Arc::clone(&self.tier.arena),
+            loader: Arc::clone(&self.tier.loader),
+            compactor: Arc::clone(&self.tier.compactor),
+            fatal_error: Arc::clone(&self.tier.fatal_error),
+        }
+    }
+}
+
+/// The settings of a fixture's tier under `directory`.
+pub fn tier_settings(directory: &std::path::Path, schedule: CompactionSchedule) -> TierSettings {
+    let base = directory.join("persistedSnapshot");
+    TierSettings {
+        arena_directory: base.join("arena"),
+        blob_directory: base.join("blob"),
+        arena: super::arena::config(64 * 1024),
+        tier: PersistedTierConfig {
+            bloom_bits_per_key: 14.0,
+            validate_persisted_snapshot: true,
+            processor_count: 4,
+        },
+        schedule,
+    }
+}
+
+/// The decided in-memory persist; any other decision fails the test.
+pub fn in_memory_persist(action: SnapshotAction) -> Arc<Snapshot> {
+    match action {
+        SnapshotAction::PersistInMemory(snapshot) => snapshot,
+        _ => panic!("expected an in-memory persist"),
+    }
+}
+
+/// The `(from, to)` of a decision and what kind it is: `"memory"`, `"persisted"`, `"compacted"` or `"base"`.
+pub fn decision(action: &SnapshotAction) -> (&'static str, StateId, StateId) {
+    match action {
+        SnapshotAction::PersistInMemory(snapshot) => ("memory", snapshot.from(), snapshot.to()),
+        SnapshotAction::PersistPersisted(snapshot) => ("persisted", snapshot.from(), snapshot.to()),
+        SnapshotAction::ConvertCompacted(snapshot) => ("compacted", snapshot.from(), snapshot.to()),
+        SnapshotAction::ConvertBase(snapshot) => ("base", snapshot.from(), snapshot.to()),
+    }
+}
+
 pub const COMPACT_SIZE: u64 = 16;
+
+/// What the catalog of a [`Fixture`]'s tier writes through, given its in-memory rows.
+pub type WrapCatalog = Arc<dyn Fn(MemCatalogKv) -> Box<dyn CatalogKv> + Send + Sync>;
+
+/// How a [`Fixture`] differs from the C# fixture's.
+#[derive(Clone)]
+pub struct FixtureOptions {
+    pub schedule: CompactionSchedule,
+    /// With long finality, the persisted compactor only records the batches it is handed, as C# substitutes it.
+    pub record_persisted_compactions: bool,
+    /// With long finality, the catalog writes through what this makes of its rows.
+    pub wrap_catalog: WrapCatalog,
+}
+
+impl Default for FixtureOptions {
+    fn default() -> Self {
+        Self {
+            schedule: CompactionSchedule::new(COMPACT_SIZE, 1 << 20, 0).unwrap(),
+            record_persisted_compactions: true,
+            wrap_catalog: Arc::new(|rows| Box::new(rows)),
+        }
+    }
+}
 
 /// A repository, persistence manager and recording persistence over a fresh store.
 pub struct Fixture {
@@ -462,13 +627,25 @@ pub struct Fixture {
     pub events: Arc<PersistedNodeEvents>,
     pub persistence_manager: Arc<PersistenceManager<TestPersistence>>,
     pub schedule: CompactionSchedule,
+    /// With long finality on.
+    pub tier: Option<FixtureTier>,
     _store: TestStore,
 }
 
 impl Fixture {
     /// The components over `backend` with the persisted state at `persisted` (none for `PreGenesis`), `None` when the
-    /// backend is unavailable.
+    /// backend is unavailable; with long finality in `config`, over a persisted tier.
     pub fn new(backend: Backend, config: PersistenceManagerConfig, persisted: Option<StateId>) -> Option<Self> {
+        Self::with_options(backend, config, persisted, FixtureOptions::default())
+    }
+
+    /// As [`Fixture::new`], with `options`.
+    pub fn with_options(
+        backend: Backend,
+        config: PersistenceManagerConfig,
+        persisted: Option<StateId>,
+        options: FixtureOptions,
+    ) -> Option<Self> {
         let store = backend.open()?;
         let persistence = KvPersistence::new(store.kv.clone(), FlatLayout::Flat, None).unwrap();
         if let Some(persisted) = persisted {
@@ -480,12 +657,15 @@ impl Fixture {
         }
         let persistence = Arc::new(Recording::new(persistence));
         let host = Arc::new(FakeHost::default());
-        let repository = Arc::new(SnapshotRepository::with_stats(
-            host.clone(),
-            Arc::new(FlatStats::new(1024)),
-        ));
+        let stats = Arc::new(FlatStats::new(1024));
+        let schedule = options.schedule;
+        let (repository, tier) = if config.long_finality.is_some() {
+            let (repository, tier) = Self::open_tier(host.clone(), stats, options);
+            (repository, Some(tier))
+        } else {
+            (Arc::new(SnapshotRepository::with_stats(host.clone(), stats)), None)
+        };
         let events = Arc::new(PersistedNodeEvents::new(true));
-        let schedule = CompactionSchedule::new(COMPACT_SIZE, 1 << 20, 0).unwrap();
         let persistence_manager = Arc::new(PersistenceManager::new(
             config,
             schedule,
@@ -493,6 +673,7 @@ impl Fixture {
             Arc::clone(&persistence),
             Arc::clone(&repository),
             Arc::clone(&events),
+            tier.as_ref().map(FixtureTier::persisted_tier),
         ));
         Some(Self {
             persistence,
@@ -501,11 +682,68 @@ impl Fixture {
             events,
             persistence_manager,
             schedule,
+            tier,
             _store: store,
         })
     }
 
-    /// Another persistence manager over the same components, as the C# tests build one with other settings.
+    fn open_tier(
+        host: Arc<FakeHost>,
+        stats: Arc<FlatStats>,
+        options: FixtureOptions,
+    ) -> (Arc<SnapshotRepository>, FixtureTier) {
+        let directory = tempfile::tempdir().unwrap();
+        let catalog_kv = MemCatalogKv::default();
+        let tier_stats = Arc::new(TierStats::default());
+        let (repository, opened) = PersistedTier::open(
+            &tier_settings(directory.path(), options.schedule),
+            (options.wrap_catalog)(catalog_kv.clone()),
+            &[],
+            host,
+            stats,
+            tier_stats.clone(),
+            Box::new(|job| panic!("{job} panicked")),
+        )
+        .unwrap();
+        let recorder = options
+            .record_persisted_compactions
+            .then(|| Arc::new(RecordingCompactor::default()));
+        let tier = match &recorder {
+            Some(recorder) => PersistedTier {
+                compactor: recorder.clone(),
+                ..opened
+            },
+            None => opened,
+        };
+        (
+            repository,
+            FixtureTier {
+                tier,
+                recorder,
+                catalog_kv,
+                stats: tier_stats,
+                directory,
+            },
+        )
+    }
+
+    /// The persisted tier of a long-finality fixture.
+    pub fn tier(&self) -> &FixtureTier {
+        self.tier.as_ref().expect("a long-finality fixture")
+    }
+
+    /// `PersistBase`: converts a snapshot setting account `0xA1..` to nonce 1, balance 100 straight into the persisted
+    /// tier, bypassing the in-memory tier.
+    pub fn persist_base(&self, from: StateId, to: StateId) -> Arc<PersistedSnapshot> {
+        let converted = snapshot(from, to, |content| {
+            content.set_account(address(0xA1), Some(account(100)))
+        });
+        self.tier().tier.loader.convert_and_register(&converted).unwrap();
+        self.repository.try_lease_base_persisted_snapshot(&to).unwrap()
+    }
+
+    /// Another persistence manager over the same components, as the C# tests build one with other settings; with long
+    /// finality over the fixture's tier.
     pub fn persistence_manager_with(&self, config: PersistenceManagerConfig) -> PersistenceManager<TestPersistence> {
         PersistenceManager::new(
             config,
@@ -514,6 +752,7 @@ impl Fixture {
             Arc::clone(&self.persistence),
             Arc::clone(&self.repository),
             Arc::clone(&self.events),
+            config.long_finality.map(|_| self.tier().persisted_tier()),
         )
     }
 

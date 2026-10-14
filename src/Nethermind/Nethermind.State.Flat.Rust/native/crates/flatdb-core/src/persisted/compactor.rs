@@ -14,6 +14,9 @@
 //! panicking one also handed to the job panic hook, and the threads go on. Process exit stops the threads between
 //! compactions and drops the queued batches; disposal closes the queues and waits for the work queued so far.
 //!
+//! A catalog write failing with corruption or an I/O error, on which C# `DbOnTheRocks.HandleFatalDbError` exits, is also
+//! handed to the fatal error hook, which stops later persists.
+//!
 //! `PersistedSnapshotCompactions` is incremented atomically, where C#'s `++` races. The configured validation of
 //! converted snapshots is not read here, as in C#.
 
@@ -60,6 +63,14 @@ pub struct CompactorConfig {
     pub tier: PersistedTierConfig,
 }
 
+/// What the compactor calls back with, from its threads.
+pub struct CompactorHooks {
+    /// Every catalog failure with corruption or an I/O error, once logged.
+    pub on_fatal_error: Box<dyn Fn(TierError) + Send + Sync>,
+    /// The name of every compaction that panics, once logged.
+    pub on_job_panic: PanicHook,
+}
+
 /// Why [`PersistedSnapshotCompactor::enqueue`] did not queue a batch.
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 pub enum EnqueueError {
@@ -69,6 +80,33 @@ pub enum EnqueueError {
     /// `OperationCanceledException`: process exit was signalled.
     #[error("Cancelled by process exit")]
     Cancelled,
+}
+
+/// `IPersistedSnapshotCompactor`: where the persistence manager hands the states it converted, and what shutdown asks
+/// of the compactor.
+pub trait PersistedCompactor: Send + Sync {
+    /// `EnqueueAsync`.
+    fn enqueue(&self, batch: Vec<StateId>, persisted_block_number: u64) -> Result<(), EnqueueError>;
+
+    /// Process exit started: a waiting enqueue gives up and the queued batches are dropped.
+    fn signal_exit(&self);
+
+    /// `DisposeAsync`, idempotent.
+    fn dispose(&self);
+}
+
+impl PersistedCompactor for PersistedSnapshotCompactor {
+    fn enqueue(&self, batch: Vec<StateId>, persisted_block_number: u64) -> Result<(), EnqueueError> {
+        PersistedSnapshotCompactor::enqueue(self, batch, persisted_block_number)
+    }
+
+    fn signal_exit(&self) {
+        PersistedSnapshotCompactor::signal_exit(self);
+    }
+
+    fn dispose(&self) {
+        PersistedSnapshotCompactor::dispose(self);
+    }
 }
 
 /// The states one persist converted, and the persisted block then.
@@ -99,13 +137,13 @@ struct Shared {
     config: CompactorConfig,
     /// `IProcessExitSource.Token`.
     process_exit: Signal,
-    on_job_panic: PanicHook,
+    hooks: CompactorHooks,
     /// Where the threads log: where the thread creating the compactor does.
     log_sink: Option<SinkId>,
 }
 
 impl PersistedSnapshotCompactor {
-    /// A compactor over the tier, calling `on_job_panic` with the name of every compaction that panics, once logged.
+    /// A compactor over the tier, calling `hooks` back.
     pub fn new(
         repository: Arc<SnapshotRepository>,
         arena: Arc<ArenaManager>,
@@ -113,7 +151,7 @@ impl PersistedSnapshotCompactor {
         catalog: Arc<SnapshotCatalog>,
         stats: Arc<TierStats>,
         config: CompactorConfig,
-        on_job_panic: impl Fn(&str) + Send + Sync + 'static,
+        hooks: CompactorHooks,
     ) -> Self {
         Self {
             shared: Arc::new(Shared {
@@ -124,7 +162,7 @@ impl PersistedSnapshotCompactor {
                 stats,
                 config,
                 process_exit: Signal::new(),
-                on_job_panic: Box::new(on_job_panic),
+                hooks,
                 log_sink: log_ring::current(),
             }),
             workers: Mutex::default(),
@@ -351,14 +389,20 @@ impl Shared {
         }
     }
 
-    /// Runs one compaction job: a failure is logged with `context`, a panic logged and handed to the job panic hook.
+    /// Runs one compaction job: a failure is logged with `context`, then handed to the fatal error hook when fatal; a
+    /// panic is logged and handed to the job panic hook.
     fn run_logged(&self, job: &str, context: impl Fn() -> String, work: impl FnOnce() -> TierResult<()>) {
         match panic::catch_unwind(AssertUnwindSafe(work)) {
             Ok(Ok(())) => {}
-            Ok(Err(error)) => log::error!("{}. {error}", context()),
+            Ok(Err(error)) => {
+                log::error!("{}. {error}", context());
+                if matches!(&error, TierError::Catalog(error) if error.is_fatal()) {
+                    (self.hooks.on_fatal_error)(error);
+                }
+            }
             Err(panic) => {
                 log::error!("{}. {}", context(), panic_message(&*panic));
-                (self.on_job_panic)(job);
+                (self.hooks.on_job_panic)(job);
             }
         }
     }

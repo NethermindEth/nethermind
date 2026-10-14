@@ -124,17 +124,17 @@ impl<R: PersistenceReader> ScopeBundle<R> {
 
     /// Port of `DetermineSelfDestructSnapshotIdx`: the index of the newest layer that cleared the storage of
     /// `address`, or -1.
-    pub fn self_destruct_idx(&self, address: &Address) -> i32 {
+    pub fn self_destruct_idx(&self, address: &Address) -> PersistenceResult<i32> {
         let cleared_in_current = self
             .current()
             .is_some_and(|current| current.self_destruct(address).is_some());
         let chain_count = self.chain.snapshot_count() as i32;
         let own = self.own.load();
         if cleared_in_current {
-            return chain_count + own.len() as i32;
+            return Ok(chain_count + own.len() as i32);
         }
         if let Some(index) = own.iter().rposition(|snapshot| snapshot.has_self_destruct(address)) {
-            return chain_count + index as i32;
+            return Ok(chain_count + index as i32);
         }
         self.chain.determine_self_destruct_snapshot_idx(address)
     }
@@ -224,7 +224,9 @@ impl<R: PersistenceReader> ScopeBundle<R> {
                 count_node(source, BundleRead::StateNodeCurrent, BundleRead::StateNodeOwn);
                 Ok((Some(value), source))
             }
-            Some((Probe::Placeholder, _)) => Ok(self.chain.load_persisted_state_rlp(path, flags, unread(read))?),
+            Some((Probe::Placeholder, _)) => {
+                Ok(self.chain.load_below_in_memory_state_rlp(path, flags, unread(read))?)
+            }
             None => self.chain.load_state_rlp_checked(path, hash, flags, unread(read)),
         }
     }
@@ -262,7 +264,7 @@ impl<R: PersistenceReader> ScopeBundle<R> {
             Some((Probe::Placeholder, _)) => {
                 Ok(self
                     .chain
-                    .load_persisted_storage_rlp(address_hash, path, flags, unread(read))?)
+                    .load_below_in_memory_storage_rlp(address_hash, path, flags, unread(read))?)
             }
             None => self
                 .chain

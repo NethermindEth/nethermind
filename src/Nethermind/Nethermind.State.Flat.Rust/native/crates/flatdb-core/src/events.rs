@@ -4,6 +4,10 @@
 //!
 //! The C# node of an entry is the one its shell handed over for that address, path and hash; the persisted range lets
 //! the shell release what it keeps for the states the persist covered.
+//!
+//! With long finality, converting a base into the persisted-snapshot tier marks its nodes the same way
+//! (`PersistedSnapshotBuilder.cs`), queued as a [`EventKind::Converted`] entry in the same queue. Writing a persisted
+//! snapshot to the persistence marks nothing; its entry has no nodes and only releases the range.
 
 use std::collections::VecDeque;
 
@@ -20,9 +24,20 @@ pub struct PersistedNode {
     pub hash: Hash256,
 }
 
-/// The nodes of the snapshot persisted from `from` to `to`, in the order the persist wrote them.
+/// What wrote the nodes of a [`PersistedNodes`].
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EventKind {
+    /// A persist to the persistence.
+    Persisted = 0,
+    /// A conversion of a base into the persisted-snapshot tier.
+    Converted = 1,
+}
+
+/// The nodes of the snapshot persisted or converted from `from` to `to`, in the order they were written.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PersistedNodes {
+    pub kind: EventKind,
     pub from: StateId,
     pub to: StateId,
     pub nodes: Vec<PersistedNode>,
@@ -72,11 +87,12 @@ impl PersistedNodeEvents {
 
 #[cfg(test)]
 mod tests {
-    use super::{PersistedNode, PersistedNodeEvents, PersistedNodes};
+    use super::{EventKind, PersistedNode, PersistedNodeEvents, PersistedNodes};
     use crate::types::{StateId, TreePath};
 
     fn persist(block: u64) -> PersistedNodes {
         PersistedNodes {
+            kind: EventKind::Persisted,
             from: StateId::new(block - 1, [0; 32]),
             to: StateId::new(block, [0; 32]),
             nodes: vec![PersistedNode {

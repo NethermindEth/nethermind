@@ -1,11 +1,13 @@
-//! Reads through a read-only bundle and the bundle cache: ports of the in-memory parts of `ReadOnlySnapshotBundleTests`
-//! and `ReadOnlySnapshotBundleFilterTests`, a proptest of every read against an oracle scanning a plain model of the
-//! layers (the C# `Random_stacks_read_the_same_through_the_filter`), and bundles over a real persistence on every
-//! backend.
+//! Reads through a read-only bundle and the bundle cache: ports of `ReadOnlySnapshotBundleTests`,
+//! `ReadOnlySnapshotBundlePersistedTests` and `ReadOnlySnapshotBundleFilterTests`, a proptest of every read against an
+//! oracle scanning a plain model of the persisted and in-memory layers (the C# `Random_stacks_read_the_same_through_the_
+//! filter`), and bundles over a real persistence on every backend. Persisted layers are bases converted into a tier in
+//! a temporary directory.
 //!
-//! Not ported: the persisted-snapshot-tier cases, which need long finality, the `ObjectDisposedException` case, which
-//! ownership rules out, the detailed-metrics and filter metrics variants (metrics are M1.3), and the cases driving the
-//! C# `SnapshotBundle`, `FlatOverridableWorldScope` and `FlatDbManager`, which stay C#.
+//! Not ported: the `ObjectDisposedException` case, which ownership rules out, the detailed-metrics and filter metrics
+//! variants of the in-memory reads (metrics are M1.3), `Persisted_snapshot_helper_releases_reservation_and_blob_leases`,
+//! a storage-layer case `persisted_repository.rs` covers, and the cases driving the C# `SnapshotBundle`,
+//! `FlatOverridableWorldScope` and `FlatDbManager`, which stay C#.
 
 mod common;
 
@@ -15,12 +17,14 @@ use std::thread;
 
 use common::any_kv::Backend;
 use common::hex;
+use common::persisted::TemporaryTier;
 use common::snapshots::{DictionaryReader, address, empty_snapshot, read_slot, snapshot, state_id};
 use flatdb_core::bundle::{ReadOnlySnapshotBundle, ReadSource};
 use flatdb_core::bundle_cache::BundleCache;
 use flatdb_core::compactor::SnapshotCompactor;
 use flatdb_core::keccak::{account_path, keccak256};
 use flatdb_core::kv::{ReadFlags, WriteFlags};
+use flatdb_core::persisted::snapshot::{PersistedSnapshot, SnapshotHeader};
 use flatdb_core::persistence::layouts::KvPersistence;
 use flatdb_core::persistence::{Persistence, PersistenceWriteBatch, ReaderFlags};
 use flatdb_core::repository::SnapshotRepository;
@@ -28,6 +32,7 @@ use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::seam::{self, BundleRead};
 use flatdb_core::snapshot::Snapshot;
 use flatdb_core::snapshot::content::SnapshotContentBuilder;
+use flatdb_core::stats::{FlatStats, Histogram, HistogramLabel};
 use flatdb_core::types::{Account, FlatLayout, StateId, TreePath, U256};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
@@ -42,7 +47,7 @@ fn bundle(
     reader: DictionaryReader,
     bits_per_key: f64,
 ) -> ReadOnlySnapshotBundle<DictionaryReader> {
-    ReadOnlySnapshotBundle::new(snapshots, reader, bits_per_key)
+    ReadOnlySnapshotBundle::new(snapshots, Vec::new(), reader, bits_per_key)
 }
 
 /// Snapshot `block -> block + 1` with `fill`.
@@ -172,6 +177,10 @@ fn reads_count_where_they_were_served_from(#[values(false, true)] filtered: bool
             0, // state_node_own
             0, // storage_node_current
             0, // storage_node_own
+            0, // account_persisted: the persisted-snapshot tier, which this bundle has none of
+            0, // storage_persisted
+            0, // state_node_persisted
+            0, // storage_node_persisted
         ]
     );
 }
@@ -189,8 +198,8 @@ fn determine_self_destruct_snapshot_idx_returns_the_newest_clear() {
         0.0,
     );
 
-    assert_eq!(bundle.determine_self_destruct_snapshot_idx(&a), 1);
-    assert_eq!(bundle.determine_self_destruct_snapshot_idx(&address(0xB2)), -1);
+    assert_eq!(bundle.determine_self_destruct_snapshot_idx(&a).unwrap(), 1);
+    assert_eq!(bundle.determine_self_destruct_snapshot_idx(&address(0xB2)).unwrap(), -1);
     assert!(bundle.has_self_destructs());
 }
 
@@ -370,7 +379,7 @@ fn a_definite_miss_with_a_clear_in_memory_is_none_and_skips_persistence(
         reader,
         bits_per_key,
     );
-    let clear = bundle.determine_self_destruct_snapshot_idx(&a);
+    let clear = bundle.determine_self_destruct_snapshot_idx(&a).unwrap();
     assert_eq!(clear, 1);
 
     assert_eq!(
@@ -627,7 +636,7 @@ fn bundles_read_through_a_real_persistence(
         }),
     ];
     let reader = persistence.create_reader(ReaderFlags::NONE).unwrap();
-    let bundle = ReadOnlySnapshotBundle::new(snapshots, reader, REAL_BITS_PER_KEY);
+    let bundle = ReadOnlySnapshotBundle::new(snapshots, Vec::new(), reader, REAL_BITS_PER_KEY);
 
     assert_eq!(bundle.reader_state(), persisted);
     assert_eq!(bundle.get_account(&a).unwrap().0, Some(Account::new(1, u256(10))));
@@ -651,6 +660,261 @@ fn bundles_read_through_a_real_persistence(
     let storage_rlp =
         bundle.load_storage_rlp_unchecked(&account_path(&b), &storage_path, ReadFlags::NONE, <[u8]>::to_vec);
     assert_eq!(storage_rlp.unwrap().0, Some(hex("0xc2cccc")));
+}
+
+/// `ReadOnlySnapshotBundlePersistedTests`: below the in-memory snapshots, a trie node the persisted tier holds comes
+/// from the tier and persistence is never asked (a different node there proves it), one the tier lacks comes from
+/// persistence, and so does every node of a bundle without a tier; a placeholder in memory falls through to the tier.
+#[test]
+fn trie_nodes_below_the_in_memory_snapshots_come_from_the_persisted_tier_first() {
+    let tier = TemporaryTier::new();
+    let owner = keccak256(b"address");
+    let (stored, storage_path, missing) = (
+        TreePath::from_hex("abcd"),
+        TreePath::from_hex("abcdef"),
+        TreePath::from_hex("123"),
+    );
+    let persisted = tier.convert(&layer(0, |s| {
+        s.set_state_node(stored, [0x11; 32], &hex("0xc28080"));
+        s.set_storage_node(owner, storage_path, [0x22; 32], &hex("0xc180"));
+    }));
+    let reader = || {
+        let mut reader = DictionaryReader::default();
+        reader.state_nodes.insert(stored, hex("0xc0"));
+        reader.state_nodes.insert(missing, hex("0xc18080"));
+        reader.storage_nodes.insert((owner, storage_path), hex("0xc0"));
+        reader
+    };
+    let with_tier = ReadOnlySnapshotBundle::new(
+        vec![layer(1, |s| s.set_state_node(stored, [0x33; 32], &[]))],
+        vec![persisted],
+        reader(),
+        0.0,
+    );
+    let without_tier = ReadOnlySnapshotBundle::new(Vec::new(), Vec::new(), reader(), 0.0);
+    let state = |bundle: &ReadOnlySnapshotBundle<DictionaryReader>, path| {
+        bundle
+            .load_state_rlp_unchecked(&path, ReadFlags::NONE, <[u8]>::to_vec)
+            .unwrap()
+    };
+    let storage = |bundle: &ReadOnlySnapshotBundle<DictionaryReader>| {
+        bundle
+            .load_storage_rlp_unchecked(&owner, &storage_path, ReadFlags::NONE, <[u8]>::to_vec)
+            .unwrap()
+    };
+
+    assert_eq!(
+        state(&with_tier, stored),
+        (Some(hex("0xc28080")), ReadSource::Persisted)
+    );
+    assert_eq!(
+        with_tier
+            .load_state_rlp_checked(&stored, &[0x33; 32], ReadFlags::NONE, <[u8]>::to_vec)
+            .unwrap(),
+        (Some(hex("0xc28080")), ReadSource::Persisted),
+        "a checked load through a placeholder of the requested hash"
+    );
+    assert_eq!(storage(&with_tier), (Some(hex("0xc180")), ReadSource::Persisted));
+    assert_eq!(
+        state(&with_tier, missing),
+        (Some(hex("0xc18080")), ReadSource::Persistence)
+    );
+    assert_eq!(
+        state(&without_tier, stored),
+        (Some(hex("0xc0")), ReadSource::Persistence)
+    );
+    assert_eq!(storage(&without_tier), (Some(hex("0xc0")), ReadSource::Persistence));
+    assert_eq!((with_tier.snapshot_count(), with_tier.persisted().len()), (2, 1));
+}
+
+/// `Definite_miss_passes_the_clear_index_on_to_the_persisted_tier`: a slot no in-memory snapshot wrote reaches the
+/// tier, which stops at the clear in persisted snapshot 1 and still probes snapshot 0 at the clear index; persistence
+/// is never asked.
+#[test]
+fn a_definite_miss_passes_the_clear_index_on_to_the_persisted_tier() {
+    let tier = TemporaryTier::new();
+    let a = address(0xA1);
+    let mut reader = DictionaryReader::default();
+    reader.slots.insert((a, u256(1)), u256(11));
+    let bundle = ReadOnlySnapshotBundle::new(
+        vec![
+            layer(2, |s| s.set_storage(address(0xB2), u256(1), Some(u256(5)))),
+            layer(3, |s| s.set_storage(address(0xC3), u256(1), Some(u256(6)))),
+        ],
+        vec![
+            tier.convert(&layer(0, |s| s.set_storage(a, u256(1), Some(u256(7))))),
+            tier.convert(&layer(1, |s| s.set_self_destruct(a, false))),
+        ],
+        reader,
+        REAL_BITS_PER_KEY,
+    )
+    .with_stats(Arc::new(FlatStats::new(64)));
+    let clear = bundle.determine_self_destruct_snapshot_idx(&a).unwrap();
+    assert_eq!(clear, 1);
+
+    assert_eq!(
+        bundle.get_slot_filtered(&a, &u256(1), clear).unwrap(),
+        (None, ReadSource::SelfDestructed),
+        "the clear in persisted snapshot 1 hides the older write"
+    );
+    assert_eq!(
+        bundle.slot_filter_might_contain(&a, &u256(1)),
+        Some(false),
+        "the key must be a definite miss for the reads to take that branch"
+    );
+    assert_eq!(
+        bundle.get_slot_filtered(&a, &u256(1), 0).unwrap(),
+        (Some(u256(7)), ReadSource::Persisted),
+        "persisted snapshot 0 is at the clear index and is still probed"
+    );
+    assert_eq!(
+        bundle.get_slot_filtered(&a, &u256(1), -1).unwrap(),
+        (Some(u256(7)), ReadSource::Persisted)
+    );
+    assert_eq!(bundle.persistence_reader().unwrap().slot_reads(), 0);
+}
+
+/// Reads served by the persisted tier count as its hits, without a skip; every probe of the tier that finds nothing
+/// observes `ReadOnlySnapshotBundleSkipTime` with its key kind, but only with detailed metrics, and the slot the tier's
+/// clear cuts off observes nothing, as in C#.
+#[rstest]
+fn persisted_tier_reads_count_their_hits_and_observe_their_skips(#[values(false, true)] detailed: bool) {
+    let tier = TemporaryTier::new();
+    let (a, b, c) = (address(0xA1), address(0xB2), address(0xC3));
+    let owner = keccak256(&[0x0C]);
+    let (path, absent_path) = (TreePath::from_hex("12"), TreePath::from_hex("34"));
+    let stats = Arc::new(FlatStats::new(if detailed { 64 } else { 0 }));
+    let bundle = ReadOnlySnapshotBundle::new(
+        Vec::new(),
+        vec![tier.convert(&layer(0, |s| {
+            s.set_account(a, Some(Account::new(1, u256(1))));
+            s.set_storage(a, u256(1), Some(u256(7)));
+            s.set_self_destruct(c, false);
+            s.set_state_node(path, [0x11; 32], &hex("0xc28080"));
+            s.set_storage_node(owner, path, [0x22; 32], &hex("0xc180"));
+        }))],
+        DictionaryReader::default(),
+        0.0,
+    )
+    .with_stats(stats.clone());
+    let before = seam::this_thread();
+
+    assert_eq!(
+        bundle.get_account(&a).unwrap(),
+        (Some(Account::new(1, u256(1))), ReadSource::Persisted)
+    );
+    assert_eq!(bundle.get_account(&b).unwrap(), (None, ReadSource::Persistence));
+    assert_eq!(
+        bundle.get_slot(&a, &u256(1), -1).unwrap(),
+        (Some(u256(7)), ReadSource::Persisted)
+    );
+    assert_eq!(
+        bundle.get_slot(&c, &u256(1), 0).unwrap(),
+        (None, ReadSource::SelfDestructed)
+    );
+    assert_eq!(
+        bundle.get_slot(&b, &u256(1), -1).unwrap(),
+        (None, ReadSource::Persistence)
+    );
+    for (load_path, expected) in [(path, ReadSource::Persisted), (absent_path, ReadSource::Persistence)] {
+        let state = bundle.load_state_rlp_unchecked(&load_path, ReadFlags::NONE, <[u8]>::to_vec);
+        let storage = bundle.load_storage_rlp_unchecked(&owner, &load_path, ReadFlags::NONE, <[u8]>::to_vec);
+        assert_eq!((state.unwrap().1, storage.unwrap().1), (expected, expected));
+    }
+
+    let after = seam::this_thread();
+    let counted = |read: BundleRead| after[read as usize] - before[read as usize];
+    assert_eq!(
+        [
+            BundleRead::AccountPersisted,
+            BundleRead::StoragePersisted,
+            BundleRead::StateNodePersisted,
+            BundleRead::StorageNodePersisted,
+            BundleRead::StorageSelfDestructed,
+            BundleRead::AccountPersistenceNull,
+            BundleRead::StoragePersistenceNull,
+            BundleRead::StateNodePersistence,
+            BundleRead::StorageNodePersistence,
+        ]
+        .map(counted),
+        [1; 9]
+    );
+    let skips: Vec<u16> = stats
+        .drain_observations(usize::MAX)
+        .iter()
+        .filter(|observation| observation.metric == Histogram::ReadOnlySnapshotBundleSkipTime as u16)
+        .map(|observation| observation.label)
+        .collect();
+    let expected = [
+        HistogramLabel::Account,
+        HistogramLabel::Slot,
+        HistogramLabel::StateRlp,
+        HistogramLabel::StorageRlp,
+    ];
+    assert_eq!(
+        skips,
+        if detailed {
+            expected.map(|label| label as u16).to_vec()
+        } else {
+            Vec::new()
+        }
+    );
+}
+
+/// `has_self_destructs`, the gate of the C# `-1` fast path, holds when an in-memory snapshot clears a storage, or a
+/// persisted one may: built in this session it knows, loaded from disk it is assumed to.
+#[rstest]
+#[case::nothing_clears(false, None, false)]
+#[case::in_memory_clear(true, None, true)]
+#[case::persisted_clear(false, Some(true), true)]
+#[case::persisted_without_clear(false, Some(false), false)]
+fn has_self_destructs_covers_the_persisted_tier(
+    #[case] in_memory_clear: bool,
+    #[case] persisted_clears: Option<bool>,
+    #[case] expected: bool,
+) {
+    let tier = TemporaryTier::new();
+    let a = address(0xA1);
+    let persisted = persisted_clears
+        .map(|clears| {
+            tier.convert(&layer(0, |s| {
+                s.set_account(a, Some(Account::new(1, u256(1))));
+                if clears {
+                    s.set_self_destruct(a, true);
+                }
+            }))
+        })
+        .into_iter()
+        .collect::<Vec<_>>();
+    let in_memory = vec![layer(1, |s| {
+        if in_memory_clear {
+            s.set_self_destruct(a, false);
+        }
+    })];
+    let bundle = ReadOnlySnapshotBundle::new(in_memory.clone(), persisted.clone(), DictionaryReader::default(), 0.0);
+    assert_eq!(bundle.has_self_destructs(), expected);
+
+    // The same tables as loaded from disk, which may clear any storage.
+    let loaded: Vec<Arc<PersistedSnapshot>> = persisted
+        .iter()
+        .map(|snapshot| {
+            Arc::new(
+                PersistedSnapshot::open(
+                    SnapshotHeader {
+                        may_have_self_destructs: true,
+                        ..snapshot.header()
+                    },
+                    snapshot.reservation().clone(),
+                    snapshot.persisted_bloom().clone(),
+                    tier.blobs.clone(),
+                    tier.stats.clone(),
+                )
+                .unwrap(),
+            )
+        })
+        .collect();
+    let reloaded = ReadOnlySnapshotBundle::new(in_memory, loaded, DictionaryReader::default(), 0.0);
+    assert_eq!(reloaded.has_self_destructs(), expected || persisted_clears.is_some());
 }
 
 /// One layer of the oracle: what it wrote and which addresses it cleared.
@@ -683,6 +947,19 @@ impl Layer {
                 .map(|(path, node)| (path.path[0] >> 4, node.rlp.to_vec()))
                 .collect(),
         }
+    }
+
+    /// The layer as the persisted tier holds it: placeholders dropped, and node bytes wrapped into an RLP list, as the
+    /// tier reads a node back by the length its RLP declares.
+    fn persisted(&self) -> Self {
+        let mut persisted = self.clone();
+        persisted.state_nodes = self
+            .state_nodes
+            .iter()
+            .filter(|(_, rlp)| !rlp.is_empty())
+            .map(|(nibble, rlp)| (*nibble, [&[0xC0 + rlp.len() as u8][..], rlp].concat()))
+            .collect();
+        persisted
     }
 
     fn snapshot(&self, block: u64) -> Arc<Snapshot> {
@@ -804,16 +1081,30 @@ proptest! {
 
     #[test]
     fn random_stacks_read_the_same_through_the_filter_as_the_oracle(
+        persisted in prop::collection::vec(layer_strategy(), 0..3),
         stack in stack_strategy(),
         persistence in persistence_strategy(),
     ) {
-        check_stack_reads(&stack, &persistence)?;
+        check_stack_reads(&persisted, &stack, &persistence)?;
     }
 }
 
-/// Every read of a bundle over `stack`, with the filter built, degraded and disabled, matches the oracle.
-fn check_stack_reads(stack: &[StackLayer], persistence: &PersistenceModel) -> Result<(), TestCaseError> {
-    let mut block = 0;
+/// Every read of a bundle over `stack` above the `persisted` layers converted into the tier, with the filter built,
+/// degraded and disabled, matches the oracle.
+fn check_stack_reads(
+    persisted: &[Layer],
+    stack: &[StackLayer],
+    persistence: &PersistenceModel,
+) -> Result<(), TestCaseError> {
+    let tier = (!persisted.is_empty()).then(TemporaryTier::new);
+    let persisted_layers: Vec<Layer> = persisted.iter().map(Layer::persisted).collect();
+    let persisted_snapshots: Vec<_> = persisted_layers
+        .iter()
+        .zip(0..)
+        .map(|(model, block)| tier.as_ref().unwrap().convert(&model.snapshot(block)))
+        .collect();
+
+    let mut block = persisted.len() as u64;
     let mut snapshots = Vec::new();
     let mut layers = Vec::new();
     for stack_layer in stack {
@@ -837,16 +1128,24 @@ fn check_stack_reads(stack: &[StackLayer], persistence: &PersistenceModel) -> Re
         }
     }
 
+    // Persisted snapshots number below the in-memory ones.
+    let all_layers: Vec<Layer> = persisted_layers.iter().chain(&layers).cloned().collect();
     for bits_per_key in [REAL_BITS_PER_KEY, DEGRADED_BITS_PER_KEY, 0.0] {
-        let bundle = ReadOnlySnapshotBundle::new(snapshots.clone(), persistence.reader(), bits_per_key);
+        let bundle = ReadOnlySnapshotBundle::new(
+            snapshots.clone(),
+            persisted_snapshots.clone(),
+            persistence.reader(),
+            bits_per_key,
+        );
+        prop_assert_eq!(bundle.snapshot_count(), all_layers.len());
 
         for a in 0u8..9 {
-            let clear = oracle_clear(&layers, a);
+            let clear = oracle_clear(&all_layers, a);
             prop_assert_eq!(
-                bundle.determine_self_destruct_snapshot_idx(&address(a)),
+                bundle.determine_self_destruct_snapshot_idx(&address(a)).unwrap(),
                 clear.map_or(-1, |clear| clear as i32)
             );
-            let account = layers
+            let account = all_layers
                 .iter()
                 .rev()
                 .find_map(|layer| layer.accounts.get(&a).copied())
@@ -858,21 +1157,26 @@ fn check_stack_reads(stack: &[StackLayer], persistence: &PersistenceModel) -> Re
 
             for s in 1u8..10 {
                 let slot = u256(u64::from(s));
-                for d in -1..=snapshots.len() as i32 {
-                    let expected = oracle_slot(&layers, persistence, (a, s), usize::try_from(d).ok()).map(u256);
+                for d in -1..=all_layers.len() as i32 {
+                    let expected = oracle_slot(&all_layers, persistence, (a, s), usize::try_from(d).ok()).map(u256);
                     prop_assert_eq!(bundle.get_slot(&address(a), &slot, d).unwrap().0, expected);
                     prop_assert_eq!(bundle.get_slot_filtered(&address(a), &slot, d).unwrap().0, expected);
                 }
-                let expected = oracle_slot(&layers, persistence, (a, s), clear).map(u256);
+                let expected = oracle_slot(&all_layers, persistence, (a, s), clear).map(u256);
                 prop_assert_eq!(read_slot(&bundle, &address(a), &slot, false).unwrap(), expected);
                 prop_assert_eq!(read_slot(&bundle, &address(a), &slot, true).unwrap(), expected);
             }
         }
 
         for nibble in 0u8..8 {
+            // A placeholder in memory falls through below the in-memory layers, to the tier, which holds none.
             let expected = match layers.iter().rev().find_map(|layer| layer.state_nodes.get(&nibble)) {
                 Some(rlp) if !rlp.is_empty() => Some(rlp.clone()),
-                _ => persistence.state_nodes.get(&nibble).cloned(),
+                _ => persisted_layers
+                    .iter()
+                    .rev()
+                    .find_map(|layer| layer.state_nodes.get(&nibble).cloned())
+                    .or_else(|| persistence.state_nodes.get(&nibble).cloned()),
             };
             let actual = bundle.load_state_rlp_unchecked(&node_path(nibble), ReadFlags::NONE, <[u8]>::to_vec);
             prop_assert_eq!(actual.unwrap().0, expected);

@@ -169,7 +169,7 @@ pub unsafe extern "C" fn fdb_rob_self_destruct_idx(rob: *const FdbRob, address: 
         let (rob, address, idx) = unsafe { (rob_ref(rob)?, array::<20>(address)?, out(idx)?) };
         *idx = rob
             .poison
-            .guard(|| Ok(rob.bundle.determine_self_destruct_snapshot_idx(address)))?;
+            .guard(|| Ok(rob.bundle.determine_self_destruct_snapshot_idx(address)?))?;
         Ok(())
     })
 }
@@ -464,7 +464,10 @@ pub unsafe extern "C" fn fdb_scope_self_destruct_idx(scope: *const FdbScope, add
     ffi_guard(Export::ScopeSelfDestructIdx, || {
         // SAFETY: the caller passes a live scope and valid pointers.
         let (scope, address, idx) = unsafe { (scope_ref(scope)?, array::<20>(address)?, out(idx)?) };
-        *idx = scope.base.poison.guard(|| Ok(scope.scope.self_destruct_idx(address)))?;
+        *idx = scope
+            .base
+            .poison
+            .guard(|| Ok(scope.scope.self_destruct_idx(address)?))?;
         Ok(())
     })
 }

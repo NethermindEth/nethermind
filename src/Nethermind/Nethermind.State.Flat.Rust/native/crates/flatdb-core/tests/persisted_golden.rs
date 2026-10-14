@@ -32,7 +32,7 @@ use flatdb_core::persisted::reader::{read_blob_range, read_ref_ids, resolve_trie
 use flatdb_core::persisted::scanner::Scanner;
 use flatdb_core::persisted::sorted::enumerator::SortedTableEnumerator;
 use flatdb_core::persisted::sorted::table_reader;
-use flatdb_core::persisted::stack::{PersistedLayer, PersistedSnapshotStack};
+use flatdb_core::persisted::stack::{PersistedLayer, PersistedSnapshotStack, StackSlot};
 use flatdb_core::persisted::storage::arena_manager::ArenaConfig;
 use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv};
 use flatdb_core::persisted::storage::pool_set::PoolSet;
@@ -775,10 +775,10 @@ impl<S: PersistedLayer> Bundle<S> {
                 return None;
             }
         }
-        self.stack
-            .try_get_slot(address, slot, self_destruct_index)
-            .unwrap()
-            .flatten()
+        match self.stack.try_get_slot(address, slot, self_destruct_index).unwrap() {
+            StackSlot::Found(value) => value,
+            StackSlot::Cleared | StackSlot::Missing => None,
+        }
     }
 
     fn load_state_rlp(&self, path: &TreePath) -> Option<Vec<u8>> {

@@ -87,6 +87,8 @@ impl From<PersistenceError> for FfiError {
             PersistenceError::InvalidOperation(_) => FdbStatus::InvalidOperation,
             PersistenceError::WrongBaseState { .. } => FdbStatus::WrongBaseState,
             PersistenceError::ValueTooLarge { .. } => FdbStatus::InvalidArgument,
+            PersistenceError::Tier { .. } => FdbStatus::InvalidOperation,
+            PersistenceError::Catalog(error) => return error.into(),
         };
         Self {
             status,
@@ -128,7 +130,7 @@ impl From<PersistError> for FfiError {
     fn from(error: PersistError) -> Self {
         let status = match &error {
             PersistError::Persistence(error) => return error.clone().into(),
-            PersistError::Host(HostError::Cancelled) => FdbStatus::Cancelled,
+            PersistError::Host(HostError::Cancelled) | PersistError::Cancelled => FdbStatus::Cancelled,
             PersistError::Host(HostError::Failed(_)) => FdbStatus::InvalidOperation,
         };
         Self {

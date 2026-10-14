@@ -21,7 +21,7 @@ use flatdb_core::keccak::keccak256;
 use flatdb_core::kv::{KvError, KvResult};
 use flatdb_core::persisted::bloom_keys;
 use flatdb_core::persisted::list::PersistedSnapshotList;
-use flatdb_core::persisted::stack::{PersistedLayer, PersistedSnapshotStack};
+use flatdb_core::persisted::stack::{PersistedLayer, PersistedSnapshotStack, StackSlot};
 use flatdb_core::persisted::storage::arena_manager::ArenaConfig;
 use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv};
 use flatdb_core::persisted::validate::validate_persisted_snapshot;
@@ -484,7 +484,7 @@ fn a_stack_over_a_real_bloom_finds_present_keys_and_skips_absent_addresses() {
     );
     assert_eq!(
         stack.try_get_slot(&hex20(ADDRESS_A), &U256::from_u64(1), -1).unwrap(),
-        Some(Some(U256::from_u64(0x55)))
+        StackSlot::Found(Some(U256::from_u64(0x55)))
     );
     for absent in [ADDRESS_B, ADDRESS_C] {
         assert_eq!(stack.try_get_account(&hex20(absent)).unwrap(), None);

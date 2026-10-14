@@ -215,6 +215,16 @@ impl ArenaManager {
         self.shared.advisor_counter(|advisor| &advisor.refreshed)
     }
 
+    /// Stops the advisor thread, idempotent; evictions queued afterwards wait for [`ArenaManager::dispose`].
+    pub fn stop_advisor(&self) {
+        if let Some((exit, thread)) = self.advisor_thread.lock().take() {
+            drop(exit);
+            if thread.join().is_err() {
+                log::error!("The page advisor panicked.");
+            }
+        }
+    }
+
     /// `Dispose`, idempotent: stops the advisor after it dispatched what is queued, then drops the manager's lease of
     /// every file. Released reservations stop reclaiming, so the files of live snapshots survive for the next session.
     pub fn dispose(&self) {
@@ -226,12 +236,7 @@ impl ArenaManager {
             pool.disposed = true;
         }
 
-        if let Some((exit, thread)) = self.advisor_thread.lock().take() {
-            drop(exit);
-            if thread.join().is_err() {
-                log::error!("The page advisor panicked.");
-            }
-        }
+        self.stop_advisor();
         if let Some(advisor) = &self.shared.advisor {
             while let Ok(packed) = advisor.receiver.try_recv() {
                 self.shared.dispatch_one(advisor, packed);

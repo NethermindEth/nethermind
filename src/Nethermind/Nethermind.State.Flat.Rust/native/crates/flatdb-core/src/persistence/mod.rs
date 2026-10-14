@@ -23,6 +23,7 @@ use thiserror::Error;
 
 use crate::codec::rlp::RlpError;
 use crate::kv::{KvError, ReadFlags, WriteFlags};
+use crate::persisted::{TierError, TierErrorKind};
 use crate::types::{Account, Address, Hash256, StateId, TreePath, U256};
 
 /// What a reader is for, with the bit values of `ReaderFlags`.
@@ -85,6 +86,29 @@ pub enum PersistenceError {
     /// A stored value is longer than the buffer it is read into (the `ArgumentException` of a span `Get`).
     #[error("The value is {len} bytes but the destination holds {capacity}.")]
     ValueTooLarge { len: usize, capacity: usize },
+    /// The persisted-snapshot tier failed, with the exception `kind` stands for.
+    #[error("{message}")]
+    Tier { kind: TierErrorKind, message: String },
+    /// A write to the catalog database of the persisted-snapshot tier failed.
+    #[error(transparent)]
+    Catalog(KvError),
+}
+
+impl From<TierError> for PersistenceError {
+    fn from(error: TierError) -> Self {
+        let kind = match error {
+            TierError::Catalog(error) => return Self::Catalog(error),
+            TierError::Io(_) => TierErrorKind::Io,
+            TierError::Corrupt(_) => TierErrorKind::Corrupt,
+            TierError::InvalidOperation(_) => TierErrorKind::InvalidOperation,
+            TierError::InvalidArgument(_) => TierErrorKind::InvalidArgument,
+            TierError::Validation(_) => TierErrorKind::Validation,
+        };
+        Self::Tier {
+            kind,
+            message: error.to_string(),
+        }
+    }
 }
 
 pub type PersistenceResult<T> = Result<T, PersistenceError>;
