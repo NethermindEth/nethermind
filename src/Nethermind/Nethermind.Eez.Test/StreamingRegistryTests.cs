@@ -251,7 +251,10 @@ public class StreamingRegistryTests
         ClientFrame finalize = Frame(ready, 2);
         finalize.Finalize = new Finalize
         {
-            FromBlock = 11, ToBlock = 11, TerminalHash = Hash(11), Settlement = new SettlementInput { AbiCalldata = Hash(50) },
+            FromBlock = 11,
+            ToBlock = 11,
+            TerminalHash = Hash(11),
+            Settlement = new SettlementInput { AbiCalldata = Hash(50) },
         };
         SessionOperation pending = connection.Dispatch(finalize).Operation!;
         Assert.That(pending.CopyBlocks()[0].Number, Is.EqualTo(11));
@@ -304,7 +307,11 @@ public class StreamingRegistryTests
     }
     private static BlockWitness Block() => new()
     {
-        Number = 11, Hash = Hash(11), ParentHash = Hash(1), Rlp = Hash(11), Witness = new ExecutionWitness(),
+        Number = 11,
+        Hash = Hash(11),
+        ParentHash = Hash(1),
+        Rlp = Hash(11),
+        Witness = new ExecutionWitness(),
     };
     private static ExecutedStreamingBlock Executed(SessionOperation operation) => new(11, Hash(11), Hash(1), operation.PreStateRoot, Hash(31));
     private static void AssertCode(Action action, StatusCode code) => Assert.That(Assert.Throws<RpcException>(action)!.StatusCode, Is.EqualTo(code));

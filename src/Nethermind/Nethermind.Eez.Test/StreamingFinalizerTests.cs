@@ -60,8 +60,13 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
         JsonElement oracle = StatelessFixtures.ReadJson(_fixture, "oracle.json");
         _context = new EezSettlementContext(1, specs.ChainId, new Address(oracle.GetProperty("proof_system").GetString()!),
             new ValueHash256(oracle.GetProperty("proof_system_vkey").GetString()!), 2);
-        _predecessor = new Begin { RollupId = 1, AnchorNumber = _parent.Number, AnchorHash = ByteString.CopyFrom(_parent.Hash!.Bytes),
-            AnchorStateRoot = ByteString.CopyFrom(_parent.StateRoot!.Bytes) };
+        _predecessor = new Begin
+        {
+            RollupId = 1,
+            AnchorNumber = _parent.Number,
+            AnchorHash = ByteString.CopyFrom(_parent.Hash!.Bytes),
+            AnchorStateRoot = ByteString.CopyFrom(_parent.StateRoot!.Bytes)
+        };
         _l1 = new EvidenceHandler(_context, _parent, false);
         _l2 = new EvidenceHandler(_context, _parent, true);
         _l1Client = new HttpClient(_l1) { BaseAddress = new Uri("http://l1.invalid") };
@@ -297,7 +302,9 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
 
     private Finalize Finalization() => new()
     {
-        FromBlock = (ulong)from, ToBlock = (ulong)to, TerminalHash = _chunks[^1].Block.Hash,
+        FromBlock = (ulong)from,
+        ToBlock = (ulong)to,
+        TerminalHash = _chunks[^1].Block.Hash,
         Settlement = new SettlementInput { AbiCalldata = _chunks[0].Header.PostBatch.AbiCalldata },
     };
 

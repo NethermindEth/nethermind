@@ -227,8 +227,13 @@ public class RollupXSettlementInputTests
         SettlementInput input = new()
         {
             AbiCalldata = ByteString.CopyFrom(EezCalldata.EncodePostAndVerifyBatch(batch with { Proofs = [[]] })),
-            PostingContext = new L1PostingContext { ChainId = L1ChainId, ParentNumber = Convert.ToUInt64(block.GetProperty("number").GetString(), 16) - 1,
-                TargetTimestamp = Convert.ToUInt64(block.GetProperty("timestamp").GetString(), 16), ParentHash = ByteString.CopyFrom(Bytes.FromHexString(block.GetProperty("parentHash").GetString()!)) }
+            PostingContext = new L1PostingContext
+            {
+                ChainId = L1ChainId,
+                ParentNumber = Convert.ToUInt64(block.GetProperty("number").GetString(), 16) - 1,
+                TargetTimestamp = Convert.ToUInt64(block.GetProperty("timestamp").GetString(), 16),
+                ParentHash = ByteString.CopyFrom(Bytes.FromHexString(block.GetProperty("parentHash").GetString()!))
+            }
         };
         input.Blobs.AddRange(selected!.Select(static blob => ByteString.CopyFrom(blob)));
         return input;

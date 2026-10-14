@@ -119,7 +119,8 @@ internal sealed class StreamingRuntime : IDisposable
         MaxConnectionsPerServer = 1,
         MaxResponseHeadersLength = 64,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-    }) { BaseAddress = uri, Timeout = Timeout.InfiniteTimeSpan };
+    })
+    { BaseAddress = uri, Timeout = Timeout.InfiniteTimeSpan };
 
     public void Dispose()
     {

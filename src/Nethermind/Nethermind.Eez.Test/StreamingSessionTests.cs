@@ -389,12 +389,18 @@ public class StreamingSessionTests
     }
     private static BlockWitness Block(ulong number, ByteString parent) => new()
     {
-        Number = number, Hash = Hash((byte)number), ParentHash = parent, Rlp = Hash((byte)number),
+        Number = number,
+        Hash = Hash((byte)number),
+        ParentHash = parent,
+        Rlp = Hash((byte)number),
         Witness = new ExecutionWitness { State = { Hash(60) } },
     };
     private static Finalize FinalizeRange(ulong from, ulong to) => new()
     {
-        FromBlock = from, ToBlock = to, TerminalHash = Hash((byte)to), Settlement = new SettlementInput { AbiCalldata = Hash(70) },
+        FromBlock = from,
+        ToBlock = to,
+        TerminalHash = Hash((byte)to),
+        Settlement = new SettlementInput { AbiCalldata = Hash(70) },
     };
     private static ExecutedStreamingBlock Executed(SessionOperation operation)
     {

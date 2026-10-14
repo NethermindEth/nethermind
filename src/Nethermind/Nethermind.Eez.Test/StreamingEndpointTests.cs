@@ -62,17 +62,30 @@ public class StreamingEndpointTests(string fixture, int from, int to)
         ServerFrame current = await Begin(call);
         foreach (ProveChunk chunk in _server.Chunks.Skip(1))
         {
-            await call.RequestStream.WriteAsync(new ClientFrame { SessionId = current.SessionId, Epoch = current.Epoch, RequestId = chunk.Block.Number,
-                Block = new StreamBlock { Data = chunk.Block } });
+            await call.RequestStream.WriteAsync(new ClientFrame
+            {
+                SessionId = current.SessionId,
+                Epoch = current.Epoch,
+                RequestId = chunk.Block.Number,
+                Block = new StreamBlock { Data = chunk.Block }
+            });
             Assert.That(await call.ResponseStream.MoveNext(), Is.True, "each accepted block has a correlated response");
             current = call.ResponseStream.Current;
             Assert.That(current.Validated?.Hash, Is.EqualTo(chunk.Block.Hash), "production DI resolves the actual block executor");
         }
-        await call.RequestStream.WriteAsync(new ClientFrame { SessionId = current.SessionId, Epoch = current.Epoch, RequestId = 999, Finalize = new Finalize
+        await call.RequestStream.WriteAsync(new ClientFrame
         {
-            FromBlock = (ulong)from, ToBlock = (ulong)to, TerminalHash = _server.Chunks[^1].Block.Hash,
-            Settlement = new SettlementInput { AbiCalldata = _server.Chunks[0].Header.PostBatch.AbiCalldata }
-        } });
+            SessionId = current.SessionId,
+            Epoch = current.Epoch,
+            RequestId = 999,
+            Finalize = new Finalize
+            {
+                FromBlock = (ulong)from,
+                ToBlock = (ulong)to,
+                TerminalHash = _server.Chunks[^1].Block.Hash,
+                Settlement = new SettlementInput { AbiCalldata = _server.Chunks[0].Header.PostBatch.AbiCalldata }
+            }
+        });
         await call.RequestStream.CompleteAsync();
         Assert.That(await call.ResponseStream.MoveNext(), Is.True, "accepted Finalize drains through a client half-close");
         Proof proof = call.ResponseStream.Current.Proof;
@@ -181,8 +194,13 @@ public class StreamingEndpointTests(string fixture, int from, int to)
         using GrpcChannel channel = _server.Channel(_server.ClientA);
         using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = new ProverV2.ProverClient(channel).ProveStream(Options());
         ServerFrame ready = await Begin(call);
-        await call.RequestStream.WriteAsync(new ClientFrame { SessionId = ready.SessionId, Epoch = ready.Epoch, RequestId = 2,
-            Block = new StreamBlock { Data = _server.Chunks[1].Block } });
+        await call.RequestStream.WriteAsync(new ClientFrame
+        {
+            SessionId = ready.SessionId,
+            Epoch = ready.Epoch,
+            RequestId = 2,
+            Block = new StreamBlock { Data = _server.Chunks[1].Block }
+        });
         Assert.That(await call.ResponseStream.MoveNext(), Is.True, "busy shared admission returns a correlated refusal");
         Assert.That((call.ResponseStream.Current.Rejected?.Code, call.ResponseStream.Current.Rejected?.ValidatedThrough),
             Is.EqualTo(((int?)StatusCode.ResourceExhausted, (ulong?)from - 1)), "production v2 uses the same admission lease as v1");
@@ -258,9 +276,17 @@ public class StreamingEndpointTests(string fixture, int from, int to)
             string config = Path.Combine(_directory.Path, "streaming.json");
             File.WriteAllText(config, JsonSerializer.Serialize(new
             {
-                profile = "rollup0-calldata", listenAddress = "127.0.0.1:0", l1Rpc = new Uri(source, "l1").ToString(), l2Rpc = new Uri(source, "l2").ToString(),
-                l1ChainId = 31337, registry = TestItem.AddressA.ToString(), manager = TestItem.AddressB.ToString(), serverCertificate = "server.pfx",
-                serverPasswordFile = "password", composerCertificates = new[] { "composer-a.cer", "composer-b.cer" }, maxSessionBytes = 16 * 1024 * 1024,
+                profile = "rollup0-calldata",
+                listenAddress = "127.0.0.1:0",
+                l1Rpc = new Uri(source, "l1").ToString(),
+                l2Rpc = new Uri(source, "l2").ToString(),
+                l1ChainId = 31337,
+                registry = TestItem.AddressA.ToString(),
+                manager = TestItem.AddressB.ToString(),
+                serverCertificate = "server.pfx",
+                serverPasswordFile = "password",
+                composerCertificates = new[] { "composer-a.cer", "composer-b.cer" },
+                maxSessionBytes = 16 * 1024 * 1024,
             }));
             ISpecProvider specs = StatelessFixtures.ReadSpecProvider(fixture, "chain-config.json");
             JsonElement oracle = StatelessFixtures.ReadJson(fixture, "oracle.json");

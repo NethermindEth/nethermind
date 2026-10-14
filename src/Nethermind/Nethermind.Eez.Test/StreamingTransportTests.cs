@@ -383,7 +383,10 @@ public class StreamingTransportTests
 
     private ClientFrame FinalizeFrame() => Bound(3, new Finalize
     {
-        FromBlock = 11, ToBlock = 11, TerminalHash = Hash(11), Settlement = new SettlementInput { AbiCalldata = Hash(90) },
+        FromBlock = 11,
+        ToBlock = 11,
+        TerminalHash = Hash(11),
+        Settlement = new SettlementInput { AbiCalldata = Hash(90) },
     });
 
     private static Proof TestProof() => new() { PublicInputsHash = Hash(80), Proof_ = ByteString.CopyFrom(new byte[65]) };

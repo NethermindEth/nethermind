@@ -111,7 +111,7 @@ public class StreamingOptionsTests
     public void Load_UnknownProperty_RejectsInsteadOfIgnoringTypo()
     {
         JsonObject json = Valid();
-        json["composerCertficates"] = "typo";
+        json["composerCertificates"] = "typo";
         using TempPath file = Config(json);
         Assert.That(() => StreamingOptions.Load(file.Path, Attester()), Throws.TypeOf<FormatException>(), "unknown settings must not weaken the intended trust configuration");
     }
@@ -231,9 +231,16 @@ public class StreamingOptionsTests
 
     private static JsonObject Valid() => new()
     {
-        ["profile"] = "rollup0-calldata", ["listenAddress"] = "127.0.0.1:50063", ["l1Rpc"] = "http://l1.invalid", ["l2Rpc"] = "http://l2.invalid",
-        ["l1ChainId"] = 31337, ["registry"] = TestItem.AddressA.ToString(), ["manager"] = TestItem.AddressB.ToString(),
-        ["serverCertificate"] = "server.pfx", ["serverPasswordFile"] = "password", ["composerCertificates"] = new JsonArray("composer.cer"),
+        ["profile"] = "rollup0-calldata",
+        ["listenAddress"] = "127.0.0.1:50063",
+        ["l1Rpc"] = "http://l1.invalid",
+        ["l2Rpc"] = "http://l2.invalid",
+        ["l1ChainId"] = 31337,
+        ["registry"] = TestItem.AddressA.ToString(),
+        ["manager"] = TestItem.AddressB.ToString(),
+        ["serverCertificate"] = "server.pfx",
+        ["serverPasswordFile"] = "password",
+        ["composerCertificates"] = new JsonArray("composer.cer"),
     };
 
     private static TempPath Config(JsonObject json)
