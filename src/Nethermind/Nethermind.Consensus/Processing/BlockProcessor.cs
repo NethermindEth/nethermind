@@ -142,7 +142,7 @@ public partial class BlockProcessor(
     /// EIP-7928: a producer's transaction selection leaves room for the end-of-block steps, so a built block over
     /// <c>block_gas_limit / ITEM_COST</c> means that reserve missed some end-of-block work. Such a block is invalid
     /// everywhere, so it is rejected here instead of being returned as a payload; the payload keeps its previous best
-    /// build and the executor reserves the excess in later builds.
+    /// build and the executor reserves the excess in later builds on the same parent.
     /// </summary>
     /// <remarks>
     /// A block without transactions is only logged: transactions never remove items, so its items are the least any

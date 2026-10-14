@@ -15,7 +15,8 @@ namespace Nethermind.Consensus.Processing
 
             /// <summary>
             /// Reports that a block built by this executor ended <paramref name="excessItems"/> over the EIP-7928 block
-            /// access list item limit and was rejected, so later builds can leave more room for the end-of-block steps.
+            /// access list item limit and was rejected, so later builds on the same parent can leave more room for the
+            /// end-of-block steps.
             /// </summary>
             void ReportItemLimitExceeded(long excessItems) { }
         }

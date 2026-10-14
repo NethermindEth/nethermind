@@ -175,6 +175,48 @@ public class BlockAccessListItemBudgetTests(bool parallel) : BaseEngineModuleTes
         await AssertValidates(chain, block);
     }
 
+    /// <summary>
+    /// The excess a rejected build reserves applies to builds on that parent only, so a later payload on a new parent
+    /// gets the full budget back.
+    /// </summary>
+    [Test]
+    public async Task Reserved_excess_does_not_carry_over_to_a_new_parent()
+    {
+        ExtraReadsWithdrawalProcessorFactory? factory = null;
+        using MergeTestBlockchain chain = await CreateLowGasLimitChain(Amsterdam.Instance, LowGasLimit,
+            configurer: builder => builder.AddSingleton<IWithdrawalProcessorFactory>(ctx =>
+                factory = new ExtraReadsWithdrawalProcessorFactory(ctx.Resolve<ILogManager>(), 30)));
+        Transaction a = TxA, b = TxB, c = TxC;
+        Submit(chain, a, b, c);
+
+        Assert.That(await BuildBlock(chain, []), Is.Null);
+        Block first = (await BuildBlock(chain, []))!;
+        Assert.That(first.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { a.Hash, c.Hash }));
+        await AssertValidates(chain, first);
+        await MakeHead(chain, first.Hash!);
+
+        // Without the unmodelled reads the full budget (200 - 20 - 5) fits A2 and B again; a carried-over excess of
+        // 24 items would still leave B out.
+        factory!.ExtraReads = 0;
+        Transaction a2 = SloadTx(TestItem.PrivateKeyB, priorityFee: 30, gasLimit: 290_000, firstSlot: 0x30000, count: 120, nonce: 1);
+        Submit(chain, a2);
+
+        Block next = (await BuildBlock(chain, []))!;
+
+        Assert.That(next.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { a2.Hash, b.Hash }));
+        await AssertValidates(chain, next);
+    }
+
+    private static async Task MakeHead(MergeTestBlockchain chain, Hash256 blockHash)
+    {
+        await chain.WaitForCommitted(blockHash);
+        Task poolHead = chain.WaitForTxPoolHead(blockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
+            new ForkchoiceStateV1(blockHash, blockHash, blockHash), null);
+        Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        await poolHead;
+    }
+
     private async Task<MergeTestBlockchain> CreateLowGasLimitChain(IReleaseSpec spec, ulong gasLimit,
         Action<IWorldState>? setUpState = null, Action<ContainerBuilder>? configurer = null) =>
         await CreateBlockchain(spec, configurer: builder =>
@@ -193,9 +235,10 @@ public class BlockAccessListItemBudgetTests(bool parallel) : BaseEngineModuleTes
     private static void Enqueue(IWorldState state, Address queueContract, int records) =>
         state.Set(new StorageCell(queueContract, 3), (UInt256)records);
 
-    private static Transaction SloadTx(PrivateKey key, ulong priorityFee, ulong gasLimit, ulong firstSlot, int count) =>
+    private static Transaction SloadTx(PrivateKey key, ulong priorityFee, ulong gasLimit, ulong firstSlot, int count, ulong nonce = 0) =>
         Build.A.Transaction
             .WithType(TxType.EIP1559)
+            .WithNonce(nonce)
             .WithTo(SloadContract)
             .WithValue(0)
             .WithData([.. ((UInt256)firstSlot).ToBigEndian(), .. ((UInt256)count).ToBigEndian()])
@@ -250,15 +293,17 @@ public class BlockAccessListItemBudgetTests(bool parallel) : BaseEngineModuleTes
 
     private sealed class ExtraReadsWithdrawalProcessorFactory(ILogManager logManager, int extraReads) : IWithdrawalProcessorFactory
     {
-        public IWithdrawalProcessor Create(IWorldState worldState, ITransactionProcessor transactionProcessor) =>
-            new ExtraReadsWithdrawalProcessor(new WithdrawalProcessor(worldState, logManager), worldState, extraReads);
+        public int ExtraReads { get; set; } = extraReads;
 
-        private sealed class ExtraReadsWithdrawalProcessor(IWithdrawalProcessor inner, IWorldState state, int extraReads) : IWithdrawalProcessor
+        public IWithdrawalProcessor Create(IWorldState worldState, ITransactionProcessor transactionProcessor) =>
+            new ExtraReadsWithdrawalProcessor(new WithdrawalProcessor(worldState, logManager), worldState, this);
+
+        private sealed class ExtraReadsWithdrawalProcessor(IWithdrawalProcessor inner, IWorldState state, ExtraReadsWithdrawalProcessorFactory factory) : IWithdrawalProcessor
         {
             public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             {
                 inner.ProcessWithdrawals(block, spec);
-                for (int i = 0; i < extraReads; i++)
+                for (int i = 0; i < factory.ExtraReads; i++)
                 {
                     state.GetBalance(Address.FromNumber((UInt256)(0x6000 + i)));
                 }

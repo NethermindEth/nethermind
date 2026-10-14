@@ -10,6 +10,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -35,9 +36,12 @@ namespace Nethermind.Consensus.Processing
             private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
             private IReleaseSpec? _spec;
 
-            // Items added to the end-of-block reserve after a build overshot the block access list item limit, for
-            // end-of-block work the reserve does not model (e.g. a withdrawal contract instead of balance credits).
+            // Items added to the end-of-block reserve after a build on _learnedItemReserveParent overshot the block access
+            // list item limit, for end-of-block work the reserve does not model (e.g. a withdrawal contract instead of
+            // balance credits). Scoped to that parent so one unusual block does not shrink the budget of later ones.
+            // Builds of one producer env are serialized, so the fields need no synchronization.
             private long _learnedItemReserve;
+            private Hash256? _learnedItemReserveParent;
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -57,8 +61,8 @@ namespace Nethermind.Consensus.Processing
             public void ReportItemLimitExceeded(long excessItems)
             {
                 if (excessItems <= 0) return;
-                long learned = Interlocked.Add(ref _learnedItemReserve, excessItems);
-                if (_logger.IsWarn) _logger.Warn($"Produced block exceeded the block access list item limit by {excessItems} items; reserving {learned} more items in later builds.");
+                _learnedItemReserve += excessItems;
+                if (_logger.IsWarn) _logger.Warn($"Produced block exceeded the block access list item limit by {excessItems} items; reserving {_learnedItemReserve} more items in later builds on parent {_learnedItemReserveParent}.");
             }
 
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
@@ -115,10 +119,16 @@ namespace Nethermind.Consensus.Processing
             {
                 if (!balManager.Enabled || _spec is null) return default;
 
+                if (block.Header.ParentHash != _learnedItemReserveParent)
+                {
+                    _learnedItemReserveParent = block.Header.ParentHash;
+                    _learnedItemReserve = 0;
+                }
+
                 GeneratedBlockAccessList blockAccessList = balManager.GeneratedBlockAccessList;
                 long limit = (long)(block.Header.GasLimit / Eip7928Constants.ItemCost);
                 long reserve = BlockAccessListItemReserve.Calculate(block, _spec, stateProvider, blockAccessList)
-                    + Volatile.Read(ref _learnedItemReserve);
+                    + _learnedItemReserve;
                 // Only the pre-execution system calls are merged at this point, so the count is cheap.
                 return new BlockAccessListItemBudget(limit - reserve - blockAccessList.ItemCount);
             }
