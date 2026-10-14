@@ -40,12 +40,13 @@ public class Eip7709Tests : VirtualMachineTestsBase
 {
     private const ulong ColdStorageAccess = Eip8038Constants.ColdStorageAccess;
     private const int FloorBindingCalldataBytes = 20_000;
+    // Past the ring buffer size, so every lookup exercises the `number % HISTORY_SERVE_WINDOW` wrap.
+    private const ulong CurrentBlock = MainnetSpecProvider.ParisBlockNumber;
 
     private static readonly Hash256 LeadingZerosHash = new("0x0000001111111111111111111111111111111111111111111111111111111111");
     private static readonly IReleaseSpec Spec7709 = new OverridableReleaseSpec(Bogota.Instance) { IsEip7709Enabled = true };
 
-    // Past the ring buffer size, so every lookup exercises the `number % HISTORY_SERVE_WINDOW` wrap.
-    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => CurrentBlock;
     protected override ulong Timestamp => MainnetSpecProvider.BogotaBlockTimestamp;
     protected override ISpecProvider SpecProvider { get; } = new TestSpecProvider(Spec7709);
 
@@ -76,13 +77,32 @@ public class Eip7709Tests : VirtualMachineTestsBase
         Assert.That(tracer.ReturnValue, Is.EqualTo(hash.Bytes.ToArray()));
     }
 
-    [TestCase(0UL, TestName = "{m}_current_block")]
-    [TestCase(1UL, TestName = "{m}_future_block")]
-    public void Blockhash_of_unavailable_block_returns_zero(ulong offset)
+    private static IEnumerable<TestCaseData> UnavailableBlockCases()
     {
-        CallOutputTracer tracer = ExecuteBlockhashAndReturn(BlockNumber + offset);
+        // Still inside the ring buffer, so the slot holds a hash that must not be served.
+        yield return new TestCaseData((UInt256)(CurrentBlock - Eip2935Constants.BlockHashServeWindow - 1)) { TestName = "{m}_below_serve_window" };
+        yield return new TestCaseData((UInt256)CurrentBlock) { TestName = "{m}_current_block" };
+        yield return new TestCaseData((UInt256)(CurrentBlock + 1)) { TestName = "{m}_future_block" };
+        // The low word is a served block, so truncating the argument to 64 bits would read its slot.
+        yield return new TestCaseData(new UInt256(CurrentBlock - 1, 1, 0, 0)) { TestName = "{m}_above_uint64_with_served_low_word" };
+        yield return new TestCaseData(UInt256.MaxValue) { TestName = "{m}_uint256_max" };
+    }
 
-        Assert.That(tracer.ReturnValue, Is.EqualTo(new byte[32]));
+    /// <remarks>The slot the argument's low 64 bits map to holds a hash, so only the window check keeps it from being read.</remarks>
+    [TestCaseSource(nameof(UnavailableBlockCases))]
+    public void Blockhash_of_unavailable_block_returns_zero_without_storage_access(UInt256 requestedBlock)
+    {
+        SetHistoryHash(requestedBlock.u0, TestItem.KeccakA);
+
+        CallOutputTracer tracer = ExecuteBlockhashAndReturn(requestedBlock);
+        (_, BlockAccessListAtIndex bal) = ExecuteWithBlockAccessList(BlockhashCode(requestedBlock), Spec7709);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ReturnValue, Is.EqualTo(new byte[32]));
+            Assert.That(BlockhashGasCosts(requestedBlock), Is.EqualTo(new[] { GasCostOf.BlockHash }));
+            Assert.That(bal.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress), Is.Null);
+        }
     }
 
     [Test]
@@ -170,24 +190,6 @@ public class Eip7709Tests : VirtualMachineTestsBase
             Is.EqualTo(Spec7709.GasCosts.ColdAccountAccessCost), "BLOCKHASH must not leave the history contract account warm");
     }
 
-    [Test]
-    public void Blockhash_outside_the_serve_window_returns_zero_without_storage_access()
-    {
-        // Still inside the ring buffer, so the slot holds a hash that must not be served.
-        ulong requestedBlock = BlockNumber - Eip2935Constants.BlockHashServeWindow - 1;
-        SetHistoryHash(requestedBlock, TestItem.KeccakA);
-
-        CallOutputTracer resultTracer = ExecuteBlockhashAndReturn(requestedBlock);
-        (_, BlockAccessListAtIndex bal) = ExecuteWithBlockAccessList(BlockhashCode(requestedBlock), Spec7709);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resultTracer.ReturnValue, Is.EqualTo(new byte[32]));
-            Assert.That(BlockhashGasCosts(requestedBlock), Is.EqualTo(new[] { GasCostOf.BlockHash }));
-            Assert.That(bal.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress), Is.Null);
-        }
-    }
-
     /// <summary>The read is a state access, so it enters a proof's or witness's storage set.</summary>
     [Test]
     public void Blockhash_records_history_storage_read_for_proofs()
@@ -255,16 +257,16 @@ public class Eip7709Tests : VirtualMachineTestsBase
         return trace.Gas - trace.Entries.Single(static e => e.Opcode == nameof(Instruction.BLOCKHASH)).GasCost + opcodeGas;
     }
 
-    private ulong[] BlockhashGasCosts(params ulong[] requestedBlocks) =>
+    private ulong[] BlockhashGasCosts(params UInt256[] requestedBlocks) =>
         ExecuteAndTrace(BlockhashCode(requestedBlocks)).Entries
             .Where(static e => e.Opcode == nameof(Instruction.BLOCKHASH))
             .Select(static e => e.GasCost)
             .ToArray();
 
-    private static byte[] BlockhashCode(params ulong[] requestedBlocks)
+    private static byte[] BlockhashCode(params UInt256[] requestedBlocks)
     {
         Prepare code = Prepare.EvmCode;
-        foreach (ulong requestedBlock in requestedBlocks)
+        foreach (UInt256 requestedBlock in requestedBlocks)
         {
             code = code.PushData(requestedBlock).Op(Instruction.BLOCKHASH).Op(Instruction.POP);
         }
@@ -272,7 +274,7 @@ public class Eip7709Tests : VirtualMachineTestsBase
         return code.Done;
     }
 
-    private CallOutputTracer ExecuteBlockhashAndReturn(ulong requestedBlock)
+    private CallOutputTracer ExecuteBlockhashAndReturn(UInt256 requestedBlock)
     {
         byte[] code = Prepare.EvmCode
             .PushData(requestedBlock)

@@ -721,6 +721,54 @@ public class EthSimulateTestsBlocksAndTransactions
         };
     }
 
+    /// <remarks>
+    /// EIP-7709 serves <c>BLOCKHASH</c> from the simulated EIP-2935 storage, so a state override of the history
+    /// contract changes the result; without it the hash comes from the block tree.
+    /// </remarks>
+    [Test]
+    public async Task eth_simulateV1_blockhash_follows_history_contract_overrides_only_under_eip7709([Values] bool eip7709)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(Prague.Instance) { IsEip7709Enabled = eip7709 });
+        // Not the head, whose slot the simulated block's own EIP-2935 system call overwrites.
+        ulong requestedBlock = chain.BlockFinder.Head!.Number - 1;
+        Hash256 canonicalHash = chain.BlockTree.FindHeader(requestedBlock)!.Hash!;
+        Address contract = TestItem.AddressC;
+        byte[] code = Prepare.EvmCode
+            .PushData(requestedBlock)
+            .Op(Instruction.BLOCKHASH)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        {
+                            Eip2935Constants.BlockHashHistoryAddress,
+                            new AccountOverride { StateDiff = new() { [requestedBlock % Eip2935Constants.RingBufferSize] = TestItem.KeccakA } }
+                        },
+                        { contract, new AccountOverride { Code = code } },
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                    },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = contract, Gas = 100_000 }],
+                },
+            ],
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        Assert.That(new Hash256(result.Data[0].Calls.Single().ReturnData!), Is.EqualTo(eip7709 ? TestItem.KeccakA : canonicalHash));
+    }
+
     // Minimal bytecode: PREVRANDAO PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
     private static readonly byte[] PrevRandaoBytecode = [0x44, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xF3];
 
