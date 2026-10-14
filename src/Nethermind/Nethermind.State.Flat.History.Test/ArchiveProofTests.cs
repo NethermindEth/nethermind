@@ -1979,6 +1979,40 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void Proof_UnderAComposedNodeAnEarlierProofResolved_TakesTheChildFromTheNodeCache()
+    {
+        _policy = EpochPolicy;
+        BuildCommitments();
+        Address first = _accounts[3];
+        ValueHash256 firstPath = Keccak.Compute(first.Bytes).ValueHash256;
+        Address sibling = _accounts.First(account =>
+        {
+            ValueHash256 path = Keccak.Compute(account.Bytes).ValueHash256;
+            return SharesNibbles(path, firstPath, nibbles: 1) && !SharesNibbles(path, firstPath, nibbles: 2);
+        });
+        Address unrelated = _accounts.First(account => !SharesNibbles(Keccak.Compute(account.Bytes).ValueHash256, firstPath, nibbles: 1));
+
+        long siblingPrefetches = PrefetchesOfSecondProof(first, sibling, out AccountProof siblingProof);
+        long unrelatedPrefetches = PrefetchesOfSecondProof(unrelated, sibling, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(siblingPrefetches, Is.LessThan(unrelatedPrefetches),
+                "composing the shared depth-1 node resolved all its depth-2 children, so the sibling's depth-2 node is already cached");
+            Assert.That(siblingProof.Proof, Is.EqualTo(_chain.ExpectedProof(sibling, Blocks).Proof), "a child served from the cache is verified against its parent like any other node");
+        }
+    }
+
+    private long PrefetchesOfSecondProof(Address first, Address second, out AccountProof secondProof)
+    {
+        ArchiveProofSource source = CreateSource(_policy);
+        ProveFromArchive(source, first, Blocks);
+        long afterFirst = source.PrefetchedPaths;
+        secondProof = ProveFromArchive(source, second, Blocks);
+        return source.PrefetchedPaths - afterFirst;
+    }
+
+    [Test]
     public void A_rebuilt_subtree_serves_the_levels_below_it()
     {
         _policy = new CommitmentDepthPolicy(CommitmentDepthPolicy.MinIntervalLog2, 2, 2, 0, 0, 1, 1);
