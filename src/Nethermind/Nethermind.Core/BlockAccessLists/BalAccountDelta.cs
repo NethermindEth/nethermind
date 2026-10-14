@@ -119,18 +119,12 @@ public readonly struct BalAccountDelta
         // Also reached by a list that only writes slots of an empty or missing account.
         if (balance.IsZero && nonce == 0 && !hasCode) return new(changes, null, true, uint.MaxValue, null);
 
-        Account result;
-        if (wiped)
-        {
-            result = new Account(nonce, balance, Keccak.EmptyTreeHash, code?.CodeHash.ToCommitment() ?? Keccak.OfAnEmptyString);
-        }
-        else
-        {
-            result = image;
-            if (balances.Length > 0) result = result.WithChangedBalance(balance);
-            if (nonces.Length > 0) result = result.WithChangedNonce(nonce);
-            if (code is { } codeChange) result = result.WithChangedCodeHash(codeChange.CodeHash.ToCommitment());
-        }
+        // A wipe started the account over from empty, so its prior storage and code are gone.
+        Account result = !wiped && balances.Length == 0 && nonces.Length == 0 && codes.Length == 0
+            ? image
+            : new Account(nonce, balance,
+                wiped ? Keccak.EmptyTreeHash : image.StorageRoot,
+                code?.CodeHash.ToCommitment() ?? (wiped ? Keccak.OfAnEmptyString : image.CodeHash));
 
         return new(changes, result, wiped, lastWipe, code);
     }
