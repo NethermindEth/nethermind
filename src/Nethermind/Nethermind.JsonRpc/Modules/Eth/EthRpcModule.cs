@@ -1080,6 +1080,12 @@ public partial class EthRpcModule(
             if (logFilter is not null && filter is not null)
                 logFilter.UseIndex = filter.UseIndex;
 
+            if (!_rpcConfig.EnableLogsStreamMode
+                && _blockchainBridge.TryGetLogsJson(logFilter, fromBlockHeader, toBlockHeader, cancellationToken, out IEnumerable<LogsJsonChunk> chunks))
+            {
+                return GetRawLogsResponse(chunks);
+            }
+
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
@@ -1194,12 +1200,42 @@ public partial class EthRpcModule(
             if (enforceMaxLogs && logs.Count > _rpcConfig.MaxLogsPerResponse)
             {
                 logs.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
+                return TooManyLogs();
             }
         }
 
         return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
     }
+
+    private ResultWrapper<IEnumerable<FilterLog>> GetRawLogsResponse(IEnumerable<LogsJsonChunk> chunks)
+    {
+        bool enforceMaxLogs = JsonRpcContext.Current.Value?.IsAuthenticated != true && _rpcConfig.MaxLogsPerResponse != 0;
+        ArrayPoolList<LogsJsonChunk> collected = new(16);
+        try
+        {
+            int count = 0;
+            foreach (LogsJsonChunk chunk in chunks)
+            {
+                collected.Add(chunk);
+                count += chunk.Count;
+                if (enforceMaxLogs && count > _rpcConfig.MaxLogsPerResponse)
+                {
+                    RawLogsResponse.DisposeChunks(collected);
+                    return TooManyLogs();
+                }
+            }
+        }
+        catch
+        {
+            RawLogsResponse.DisposeChunks(collected);
+            throw;
+        }
+
+        return new RawLogsResponse(collected);
+    }
+
+    private ResultWrapper<IEnumerable<FilterLog>> TooManyLogs() =>
+        ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
 
     public ResultWrapper<AccountForRpc?> eth_getAccount(Address accountAddress, BlockParameter? blockParameter)
     {

@@ -76,6 +76,10 @@ namespace Nethermind.Facade
         FilterType GetFilterType(int filterId);
         LogFilter GetFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null);
         IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
+
+        /// <summary>Finds the logs as one JSON chunk per block with matching logs, without an object per log.</summary>
+        /// <returns><see langword="false"/> when the logs can only be found as <see cref="FilterLog"/> objects.</returns>
+        bool TryGetLogsJson(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken, out IEnumerable<LogsJsonChunk> chunks);
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null, CancellationToken cancellationToken = default);
 
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
