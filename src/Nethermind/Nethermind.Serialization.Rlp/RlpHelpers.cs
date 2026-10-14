@@ -200,7 +200,7 @@ internal static partial class RlpHelpers
             ThrowSequenceLengthTooLong();
         }
 
-        if (position + 1 + lengthOfLength > data.Length)
+        if (lengthOfLength > data.Length - position - 1)
         {
             ThrowRlpDataTruncated();
         }

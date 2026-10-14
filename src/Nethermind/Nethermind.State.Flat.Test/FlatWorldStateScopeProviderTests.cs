@@ -2062,13 +2062,13 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
         {
             SlotJobPushes++;
             return acceptSlotJob;
         }
 
-        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
         {
             MpmcSlotJobPushes++;
             return acceptMpmcSlotJob;
@@ -2096,13 +2096,13 @@ public class FlatWorldStateScopeProviderTests
         public int SlotJobs { get; private set; }
         public int LowestCountAfterCompletion { get; private set; } = int.MaxValue;
 
-        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
-            => PushSlotJobMpmc(storageTree, index, sequenceId);
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
+            => PushSlotJobMpmc(storageTree, index, sequenceId, isDelete);
 
-        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
         {
             // The mocked persistence holds no trie nodes; the real warmer drops the same exception.
-            try { storageTree.WarmUpStorageTrie(index, sequenceId); }
+            try { storageTree.WarmUpStorageTrie(index, sequenceId, isDelete); }
             catch (TrieNodeException) { }
             SlotJobs++;
             return Record();
