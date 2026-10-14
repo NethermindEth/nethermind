@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
@@ -49,8 +50,9 @@ internal static class PbtTestLeaves
 
     public static void AddAccount(List<RebuildEntry> into, Address address, in Account account, byte[]? code)
     {
-        foreach ((PbtPath key, ValueHash256 leaf) in PbtStateKey.AccountLeaves(
-            Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), account, code is { Length: > 0 } ? new CodeInfo(code) : null))
+        using ArrayPoolList<KeyValuePair<PbtPath, ValueHash256>> accountLeaves = PbtStateKey.AccountLeaves(
+            Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), account, code is { Length: > 0 } ? new CodeInfo(code) : null);
+        foreach ((PbtPath key, ValueHash256 leaf) in accountLeaves)
             into.Add(new RebuildEntry((PbtVariableTreeKey)key, leaf));
     }
 

@@ -626,7 +626,8 @@ public class PbtSnapshotBundleTests
             [new PbtPath([0, .. addressHash.Bytes, 0])] = new(Bytes.FromHexString("0000000000000017000000000000000000000000000000000000000000000000")),
             [new PbtPath([0, .. addressHash.Bytes, 2])] = new([.. Delegation, .. new byte[9]]),
         };
-        Assert.That(PbtStateKey.AccountLeaves(addressHash, account, new CodeInfo(Delegation)), Is.EquivalentTo(expected));
+        using ArrayPoolList<KeyValuePair<PbtPath, ValueHash256>> accountLeaves = PbtStateKey.AccountLeaves(addressHash, account, new CodeInfo(Delegation));
+        Assert.That(accountLeaves, Is.EquivalentTo(expected));
     }
 
     [Test]
