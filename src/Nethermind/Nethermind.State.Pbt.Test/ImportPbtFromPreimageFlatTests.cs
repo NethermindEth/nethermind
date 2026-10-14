@@ -699,7 +699,8 @@ public class ImportPbtFromPreimageFlatTests
         });
         using MemDb codes = new();
         if (failure != "missing-code") codes[codeHash.Bytes] = code;
-        using RecordingColumnsDb db = new();
+        // Recording from the start makes the fold's first window, not the final publication, the first group commit.
+        using RecordingColumnsDb db = new() { Recording = true };
         PbtConfig config = new() { ExportConcurrency = 1, ExportSortBufferBytes = SortBufferBytes, ImportWindowSize = 1, ImportFromPreimageFlat = true, ImportConcurrency = 3 };
         PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
         using CancellationTokenSource cancellation = new();

@@ -33,9 +33,9 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
     /// <summary>Stages the logical accounts, slots and code of the leaves while folding them into the tree, and publishes the tree
     /// as <paramref name="targetState"/> once the staging is verified.</summary>
     /// <remarks>
-    /// The stream is read once and teed to both. Either side may run up to a fold window of leaves ahead of the other, so
-    /// staging keeps going while a window folds and commits. The staging and the fold write disjoint columns and neither reads the other's writes,
-    /// so the only ordering is the publication, which waits for the staging and <paramref name="verifyStaged"/>, and is
+    /// The fold reads the stream once and tees each leaf to the staging, which may fall up to a fold window behind, so
+    /// staging keeps going while a window folds and commits. The staging and the fold write disjoint columns and neither
+    /// reads the other's writes, so the only ordering is the publication, which waits for the staging and <paramref name="verifyStaged"/>, and is
     /// refused when the root differs from <paramref name="expectedRoot"/>.
     /// </remarks>
     /// <param name="verifyStaged">Checks the staged accounts and slots before the tree is published.</param>
@@ -48,7 +48,8 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
         IEnumerable<RebuildEntry> reportedLeaves = Reported(sourceLeaves, logManager);
         IEnumerator<RebuildEntry> reportedEnumerator = reportedLeaves.GetEnumerator();
         int windowSize = config.ImportWindowSize > 0 ? config.ImportWindowSize : PbtSortedLeafFold.DefaultWindowSize;
-        (IEnumerator<RebuildEntry> foldLeaves, IEnumerator<RebuildEntry> stagingLeaves) = reportedEnumerator.Teed(windowSize);
+        TeeEnumerator<RebuildEntry> foldLeaves = new(reportedEnumerator, windowSize);
+        IEnumerator<RebuildEntry> stagingLeaves = foldLeaves.Tee();
         Task<(ulong Accounts, ulong Slots)> staging = Task.Run(() =>
         {
             try
