@@ -37,6 +37,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     // EIP-8360: storage opcodes of these accounts act on transient storage, so they read no state.
     private HashSet<AddressAsKey>? _transientCreates;
     private readonly bool _diffMode;
+    // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
+    private readonly bool _isEip5920Enabled;
     private readonly bool _isEip8298Enabled;
     private readonly bool _isEip4758Enabled;
 
@@ -48,7 +50,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         Address? to = null,
         Address? beneficiary = null,
         Transaction? transaction = null,
-        IReleaseSpec? spec = null)
+        IReleaseSpec? releaseSpec = null)
         : base(options)
     {
         IsTracingActions = true;
@@ -59,9 +61,13 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         _worldState = worldState;
         _txHash = txHash;
-        _isEip8298Enabled = spec?.IsEip8298Enabled == true;
-        _isEip4758Enabled = spec?.IsEip4758Enabled == true;
-        InstructionMask = _isEip8298Enabled ? CaptureMask | (UInt256.One << (int)Instruction.SETCODEFROM) : CaptureMask;
+        _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
+        _isEip8298Enabled = releaseSpec?.IsEip8298Enabled == true;
+        _isEip4758Enabled = releaseSpec?.IsEip4758Enabled == true;
+        UInt256 instructionMask = CaptureMask;
+        if (_isEip5920Enabled) instructionMask |= UInt256.One << (int)Instruction.PAY;
+        if (_isEip8298Enabled) instructionMask |= UInt256.One << (int)Instruction.SETCODEFROM;
+        InstructionMask = instructionMask;
 
         NativePrestateTracerConfig config = TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
@@ -168,7 +174,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _executingAccount = env.ExecutingAccount;
 
         IsTracingMemory = _op is Instruction.CREATE2 or Instruction.TCREATE;
-        IsTracingStack = RequiresStack(_op) || (_op == Instruction.SETCODEFROM && _isEip8298Enabled);
+        IsTracingStack = RequiresStack(_op)
+            || (_op == Instruction.PAY && _isEip5920Enabled)
+            || (_op == Instruction.SETCODEFROM && _isEip8298Enabled);
     }
 
     /// <remarks>EIP-8151: ecRecover reads the recovered account's code to decide its output. The VM reports it, so the
@@ -210,6 +218,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             case Instruction.EXTCODESIZE:
             case Instruction.BALANCE:
             case Instruction.SELFDESTRUCT:
+            case Instruction.PAY when _isEip5920Enabled:
                 if (stackLen >= 1)
                 {
                     address = stack.PeekAddress(0);
