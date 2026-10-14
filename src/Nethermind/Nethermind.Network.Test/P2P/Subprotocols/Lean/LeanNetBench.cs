@@ -14,6 +14,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
+using Nethermind.Network.Test.Builders;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Scheduler;
@@ -70,7 +78,7 @@ public class LeanNetBenchNode
     public sealed record PeerConfig(int Id, string Ip, int Port);
 
     public sealed record NodeConfig(int Id, string Binding, bool Broadcast, string Ip, int Port, PeerConfig[] Peers, int Nodes, int Kind,
-        int Objects, int Warmup, int ProofBytes, int Burst, int IntervalMs, string Origins, int VerifyMs, long GenesisUnixMs, string RunDir, int TimeoutSec);
+        int Objects, int Warmup, int ProofBytes, int TransactionsPerObject, int Burst, int IntervalMs, string Origins, int VerifyMs, long GenesisUnixMs, string RunDir, int TimeoutSec);
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, WriteIndented = false };
 
@@ -109,10 +117,12 @@ public class LeanNetBenchNode
         {
             imported[o.Header!.Hash!] = o.Header;
             // Block import with the proof attached: the transport stores and announces the sidecar.
-            lock (importLock) node.Tree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(o.Header, new BlockBody())));
+            lock (importLock) node.Tree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(o.Header, new BlockBody([], [], null, o.Proof))));
         }
 
-        BenchObject[] objects = [.. Enumerable.Range(0, config.Objects).Select(i => BenchObject.Create(config.Kind, i, config.ProofBytes))];
+        BenchObject[] objects = [.. Enumerable.Range(0, config.Objects).Select(i => BenchObject.Create(config.Kind, i, config.ProofBytes, config.TransactionsPerObject))];
+        foreach (BenchObject obj in objects)
+            if (obj.Header is { } header) imported[header.Hash!] = header;
         int Origin(int i) => config.Origins == "all" ? i % config.Nodes : int.Parse(config.Origins);
         BenchBroadcastProfile? profile = config.Broadcast ? new BenchBroadcastProfile(config.GenesisUnixMs) : null;
         PrivateKey key = NodeKey(config.Id);
@@ -128,7 +138,7 @@ public class LeanNetBenchNode
 
         using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(config.TimeoutSec));
         long lastDial = 0;
-        while (node.Transport.PeerCount < config.Peers.Length)
+        while (node.Transport.PeerCount < config.Peers.Length || config.Peers.Any(p => !node.EthTransactions.HasPeer(NodeKey(p.Id).PublicKey)))
         {
             if (Now() - lastDial > 3_000_000_000L)
             {
@@ -178,14 +188,13 @@ public class LeanNetBenchNode
         {
             if (completed.TryAdd(index, Now()) && completed.Count == objects.Length) holdsAll.TrySetResult();
         }
-        // Kinds 1 and 3 complete when the node's own validation accepts them, which is also when the transport publishes them.
+        // Wrappers complete when the node's own validation accepts them, which is also when the transport publishes them.
         Dictionary<ValueHash256, int> indices = objects.ToDictionary(static o => BenchObject.Key(o.Body), static o => o.Index);
         void OnValidated(byte[] body)
         {
             if (indices.TryGetValue(BenchObject.Key(body), out int index)) Complete(index);
         }
         node.Wrappers.WrapperValidated += (body, _) => OnValidated(body);
-        node.Wrappers.InclusionListValidated += OnValidated;
         List<Task> work = [];
         long Release(int i) => i < config.Warmup
             ? start + (long)i * config.IntervalMs * 1_000_000L
@@ -208,9 +217,7 @@ public class LeanNetBenchNode
             else
             {
                 ProofWrapperAcceptance acceptance;
-                while ((acceptance = o.Kind == LeanProtocol.KindWrapper
-                           ? await node.Wrappers.AcceptDetailedAsync(o.Body)
-                           : await node.Wrappers.AcceptInclusionListDetailedAsync(o.Body)).Status == ProofWrapperAcceptanceStatus.Busy)
+                while ((acceptance = await node.Wrappers.AcceptDetailedAsync(o.Body, o.Transactions.ToDictionary(t => t.Hash!.ValueHash256))).Status == ProofWrapperAcceptanceStatus.Busy)
                     await Task.Delay(1, deadline.Token);
                 if (!acceptance.HasValidProof) throw new InvalidOperationException($"object {o.Index} was refused at its origin: {acceptance.Status}");
                 originated[o.Index] = Now();
@@ -220,7 +227,7 @@ public class LeanNetBenchNode
                 // A node broadcasts only objects it has stored, which publication does in the background.
                 while (!node.Transport.IsStored(o.Descriptor.ObjectId)) await Task.Delay(1, deadline.Token);
                 LeanBroadcastManifest manifest = LeanBroadcastManifest.Create(BenchBroadcastProfile.ProfileId, [1, 2, 3, 4], profile.CurrentSlot,
-                    (ulong)o.Index, (ulong)config.Id, default, o.Descriptor, o.Skeleton, o.Body, out _);
+                    0, (ulong)config.Id, default, o.Descriptor, o.Body, out _);
                 if (!binding.Broadcast!.Originate(manifest, BenchBroadcastProfile.Sign(manifest), []))
                     Log($"object {o.Index}: broadcast was not originated");
             }
@@ -230,9 +237,7 @@ public class LeanNetBenchNode
         async Task FetchSidecar(BenchObject o)
         {
             await WaitUntil(Release(o.Index));
-            BlockHeader withoutProof = o.Header!.Clone();
-            withoutProof.RecursiveStark = null;
-            RecursiveStark? proof = await node.Transport.TryGetAsync(new Block(withoutProof, new BlockBody()), deadline.Token);
+            RecursiveStark? proof = await node.Transport.TryGetAsync(new Block(o.Header!, new BlockBody()), deadline.Token);
             if (proof is null) return;
             Complete(o.Index);
             // Import verifies the proof before the block, and so its sidecar, is served onward.
@@ -286,6 +291,7 @@ public class LeanNetBenchNode
         Dictionary<string, object?> result = new()
         {
             ["id"] = config.Id,
+            ["body_bytes"] = objects[0].Body.Length,
             ["binding"] = config.Binding,
             ["broadcast"] = config.Broadcast,
             ["start_ns"] = start,
@@ -385,35 +391,40 @@ public class LeanNetBenchNode
         public required byte[] Body { get; init; }
         public required LeanDescriptor Descriptor { get; init; }
         public BlockHeader? Header { get; init; }
-        public LeanHeaderSkeleton? Skeleton { get; init; }
+        public byte[]? Proof { get; init; }
+        public Transaction[] Transactions { get; init; } = [];
 
         /// <summary>Identifies a body by its leading bytes, which hold its distinct transaction.</summary>
         public static ValueHash256 Key(byte[] body) => ValueKeccak.Compute(body.AsSpan(0, Math.Min(body.Length, 4096)));
 
-        public static BenchObject Create(int kind, int index, int proofBytes)
+        public static BenchObject Create(int kind, int index, int proofBytes, int transactionsPerObject)
         {
             switch (kind)
             {
                 case LeanProtocol.KindWrapper:
                 {
-                    byte[] body = Wrapper(proofBytes, false, FrameTransaction(index + 1));
-                    return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = Describe(body, out _) };
-                }
-                case LeanProtocol.KindInclusionList:
-                {
-                    byte[] body = InclusionList(proofBytes, FrameTransaction(index + 1));
-                    LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
-                        LeanDescriptor.InclusionListContext(ValueKeccak.Compute(body)), body, out _);
-                    return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = descriptor };
+                    Transaction[] transactions = [.. Enumerable.Range(0, transactionsPerObject).Select(i =>
+                    {
+                        int seed = checked(index * transactionsPerObject + i + 1);
+                        Transaction transaction = FrameTransaction(seed);
+                        FrameDependency dep = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(seed)), default);
+                        transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                            UInt256.Zero, Eip8288Dependencies.Serialize([dep]))];
+                        transaction.Hash = new Hash256(ValueKeccak.Compute(Envelope(transaction)));
+                        return transaction;
+                    })];
+                    byte[] body = Wrapper(proofBytes, true, transactions);
+                    return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = Describe(body), Transactions = transactions };
                 }
                 case LeanProtocol.KindBlockProof:
                 {
                     byte[] proof = new byte[proofBytes];
                     new Random(1000 + index).NextBytes(proof);
-                    BlockHeader header = LeanTransportTests.ProofHeader(proof);
-                    LeanHeaderSkeleton skeleton = LeanHeaderSkeleton.FromHeader(header, new HeaderDecoder());
-                    LeanDescriptor descriptor = LeanTransportTests.SidecarDescriptor(header, skeleton, out byte[] body);
-                    return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = descriptor, Header = header, Skeleton = skeleton };
+                    BlockHeader header = LeanTransportTests.ProofHeader(proof, new Hash256(ValueKeccak.Compute(BitConverter.GetBytes(index))), (ulong)index + 1);
+                    byte[] body = LeanRlp.EncodeList(LeanRlp.EncodeBytes(proof));
+                    LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+                        LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256), body);
+                    return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = descriptor, Header = header, Proof = proof };
                 }
                 default:
                     throw new ArgumentException($"kind {kind}");
@@ -429,7 +440,7 @@ public class LeanNetBenchNode
     }
 
     /// <summary>The ethp2p QUIC binding, as <see cref="LeanEthp2pQuicTests"/> runs it.</summary>
-    private sealed class Ethp2pBinding(LeanEthp2pHost host) : IBenchBinding
+    private sealed class Ethp2pBinding(LeanEthp2pHost host, RlpxBinding eth) : IBenchBinding
     {
         private readonly ConcurrentDictionary<PublicKey, Task<LeanEthp2pConnection?>> _dials = new();
 
@@ -438,9 +449,10 @@ public class LeanNetBenchNode
         {
             if (!LeanEthp2pHost.IsSupported) throw new InvalidOperationException("QUIC is unavailable (libmsquic is not installed)");
             NetworkConfig config = new() { LocalIp = ip, LeanEthp2pPort = port, LeanBindings = LeanBinding.Ethp2p, LeanCommonBinding = LeanBinding.Ethp2p };
-            LeanEthp2pHost host = new(node.Transport, config, new InsecureProtectedPrivateKey(key), logs, profile);
+            LeanEthp2pHost host = new(node.Transport, config, new InsecureProtectedPrivateKey(key), logs, node.EthTransactions, profile);
             await host.StartAsync(CancellationToken.None);
-            return new Ethp2pBinding(host);
+            RlpxBinding eth = await RlpxBinding.StartAsync(key, ip, port - 1, node, logs, lean: false);
+            return new Ethp2pBinding(host, eth);
         }
 
         public LeanBroadcastEngine? Broadcast => host.Broadcast;
@@ -449,44 +461,34 @@ public class LeanNetBenchNode
         /// <remarks>A second connection from the same side replaces the first, dropping its requests and broadcast sessions.</remarks>
         public bool Dial(PublicKey key, string ip, int port)
         {
+            eth.Dial(key, ip, port - 1);
             if (_dials.TryGetValue(key, out Task<LeanEthp2pConnection?>? dial)
                 && (!dial.IsCompleted || dial.Result is { Closed.IsCompleted: false })) return false;
             _dials[key] = host.DialAsync(new LeanEthp2pRecord(key, new IPEndPoint(IPAddress.Parse(ip), port)), CancellationToken.None);
             return true;
         }
 
-        public ValueTask DisposeAsync() => host.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            await host.DisposeAsync();
+            await eth.DisposeAsync();
+        }
     }
 
     /// <summary>The RLPx binding over TCP: production handshake, framing, Snappy, P2P Hello and the lean/1 handler.</summary>
-    private sealed class RlpxBinding(RlpxHost host, ProtocolsManager manager, ConcurrentDictionary<PublicKey, ISession> sessions) : IBenchBinding
+    private sealed class RlpxBinding(RlpxHost host, ProtocolsManager manager, ConcurrentDictionary<PublicKey, ISession> sessions, BackgroundTaskScheduler scheduler) : IBenchBinding
     {
         private readonly ProtocolsManager _manager = manager;
 
-        public static async Task<RlpxBinding> StartAsync(PrivateKey key, string ip, int port, LeanTestNode node, ILogManager logs)
+        public static async Task<RlpxBinding> StartAsync(PrivateKey key, string ip, int port, LeanTestNode node, ILogManager logs, bool lean = true)
         {
             CryptoRandom random = new();
-            Eip8MessagePad pad = new(random);
-            MessageSerializationService serializer = new(
-                SerializerInfo.Create(new AuthEip8MessageSerializer(pad)),
-                SerializerInfo.Create(new AckEip8MessageSerializer(pad)),
-                SerializerInfo.Create(new AckMessageSerializer()),
-                SerializerInfo.Create(new AuthMessageSerializer()),
-                SerializerInfo.Create(new AddCapabilityMessageSerializer()),
-                SerializerInfo.Create(new DisconnectMessageSerializer()),
-                SerializerInfo.Create(new HelloMessageSerializer()),
-                SerializerInfo.Create(new PingMessageSerializer()),
-                SerializerInfo.Create(new PongMessageSerializer()),
-                SerializerInfo.Create(new LeanStatusMessageSerializer()),
-                SerializerInfo.Create(new AnnounceObjectsMessageSerializer()),
-                SerializerInfo.Create(new GetObjectsMessageSerializer()),
-                SerializerInfo.Create(new ObjectsMessageSerializer()),
-                SerializerInfo.Create(new GetChunksMessageSerializer()),
-                SerializerInfo.Create(new ChunkMessageSerializer()),
-                SerializerInfo.Create(new CompleteMessageSerializer()),
-                SerializerInfo.Create(new CancelMessageSerializer()),
-                SerializerInfo.Create(new GetTransactionsMessageSerializer()),
-                SerializerInfo.Create(new TransactionsMessageSerializer()));
+            IMessageSerializationService serializer = Build.A.SerializationService().WithEncryptionHandshake().WithP2P().WithEth66()
+                .With(new AddCapabilityMessageSerializer())
+                .With(new LeanStatusMessageSerializer()).With(new AnnounceObjectsMessageSerializer())
+                .With(new GetObjectsMessageSerializer()).With(new ObjectsMessageSerializer())
+                .With(new GetChunksMessageSerializer()).With(new ChunkMessageSerializer())
+                .With(new CompleteMessageSerializer()).With(new CancelMessageSerializer()).TestObject;
             HandshakeService handshake = new(serializer, new EciesCipher(random), random, new Ecdsa(), key, logs);
             IPAddress address = IPAddress.Parse(ip);
             NetworkConfig config = new() { P2PPort = port, LocalIp = ip, ExternalIp = ip, MaxActivePeers = 50, RlpxHostShutdownCloseTimeoutMs = 100 };
@@ -498,18 +500,24 @@ public class LeanNetBenchNode
                 new NetworkListenerState(config, resolver, logs));
 
             INodeStatsManager stats = Substitute.For<INodeStatsManager>();
-            IBackgroundTaskScheduler scheduler = Substitute.For<IBackgroundTaskScheduler>();
+            BackgroundTaskScheduler scheduler = new(Substitute.For<IBranchProcessor>(), Substitute.For<IChainHeadInfoProvider>(), 2, 64, logs);
+            ISyncServer sync = Substitute.For<ISyncServer>();
+            sync.Head.Returns(node.Tree.Head!.Header);
+            sync.Genesis.Returns(node.Tree.Genesis!);
+            sync.NetworkId.Returns(1UL);
             Enode enode = new(key.PublicKey, address, port);
             IProtocolValidator validator = Substitute.For<IProtocolValidator>();
             validator.ValidateOrDisconnect(Arg.Any<string>(), Arg.Any<ISession>(), Arg.Any<ProtocolInitializedEventArgs>()).Returns(true);
             IProtocolHandlerFactory[] factories =
             [
                 new Factory(Protocol.P2P, session => new P2PProtocolHandler(session, enode, stats, serializer, scheduler, logs)),
-                new Factory(LeanProtocol.Code, session => new Lean1ProtocolHandler(session, stats, serializer, scheduler, logs, node.Transport))
+                new Factory(Protocol.Eth, session => new Eth66ProtocolHandler(session, serializer, stats, sync, scheduler, node.Pool,
+                    Substitute.For<IGossipPolicy>(), new ForkInfo(node.Specs, sync), logs, leanTransactions: node.EthTransactions)),
+                new Factory(LeanProtocol.Code, session => new Lean1ProtocolHandler(session, stats, serializer, scheduler, logs, node.Transport, node.EthTransactions))
             ];
             ProtocolsManager manager = new(Substitute.For<ISyncPeerPool>(), Substitute.For<ITxPool>(), Substitute.For<IDiscoveryApp>(), host, stats,
                 validator, Substitute.For<IPeerManager>(), Substitute.For<INetworkStorage>(), factories,
-                [new LeanP2PCapabilityResolver(node.Tree, node.Specs)], logs);
+                [new BenchCapabilities(lean)], logs);
             ConcurrentDictionary<PublicKey, ISession> sessions = new();
             host.SessionCreated += (_, e) =>
             {
@@ -520,7 +528,7 @@ public class LeanNetBenchNode
                 };
             };
             await host.Init();
-            return new RlpxBinding(host, manager, sessions);
+            return new RlpxBinding(host, manager, sessions, scheduler);
         }
 
         public LeanBroadcastEngine? Broadcast => null;
@@ -536,6 +544,17 @@ public class LeanNetBenchNode
         {
             GC.KeepAlive(_manager);
             await host.Shutdown();
+            await scheduler.DisposeAsync();
+        }
+
+        private sealed class BenchCapabilities(bool lean) : IP2PCapabilityResolver
+        {
+            public event Action? Changed { add { } remove { } }
+            public void Resolve(ISet<Capability> capabilities)
+            {
+                capabilities.Add(new Capability(Protocol.Eth, 66));
+                if (lean) capabilities.Add(new Capability(LeanProtocol.Code, 1));
+            }
         }
 
         private sealed class Factory(string code, Func<ISession, IProtocolHandler> create) : IProtocolHandlerFactory
@@ -561,7 +580,7 @@ internal sealed class BenchBroadcastProfile(long genesisUnixMs) : ILeanBroadcast
     private static readonly PrivateKey Signer = new(Keccak.Compute("lean-net-bench producer").Bytes.ToArray());
     private static readonly Ecdsa Ecdsa = new();
     private static readonly TimeSpan SlotTime = TimeSpan.FromSeconds(12);
-    public const int Duties = 64;
+    public const int Duties = 1;
 
     private readonly DateTimeOffset _genesis = DateTimeOffset.FromUnixTimeMilliseconds(genesisUnixMs);
 

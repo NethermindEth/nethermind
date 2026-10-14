@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
-"""Runs the EIP-8437 RLPx-vs-ethp2p scenario matrix through netbench.py, appending one JSON line per run.
-
-Runs already present in the results file are skipped, so an interrupted matrix resumes where it stopped.
-Usage: matrix.py --test-dll <dll> --dotnet <dotnet> --results results.jsonl [--topologies chain4,cube8,pair] [--match k3]
-       [--modes bcast,ethp2p,rlpx] [--suffix=-rep2]
-"""
+"""Bounded EIP-8437 transport matrix; synthetic proofs, real ETH recovery and network bindings."""
 import argparse
 import json
 import os
@@ -15,82 +10,70 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# name: (kind, proof bytes, measured objects, interval ms, burst, origins, broadcast-capable)
-WORKLOADS = {
-    "k1s": (1, 270_000, 20, 800, 1, "0", False),       # kind-1 wrapper, ~270 KB recursive proof
-    "k1l": (1, 1_044_480, 15, 1500, 1, "0", False),    # kind-1 wrapper, ~1 MiB
-    "k2": (2, 300_000, 20, 800, 1, "0", True),         # kind-2 block-proof sidecar, ~300 KB
-    "k3": (3, 300_000, 20, 800, 1, "0", True),         # kind-3 inclusion-list package, ~300 KB
-    "k3b": (3, 300_000, 32, 3000, 16, "all", True),    # 16 packages released at once from every node in turn
-    "k3b1": (3, 300_000, 32, 3000, 16, "0", True),     # 16 packages released at once from one node
-}
-DEFAULT_WORKLOADS = ["k1s", "k1l", "k2", "k3", "k3b"]
-MODES = ["rlpx", "ethp2p", "bcast"]
 
-
-def scenarios(topologies, rtts, losses, workloads, modes):
-    for topology in topologies:
-        for rtt in rtts:
-            for loss in losses:
-                for workload in workloads:
-                    kind, proof, objects, interval, burst, origins, broadcast = WORKLOADS[workload]
-                    for mode in modes:
-                        if mode == "bcast" and not broadcast:
-                            continue
-                        label = f"{topology}-{workload}-{mode}-r{rtt}-l{loss:g}"
-                        args = ["--topology", topology, "--binding", "rlpx" if mode == "rlpx" else "ethp2p", "--kind", str(kind),
-                                "--proof-bytes", str(proof), "--objects", str(objects), "--interval-ms", str(interval),
-                                "--burst", str(burst), "--origins", origins, "--rtt-ms", str(rtt), "--loss", str(loss), "--label", label]
-                        if mode == "bcast":
-                            args.append("--broadcast")
-                        yield label, args
+def scenarios(proof_bytes):
+    for binding in ("rlpx", "ethp2p"):
+        for transactions in (1, 16, 64):
+            for rate in (1, 8, 32, 64):
+                yield f"load-{binding}-tx{transactions}-r{rate}", dict(binding=binding, proof_bytes=proof_bytes,
+                    transactions_per_object=transactions, objects=6 * rate, burst=rate, interval_ms=1000)
+        for size in (65536, 1048576, 8388608):
+            yield f"size-{binding}-{size}", dict(binding=binding, proof_bytes=size, objects=6,
+                burst=1, interval_ms=1000)
+        for topology, rate, rtt, loss in (("pair", 10, 100, 0), ("pair", 100, 50, 1), ("chain4", 100, 50, 0)):
+            yield f"link-{binding}-{topology}-m{rate}-d{rtt}-l{loss}", dict(binding=binding, proof_bytes=proof_bytes,
+                objects=24, burst=4, interval_ms=1000, topology=topology, rate_mbit=rate, rtt_ms=rtt, loss=loss)
+    for loss in (0, 1):
+        yield f"broadcast-ethp2p-l{loss}", dict(binding="ethp2p", kind=2, broadcast=True,
+            proof_bytes=proof_bytes, objects=3, warmup=1, interval_ms=12000, burst=1, loss=loss)
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--test-dll", required=True)
     parser.add_argument("--dotnet", default="dotnet")
     parser.add_argument("--results", required=True)
     parser.add_argument("--out", default="runs")
-    parser.add_argument("--topologies", default="chain4,cube8,pair")
-    parser.add_argument("--rtts", default="0,20,50,100")
-    parser.add_argument("--losses", default="0,1")
-    parser.add_argument("--workloads", default=",".join(DEFAULT_WORKLOADS))
-    parser.add_argument("--modes", default=",".join(MODES), help="subset and order of rlpx,ethp2p,bcast within each scenario")
+    parser.add_argument("--repetitions", type=int, default=2)
+    parser.add_argument("--proof-bytes", type=int, default=300000)
     parser.add_argument("--match", default="")
-    parser.add_argument("--extra", default="", help="extra netbench.py arguments, space separated")
-    parser.add_argument("--suffix", default="", help="label suffix; pass a leading dash as --suffix=-x")
+    parser.add_argument("--plan", action="store_true")
     args = parser.parse_args()
-
     done = set()
     if os.path.exists(args.results):
-        with open(args.results) as f:
-            for line in f:
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not entry.get("error") and entry.get("missing", 1) == 0:
-                    done.add(entry["label"])
-
-    plan = list(scenarios(args.topologies.split(","), [float(x) for x in args.rtts.split(",")], [float(x) for x in args.losses.split(",")],
-                          args.workloads.split(","), args.modes.split(",")))
-    for number, (label, run_args) in enumerate(plan, 1):
-        label += args.suffix
-        if args.match not in label or label in done:
-            continue
-        run_args[run_args.index("--label") + 1] = label
-        command = [sys.executable, os.path.join(HERE, "netbench.py"), "run", "--netns", "--test-dll", args.test_dll, "--dotnet", args.dotnet,
-                   "--out", args.out, "--results", args.results, "--timeout", "150"] + run_args + args.extra.split()
-        print(f"[{number}/{len(plan)}] {label}", flush=True)
-        result = subprocess.run(command, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(result.stderr[-2000:], flush=True)
-            continue
-        summary = json.loads(result.stdout.strip().split("\n")[-1])
-        latency = summary.get("latency_ms") or {}
-        print(f"    p50={latency.get('p50')} p95={latency.get('p95')} missing={summary.get('missing')} error={summary.get('error')}", flush=True)
+        with open(args.results) as stream:
+            for line in stream:
+                row = json.loads(line)
+                if not row.get("error") and row.get("missing") == 0:
+                    done.add(row["label"])
+    failures = 0
+    for repetition in range(1, args.repetitions + 1):
+        for name, scenario in scenarios(args.proof_bytes):
+            label = f"{name}-rep{repetition}"
+            if args.match not in label or label in done:
+                continue
+            config = dict(topology="pair", kind=1, warmup=2, rtt_ms=50, loss=0, rate_mbit=100, timeout=90)
+            config.update(scenario)
+            command = [sys.executable, os.path.join(HERE, "netbench.py"), "run", "--netns", "--test-dll", args.test_dll,
+                "--dotnet", args.dotnet, "--out", args.out, "--results", args.results, "--label", label]
+            for key, value in config.items():
+                command.append("--" + key.replace("_", "-"))
+                if value is not True:
+                    command.append(str(value))
+            print(label, flush=True)
+            if args.plan:
+                print(" ".join(command))
+                continue
+            result = subprocess.run(command, capture_output=True, text=True)
+            if result.returncode:
+                failures += 1
+                print(result.stderr[-3000:], flush=True)
+                continue
+            row = json.loads(result.stdout.strip().splitlines()[-1])
+            failures += bool(row.get("error") or row.get("missing"))
+            print(json.dumps({key: row.get(key) for key in ("latency_ms", "goodput_tx_per_s_per_receiver", "missing", "error")}), flush=True)
+    return int(failures != 0)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

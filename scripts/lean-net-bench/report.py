@@ -1,118 +1,113 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
-"""Summarizes matrix results (JSONL from netbench.py) as Markdown tables, one per topology and workload.
+"""Render measured transport goodput, latency and failures as PNG/SVG and mobile-friendly HTML.
 
-Each argument is a results file, optionally with the label suffix its runs carry (file:suffix). Runs of the same scenario
-from several files are repetitions: a cell shows the median across them and, with more than one, the min-max range.
-A last table gives each scenario's p50 ratio of ethp2p retrieval and of broadcast to RLPx.
-
-Usage: report.py results.jsonl [results-rep2.jsonl:-rep2 ...] > report.md
+Usage: report.py results.jsonl --out report
+Requires matplotlib. Native proving results must be reported separately.
 """
 import argparse
+import html
 import json
-import re
+from pathlib import Path
 import statistics
 
-BODY = {"k1s": 270_265, "k1l": 1_044_745, "k2": 300_008, "k3": 300_265, "k3b": 300_265, "k3b1": 300_265}
-MODES = ["rlpx", "ethp2p", "bcast"]
-LABEL = re.compile(r"(\w+)-(\w+)-(rlpx|ethp2p|bcast)-r([0-9.]+)-l([0-9.]+)$")
 
-
-def load(specs):
-    cells = {}
-    for spec in specs:
-        path, _, suffix = spec.partition(":")
-        latest = {}
-        with open(path) as f:
-            for line in f:
-                entry = json.loads(line)
-                label = entry["label"]
-                if suffix:
-                    if not label.endswith(suffix):
-                        continue
-                    label = label[: -len(suffix)]
-                # The latest run of a label in a file wins, unless it failed to start and an earlier one did not.
-                if LABEL.match(label) and not (entry.get("error") == "nodes did not connect" and label in latest):
-                    latest[label] = entry
-        for label, entry in latest.items():
-            topology, workload, mode, rtt, loss = LABEL.match(label).groups()
-            cells.setdefault((topology, workload), {}).setdefault((float(rtt), float(loss), mode), []).append(entry)
-    return cells
-
-
-def fmt(value, digits=0):
-    return "—" if value is None else f"{value:,.{digits}f}"
-
-
-def spread(values, digits=0):
-    values = [v for v in values if v is not None]
-    if not values:
-        return "—"
-    median = statistics.median(values)
-    if len(values) == 1 or max(values) == min(values):
-        return fmt(median, digits)
-    return f"{fmt(median, digits)} ({fmt(min(values), digits)}–{fmt(max(values), digits)})"
-
-
-def median(values):
-    values = [v for v in values if v is not None]
+def median(rows, key):
+    values = [row.get(key) for row in rows if row.get(key) is not None]
     return statistics.median(values) if values else None
 
 
-def latency(entry, q):
-    # A run that lost objects has no meaningful farthest-node percentile over the objects it did deliver.
-    return None if entry.get("missing") or entry.get("error") else (entry.get("latency_ms") or {}).get(q)
-
-
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("results", nargs="+")
+    parser.add_argument("--out", required=True)
     args = parser.parse_args()
-    cells = load(args.results)
-    ratios = {}
-    for (topology, workload), scenario in sorted(cells.items()):
-        print(f"\n### {topology} / {workload}\n")
-        print("| RTT ms | loss % | mode | n | p50 ms | p95 ms | p99 ms | wire B/obj (x body/receiver) | CPU ms/obj | alloc MB/obj | peak RSS MB "
-              "| via bcast | missing | redials | other cores |")
-        print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
-        for (rtt, loss, mode), runs in sorted(scenario.items(), key=lambda kv: (kv[0][0], kv[0][1], MODES.index(kv[0][2]))):
-            receivers = runs[0]["nodes"] - 1
-            wire = [e["wire_bytes"] / e["objects"] if e.get("wire_bytes") else None for e in runs]
-            wire_median = median(wire)
-            share = []
-            for e in runs:
-                transfers = e.get("transfers", {})
-                total = sum(transfers.values())
-                share.append(100 * sum(v for k, v in transfers.items() if k.endswith("broadcast")) / total if total else None)
-            missing = [e.get("missing", 0) + (1000 if e.get("error") else 0) for e in runs]
-            other = [(e.get("host") or {}).get("other_cores") for e in runs]
-            print(f"| {rtt:g} | {loss:g} | {mode} | {len(runs)} | {spread([latency(e, 'p50') for e in runs])} | "
-                  f"{spread([latency(e, 'p95') for e in runs])} | {spread([latency(e, 'p99') for e in runs])} | "
-                  f"{fmt(wire_median)} ({fmt(wire_median / (BODY[workload] * receivers) if wire_median else None, 2)}) | "
-                  f"{spread([e.get('cpu_ms_per_object') for e in runs])} | {fmt(median([e.get('alloc_mb_per_object') for e in runs]), 1)} | "
-                  f"{fmt(median([e.get('peak_rss_mb_max') for e in runs]))} | {spread(share) + '%' if mode == 'bcast' else ''} | "
-                  f"{'/'.join(str(m) for m in missing)} | {'/'.join(str(e.get('redials', '?')) for e in runs)} | "
-                  f"{spread(other, 2)} |")
-            ratios.setdefault((topology, workload), {}).setdefault((rtt, loss), {})[mode] = median([latency(e, "p50") for e in runs])
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    plt.rcParams.update({"font.size": 10, "axes.spines.top": False, "axes.spines.right": False,
+                         "figure.dpi": 150, "savefig.bbox": "tight"})
+    rows = []
+    for path in args.results:
+        with open(path) as stream:
+            rows.extend(json.loads(line) for line in stream if line.strip())
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "results.json").write_text(json.dumps(rows, indent=2))
+    colors = {"rlpx": "#145DA0", "ethp2p": "#C1492F"}
+    names = {"rlpx": "RLPx + ETH", "ethp2p": "QUIC + ETH"}
+    charts = []
 
-    columns = sorted({key for scenario in ratios.values() for key in scenario})
-    print("\n### p50 relative to RLPx (ethp2p retrieval / broadcast; below 1 is faster, x marks lost objects)\n")
-    print("| topology / workload | " + " | ".join(f"{rtt:g} ms {loss:g}%" for rtt, loss in columns) + " |")
-    print("|---|" + "---|" * len(columns))
-    for (topology, workload), scenario in sorted(ratios.items()):
-        row = []
-        for key in columns:
-            modes = scenario.get(key, {})
-            base = modes.get("rlpx")
-            parts = []
-            for mode in ("ethp2p", "bcast"):
-                if mode not in modes:
+    def save(fig, name, caption):
+        fig.savefig(out / f"{name}.png")
+        fig.savefig(out / f"{name}.svg")
+        plt.close(fig)
+        charts.append((name, caption))
+
+    load = [r for r in rows if r.get("label", "").startswith("load-") and not r.get("error")]
+    for count in sorted({r["transactions_per_object"] for r in load}):
+        fig, ax = plt.subplots(figsize=(6, 4))
+        subset = [r for r in load if r["transactions_per_object"] == count]
+        rates = sorted({r["offered_objects_per_s"] for r in subset})
+        for binding, color in colors.items():
+            x, y, low, high = [], [], [], []
+            for rate in rates:
+                matching = [r for r in subset if r["binding"] == binding and r["offered_objects_per_s"] == rate]
+                values = [r["goodput_tx_per_s_per_receiver"] for r in matching]
+                if not values:
                     continue
-                value = modes[mode]
-                parts.append("x" if value is None else ("rlpx x" if base is None else f"{value / base:.2f}"))
-            row.append(" / ".join(parts) if parts else "")
-        print(f"| {topology} / {workload} | " + " | ".join(row) + " |")
+                center = statistics.median(values)
+                x.append(rate * count); y.append(center)
+                low.append(center - min(values)); high.append(max(values) - center)
+            ax.errorbar(x, y, yerr=[low, high], label=names[binding], color=color, marker="o", capsize=3)
+        if rates:
+            ax.plot([0, rates[-1] * count], [0, rates[-1] * count], color="#999999", linestyle=":", label="Offered load")
+        ax.set(title=f"{count} transaction{'s' if count != 1 else ''} per aggregate", xlabel="Offered transactions/s", ylabel="Delivered transactions/s per receiver")
+        ax.grid(alpha=.18); ax.legend(fontsize=9)
+        save(fig, f"goodput-tx{count}", "Transport only: synthetic proof bytes and controlled verification. Median and min–max across repetitions; drain time and missing deliveries reduce goodput.")
+
+    subset = [r for r in load if r["transactions_per_object"] == 1]
+    if subset:
+        fig, ax = plt.subplots(figsize=(6, 4))
+        for binding, color in colors.items():
+            points = []
+            for rate in sorted({r["offered_objects_per_s"] for r in subset}):
+                matching = [r for r in subset if r["binding"] == binding and r["offered_objects_per_s"] == rate]
+                value = median(matching, "goodput_mbit_per_s_per_receiver")
+                if value is not None:
+                    points.append((rate, value))
+            if points:
+                ax.plot(*zip(*points), marker="o", color=color, label=names[binding])
+        ax.set(title="Useful proof-object goodput", xlabel="Offered proof objects/s", ylabel="Useful Mbit/s per receiver")
+        ax.grid(alpha=.18); ax.legend()
+        save(fig, "goodput-bytes", "Useful canonical object bytes only, excluding ETH envelopes, headers, retransmissions and coding overhead.")
+
+    cells = {}
+    for row in rows:
+        label = row.get("label", "unlabelled").rsplit("-rep", 1)[0]
+        cells.setdefault(label, []).append(row)
+    table = []
+    for label, samples in sorted(cells.items()):
+        completed = [r for r in samples if not r.get("error") and r.get("missing") == 0]
+        latencies = [r.get("latency_ms", {}).get("p95") for r in completed]
+        latencies = [x for x in latencies if x is not None]
+        p95 = statistics.median(latencies) if latencies else None
+        goodput = median(samples, "goodput_mbit_per_s_per_receiver")
+        failures = sum(bool(r.get("error") or r.get("missing")) for r in samples)
+        missing = sum(r.get("missing", 0) for r in samples)
+        table.append(f"<tr><td>{html.escape(label)}</td><td>{len(samples)}</td><td>{goodput:.2f}</td><td>{p95:.1f}</td><td>{failures}</td><td>{missing}</td></tr>" if goodput is not None and p95 is not None else
+                     f"<tr><td>{html.escape(label)}</td><td>{len(samples)}</td><td>{'—' if goodput is None else f'{goodput:.2f}'}</td><td>—</td><td>{failures}</td><td>{missing}</td></tr>")
+    provenance = sorted({r.get("provenance", {}).get("source_revision", "unknown") for r in rows})
+    figures = "\n".join(f'<figure><a href="{name}.svg"><img src="{name}.svg" alt="{name}" loading="lazy"></a><figcaption>{caption} <a href="{name}.png">PNG</a></figcaption></figure>' for name, caption in charts)
+    document = f'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EIP-8437 transport measurements</title><style>body{{font:16px system-ui;margin:24px auto;max-width:960px;padding:0 16px;color:#17263a;background:#f8fafc}}h1{{font-size:1.8rem}}figure{{margin:24px 0;background:white;padding:16px;border-radius:12px}}img{{width:100%;max-width:650px;display:block;margin:auto}}figcaption{{font-size:.9rem;color:#44546a}}table{{border-collapse:collapse;font-size:.85rem;width:100%}}td,th{{padding:8px;border-bottom:1px solid #ccd4df;text-align:right}}td:first-child,th:first-child{{text-align:left}}.scroll{{overflow-x:auto}}code{{overflow-wrap:anywhere}}a{{color:#145da0}}</style>
+<h1>EIP-8437 transport measurements</h1><p>Production RLPx and QUIC bindings with authenticated ETH envelope recovery. Proof contents and the verifier are controlled fixtures: these charts measure networking, not native proving or end-to-end block throughput.</p>
+<p>Load scenarios: two processes, 100 Mbit/s per node, 50 ms RTT, no injected loss. Each aggregate contains distinct transactions and dependencies. Other link conditions appear in the table. Every attempted run is retained; failed runs are counted, not replaced.</p>
+{figures}<h2>All runs</h2><p>p95 is shown only for complete runs. Goodput includes partial delivery and queue drain. Error bars are observed ranges, not confidence intervals.</p>
+<div class="scroll"><table><thead><tr><th>Scenario</th><th>Runs</th><th>Useful Mbit/s</th><th>p95 ms</th><th>Failed runs</th><th>Missing objects</th></tr></thead><tbody>{''.join(table)}</tbody></table></div>
+<p><a href="results.json">Raw results and provenance</a></p><p>Source revisions: <code>{html.escape(', '.join(provenance))}</code></p></html>'''
+    (out / "index.html").write_text(document)
 
 
 if __name__ == "__main__":

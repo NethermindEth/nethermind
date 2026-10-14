@@ -8,14 +8,16 @@ gets its own network namespace attached by a veth pair to a bridge in a router n
 the node side caps the uplink (tbf), the router side caps the downlink (htb) and applies netem delay and loss per
 source, so each topology edge has the configured RTT and loss. Without --netns the nodes share loopback (no shaping).
 
-Usage: netbench.py run --topology chain4 --binding ethp2p --broadcast --kind 3 --proof-bytes 300000 --rtt-ms 50 --loss 1
+Usage: netbench.py run --topology chain4 --binding ethp2p --broadcast --kind 2 --proof-bytes 300000 --rtt-ms 50 --loss 1
        netbench.py teardown
 """
 import argparse
 import json
 import math
 import os
-import shutil
+import hashlib
+import platform
+import re
 import statistics
 import subprocess
 import sys
@@ -173,9 +175,21 @@ def percentile(values, q):
 def run(args):
     n, edges = topology(args.topology)
     run_dir = os.path.abspath(os.path.join(args.out, args.label or time.strftime("run-%Y%m%d-%H%M%S")))
-    if os.path.exists(run_dir):
-        shutil.rmtree(run_dir)
-    os.makedirs(run_dir)
+    os.makedirs(run_dir, exist_ok=False)
+    digest = hashlib.sha256()
+    with open(args.test_dll, "rb") as binary:
+        for chunk in iter(lambda: binary.read(1024 * 1024), b""):
+            digest.update(chunk)
+    binary_hash = digest.hexdigest()
+    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    revision = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(["git", "-C", repo, "status", "--porcelain"], capture_output=True, text=True).stdout.strip()
+    provenance = {"source_revision": revision, "source_dirty": bool(dirty), "test_dll_sha256": binary_hash,
+                  "os": platform.platform(), "python": platform.python_version(),
+                  "dotnet": subprocess.check_output([args.dotnet, "--version"], text=True).strip(),
+                  "arguments": vars(args), "verification": "controlled test verifier; transport results are not native proving throughput"}
+    with open(os.path.join(run_dir, "provenance.json"), "w") as f:
+        json.dump(provenance, f, indent=2)
     if args.netns:
         setup(n)
         shape(n, edges, args.rtt_ms, args.loss, args.rate_mbit)
@@ -198,7 +212,7 @@ def run(args):
         config = {
             "id": i, "binding": args.binding, "broadcast": args.broadcast, "ip": address(i)[0], "port": address(i)[1],
             "peers": [{"id": p, "ip": address(p)[0], "port": address(p)[1]} for p in neighbours[i]],
-            "nodes": n, "kind": args.kind, "objects": args.warmup + args.objects, "warmup": args.warmup, "proofBytes": args.proof_bytes, "burst": args.burst,
+            "nodes": n, "kind": args.kind, "objects": args.warmup + args.objects, "warmup": args.warmup, "proofBytes": args.proof_bytes, "transactionsPerObject": args.transactions_per_object, "burst": args.burst,
             "intervalMs": args.interval_ms, "origins": args.origins, "verifyMs": args.verify_ms, "genesisUnixMs": genesis_ms,
             "runDir": run_dir, "timeoutSec": args.timeout
         }
@@ -227,10 +241,13 @@ def run(args):
         return False
 
     summary = {"label": args.label, "topology": args.topology, "nodes": n, "binding": args.binding, "broadcast": args.broadcast,
-               "kind": args.kind, "objects": args.objects, "warmup": args.warmup, "proof_bytes": args.proof_bytes, "burst": args.burst,
+               "kind": args.kind, "objects": args.objects, "warmup": args.warmup, "proof_bytes": args.proof_bytes, "transactions_per_object": args.transactions_per_object, "burst": args.burst,
                "interval_ms": args.interval_ms, "origins": args.origins, "verify_ms": args.verify_ms, "rtt_ms": args.rtt_ms,
                "loss": args.loss, "rate_mbit": args.rate_mbit, "sysctl": args.sysctl, "load": open("/proc/loadavg").read().split()[:3] if os.path.exists("/proc/loadavg") else None}
+    summary["provenance"] = provenance
+    summary["run_dir"] = run_dir
     cpu_before = cpu_after = None
+    before = after = None
     try:
         if not wait_files("ready", 120):
             summary["error"] = "nodes did not connect"
@@ -258,6 +275,9 @@ def run(args):
         for p, log in processes:
             if p.poll() is None:
                 p.kill()
+                p.wait(timeout=10)
+            if not log.closed:
+                log.close()
         if args.netns and not args.keep:
             teardown()
 
@@ -276,7 +296,9 @@ def run(args):
         return index % n if args.origins == "all" else int(args.origins)
 
     far, by_hops, missing = [], {}, 0
-    body_bytes = None
+    body_bytes = next((r.get("body_bytes") for r in results.values() if r.get("body_bytes") is not None), None)
+    deliveries = 0
+    useful_bytes = 0
     measured_indices = range(args.warmup, args.warmup + args.objects)
     for index in measured_indices:
         o = origin(index)
@@ -294,6 +316,9 @@ def run(args):
             if t is None:
                 complete = False
                 continue
+            deliveries += 1
+            if body_bytes is not None:
+                useful_bytes += body_bytes
             latency = (t - t0) / 1e6
             by_hops.setdefault(dist[i], []).append(latency)
             worst = latency if worst is None else max(worst, latency)
@@ -301,6 +326,18 @@ def run(args):
             far.append(worst)
         else:
             missing += 1
+    # Include the whole offered-load window and any drain time. Never divide only by successful-transfer latency.
+    offered_window_s = math.ceil(args.objects / args.burst) * args.interval_ms / 1000
+    observed_window_s = max((r["finished_ns"] - r["measured_ns"]) / 1e9 for r in results.values())
+    window_s = max(offered_window_s, observed_window_s, 1e-9)
+    summary["body_bytes"] = body_bytes
+    summary["validated_receiver_deliveries"] = deliveries
+    summary["expected_receiver_deliveries"] = args.objects * (n - 1)
+    summary["goodput_window_s"] = window_s
+    summary["offered_objects_per_s"] = args.burst * 1000 / args.interval_ms
+    summary["goodput_objects_per_s_per_receiver"] = deliveries / (n - 1) / window_s
+    summary["goodput_tx_per_s_per_receiver"] = summary["goodput_objects_per_s_per_receiver"] * args.transactions_per_object if args.kind == 1 else None
+    summary["goodput_mbit_per_s_per_receiver"] = useful_bytes * 8 / (n - 1) / window_s / 1e6 if body_bytes is not None else None
     summary["completed"] = len(far)
     summary["missing"] = missing
     summary["latency_ms"] = {"p50": percentile(far, 0.5), "p95": percentile(far, 0.95), "p99": percentile(far, 0.99),
@@ -354,10 +391,11 @@ def main():
     r.add_argument("--topology", default="pair")
     r.add_argument("--binding", choices=["rlpx", "ethp2p"], default="rlpx")
     r.add_argument("--broadcast", action="store_true")
-    r.add_argument("--kind", type=int, default=1)
+    r.add_argument("--kind", type=int, choices=[1, 2], default=1)
     r.add_argument("--objects", type=int, default=20)
     r.add_argument("--warmup", type=int, default=3)
     r.add_argument("--proof-bytes", type=int, default=270_000)
+    r.add_argument("--transactions-per-object", type=int, choices=[1, 16, 64], default=1)
     r.add_argument("--burst", type=int, default=1)
     r.add_argument("--interval-ms", type=int, default=1000)
     r.add_argument("--origins", default="0")
@@ -378,9 +416,23 @@ def main():
     r.add_argument("--test-dll", required=True)
     sub.add_parser("teardown")
     args = parser.parse_args()
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{1,12}", PREFIX):
+        parser.error("LEAN_NET_PREFIX must be 1–12 letters, digits, underscores or hyphens")
+    if not re.fullmatch(r"10\.(?:[0-9]{1,3})", NET) or int(NET.split(".")[1]) > 255:
+        parser.error("LEAN_NET_SUBNET must be a private 10.x prefix")
     if args.command == "teardown":
         teardown()
         return
+    if args.objects <= 0 or args.burst <= 0 or args.interval_ms <= 0 or args.warmup < 0:
+        parser.error("objects, burst and interval must be positive; warmup must be nonnegative")
+    if args.proof_bytes < 0 or args.proof_bytes > 8 * 1024 * 1024:
+        parser.error("proof bytes must be between zero and 8 MiB")
+    if args.rtt_ms < 0 or not 0 <= args.loss <= 100 or args.rate_mbit < 0:
+        parser.error("RTT and rate must be nonnegative; loss must be between 0 and 100")
+    if args.broadcast and (args.interval_ms < 12000 or args.burst != 1):
+        parser.error("broadcast requires one object per 12-second slot")
+    if args.broadcast and args.kind != 2:
+        parser.error("broadcast is defined only for kind 2")
     summary = run(args)
     line = json.dumps(summary)
     print(line)
