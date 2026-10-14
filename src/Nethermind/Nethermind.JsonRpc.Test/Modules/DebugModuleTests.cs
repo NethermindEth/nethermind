@@ -10,8 +10,10 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Facade.Eth;
 using Nethermind.Config;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -20,15 +22,18 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
@@ -155,7 +160,7 @@ public class DebugModuleTests
     public async Task DebugGetRawReceipts_WhenReceiptsExist_ReturnsHexArray()
     {
         TxReceipt[] receipts = [Build.A.Receipt.TestObject, Build.A.Receipt.TestObject];
-        _debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns(receipts);
+        _debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns(new SearchResult<TxReceipt[]>(receipts));
         RlpBehaviors behavior = (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         string expected = $"[\"{Rlp.Encode(receipts[0], behavior).Bytes.ToHexString(true)}\",\"{Rlp.Encode(receipts[1], behavior).Bytes.ToHexString(true)}\"]";
 
@@ -166,10 +171,54 @@ public class DebugModuleTests
     [Test]
     public async Task DebugGetRawReceipts_WhenNoReceipts_ReturnsEmptyArray()
     {
-        _debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns([]);
+        _debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns(new SearchResult<TxReceipt[]>([]));
 
         string serialized = await SerializedRequest("debug_getRawReceipts", "0x1");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
+    }
+
+    [TestCase(ErrorCodes.ResourceNotFound)]
+    [TestCase(ErrorCodes.PrunedHistoryUnavailable)]
+    public async Task DebugGetRawReceipts_WhenBlockLookupFails_ReturnsLookupError(int errorCode)
+    {
+        _debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns(new SearchResult<TxReceipt[]>("lookup failed", errorCode));
+
+        using JsonRpcResponse response = await Request("debug_getRawReceipts", "0x1");
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(errorCode));
+            Assert.That(error.Message, Is.EqualTo("lookup failed"));
+        }
+    }
+
+    [Test]
+    public void DebugBridgeGetReceiptsForBlock_WhenBlockMissing_ReturnsLookupError()
+    {
+        using IDbProvider dbProvider = TestMemDbProvider.Init();
+        using IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, createInMemoryWriteStore: false);
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        DebugBridge debugBridge = new(
+            Substitute.For<IConfigProvider>(),
+            readOnlyDbProvider,
+            Substitute.For<IGethStyleTracer>(),
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IReceiptStorage>(),
+            receiptFinder,
+            Substitute.For<IReceiptsMigration>(),
+            _specProvider,
+            Substitute.For<ISyncModeSelector>(),
+            Substitute.For<IBadBlockStore>(),
+            Substitute.For<IBlockStore>());
+
+        SearchResult<TxReceipt[]> result = debugBridge.GetReceiptsForBlock(new BlockParameter(Keccak.Zero));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(result.Error, Is.EqualTo("header not found"));
+        }
+        receiptFinder.DidNotReceive().Get(Arg.Any<Block>());
     }
 
     [TestCaseSource(nameof(RawMissingCases))]

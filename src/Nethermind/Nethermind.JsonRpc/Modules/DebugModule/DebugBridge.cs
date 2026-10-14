@@ -122,16 +122,16 @@ public class DebugBridge : IDebugBridge
 
     public GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
-    public TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParam)
+    public SearchResult<TxReceipt[]> GetReceiptsForBlock(BlockParameter blockParam)
     {
         SearchResult<Block> searchResult = _blockTree.SearchForBlock(blockParam);
         if (searchResult.IsError)
         {
-            throw new InvalidDataException(searchResult.Error);
+            return new SearchResult<TxReceipt[]>(searchResult.Error!, searchResult.ErrorCode);
         }
 
         Block block = searchResult.Object;
-        return _receiptFinder.Get(block);
+        return new SearchResult<TxReceipt[]>(_receiptFinder.Get(block));
     }
 
     public Transaction? GetTransactionFromHash(Hash256 txHash)

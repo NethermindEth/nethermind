@@ -533,12 +533,13 @@ public class DebugRpcModule(
 
     public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)
     {
-        TxReceipt[]? receipts = debugBridge.GetReceiptsForBlock(blockParameter);
-        if (receipts is null)
+        SearchResult<TxReceipt[]> searchResult = debugBridge.GetReceiptsForBlock(blockParameter);
+        if (searchResult.IsError)
         {
-            return ResultWrapper<RawReceiptsResult>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<RawReceiptsResult>.Fail(searchResult);
         }
 
+        TxReceipt[] receipts = searchResult.Object;
         if (receipts.Length == 0)
         {
             return ResultWrapper<RawReceiptsResult>.Success(new RawReceiptsResult(ArrayPoolList<ArrayPoolList<byte>>.Empty()));
