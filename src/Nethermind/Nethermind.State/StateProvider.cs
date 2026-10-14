@@ -54,8 +54,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private readonly ILogger _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
     private Dictionary<Hash256AsKey, byte[]>? _codeBatch;
     private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
+    // EIP-8360 TCREATE code: readable until the transaction ends and never written to CodeDb.
+    private Dictionary<Hash256AsKey, byte[]>? _transientCode;
+    private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _transientCodeAlternate;
 
     private readonly List<Change> _changes = new(Resettable.StartCapacity);
+    // Positions in _changes where each transaction still in the journal started; GetOriginalBalance reads below the top one.
+    private readonly Stack<int> _transactionChangesSnapshots = new();
     internal IWorldStateScopeProvider.IScope? _tree;
 
     private bool _needsStateRootUpdate;
@@ -137,6 +142,29 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         return ref account is not null ? ref account.Balance : ref _zero;
     }
 
+    /// <summary>Returns the balance <paramref name="address"/> had at the start of the current transaction.</summary>
+    /// <remarks>
+    /// The transaction starts at the last transaction snapshot, or at the last commit when there is none. Walks the
+    /// account's changes back to the newest one at or before that point; with none, the committed state holds the value.
+    /// </remarks>
+    public UInt256 GetOriginalBalance(Address address)
+    {
+        int transactionStart = _transactionChangesSnapshots.TryPeek(out int snapshot) ? snapshot : Resettable.EmptyPosition;
+        if (_intraTxCache.TryGetValue(address, out int index))
+        {
+            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+            while (index > transactionStart)
+            {
+                index = changes[index].PrevIdx;
+                if (index == -1) return GetState(address)?.Balance ?? UInt256.Zero;
+            }
+
+            return changes[index].Account?.Balance ?? UInt256.Zero;
+        }
+
+        return GetState(address)?.Balance ?? UInt256.Zero;
+    }
+
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         bool inserted = false;
@@ -174,6 +202,39 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             }
         }
 
+        SetCodeHash(address, account, in codeHash, spec, isGenesis);
+        return inserted;
+    }
+
+    /// <summary>Sets the code of an EIP-8360 <c>TCREATE</c> account without staging it for CodeDb.</summary>
+    /// <remarks>
+    /// The code is kept apart from <see cref="_codeBatch"/> and, unlike it, is not journaled: an entry left by a
+    /// reverted frame only keeps content-addressed code readable until the transaction ends. A persistent
+    /// deployment of the same code goes through <see cref="InsertCode"/>, which this neither marks nor suppresses.
+    /// </remarks>
+    public void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        Account account = GetThroughCache(address) ?? ThrowIfNull(address);
+        if (codeHash != Keccak.OfAnEmptyString.ValueHash256)
+        {
+            if (_transientCode is null)
+            {
+                _transientCode = new(Hash256AsKeyComparer.Instance);
+                _transientCodeAlternate = _transientCode.GetAlternateLookup<ValueHash256>();
+            }
+
+            _transientCodeAlternate.TryAdd(codeHash, code.AsArray());
+        }
+
+        SetCodeHash(address, account, in codeHash, spec, isGenesis: false);
+    }
+
+    /// <summary>Drops the code of the transaction's EIP-8360 <c>TCREATE</c> accounts, which it has finalized.</summary>
+    /// <remarks>Commit and Reset also drop it, for a transaction that ended without finalizing its accounts.</remarks>
+    public void ResetTransientCode() => _transientCode?.Clear();
+
+    private void SetCodeHash(Address address, Account account, in ValueHash256 codeHash, IReleaseSpec spec, bool isGenesis)
+    {
         if (account.CodeHash.ValueHash256 != codeHash)
         {
             _needsStateRootUpdate = true;
@@ -191,19 +252,17 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             }
         }
 
-        return inserted;
-
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceUpdate(Address address, in ValueHash256 codeHash, Account account)
             => _logger.Trace($"Update {address} C {account.CodeHash} -> {codeHash}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace(Address address) => _logger.Trace($"Touch {address} (code hash)");
-
-        [DoesNotReturn, StackTraceHidden]
-        static Account ThrowIfNull(Address address)
-            => throw new InvalidOperationException($"Account {address} is null when updating code hash");
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static Account ThrowIfNull(Address address)
+        => throw new InvalidOperationException($"Account {address} is null when updating code hash");
 
     private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, out UInt256 oldBalance)
     {
@@ -341,6 +400,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             return pending;
         }
 
+        if (_transientCode is not null && _transientCodeAlternate.TryGetValue(codeHash, out byte[]? transient))
+        {
+            return transient;
+        }
+
         ReadOnlyMemory<byte> code = CodeDb.GetCode(codeHash);
         return code.IsNull() ? ThrowMissingCode(in codeHash) : code;
 
@@ -366,10 +430,18 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         PushDelete(address);
     }
 
-    public int TakeSnapshot()
+    public int TakeSnapshot() => TakeSnapshot(newTransactionStart: false);
+
+    /// <summary>Creates a restartable snapshot.</summary>
+    /// <param name="newTransactionStart">A transaction starts here, so <see cref="GetOriginalBalance"/> reads the state before it.</param>
+    public int TakeSnapshot(bool newTransactionStart)
     {
         int currentPosition = _changes.Count - 1;
         if (_logger.IsTrace) Trace(currentPosition);
+        if (newTransactionStart && currentPosition != Resettable.EmptyPosition)
+        {
+            _transactionChangesSnapshots.Push(currentPosition);
+        }
 
         return currentPosition;
 
@@ -395,6 +467,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         // Ahead of the no-op check: an unanchored re-stage sits one past the log, so it is unwound
         // even by a restore to the current position.
         if (_codeInsertJournal.Count > 0) RestoreCodeInserts(snapshot);
+        while (_transactionChangesSnapshots.TryPeek(out int transactionStart) && transactionStart > snapshot)
+        {
+            _transactionChangesSnapshots.Pop();
+        }
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
         InvalidateFrontCache();
@@ -564,6 +640,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             if (isTracing) TraceNoChanges();
 
+            ResetTransientCode();
             AwaitCodeFlush(codeFlushTask);
             return;
         }
@@ -591,9 +668,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         InvalidateFrontCache();
         _changes.Clear();
+        _transactionChangesSnapshots.Clear();
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
         _intraTxCache.ClearAndTrim();
+        // A commit ends the transaction, which has finalized its TCREATE accounts by then.
+        ResetTransientCode();
 
         AwaitCodeFlush(codeFlushTask);
 
@@ -1081,11 +1161,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _removedWithStorage.Clear();
             _codeBatch?.Clear();
         }
+        ResetTransientCode();
         _intraTxCache.ClearAndTrim();
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
         InvalidateFrontCache();
         _changes.Clear();
+        _transactionChangesSnapshots.Clear();
         _needsStateRootUpdate = false;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
