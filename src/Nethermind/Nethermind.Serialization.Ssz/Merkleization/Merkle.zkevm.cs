@@ -101,7 +101,7 @@ public static partial class Merkle
     private static unsafe void Compress(Sha256FParameters* parameters)
     {
         if (OpenVmSha256Flag.IsActive)
-            OpenVmSha256Compress(parameters->State, parameters->Input, parameters->State);
+            Accelerators.OpenVMSha256Compress(parameters->State, parameters->Input, parameters->State);
         else
             Sha256F(parameters);
     }
@@ -144,11 +144,6 @@ public static partial class Merkle
     /// </remarks>
     [DllImport("__Internal", EntryPoint = "syscall_sha256_f", ExactSpelling = true), SuppressGCTransition]
     private static extern unsafe void Sha256F(Sha256FParameters* parameters);
-
-    /// <summary>OpenVM's SHA-256 compression of one block into <paramref name="output"/>, which may alias <paramref name="state"/>.</summary>
-    /// <remarks>Takes the state in the layout of <see cref="Sha256F"/>, and every operand 8-byte aligned.</remarks>
-    [DllImport("__Internal", EntryPoint = "zkvm_sha256_compress", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe void OpenVmSha256Compress(ulong* state, ulong* input, ulong* output);
 
     private unsafe struct Sha256FParameters
     {
