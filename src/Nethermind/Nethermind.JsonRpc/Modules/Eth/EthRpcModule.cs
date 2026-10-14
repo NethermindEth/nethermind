@@ -555,7 +555,7 @@ public partial class EthRpcModule(
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode);
+            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode, checksFork: false);
             if (!frameGasResult)
                 return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
             frameTx.Frames = frameGasResult.Data;
@@ -563,7 +563,10 @@ public partial class EthRpcModule(
 
         if (rpcTx.Gas is null)
         {
-            ResultWrapper<UInt256?> gasEstimate = EstimateGas(rpcTx, BlockParameter.Latest);
+            // The transaction is built for a later block, so its estimate is outside the fork rule as well.
+            ResultWrapper<UInt256?> gasEstimate = ExecuteWithFrameGas(
+                new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider) { ChecksFork = false },
+                rpcTx, BlockParameter.Latest, stateOverride: null);
             if (gasEstimate.Result.ResultType != ResultType.Success)
                 return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
 
@@ -697,15 +700,8 @@ public partial class EthRpcModule(
     public virtual ResultWrapper<UInt256?> eth_estimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
         transactionCall.HasBlobFeeCapWithoutBlobHashes
             ? BlobFeeCapWithoutBlobHashes<UInt256?>()
-            : EstimateGas(transactionCall, blockParameter, stateOverride, blockOverride);
-
-    /// <remarks>
-    /// <c>eth_fillTransaction</c> estimates through here, so only the call methods reject a blob fee cap without blob
-    /// hashes, as in Geth.
-    /// </remarks>
-    private ResultWrapper<UInt256?> EstimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
-        ExecuteWithFrameGas(new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
-            transactionCall, blockParameter, stateOverride, blockOverride);
+            : ExecuteWithFrameGas(new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
+                transactionCall, blockParameter, stateOverride, blockOverride);
 
     private static ResultWrapper<T> BlobFeeCapWithoutBlobHashes<T>() =>
         ResultWrapper<T>.Fail(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes, ErrorCodes.InvalidInput);

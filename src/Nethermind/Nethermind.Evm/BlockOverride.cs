@@ -18,6 +18,14 @@ public class BlockOverride
     public UInt256? BaseFeePerGas { get; set; }
     public UInt256? BlobBaseFee { get; set; }
 
+    /// <summary>A copy of <paramref name="header"/> with these overrides applied.</summary>
+    public BlockHeader ApplyTo(BlockHeader header)
+    {
+        BlockHeader result = header.Clone();
+        ApplyOverrides(result);
+        return result;
+    }
+
     public void ApplyOverrides(BlockHeader result)
     {
         if (Time is not null) result.Timestamp = Time.Value;

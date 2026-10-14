@@ -74,6 +74,33 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Code_deployed_by_tcreate_is_read_back_in_the_same_call([Values("eth_call", "eth_estimateGas")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true }));
+        bool revertOnMismatch = method != "eth_call";
+
+        // Resolved before the TCREATE, so remembered as empty, then read through EXTCODESIZE and STATICCALL after it.
+        Address tcreated = ContractAddress.FromTransientCreate(CodeProbe, ProbeSalt, ProbeInit);
+        byte[][] expected = [new byte[32], ((UInt256)ProbeRuntime.Length).ToBigEndian(), ((UInt256)42).ToBigEndian()];
+        Prepare probe = Prepare.EvmCode;
+        StoreCodeSize(probe, tcreated, 0);
+        probe.TCreate(ProbeInit, ProbeSalt, 0).Op(Instruction.POP);
+        StoreCodeSize(probe, tcreated, 1);
+        // STATICCALL(gas, address, argsOffset, argsSize, retOffset, retSize)
+        probe.PushData(32).PushData(ProbeWord(2)).PushData(0).PushData(0).PushData(tcreated).PushData(100_000).Op(Instruction.STATICCALL).Op(Instruction.POP);
+        if (revertOnMismatch) RevertUnlessWordsMatch(probe, expected);
+        probe.Return(expected.Length * 32, ProbeOutput);
+        Dictionary<Address, AccountOverride> stateOverride = new() { [CodeProbe] = new() { Code = probe.Done } };
+
+        string serialized = await ctx.Test.TestEthRpc(method, ProbeCall(CodeProbe, gasPrice: revertOnMismatch ? null : 0), "latest", stateOverride);
+
+        if (revertOnMismatch)
+            AssertExecutedWithoutError(serialized);
+        else
+            Assert.That(JToken.Parse(serialized)["result"]?.Value<string>(), Is.EqualTo(Bytes.Concat(expected).ToHexString(true)), serialized);
+    }
+
+    [Test]
     public async Task Code_resolved_by_one_call_is_not_served_to_the_next()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
