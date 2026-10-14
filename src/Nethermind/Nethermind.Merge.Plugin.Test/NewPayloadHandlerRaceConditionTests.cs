@@ -62,7 +62,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     private static readonly FieldInfo? QueuedCopiesField =
         typeof(NewPayloadHandler).GetField("_queuedCopies", BindingFlags.Instance | BindingFlags.NonPublic);
 
-    // The budget outlasts the answer wait, so a runner stall cannot turn the answer into Syncing,
+    // The long budget outlasts the answer wait, so a runner stall cannot turn the answer into Syncing,
     // and a handler that waits for the wrong event is still pending when the wait gives up.
     private const int LongRequestBudgetMs = 60_000;
     private static readonly TimeSpan AnswerWait = TimeSpan.FromSeconds(30);
@@ -386,7 +386,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         Assert.That(async () => await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(AnswerWait),
             Throws.InstanceOf<InvalidOperationException>().With.Message.EqualTo("queue refused the block"),
-            "the failure reaches the request well inside its 60 s budget");
+            "the failure reaches the request well inside its budget");
         Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0));
     }
 
