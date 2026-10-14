@@ -74,13 +74,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             if (byteBuffer.ReadableBytes == 0)
             {
-                return ReceiptsMessage.Empty;
+                return new ReceiptsMessage(null);
             }
 
             if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptyList[0])
             {
                 byteBuffer.ReadByte();
-                return ReceiptsMessage.Empty;
+                return new ReceiptsMessage(null);
             }
 
             return byteBuffer.DeserializeRlp(Deserialize);
