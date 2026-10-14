@@ -49,6 +49,42 @@ public class LeanObjectTransportTests
     }
 
     [Test]
+    public async Task Maximum_proof_validates_with_owned_input_and_charged_decoder_copy()
+    {
+        using LeanTestNode node = new();
+        Transaction transaction = FrameTransaction(90);
+        node.Pending.Add(transaction);
+        byte[] body = Wrapper(Eip8288Constants.MaxAggregateProofBytes, true, transaction);
+        LeanDescriptor descriptor = Describe(body);
+        FakeLink link = Link("maximum");
+        LeanPeer peer = node.Connect(link);
+        Assert.That(node.Transport.TryReserveNodeBytes(link.NodeKey, 512 * 1024, out IDisposable? credit), Is.True);
+        using (credit)
+        using (ManualResetEventSlim gate = new())
+        {
+            node.Verifier.Gate = gate;
+            node.Transport.OnAnnounce(peer, new([descriptor]));
+            ServeAll(node, peer, link, descriptor, body);
+            await node.Verifier.Entered.Task.WaitAsync(Timeout);
+            try
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(node.Transport.IncompleteBytes + node.Transport.CompletionBytes,
+                        Is.EqualTo(body.Length + Eip8288Constants.MaxAggregateProofBytes + 512 * 1024));
+                    Assert.That(peer.ChargedBytes, Is.LessThanOrEqualTo(LeanLimits.MaxPeerBytes));
+                    Assert.That(link.Penalties, Is.Empty);
+                }
+            }
+            finally { gate.Set(); }
+            await Until(() => node.Transport.IsStored(descriptor.ObjectId));
+            await Until(() => node.Transport.CompletionBytes == 0);
+            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(512 * 1024));
+        }
+        Assert.That(node.Transport.IncompleteBytes, Is.Zero);
+    }
+
+    [Test]
     public void Queued_metadata_does_not_start_the_body_retrieval_deadline()
     {
         using LeanTestNode node = new();

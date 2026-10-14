@@ -14,8 +14,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean;
 public static class LeanBodies
 {
     /// <summary>Checks the hash-only EIP-8288 wrapper encoding before envelope recovery.</summary>
-    public static List<ValueHash256> ParseWrapper(ReadOnlySpan<byte> body)
+    public static List<ValueHash256> ParseWrapper(ReadOnlySpan<byte> body) => ParseWrapper(body, out _);
+
+    internal static List<ValueHash256> ParseWrapper(ReadOnlySpan<byte> body, out int verificationBytes)
     {
+        verificationBytes = 0;
         if (body.Length > Eip8288Constants.MaxWrapperBytes) throw new RlpException("Wrapper exceeds MAX_WRAPPER_BYTES");
         LeanRlpReader outer = new(body);
         LeanRlpReader wrapper = outer.ReadList();
@@ -50,9 +53,14 @@ public static class LeanBodies
         {
             LeanRlpReader proofs = content.ReadList();
             if (proofs.CountRemaining(Eip8288Constants.MaxProofDependencies) != dependencyCount) throw new RlpException("Witness count mismatch");
-            while (proofs.HasMore) proofs.ReadBytes();
+            while (proofs.HasMore) verificationBytes += proofs.ReadBytes().Length;
         }
-        else if (mode == 1) CheckAggregateProof(content.ReadBytes());
+        else if (mode == 1)
+        {
+            ReadOnlySpan<byte> proof = content.ReadBytes();
+            CheckAggregateProof(proof);
+            verificationBytes = proof.Length;
+        }
         else throw new RlpException("Unknown wrapper mode");
         content.End();
         return hashes;
