@@ -48,7 +48,7 @@ public static partial class AbiType
                 }
             });
         },
-        Size = v => abi.Size(v)
+        Size = v => abi.SizeInParent(v)
     };
 
     // TODO: Investigate if we can generalize this code to avoid duplication when dealing with tuples of different sizes
@@ -129,7 +129,7 @@ public static partial class AbiType
                 }
             });
         },
-        Size = v => abi1.Size(v.Item1) + abi2.Size(v.Item2)
+        Size = v => abi1.SizeInParent(v.Item1) + abi2.SizeInParent(v.Item2)
     };
 
     public static Abi<(T1, T2, T3)> Tuple<T1, T2, T3>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3) => new()
@@ -236,7 +236,7 @@ public static partial class AbiType
                 }
             });
         },
-        Size = v => abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3)
+        Size = v => abi1.SizeInParent(v.Item1) + abi2.SizeInParent(v.Item2) + abi3.SizeInParent(v.Item3)
     };
 
     public static Abi<(T1, T2, T3, T4)> Tuple<T1, T2, T3, T4>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4) => new()
@@ -369,6 +369,6 @@ public static partial class AbiType
                 }
             });
         },
-        Size = v => abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3) + abi4.Size(v.Item4)
+        Size = v => abi1.SizeInParent(v.Item1) + abi2.SizeInParent(v.Item2) + abi3.SizeInParent(v.Item3) + abi4.SizeInParent(v.Item4)
     };
 }

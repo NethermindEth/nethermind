@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Experimental.Abi.Test;
@@ -154,5 +155,104 @@ public class Dynamics
 
         string[] decoded = AbiCodec.Decode(signature, encoded);
         Assert.That(decoded, Is.EqualTo(new[] { "hello", "my", "friends" }));
+    }
+
+    [Test]
+    public void DynamicTuple()
+    {
+        AbiSignature<(UInt256, string)> signature = new AbiSignature("f")
+            .With(
+                AbiType.Tuple(AbiType.UInt256, AbiType.String)
+            );
+
+        (UInt256, string) arguments = (1, "a");
+        AssertRoundTrip(signature, "c260125c", arguments,
+            "c260125c" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the tuple
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First component, `1`
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component, relative to the tuple
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second component
+            "6100000000000000000000000000000000000000000000000000000000000000"); // "a"
+    }
+
+    [Test]
+    public void ArrayOfDynamicTuples()
+    {
+        AbiSignature<(UInt256, string)[]> signature = new AbiSignature("f")
+            .With(
+                AbiType.Array(AbiType.Tuple(AbiType.UInt256, AbiType.String))
+            );
+
+        (UInt256, string)[] arguments = [(1, "a"), (2, "b")];
+        AssertRoundTrip(signature, "7f9296cc", arguments,
+            "7f9296cc" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first element
+            "00000000000000000000000000000000000000000000000000000000000000c0" + // Offset to second element
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First component of first element, `1`
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component of first element
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second component of first element
+            "6100000000000000000000000000000000000000000000000000000000000000" + // "a"
+            "0000000000000000000000000000000000000000000000000000000000000002" + // First component of second element, `2`
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component of second element
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second component of second element
+            "6200000000000000000000000000000000000000000000000000000000000000"); // "b"
+    }
+
+    [Test]
+    public void DynamicTupleBetweenArguments()
+    {
+        AbiSignature<(UInt256, (UInt256, string), string)> signature = new AbiSignature("f")
+            .With(
+                AbiType.UInt256,
+                AbiType.Tuple(AbiType.UInt256, AbiType.String),
+                AbiType.String
+            );
+
+        (UInt256, (UInt256, string), string) arguments = (2, (1, "a"), "b");
+        AssertRoundTrip(signature, "004b756e", arguments,
+            "004b756e" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000002" + // First argument, `2`
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to the tuple
+            "00000000000000000000000000000000000000000000000000000000000000e0" + // Offset to third argument
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First component of the tuple, `1`
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component of the tuple
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second component of the tuple
+            "6100000000000000000000000000000000000000000000000000000000000000" + // "a"
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of third argument
+            "6200000000000000000000000000000000000000000000000000000000000000"); // "b"
+    }
+
+    [Test]
+    public void NestedDynamicTuple()
+    {
+        AbiSignature<(string, (UInt256, string))> signature = new AbiSignature("f")
+            .With(
+                AbiType.Tuple(AbiType.String, AbiType.Tuple(AbiType.UInt256, AbiType.String))
+            );
+
+        (string, (UInt256, string)) arguments = ("b", (1, "a"));
+        AssertRoundTrip(signature, "e3b34b9a", arguments,
+            "e3b34b9a" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the outer tuple
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first component of the outer tuple
+            "0000000000000000000000000000000000000000000000000000000000000080" + // Offset to the inner tuple
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of first component of the outer tuple
+            "6200000000000000000000000000000000000000000000000000000000000000" + // "b"
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First component of the inner tuple, `1`
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component of the inner tuple
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second component of the inner tuple
+            "6100000000000000000000000000000000000000000000000000000000000000"); // "a"
+    }
+
+    private static void AssertRoundTrip<T>(AbiSignature<T> signature, string expectedMethodId, T value, string expectedEncoding)
+    {
+        Assert.That(signature.MethodId(), Is.EqualTo(Bytes.FromHexString(expectedMethodId)));
+
+        byte[] encoded = AbiCodec.Encode(signature, value);
+        Assert.That(encoded, Is.EqualTo(Bytes.FromHexString(expectedEncoding)));
+
+        Assert.That(AbiCodec.Decode(signature, encoded), Is.EqualTo(value));
     }
 }
