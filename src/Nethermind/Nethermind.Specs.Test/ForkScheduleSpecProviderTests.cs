@@ -92,6 +92,7 @@ public class ForkScheduleSpecProviderTests
                 (4, HoodiSpecProvider.OsakaTimestamp),
                 (5, HoodiSpecProvider.BPO1Timestamp),
                 (6, HoodiSpecProvider.BPO2Timestamp),
+                (7, HoodiSpecProvider.AmsterdamTimestamp),
             ])
             { TestName = "Hoodi" };
 

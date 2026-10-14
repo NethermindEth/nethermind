@@ -445,6 +445,30 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Cancellation_FusedJumpReachesInterval_PollsBeforeSuccessor([Values(2, 3)] int pushSize)
+    {
+        const int prefixLength = 1021;
+        int destination = prefixLength + pushSize + 2;
+        byte[] code = new byte[destination + 2];
+        code.AsSpan(0, prefixLength).Fill((byte)Instruction.JUMPDEST);
+        code[prefixLength] = (byte)((int)Instruction.PUSH1 + pushSize - 1);
+        code[destination - 3] = (byte)(destination >> 8);
+        code[destination - 2] = (byte)destination;
+        code[destination - 1] = (byte)Instruction.JUMP;
+        code[destination] = (byte)Instruction.JUMPDEST;
+        CountingCancellationTracer tracer = new();
+
+        Execute(tracer, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null, "the jump lands on a valid destination");
+            Assert.That(tracer.PollCount, Is.EqualTo(2), "the fused destination completes the 1024-opcode interval");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(1025), "the counter includes the jump, its destination and STOP");
+        }
+    }
+
     private static byte[] CreateCancellationCode(int continuingOpcodeCount, bool appendStop, Instruction opcode)
     {
         byte[] code = new byte[continuingOpcodeCount + (appendStop ? 1 : 0)];

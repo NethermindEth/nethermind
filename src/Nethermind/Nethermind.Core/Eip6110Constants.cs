@@ -11,4 +11,6 @@ public static class Eip6110Constants
     public static readonly Address HoleskyDepositContractAddress = new("0x4242424242424242424242424242424242424242");
     public static readonly Address SepoliaDepositContractAddress = new("0x7f02c3e3c98b133055b8b348b2ac625669ed295d");
     public static readonly Address HoodiDepositContractAddress = new("0x00000000219ab540356cBB839Cbe05303d7705Fa");
+    public static readonly Address GnosisDepositContractAddress = new("0x0B98057eA310F4d31F2a452B414647007d1645d9");
+    public static readonly Address ChiadoDepositContractAddress = new("0xb97036A26259B7147018913bD58a774cf91acf25");
 }
