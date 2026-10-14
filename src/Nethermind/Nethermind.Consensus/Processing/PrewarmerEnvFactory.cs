@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -62,6 +63,8 @@ public class PrewarmerEnvFactory(
         try
         {
             AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv env = childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
+            // The env's transaction processor runs on the scope's one machine.
+            recorder?.Machine = childScope.Resolve<IVirtualMachine>() as VirtualMachine<EthereumGasPolicy>;
             return new PrewarmerEnv(childScope, env, childScope.Resolve<IHasAccessList[]>(), recorder);
         }
         catch

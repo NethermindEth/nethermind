@@ -96,7 +96,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MSTORE8] = AsTableEntry(&RawCalliHelper.ExecuteMStore8InsideActiveMemory);
         lookup[(int)Instruction.CALLDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CallDataSource>);
         if (SpecFlags.Eip2929(spec) && !SpecFlags.Eip8038(spec))
-            lookup[(int)Instruction.SLOAD] = AsTableEntry(&RawCalliHelper.ExecuteSLoad);
+        {
+            lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
+                ? AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>)
+                : AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>);
+        }
         if (spec.TransientStorageEnabled)
         {
             lookup[(int)Instruction.TLOAD] = AsTableEntry(&RawCalliHelper.ExecuteTLoad);
@@ -195,9 +199,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static ref byte SlotAt(ref byte bottom, nint index) => ref Unsafe.Add(ref bottom, index * EvmStack.WordSize);
 
         /// <summary>The big-endian 16-bit value in the two lowest bytes of <paramref name="bytes"/>; the bytes above them are ignored.</summary>
-        /// <remarks>The full-width byte reversal leaves it zero-extended by its shift, where a 16-bit one needs one more instruction to clear the bits above it.</remarks>
+        /// <remarks>
+        /// The full-width byte reversal leaves it zero-extended by its shift, where a 16-bit one needs one more instruction
+        /// to clear the bits above it. Without Zbb a reversal is a long software sequence, so the two bytes swap directly.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static nuint ReadBigEndianUInt16(ulong bytes) => (nuint)(BinaryPrimitives.ReverseEndianness(bytes) >> 48);
+        private static nuint ReadBigEndianUInt16(ulong bytes) => ZkEvmBitOperations.HasByteReverse
+            ? (nuint)(BinaryPrimitives.ReverseEndianness(bytes) >> 48)
+            : (nuint)(((bytes & 0xFF) << 8) | ((bytes >> 8) & 0xFF));
 
         /// <summary>Marks a direct tail transfer that the opcode weaver emits into the calling handler.</summary>
         /// <remarks>The target is last to match the calli evaluation stack; this method must never survive weaving.</remarks>
@@ -771,7 +780,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong modulus = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 3));
                 if ((modulus | Unsafe.Add(ref modulus, 1) | Unsafe.Add(ref modulus, 2) | Unsafe.Add(ref modulus, 3)) != 0)
                 {
-                    if (ZiskArith256Flag.IsActive)
+                    if (ZiskFlag.IsActive)
                     {
                         // The stack is pinned. The result must not alias an operand.
                         ulong* m = (ulong*)Unsafe.AsPointer(ref modulus);
@@ -1171,7 +1180,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // The leading limb takes the bytes that do not fill a whole one, or a whole one; the rest follow it whole.
                 int leadingBytes = ((TOpCount.Count - 1) & 7) + 1;
                 int limbs = (TOpCount.Count + 7) >> 3;
-                ulong leading = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref immediates)) >> (64 - 8 * leadingBytes);
+                ulong leading = ZkEvmBitOperations.ReadUInt64BigEndian(ref immediates) >> (64 - 8 * leadingBytes);
                 ref byte rest = ref Unsafe.Add(ref immediates, leadingBytes);
                 if (limbs == 1)
                 {
@@ -1200,7 +1209,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>The big-endian limb <paramref name="index"/> limbs past <paramref name="bytes"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong ReadBigEndianLimb(ref byte bytes, nint index) =>
-            BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, index * sizeof(ulong))));
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, index * sizeof(ulong)));
 
         /// <summary>PUSH2, fused with a JUMP or JUMPI after it whenever <see cref="EvmInstructions.InstructionPush2{TGasPolicy, TTracingInst}"/> would fuse them.</summary>
         /// <remarks>
@@ -1338,10 +1347,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset; memory holds it big-endian.
-                        Unsafe.WriteUnaligned(ref destination, BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -1)));
-                        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8), BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -2)));
-                        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16), BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -3)));
-                        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 24), BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -4)));
+                        ZkEvmBitOperations.WriteUInt64BigEndian(ref destination, Unsafe.Add(ref offset, -1));
+                        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 8), Unsafe.Add(ref offset, -2));
+                        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 16), Unsafe.Add(ref offset, -3));
+                        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 24), Unsafe.Add(ref offset, -4));
                         head -= 2;
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint next = handlers[PairAt(ref ip)];
@@ -1360,11 +1369,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <remarks>
         /// The shared handler builds the storage cell twice and saves every callee-saved register around it. Running out
         /// of gas leaves the chain here, since the cell is warm by then and the shared handler would charge it as warm.
-        /// An empty stack runs the shared SLOAD handler instead, which faults on it.
+        /// An empty stack runs the shared SLOAD handler instead, which faults on it, and so does an EIP-8360 TCREATE
+        /// context, where SLOAD reads transient storage.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteSLoad(
+        internal static EvmExceptionType ExecuteSLoad<Eip8360>(
             ref EvmStack stack,
             ulong gas,
             ref DispatchState state,
@@ -1373,8 +1383,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte bottom)
+            where Eip8360 : struct, IFlag
         {
-            if (head > 0)
+            if (head > 0 && !(Eip8360.IsActive && state.Vm.VmState.IsTransientCreateContext))
             {
                 VirtualMachine<TGasPolicy> vm = state.Vm;
                 vm.MetricsCounters.IncrementSLoad();
@@ -1397,7 +1408,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag, Eip8360>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -1761,10 +1772,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         bottom = ref stack.Bottom;
                         // The hash lands big-endian over the length; the slot holds it in limb layout.
                         ref ulong hash = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
-                        ulong limb3 = BinaryPrimitives.ReverseEndianness(hash);
-                        ulong limb2 = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref hash, 1));
-                        ulong limb1 = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref hash, 2));
-                        ulong limb0 = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref hash, 3));
+                        ulong limb3 = ZkEvmBitOperations.Bswap64(hash);
+                        ulong limb2 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 1));
+                        ulong limb1 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 2));
+                        ulong limb0 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 3));
                         hash = limb0;
                         Unsafe.Add(ref hash, 1) = limb1;
                         Unsafe.Add(ref hash, 2) = limb2;
@@ -1900,7 +1911,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             ref ulong product = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
             ref ulong top = ref Unsafe.Add(ref product, LimbsPerWord);
-            if (ZiskArith256Flag.IsActive)
+            if (ZiskFlag.IsActive)
             {
                 // The product stays below 2^256 - 1, so reducing it modulo that leaves it whole. The result must not
                 // alias an operand; the stack is pinned.
@@ -1969,7 +1980,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ulong a0 = top, a1 = Unsafe.Add(ref top, 1), a2 = Unsafe.Add(ref top, 2), a3 = Unsafe.Add(ref top, 3);
             ulong b0 = product, b1 = Unsafe.Add(ref product, 1), b2 = Unsafe.Add(ref product, 2), b3 = Unsafe.Add(ref product, 3);
             ulong r0, r1, r2, r3;
-            if (ZiskArith256Flag.IsActive)
+            if (ZiskFlag.IsActive)
             {
                 // The low halves' product whole, as ExecuteMulOfHalfWidthFactors takes it, and the cross products of a low
                 // half with a high one only below 2^128, the part that reaches the low 256 bits of the product.
@@ -2096,7 +2107,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     CopyWord(ref dividend, ref quotient);
                     ShiftRight(ref quotient, shift);
                 }
-                else if (ZiskArith256Flag.IsActive)
+                else if (ZiskFlag.IsActive)
                 {
                     nint wide = Entry(&ExecuteDivOfWideOperands);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, wide);

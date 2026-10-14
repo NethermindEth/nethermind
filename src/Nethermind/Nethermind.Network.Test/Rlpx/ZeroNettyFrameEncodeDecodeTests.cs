@@ -57,7 +57,7 @@ public class ZeroNettyFrameEncodeDecodeTests
     }
 
     [Test]
-    public void Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall, [Values] bool snappy)
+    public async Task Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall, [Values] bool snappy)
     {
         using PooledBufferLeakDetector detector = new();
         IFrameCipher cipher = Substitute.For<IFrameCipher>();
@@ -73,9 +73,9 @@ public class ZeroNettyFrameEncodeDecodeTests
         context.Allocator.Returns(detector.Allocator);
         IByteBuffer input = detector.Allocator.Buffer(17).WriteZero(17);
 
-        Assert.ThrowsAsync<EncoderException>(async () => await splitter.WriteAsync(context, input));
+        await Assert.ThrowsAsync<EncoderException>(async () => await splitter.WriteAsync(context, input));
         Assert.That(input.ReferenceCount, Is.Zero);
-        context.DidNotReceive().WriteAsync(Arg.Any<object>());
+        await context.DidNotReceive().WriteAsync(Arg.Any<object>());
     }
 
     [Test]

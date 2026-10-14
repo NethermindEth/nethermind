@@ -72,7 +72,8 @@ public partial class EthRpcModule(
     ulong? secondsPerSlot,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
-    IBlockForRpcFactory blockForRpcFactory) : IEthRpcModule
+    IBlockForRpcFactory blockForRpcFactory,
+    HashesOnlyBlockReader? hashesOnlyBlockReader = null) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -89,6 +90,7 @@ public partial class EthRpcModule(
     protected readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly IBlockForRpcFactory _blockForRpcFactory = blockForRpcFactory ?? throw new ArgumentNullException(nameof(blockForRpcFactory));
+    private readonly HashesOnlyBlockReader? _hashesOnlyBlockReader = hashesOnlyBlockReader;
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
@@ -553,7 +555,7 @@ public partial class EthRpcModule(
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode);
+            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode, checksFork: false);
             if (!frameGasResult)
                 return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
             frameTx.Frames = frameGasResult.Data;
@@ -561,7 +563,10 @@ public partial class EthRpcModule(
 
         if (rpcTx.Gas is null)
         {
-            ResultWrapper<UInt256?> gasEstimate = eth_estimateGas(rpcTx, BlockParameter.Latest);
+            // The transaction is built for a later block, so its estimate is outside the fork rule as well.
+            ResultWrapper<UInt256?> gasEstimate = ExecuteWithFrameGas(
+                new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider) { ChecksFork = false },
+                rpcTx, BlockParameter.Latest, stateOverride: null);
             if (gasEstimate.Result.ResultType != ResultType.Success)
                 return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
 
@@ -716,6 +721,13 @@ public partial class EthRpcModule(
 
     protected virtual ResultWrapper<BlockForRpc?> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
     {
+        if (!returnFullTransactionObjects && _hashesOnlyBlockReader?.Find(_blockFinder, blockParameter) is { } hashesOnly)
+        {
+            BlockForRpc? hashesOnlyForRpc = _blockForRpcFactory.Create(hashesOnly.Block, includeFullTransactionData: false, _specProvider, skipTxs: true);
+            hashesOnlyForRpc?.Transactions = BlockTransactions.FromHashes(hashesOnly.TransactionHashes);
+            return ResultWrapper<BlockForRpc?>.Success(hashesOnlyForRpc);
+        }
+
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
         if (searchResult.IsError)
         {
