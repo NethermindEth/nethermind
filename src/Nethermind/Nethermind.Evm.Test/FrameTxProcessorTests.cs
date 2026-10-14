@@ -2618,6 +2618,7 @@ public partial class FrameTxProcessorTests
             Assert.That(tracer.FrameReceipts![2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
             Assert.That(tracer.FrameReceipts[2].StateGasUsed, Is.EqualTo((ulong)GasCostOf.NewAccountState));
             Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.One));
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
         }
     }
 
