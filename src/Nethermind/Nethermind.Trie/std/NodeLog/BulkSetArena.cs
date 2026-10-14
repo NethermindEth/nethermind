@@ -68,7 +68,8 @@ internal readonly struct SetOneFrame(NodeRecordRef record, byte skip, byte child
 /// <summary>The working memory of one bulk set on one thread: new nodes, their children and commit scratch.</summary>
 /// <remarks>
 /// Nodes and children are addressed by index, as their arrays grow by reallocation, so a reference into them does not survive
-/// an add. Arenas are pooled; a returned arena drops its references to entry values and records.
+/// an add. Arenas are pooled, unless grown past <see cref="MaxPooledNodeCapacity"/> nodes; a returned arena drops its references
+/// to entry values and records.
 /// </remarks>
 internal sealed class BulkSetArena
 {
@@ -77,6 +78,7 @@ internal sealed class BulkSetArena
 
     private const int MaxPooled = 64;
     private const int InitialNodeCapacity = 64;
+    private const int MaxPooledNodeCapacity = 4096;
 
     private static readonly ConcurrentQueue<BulkSetArena> Pool = new();
 
@@ -108,7 +110,10 @@ internal sealed class BulkSetArena
         arena.ChildCount = 0;
         arena.NodesFromLog = 0;
         arena.NodesFromSource = 0;
-        if (Pool.Count < MaxPooled) Pool.Enqueue(arena);
+        if (Pool.Count < MaxPooled && arena.Nodes.Length <= MaxPooledNodeCapacity && arena.Children.Length <= MaxPooledNodeCapacity * BranchChildCount)
+        {
+            Pool.Enqueue(arena);
+        }
     }
 
     /// <returns>The index of sixteen empty children.</returns>

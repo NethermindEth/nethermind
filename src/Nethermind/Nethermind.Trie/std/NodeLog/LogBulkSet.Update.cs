@@ -139,13 +139,7 @@ internal static partial class LogBulkSet
                 entries = sorted;
             }
 
-            if (remainderNibble >= 0 && (mask & (1 << remainderNibble)) == 0)
-            {
-                // No entry lands on it, so it stays below the new branch, with the key the branch shortened.
-                ChildRef materialized = ChildRef.ForPending(IntoNode(remainder));
-                _arena.Children[childrenStart + remainderNibble] = materialized;
-            }
-
+            bool remainderKept = remainderNibble >= 0;
             bool changed = false;
             bool hasRemove = false;
             int nonEmptyCount = 0;
@@ -162,15 +156,13 @@ internal static partial class LogBulkSet
                 Source child = isRemainder ? remainder
                     : Load(path, childrenStart >= 0 ? _arena.Children[childrenStart + nibble] : node.Record.View.Child(nibble));
                 Updated updated = Update(entries[start..end], sortBuffer[start..end], ref path, child);
-                if (!updated.Changed && !isRemainder) continue;
+                if (!updated.Changed) continue;
 
-                ChildRef reference = updated.Changed ? updated.Reference : ChildRef.ForPending(IntoNode(updated.Original));
-                if (updated.Changed)
-                {
-                    changed = true;
-                    if (reference.Kind == ChildRefKind.Empty) hasRemove = true;
-                    else nonEmptyCount++;
-                }
+                ChildRef reference = updated.Reference;
+                changed = true;
+                if (isRemainder) remainderKept = false;
+                if (reference.Kind == ChildRefKind.Empty) hasRemove = true;
+                else nonEmptyCount++;
 
                 if (childrenStart < 0) childrenStart = CopyChildren(node.Record);
                 _arena.Children[childrenStart + nibble] = reference;
@@ -181,6 +173,9 @@ internal static partial class LogBulkSet
             // Unlike PatriciaTree.MaybeCombineNode, there is no node to compare with the original: a fake branch whose children
             // all stay is the original, and anything else changes some key under it.
             if (!changed) return Updated.Unchanged(node);
+
+            // A remainder no entry changed stays below the new branch, with the key the branch shortened.
+            if (remainderKept) _arena.Children[childrenStart + remainderNibble] = ChildRef.ForPending(IntoNode(remainder));
 
             return Updated.To((hasRemove || isNew) && nonEmptyCount < 2
                 ? MaybeCombine(childrenStart, ref path)
@@ -256,6 +251,21 @@ internal static partial class LogBulkSet
             }
 
             return childrenStart;
+        }
+
+        /// <summary>The root node, read in place from the log by its pointer while that resolves, otherwise like <see cref="Load"/> with the pointer the log indexes for it.</summary>
+        /// <exception cref="MissingTrieNodeException">The node is in neither the log nor the source.</exception>
+        public Source LoadRoot(in TrieRoot root)
+        {
+            if (root.Hash == ValueKeccak.EmptyTreeHash) return default;
+
+            if (_log.TryLocate(root.Pointer, out NodeRecordRef record))
+            {
+                _arena.NodesFromLog++;
+                return Source.ForRecord(record, 0);
+            }
+
+            return Load(TreePath.Empty, ChildRef.ForHash(root.Hash, _log.FindRoot(_address, root.Hash)));
         }
 
         /// <summary>The node <paramref name="child"/> at <paramref name="path"/> refers to, read in place from the log when its pointer resolves, otherwise from the source.</summary>

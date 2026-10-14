@@ -22,6 +22,7 @@ internal class LogBulkSetTests
     private const int SmallGenerationBytes = 64 * 1024;
 
     private static readonly byte[] ExistingValue = Bytes.FromHexString("0x7777777777777777777777777777777777777777777777777777777777777777");
+    private static readonly byte[] NewValue = Bytes.FromHexString("0x010203");
 
     public static IEnumerable<TestCaseData> PatriciaTreeCases()
     {
@@ -38,14 +39,17 @@ internal class LogBulkSetTests
         {
             foreach (bool smallGenerations in new[] { false, true })
             {
-                yield return new TestCaseData(testCase.Arguments[0], testCase.Arguments[1], smallGenerations)
-                    .SetName($"{testCase.TestName}, small generations {smallGenerations}");
+                foreach (bool fromSource in new[] { false, true })
+                {
+                    yield return new TestCaseData(testCase.Arguments[0], testCase.Arguments[1], smallGenerations, fromSource)
+                        .SetName($"{testCase.TestName}, small generations {smallGenerations}, from source {fromSource}");
+                }
             }
         }
     }
 
     [TestCaseSource(nameof(PatriciaTreeCases))]
-    public void Root_and_written_nodes_match_patricia_tree(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items, bool smallGenerations)
+    public void Root_and_written_nodes_match_patricia_tree(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items, bool smallGenerations, bool fromSource)
     {
         CommitRecordingTrieStore trieStore = new();
         PatriciaTree tree = new(new ScopedTrieStore(trieStore, null), LimboLogs.Instance);
@@ -57,13 +61,17 @@ internal class LogBulkSetTests
         tree.Commit();
         Dictionary<TreePath, byte[]> expectedWritten = trieStore.TakeCommitted();
 
-        TrieNodeLog log = new(0, smallGenerations ? SmallGenerationBytes : TrieNodeLog.DefaultGenerationBytes);
-        using TrieNodeLogRetain retain = log.RetainActive();
+        int generationBytes = smallGenerations ? SmallGenerationBytes : TrieNodeLog.DefaultGenerationBytes;
+        TrieNodeLog existingLog = new(0, generationBytes);
+        using TrieNodeLogRetain existingRetain = existingLog.RetainActive();
         DictionaryNodeSource source = new(existingNodes, new WarmedNodes(existingNodes.Count), null);
         using WrittenNodes existingWritten = new();
         using WrittenNodes written = new();
-        TrieRoot existingRoot = BulkSet(log, source, null, TrieRoot.Empty, existingItems, existingWritten);
-        TrieRoot root = BulkSet(log, source, null, existingRoot, items, written);
+        TrieRoot existingRoot = BulkSet(existingLog, source, null, TrieRoot.Empty, existingItems, existingWritten);
+        // From the source, the existing trie stands for one persisted before this log was created.
+        TrieNodeLog log = fromSource ? new(0, generationBytes) : existingLog;
+        using TrieNodeLogRetain retain = log.RetainActive();
+        TrieRoot root = BulkSet(log, source, null, fromSource ? new TrieRoot(expectedExistingRoot.ValueHash256, 0) : existingRoot, items, written);
         int fetchCount = source.FetchCount;
 
         Dictionary<Hash256, byte[]> expectedValues = [];
@@ -78,9 +86,9 @@ internal class LogBulkSetTests
         {
             Assert.That(existingRoot.Hash, Is.EqualTo(expectedExistingRoot.ValueHash256), "existing root");
             Assert.That(root.Hash, Is.EqualTo(tree.RootHash.ValueHash256), "root");
-            Assert.That(InvalidRecords(log, existingWritten).Concat(InvalidRecords(log, written)), Is.Empty, "written records hash to their hash and parse");
+            Assert.That(InvalidRecords(existingLog, existingWritten).Concat(InvalidRecords(log, written)), Is.Empty, "written records hash to their hash and parse");
             Assert.That(Rlps(log, written), Is.EquivalentTo(expectedWritten), "written nodes");
-            Assert.That(fetchCount, Is.Zero, "nodes the first bulk set wrote are read from the log");
+            if (!fromSource) Assert.That(fetchCount, Is.Zero, "nodes the first bulk set wrote are read from the log");
             Assert.That(keys.Select(key => LogBulkSet.TryGet(log, source, null, root, key.ValueHash256)), Is.EqualTo(keys.Select(key => expectedValues.GetValueOrDefault(key))), "values");
         }
     }
@@ -136,11 +144,11 @@ internal class LogBulkSetTests
         foreach ((Hash256 key, _) in items) WarmUp(persistedLog, persistedRoot, key);
         int fetchesBeforeBulkSet = source.FetchCount;
         using WrittenNodes newWritten = new();
-        TrieRoot newRoot = BulkSet(persistedLog, source, address, persistedRoot, [(items[0].key, [1, 2, 3])], newWritten);
+        TrieRoot newRoot = BulkSet(persistedLog, source, address, persistedRoot, [(items[0].key, NewValue)], newWritten);
 
         PatriciaTree tree = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach ((Hash256 key, byte[] value) in items) tree.Set(key.Bytes, value);
-        tree.Set(items[0].key.Bytes, [1, 2, 3]);
+        tree.Set(items[0].key.Bytes, NewValue);
         tree.UpdateRootHash();
 
         using (Assert.EnterMultipleScope())

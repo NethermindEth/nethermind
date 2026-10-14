@@ -41,9 +41,7 @@ internal static partial class LogBulkSet
         try
         {
             Context context = new(log, source, address, arena, written);
-            Source rootNode = root.Hash == ValueKeccak.EmptyTreeHash
-                ? default
-                : context.Load(TreePath.Empty, ChildRef.ForHash(root.Hash, RootPointer(log, address, root)));
+            Source rootNode = context.LoadRoot(root);
             TreePath path = TreePath.Empty;
             Updated updated;
             if (entries.Count < InPlaceSortThreshold)
@@ -78,9 +76,11 @@ internal static partial class LogBulkSet
 
     /// <summary>Loads the nodes on the path to <paramref name="key"/> that the log does not hold from <paramref name="source"/>.</summary>
     /// <remarks>Stops silently where the path ends or the source misses.</remarks>
+    /// <param name="root">Its pointer is used as given, as <see cref="ResolveRoot"/> returns it.</param>
     public static void WarmUp(TrieNodeLog log, INodeRecordSource source, Hash256? address, TrieRoot root, in ValueHash256 key) =>
         Walk(log, source, address, root, key, throwOnMissing: false, out _);
 
+    /// <param name="root">Its pointer is used as given, as <see cref="ResolveRoot"/> returns it.</param>
     /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the log nor the source.</exception>
     public static byte[]? TryGet(TrieNodeLog log, INodeRecordSource source, Hash256? address, TrieRoot root, in ValueHash256 key)
@@ -99,7 +99,7 @@ internal static partial class LogBulkSet
     private static Source Walk(TrieNodeLog log, INodeRecordSource source, Hash256? address, in TrieRoot root, in ValueHash256 key, bool throwOnMissing, out int depth)
     {
         TreePath path = TreePath.Empty;
-        ChildRef child = root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(root.Hash, RootPointer(log, address, root));
+        ChildRef child = root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(root.Hash, root.Pointer);
         Span<byte> keyNibbles = stackalloc byte[MaxKeyNibbles];
         Span<byte> extensionKey = stackalloc byte[MaxKeyNibbles];
         Nibbles.BytesToNibbleBytes(key.Bytes, keyNibbles);
@@ -139,10 +139,6 @@ internal static partial class LogBulkSet
             }
         }
     }
-
-    /// <summary>The pointer of the root record: the given one while it resolves, otherwise the one the log indexes, if any.</summary>
-    private static ulong RootPointer(TrieNodeLog log, Hash256? address, in TrieRoot root) =>
-        log.TryLocate(root.Pointer, out _) ? root.Pointer : log.FindRoot(address, root.Hash);
 
     [DoesNotReturn, StackTraceHidden]
     private static Source ThrowMissingNode(Hash256? address, in TreePath path, in ValueHash256 hash) =>
