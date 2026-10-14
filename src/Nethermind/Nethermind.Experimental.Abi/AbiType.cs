@@ -13,12 +13,12 @@ public static partial class AbiType
         Name = "uint256",
         Read = (ref BinarySpanReader r) =>
         {
-            var bytes = r.ReadBytes(32);
+            ReadOnlySpan<byte> bytes = r.ReadBytes(32);
             return new UInt256(bytes, isBigEndian: true);
         },
         Write = (ref BinarySpanWriter w, UInt256 v) =>
         {
-            var output = w.Take(32);
+            Span<byte> output = w.Take(32);
             v.ToBigEndian(output);
         },
         Size = _ => 32,
@@ -73,9 +73,9 @@ public static partial class AbiType
             int length = (int)UInt256.Read(ref r);
             return r.Scoped((length, abi), static ((int, Abi<T>) ctx, ref BinarySpanReader r) =>
             {
-                var (length, abi) = ctx;
+                (int length, Abi<T> abi) = ctx;
 
-                var array = new T[length];
+                T[] array = new T[length];
                 if (abi.IsDynamic)
                 {
                     int read = 0;
@@ -101,7 +101,7 @@ public static partial class AbiType
             UInt256.Write(ref w, (UInt256)array.Length);
             w.Scoped((array, abi), static ((T[], Abi<T>) ctx, ref BinarySpanWriter w) =>
             {
-                var (array, abi) = ctx;
+                (T[] array, Abi<T> abi) = ctx;
 
                 if (abi.IsDynamic)
                 {
@@ -111,7 +111,7 @@ public static partial class AbiType
                     {
                         w.WriteOffset(i * 32, (array[i], abi), static ((T, Abi<T>) ctx, ref BinarySpanWriter w) =>
                         {
-                            var (e, abi) = ctx;
+                            (T e, Abi<T> abi) = ctx;
                             abi.Write(ref w, e);
                         });
                     }
@@ -130,8 +130,8 @@ public static partial class AbiType
             const int offsetSize = 32;
             const int lengthSize = 32;
 
-            var elementsSize = 0;
-            foreach (var e in array)
+            int elementsSize = 0;
+            foreach (T e in array)
             {
                 elementsSize += abi.Size(e);
             }
@@ -145,7 +145,7 @@ public static partial class AbiType
         Name = $"{abi.Name}[{length}]",
         Read = (ref BinarySpanReader r) =>
         {
-            var array = new T[length];
+            T[] array = new T[length];
             for (int i = 0; i < length; i++)
             {
                 array[i] = abi.Read(ref r);
@@ -157,7 +157,7 @@ public static partial class AbiType
         {
             if (array.Length != length) throw new AbiException();
 
-            foreach (var item in array)
+            foreach (T item in array)
             {
                 abi.Write(ref w, item);
             }
@@ -167,7 +167,7 @@ public static partial class AbiType
             if (array.Length != length) throw new AbiException();
 
             int size = 0;
-            foreach (var item in array)
+            foreach (T item in array)
             {
                 size += abi.Size(item);
             }
@@ -196,7 +196,7 @@ public static partial class AbiType
         {
             const int offsetSize = 32;
             const int lengthSize = 32;
-            var bytesSize = Math.PadTo32(bytes.Length);
+            int bytesSize = Math.PadTo32(bytes.Length);
 
             return offsetSize + lengthSize + bytesSize;
         }
@@ -213,7 +213,7 @@ public static partial class AbiType
         },
         Size = bytes =>
         {
-            var bytesLength = Math.PadTo32(bytes.Length);
+            int bytesLength = Math.PadTo32(bytes.Length);
 
             return bytesLength;
         }
@@ -226,7 +226,7 @@ public static partial class AbiType
         Read = (ref BinarySpanReader r) =>
         {
             int length = (int)UInt256.Read(ref r);
-            var bytes = r.ReadBytesPadded(length);
+            ReadOnlySpan<byte> bytes = r.ReadBytesPadded(length);
             return Encoding.UTF8.GetString(bytes);
         },
         Write = (ref BinarySpanWriter w, String v) =>
@@ -236,15 +236,15 @@ public static partial class AbiType
 
             UInt256.Write(ref w, (UInt256)byteCount);
 
-            var buffer = w.Take(byteSize);
+            Span<byte> buffer = w.Take(byteSize);
             Encoding.UTF8.GetBytes(v, buffer);
         },
         Size = v =>
         {
             const int offsetSize = 32;
             const int lengthSize = 32;
-            var byteCount = Encoding.UTF8.GetByteCount(v);
-            var byteSize = Math.PadTo32(byteCount);
+            int byteCount = Encoding.UTF8.GetByteCount(v);
+            int byteSize = Math.PadTo32(byteCount);
 
             return offsetSize + lengthSize + byteSize;
         }

@@ -31,14 +31,14 @@ public static partial class AbiType
         {
             w.Scoped((v, abi), static ((T, Abi<T>) ctx, ref BinarySpanWriter w) =>
             {
-                var (v, abi) = ctx;
+                (T v, Abi<T> abi) = ctx;
 
                 if (abi.IsDynamic)
                 {
                     int offset = w.Advance(32);
                     w.WriteOffset(offset, (v, abi), static ((T, Abi<T>) ctx, ref BinarySpanWriter w) =>
                     {
-                        var (v, abi) = ctx;
+                        (T v, Abi<T> abi) = ctx;
                         abi.Write(ref w, v);
                     });
                 }
@@ -60,7 +60,7 @@ public static partial class AbiType
         {
             return r.Scoped((abi1, abi2), static ((Abi<T1>, Abi<T2>) ctx, ref BinarySpanReader r) =>
             {
-                var (abi1, abi2) = ctx;
+                (Abi<T1> abi1, Abi<T2> abi2) = ctx;
 
                 T1 arg1;
                 if (abi1.IsDynamic)
@@ -90,7 +90,7 @@ public static partial class AbiType
         {
             w.Scoped((v, abi1, abi2), static (((T1, T2), Abi<T1>, Abi<T2>) ctx, ref BinarySpanWriter w) =>
             {
-                var ((v1, v2), abi1, abi2) = ctx;
+                ((T1 v1, T2 v2), Abi<T1> abi1, Abi<T2> abi2) = ctx;
 
                 Span<int> offsets = stackalloc int[2];
                 if (abi1.IsDynamic)
@@ -115,7 +115,7 @@ public static partial class AbiType
                 {
                     w.WriteOffset(offsets[0], (v1, abi1), static ((T1, Abi<T1>) ctx, ref BinarySpanWriter w) =>
                     {
-                        var (v, abi) = ctx;
+                        (T1 v, Abi<T1> abi) = ctx;
                         abi.Write(ref w, v);
                     });
                 }
@@ -123,7 +123,7 @@ public static partial class AbiType
                 {
                     w.WriteOffset(offsets[1], (v2, abi2), static ((T2, Abi<T2>) ctx, ref BinarySpanWriter w) =>
                     {
-                        var (v, abi) = ctx;
+                        (T2 v, Abi<T2> abi) = ctx;
                         abi.Write(ref w, v);
                     });
                 }
@@ -140,7 +140,7 @@ public static partial class AbiType
         {
             return r.Scoped((abi1, abi2, abi3), static ((Abi<T1>, Abi<T2>, Abi<T3>) ctx, ref BinarySpanReader r) =>
             {
-                var (abi1, abi2, abi3) = ctx;
+                (Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3) = ctx;
 
                 T1 arg1;
                 if (abi1.IsDynamic)
@@ -180,7 +180,7 @@ public static partial class AbiType
         {
             w.Scoped((v, abi1, abi2, abi3), static (((T1, T2, T3), Abi<T1>, Abi<T2>, Abi<T3>) ctx, ref BinarySpanWriter w) =>
             {
-                var ((v1, v2, v3), abi1, abi2, abi3) = ctx;
+                ((T1 v1, T2 v2, T3 v3), Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3) = ctx;
 
                 Span<int> offsets = stackalloc int[3];
                 if (abi1.IsDynamic)
@@ -214,7 +214,7 @@ public static partial class AbiType
                 {
                     w.WriteOffset(offsets[0], (v1, abi1), static ((T1, Abi<T1>) ctx, ref BinarySpanWriter w) =>
                     {
-                        var (v, abi) = ctx;
+                        (T1 v, Abi<T1> abi) = ctx;
                         abi.Write(ref w, v);
                     });
                 }
@@ -222,7 +222,7 @@ public static partial class AbiType
                 {
                     w.WriteOffset(offsets[1], (v2, abi2), static ((T2, Abi<T2>) ctx, ref BinarySpanWriter w) =>
                     {
-                        var (v, abi) = ctx;
+                        (T2 v, Abi<T2> abi) = ctx;
                         abi.Write(ref w, v);
                     });
                 }
@@ -230,7 +230,7 @@ public static partial class AbiType
                 {
                     w.WriteOffset(offsets[2], (v3, abi3), static ((T3, Abi<T3>) ctx, ref BinarySpanWriter w) =>
                     {
-                        var (v, abi) = ctx;
+                        (T3 v, Abi<T3> abi) = ctx;
                         abi.Write(ref w, v);
                     });
                 }
@@ -247,7 +247,7 @@ public static partial class AbiType
         {
             return r.Scoped((abi1, abi2, abi3, abi4), static ((Abi<T1>, Abi<T2>, Abi<T3>, Abi<T4>) ctx, ref BinarySpanReader r) =>
             {
-                var (abi1, abi2, abi3, abi4) = ctx;
+                (Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4) = ctx;
 
                 T1 arg1;
                 if (abi1.IsDynamic)
@@ -297,7 +297,7 @@ public static partial class AbiType
         {
             w.Scoped((v, abi1, abi2, abi3, abi4), static (((T1, T2, T3, T4), Abi<T1>, Abi<T2>, Abi<T3>, Abi<T4>) ctx, ref BinarySpanWriter w) =>
             {
-                var ((v1, v2, v3, v4), abi1, abi2, abi3, abi4) = ctx;
+                ((T1 v1, T2 v2, T3 v3, T4 v4), Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4) = ctx;
 
                 Span<int> offsets = stackalloc int[4];
                 if (abi1.IsDynamic)
@@ -339,7 +339,7 @@ public static partial class AbiType
                 {
                     w.WriteOffset(offsets[0], (v1, abi1), static ((T1, Abi<T1>) ctx, ref BinarySpanWriter w) =>
                     {
-                        var (v, abi) = ctx;
+                        (T1 v, Abi<T1> abi) = ctx;
                         abi.Write(ref w, v);
                     });
                 }
@@ -347,7 +347,7 @@ public static partial class AbiType
                 {
                     w.WriteOffset(offsets[1], (v2, abi2), static ((T2, Abi<T2>) ctx, ref BinarySpanWriter w) =>
                     {
-                        var (v, abi) = ctx;
+                        (T2 v, Abi<T2> abi) = ctx;
                         abi.Write(ref w, v);
                     });
                 }
@@ -355,7 +355,7 @@ public static partial class AbiType
                 {
                     w.WriteOffset(offsets[2], (v3, abi3), static ((T3, Abi<T3>) ctx, ref BinarySpanWriter w) =>
                     {
-                        var (v, abi) = ctx;
+                        (T3 v, Abi<T3> abi) = ctx;
                         abi.Write(ref w, v);
                     });
                 }
@@ -363,7 +363,7 @@ public static partial class AbiType
                 {
                     w.WriteOffset(offsets[3], (v4, abi4), static ((T4, Abi<T4>) ctx, ref BinarySpanWriter w) =>
                     {
-                        var (v, abi) = ctx;
+                        (T4 v, Abi<T4> abi) = ctx;
                         abi.Write(ref w, v);
                     });
                 }

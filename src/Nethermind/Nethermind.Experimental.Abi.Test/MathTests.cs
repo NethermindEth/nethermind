@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Experimental.Abi.Test;
@@ -34,9 +33,6 @@ public class MathTests
     }
 
     [TestCaseSource(nameof(PadTo32TestCases))]
-    public void PadTo32(int value, int expected)
-    {
-        var actual = Math.PadTo32(value);
-        actual.Should().Be(expected);
-    }
+    public void PadTo32(int value, int expected) =>
+        Assert.That(Math.PadTo32(value), Is.EqualTo(expected));
 }

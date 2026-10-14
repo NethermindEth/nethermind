@@ -21,7 +21,7 @@ public ref struct BinarySpanReader
 
     public ReadOnlySpan<byte> ReadBytes(int count)
     {
-        var result = _span.Slice(_position, count);
+        ReadOnlySpan<byte> result = _span.Slice(_position, count);
 
         _position += count;
         return result;
@@ -30,20 +30,17 @@ public ref struct BinarySpanReader
     public ReadOnlySpan<byte> ReadBytesPadded(int length)
     {
         ReadOnlySpan<byte> bytes = ReadBytes(length);
-        var padding = Math.PadTo32(length) - length;
+        int padding = Math.PadTo32(length) - length;
         _position += padding;
 
         return bytes;
     }
 
-    public void Advance(int bytes)
-    {
-        _position += bytes;
-    }
+    public void Advance(int bytes) => _position += bytes;
 
     public T Scoped<T, TCtx>(TCtx ctx, BinarySpanReaderFunc<T, TCtx> inner)
     {
-        var reader = new BinarySpanReader(_span[_position..]);
+        BinarySpanReader reader = new(_span[_position..]);
         T result = inner(ctx, ref reader);
         _position += reader._position;
         return result;
@@ -51,17 +48,17 @@ public ref struct BinarySpanReader
 
     public (T, int) ReadOffset<T, TCtx>(TCtx ctx, BinarySpanReaderFunc<T, TCtx> inner)
     {
-        var offsetBytes = ReadBytes(32);
-        var restorePosition = _position;
+        ReadOnlySpan<byte> offsetBytes = ReadBytes(32);
+        int restorePosition = _position;
 
-        var offset = new UInt256(offsetBytes, isBigEndian: true);
+        UInt256 offset = new(offsetBytes, isBigEndian: true);
 
         _position = (int)offset;
 
-        var valueStart = _position;
+        int valueStart = _position;
         T result = inner(ctx, ref this);
-        var valueEnd = _position;
-        var read = valueEnd - valueStart;
+        int valueEnd = _position;
+        int read = valueEnd - valueStart;
 
         _position = restorePosition;
 
@@ -100,21 +97,21 @@ public ref struct BinarySpanWriter
 
     public int Advance(int bytes)
     {
-        var startPosition = _position;
+        int startPosition = _position;
         _position += bytes;
         return startPosition;
     }
 
     public Span<byte> Take(int size)
     {
-        var span = _span[_position..(_position + size)];
+        Span<byte> span = _span[_position..(_position + size)];
         _position += size;
         return span;
     }
 
     public void Scoped<TCtx>(TCtx ctx, BinarySpanWriterAction<TCtx> inner)
     {
-        var writer = new BinarySpanWriter(_span[_position..]);
+        BinarySpanWriter writer = new(_span[_position..]);
         inner(ctx, ref writer);
         _position += writer._position;
     }
@@ -132,11 +129,8 @@ public ref struct BinarySpanWriter
 public static class Math
 {
     // TODO: Use `UInt256` when dealing with lengths
-    public static int PadTo32(int length)
-    {
-        return (length + 31) & ~31;
-        // Equivalent to:
-        // int rem = length % 32;
-        // return rem == 0 ? length : length + (32 - rem);
-    }
+    // Equivalent to:
+    // int rem = length % 32;
+    // return rem == 0 ? length : length + (32 - rem);
+    public static int PadTo32(int length) => (length + 31) & ~31;
 }
