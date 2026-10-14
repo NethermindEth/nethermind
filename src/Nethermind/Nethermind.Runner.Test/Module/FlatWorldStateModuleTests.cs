@@ -9,6 +9,8 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
+using Nethermind.Logging;
+using Nethermind.State.Flat;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Module;
@@ -36,5 +38,18 @@ public class FlatWorldStateModuleTests
                 Assert.That(step.Dependents, Does.Contain(typeof(InitializeBlockchain)));
             }
         }
+    }
+
+    [Test]
+    public void Managed_trie_node_cache_is_replaced_by_noop_with_native_bulk_set([Values] bool useNativeBulkSet)
+    {
+        FlatDbConfig config = new() { UseNativeBulkSet = useNativeBulkSet, TrieCacheMemoryBudget = 1024 * 1024 };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new FlatWorldStateModule(config))
+            .AddSingleton<IFlatDbConfig>(config)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build();
+
+        Assert.That(container.Resolve<ITrieNodeCache>(), useNativeBulkSet ? Is.TypeOf<NoopTrieNodeCache>() : Is.TypeOf<TrieNodeCache>());
     }
 }
