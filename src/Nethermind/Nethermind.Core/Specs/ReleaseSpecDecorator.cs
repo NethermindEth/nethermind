@@ -37,6 +37,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip214Enabled => spec.IsEip214Enabled;
     public virtual bool IsEip649Enabled => spec.IsEip649Enabled;
     public virtual bool IsEip658Enabled => spec.IsEip658Enabled;
+    public virtual bool ValidateReceipts => spec.ValidateReceipts;
     public virtual bool IsEip145Enabled => spec.IsEip145Enabled;
     public virtual bool IsEip1014Enabled => spec.IsEip1014Enabled;
     public virtual bool IsEip1052Enabled => spec.IsEip1052Enabled;
@@ -54,6 +55,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip2930Enabled => spec.IsEip2930Enabled;
     public virtual bool IsEip1559Enabled => spec.IsEip1559Enabled;
     public virtual ulong Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
+    public virtual UInt256? Eip1559BaseFeeMinValue => spec.Eip1559BaseFeeMinValue;
     public virtual Address? Eip158IgnoredAccount => spec.Eip158IgnoredAccount;
     public virtual bool IsEip3198Enabled => spec.IsEip3198Enabled;
     public virtual bool IsEip3529Enabled => spec.IsEip3529Enabled;
