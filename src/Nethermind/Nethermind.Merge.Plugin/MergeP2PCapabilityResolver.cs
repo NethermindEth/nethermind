@@ -78,6 +78,10 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
             && IsEip7594Enabled())
         {
             capabilities.Add(new Capability(Protocol.Eth, 72));
+            if (_txPoolConfig.AnnounceTxSourceAndNonce)
+            {
+                capabilities.Add(new Capability(Protocol.Eth, 73));
+            }
         }
     }
 

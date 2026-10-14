@@ -15,6 +15,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Specs;
 
@@ -89,6 +90,9 @@ namespace Nethermind.Network.Test.Builders
                 .With(new NewPooledTransactionHashesMessageSerializer72())
                 .With(new GetCellsMessageSerializer72())
                 .With(new CellsMessageSerializer72());
+
+        public SerializationBuilder WithEth73(ISpecProvider specProvider) => WithEth72(specProvider)
+                .With(new NewPooledTransactionHashesMessageSerializer73());
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {
