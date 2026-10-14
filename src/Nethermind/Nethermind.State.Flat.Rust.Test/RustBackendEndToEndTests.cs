@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -34,9 +35,17 @@ namespace Nethermind.State.Flat.Rust.Test;
 /// the last flush.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Each node runs the whole production graph of <see cref="TestNethermindModule"/>, with the trie warmer and the
 /// early storage apply on, so the trie is hashed by the scope from nodes read through the bundles of its backend; on
 /// the Rust backend those are the forked package's, whose snapshots are native.
+/// </para>
+/// <para>
+/// With long finality, finality never comes, so the states past the in-memory window are converted into the
+/// persisted-snapshot tier; the long branch is rooted in the tier, the readers also read at states only the tier
+/// holds, and the stream ends with blocks past the last flush, so the converted snapshots both nodes leave in the tier
+/// are compared once they are disposed (<see cref="PersistedDump"/>).
+/// </para>
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class RustBackendEndToEndTests
@@ -46,14 +55,28 @@ public class RustBackendEndToEndTests
     private static readonly IReleaseSpec Spec = Cancun.Instance;
 
     [Test]
-    public async Task World_state_matches_the_csharp_backend([ValueSource(nameof(Layouts))] FlatLayout layout, [Values] bool carryForward, [Values] bool deferStorageTrieCommit)
+    public async Task World_state_matches_the_csharp_backend(
+        [ValueSource(nameof(Layouts))] FlatLayout layout,
+        [Values] bool carryForward,
+        [Values] bool deferStorageTrieCommit,
+        [Values] bool longFinality)
     {
         RustNativeLibrary.Require();
-        await using Node csharp = new(FlatDbBackend.CSharp, layout, carryForward, deferStorageTrieCommit);
-        await using Node rust = new(FlatDbBackend.Rust, layout, carryForward, deferStorageTrieCommit);
+        using TempPath csharpPath = TempPath.GetTempDirectory();
+        using TempPath rustPath = TempPath.GetTempDirectory();
+        await using (Node csharp = new(FlatDbBackend.CSharp, layout, carryForward, deferStorageTrieCommit, longFinality ? csharpPath.Path : null),
+            rust = new(FlatDbBackend.Rust, layout, carryForward, deferStorageTrieCommit, longFinality ? rustPath.Path : null))
+        {
+            int seed = 20261014 + (int)layout * 4 + (carryForward ? 2 : 0) + (deferStorageTrieCommit ? 1 : 0) + (longFinality ? 100 : 0);
+            new BlockStream(new Random(seed), csharp, rust, longFinality).Run();
+        }
 
-        int seed = 20261014 + (int)layout * 4 + (carryForward ? 2 : 0) + (deferStorageTrieCommit ? 1 : 0);
-        new BlockStream(new Random(seed), csharp, rust).Run();
+        if (!longFinality) return;
+
+        FlatDbConfig config = FlatManagerContainer.Config(FlatDbBackend.CSharp, layout, carryForward, maxInMemorySnapshotBytes: 0, longFinality: true);
+        List<string> expected = PersistedDump.Take(csharpPath.Path, config);
+        Assert.That(expected, Is.Not.Empty, "the tier holds converted snapshots at the end");
+        Assert.That(PersistedDump.Take(rustPath.Path, config), Is.EqualTo(expected), "the converted snapshots of the tier after disposal");
     }
 
     /// <summary>A node's world state and flat DB.</summary>
@@ -61,21 +84,23 @@ public class RustBackendEndToEndTests
     {
         private readonly IContainer _container;
 
-        public Node(FlatDbBackend backend, FlatLayout layout, bool carryForward, bool deferStorageTrieCommit)
+        /// <param name="longFinalityPath">Where the node keeps its persisted-snapshot tier with long finality on, or null for long finality off.</param>
+        public Node(FlatDbBackend backend, FlatLayout layout, bool carryForward, bool deferStorageTrieCommit, string? longFinalityPath)
         {
-            FlatDbConfig config = FlatManagerContainer.Config(backend, layout, carryForward, maxInMemorySnapshotBytes: 0, longFinality: false);
+            FlatDbConfig config = FlatManagerContainer.Config(backend, layout, carryForward, maxInMemorySnapshotBytes: 0, longFinality: longFinalityPath is not null);
             config.DeferStorageTrieCommit = deferStorageTrieCommit;
             // The flat module picks the warmer registration from this count when it loads.
             config.TrieWarmerWorkerCount = 2;
-            _container = new ContainerBuilder()
+            ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(config))
                 // The test module turns the trie warmer off; the stream runs with it, and with the early storage apply.
                 .Intercept<IFlatDbConfig>(static flatDbConfig =>
                 {
                     flatDbConfig.TrieWarmerWorkerCount = 2;
                     flatDbConfig.ApplyStorageWritesOnIdleThread = true;
-                })
-                .Build();
+                });
+            if (longFinalityPath is not null) LongFinalityNode.Enable(builder, backend, longFinalityPath);
+            _container = builder.Build();
             Assert.That(_container.Resolve<ITrieWarmer>(), backend == FlatDbBackend.Rust ? Is.TypeOf<Fork.TrieWarmer>() : Is.TypeOf<TrieWarmer>());
             WorldState = _container.Resolve<IMainProcessingContext>().WorldState;
             Manager = _container.Resolve<IFlatDbManager>();
@@ -90,6 +115,12 @@ public class RustBackendEndToEndTests
         public IPersistenceManager PersistenceManager { get; }
 
         public IColumnsDb<FlatDbColumns> Db { get; }
+
+        /// <summary>The snapshots in the node's persisted-snapshot tier.</summary>
+        public long PersistedSnapshotCount => NativeTier.PersistedSnapshotCount(_container);
+
+        /// <summary>Changes whenever the persisted-snapshot compactor publishes a merge or a prune drops a snapshot of the tier.</summary>
+        public long TierFingerprint => NativeTier.Fingerprint(_container);
 
         /// <summary>
         /// Runs <paramref name="transactions"/> on <paramref name="parent"/>, each committed apart, and commits block
@@ -152,12 +183,15 @@ public class RustBackendEndToEndTests
         public ValueTask DisposeAsync() => _container.DisposeAsync();
     }
 
-    private sealed class BlockStream(Random random, Node csharp, Node rust)
+    /// <param name="longFinality">Whether the nodes convert the states past their in-memory window into a tier.</param>
+    private sealed class BlockStream(Random random, Node csharp, Node rust, bool longFinality)
     {
         private const int PreByzantiumBlocks = 10;
         private const int BlockCount = 70;
         private const int CompactSize = 4;
         private const int LongBranch = 65;
+        /// <summary>The base snapshots kept in memory with long finality; deeper states are in the tier.</summary>
+        private const int InMemoryBases = 8;
 
         private readonly Address[] _addresses = [.. Enumerable.Range(1, 8).Select(static i => new Address($"0x{i:x40}"))];
         private readonly UInt256[] _slots = [0, 1, 7, UInt256.MaxValue];
@@ -177,15 +211,28 @@ public class RustBackendEndToEndTests
                 if (choice >= 92) Flush();
             }
 
-            // Blocks enough above the last flush for the branches below to fork within the reorg window.
-            for (int block = 0; block < 2 * CompactSize; block++) AddBlock(_chain.Count - 1, RandomTransactions());
+            // Blocks enough above the last flush for the branches below to fork within the reorg window, or in the tier.
+            for (int block = 0; block < 2 * CompactSize + (longFinality ? 2 * InMemoryBases : 0); block++) AddBlock(_chain.Count - 1, RandomTransactions());
             ShortBranchLeftBehind();
             LongBranchBecomesTheChain();
             CompareReaders(_chain[^1], _chain[^3]);
+            if (longFinality)
+            {
+                Assert.That(rust.PersistedSnapshotCount, Is.Positive, "the Rust node holds a tier");
+                Assert.That(csharp.PersistedSnapshotCount, Is.Positive, "the C# node holds a tier");
+                // States only the tier holds: deeper than the in-memory window, above the backstop.
+                CompareReaders(_chain[^(2 * InMemoryBases)], _chain[^(3 * InMemoryBases)]);
+            }
+
             Flush();
             // The flush persisted the head and pruned the states below it.
             CompareReaders(_chain[^1]);
             Assert.That(_reorgs, Is.GreaterThan(0), "the stream reorged deeper than the compact size");
+            if (!longFinality) return;
+
+            // Blocks past the flush, for the nodes to leave a tier behind.
+            for (int block = 0; block < 3 * InMemoryBases; block++) AddBlock(_chain.Count - 1, RandomTransactions());
+            CompareReaders(_chain[^1], _chain[^(2 * InMemoryBases)]);
         }
 
         /// <summary>A branch of 2 blocks on a block a few back, after which the chain it forked from goes on.</summary>
@@ -202,10 +249,13 @@ public class RustBackendEndToEndTests
             AddBlock(_chain.Count - 1, RandomTransactions());
         }
 
-        /// <summary>A branch of <see cref="LongBranch"/> blocks on a block deeper than the compact size, which becomes the chain.</summary>
+        /// <summary>
+        /// A branch of <see cref="LongBranch"/> blocks on a block deeper than the compact size, which becomes the chain;
+        /// with long finality, on a block only the tier holds.
+        /// </summary>
         private void LongBranchBecomesTheChain()
         {
-            int parentIndex = _chain.Count - 1 - (CompactSize + 2);
+            int parentIndex = _chain.Count - 1 - (longFinality ? InMemoryBases + 4 : CompactSize + 2);
             _reorgs++;
             AddBlock(parentIndex, RandomTransactions());
             for (int block = 1; block < LongBranch; block++) AddBlock(_chain.Count - 1, RandomTransactions());
@@ -239,7 +289,8 @@ public class RustBackendEndToEndTests
         {
             int depth = CompactSize + 1 + random.Next(3);
             int parentIndex = _chain.Count - 1 - depth;
-            if (parentIndex < 1) return false;
+            // Never onto genesis: its empty state is held by every node, also once a flush persisted past it.
+            if (parentIndex < 2) return false;
 
             BlockHeader? parent = _chain[parentIndex];
             bool retained = csharp.WorldState.HasStateForBlock(parent);
@@ -253,6 +304,7 @@ public class RustBackendEndToEndTests
 
         private void Flush()
         {
+            if (longFinality) NativeTier.WaitUntilSettled(() => csharp.TierFingerprint, () => rust.TierFingerprint);
             csharp.Manager.FlushCache(CancellationToken.None);
             rust.Manager.FlushCache(CancellationToken.None);
             Assert.That(rust.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(csharp.PersistenceManager.GetCurrentPersistedStateId()));

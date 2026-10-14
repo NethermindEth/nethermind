@@ -74,6 +74,9 @@ public class MetricsParityTests
         nameof(Metrics.CompactorStallTime),
         nameof(Metrics.InMemorySlotFilterBuildTime),
         nameof(Metrics.ReadOnlySnapshotBundleTimes),
+        nameof(Metrics.PersistedSnapshotConvertTime),
+        nameof(Metrics.PersistedSnapshotCompactTime),
+        nameof(Metrics.ReadOnlySnapshotBundleSkipTime),
     ];
 
     /// <summary>
@@ -145,6 +148,59 @@ public class MetricsParityTests
         }
     }
 
+    /// <summary>
+    /// One seeded stream with long finality, whose finality stalls past the in-memory window, resumes and stalls again,
+    /// read back at the head and at states the tier holds, through the C# backend twice and through the Rust backend:
+    /// the Rust backend must read the same values, through the bloom filters of the tier, and move the metrics of the
+    /// persisted-snapshot tier the C# backend moves, by label. The gauges of the tier are taken at the end of the first
+    /// stall, once the compactor drained and before any prune: on the Rust backend each must be what the native tier
+    /// counts, and on both the same gauges must have moved, the same way. Those that depend on when the
+    /// persisted-snapshot compactor ran, those gauges and the histograms by the number of observations among them, are
+    /// compared only when the two C# runs agree on them.
+    /// </summary>
+    /// <remarks>
+    /// A trie node read finds no node object on the Rust backend, so the node hits of the in-memory snapshots, and the
+    /// trie nodes counted loaded from a cache with them, are left out, as <see cref="AssertNativeBundleReads"/> tells.
+    /// </remarks>
+    [Test]
+    public async Task Rust_backend_moves_the_long_finality_metrics_the_csharp_backend_moves()
+    {
+        RustNativeLibrary.Require();
+        bool detailedMetrics = Nethermind.Db.Metrics.DetailedMetricsEnabled;
+        Nethermind.Db.Metrics.DetailedMetricsEnabled = true;
+        using RecordingObservers observers = new();
+        try
+        {
+            LongFinalityObserved csharp = await RunLongFinality(FlatDbBackend.CSharp, observers);
+            LongFinalityObserved twin = await RunLongFinality(FlatDbBackend.CSharp, observers);
+            LongFinalityObserved rust = await RunLongFinality(FlatDbBackend.Rust, observers);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(csharp.Independent, Has.Some.StartsWith($"{nameof(Metrics.PersistedSnapshotConvertTime)} "), "the stream converts");
+                Assert.That(csharp.Independent, Has.Some.Contains("_persisted_snapshot:"), "the stream reads the tier");
+                Assert.That(csharp.Dependent, Has.Some.StartsWith($"{nameof(Metrics.PersistedSnapshotCompactedSize)} "), "the stream compacts the tier");
+                Assert.That(csharp.Independent, Does.Contain("page tracker 0 0"), "no page tracker without a page cache budget");
+                Assert.That(csharp.Dependent, Does.Not.Contain($"{nameof(Metrics.ArenaFileCount)} 0"), "the tier has arena files");
+                Assert.That(rust.Reads, Is.EqualTo(csharp.Reads), "the reads at the head and at the states of the tier");
+                Assert.That(rust.Independent, Is.EqualTo(csharp.Independent));
+            }
+
+            if (!twin.Dependent.SequenceEqual(csharp.Dependent))
+            {
+                Assert.Ignore("Two C# runs of the stream moved the metrics of the persisted-snapshot compactor differently: what it merged " +
+                    "depends on when its background batches ran, so they are not compared. " +
+                    $"First difference: {twin.Dependent.Except(csharp.Dependent).Concat(csharp.Dependent.Except(twin.Dependent)).FirstOrDefault()}");
+            }
+
+            Assert.That(rust.Dependent, Is.EqualTo(csharp.Dependent));
+        }
+        finally
+        {
+            Nethermind.Db.Metrics.DetailedMetricsEnabled = detailedMetrics;
+        }
+    }
+
     /// <summary>A plain slot read through a shared bundle, as <c>FlatStateReader</c> reads, builds no slot filter.</summary>
     [Test]
     public async Task A_plain_slot_read_through_a_shared_bundle_builds_no_slot_filter([Values] FlatDbBackend backend)
@@ -194,7 +250,7 @@ public class MetricsParityTests
     {
         if (backend != FlatDbBackend.CSharp) RustNativeLibrary.Require();
         using TempPath path = TempPath.GetTempDirectory();
-        string[] baseline = TierGauges();
+        string[] baseline = Render(TierGauges());
         string[] held;
         await using (FlatManagerContainer container = new(FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: true), path.Path, new TestFinality()))
         {
@@ -205,33 +261,64 @@ public class MetricsParityTests
             }
 
             Publish(container, backend);
-            held = TierGauges();
+            held = Render(TierGauges());
         }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(held, Is.Not.EqualTo(baseline), "the tier holds converted snapshots");
-            Assert.That(TierGauges(), Is.EqualTo(baseline));
+            Assert.That(Render(TierGauges()), Is.EqualTo(baseline));
             Assert.That((Metrics.PageTrackerResidentBytes, Metrics.PageTrackerMetadataBytes), Is.EqualTo((0L, 0L)));
         }
 
-        static string[] TierGauges() =>
-        [
-            $"{nameof(Metrics.PersistedSnapshotBloomMemory)}={Metrics.PersistedSnapshotBloomMemory}",
-            $"{nameof(Metrics.PersistedSnapshotBloomCount)}={Metrics.PersistedSnapshotBloomCount}",
-            $"{nameof(Metrics.ArenaFileCount)}={Metrics.ArenaFileCount}",
-            $"{nameof(Metrics.ArenaAllocatedBytes)}={Metrics.ArenaAllocatedBytes}",
-            $"{nameof(Metrics.BlobFileCount)}={Metrics.BlobFileCount}",
-            $"{nameof(Metrics.BlobAllocatedBytes)}={Metrics.BlobAllocatedBytes}",
-            $"{nameof(Metrics.ArenaReservationCount)}={Metrics.ArenaReservationCount}",
-            $"{nameof(Metrics.ArenaReservationBytes)}={Metrics.ArenaReservationBytes}",
-            .. Labelled(nameof(Metrics.PersistedSnapshotCount), Metrics.PersistedSnapshotCount),
-            .. Labelled(nameof(Metrics.PersistedSnapshotMemory), Metrics.PersistedSnapshotMemory),
-            .. Labelled(nameof(Metrics.ActivePersistedSnapshotCount), Metrics.ActivePersistedSnapshotCount),
-        ];
+    }
 
-        static IEnumerable<string> Labelled(string metric, IEnumerable<KeyValuePair<PersistedSnapshotLabel, long>> gauge) =>
-            gauge.Where(static entry => entry.Value != 0).Select(entry => $"{metric}{{{entry.Key.Tier},{entry.Key.Size}}}={entry.Value}").Order(StringComparer.Ordinal);
+    /// <summary>The gauges of the persisted-snapshot tier, the keyed ones as <c>metric{tier,size}</c> where not zero.</summary>
+    private static Dictionary<string, long> TierGauges() =>
+        new Dictionary<string, long>
+        {
+            [nameof(Metrics.PersistedSnapshotBloomMemory)] = Metrics.PersistedSnapshotBloomMemory,
+            [nameof(Metrics.PersistedSnapshotBloomCount)] = Metrics.PersistedSnapshotBloomCount,
+            [nameof(Metrics.ArenaFileCount)] = Metrics.ArenaFileCount,
+            [nameof(Metrics.ArenaAllocatedBytes)] = Metrics.ArenaAllocatedBytes,
+            [nameof(Metrics.BlobFileCount)] = Metrics.BlobFileCount,
+            [nameof(Metrics.BlobAllocatedBytes)] = Metrics.BlobAllocatedBytes,
+            [nameof(Metrics.ArenaReservationCount)] = Metrics.ArenaReservationCount,
+            [nameof(Metrics.ArenaReservationBytes)] = Metrics.ArenaReservationBytes,
+        }
+        .Concat(Labelled(nameof(Metrics.PersistedSnapshotCount), Metrics.PersistedSnapshotCount))
+        .Concat(Labelled(nameof(Metrics.PersistedSnapshotMemory), Metrics.PersistedSnapshotMemory))
+        .Concat(Labelled(nameof(Metrics.ActivePersistedSnapshotCount), Metrics.ActivePersistedSnapshotCount))
+        .ToDictionary();
+
+    private static IEnumerable<KeyValuePair<string, long>> Labelled(string metric, IEnumerable<KeyValuePair<PersistedSnapshotLabel, long>> gauge) =>
+        gauge.Where(static entry => entry.Value != 0).Select(entry => KeyValuePair.Create($"{metric}{{{entry.Key.Tier},{entry.Key.Size}}}", entry.Value));
+
+    /// <summary>The gauges of <see cref="TierGauges"/> that are not zero, as <c>metric value</c>, as the native tier counts them.</summary>
+    private static IEnumerable<string> NativeTierGauges(FlatManagerContainer container)
+    {
+        Fork.NativeFlatManager manager = container.Resolve<Fork.NativeFlatManager>();
+        FdbCounters counters = NativeTier.Counters(manager);
+        IEnumerable<(string Gauge, long Value)> gauges =
+        [
+            (nameof(Metrics.PersistedSnapshotBloomMemory), counters.PersistedSnapshotBloomMemory),
+            (nameof(Metrics.PersistedSnapshotBloomCount), counters.PersistedSnapshotBloomCount),
+            (nameof(Metrics.ArenaFileCount), counters.ArenaFileCount),
+            (nameof(Metrics.ArenaAllocatedBytes), counters.ArenaAllocatedBytes),
+            (nameof(Metrics.BlobFileCount), counters.BlobFileCount),
+            (nameof(Metrics.BlobAllocatedBytes), counters.BlobAllocatedBytes),
+            (nameof(Metrics.ArenaReservationCount), counters.ArenaReservationCount),
+            (nameof(Metrics.ArenaReservationBytes), counters.ArenaReservationBytes),
+            .. NativeTier.Gauges(manager).SelectMany(static row => new[]
+            {
+                (Labelled(nameof(Metrics.PersistedSnapshotCount), row), row.Count),
+                (Labelled(nameof(Metrics.PersistedSnapshotMemory), row), row.Memory),
+                (Labelled(nameof(Metrics.ActivePersistedSnapshotCount), row), row.Active),
+            }),
+        ];
+        return gauges.Where(static gauge => gauge.Value != 0).Select(static gauge => $"{gauge.Gauge} {gauge.Value}");
+
+        static string Labelled(string metric, FfiTierGaugeRow row) => $"{metric}{{{((SnapshotTier)row.Tier).MetricTierLabel()},{row.Size}}}";
     }
 
     /// <summary>
@@ -299,6 +386,98 @@ public class MetricsParityTests
             Publish(container, backend);
             return Observed.Take(container, observers).Since(before);
         }
+    }
+
+    /// <summary>What a long-finality run read, and moved whatever the compactor did, and what depends on when it ran.</summary>
+    private sealed record LongFinalityObserved(List<string> Reads, List<string> Independent, List<string> Dependent);
+
+    private static async Task<LongFinalityObserved> RunLongFinality(FlatDbBackend backend, RecordingObservers observers)
+    {
+        string[] nodeHits = ["state_node_snapshot", "storage_node_snapshot"];
+        string[] independentHistograms = [nameof(Metrics.PersistedSnapshotConvertTime), nameof(Metrics.PersistedSnapshotSize), nameof(Metrics.FlatPersistenceTime), ReadTimes];
+        // A bundle's persisted part may start at a merge reaching below the persisted state, so its depth depends on the merges too.
+        string[] dependentHistograms =
+        [
+            nameof(Metrics.PersistedSnapshotCompactedSize), nameof(Metrics.PersistedSnapshotCompactTime), nameof(Metrics.ReadOnlySnapshotBundleSkipTime),
+            nameof(Metrics.SnapshotBundleBlockNumberDepth),
+        ];
+        using TempPath path = TempPath.GetTempDirectory();
+        TestFinality finality = new();
+        FlatDbConfig config = FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: true);
+        config.PersistedSnapshotBloomBitsPerKey = 14;
+        FlatManagerContainer container = new(
+            config, path.Path, finality,
+            new() { MetricsConfig = new MetricsConfig { EnableDetailedMetric = true }, RocksDbCatalog = true });
+        List<string> reads;
+        List<string> independent = [];
+        List<string> dependentGauges = [];
+        Dictionary<string, long> scalarsBefore;
+        long loadedFromDb;
+        long catalogWrites;
+        IDbMeta catalog;
+        try
+        {
+            observers.Clear();
+            scalarsBefore = Observed.ReadScalars();
+            Dictionary<string, long> gaugesBefore = TierGauges();
+            loadedFromDb = TriePruningMetrics.LoadedFromDbNodesCount;
+            long baseSnapshots = BaseSnapshots();
+            long flatReads = container.Db.GatherMetric().TotalReads;
+            catalog = (IDbMeta)container.CatalogDb;
+            catalogWrites = catalog.GatherMetric().TotalWrites;
+
+            reads = new Workload(new Random(20261017), finality, container).RunWithLongFinality(atTheEndOfTheStall: () =>
+            {
+                NativeTier.WaitUntilSettled(() => container.TierFingerprint);
+                Publish(container, backend);
+                Dictionary<string, long> gauges = TierGauges();
+                string[] published = [.. gauges.Keys.Union(gaugesBefore.Keys).Order(StringComparer.Ordinal)
+                    .Select(gauge => $"{gauge} {gauges.GetValueOrDefault(gauge) - gaugesBefore.GetValueOrDefault(gauge)}")];
+                if (backend == FlatDbBackend.Rust)
+                {
+                    Assert.That(published.Where(static gauge => !gauge.EndsWith(" 0", StringComparison.Ordinal)), Is.EquivalentTo(NativeTierGauges(container)),
+                        "the tier gauges the bridge published, against the native tier's own");
+                }
+
+                // Even the C# backend merges a little differently from run to run, so only which gauges moved, and which way, is compared.
+                dependentGauges.AddRange(published.Select(static gauge => $"{gauge[..gauge.LastIndexOf(' ')]} {Math.Sign(long.Parse(gauge[(gauge.LastIndexOf(' ') + 1)..]))}"));
+                dependentGauges.Add($"{nameof(Metrics.SnapshotBundlePersistedSnapshotSize)} {Metrics.SnapshotBundlePersistedSnapshotSize}");
+                dependentGauges.Add($"{nameof(Metrics.SnapshotBundlePersistedSnapshotMemory)} {Math.Sign(Metrics.SnapshotBundlePersistedSnapshotMemory)}");
+            });
+            Publish(container, backend);
+            independent.Add($"base snapshots {BaseSnapshots() - baseSnapshots}");
+            independent.Add($"flat database reads {container.Db.GatherMetric().TotalReads - flatReads}");
+            independent.Add($"page tracker {Metrics.PageTrackerResidentBytes} {Metrics.PageTrackerMetadataBytes}");
+        }
+        finally
+        {
+            // Drains the persisted-snapshot compactor of either backend.
+            await container.DisposeAsync();
+        }
+
+        Dictionary<(string Metric, string Label), (int Count, double Sum)> histograms = observers.Summarize();
+        Dictionary<string, long> scalars = Observed.Since(Observed.ReadScalars(), scalarsBefore);
+        independent.Add($"trie nodes loaded from the database {TriePruningMetrics.LoadedFromDbNodesCount - loadedFromDb}");
+        independent.Add($"page tracker evictions {scalars[nameof(Metrics.PageTrackerEvictionsDispatched)]} {scalars[nameof(Metrics.PageTrackerEvictionsInlineFallback)]} refreshes {scalars[nameof(Metrics.PageTrackerPagesRefreshed)]}");
+        independent.AddRange(RenderHistograms(histograms, independentHistograms, withSums: true).Where(observation => !nodeHits.Any(hit => observation.Contains($" {hit}:", StringComparison.Ordinal))));
+        List<string> dependent =
+        [
+            $"{nameof(Metrics.PersistedSnapshotCompactions)} {scalars[nameof(Metrics.PersistedSnapshotCompactions)]}",
+            $"{nameof(Metrics.PersistedSnapshotPrunes)} {scalars[nameof(Metrics.PersistedSnapshotPrunes)]}",
+            $"catalog writes {catalog.GatherMetric().TotalWrites - catalogWrites}",
+            .. dependentGauges,
+            .. RenderHistograms(histograms, dependentHistograms, withSums: false),
+        ];
+        return new LongFinalityObserved(reads, independent, dependent);
+
+        static long BaseSnapshots() =>
+            Metrics.PersistedSnapshotCount.Where(static gauge => gauge.Key.Tier == SnapshotTier.PersistedBase.MetricTierLabel()).Sum(static gauge => gauge.Value);
+
+        // What a merge holds depends on which snapshots of its window were there when it ran, so only how many ran is compared.
+        static IEnumerable<string> RenderHistograms(Dictionary<(string Metric, string Label), (int Count, double Sum)> histograms, string[] metrics, bool withSums) =>
+            histograms.Where(entry => metrics.Contains(entry.Key.Metric))
+                .Select(entry => $"{entry.Key.Metric} {entry.Key.Label}: {entry.Value.Count}{(!withSums || TimeHistograms.Contains(entry.Key.Metric) ? "" : $" {entry.Value.Sum}")}")
+                .Order(StringComparer.Ordinal);
     }
 
     /// <returns>The flat counters and gauges and the live pooled resources the stream moved, after each block and after the flush.</returns>
@@ -498,6 +677,40 @@ public class MetricsParityTests
             container.Arm.FlushCache(CancellationToken.None);
         }
 
+        /// <summary>
+        /// Blocks as <see cref="Run"/> adds them, but finality follows the head only for the first blocks and for a few
+        /// in the middle, so the bases past the in-memory window are converted into the tier and compacted there, and
+        /// once finality resumes persisted from it and pruned; every block is read back at the head and at the state
+        /// twice the finality lag below it, which the tier holds while finality stalls. The blocks self-destruct
+        /// nothing, so with bloom filters on the reads do not depend on when the compactor ran (see
+        /// <see cref="FlatManagerContainer.Config(FlatDbBackend, FlatLayout, bool, ulong, bool)"/>).
+        /// </summary>
+        /// <param name="atTheEndOfTheStall">Runs after the last block of the first stall.</param>
+        /// <returns>What the reads found.</returns>
+        public List<string> RunWithLongFinality(Action atTheEndOfTheStall)
+        {
+            const ulong FirstStallEnd = 39;
+            List<string> reads = [];
+            const ulong blockCount = 64;
+            Hash256[] owners = [.. _addresses.Take(3).Select(static address => address.ToAccountPath.ToCommitment())];
+            StateId head = StateId.PreGenesis;
+            for (ulong number = 0; number < blockCount; number++)
+            {
+                StateId block = Block(number);
+                (Plan(owners) with { SelfDestructs = [] }).AddTo(container, head, block);
+                _canonical.Add(block);
+                head = block;
+                if (number >= FinalityLag && number is < 12 or (> FirstStallEnd and < 44)) finality.Finalize(number - FinalityLag, canonical => _canonical[(int)canonical]);
+
+                container.PersistUpTo(head);
+                reads.AddRange(BundleReads.Read(container.Arm, head, _addresses, _slots, _paths, owners));
+                if (number >= 2 * FinalityLag) reads.AddRange(BundleReads.Read(container.Arm, _canonical[(int)(number - 2 * FinalityLag)], _addresses, _slots, _paths, owners));
+                if (number == FirstStallEnd) atTheEndOfTheStall();
+            }
+
+            return reads;
+        }
+
         private BlockPlan Plan(Hash256[] owners) => new(
             [.. Enumerable.Range(0, random.Next(1, 4)).Select(_ => (Pick(_addresses), random.Next(5) == 0 ? null : (Account?)new Account((ulong)random.Next(4), (UInt256)random.Next(1000))))],
             [.. Enumerable.Range(0, random.Next(0, 7)).Select(_ => (Pick(_addresses), Pick(_slots), random.Next(4) == 0 ? (UInt256?)null : (UInt256)random.Next(3)))],
@@ -506,13 +719,7 @@ public class MetricsParityTests
             [.. Enumerable.Range(0, random.Next(0, 5)).Select(_ => (Pick(owners), Pick(_paths), Keccak.Compute($"storage {random.Next()}"), Rlp()))]);
 
         /// <summary>Node RLP, or none for a hash-only placeholder.</summary>
-        private byte[]? Rlp()
-        {
-            if (random.Next(6) == 0) return null;
-            byte[] rlp = new byte[1 + random.Next(64)];
-            random.NextBytes(rlp);
-            return rlp;
-        }
+        private byte[]? Rlp() => random.Next(6) == 0 ? null : BlockPlan.RandomRlp(random, random.Next(64));
 
         private T Pick<T>(T[] items) => items[random.Next(items.Length)];
     }

@@ -89,7 +89,10 @@ pub enum ManagerError {
     #[error("No state available for {0:?}")]
     StateNotRetained(StateId),
     /// The `InvalidOperationException` of a gather that kept losing races with persistence.
-    #[error("Timed out gathering ReadOnlySnapshotBundle for block {state:?} after {attempts} retries over {elapsed:?}")]
+    #[error(
+        "Timed out gathering ReadOnlySnapshotBundle for block {state} after {attempts} retries over {}",
+        crate::log_ring::TimeSpan(*.elapsed)
+    )]
     GatherTimeout {
         state: StateId,
         attempts: u32,

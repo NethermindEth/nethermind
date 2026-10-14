@@ -117,6 +117,9 @@ internal enum NativeLogSource : uint
     /// <summary>The persistence class of the store's layout.</summary>
     LayoutPersistence = 6,
     DbOnTheRocks = 7,
+    PersistedSnapshotLoader = 8,
+    PersistedSnapshotCompactor = 9,
+    ArenaManager = 10,
 }
 
 /// <summary>

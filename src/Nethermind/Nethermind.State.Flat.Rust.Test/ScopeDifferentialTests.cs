@@ -9,6 +9,7 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -24,9 +25,15 @@ namespace Nethermind.State.Flat.Rust.Test;
 /// the same reads through the state reader after every block.
 /// </summary>
 /// <remarks>
+/// <para>
 /// A block commits once with changes, as the world state commits it, then possibly again with none, which keeps no
 /// snapshot. Two commits of one block with different roots would chain two states of one block number, past which
 /// neither backend persists or gathers.
+/// </para>
+/// <para>
+/// With long finality no block is ever finalized, so the scopes of a chain longer than the in-memory window read
+/// through the persisted-snapshot tier its older states are converted into.
+/// </para>
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class ScopeDifferentialTests
@@ -37,10 +44,10 @@ public class ScopeDifferentialTests
     private static readonly Address B = Addresses[1];
 
     [Test]
-    public async Task Fork_scopes_match_the_original_scopes([Values] bool deferStorageTrieCommit, [Range(0, 3)] int seed)
+    public async Task Fork_scopes_match_the_original_scopes([Values] bool deferStorageTrieCommit, [Range(0, 3)] int seed, [Values] bool longFinality)
     {
         RustNativeLibrary.Require();
-        await using Pair pair = new(deferStorageTrieCommit);
+        await using Pair pair = new(deferStorageTrieCommit, longFinality);
         Random random = new(20261021 + seed * 2 + (deferStorageTrieCommit ? 1 : 0));
         for (int block = 0; block < 24; block++)
         {
@@ -58,15 +65,21 @@ public class ScopeDifferentialTests
                 if (random.Next(3) == 0) scope.Commit();
             });
         }
+
+        if (longFinality) Assert.That(pair.PersistedSnapshotCounts, Is.All.Positive, "both backends read through a tier");
     }
 
-    /// <summary>The scripted cases of the original scope's tests, through both backends.</summary>
+    /// <summary>The scenario with blocks enough for long finality to convert some into the tier.</summary>
+    private const string ManyBlocks = "storage nodes read through the snapshots of the bundle, over many blocks and commits";
+
+    /// <summary>The scripted cases of the original scope's tests, through both backends; with long finality only <see cref="ManyBlocks"/>.</summary>
     [TestCaseSource(nameof(Scenarios))]
-    public async Task Fork_scopes_match_the_original_scopes_in(string scenario, Action<Pair> run, bool deferStorageTrieCommit)
+    public async Task Fork_scopes_match_the_original_scopes_in(string scenario, Action<Pair> run, bool deferStorageTrieCommit, bool longFinality)
     {
         RustNativeLibrary.Require();
-        await using Pair pair = new(deferStorageTrieCommit);
+        await using Pair pair = new(deferStorageTrieCommit, longFinality);
         run(pair);
+        if (longFinality) Assert.That(pair.PersistedSnapshotCounts, Is.All.Positive, "both backends read through a tier");
     }
 
     private static IEnumerable<TestCaseData> Scenarios()
@@ -126,7 +139,7 @@ public class ScopeDifferentialTests
                     scope.Batch([Write.SetSlot(A, 4, 54), Write.Account(A, 3, 30)]);
                 });
             }),
-            ("storage nodes read through the snapshots of the bundle, over many blocks and commits", static pair =>
+            (ManyBlocks, static pair =>
             {
                 for (int block = 0; block < 12; block++)
                 {
@@ -156,7 +169,10 @@ public class ScopeDifferentialTests
         {
             foreach (bool defer in new[] { false, true })
             {
-                yield return new TestCaseData(name, run, defer).SetArgDisplayNames(name, $"defer {defer}");
+                foreach (bool longFinality in name == ManyBlocks ? new[] { false, true } : [false])
+                {
+                    yield return new TestCaseData(name, run, defer, longFinality).SetArgDisplayNames(name, $"defer {defer}", $"long finality {longFinality}");
+                }
             }
         }
     }
@@ -194,10 +210,10 @@ public class ScopeDifferentialTests
     }
 
     /// <summary>A node of each backend over a RocksDB of its own, building the same chain.</summary>
-    public sealed class Pair(bool deferStorageTrieCommit) : IAsyncDisposable
+    public sealed class Pair(bool deferStorageTrieCommit, bool longFinality) : IAsyncDisposable
     {
-        private readonly Node _original = new(FlatDbBackend.CSharp, deferStorageTrieCommit);
-        private readonly Node _fork = new(FlatDbBackend.Rust, deferStorageTrieCommit);
+        private readonly Node _original = new(FlatDbBackend.CSharp, deferStorageTrieCommit, longFinality);
+        private readonly Node _fork = new(FlatDbBackend.Rust, deferStorageTrieCommit, longFinality);
 
         /// <summary>The headers of the blocks built, the empty state first.</summary>
         public List<BlockHeader?> Chain { get; } = [null];
@@ -218,6 +234,9 @@ public class ScopeDifferentialTests
             _fork.Persist(header);
             Assert.That(_fork.Reads(header), Is.EqualTo(_original.Reads(header)), $"state reader at block {number}");
         }
+
+        /// <summary>The snapshots in the persisted-snapshot tier of each backend.</summary>
+        public long[] PersistedSnapshotCounts => [_original.PersistedSnapshotCount, _fork.PersistedSnapshotCount];
 
         public async ValueTask DisposeAsync()
         {
@@ -278,11 +297,14 @@ public class ScopeDifferentialTests
                 Account current = scope.Get(account.Key) ?? new Account(0, 0);
                 if (account.Any(static write => write.Deletes))
                 {
+                    // As a self-destruct deletes it: its storage goes too.
+                    using (IWorldStateScopeProvider.IStorageWriteBatch cleared = batch.CreateStorageWriteBatch(account.Key, 0)) cleared.Clear();
                     batch.Set(account.Key, null);
                     continue;
                 }
 
-                foreach (Write write in account.Where(static write => write.NewAccount is not null)) current = write.NewAccount!;
+                // An account keeps the root of its storage, which is cleared as new only when it holds none.
+                foreach (Write write in account.Where(static write => write.NewAccount is not null)) current = write.NewAccount!.WithChangedStorageRoot(current.StorageRoot);
                 batch.Set(account.Key, current);
                 Write[] storage = [.. account.Where(static write => write.ClearsStorage || write.Slot is not null)];
                 if (storage.Length == 0) continue;
@@ -322,12 +344,20 @@ public class ScopeDifferentialTests
         private readonly IWorldStateScopeProvider _provider;
         private readonly IStateReader _reader;
         private readonly IPersistenceManager _persistenceManager;
+        private readonly TempPath? _tierPath;
 
-        public Node(FlatDbBackend backend, bool deferStorageTrieCommit)
+        public Node(FlatDbBackend backend, bool deferStorageTrieCommit, bool longFinality)
         {
-            FlatDbConfig config = FlatManagerContainer.Config(backend);
+            FlatDbConfig config = FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality);
             config.DeferStorageTrieCommit = deferStorageTrieCommit;
-            _container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
+            ContainerBuilder builder = new ContainerBuilder().AddModule(new TestNethermindModule(config));
+            if (longFinality)
+            {
+                _tierPath = TempPath.GetTempDirectory();
+                LongFinalityNode.Enable(builder, backend, _tierPath.Path);
+            }
+
+            _container = builder.Build();
             IWorldStateManager worldStateManager = _container.Resolve<IWorldStateManager>();
             _provider = worldStateManager.GlobalWorldState;
             _reader = worldStateManager.GlobalStateReader;
@@ -361,6 +391,12 @@ public class ScopeDifferentialTests
             return reads;
         }
 
-        public ValueTask DisposeAsync() => _container.DisposeAsync();
+        public long PersistedSnapshotCount => NativeTier.PersistedSnapshotCount(_container);
+
+        public async ValueTask DisposeAsync()
+        {
+            await _container.DisposeAsync();
+            _tierPath?.Dispose();
+        }
     }
 }

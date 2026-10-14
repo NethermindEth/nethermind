@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -17,7 +18,8 @@ namespace Nethermind.State.Flat.Rust.Test;
 /// The overridable world scope of the forked package against the original's, over a real node of each backend: its
 /// commits stay its own, chain into the snapshots a later scope is seeded with, a storage cleared mid-chain hides the
 /// slots below it, a scope opened before <see cref="IOverridableWorldScope.ResetOverrides"/> keeps reading, and on the
-/// forked package every native content the scope made is released once the scopes are gone.
+/// forked package every native content the scope made is released once the scopes are gone. With long finality the
+/// scope starts on a chain whose older states are in the persisted-snapshot tier, and also reads those.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class ForkOverridableWorldScopeTests
@@ -27,11 +29,11 @@ public class ForkOverridableWorldScopeTests
     private static readonly UInt256[] Slots = [1, 2, 3];
 
     [Test]
-    public async Task Overridable_scope_reads_and_releases_its_own_commits_as_the_original()
+    public async Task Overridable_scope_reads_and_releases_its_own_commits_as_the_original([Values] bool longFinality)
     {
         RustNativeLibrary.Require();
-        (List<string> original, _) = await Run(FlatDbBackend.CSharp);
-        (List<string> fork, long[] liveContents) = await Run(FlatDbBackend.Rust);
+        (List<string> original, _) = await Run(FlatDbBackend.CSharp, longFinality);
+        (List<string> fork, long[] liveContents) = await Run(FlatDbBackend.Rust, longFinality);
 
         using (Assert.EnterMultipleScope())
         {
@@ -42,18 +44,21 @@ public class ForkOverridableWorldScopeTests
     }
 
     /// <returns>What the run read, and on the Rust backend the live native contents of read-only scopes before, during and after it.</returns>
-    private static async Task<(List<string> Reads, long[] LiveContents)> Run(FlatDbBackend backend)
+    private static async Task<(List<string> Reads, long[] LiveContents)> Run(FlatDbBackend backend, bool longFinality)
     {
-        await using WorldStateNode node = new(backend);
+        await using WorldStateNode node = new(backend, longFinality);
         List<string> reads = [];
-        List<long> liveContents = [LiveReadOnlyContents(node, backend)];
         IWorldStateManager manager = node.WorldStateManager;
+        List<BlockHeader> chain = longFinality ? TierChain(node) : [];
+        List<long> liveContents = [LiveReadOnlyContents(node, backend)];
         IOverridableWorldScope overridable = manager.CreateOverridableWorldScope();
 
-        BlockHeader first = WorldStateNode.Commit(overridable.WorldState, null, 0, WorldStateNode.Write(A, new Account(1, 10), false, (1, 11), (2, 12)));
-        BlockHeader second = WorldStateNode.Commit(overridable.WorldState, first, 1, WorldStateNode.Write(A, new Account(2, 20), true, (3, 33)));
-        BlockHeader third = WorldStateNode.Commit(overridable.WorldState, second, 2, WorldStateNode.Write(B, new Account(3, 30), false, (1, 41)));
-        foreach (BlockHeader header in new[] { first, second, third })
+        BlockHeader? parent = chain.Count == 0 ? null : chain[^1];
+        ulong number = (ulong)chain.Count;
+        BlockHeader first = WorldStateNode.Commit(overridable.WorldState, parent, number, WorldStateNode.Write(A, new Account(1, 10), false, (1, 11), (2, 12)));
+        BlockHeader second = WorldStateNode.Commit(overridable.WorldState, first, number + 1, WorldStateNode.Write(A, new Account(2, 20), true, (3, 33)));
+        BlockHeader third = WorldStateNode.Commit(overridable.WorldState, second, number + 2, WorldStateNode.Write(B, new Account(3, 30), false, (1, 41)));
+        foreach (BlockHeader header in new[] { first, second, third }.Concat(chain.Take(3)))
         {
             reads.AddRange(WorldStateNode.Reads(overridable.GlobalStateReader, header, [A, B], Slots));
         }
@@ -68,6 +73,22 @@ public class ForkOverridableWorldScopeTests
         overridable.Dispose();
         liveContents.Add(LiveReadOnlyContents(node, backend));
         return (reads, [.. liveContents]);
+    }
+
+    /// <summary>A chain committed through the node's world state, past its in-memory window, so its first blocks are in the tier.</summary>
+    private static List<BlockHeader> TierChain(WorldStateNode node)
+    {
+        List<BlockHeader> chain = [];
+        BlockHeader? head = null;
+        for (ulong number = 0; number < 16; number++)
+        {
+            head = WorldStateNode.Commit(node.WorldStateManager.GlobalWorldState, head, number, WorldStateNode.Write(A, new Account(number, number), number % 4 == 0, (number % 3 + 1, number)));
+            chain.Add(head);
+            FlatManagerContainer.PersistUpTo(node.Resolve<IPersistenceManager>(), new StateId(head));
+        }
+
+        Assert.That(node.PersistedSnapshotCount, Is.Positive, "the chain's first blocks are in the tier");
+        return chain;
     }
 
     private static UInt256 Slot(IWorldStateScopeProvider.IScope scope, Address address, UInt256 slot)

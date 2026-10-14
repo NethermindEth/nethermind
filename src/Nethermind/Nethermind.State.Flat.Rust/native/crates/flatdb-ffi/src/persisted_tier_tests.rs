@@ -559,7 +559,12 @@ fn tier_panics_poison_the_store(
             // takes it.
             inject(node.store, fault, "injected panic");
             node.register_block(BLOCKS);
-            assert_eq!(node.persist().0, OK);
+            // One of those merges may take the fault first, and poison the store before this persist.
+            let (status, message) = node.persist();
+            assert!(
+                status == OK || status == FdbStatus::Poisoned as i32,
+                "{status} {message}"
+            );
             let deadline = Instant::now() + Duration::from_secs(30);
             while !node.is_poisoned() && Instant::now() < deadline {
                 std::thread::sleep(Duration::from_millis(10));

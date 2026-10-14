@@ -421,7 +421,7 @@ impl Shared {
         // Clamped at the persisted block: snapshots below it are in the persistence already, and a wide snapshot
         // reaching below it is then left for the narrower edges above it.
         let start = (block_number as i64 - size as i64).max(persisted_block_number as i64) as u64;
-        self.compact_range(to, start, false)
+        self.compact_range(to, start, size, false)
     }
 
     fn do_compact_compact_sized(&self, to: &StateId) -> TierResult<bool> {
@@ -435,21 +435,22 @@ impl Shared {
 
         // Exactly CompactSize wide at any boundary, and on a persistence boundary, so never below the persisted block.
         let compact_size = schedule.get_compact_size(block_number);
-        self.compact_range(to, block_number.wrapping_sub(compact_size), true)
+        self.compact_range(to, block_number.wrapping_sub(compact_size), compact_size, true)
     }
 
     /// `CompactRange`: merges the chain the walk assembles from `to` back toward `start` into one snapshot of the tier
     /// the window calls for, records it durably and indexes it; whether there were two snapshots to merge.
-    fn compact_range(&self, to: &StateId, start: u64, compact_sized: bool) -> TierResult<bool> {
+    fn compact_range(&self, to: &StateId, start: u64, compact_size: u64, compact_sized: bool) -> TierResult<bool> {
         let sources = self.repository.assemble_persisted_snapshots_for_compaction(to, start);
         if sources.len() < 2 {
             return Ok(false);
         }
         let (from, to) = (sources[0].from(), sources[sources.len() - 1].to());
         log::debug!(
-            "Compacting {} persisted snapshots at block {}, CompactSized {compact_sized}",
+            "Compacting {} persisted snapshots at block {}, compact size {compact_size}, CompactSized {}",
             sources.len(),
-            to.block_number
+            to.block_number,
+            if compact_sized { "True" } else { "False" }
         );
 
         // One sequential-scan session per source for the whole merge, dropping the scanned pages once it ends.

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -12,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust.Interop;
@@ -40,6 +43,32 @@ public partial class NativeLogAndSeamTests
 
         Assert.That(actual, Is.EquivalentTo(expected));
         Assert.That(expected, Has.Some.Matches<string>(static line => line!.StartsWith("Warn State.Flat.FlatDbManager: State StateId { BlockNumber = 3,", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// A tier logs its conversions and merges through the loggers of C#'s <c>PersistedSnapshotLoader</c> and
+    /// <c>PersistedSnapshotCompactor</c>, and, reopened with the arena file of one of its snapshots deleted, warns once,
+    /// through the logger of C#'s <c>ArenaManager</c>, that it drops the snapshots of that file.
+    /// </summary>
+    /// <remarks>
+    /// Which arena file holds the oldest snapshot, and which merges ran, depends on when the compactions ran, so the
+    /// numbers are left out and each kind of line is compared once.
+    /// </remarks>
+    [Test]
+    public async Task Tier_lines_match_the_csharp_backend()
+    {
+        RustNativeLibrary.Require();
+        List<string> expected = await TierLines(FlatDbBackend.CSharp);
+        List<string> actual = await TierLines(FlatDbBackend.Rust);
+
+        Assert.That(actual, Is.EqualTo(expected));
+        Assert.That(expected, Is.SupersetOf(new[]
+        {
+            "Debug State.Flat.PersistedSnapshots.PersistedSnapshotCompactor: Compacting N persisted snapshots at block N, compact size N, CompactSized False",
+            "Debug State.Flat.PersistedSnapshots.PersistedSnapshotCompactor: Compacting N persisted snapshots at block N, compact size N, CompactSized True",
+            "Debug State.Flat.PersistedSnapshots.PersistedSnapshotLoader: Persisted snapshot N->N to disk (arena N, N bytes)",
+            "Warn State.Flat.PersistedSnapshots.Storage.ArenaManager: Persisted-snapshot catalog references arena N with no on-disk file; dropping its entries.",
+        }));
     }
 
     /// <summary>A database on the deprecated raw slot encoding warns once, through the logger of the layout's C# persistence.</summary>
@@ -161,6 +190,54 @@ public partial class NativeLogAndSeamTests
     }
 
     /// <summary>
+    /// The distinct lines, numbers left out, at <see cref="LogLevel.Warn"/> and above and those of the persisted-snapshot
+    /// loader and compactor at <see cref="LogLevel.Debug"/>, of a long-finality manager converting a stalled chain into
+    /// its tier, and of one reopened over that tier with the arena file of the oldest snapshot deleted.
+    /// </summary>
+    private static async Task<List<string>> TierLines(FlatDbBackend backend)
+    {
+        using TempPath path = TempPath.GetTempDirectory();
+        FlatDbConfig config = FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: true);
+        RecordingLogManager logManager = new(LogLevel.Debug);
+        await using (FlatManagerContainer container = new(config, path.Path, new TestFinality(), new() { RocksDbCatalog = true, LogManager = logManager }))
+        {
+            for (ulong number = 0; number < 24; number++)
+            {
+                container.AddBlock(number);
+                container.PersistUpTo(Block(number));
+            }
+
+            NativeTier.WaitUntilSettled(() => container.TierFingerprint);
+            if (backend != FlatDbBackend.CSharp) container.Resolve<RustPersistence>().Store.PumpLogs();
+        }
+
+        int oldest;
+        using (DbOnTheRocks catalog = FlatTestDbs.OpenRocksDbCatalog(path.Path))
+        {
+            // The row's value: from, from root, to (block at byte 40), to root, then the arena id at byte 80.
+            oldest = catalog.GetAll().MinBy(static row => BinaryPrimitives.ReadInt64LittleEndian(row.Value!.AsSpan(40))).Value is { } value
+                ? BinaryPrimitives.ReadInt32LittleEndian(value.AsSpan(80))
+                : throw new InvalidOperationException("The tier is empty");
+        }
+
+        string arenaPath = Path.Combine(path.Path, "persistedSnapshot", "arena");
+        File.Delete(Directory.GetFiles(arenaPath).Single(file => file.EndsWith($"_{oldest:D4}.bin", StringComparison.Ordinal)));
+
+        await using (FlatManagerContainer reopened = new(config, path.Path, new TestFinality(), new() { RocksDbCatalog = true, LogManager = logManager }))
+        {
+            if (backend != FlatDbBackend.CSharp) reopened.Resolve<RustPersistence>().Store.PumpLogs();
+        }
+
+        string[] tierClasses = ["State.Flat.PersistedSnapshots.PersistedSnapshotLoader:", "State.Flat.PersistedSnapshots.PersistedSnapshotCompactor:"];
+        return [.. logManager.Lines
+            .Where(line => line.StartsWith("Warn ", StringComparison.Ordinal) || line.StartsWith("Error ", StringComparison.Ordinal)
+                || line.StartsWith("Debug ", StringComparison.Ordinal) && tierClasses.Any(tierClass => line.Contains(tierClass, StringComparison.Ordinal)))
+            .Select(static line => Number().Replace(line, "N"))
+            .Distinct()
+            .Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>
     /// The populator lines, times left out, of a block whose populate fails and one whose populate is slow, and the
     /// failure of the first add when they run inline.
     /// </summary>
@@ -198,6 +275,9 @@ public partial class NativeLogAndSeamTests
 
     [GeneratedRegex("([Tt]ook) .*$")]
     private static partial Regex Took();
+
+    [GeneratedRegex("[0-9]+")]
+    private static partial Regex Number();
 
     /// <summary>A trie node cache whose adds run the given actions in turn, and then nothing.</summary>
     private sealed class ScriptedTrieNodeCache(params Action[] adds) : ITrieNodeCache

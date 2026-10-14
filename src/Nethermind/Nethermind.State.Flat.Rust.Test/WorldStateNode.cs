@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -16,13 +17,34 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.Rust.Test;
 
 /// <summary>The world state of a test node on one flat backend, as <see cref="TestNethermindModule"/> builds it.</summary>
-internal sealed class WorldStateNode(FlatDbConfig config) : IAsyncDisposable
+internal sealed class WorldStateNode : IAsyncDisposable
 {
-    private readonly IContainer _container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
+    private readonly IContainer _container;
+    private readonly TempPath? _tierPath;
+
+    public WorldStateNode(FlatDbConfig config) => _container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
 
     public WorldStateNode(FlatDbBackend backend) : this(FlatManagerContainer.Config(backend))
     {
     }
+
+    /// <param name="longFinality">Whether the node converts the states past its in-memory window into a
+    /// persisted-snapshot tier, in a directory of its own.</param>
+    public WorldStateNode(FlatDbBackend backend, bool longFinality)
+    {
+        FlatDbConfig config = FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality);
+        ContainerBuilder builder = new ContainerBuilder().AddModule(new TestNethermindModule(config));
+        if (longFinality)
+        {
+            _tierPath = TempPath.GetTempDirectory();
+            LongFinalityNode.Enable(builder, backend, _tierPath.Path);
+        }
+
+        _container = builder.Build();
+    }
+
+    /// <summary>The snapshots in the node's persisted-snapshot tier.</summary>
+    public long PersistedSnapshotCount => NativeTier.PersistedSnapshotCount(_container);
 
     public IWorldStateManager WorldStateManager => _container.Resolve<IWorldStateManager>();
 
@@ -73,5 +95,9 @@ internal sealed class WorldStateNode(FlatDbConfig config) : IAsyncDisposable
         return reads;
     }
 
-    public ValueTask DisposeAsync() => _container.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        await _container.DisposeAsync();
+        _tierPath?.Dispose();
+    }
 }

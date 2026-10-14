@@ -6,6 +6,8 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Flat.Rust.Interop;
 
@@ -42,6 +44,9 @@ internal sealed unsafe class LogPump
                 _ => logManager.GetClassLogger<PreimageRocksdbPersistence>(),
             },
             logManager.GetClassLogger<DbOnTheRocks>(),
+            logManager.GetClassLogger<PersistedSnapshotLoader>(),
+            logManager.GetClassLogger<PersistedSnapshotCompactor>(),
+            logManager.GetClassLogger<ArenaManager>(),
         ];
         Level = _loggers.Max(LevelOf);
     }

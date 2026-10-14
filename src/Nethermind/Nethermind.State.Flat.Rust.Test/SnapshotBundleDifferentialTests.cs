@@ -24,7 +24,8 @@ namespace Nethermind.State.Flat.Rust.Test;
 /// The forked <see cref="Fork.SnapshotBundle"/>, whose content is native, against the original <see cref="SnapshotBundle"/>
 /// under one seeded stream of writes, reads and commits each, over the same chain of snapshots: after every operation
 /// both must read the same accounts, self-destruct indexes, slots and trie nodes, or fail the same way, and every kept
-/// commit must hand over the trie nodes the original's snapshot holds.
+/// commit must hand over the trie nodes the original's snapshot holds. With long finality the chain is longer than the
+/// in-memory window, so the bundles also read through the persisted-snapshot tier its older blocks are converted into.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class SnapshotBundleDifferentialTests
@@ -36,10 +37,10 @@ public class SnapshotBundleDifferentialTests
     private static readonly TreePath Branch = TreePath.FromHexString("1");
 
     [Test]
-    public async Task Fork_bundle_reads_and_commits_as_the_original_bundle([ValueSource(nameof(Usages))] ResourcePool.Usage usage, [Range(0, 9)] int seed)
+    public async Task Fork_bundle_reads_and_commits_as_the_original_bundle([ValueSource(nameof(Usages))] ResourcePool.Usage usage, [Range(0, 9)] int seed, [Values] bool longFinality)
     {
         NativeTestSnapshots.Require();
-        await using Pair pair = await Pair.Open(new Random(20261020 + seed * 3 + (int)usage), usage);
+        await using Pair pair = await Pair.Open(new Random(20261020 + seed * 3 + (int)usage), usage, longFinality);
         new Stream(pair).Run();
     }
 
@@ -55,7 +56,7 @@ public class SnapshotBundleDifferentialTests
     public async Task Placeholders_and_mismatches_read_as_the_original(bool committed, bool placeholder)
     {
         NativeTestSnapshots.Require();
-        await using Pair pair = await Pair.Open(new Random(7), ResourcePool.Usage.MainBlockProcessing);
+        await using Pair pair = await Pair.Open(new Random(7), ResourcePool.Usage.MainBlockProcessing, longFinality: false);
         Hash256 set = Keccak.Compute("set");
         byte[] setRlp = Bytes.FromHexString("0xc28080");
         pair.SetStateNode(Root, placeholder ? new TrieNode(NodeType.Unknown, set) : new TrieNode(NodeType.Leaf, set, setRlp));
@@ -82,7 +83,7 @@ public class SnapshotBundleDifferentialTests
     public async Task A_kept_commit_hands_over_only_its_own_live_nodes()
     {
         NativeTestSnapshots.Require();
-        await using Pair pair = await Pair.Open(new Random(11), ResourcePool.Usage.MainBlockProcessing);
+        await using Pair pair = await Pair.Open(new Random(11), ResourcePool.Usage.MainBlockProcessing, longFinality: false);
         Hash256 owner = pair.Owners[0];
         TrieNode before = new(NodeType.Leaf, Keccak.Compute("before"), Bytes.FromHexString("0xc101"));
         TrieNode cleared = new(NodeType.Leaf, Keccak.Compute("cleared"), Bytes.FromHexString("0xc102"));
@@ -319,6 +320,7 @@ public class SnapshotBundleDifferentialTests
     /// <summary>
     /// A bundle of each package over the same chain: block 0 persisted, blocks 1-3 in memory, block 2 clearing a storage,
     /// and, depending on the stream, the bundle seeded with three snapshots of its own, the middle one clearing a storage.
+    /// With long finality the chain goes on to block 15, and blocks 1-8 are converted into the persisted-snapshot tier.
     /// </summary>
     private sealed class Pair : IAsyncDisposable
     {
@@ -354,16 +356,18 @@ public class SnapshotBundleDifferentialTests
 
         public IBundle Fork { get; private set; } = null!;
 
-        public static async Task<Pair> Open(Random random, ResourcePool.Usage usage)
+        /// <param name="longFinality">Whether the chain the bundles are gathered over is long enough for its older blocks
+        /// to be converted into the persisted-snapshot tier.</param>
+        public static async Task<Pair> Open(Random random, ResourcePool.Usage usage, bool longFinality)
         {
             TempPath originalPath = TempPath.GetTempDirectory();
             TempPath forkPath = TempPath.GetTempDirectory();
-            FlatManagerContainer original = new(FlatManagerContainer.Config(FlatDbBackend.CSharp), originalPath.Path, new TestFinality());
-            FlatManagerContainer fork = new(FlatManagerContainer.Config(FlatDbBackend.Rust), forkPath.Path, new TestFinality());
+            FlatManagerContainer original = new(Config(FlatDbBackend.CSharp, longFinality), originalPath.Path, new TestFinality());
+            FlatManagerContainer fork = new(Config(FlatDbBackend.Rust, longFinality), forkPath.Path, new TestFinality());
             Pair pair = new(random, originalPath, forkPath, original, fork);
             try
             {
-                pair.Build(usage);
+                pair.Build(usage, longFinality);
                 return pair;
             }
             catch
@@ -373,10 +377,13 @@ public class SnapshotBundleDifferentialTests
             }
         }
 
-        private void Build(ResourcePool.Usage usage)
+        private static FlatDbConfig Config(FlatDbBackend backend, bool longFinality) =>
+            FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality);
+
+        private void Build(ResourcePool.Usage usage, bool longFinality)
         {
             StateId parent = StateId.PreGenesis;
-            for (ulong number = 0; number <= 3; number++)
+            for (ulong number = 0; number <= (longFinality ? 15UL : 3UL); number++)
             {
                 StateId block = Next(number);
                 BlockPlan plan = number == 0
@@ -389,9 +396,16 @@ public class SnapshotBundleDifferentialTests
                     _originalContainer.Arm.FlushCache(CancellationToken.None);
                     _forkContainer.Arm.FlushCache(CancellationToken.None);
                 }
+                else if (longFinality)
+                {
+                    _originalContainer.PersistUpTo(block);
+                    _forkContainer.PersistUpTo(block);
+                }
 
                 parent = block;
             }
+
+            if (longFinality) SettleTiers(parent);
 
             bool filter = Random.Next(2) == 0;
             IFlatDbManager originalManager = _originalContainer.Resolve<IFlatDbManager>();
@@ -411,10 +425,10 @@ public class SnapshotBundleDifferentialTests
             StateId chainHead = parent;
             SnapshotPooledList originalSeed = new(3);
             Fork.SnapshotPooledList forkSeed = new(3);
-            for (ulong number = 4; number <= 6; number++)
+            for (ulong number = parent.BlockNumber + 1, last = number + 2; number <= last; number++)
             {
                 StateId block = Next(number);
-                BlockPlan plan = number == 5 ? Plan() with { SelfDestructs = [(Addresses[1], Random.Next(2) == 0)] } : Plan();
+                BlockPlan plan = number == last - 1 ? Plan() with { SelfDestructs = [(Addresses[1], Random.Next(2) == 0)] } : Plan();
                 originalSeed.Add(FlatArm.CSharp.Build(_originalContainer.ResourcePool, plan, parent, block, ResourcePool.Usage.ReadOnlyProcessingEnv, out _));
                 forkSeed.Add(FlatArm.Rust.Build(plan, parent, block, out _));
                 parent = block;
@@ -427,6 +441,19 @@ public class SnapshotBundleDifferentialTests
                 new Fork.SnapshotBundle(forkManager.GatherReadOnlySnapshotBundle(chainHead), _forkContainer.Resolve<ITrieNodeCache>(), _forkContainer.ResourcePool, usage, forkSeed, filter),
                 forkReadOnly);
             _head = parent;
+        }
+
+        /// <summary>
+        /// Waits for the persisted-snapshot compactor of either backend to have merged the 8 converted bases of blocks
+        /// 1-8, at blocks 2 and 6 (2 wide), 4 and 8 (4 wide) and 8 (8 wide), then drops the bundles either manager
+        /// cached before, so both gather the same snapshots, which their indexes count.
+        /// </summary>
+        private void SettleTiers(in StateId head)
+        {
+            Assert.That(() => (_originalContainer.PersistedSnapshotCount, _forkContainer.PersistedSnapshotCount), Is.EqualTo((13L, 13L)).After(10_000, 10),
+                "the persisted snapshots of either tier");
+            _originalContainer.Arm.DropStateNotReachableFrom(head);
+            _forkContainer.Arm.DropStateNotReachableFrom(head);
         }
 
         /// <summary>A new state of block <paramref name="number"/>.</summary>
@@ -452,12 +479,8 @@ public class SnapshotBundleDifferentialTests
 
         public UInt256 RandomValue() => Random.Next(4) == 0 ? UInt256.Zero : (UInt256)Random.Next(1, 1000);
 
-        public byte[] RandomRlp()
-        {
-            byte[] rlp = new byte[1 + Random.Next(Random.Next(3) == 0 ? 31 : 600)];
-            Random.NextBytes(rlp);
-            return rlp;
-        }
+        /// <summary>The RLP of a node, no longer than a branch node's (532 bytes).</summary>
+        public byte[] RandomRlp() => BlockPlan.RandomRlp(Random, Random.Next(Random.Next(3) == 0 ? 31 : 530));
 
         public T Pick<T>(T[] items) => items[Random.Next(items.Length)];
 

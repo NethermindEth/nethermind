@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -13,6 +14,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Rust.Interop;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -31,15 +33,22 @@ namespace Nethermind.State.Flat.Rust.Test;
 /// in step.
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
-public class RustFlatDbManagerDifferentialTests
+public partial class RustFlatDbManagerDifferentialTests
 {
     private static readonly FlatLayout[] Layouts = GoldenVectorGenerator.Layouts;
 
-    [Test]
-    public async Task Rust_manager_matches_the_csharp_manager_in_lockstep(
-        [ValueSource(nameof(Layouts))] FlatLayout layout,
-        [Values] bool carryForward,
-        [Values] bool byteBudget)
+    /// <summary>
+    /// Every layout and carry-forward setting with long finality off, with and without a byte budget, and on, with and
+    /// without the bloom filters of the tier.
+    /// </summary>
+    private static IEnumerable<TestCaseData> LockstepCases() =>
+        from layout in Layouts
+        from carryForward in new[] { false, true }
+        from axis in new (bool ByteBudget, bool LongFinality, bool BloomFilters)[] { (false, false, false), (true, false, false), (false, true, false), (false, true, true) }
+        select new TestCaseData(layout, carryForward, axis.ByteBudget, axis.LongFinality, axis.BloomFilters);
+
+    [TestCaseSource(nameof(LockstepCases))]
+    public async Task Rust_manager_matches_the_csharp_manager_in_lockstep(FlatLayout layout, bool carryForward, bool byteBudget, bool longFinality, bool bloomFilters)
     {
         RustNativeLibrary.Require();
         if (byteBudget)
@@ -52,11 +61,31 @@ public class RustFlatDbManagerDifferentialTests
         using TempPath rustPath = TempPath.GetTempDirectory();
         TestFinality finality = new();
         ulong budget = byteBudget ? 48 * 1024UL : 0;
-        await using FlatManagerContainer csharp = new(FlatManagerContainer.Config(FlatDbBackend.CSharp, layout, carryForward, budget, longFinality: false), csharpPath.Path, finality);
-        await using FlatManagerContainer rust = new(FlatManagerContainer.Config(FlatDbBackend.Rust, layout, carryForward, budget, longFinality: false), rustPath.Path, finality);
+        FlatDbConfig csharpConfig = Config(FlatDbBackend.CSharp);
+        // The catalog outlives the managers, for the tier to be dumped once they are disposed.
+        FlatManagerContainer.Overrides overrides = new() { RocksDbCatalog = longFinality };
+        await using (FlatManagerContainer csharp = new(csharpConfig, csharpPath.Path, finality, overrides),
+            rust = new(Config(FlatDbBackend.Rust), rustPath.Path, finality, overrides))
+        {
+            int seed = 20261013 + (int)layout * 4 + (carryForward ? 2 : 0) + (byteBudget ? 1 : 0) + (longFinality ? 100 : 0) + (bloomFilters ? 100 : 0);
+            new Lockstep(new Random(seed), finality, csharp, rust, longFinality, selfDestructs: !bloomFilters).Run();
+        }
 
-        int seed = 20261013 + (int)layout * 4 + (carryForward ? 2 : 0) + (byteBudget ? 1 : 0);
-        new Lockstep(new Random(seed), finality, csharp, rust).Run();
+        if (!longFinality) return;
+
+        List<string> expected = PersistedDump.Take(csharpPath.Path, csharpConfig);
+        Assert.That(expected, Is.Not.Empty, "the tier holds converted snapshots at the end");
+        Assert.That(PersistedDump.Take(rustPath.Path, csharpConfig), Is.EqualTo(expected), "the converted snapshots of the tier after disposal");
+
+        FlatDbConfig Config(FlatDbBackend backend)
+        {
+            FlatDbConfig config = FlatManagerContainer.Config(backend, layout, carryForward, budget, longFinality);
+            if (!longFinality) return config;
+            // Shallower than the head runs ahead of the persisted state while finality stalls, so the stalls persist from the tier.
+            config.LongFinalityMaxReorgDepth = 24;
+            if (bloomFilters) config.PersistedSnapshotBloomBitsPerKey = 14;
+            return config;
+        }
     }
 
     /// <summary>The writes of one block, applied to a C# snapshot of each manager.</summary>
@@ -69,6 +98,21 @@ public class RustFlatDbManagerDifferentialTests
     {
         public static readonly BlockPlan Empty = new([], [], [], [], []);
 
+        /// <summary>
+        /// A random RLP list with a payload of <paramref name="payloadLength"/> bytes, as the persisted-snapshot tier
+        /// reads a node back by the length its RLP declares.
+        /// </summary>
+        public static byte[] RandomRlp(Random random, int payloadLength)
+        {
+            byte[] header = payloadLength <= 55 ? [(byte)(0xc0 + payloadLength)]
+                : payloadLength <= byte.MaxValue ? [0xf8, (byte)payloadLength]
+                : [0xf9, (byte)(payloadLength >> 8), (byte)payloadLength];
+            byte[] rlp = new byte[header.Length + payloadLength];
+            random.NextBytes(rlp);
+            header.CopyTo(rlp, 0);
+            return rlp;
+        }
+
         /// <summary>Builds the snapshot of the plan in <paramref name="container"/> and adds it.</summary>
         /// <inheritdoc cref="FlatArm.Add(BlockPlan, in StateId, in StateId)"/>
         public TrieNode[] AddTo(FlatManagerContainer container, StateId from, StateId to) => container.Arm.Add(this, from, to);
@@ -79,7 +123,7 @@ public class RustFlatDbManagerDifferentialTests
     /// The bundle is gathered with reader flags, so neither manager serves it from its bundle cache: a cached bundle reads
     /// the persistence as it was when the bundle was built, which a hash-only placeholder falls through to.
     /// </remarks>
-    internal static class BundleReads
+    internal static partial class BundleReads
     {
         public static List<string> Read(FlatArm manager, in StateId state, Address[] addresses, UInt256[] slots, TreePath[] paths, Hash256[] owners)
         {
@@ -91,7 +135,8 @@ public class RustFlatDbManagerDifferentialTests
             }
             catch (Exception exception)
             {
-                return [$"{exception.GetType().Name}: {exception.Message}"];
+                // How often and for how long a gather that cannot assemble its state retried depends on timing.
+                return [$"{exception.GetType().Name}: {Retries().Replace(exception.Message, " after retries")}"];
             }
 
             using (bundle)
@@ -136,12 +181,29 @@ public class RustFlatDbManagerDifferentialTests
 
         private static string Render(Account? account) =>
             account is null ? "null" : $"{account.Nonce} {account.Balance} {account.StorageRoot} {account.CodeHash}";
+
+        [GeneratedRegex(" after [0-9]+ retries over .*$")]
+        private static partial Regex Retries();
     }
 
-    private sealed class Lockstep(Random random, TestFinality finality, FlatManagerContainer csharp, FlatManagerContainer rust)
+    /// <param name="longFinality">Whether the managers convert the snapshots past their in-memory window into a tier.</param>
+    /// <param name="selfDestructs">Whether the blocks self-destruct accounts; with the bloom filters of the tier on, a
+    /// read below a self-destruct would depend on whether a merge covered it (see <see cref="FlatManagerContainer.Config(FlatDbBackend, FlatLayout, bool, ulong, bool)"/>).</param>
+    /// <remarks>
+    /// With long finality the stream also stalls finality for long stretches, without flushes, so snapshots past the
+    /// in-memory window are converted into the persisted-snapshot tier and the backstop persists from it; reorgs go as
+    /// deep as the tier, finality resumes with a jump that prunes the forks it finalized away, and the stream ends
+    /// stalled, with no flush, so the managers hold a tier when they are disposed. Its self-destructs are never of a
+    /// new account, which has no storage: a merge of the tier keeps the slots below a new account's mark, so on an
+    /// account with storage what a read finds would depend on whether a merge covered it. Every persist waits for the
+    /// tiers to settle first (<see cref="NativeTier.WaitUntilSettled"/>).
+    /// </remarks>
+    private sealed class Lockstep(Random random, TestFinality finality, FlatManagerContainer csharp, FlatManagerContainer rust, bool longFinality, bool selfDestructs)
     {
         private const int StepCount = 150;
         private const ulong CompactSize = 4;
+        /// <summary>The base snapshots kept in memory with long finality; deeper ones are in the tier.</summary>
+        private const ulong InMemoryBases = 8;
 
         private readonly Address[] _addresses =
         [
@@ -158,6 +220,10 @@ public class RustFlatDbManagerDifferentialTests
         private Hash256[] _owners = [];
         private bool _headCommittedLast;
         private int _reorgs;
+        private int _reorgsIntoTheTier;
+        private int _persistsWhileStalled;
+        private StateId _lastPersisted = StateId.PreGenesis;
+        private bool _stalled;
         private string _step = "";
 
         private StateId Head => _canonical[^1];
@@ -171,12 +237,19 @@ public class RustFlatDbManagerDifferentialTests
 
             for (int step = 0; step < StepCount; step++)
             {
+                _stalled = longFinality && step is >= 40 and < 100 or >= 105;
+                if (longFinality && step == 100) AdvanceFinality();
+
                 int choice = random.Next(100);
                 _step = $"step {step}";
                 if (step % 50 == 25) AddCanonical(Head, LargePlan());
+                // Once the stall has let the chain grow past the in-memory window, until one reorg reaches the tier.
+                else if (longFinality && step >= 70 && _reorgsIntoTheTier == 0) Reorg(intoTheTier: true);
+                // The chain ends with blocks enough for the last stall to convert some, and to persist through the backstop.
+                else if (longFinality && step >= StepCount - 30) AddCanonical(Head, RandomPlan());
                 else if (choice < 55) AddCanonical(Head, RandomPlan());
                 else if (choice < 60) AddCanonical(Head, BlockPlan.Empty);
-                else if (choice < 68) Reorg();
+                else if (choice < 68) Reorg(intoTheTier: longFinality && random.Next(3) == 0);
                 else if (choice < 75) Sibling();
                 else if (choice < 78) Duplicate();
                 else if (choice < 87) AdvanceFinality();
@@ -187,15 +260,26 @@ public class RustFlatDbManagerDifferentialTests
                 Compare();
             }
 
-            _step = "final flush";
-            Flush();
-            Compare();
+            if (longFinality)
+            {
+                // Ends stalled, holding the tier: the columns as the backstop left them.
+                _step = "end";
+                CompareColumns();
+            }
+            else
+            {
+                _step = "final flush";
+                Flush();
+                Compare();
+            }
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(rust.Resolve<Fork.IFlatDbManager>(), Is.InstanceOf<Fork.RustFlatDbManager>());
                 Assert.That(csharp.Resolve<IFlatDbManager>(), Is.InstanceOf<FlatDbManager>());
                 Assert.That(_reorgs, Is.GreaterThan(0), "the stream reorged deeper than the compact size");
+                if (longFinality) Assert.That(_reorgsIntoTheTier, Is.GreaterThan(0), "the stream reorged onto states only the tier held");
+                if (longFinality) Assert.That(_persistsWhileStalled, Is.GreaterThan(0), "the backstop persisted while finality stalled");
                 Assert.That(_nodes.Count(static node => node.CSharp.NodeType != NodeType.Unknown && node.CSharp.IsPersisted), Is.GreaterThan(0), "nodes were persisted");
                 Assert.That(_nodes.Count(static node => node.CSharp.NodeType != NodeType.Unknown && !node.CSharp.IsPersisted), Is.GreaterThan(0), "nodes were left unpersisted");
             }
@@ -223,12 +307,16 @@ public class RustFlatDbManagerDifferentialTests
         }
 
         /// <summary>A reorg deeper than the compact size, when the window above the persisted and finalized blocks has room.</summary>
-        private void Reorg()
+        /// <param name="intoTheTier">Whether it is deeper than the in-memory window, onto a state of the tier.</param>
+        private void Reorg(bool intoTheTier)
         {
             StateId persisted = Persisted();
             ulong floor = Math.Max(persisted == StateId.PreGenesis ? 0 : persisted.BlockNumber, finality.FinalizedBlockNumber);
-            ulong depth = CompactSize + 1 + (ulong)random.Next((int)CompactSize);
-            if (Head.BlockNumber < depth || Head.BlockNumber - depth < floor)
+            ulong depth = intoTheTier
+                ? InMemoryBases + 1 + (ulong)random.Next(12)
+                : CompactSize + 1 + (ulong)random.Next((int)CompactSize);
+            // A state of the tier lies above the persisted one.
+            if (Head.BlockNumber < depth || Head.BlockNumber - depth < floor + (intoTheTier ? 1UL : 0))
             {
                 AddCanonical(Head, RandomPlan());
                 return;
@@ -236,7 +324,16 @@ public class RustFlatDbManagerDifferentialTests
 
             _step += $" reorg {depth}";
             _reorgs++;
-            AddCanonical(_canonical[(int)(Head.BlockNumber - depth)], RandomPlan());
+            StateId parent = _canonical[(int)(Head.BlockNumber - depth)];
+            if (intoTheTier && OnlyInTheTier(parent)) _reorgsIntoTheTier++;
+            AddCanonical(parent, RandomPlan());
+        }
+
+        /// <summary>Whether the Rust manager gathers <paramref name="state"/> from its persisted-snapshot tier alone.</summary>
+        private bool OnlyInTheTier(in StateId state)
+        {
+            FfiRobInfo info = NativeTier.GatherInfo(rust.Resolve<Fork.NativeFlatManager>(), state);
+            return info.PersistedCount > 0 && info.SnapshotCount == info.PersistedCount;
         }
 
         /// <summary>A block on a recent canonical state that stays off the canonical chain.</summary>
@@ -249,8 +346,20 @@ public class RustFlatDbManagerDifferentialTests
         }
 
         /// <summary>A second snapshot ending at a state already added, which both refuse.</summary>
+        /// <remarks>
+        /// With long finality the head may already have been converted into the tier, by the background persistence of
+        /// either manager or not yet, and once it was, the manager takes a second snapshot of it into memory, as the C#
+        /// repository checks only its in-memory snapshots for one of the same state (probably a bug, kept by the port);
+        /// so the stream adds a block instead.
+        /// </remarks>
         private void Duplicate()
         {
+            if (longFinality)
+            {
+                AddCanonical(Head, RandomPlan());
+                return;
+            }
+
             StateId block = Head;
             StateId parent = _canonical.Count > 1 ? _canonical[^2] : StateId.PreGenesis;
             _step += $" duplicate {block}";
@@ -262,6 +371,12 @@ public class RustFlatDbManagerDifferentialTests
 
         private void AdvanceFinality()
         {
+            if (_stalled)
+            {
+                AddCanonical(Head, RandomPlan());
+                return;
+            }
+
             ulong lag = 2 * CompactSize + (ulong)random.Next(5);
             if (Head.BlockNumber < lag) return;
             ulong finalized = Head.BlockNumber - lag;
@@ -273,11 +388,23 @@ public class RustFlatDbManagerDifferentialTests
 
         private void Flush()
         {
+            if (_stalled)
+            {
+                AddCanonical(Head, RandomPlan());
+                return;
+            }
+
             // FlushCache persists up to the last committed state, so commit the canonical head last.
             if (!_headCommittedLast) AddCanonical(Head, RandomPlan());
             _step += " flush";
+            WaitUntilTiersSettled();
             csharp.Arm.FlushCache(CancellationToken.None);
             rust.Arm.FlushCache(CancellationToken.None);
+            CompareColumns();
+        }
+
+        private void CompareColumns()
+        {
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
             {
                 Assert.That(FlatTestDbs.Dump(rust.Db, column), Is.EqualTo(FlatTestDbs.Dump(csharp.Db, column)), $"{column} after {_step}");
@@ -294,8 +421,18 @@ public class RustFlatDbManagerDifferentialTests
         /// <summary>Persists what the head allows, until a call persists nothing more, as one call drains at most four snapshots.</summary>
         private void Persist()
         {
+            WaitUntilTiersSettled();
             csharp.PersistUpTo(Head);
             rust.PersistUpTo(Head);
+            // Either manager may have persisted on its background task since the last step.
+            StateId persisted = Persisted();
+            if (_stalled && persisted != _lastPersisted) _persistsWhileStalled++;
+            _lastPersisted = persisted;
+        }
+
+        private void WaitUntilTiersSettled()
+        {
+            if (longFinality) NativeTier.WaitUntilSettled(() => csharp.TierFingerprint, () => rust.TierFingerprint);
         }
 
         private StateId Persisted()
@@ -328,6 +465,7 @@ public class RustFlatDbManagerDifferentialTests
             List<string> persistedDifferently = [.. _nodes.Where(static node => node.CSharp.IsPersisted != node.Rust.IsPersisted)
                 .Select(static node => $"{node.What}: C# {node.CSharp.IsPersisted}, Rust {node.Rust.IsPersisted}")];
             Assert.That(persistedDifferently, Is.Empty, $"IsPersisted after {_step}");
+            if (longFinality) Assert.That(rust.BaseCatalogRows(), Is.EqualTo(csharp.BaseCatalogRows()), $"the converted states in the catalog after {_step}");
         }
 
         private StateId Child(in StateId parent) => new(parent == StateId.PreGenesis ? 0 : parent.BlockNumber + 1, RandomHash());
@@ -335,7 +473,7 @@ public class RustFlatDbManagerDifferentialTests
         private BlockPlan RandomPlan() => new(
             [.. Enumerable.Range(0, random.Next(1, 5)).Select(_ => (RandomAddress(), random.Next(5) == 0 ? null : RandomAccount()))],
             [.. Enumerable.Range(0, random.Next(0, 8)).Select(_ => (RandomAddress(), _slots[random.Next(_slots.Length)], random.Next(4) == 0 ? (UInt256?)null : RandomValue()))],
-            [.. Enumerable.Range(0, random.Next(6) == 0 ? 1 : 0).Select(_ => (RandomAddress(), random.Next(2) == 0))],
+            [.. Enumerable.Range(0, random.Next(6) == 0 && selfDestructs ? 1 : 0).Select(_ => (RandomAddress(), random.Next(2) == 0 && !longFinality))],
             [.. Enumerable.Range(0, random.Next(0, 6)).Select(_ => (_paths[random.Next(_paths.Length)], RandomHash().ToCommitment(), RandomRlpOrPlaceholder()))],
             [.. Enumerable.Range(0, random.Next(0, 6)).Select(_ => (_owners[random.Next(_owners.Length)], _paths[random.Next(_paths.Length)], RandomHash().ToCommitment(), RandomRlpOrPlaceholder()))]);
 
@@ -362,7 +500,7 @@ public class RustFlatDbManagerDifferentialTests
 
         /// <summary>Node RLP shorter than a hash or at least as long, or none for a hash-only placeholder.</summary>
         private byte[]? RandomRlpOrPlaceholder() =>
-            random.Next(6) == 0 ? null : RandomBytes(random, random.Next(2) == 0 ? 1 + random.Next(31) : 32 + random.Next(300));
+            random.Next(6) == 0 ? null : BlockPlan.RandomRlp(random, random.Next(2) == 0 ? random.Next(31) : 31 + random.Next(300));
 
         private ValueHash256 RandomHash() => new(RandomBytes(random, ValueHash256.MemorySize));
 

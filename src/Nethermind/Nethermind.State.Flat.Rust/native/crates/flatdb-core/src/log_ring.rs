@@ -47,6 +47,12 @@ pub enum LogSource {
     LayoutPersistence = 6,
     /// `DbOnTheRocks`: records logged with the target [`LogSource::DB_ON_THE_ROCKS`].
     DbOnTheRocks = 7,
+    /// `PersistedSnapshotLoader`: [`crate::persisted::loader`].
+    PersistedSnapshotLoader = 8,
+    /// `PersistedSnapshotCompactor`: [`crate::persisted::compactor`].
+    PersistedSnapshotCompactor = 9,
+    /// `ArenaManager`: [`crate::persisted::storage::arena_manager`].
+    ArenaManager = 10,
 }
 
 impl LogSource {
@@ -59,7 +65,11 @@ impl LogSource {
             Self::DB_ON_THE_ROCKS => Self::DbOnTheRocks,
             "flatdb_core::manager" | "flatdb_core::bundle_cache" => Self::FlatDbManager,
             "flatdb_core::persistence_manager" => Self::PersistenceManager,
-            "flatdb_core::repository" => Self::SnapshotRepository,
+            // C# logs a bucket's lines through the logger of the repository that owns it.
+            "flatdb_core::repository" | "flatdb_core::persisted::bucket" => Self::SnapshotRepository,
+            "flatdb_core::persisted::loader" => Self::PersistedSnapshotLoader,
+            "flatdb_core::persisted::compactor" => Self::PersistedSnapshotCompactor,
+            "flatdb_core::persisted::storage::arena_manager" => Self::ArenaManager,
             "flatdb_core::compactor" => Self::SnapshotCompactor,
             "flatdb_core::bundle" => Self::ReadOnlySnapshotBundle,
             target if target.starts_with("flatdb_core::persistence::") => Self::LayoutPersistence,
@@ -388,6 +398,11 @@ mod tests {
     #[case("flatdb_core::compactor", LogSource::SnapshotCompactor)]
     #[case("flatdb_core::bundle", LogSource::ReadOnlySnapshotBundle)]
     #[case("flatdb_core::persistence::base", LogSource::LayoutPersistence)]
+    #[case("flatdb_core::persisted::bucket", LogSource::SnapshotRepository)]
+    #[case("flatdb_core::persisted::loader", LogSource::PersistedSnapshotLoader)]
+    #[case("flatdb_core::persisted::compactor", LogSource::PersistedSnapshotCompactor)]
+    #[case("flatdb_core::persisted::storage::arena_manager", LogSource::ArenaManager)]
+    #[case("flatdb_core::persisted::storage::blob_manager", LogSource::Other)]
     #[case("DbOnTheRocks", LogSource::DbOnTheRocks)]
     #[case("flatdb_core::persistence", LogSource::Other)]
     #[case("flatdb_ffi::guard", LogSource::Other)]

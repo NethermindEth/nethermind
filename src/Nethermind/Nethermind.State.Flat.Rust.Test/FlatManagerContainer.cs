@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -11,6 +13,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
@@ -27,6 +30,9 @@ internal sealed class FlatManagerContainer : IAsyncDisposable
 {
     /// <summary>The account <see cref="AddBlock"/> sets.</summary>
     public static readonly Address BlockAddress = new("0xaaaaaaaa00000000000000000000000000000001");
+
+    /// <summary>The length of a catalog row's value, whose last byte is the snapshot's tier.</summary>
+    private const int CatalogValueLength = 101;
 
     private readonly IContainer _container;
 
@@ -72,6 +78,22 @@ internal sealed class FlatManagerContainer : IAsyncDisposable
 
     public T Resolve<T>() where T : notnull => _container.Resolve<T>();
 
+    /// <summary>The persisted-snapshot catalog database the backend writes its tier's rows to.</summary>
+    public IDb CatalogDb => _container.ResolveKeyed<IDb>(DbNames.PersistedSnapshotCatalog);
+
+    /// <summary>The snapshots in the persisted-snapshot tier of the backend, of every tier.</summary>
+    public long PersistedSnapshotCount => NativeTier.PersistedSnapshotCount(_container);
+
+    /// <summary>Changes whenever the persisted-snapshot compactor publishes a merge or a prune drops a snapshot of the tier.</summary>
+    public long TierFingerprint => NativeTier.Fingerprint(_container);
+
+    /// <summary>The catalog rows of the base snapshots of the tier, as hex keys in order: the states converted and not yet pruned.</summary>
+    public List<string> BaseCatalogRows() =>
+        [.. CatalogDb.GetAll()
+            .Where(static row => row.Value is { Length: CatalogValueLength } value && value[^1] == (byte)SnapshotTier.PersistedBase)
+            .Select(static row => row.Key.ToHexString())
+            .Order(StringComparer.Ordinal)];
+
     /// <summary>Runs <see cref="IPersistenceManager.AddToPersistence"/> for <paramref name="head"/> until the persisted state stops moving.</summary>
     public void PersistUpTo(in StateId head) => PersistUpTo(PersistenceManager, head);
 
@@ -102,7 +124,12 @@ internal sealed class FlatManagerContainer : IAsyncDisposable
 
     /// <summary>The config of a test: compaction every 4 blocks at a fixed offset, inline, and a shallow reorg window.</summary>
     /// <param name="longFinality">Whether snapshots past 8 in memory are converted into a persisted-snapshot tier of
-    /// small files, compacted up to 16 blocks wide, with a backstop 48 blocks deep.</param>
+    /// small files, compacted up to 16 blocks wide, with a backstop 48 blocks deep, and without bloom filters.</param>
+    /// <remarks>
+    /// The tier's snapshots get no bloom filter, as with one what a read finds depends on when the persisted-snapshot
+    /// compactor ran on either backend: a large merge drops the slots below a self-destruct without their bloom keys,
+    /// and hands its bloom to the snapshots it covers, which then skip those slots.
+    /// </remarks>
     public static FlatDbConfig Config(FlatDbBackend backend, FlatLayout layout, bool carryForward, ulong maxInMemorySnapshotBytes, bool longFinality)
     {
         FlatDbConfig config = new()
@@ -128,7 +155,7 @@ internal sealed class FlatManagerContainer : IAsyncDisposable
         config.ArenaFileSizeBytes = 64 * 1024;
         config.PersistedSnapshotDedicatedArenaThresholdBytes = 16 * 1024;
         config.PersistedSnapshotArenaPageCacheBytes = 0;
-        config.PersistedSnapshotBloomBitsPerKey = 14;
+        config.PersistedSnapshotBloomBitsPerKey = 0;
         return config;
     }
 

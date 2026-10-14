@@ -299,6 +299,19 @@ fn gather_fails_for_missing_states_and_gives_up_on_a_broken_chain() {
                 attempts > 1 && elapsed > Duration::from_millis(50),
                 "{attempts} {elapsed:?}"
             );
+            let root: String = gathered.state_root.iter().map(|byte| format!("{byte:02x}")).collect();
+            assert_eq!(
+                ManagerError::GatherTimeout {
+                    state: gathered,
+                    attempts: 56,
+                    elapsed: Duration::from_nanos(5_047_240_600),
+                }
+                .to_string(),
+                format!(
+                    "Timed out gathering ReadOnlySnapshotBundle for block StateId {{ BlockNumber = 22, StateRoot = 0x{root} }} after 56 retries over 00:00:05.0472406"
+                ),
+                "the message of C#'s InvalidOperationException"
+            );
         }
         other => panic!("expected a timeout, got {:?}", other.map(|_| ())),
     }
