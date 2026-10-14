@@ -154,8 +154,10 @@ internal sealed class StreamingSession
             if (duplicate >= 0)
             {
                 BlockWitness retained = _blocks[duplicate].Data;
-                if (retained.Hash != block.Hash || retained.ParentHash != block.ParentHash || retained.Rlp != block.Rlp)
+                if (retained.Hash != block.Hash || retained.ParentHash != block.ParentHash)
                     throw Error(StatusCode.FailedPrecondition, "different block at validated height");
+                if (retained.Rlp != block.Rlp)
+                    throw Error(StatusCode.InvalidArgument, "duplicate consensus encoding differs from validated block");
             }
             else if (TipNumber == ulong.MaxValue || block.Number != TipNumber + 1 || block.ParentHash != TipHash)
                 throw Error(StatusCode.FailedPrecondition, "block outside next validated height");

@@ -196,10 +196,17 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
         Assert.That(_l1.SnapshotReads, Is.EqualTo(3), "recheck uses the named height and does not require the parent to remain tip");
     }
 
-    [TestCase("blobs", TestName = "Finalize_BlobsUnsupported_DoesNotReadEvidence")]
-    [TestCase("context", TestName = "Finalize_PostingContextUnsupported_DoesNotReadEvidence")]
-    [TestCase("profile", TestName = "Finalize_BlockBoundProfileUnsupported_DoesNotReadEvidence")]
-    public async Task Finalize_UnsupportedProfile_FailsBeforeEvidenceAndSigning(string mutation)
+    [TestCase("blobs", StatusCode.Unimplemented)]
+    [TestCase("context", StatusCode.Unimplemented)]
+    [TestCase("block", StatusCode.FailedPrecondition)]
+    [TestCase("sender", StatusCode.FailedPrecondition)]
+    [TestCase("proofsystem", StatusCode.FailedPrecondition)]
+    [TestCase("rollup", StatusCode.FailedPrecondition)]
+    [TestCase("destination", StatusCode.FailedPrecondition)]
+    [TestCase("static", StatusCode.Unimplemented)]
+    [TestCase("missingproof", StatusCode.InvalidArgument)]
+    [TestCase("extraproof", StatusCode.InvalidArgument)]
+    public async Task Finalize_InvalidSettlement_FailsBeforeEvidenceAndAllowsValidRetry(string mutation, StatusCode code)
     {
         StreamingSession session = ExecutedSession();
         Finalize finalization = Finalization();
@@ -208,11 +215,29 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
         else
         {
             SettlementBatch batch = EezCalldata.DecodePostAndVerifyBatch(finalization.Settlement.AbiCalldata.Span);
-            finalization.Settlement.AbiCalldata = ByteString.CopyFrom(EezCalldata.EncodePostAndVerifyBatch(batch with { BlockNumber = 1 }));
+            batch = mutation switch
+            {
+                "block" => batch with { BlockNumber = 1 },
+                "sender" => batch with { BindMsgSenderInPublicInput = true },
+                "proofsystem" => batch with { ProofSystems = [TestItem.AddressC] },
+                "rollup" => batch with { RollupIdsWithProofSystems = [new RollupProofSystems(2, [0])] },
+                "missingproof" => batch with { Proofs = [] },
+                "extraproof" => batch with { Proofs = [[], []] },
+                "static" => batch with { ImmediateStaticEntryCount = 1 },
+                _ => batch,
+            };
+            if (mutation == "destination") batch.Entries[0] = batch.Entries[0] with { DestinationRollupId = 2 };
+            finalization.Settlement.AbiCalldata = ByteString.CopyFrom(EezCalldata.EncodePostAndVerifyBatch(batch));
         }
         using SessionOperation operation = session.AdmitFinalize(session.Binding, 99, finalization);
         RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => _finalizer.Finalize(operation, CancellationToken.None)))!;
-        Assert.That((exception.StatusCode, _l1.Requests, _l2.Requests), Is.EqualTo((StatusCode.Unimplemented, 0, 0)), "unsupported profiles cannot reach the signing path");
+        Assert.That((exception.StatusCode, _l1.Requests, _l2.Requests, session.Ready(session.Binding, 100).Ready.ValidatedThrough),
+            Is.EqualTo((code, 0, 0, (ulong)to)), "invalid settlement cannot reach evidence or consume the validated prefix");
+        operation.Dispose();
+        using SessionOperation retry = session.AdmitFinalize(session.Binding, 101, Finalization());
+        JsonElement oracle = StatelessFixtures.ReadJson(_fixture, "oracle.json");
+        Assert.That((await _finalizer.Finalize(retry, CancellationToken.None)).PublicInputsHash.ToByteArray().ToHexString(true),
+            Is.EqualTo(oracle.GetProperty("public_inputs_hash").GetString()), "the unchanged prefix still produces the independent valid digest");
     }
 
     [TestCase("Resume", TestName = "Finalize_ResumedBeforeSigning_DoesNotReturnProof")]

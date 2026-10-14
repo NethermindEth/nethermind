@@ -65,7 +65,13 @@ public class StreamingSessionTests
             session.CommitBlock(operation, Executed(operation));
         Assert.That(session.Ready(session.Binding, 3).Ready.ValidatedThrough, Is.EqualTo(11));
         duplicate.Rlp = ByteString.CopyFrom(new byte[] { 0xff });
-        AssertCode(() => session.AdmitBlock(session.Binding, 4, duplicate), StatusCode.FailedPrecondition);
+        AssertCode(() => session.AdmitBlock(session.Binding, 4, duplicate), StatusCode.InvalidArgument);
+        Assert.That(session.Ready(session.Binding, 6).Ready.ValidatedThrough, Is.EqualTo(11), "invalid encoding cannot replace the retained prefix");
+        duplicate = Block(11, AnchorHash);
+        duplicate.Hash = Hash(99);
+        AssertCode(() => session.AdmitBlock(session.Binding, 7, duplicate), StatusCode.FailedPrecondition);
+        using (SessionOperation retry = session.AdmitBlock(session.Binding, 8, Block(11, AnchorHash)))
+            session.CommitBlock(retry, Executed(retry));
         Add(session, 12, Hash(11));
         using SessionOperation finalize = session.AdmitFinalize(session.Binding, 5, FinalizeRange(12, 12));
         Assert.That(finalize.CopyBlocks()[0].Number, Is.EqualTo(12));

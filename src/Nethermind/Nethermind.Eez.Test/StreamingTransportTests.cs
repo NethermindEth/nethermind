@@ -344,6 +344,87 @@ public class StreamingTransportTests
         Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "neither running nor queued old-epoch work advances the resumed session");
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Run_RetiredStream_RejectsEveryOldRequestWithoutMutatingNewOwner(bool dataFirst)
+    {
+        ServerFrame newer = null!;
+        _input.Add(BlockFrame);
+        ClientFrame OldFrame(ulong request, object operation)
+        {
+            ClientFrame frame = new() { SessionId = _output.Frames[0].SessionId, Epoch = _output.Frames[0].Epoch, RequestId = request };
+            switch (operation)
+            {
+                case StreamBlock block: frame.Block = block; break;
+                case Finalize finalize: frame.Finalize = finalize; break;
+                case Rewind rewind: frame.Rewind = rewind; break;
+                case Cancel cancel: frame.Cancel = cancel; break;
+            }
+            return frame;
+        }
+        _input.Add(() =>
+        {
+            newer = Resume();
+            return OldFrame(3, dataFirst ? new StreamBlock { Data = new BlockWitness() } : new Cancel());
+        });
+        _input.Add(() => OldFrame(4, new Finalize()));
+        _input.Add(() => OldFrame(5, new Rewind()));
+        _input.Add(() => OldFrame(6, new Cancel()));
+        _input.Add(() =>
+        {
+            ClientFrame frame = OldFrame(7, new StreamBlock { Data = new BlockWitness() });
+            frame.Epoch = newer.Epoch;
+            return frame;
+        });
+        await Run();
+        Assert.That((_executions, _workerCancellation.IsCancellationRequested, _output.Frames.Count), Is.EqualTo((1, true, 6)));
+        for (int i = 1; i < _output.Frames.Count; i++)
+        {
+            ServerFrame rejected = _output.Frames[i];
+            Assert.That((rejected.RequestId, rejected.Rejected.Code, rejected.SessionId.IsEmpty, rejected.Epoch,
+                rejected.Rejected.ValidatedThrough, rejected.Rejected.ValidatedHash.IsEmpty),
+                Is.EqualTo(((ulong)i + 2, (int)(i == 5 ? StatusCode.PermissionDenied : StatusCode.Aborted), true, 0UL, 0UL, true)));
+        }
+        Assert.That(_admission.TryAcquire(), Is.Null, "retirement does not release an executor that has not drained");
+        _worker.SetResult(Executed());
+        await _admission.WaitUntilIdle();
+        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "old controls and late worker results cannot change the resumed session");
+    }
+
+    [Test]
+    public async Task Run_RetiredRequests_DoNotRenewAbsoluteDeadline()
+    {
+        ManualTime time = new();
+        _transport = Transport(Execute, time: time);
+        TaskCompletionSource first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource second = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ClientFrame?> next = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _input.Add(() =>
+        {
+            ClientFrame frame = Bound(2, new Cancel());
+            Resume();
+            return frame;
+        });
+        _input.AddAsync(() => next.Task);
+        _input.AddAsync(() => new TaskCompletionSource<ClientFrame?>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        _output.OnWrite = frame =>
+        {
+            if (frame.RequestId == 2) first.TrySetResult();
+            if (frame.RequestId == 3) second.TrySetResult();
+            return Task.CompletedTask;
+        };
+        Task stream = Run();
+        await first.Task;
+        time.Advance(TimeSpan.FromSeconds(40));
+        next.SetResult(new ClientFrame { SessionId = _output.Frames[0].SessionId, Epoch = _output.Frames[0].Epoch, RequestId = 3, Rewind = new Rewind() });
+        await second.Task;
+        time.Advance(TimeSpan.FromSeconds(20));
+        RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => stream))!;
+        Assert.That((exception.StatusCode, _executions, _output.Frames.Count), Is.EqualTo((StatusCode.DeadlineExceeded, 0, 3)),
+            "new rejected traffic cannot extend a retired connection beyond its first retirement deadline");
+        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10));
+    }
+
     [TestCase(false, TestName = "Run_UnsupportedBlobs_DoNotWaitForBusyBackend")]
     [TestCase(true, TestName = "Run_UnsupportedPostingContext_DoesNotWaitForBusyBackend")]
     public async Task Run_UnsupportedSettlement_RejectsBeforeWaitingForAdmission(bool context)

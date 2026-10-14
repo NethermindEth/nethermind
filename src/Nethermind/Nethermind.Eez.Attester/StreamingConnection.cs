@@ -19,6 +19,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
     private SessionBinding _binding;
     private SessionOperation? _pending;
     private bool _ended;
+    private bool _retired;
     private Task? _proofRevoked;
     private Task _attachmentRevoked = Unbound;
 
@@ -46,7 +47,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
 
     private StreamingDispatch? AuthorizeBound(ClientFrame frame)
     {
-        if (_attachmentRevoked.IsCompleted) return Retire(frame);
+        if (_retired || _attachmentRevoked.IsCompleted) return Retire(frame);
         if (frame.KindCase is ClientFrame.KindOneofCase.Begin or ClientFrame.KindOneofCase.Resume)
             return StreamingDispatch.Reply(RejectUnbound(frame.RequestId, new Status(StatusCode.InvalidArgument, "stream already bound")));
         if (frame.SessionId.Length != 32)
@@ -182,14 +183,24 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
 
     internal Task AttachmentRevoked
     {
-        get { lock (_lock) return _attachmentRevoked; }
+        get { lock (_lock) return _retired ? Unbound : _attachmentRevoked; }
+    }
+
+    internal bool IsRetired
+    {
+        get { lock (_lock) return _retired; }
+    }
+
+    internal void Retire()
+    {
+        lock (_lock) _retired = true;
     }
 
     internal bool CanComplete(SessionOperation operation)
     {
         lock (_lock)
         {
-            if (_ended) throw Error(StatusCode.Aborted, "stream ended");
+            if (_ended || _retired) throw Error(StatusCode.Aborted, "stream ended");
             _session!.CheckCurrent(_binding);
             return ReferenceEquals(_pending, operation) && operation.Binding == _binding;
         }
@@ -200,6 +211,8 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         lock (_lock)
         {
             if (_ended) throw Error(StatusCode.Aborted, "stream ended");
+            if (_retired && response.SessionId.IsEmpty && response.Epoch == 0 &&
+                response.Rejected is { ValidatedThrough: 0 } retired && retired.ValidatedHash.IsEmpty) return;
             if (_session is not null)
             {
                 _session.CheckCurrent(_binding);
@@ -214,11 +227,11 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
     {
         lock (_lock)
         {
-            _ended = true;
+            _retired = true;
             StatusCode code = frame.SessionId.Length != 32 ? StatusCode.InvalidArgument :
                 frame.SessionId == _session?.Id && (frame.Epoch == _binding.Epoch || frame.Resume is not null && frame.Epoch == 0)
                     ? StatusCode.Aborted : StatusCode.PermissionDenied;
-            return StreamingDispatch.End(RejectUnbound(frame.RequestId, new Status(code, "session attachment retired")));
+            return StreamingDispatch.Reply(RejectUnbound(frame.RequestId, new Status(code, "session attachment retired")));
         }
     }
 
@@ -245,7 +258,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
 
     private void CheckPending(SessionOperation operation)
     {
-        if (_ended || !ReferenceEquals(_pending, operation)) throw Error(StatusCode.Aborted, "operation outside active stream");
+        if (_ended || _retired || !ReferenceEquals(_pending, operation)) throw Error(StatusCode.Aborted, "operation outside active stream");
         _session!.CheckCurrent(operation.Binding);
     }
 

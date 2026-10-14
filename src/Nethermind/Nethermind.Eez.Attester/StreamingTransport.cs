@@ -63,6 +63,16 @@ internal sealed class StreamingTransport
         ClientFrame? queued = null;
         CancellationTokenSource? queuedDeadline = null;
         bool inputClosed = false;
+        CancellationTokenSource? retiredDeadline = null;
+        CancellationTokenRegistration retirement = default;
+
+        void BoundRetirement()
+        {
+            if (!connection.IsRetired || retiredDeadline is not null) return;
+            retiredDeadline = new CancellationTokenSource(_limits.ReadTimeout, _time);
+            retirement = retiredDeadline.Token.Register(static state => ((CancellationTokenSource)state!).Cancel(), closed);
+        }
+
         try
         {
             read = Read(input, closed.Token);
@@ -73,8 +83,14 @@ internal sealed class StreamingTransport
                 {
                     work?.Dispose();
                     work = null;
-                    await Retire(connection, input, output, read, queued, closed.Token).ConfigureAwait(false);
-                    return;
+                    connection.Retire();
+                    BoundRetirement();
+                    if (!await Retire(connection, input, output, read, queued, closed.Token).ConfigureAwait(false)) return;
+                    read = null;
+                    queued = null;
+                    queuedDeadline?.Dispose();
+                    queuedDeadline = null;
+                    continue;
                 }
 
                 if (read?.IsCompleted == true)
@@ -99,13 +115,14 @@ internal sealed class StreamingTransport
                         else dispatch = connection.Dispatch(frame);
                         if (dispatch?.Response is { } reply)
                         {
-                            await Write(connection, output, reply, closed.Token, dispatch.EndStream).ConfigureAwait(false);
-                            if (dispatch.EndStream) return;
-                            if (work is not null && reply.Ready is not null && reply.Epoch != work.Operation.Binding.Epoch)
+                            BoundRetirement();
+                            if (work is not null && (connection.IsRetired || reply.Ready is not null && reply.Epoch != work.Operation.Binding.Epoch))
                             {
                                 work.Dispose();
                                 work = null;
                             }
+                            await Write(connection, output, reply, closed.Token, dispatch.EndStream).ConfigureAwait(false);
+                            if (dispatch.EndStream) return;
                         }
                     }
                     continue;
@@ -116,7 +133,7 @@ internal sealed class StreamingTransport
                     ServerFrame response;
                     try
                     {
-                        if (!connection.CanComplete(work.Operation))
+                        if (connection.IsRetired || !connection.CanComplete(work.Operation))
                         {
                             work.Dispose();
                             work = null;
@@ -175,6 +192,7 @@ internal sealed class StreamingTransport
                         {
                             slot?.Dispose();
                             slot = null;
+                            BoundRetirement();
                             await Write(connection, output, dispatch.Response!, closed.Token, dispatch.EndStream).ConfigureAwait(false);
                             if (dispatch.EndStream) return;
                         }
@@ -189,13 +207,16 @@ internal sealed class StreamingTransport
                         slot?.Dispose();
                         slot = null;
                         StreamingDispatch rejection = connection.RejectQueued(queued, new Status(StatusCode.DeadlineExceeded, "queued operation deadline exceeded"));
+                        BoundRetirement();
                         await Write(connection, output, rejection.Response!, closed.Token, rejection.EndStream).ConfigureAwait(false);
                         if (rejection.EndStream) return;
                     }
                     catch (RpcException) when (connection.AttachmentRevoked.IsCompleted)
                     {
-                        await Retire(connection, input, output, read, queued, closed.Token).ConfigureAwait(false);
-                        return;
+                        connection.Retire();
+                        BoundRetirement();
+                        if (!await Retire(connection, input, output, read, queued, closed.Token).ConfigureAwait(false)) return;
+                        read = null;
                     }
                     finally
                     {
@@ -216,8 +237,14 @@ internal sealed class StreamingTransport
                     await Task.WhenAny((Task?)read ?? work!.Response, revoked).WaitAsync(closed.Token).ConfigureAwait(false);
             }
         }
+        catch (OperationCanceledException) when (retiredDeadline?.IsCancellationRequested == true && !cancellation.IsCancellationRequested)
+        {
+            throw Error(StatusCode.DeadlineExceeded, "retired stream deadline exceeded");
+        }
         finally
         {
+            retirement.Dispose();
+            retiredDeadline?.Dispose();
             connection.Detach();
             try { closed.Cancel(); }
             finally
@@ -244,17 +271,18 @@ internal sealed class StreamingTransport
         }
     }
 
-    private async Task Retire(StreamingConnection connection, IAsyncStreamReader<ClientFrame> input,
+    private async Task<bool> Retire(StreamingConnection connection, IAsyncStreamReader<ClientFrame> input,
         IServerStreamWriter<ServerFrame> output, Task<bool>? read, ClientFrame? queued, CancellationToken cancellation)
     {
         if (queued is null)
         {
-            if (!await (read ?? Read(input, cancellation)).ConfigureAwait(false)) return;
+            if (!await (read ?? Read(input, cancellation)).ConfigureAwait(false)) return false;
             queued = input.Current;
             CheckMessage(queued);
         }
         StreamingDispatch dispatch = connection.Retire(queued);
-        await Write(connection, output, dispatch.Response!, cancellation, terminal: true).ConfigureAwait(false);
+        await Write(connection, output, dispatch.Response!, cancellation).ConfigureAwait(false);
+        return true;
     }
 
     private void CheckMessage(ClientFrame frame)

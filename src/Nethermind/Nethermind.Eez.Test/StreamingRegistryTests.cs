@@ -179,7 +179,7 @@ public class StreamingRegistryTests
 
     [TestCase(false, StatusCode.Aborted)]
     [TestCase(true, StatusCode.PermissionDenied)]
-    public void Connection_RetiredAttachment_ReturnsUnboundRejectionAndEnds(bool copyNewEpoch, StatusCode code)
+    public void Connection_RetiredAttachment_ReturnsRepeatedUnboundRejections(bool copyNewEpoch, StatusCode code)
     {
         using StreamingSessionRegistry registry = Registry(new ManualTime());
         StreamingConnection original = new(registry, "first", 1);
@@ -191,7 +191,12 @@ public class StreamingRegistryTests
         StreamingDispatch retired = original.Dispatch(old);
         Assert.That((retired.EndStream, retired.Response!.SessionId.IsEmpty, retired.Response.Epoch, retired.Response.RequestId,
             retired.Response.Rejected.Code, retired.Response.Rejected.ValidatedThrough, retired.Response.Rejected.ValidatedHash.IsEmpty),
-            Is.EqualTo((true, true, 0UL, 7UL, (int)code, 0UL, true)), "copying a fresh epoch does not authorize an old transport");
+            Is.EqualTo((false, true, 0UL, 7UL, (int)code, 0UL, true)), "copying a fresh epoch does not authorize an old transport");
+        old.RequestId++;
+        StreamingDispatch again = original.CheckDataFrame(old)!;
+        Assert.That((again.EndStream, again.Response!.Rejected.Code, again.Response.RequestId), Is.EqualTo((false, (int)code, 8UL)));
+        (StreamingSession session, SessionBinding binding) = registry.Resume("first", ready.SessionId, 1);
+        Assert.That(session.Ready(binding, 9).Ready.ValidatedThrough, Is.EqualTo(10), "retired Cancel cannot mutate the active session");
     }
 
     [Test]
