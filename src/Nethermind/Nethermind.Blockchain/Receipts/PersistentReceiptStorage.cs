@@ -578,7 +578,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
                     new RecoveryBlockSource(this, blockNumber, blockHash));
-                iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context);
+                iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
                 return true;
             }
             iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);

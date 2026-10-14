@@ -25,6 +25,9 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Whether to compact receipts database size at the expense of RPC performance.", DefaultValue = "true")]
     bool CompactReceiptStore { get; set; }
 
+    [ConfigItem(Description = "Whether to add the transaction hashes to stored compact receipts in the background, so that `eth_getLogs` does not read block bodies. Receipts written by this version always carry them. The pass yields to block processing and continues after a restart.", DefaultValue = "true")]
+    bool ReceiptsTxHashesMigration { get; set; }
+
     [ConfigItem(Description = "Whether to compact receipts transaction index database size at the expense of RPC performance.", DefaultValue = "true")]
     bool CompactTxIndex { get; set; }
 
