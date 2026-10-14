@@ -4,19 +4,24 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
 using Nethermind.Merge.AuRa.Withdrawals;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -84,30 +89,78 @@ public class AuraWithdrawalProcessorTests
         Assert.That(() => withdrawalProcessor.ProcessWithdrawals(block, WithdrawalsSpec()), Throws.Exception.SameAs(exception));
     }
 
-    [Test]
-    public void Should_report_failed_withdrawals_system_call_as_invalid_block()
-    {
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        transactionProcessor
-            .When(p => p.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>()))
-            .Do(ci => ci.Arg<ITxTracer>().MarkAsFailed(Address.Zero, default, [], "revert"));
-        AuraWithdrawalProcessor withdrawalProcessor = new(new WithdrawalContract(transactionProcessor, AbiEncoder.Instance, Address.Zero), LimboLogs.Instance);
-
-        Assert.That(() => withdrawalProcessor.ProcessWithdrawals(BuildBlockWithWithdrawal(), WithdrawalsSpec()),
-            Throws.InstanceOf<InvalidBlockException>().With.InnerException.InstanceOf<ContractCallFailedException>());
-    }
+    [TestCase("60006000fd", TestName = "Withdrawal_revert_invalidates_block")]
+    [TestCase("6401000000005100", TestName = "Withdrawal_memory_expansion_out_of_gas_invalidates_block")]
+    [TestCase("fe", TestName = "Withdrawal_invalid_opcode_invalidates_block")]
+    public void Should_report_failed_withdrawals_system_call_as_invalid_block(string code) =>
+        WithWithdrawalContract(Convert.FromHexString(code), (processor, _) =>
+        {
+            Assert.That(() => processor.ProcessWithdrawals(BuildBlockWithWithdrawal(), Shanghai.Instance),
+                Throws.TypeOf<InvalidBlockException>()
+                    .With.InnerException.TypeOf<ContractCallFailedException>());
+        });
 
     [Test]
     public void Should_not_report_withdrawals_system_call_execution_fault_as_invalid_block()
     {
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        transactionProcessor
-            .When(p => p.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>()))
-            .Do(_ => throw new InvalidOperationException("state read failed"));
-        AuraWithdrawalProcessor withdrawalProcessor = new(new WithdrawalContract(transactionProcessor, AbiEncoder.Instance, Address.Zero), LimboLogs.Instance);
+        InvalidOperationException fault = new("state read failed");
+        WithWithdrawalContract(Convert.FromHexString("60005400"), (processor, _) =>
+        {
+            Assert.That(() => processor.ProcessWithdrawals(BuildBlockWithWithdrawal(), Shanghai.Instance),
+                Throws.TypeOf<AbiException>().With.InnerException.SameAs(fault));
+        }, fault);
+    }
 
-        Assert.That(() => withdrawalProcessor.ProcessWithdrawals(BuildBlockWithWithdrawal(), WithdrawalsSpec()),
-            Throws.TypeOf<AbiException>().With.InnerException.InstanceOf<InvalidOperationException>());
+    [Test]
+    public void Should_allow_missing_withdrawal_contract([Values] bool emptyWithdrawals) =>
+        WithWithdrawalContract([], (processor, _) =>
+        {
+            Block block = emptyWithdrawals
+                ? Build.A.Block.WithNumber(123).WithWithdrawals([]).TestObject
+                : BuildBlockWithWithdrawal();
+
+            Assert.DoesNotThrow(() => processor.ProcessWithdrawals(block, Shanghai.Instance));
+        });
+
+    [Test]
+    public void Should_execute_withdrawal_contract_with_empty_withdrawals() =>
+        WithWithdrawalContract(Convert.FromHexString("600160005500"), (processor, state) =>
+        {
+            Block block = Build.A.Block.WithNumber(123).WithWithdrawals([]).TestObject;
+
+            processor.ProcessWithdrawals(block, Shanghai.Instance);
+
+            state.Get(new StorageCell(TestItem.AddressA, 0), out UInt256 value);
+            Assert.That(value, Is.EqualTo(UInt256.One));
+        });
+
+    private static void WithWithdrawalContract(byte[] code, Action<AuraWithdrawalProcessor, IWorldState> test, Exception? stateReadFault = null)
+    {
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Shanghai.Instance))
+            .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>();
+        if (stateReadFault is not null)
+            builder.AddDecorator<IWorldState>((_, state) => new FaultingWorldState(state, stateReadFault));
+
+        using IContainer container = builder.Build();
+        using ILifetimeScope lifetime = container.BeginLifetimeScope(scopeBuilder => scopeBuilder
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
+        IWorldState state = lifetime.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        if (code.Length != 0)
+        {
+            state.CreateAccount(TestItem.AddressA, 0, 1);
+            state.InsertCode(TestItem.AddressA, code, Shanghai.Instance);
+            state.Commit(Shanghai.Instance);
+        }
+
+        WithdrawalContract contract = new(lifetime.Resolve<ITransactionProcessor>(), AbiEncoder.Instance, TestItem.AddressA);
+        test(new AuraWithdrawalProcessor(contract, LimboLogs.Instance), state);
+    }
+
+    private sealed class FaultingWorldState(IWorldState state, Exception fault) : WorldStateDecorator(state)
+    {
+        public override void Get(in StorageCell storageCell, out UInt256 value) => throw fault;
     }
 
     [Test]
