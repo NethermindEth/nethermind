@@ -156,6 +156,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
         Transaction reusable = TxDecoder.TxObjectPool.Get();
         TxDecoder.TxObjectPool.Return(reusable);
+        txsMsg.RequestId = LastPooledRequestId();
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
         using (Assert.EnterMultipleScope())
@@ -180,6 +181,7 @@ public class Eth68ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        txsMsg.RequestId = LastPooledRequestId();
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
         _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
@@ -205,6 +207,7 @@ public class Eth68ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        txsMsg.RequestId = LastPooledRequestId();
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
         _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
@@ -224,6 +227,7 @@ public class Eth68ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        txsMsg.RequestId = LastPooledRequestId();
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
         _session.Received(1).InitiateDisconnect(
@@ -242,6 +246,7 @@ public class Eth68ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        txsMsg.RequestId = LastPooledRequestId();
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
@@ -260,6 +265,7 @@ public class Eth68ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        txsMsg.RequestId = LastPooledRequestId();
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
@@ -267,7 +273,7 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_disconnect_if_unrequested_tx_violates_announced_shape()
+    public void Should_validate_retained_shape_for_oversized_announcement([Values] bool correlated)
     {
         ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
         txPoolConfig.MaxTxSize.Returns(128 * MemorySizes.KiB);
@@ -280,16 +286,7 @@ public class Eth68ProtocolHandlerTests
             new ArrayPoolList<byte>(1) { (byte)TxType.EIP1559 },
             new ArrayPoolList<int>(1) { tx.GetLength() },
             new ArrayPoolList<ValueHash256>(1) { tx.Hash });
-        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
-
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
-
-        _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
-
-        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
-
-        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+        AssertResponseForUnrequestableAnnouncement(tx, hashesMsg, correlated);
     }
 
     [Test]
@@ -962,23 +959,14 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_retain_decodable_but_unrequestable_shape_for_delivery_validation()
+    public void Should_validate_retained_shape_for_unrequestable_type([Values] bool correlated)
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).SignedAndResolved().WithHash(TestItem.KeccakA).TestObject;
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)TxType.Blob },
             new ArrayPoolList<int>(1) { tx.GetLength() },
             new ArrayPoolList<ValueHash256>(1) { tx.Hash });
-        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
-
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
-
-        _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
-
-        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
-
-        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+        AssertResponseForUnrequestableAnnouncement(tx, hashesMsg, correlated);
     }
 
     [TestCase(TransactionsMessage.MaxPacketSize / 2 + 1)]
@@ -1080,6 +1068,38 @@ public class Eth68ProtocolHandlerTests
         _handler = CreateHandler(txPoolConfig);
         _handler.Init();
     }
+
+    private void AssertResponseForUnrequestableAnnouncement(Transaction tx, NewPooledTransactionHashesMessage68 announcement, bool correlated)
+    {
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
+        _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+
+        ArrayPoolList<Transaction> transactions = new(2);
+        using PooledTransactionsMessage response = new(1111, new(transactions));
+        if (correlated)
+        {
+            Transaction requested = Build.A.Transaction.WithType(TxType.EIP1559).WithNonce(1).SignedAndResolved().TestObject;
+            using NewPooledTransactionHashesMessage68 requestable = new(
+                new ArrayPoolList<byte>(1) { (byte)requested.Type },
+                new ArrayPoolList<int>(1) { requested.GetLength() },
+                new ArrayPoolList<ValueHash256>(1) { requested.Hash! });
+            HandleZeroMessage(requestable, Eth68MessageCode.NewPooledTransactionHashes);
+            response.RequestId = LastPooledRequestId();
+            transactions.Add(requested);
+        }
+        transactions.Add(tx);
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        if (correlated)
+            _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+        else
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+    }
+
+    private long LastPooledRequestId() => _session.ReceivedCalls()
+        .SelectMany(static call => call.GetArguments().OfType<GetPooledTransactionsMessage>()).Last().RequestId;
 
     private void HandleZeroMessage<T>(T msg, byte messageCode) where T : MessageBase
     {

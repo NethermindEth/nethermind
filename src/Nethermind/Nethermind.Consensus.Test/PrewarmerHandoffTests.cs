@@ -8,7 +8,10 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
@@ -22,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Threading;
@@ -87,15 +91,26 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
     public void A_senders_later_transaction_replays_after_its_earlier_one_was_executed()
     {
         (int replayed, int rejected, _) = Handoff(BuildBlock(
-            Call(TestItem.PrivateKeyA, 0, Counter),
-            Call(TestItem.PrivateKeyB, 0, Counter),
-            Transfer(TestItem.PrivateKeyB, 1, TestItem.AddressC, 1.Wei))).Tally;
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyB, 0, BalanceReader),
+            Transfer(TestItem.PrivateKeyB, 1, TestItem.AddressD, 1.Wei))).Tally;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(replayed, Is.EqualTo(2));
             Assert.That(rejected, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public void Transactions_that_read_a_slot_an_earlier_one_writes_are_refreshed_and_taken_over()
+    {
+        (int replayed, int rejected, _) = Handoff(BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Counter),
+            Call(TestItem.PrivateKeyB, 0, Counter),
+            Call(TestItem.PrivateKeyD, 0, Counter))).Tally;
+
+        Assert.That((replayed, rejected), Is.EqualTo((3, 0)));
     }
 
     [Test]
@@ -185,8 +200,13 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
             Call(TestItem.PrivateKeyB, 0, FreshFactory, gasLimit: 300_000, data: [1]),
             Call(TestItem.PrivateKeyD, 0, FreshFactory, gasLimit: 300_000))).Tally;
 
-        // The later deployments read the factory's nonce, which the first one increments.
-        Assert.That(replayed, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            // The later deployments read the factory's nonce, which the first one increments.
+            Assert.That(replayed, Is.EqualTo(1));
+            // Their creations clear the storage the first one wrote, so their runs read it as cleared whatever the seed.
+            Assert.That(PreWarmer.Footprints!.RefreshesRun, Is.LessThanOrEqualTo(4));
+        }
     }
 
     [Test]
@@ -428,6 +448,498 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
+    public void The_writes_of_a_transaction_block_processing_executes_reach_the_footprints()
+    {
+        UInt256 paidTo;
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent)) paidTo = worldState.GetBalance(TestItem.AddressC);
+        Block block = BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 0x4e4d),
+            Call(TestItem.PrivateKeyB, 0, BalanceReader),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei));
+
+        RunPreWarmCaches(PreWarmer, block);
+        Assert.That(Process(block, ProductionAdapter).Tally.Rejected, Is.EqualTo(1), "the balance read is executed");
+
+        BlockFootprints footprints = PreWarmer.Footprints!;
+        footprints.ApplyExecuted();
+        Assert.That(footprints.ValueBefore(new StorageCell(BalanceReader, 0), 2), Is.EqualTo(paidTo + 0x4e4d));
+    }
+
+    [Test]
+    public void Footprints_block_processing_invalidates_while_warming_are_refreshed_and_taken_over([Values] bool writes)
+    {
+        UInt256 paidTo;
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent)) paidTo = worldState.GetBalance(TestItem.AddressC);
+        UInt256 paid = writes ? (UInt256)(2 * 0x4e4d) : 0x4e4d;
+        // The transaction after the one block processing executes is left to execution, so the copy comes one later.
+        Block block = BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, paid),
+            Call(TestItem.PrivateKeyB, 0, Copier),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei),
+            Call(TestItem.PrivateKeyD, 1, Copier, data: [1]));
+        StorageCell copied = new(Copier, 0);
+        UInt256? left = writes ? paidTo + paid : null;
+
+        Run executed = Process(block, adapter: null);
+        Run run = ProcessWhileWarming(block, (footprints, index) => index switch
+        {
+            // Warmed, and the copy refreshed on the write the second transaction's footprint predicts.
+            0 => footprints.WarmPassEnded && !footprints.HasWork && Enumerable.Range(0, footprints.Count).All(i => footprints.Get(i) is not null)
+                && ReadOf(footprints.Get(3)!, copied) == paidTo,
+            2 => footprints.ValueBefore(copied, 3) == left && !footprints.HasWork && footprints.Get(3) is { } footprint
+                && ReadOf(footprint, copied) == (left ?? UInt256.Zero),
+            _ => true
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((run.Tally.Replayed, run.Tally.Rejected), Is.EqualTo((3, 1)));
+            Assert.That(run.Results, Is.EqualTo(executed.Results));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
+        }
+
+        AssertSameReceipts(run.Receipts, executed.Receipts);
+    }
+
+    [Test]
+    public void Readers_of_a_write_no_longer_made_are_invalidated([Values] bool executed, [Values] bool writesAnother)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(3);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        StorageCell another = new(TestItem.AddressC, 2 * 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        footprints.Store(2, Footprint(txs[2], reads: [(cell, 0x4e4d)]));
+        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False);
+
+        (StorageCell Cell, UInt256 Value)[] writes = writesAnother ? [(another, 0x4e4d)] : [];
+        if (executed)
+        {
+            footprints.QueueExecuted(0, writes);
+            footprints.ApplyExecuted();
+        }
+        else
+        {
+            footprints.Store(0, Footprint(txs[0], writes: writes));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints.ValueBefore(cell, 2), Is.Null);
+            Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.True);
+            Assert.That(position, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void A_refreshed_run_that_reads_a_seeded_slot_at_another_value_is_taken_again_only_after_a_write_changes([Values] bool writeChanges)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        footprints.Store(1, Footprint(txs[1], reads: [(cell, UInt256.Zero)]));
+        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.True);
+
+        int seededAt = footprints.WritesVersion;
+        if (writeChanges) footprints.Store(0, Footprint(txs[0], writes: [(cell, 2 * 0x4e4d)]));
+        footprints.Store(1, Footprint(txs[1], reads: [(cell, UInt256.Zero)]), seededAt);
+
+        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.EqualTo(writeChanges));
+    }
+
+    [Test]
+    public void A_reader_past_a_slots_indexed_readers_is_still_checked_against_the_writes_before_it()
+    {
+        int readers = BlockFootprints.MaxIndexedPerSlot + 1;
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(readers + 1);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        for (int i = 1; i < readers; i++) footprints.Store(i, Footprint(txs[i], reads: [(cell, 0x4e4d)]));
+        footprints.Store(readers, Footprint(txs[readers], reads: [(cell, UInt256.Zero)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.True);
+            Assert.That(position, Is.EqualTo(readers));
+        }
+    }
+
+    [Test]
+    public void A_refresh_that_fails_leaves_the_block_its_other_refreshes()
+    {
+        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
+        StrongBox<int> seeds = new();
+        using BlockCachePreWarmer preWarmer = new(
+            new OuterDecoratedEnvs(ProcessingScope.Resolve<PrewarmerEnvFactory>(), caches, state => new FirstSeedFails(state, seeds)),
+            minPoolSize: 4,
+            concurrency: 3,
+            parallelExecutionBatchRead: true,
+            ProcessingScope.Resolve<NodeStorageCache>(),
+            caches,
+            LimboLogs.Instance,
+            handoff: true);
+
+        RunPreWarmCaches(preWarmer, BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Counter),
+            Call(TestItem.PrivateKeyB, 0, Counter),
+            Call(TestItem.PrivateKeyD, 0, Counter)));
+
+        BlockFootprints footprints = preWarmer.Footprints!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.Value, Is.GreaterThan(1), "a refresh seeded after the one that failed");
+            Assert.That(footprints.Get(1)!.Refreshed || footprints.Get(2)!.Refreshed, Is.True);
+        }
+    }
+
+    [Test]
+    public void A_footprint_writing_a_slot_twice_leaves_its_last_write()
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d), (cell, 2 * 0x4e4d)]));
+
+        Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)(2 * 0x4e4d)));
+    }
+
+    [Test]
+    public void A_transaction_executed_into_the_writes_its_footprint_predicted_does_not_wake_the_refresh_worker()
+    {
+        // The call reads a balance the transfer changes, so it is executed; its guard slot is set and reset, which the
+        // commit does not report and the footprint does not predict.
+        Block block = BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyB, 0, Guarded),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei));
+        // The pass is waited on and over before processing, so no refresh worker takes the wakes counted here.
+        RunPreWarmCaches(PreWarmer, block);
+        BlockFootprints footprints = PreWarmer.Footprints!;
+        int wakes = footprints.PendingWakes;
+
+        Run run = Process(block, ProductionAdapter);
+
+        int pending = footprints.PendingWakes;
+        footprints.ApplyExecuted();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((run.Tally.Replayed, run.Tally.Rejected), Is.EqualTo((2, 1)));
+            Assert.That(pending, Is.EqualTo(wakes));
+            // Reported all the same, with only the slot it changed.
+            Assert.That(footprints.ValueBefore(new StorageCell(Guarded, 1), 2), Is.EqualTo((UInt256)1));
+            Assert.That(footprints.ValueBefore(new StorageCell(Guarded, 0), 2), Is.Null);
+        }
+    }
+
+    [Test]
+    public void The_writes_a_transaction_reported_stay_as_they_were_while_later_transactions_report_theirs()
+    {
+        // The refresh worker reads a report after block processing has moved on to collect the next ones; counts of 0 to 6
+        // writes put a transaction across the first chunk's end.
+        CommittedStorageWrites committed = new();
+        List<(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction)> reports = [];
+        // The last transaction writes more slots than a chunk holds.
+        static int Writes(int tx) => tx == 199 ? 600 : tx % 7;
+        for (int tx = 0; tx < 200; tx++)
+        {
+            committed.Begin();
+            for (int i = 0; i < Writes(tx); i++) committed.Add(TestItem.AddressC, (UInt256)i, (UInt256)tx);
+            reports.Add((committed.End(), tx));
+        }
+
+        Assert.That(reports, Has.All.Matches<(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction)>(report =>
+            report.Writes.Length == Writes(report.Transaction)
+            && Enumerable.Range(0, report.Writes.Length).All(i =>
+                report.Writes.Span[i].Equals((new StorageCell(TestItem.AddressC, (UInt256)i), (UInt256)report.Transaction)))));
+    }
+
+    [Test]
+    public void Reports_read_while_later_transactions_report_theirs_are_as_they_were_reported()
+    {
+        // As the refresh worker reads them, on another thread, while block processing collects more.
+        CommittedStorageWrites committed = new();
+        System.Collections.Concurrent.ConcurrentQueue<(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction)> reports = new();
+        const int transactions = 20_000;
+        static int Writes(int tx) => tx % 9;
+        Task reporting = Task.Run(() =>
+        {
+            for (int tx = 0; tx < transactions; tx++)
+            {
+                committed.Begin();
+                for (int i = 0; i < Writes(tx); i++) committed.Add(TestItem.AddressC, (UInt256)i, (UInt256)tx);
+                reports.Enqueue((committed.End(), tx));
+            }
+        });
+
+        int read = 0;
+        int wrong = 0;
+        // Ends once every report is read, or once the reporting has stopped and nothing is left to read.
+        while (read < transactions && !(reporting.IsCompleted && reports.IsEmpty))
+        {
+            if (!reports.TryDequeue(out (ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction) report)) continue;
+            read++;
+            ReadOnlySpan<(StorageCell Cell, UInt256 Value)> writes = report.Writes.Span;
+            if (writes.Length != Writes(report.Transaction)) wrong++;
+            for (int i = 0; i < writes.Length; i++)
+            {
+                if (!writes[i].Equals((new StorageCell(TestItem.AddressC, (UInt256)i), (UInt256)report.Transaction))) wrong++;
+            }
+        }
+
+        reporting.Wait();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(read, Is.EqualTo(transactions));
+            Assert.That(wrong, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Commits_outside_a_reported_transaction_take_no_room_from_the_reports()
+    {
+        // Replays and the block's own commits also commit storage; collecting them would allocate chunks for nothing.
+        CommittedStorageWrites committed = new();
+        committed.Begin();
+        committed.Add(TestItem.AddressC, 0, 1);
+        MemoryMarshal.TryGetArray(committed.End(), out ArraySegment<(StorageCell Cell, UInt256 Value)> first);
+        for (int i = 0; i < 1000; i++) committed.Add(TestItem.AddressC, (UInt256)i, 2);
+        committed.Begin();
+        committed.Add(TestItem.AddressC, 0, 3);
+        MemoryMarshal.TryGetArray(committed.End(), out ArraySegment<(StorageCell Cell, UInt256 Value)> next);
+
+        Assert.That((next.Array, next.Offset), Is.EqualTo((first.Array, 1)));
+    }
+
+    [Test]
+    public void A_session_whose_refresh_worker_is_never_woken_by_block_processing_still_ends()
+    {
+        // The executed call's writes are the ones its footprint predicted, so block processing leaves the blocked worker
+        // asleep; ending the session must still release it.
+        Block block = BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyB, 0, Guarded),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei));
+        Run? run = null;
+        Task processing = Task.Run(() => run = ProcessWhileWarming(block, (footprints, index) =>
+            index > 0 || (footprints.WarmPassEnded && !footprints.HasWork && footprints.Get(1) is not null)));
+
+        Assert.That(processing.Wait(TimeSpan.FromSeconds(30)), Is.True, "the session did not end");
+        Assert.That(run!.Tally.Rejected, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void A_report_against_a_footprint_too_large_to_compare_wakes_the_refresh_worker()
+    {
+        // Comparing a write with each of many effects would cost block processing more than the wake it saves.
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        StateEffect[] effects =
+        [
+            new StateEffect { Kind = EffectKind.SetStorage, Cell = cell, Value = 0x4e4d },
+            .. Enumerable.Repeat(new StateEffect { Kind = EffectKind.AddToBalance, Cell = new StorageCell(TestItem.AddressD, default), Value = 1 }, 300)
+        ];
+        footprints.Store(0, new TransactionFootprint(txs[0], [], [], effects, default, default, default));
+
+        footprints.QueueExecuted(0, new[] { (cell, (UInt256)0x4e4d) });
+
+        Assert.That(footprints.PendingWakes, Is.GreaterThan(0));
+    }
+
+    public enum Report { AsPredicted, OtherValue, OtherSlot, Subset, Restored, NoneWithoutFootprint, SomeWithoutFootprint }
+
+    [Test]
+    public void Block_processing_wakes_the_refresh_worker_only_for_writes_its_footprints_did_not_predict([Values] Report report)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        StorageCell other = new(TestItem.AddressC, 2 * 0x4e4d);
+        switch (report)
+        {
+            case Report.AsPredicted or Report.OtherValue or Report.OtherSlot:
+                footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+                break;
+            case Report.Subset:
+                footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d), (other, 0x4e4d)]));
+                break;
+            case Report.Restored:
+                // A slot written back to its value at the transaction's start: neither the footprint nor the commit has it.
+                footprints.Store(0, Footprint(txs[0]));
+                break;
+        }
+
+        (StorageCell Cell, UInt256 Value)[] reported = report switch
+        {
+            // Committed by the main state, so not the instance the footprint holds.
+            Report.AsPredicted or Report.Subset => [(new StorageCell(new Address(cell.Address.Bytes), 0x4e4d), 0x4e4d)],
+            Report.OtherSlot => [(other, 0x4e4d)],
+            Report.NoneWithoutFootprint or Report.Restored => [],
+            _ => [(cell, 2 * 0x4e4d)]
+        };
+        footprints.QueueExecuted(0, reported);
+
+        // Waking a blocked worker costs block processing microseconds; skipping a wake it needs delays its refreshes.
+        bool woken = footprints.PendingWakes > 0;
+
+        // Skipped or not, the report takes the place of what a footprint stored later predicts.
+        footprints.ApplyExecuted();
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 3 * 0x4e4d)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(woken, Is.EqualTo(report is Report.OtherValue or Report.OtherSlot or Report.Subset or Report.SomeWithoutFootprint));
+            Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo(report is Report.OtherSlot || reported.Length == 0 ? null : reported[0].Value));
+        }
+    }
+
+    [Test]
+    public void A_footprint_stored_after_its_transaction_was_executed_leaves_the_executed_writes()
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.QueueExecuted(0, new[] { (cell, (UInt256)(2 * 0x4e4d)) });
+        footprints.ApplyExecuted();
+
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+
+        Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)(2 * 0x4e4d)));
+    }
+
+    [Test]
+    public void Writes_block_processing_reports_invalidate_the_footprints_that_read_other_values([Values] bool sameValue)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(3);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(2, Footprint(txs[2], reads: [(cell, 0x4e4d)]));
+
+        footprints.QueueExecuted(0, new[] { (cell, sameValue ? (UInt256)0x4e4d : 2 * 0x4e4d) });
+        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False, "queued writes count once they are applied");
+        footprints.ApplyExecuted();
+
+        Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.EqualTo(!sameValue));
+        if (!sameValue) Assert.That(position, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void A_footprint_reading_what_an_earlier_one_writes_otherwise_is_invalidated_once_both_are_stored([Values] bool readerFirst)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        TransactionFootprint writer = Footprint(txs[0], writes: [(cell, 2 * 0x4e4d)]);
+        TransactionFootprint reader = Footprint(txs[1], reads: [(cell, 0x4e4d)]);
+
+        footprints.Store(readerFirst ? 1 : 0, readerFirst ? reader : writer);
+        footprints.Store(readerFirst ? 0 : 1, readerFirst ? writer : reader);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.True);
+            Assert.That(position, Is.EqualTo(1));
+            Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)(2 * 0x4e4d)));
+        }
+    }
+
+    [Test]
+    public void Invalidated_footprints_block_processing_has_reached_are_dropped()
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(3);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 2 * 0x4e4d)]));
+        footprints.Store(1, Footprint(txs[1], reads: [(cell, 0x4e4d)]));
+        footprints.Store(2, Footprint(txs[2], reads: [(cell, 0x4e4d)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints.TryTakeInvalidated(1, out int position), Is.True);
+            Assert.That(position, Is.EqualTo(2));
+            Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void A_slot_too_many_transactions_write_is_no_longer_tracked()
+    {
+        int writers = BlockFootprints.MaxIndexedPerSlot + 1;
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(writers + 1);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        for (int i = 0; i < writers; i++) footprints.Store(i, Footprint(txs[i], writes: [(cell, (UInt256)(i + 1))]));
+        TransactionFootprint reader = Footprint(txs[writers], reads: [(cell, 0x4e4d)]);
+        footprints.Store(writers, reader);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False);
+            Assert.That(footprints.ReadsUntrackedSlot(reader), Is.True);
+            Assert.That(footprints.ValueBefore(cell, writers), Is.Null);
+        }
+    }
+
+    [Test]
+    public void A_slot_too_many_transactions_read_keeps_its_writes_tracked()
+    {
+        int readers = BlockFootprints.MaxIndexedPerSlot + 1;
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(readers + 1);
+        StorageCell read = new(TestItem.AddressC, 0x4e4d);
+        StorageCell written = new(TestItem.AddressC, 2 * 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(written, 0x4e4d)]));
+        for (int i = 1; i < readers; i++) footprints.Store(i, Footprint(txs[i], reads: [(read, UInt256.Zero)]));
+        TransactionFootprint last = Footprint(txs[readers], reads: [(read, UInt256.Zero), (written, UInt256.Zero)]);
+        footprints.Store(readers, last);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.True);
+            Assert.That(position, Is.EqualTo(readers));
+            Assert.That(footprints.ReadsUntrackedSlot(last), Is.False);
+        }
+    }
+
+    [Test]
+    public void A_block_runs_at_most_its_refreshes()
+    {
+        const int notRun = 4;
+        int readers = BlockFootprints.MaxRefreshesPerBlock + 2 * notRun;
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(readers + 1);
+        footprints.Store(0, Footprint(txs[0], writes: [.. Enumerable.Range(0, readers).Select(static i => (new StorageCell(TestItem.AddressC, (UInt256)i), (UInt256)0x4e4d))]));
+        for (int i = 1; i <= readers; i++) footprints.Store(i, Footprint(txs[i], reads: [(new StorageCell(TestItem.AddressC, (UInt256)(i - 1)), UInt256.Zero)]));
+
+        int taken = 0;
+        while (footprints.TryTakeInvalidated(-1, out _))
+        {
+            if (taken++ >= notRun) footprints.CountRefresh();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(taken, Is.EqualTo(BlockFootprints.MaxRefreshesPerBlock + notRun));
+            Assert.That(footprints.HasWork, Is.False);
+        }
+    }
+
+    private static (BlockFootprints Footprints, Transaction[] Transactions) Footprints(int count)
+    {
+        Transaction[] txs = new Transaction[count];
+        for (int i = 0; i < count; i++) txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        return (new BlockFootprints(Build.A.Block.WithTransactions(txs).TestObject), txs);
+    }
+
+    private static UInt256? ReadOf(TransactionFootprint footprint, in StorageCell cell)
+    {
+        foreach (ref readonly SlotPrecondition slot in footprint.Slots)
+        {
+            if (slot.Cell.Equals(cell)) return slot.Value;
+        }
+
+        return null;
+    }
+
+    private static TransactionFootprint Footprint(Transaction tx, (StorageCell Cell, UInt256 Value)[]? reads = null, (StorageCell Cell, UInt256 Value)[]? writes = null) =>
+        new(tx, [],
+            [.. (reads ?? []).Select(static read => new SlotPrecondition { Cell = read.Cell, Value = read.Value, Read = true })],
+            [.. (writes ?? []).Select(static write => new StateEffect { Kind = EffectKind.SetStorage, Cell = write.Cell, Value = write.Value })],
+            default, default, default);
+
+    [Test]
     public void A_run_stops_once_block_processing_starts_its_transaction_and_is_undone()
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
@@ -453,6 +965,251 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
+    public enum RecordedChanges { NetCredit, NetDebit, NetZeroOfEmpty, AcrossRecreation, SlotWrittenTwice, SlotRestored, SlotRestoredUnread, SlotRestoredAfterClear, SlotChangedAfterRestore, ZeroValueToCode, ZeroValueToEmpty, ZeroValueToRecreated }
+
+    [Test]
+    public void A_compacted_footprint_replays_into_the_committed_state_of_its_run([Values] RecordedChanges changes)
+    {
+        StorageCell cell = new(Counter, 0x4e4d);
+        // Starts at 0x4e4d.
+        StorageCell set = new(Child, 0);
+        Address empty = TestItem.AddressE;
+        BlockHeader parent = WithEmptyAccount(empty);
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        (UInt256, UInt256, bool, UInt256, UInt256, bool, bool) State() =>
+            (worldState.GetBalance(ScarcePayer), worldState.GetBalance(TestItem.AddressC), worldState.AccountExists(TestItem.AddressC), Get(worldState, cell),
+                Get(worldState, set), worldState.AccountExists(empty), worldState.AccountExists(Logger));
+
+        TransactionFootprint footprint;
+        int compacted;
+        (UInt256, UInt256, bool, UInt256, UInt256, bool, bool) recorded;
+        using (worldState.BeginScope(parent))
+        {
+            (footprint, _) = Record(worldState, recorder =>
+            {
+                switch (changes)
+                {
+                    case RecordedChanges.NetCredit:
+                        recorder.SubtractFromBalance(ScarcePayer, 0x4e4d, Spec, out _);
+                        recorder.AddToBalance(ScarcePayer, 0x4e4c, Spec, out _);
+                        recorder.AddToBalance(ScarcePayer, 3, Spec, out _);
+                        return 1;
+                    case RecordedChanges.NetDebit:
+                        recorder.AddToBalance(ScarcePayer, 1, Spec, out _);
+                        recorder.SubtractFromBalance(ScarcePayer, 0x4e4e, Spec, out _);
+                        return 1;
+                    case RecordedChanges.NetZeroOfEmpty:
+                        // Updated back to empty, the account is deleted (EIP-161); no change at all leaves it.
+                        recorder.AddToBalance(empty, 3, Spec, out _);
+                        recorder.SubtractFromBalance(empty, 3, Spec, out _);
+                        return 2;
+                    case RecordedChanges.AcrossRecreation:
+                        recorder.AddToBalance(TestItem.AddressC, 3, Spec, out _);
+                        recorder.DeleteAccount(TestItem.AddressC);
+                        recorder.CreateAccount(TestItem.AddressC, 0);
+                        recorder.AddToBalance(TestItem.AddressC, 2, Spec, out _);
+                        return 4;
+                    case RecordedChanges.SlotWrittenTwice:
+                        recorder.Set(cell, 1);
+                        recorder.Set(cell, 2);
+                        return 1;
+                    case RecordedChanges.SlotRestored:
+                        // Replay requires the value read, so writing it back changes nothing.
+                        recorder.Get(set, out _);
+                        recorder.Set(set, 5);
+                        recorder.Set(set, 0x4e4d);
+                        return 0;
+                    case RecordedChanges.SlotRestoredUnread:
+                        recorder.Set(set, 5);
+                        recorder.Set(set, 0x4e4d);
+                        return 1;
+                    case RecordedChanges.SlotRestoredAfterClear:
+                        recorder.Get(set, out _);
+                        recorder.ClearStorage(Child);
+                        recorder.Set(set, 0x4e4d);
+                        return 2;
+                    case RecordedChanges.SlotChangedAfterRestore:
+                        recorder.Set(set, 0x4e4d);
+                        recorder.Set(set, 5);
+                        return 1;
+                    case RecordedChanges.ZeroValueToCode:
+                        recorder.GetCode(Counter);
+                        recorder.AddToBalance(Counter, 0, Spec, out _);
+                        recorder.SubtractFromBalance(ScarcePayer, 0, Spec, out _);
+                        return 0;
+                    case RecordedChanges.ZeroValueToEmpty:
+                        // The touch of an empty account deletes it (EIP-161).
+                        recorder.GetCode(empty);
+                        recorder.AddToBalance(empty, 0, Spec, out _);
+                        return 1;
+                    default:
+                        // Recreated empty, the contract is deleted only by the touch.
+                        recorder.GetCode(Logger);
+                        recorder.DeleteAccount(Logger);
+                        recorder.CreateAccount(Logger, 0);
+                        recorder.AddToBalance(Logger, 0, Spec, out _);
+                        return 3;
+                }
+            }, out compacted);
+            worldState.Commit(Spec);
+            recorded = State();
+        }
+
+        using (worldState.BeginScope(parent))
+        {
+            footprint.Replay(worldState, Spec);
+            worldState.Commit(Spec);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(State(), Is.EqualTo(recorded));
+                Assert.That(footprint.Effects.Length, Is.EqualTo(compacted));
+            }
+        }
+
+        static UInt256 Get(IWorldState state, in StorageCell cell)
+        {
+            state.Get(in cell, out UInt256 value);
+            return value;
+        }
+    }
+
+    [Test]
+    public void A_zero_value_credit_to_an_account_whose_code_the_run_did_not_require_still_needs_the_account()
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        TransactionFootprint footprint;
+        using (worldState.BeginScope(Parent))
+        {
+            (footprint, _) = Record(worldState, recorder =>
+            {
+                recorder.AddToBalance(Logger, 0, Spec, out _);
+                return 1;
+            }, out _);
+        }
+
+        // An earlier transaction of the block destroyed the contract; the touch the run made cannot be made.
+        using (worldState.BeginScope(Parent))
+        {
+            worldState.DeleteAccount(Logger);
+            Assert.That(() => footprint.Replay(worldState, Spec), Throws.InvalidOperationException);
+        }
+    }
+
+    /// <summary>A child of <see cref="Parent"/> whose state holds <paramref name="address"/> as an empty account.</summary>
+    private BlockHeader WithEmptyAccount(Address address)
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            worldState.CreateAccount(address, 0);
+            // As genesis, which keeps empty accounts.
+            worldState.Commit(Spec, Evm.Tracing.State.NullStateTracer.Instance, isGenesis: true);
+            worldState.CommitTree(Parent.Number + 1);
+            return Processed(BuildBlock(), worldState.StateRoot);
+        }
+    }
+
+    [Test]
+    public void A_net_balance_change_is_not_replayed_where_a_change_it_merges_could_not_be_made([Values] bool minimumNotedFirst)
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            // Nets to two wei paid, from a balance that must hold all of it first; or a smaller deficit after a check of
+            // the whole balance, which still stands.
+            (TransactionFootprint footprint, Snapshot before) = Record(worldState, recorder =>
+            {
+                if (minimumNotedFirst)
+                {
+                    recorder.NoteMinimumBalance(ScarcePayer, 0x4e4d);
+                    recorder.SubtractFromBalance(ScarcePayer, 2, Spec, out _);
+                    recorder.AddToBalance(ScarcePayer, 1, Spec, out _);
+                    return 2;
+                }
+
+                recorder.SubtractFromBalance(ScarcePayer, 0x4e4d, Spec, out _);
+                recorder.AddToBalance(ScarcePayer, 0x4e4c, Spec, out _);
+                recorder.SubtractFromBalance(ScarcePayer, 1, Spec, out _);
+                return 3;
+            }, out _);
+            worldState.Restore(before);
+            bool met = footprint.Matches(worldState);
+            worldState.SubtractFromBalance(ScarcePayer, 1, Spec, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(met, Is.True);
+                Assert.That(footprint.Matches(worldState), Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public void A_run_reading_more_accounts_and_slots_than_the_buffers_hold_is_recorded()
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            FootprintRecorder recorder = new(worldState);
+            // The first run grows the buffers past what is retained, so the second grows them again from the start.
+            foreach ((int accounts, int slots) in new[] { (2, 1100), (40, 70) })
+            {
+                Transaction tx = Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressB, 1.Wei);
+                recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
+                recorder.GetNonce(TestItem.AddressA);
+                for (int i = 0; i < accounts; i++) recorder.GetBalance(TestItem.Addresses[i]);
+                for (int i = 0; i < slots; i++) recorder.Get(new StorageCell(Counter, (UInt256)i), out _);
+                recorder.Outcome.MarkAsSuccess(TestItem.AddressB, default, [], []);
+                TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
+                recorder.Stop();
+
+                Snapshot recorded = worldState.TakeSnapshot();
+                bool met = footprint?.Matches(worldState) == true;
+                // The last account read is past the account buffer's first size.
+                worldState.AddToBalanceAndCreateIfNotExists(TestItem.Addresses[accounts - 1], 1, Spec, out _);
+                bool metAfterChange = footprint?.Matches(worldState) == true;
+                worldState.Restore(recorded);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(footprint?.Slots.Length, Is.EqualTo(slots));
+                    Assert.That(met, Is.True);
+                    Assert.That(metAfterChange, Is.False);
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void A_run_recorded_without_its_machine_counts_as_reading_the_whole_block_context()
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            (TransactionFootprint footprint, _) = Record(worldState, static _ => 0, out _);
+
+            Assert.That(footprint.ContextReads,
+                Is.EqualTo(BlockContextReads.Coinbase | BlockContextReads.Timestamp | BlockContextReads.GasLimit | BlockContextReads.PrevRandao
+                    | BlockContextReads.OutOfGas));
+        }
+    }
+
+    /// <summary>Records <paramref name="run"/> as the footprint of a transfer from A, returning the state before it.</summary>
+    private (TransactionFootprint Footprint, Snapshot Before) Record(IWorldState worldState, Func<FootprintRecorder, int> run, out int changes)
+    {
+        Transaction tx = Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressB, 1.Wei);
+        Snapshot before = worldState.TakeSnapshot();
+        FootprintRecorder recorder = new(worldState);
+        recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
+        recorder.GetNonce(TestItem.AddressA);
+        changes = run(recorder);
+        recorder.Outcome.MarkAsSuccess(TestItem.AddressB, default, [], []);
+        TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
+        recorder.Stop();
+        Assert.That(footprint, Is.Not.Null);
+        return (footprint!, before);
+    }
+
     private Block ThreeIndependentTransactions() => BuildBlock(
         Call(TestItem.PrivateKeyA, 0, Counter),
         Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
@@ -464,13 +1221,14 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     /// <summary>Envs whose scopes expose their world state through one more decorator than the recorder.</summary>
-    private sealed class OuterDecoratedEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches) : IPooledObjectPolicy<IPrewarmerEnv>
+    private sealed class OuterDecoratedEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches, Func<IWorldState, IWorldState>? decorate = null)
+        : IPooledObjectPolicy<IPrewarmerEnv>
     {
-        public IPrewarmerEnv Create() => new Env(factory.Create(caches));
+        public IPrewarmerEnv Create() => new Env(factory.Create(caches), decorate ?? (static state => new Forwarding(state)));
 
         public bool Return(IPrewarmerEnv obj) => true;
 
-        private sealed class Env(IPrewarmerEnv inner) : IPrewarmerEnv
+        private sealed class Env(IPrewarmerEnv inner, Func<IWorldState, IWorldState> decorate) : IPrewarmerEnv
         {
             public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
 
@@ -478,28 +1236,38 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
             public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
-                scope = inner.TryBuild(baseBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built) : null;
+                scope = inner.TryBuild(baseBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built, decorate) : null;
                 return scope is not null;
             }
 
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
-                scope = inner.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built) : null;
+                scope = inner.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built, decorate) : null;
                 return scope is not null;
             }
 
             public void Dispose() => inner.Dispose();
         }
 
-        private sealed class Scope(IReadOnlyTxProcessingScope inner) : IReadOnlyTxProcessingScope
+        private sealed class Scope(IReadOnlyTxProcessingScope inner, Func<IWorldState, IWorldState> decorate) : IReadOnlyTxProcessingScope
         {
             public ITransactionProcessor TransactionProcessor => inner.TransactionProcessor;
-            public IWorldState WorldState { get; } = new Forwarding(inner.WorldState);
+            public IWorldState WorldState { get; } = decorate(inner.WorldState);
             public void Reset() => inner.Reset();
             public void Dispose() => inner.Dispose();
         }
 
         private sealed class Forwarding(IWorldState state) : WorldStateDecorator(state);
+    }
+
+    /// <summary>A scope's world state that fails the first slot a refresh seeds: only a refresh sets one through it.</summary>
+    private sealed class FirstSeedFails(IWorldState state, StrongBox<int> seeds) : WorldStateDecorator(state)
+    {
+        public override void Set(in StorageCell storageCell, in UInt256 newValue)
+        {
+            if (Interlocked.Increment(ref seeds.Value) == 1) throw new InvalidOperationException("The first seed fails.");
+            base.Set(in storageCell, in newValue);
+        }
     }
 }
 
@@ -531,6 +1299,10 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     private static readonly byte[] TransientCode = [0x5F, 0x5C, 0x61, 0x4E, 0x4D, 0x01, 0x80, 0x5F, 0x5D, 0x33, 0x55, 0x00];
     // SSTORE(0, 0x4e4d); REVERT(0, 0)
     private static readonly byte[] UndoneCode = [0x61, 0x4E, 0x4D, 0x5F, 0x55, 0x5F, 0x5F, 0xFD];
+    // Without call data SSTORE(0, BALANCE(C)) if the balance is even, with it SSTORE(1, SLOAD(0)).
+    private static readonly byte[] CopierCode =
+        [0x36, 0x60, 0x26, 0x57, 0x73, .. TestItem.AddressC.Bytes, 0x31, 0x80, 0x60, 0x01, 0x16, 0x60, 0x24, 0x57, 0x5F, 0x55, 0x00,
+         0x5B, 0x00, 0x5B, 0x5F, 0x54, 0x60, 0x01, 0x55, 0x00];
 
     private static readonly byte[] Salt = [.. new byte[30], 0x4E, 0x4D];
     private static readonly UInt256 ChildSlot = new(0x746865726d696e64UL, 0x4e65UL, 0, 0);
@@ -548,6 +1320,19 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected static readonly Address Gift = new("0x00000000000000000000000000000000004e4d0a");
     protected static readonly Address ScarcePayer = new("0x00000000000000000000000000000000004e4d0b");
     protected static readonly Address Fresh = new("0x00000000000000000000000000000000004e4d0c");
+    protected static readonly Address Copier = new("0x00000000000000000000000000000000004e4d0d");
+    protected static readonly Address Guarded = new("0x00000000000000000000000000000000004e4d0e");
+    // Each stores the block context field it reads: COINBASE, TIMESTAMP, GASLIMIT or PREVRANDAO, then PUSH0 SSTORE STOP.
+    protected static readonly Address CoinbaseReader = new("0x00000000000000000000000000000000004e4d10");
+    protected static readonly Address TimestampReader = new("0x00000000000000000000000000000000004e4d11");
+    protected static readonly Address GasLimitReader = new("0x00000000000000000000000000000000004e4d12");
+    protected static readonly Address PrevRandaoReader = new("0x00000000000000000000000000000000004e4d13");
+    // PUSH20 F BALANCE POP STOP: reads the balance of the coinbase of the blocks built here.
+    protected static readonly Address CoinbaseBalanceReader = new("0x00000000000000000000000000000000004e4d14");
+    // CALL(1000, CoinbaseBalanceReader, 0, 0, 0, 0, 0) POP STOP: enough gas for a warm balance read only.
+    protected static readonly Address LimitedCaller = new("0x00000000000000000000000000000000004e4d15");
+    // EXTCODECOPY(F, 0, 0, 0) STOP: accesses the coinbase of the blocks built here without reading it.
+    protected static readonly Address CoinbaseCodeCopier = new("0x00000000000000000000000000000000004e4d16");
     protected static readonly Address Child = ContractAddress.From(Factory, Salt, ChildInitCode);
     protected static readonly Address Ripemd = new("0x0000000000000000000000000000000000000003");
     protected static readonly PrivateKey CodeOwner = TestItem.PrivateKeys[0x4c];
@@ -612,6 +1397,16 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             // CALL(GAS, Fresh, 0x4e4d, 0, 0, 0, 0); POP; STOP
             Deploy(worldState, Gift, [0x5F, 0x5F, 0x5F, 0x5F, 0x61, 0x4E, 0x4D, 0x73, .. Fresh.Bytes, 0x5A, 0xF1, 0x50, 0x00], 1.Ether);
             Deploy(worldState, ScarcePayer, PayerCode, 0x4e4d);
+            Deploy(worldState, Copier, CopierCode, 0);
+            // BALANCE(C) POP; SSTORE(0, 1); SSTORE(0, 0); SSTORE(1, 1); STOP
+            Deploy(worldState, Guarded, [0x73, .. TestItem.AddressC.Bytes, 0x31, 0x50, 0x60, 0x01, 0x5F, 0x55, 0x5F, 0x5F, 0x55, 0x60, 0x01, 0x60, 0x01, 0x55, 0x00], 0);
+            Deploy(worldState, CoinbaseReader, [0x41, 0x5F, 0x55, 0x00], 0);
+            Deploy(worldState, TimestampReader, [0x42, 0x5F, 0x55, 0x00], 0);
+            Deploy(worldState, GasLimitReader, [0x45, 0x5F, 0x55, 0x00], 0);
+            Deploy(worldState, PrevRandaoReader, [0x44, 0x5F, 0x55, 0x00], 0);
+            Deploy(worldState, CoinbaseBalanceReader, [0x73, .. TestItem.AddressF.Bytes, 0x31, 0x50, 0x00], 0);
+            Deploy(worldState, LimitedCaller, [0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x73, .. CoinbaseBalanceReader.Bytes, 0x61, 0x03, 0xE8, 0xF1, 0x50, 0x00], 0);
+            Deploy(worldState, CoinbaseCodeCopier, [0x5F, 0x5F, 0x5F, 0x73, .. TestItem.AddressF.Bytes, 0x3C, 0x00], 0);
             Deploy(worldState, Child, ChildCode, 0x4e4d);
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);
@@ -680,32 +1475,58 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected Run Process(Block block, PrewarmerTxAdapter? adapter, BlockHeader? parent = null, IBlockTracer? otherTracer = null)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
-        Block processing = new(block.Header.CloneForProcessing(), block.Body);
-        (int Replayed, int Rejected, int Missing) before = adapter?.Tally ?? default;
-        using (worldState.BeginScope(parent ?? Parent))
-        {
-            ITransactionProcessorAdapter transactions = (ITransactionProcessorAdapter?)adapter ?? new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>());
-            BlockReceiptsTracer tracer = new();
-            tracer.SetOtherTracer(otherTracer ?? NullBlockTracer.Instance);
-            tracer.StartNewBlockTrace(processing);
-            transactions.SetBlockExecutionContext(new BlockExecutionContext(processing.Header, Spec));
-            List<TransactionResult> results = [];
-            foreach (Transaction tx in processing.Transactions)
-            {
-                using ITxTracer txTracer = tracer.StartNewTxTrace(tx);
-                results.Add(transactions.Execute(tx, tracer));
-                tracer.EndTxTrace();
-            }
+        using (worldState.BeginScope(parent ?? Parent)) return ProcessInScope(block, adapter, otherTracer);
+    }
 
-            worldState.Commit(Spec);
-            worldState.CommitTree(block.Number);
-            (int Replayed, int Rejected, int Missing) after = adapter?.Tally ?? default;
-            return new Run(worldState.StateRoot, [.. tracer.TxReceipts], [.. results],
-                (after.Replayed - before.Replayed, after.Rejected - before.Rejected, after.Missing - before.Missing));
+    /// <summary>
+    /// Processes the block with the production adapter while its prewarming session is open, ending the session once
+    /// the transactions are executed, as block processing does.
+    /// </summary>
+    /// <param name="ready">Waited for, within a bound, before the transaction at each index.</param>
+    private protected Run ProcessWhileWarming(Block block, Func<BlockFootprints, int, bool> ready)
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            using IDisposable? session = PreWarmer.PreWarmCaches(block, Parent, Spec);
+            BlockFootprints footprints = PreWarmer.Footprints!;
+            return ProcessInScope(block, ProductionAdapter,
+                beforeTransaction: index => Assert.That(SpinWait.SpinUntil(() => ready(footprints, index), TimeSpan.FromSeconds(10)), Is.True,
+                    $"the footprints were not ready before transaction {index}"),
+                transactionsExecuted: () => session?.Dispose());
         }
     }
 
-    private static void AssertSameReceipts(TxReceipt[] actual, TxReceipt[] expected)
+    private Run ProcessInScope(Block block, PrewarmerTxAdapter? adapter, IBlockTracer? otherTracer = null,
+        Action<int>? beforeTransaction = null, Action? transactionsExecuted = null)
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        Block processing = new(block.Header.CloneForProcessing(), block.Body);
+        (int Replayed, int Rejected, int Missing) before = adapter?.Tally ?? default;
+        ITransactionProcessorAdapter transactions = (ITransactionProcessorAdapter?)adapter ?? new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>());
+        BlockReceiptsTracer tracer = new();
+        tracer.SetOtherTracer(otherTracer ?? NullBlockTracer.Instance);
+        tracer.StartNewBlockTrace(processing);
+        transactions.SetBlockExecutionContext(new BlockExecutionContext(processing.Header, Spec));
+        List<TransactionResult> results = [];
+        for (int i = 0; i < processing.Transactions.Length; i++)
+        {
+            beforeTransaction?.Invoke(i);
+            Transaction tx = processing.Transactions[i];
+            using ITxTracer txTracer = tracer.StartNewTxTrace(tx);
+            results.Add(transactions.Execute(tx, tracer));
+            tracer.EndTxTrace();
+        }
+
+        transactionsExecuted?.Invoke();
+        worldState.Commit(Spec);
+        worldState.CommitTree(block.Number);
+        (int Replayed, int Rejected, int Missing) after = adapter?.Tally ?? default;
+        return new Run(worldState.StateRoot, [.. tracer.TxReceipts], [.. results],
+            (after.Replayed - before.Replayed, after.Rejected - before.Rejected, after.Missing - before.Missing));
+    }
+
+    protected static void AssertSameReceipts(TxReceipt[] actual, TxReceipt[] expected)
     {
         Assert.That(actual, Has.Length.EqualTo(expected.Length));
         for (int i = 0; i < expected.Length; i++)
@@ -795,5 +1616,324 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         public BlockHeader? FindParentHeader(BlockHeader target) => headers.Find(header => header.Hash == target.ParentHash);
         public ulong FinalizedBlockNumber => 0;
         public BlockHeader? GetFinalizedHeader(ulong blockNumber) => null;
+    }
+}
+
+/// <summary>
+/// Runs the mempool pass records on the parent, before the block arrives, are taken over by the block like its own
+/// warm runs, but only where the block context they ran on is the block's.
+/// </summary>
+[TestFixture]
+public class PrewarmerMempoolHandoffTests() : PrewarmerHandoffTestBase(Osaka.Instance)
+{
+    [Test]
+    public void Runs_recorded_on_the_parent_are_taken_over_into_the_state_and_receipts_of_executing_the_block()
+    {
+        (Run run, bool[] taken) = MempoolHandoff(BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Counter),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyD, 0, Logger),
+            Create(TestItem.PrivateKeyC, 0, DeployCode)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(taken, Is.All.True);
+            Assert.That(run.Tally.Replayed, Is.EqualTo(4));
+        }
+    }
+
+    public enum ContextField { Coinbase, Timestamp, GasLimit, PrevRandao }
+
+    [Test]
+    public void A_run_that_read_the_block_context_is_taken_over_only_where_it_was_predicted([Values] ContextField field, [Values] bool predicted)
+    {
+        Address reader = field switch
+        {
+            ContextField.Coinbase => CoinbaseReader,
+            ContextField.Timestamp => TimestampReader,
+            ContextField.GasLimit => GasLimitReader,
+            _ => PrevRandaoReader
+        };
+        Block block = BuildBlock(Call(TestItem.PrivateKeyA, 0, reader), Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressD, 1.Wei), Unrelated());
+
+        (_, bool[] taken) = MempoolHandoff(block, predicted ? null : static header =>
+        {
+            header.Timestamp += 12;
+            header.GasLimit += 1;
+        });
+
+        // The coinbase and the random value are never known before the block; a run that did not read the context holds anyway.
+        bool known = field is ContextField.Timestamp or ContextField.GasLimit;
+        Assert.That(taken, Is.EqualTo(new[] { known && predicted, true, true }));
+    }
+
+    [Test]
+    public void A_run_touching_the_blocks_coinbase_is_executed()
+    {
+        // Execution warms the coinbase (EIP-3651), which the run did not.
+        (_, bool[] taken) = MempoolHandoff(BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressF, 1.Wei),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressD, 1.Wei),
+            Unrelated()));
+
+        Assert.That(taken, Is.EqualTo(new[] { false, true, true }));
+    }
+
+    public enum ColdCoinbaseAccess { OutOfGas, OutOfGasInChildCall, EmptyCodeCopy }
+
+    [Test]
+    public void A_run_that_paid_for_accessing_the_cold_coinbase_is_executed([Values] ColdCoinbaseAccess access)
+    {
+        // The block's coinbase is warm (EIP-3651), so the access costs less there, with no state value in the run to show it.
+        Transaction tx = access switch
+        {
+            ColdCoinbaseAccess.OutOfGas => Call(TestItem.PrivateKeyA, 0, CoinbaseBalanceReader, gasLimit: 22_000),
+            ColdCoinbaseAccess.OutOfGasInChildCall => Call(TestItem.PrivateKeyA, 0, LimitedCaller),
+            _ => Call(TestItem.PrivateKeyA, 0, CoinbaseCodeCopier)
+        };
+
+        (_, bool[] taken) = MempoolHandoff(BuildBlock(tx, Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressD, 1.Wei), Unrelated()));
+
+        Assert.That(taken, Is.EqualTo(new[] { false, true, true }));
+    }
+
+    [Test]
+    public void A_run_paying_the_coinbase_nothing_is_executed()
+    {
+        // With no fee the coinbase is only touched where it exists, which the run on another coinbase does not tell.
+        Transaction free = Build.A.Transaction.WithType(TxType.EIP1559).WithNonce(0).WithTo(TestItem.AddressD).WithValue(1.Wei)
+            .WithGasLimit(GasCostOf.Transaction).WithMaxFeePerGas(2.GWei).WithMaxPriorityFeePerGas(0)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+        (_, bool[] taken) = MempoolHandoff(BuildBlock(free, Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressD, 1.Wei), Unrelated()));
+
+        Assert.That(taken, Is.EqualTo(new[] { false, true, true }));
+    }
+
+    private static IEnumerable<TestCaseData> RecordingSpecs()
+    {
+        yield return new TestCaseData(Osaka.Instance, 2).SetName("Recorded before block access lists");
+        yield return new TestCaseData(Amsterdam.Instance, 0).SetName("Not recorded with block access lists");
+        yield return new TestCaseData(SpuriousDragon.Instance, 0).SetName("Not recorded before receipt status codes");
+    }
+
+    [TestCaseSource(nameof(RecordingSpecs))]
+    public void Runs_are_recorded_only_for_a_next_block_the_footprints_apply_to(IReleaseSpec spec, int expected)
+    {
+        Block block = BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressD, 1.Wei), Unrelated());
+
+        PreWarmer.RunSpeculativePreWarm(Parent, spec, Predicted(block, null), () => PreWarmer.SpeculativeMarkerPublished);
+
+        Assert.That(PreWarmer.MempoolRunsRecorded, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void The_predicted_coinbase_is_still_warmed_while_the_runs_pay_another()
+    {
+        Block delta = Predicted(BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressD, 1.Wei), Unrelated()),
+            static header => header.Beneficiary = Reverter);
+
+        PreWarmer.RunSpeculativePreWarm(Parent, Spec, delta, () => PreWarmer.SpeculativeMarkerPublished);
+
+        Assert.That(ProcessingScope.Resolve<PreBlockCaches>().StateCache.TryGetValue(Reverter, out _), Is.True);
+    }
+
+    [Test]
+    public void Runs_are_warmed_again_where_the_caches_did_not_carry_over()
+    {
+        // Taking a run over reads its preconditions from the caches, which only the warm pass refills after a clear.
+        (_, bool[] taken) = MempoolHandoff(BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressD, 1.Wei),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressD, 1.Wei), Unrelated()), carried: false);
+
+        Assert.That(taken, Has.None.True);
+    }
+
+    // A block of fewer transactions is not warmed, so it takes no runs either.
+    private static Transaction Unrelated() => Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressC, 1.Wei);
+
+    /// <summary>
+    /// Warms copies of the block's transactions in a mempool pass on a predicted header, then processes the block as
+    /// <see cref="PrewarmerHandoffTestBase.Handoff(Block, Nethermind.Evm.Tracing.IBlockTracer?)"/> does.
+    /// </summary>
+    /// <returns>The run, and per transaction whether a mempool run was stored for block processing to take over.</returns>
+    private (Run Run, bool[] Taken) MempoolHandoff(Block block, Action<BlockHeader>? mispredict = null, bool carried = true)
+    {
+        Run executed = Process(block, adapter: null);
+
+        PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block, mispredict), () => PreWarmer.SpeculativeMarkerPublished);
+        if (!carried) ProcessingScope.Resolve<PreBlockCaches>().PrepareFor(Keccak.Zero);
+        RunPreWarmCaches(PreWarmer, block);
+        bool[] taken = new bool[block.Transactions.Length];
+        for (int i = 0; i < taken.Length; i++) taken[i] = PreWarmer.Footprints?.Get(i)?.FromMempool == true;
+
+        Run run = Process(block, ProductionAdapter);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Results, Is.EqualTo(executed.Results));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
+        }
+
+        AssertSameReceipts(run.Receipts, executed.Receipts);
+        return (run, taken);
+    }
+
+    // The block the mempool pass predicts, as the mempool prewarmer builds it, of copies of the block's transactions.
+    private Block Predicted(Block block, Action<BlockHeader>? mispredict)
+    {
+        BlockHeader header = Parent.CreateSimulatedChild(block.Timestamp);
+        header.Beneficiary = Parent.GasBeneficiary ?? Address.Zero;
+        header.BaseFeePerGas = block.BaseFeePerGas;
+        header.ExcessBlobGas = block.Header.ExcessBlobGas;
+        mispredict?.Invoke(header);
+
+        Transaction[] copies = new Transaction[block.Transactions.Length];
+        for (int i = 0; i < copies.Length; i++)
+        {
+            copies[i] = new Transaction();
+            block.Transactions[i].CopyTo(copies[i], copyHash: true);
+        }
+
+        return new Block(header, new BlockBody(copies, [], null));
+    }
+}
+
+/// <summary>Which recorded runs hold in the block that arrives, from what they read of the context they ran on.</summary>
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class MempoolFootprintsTests
+{
+    private const ulong Fee = 0x4e4d;
+
+    public enum Difference
+    {
+        None,
+        TimestampUnread,
+        GasLimitUnread,
+        Parent,
+        Number,
+        BaseFee,
+        ExcessBlobGas,
+        SlotNumber,
+        Spec,
+        TimestampRead,
+        GasLimitRead,
+        CoinbaseRead,
+        PrevRandaoRead,
+        OutOfGas,
+        CoinbaseRequired,
+        PredictedCoinbaseRequired,
+        CoinbaseSlotRead,
+        CoinbaseChanged,
+        NoFee,
+        TwoFees,
+        FeeOfAnotherKind,
+        RecordedAgainWhenFull
+    }
+
+    [Test]
+    public void A_run_is_stored_only_where_it_holds_in_the_block([Values] Difference difference)
+    {
+        BlockHeader head = Build.A.BlockHeader.WithNumber(10).WithHash(TestItem.KeccakA).TestObject;
+        Transaction recordedTx = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(2.GWei).WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction tx = new();
+        recordedTx.CopyTo(tx, copyHash: true);
+
+        Block block = Build.A.Block
+            .WithParentHash(difference == Difference.Parent ? TestItem.KeccakB : head.Hash!)
+            .WithNumber(difference == Difference.Number ? 12 : 11)
+            .WithBeneficiary(TestItem.AddressF)
+            .WithTimestamp(difference is Difference.TimestampRead or Difference.TimestampUnread ? 124UL : 112UL)
+            .WithGasLimit(difference is Difference.GasLimitRead or Difference.GasLimitUnread ? 30_000_001UL : 30_000_000UL)
+            .WithBaseFeePerGas(difference == Difference.BaseFee ? 8UL : 7UL)
+            .WithExcessBlobGas(difference == Difference.ExcessBlobGas ? 1UL : 0UL)
+            .WithSlotNumber(difference == Difference.SlotNumber ? 2UL : null)
+            .WithTransactions(tx)
+            .TestObject;
+        BlockHeader predicted = Build.A.BlockHeader.WithParentHash(head.Hash!).WithNumber(11).WithTimestamp(112).WithGasLimit(30_000_000)
+            .WithBaseFee(7).WithExcessBlobGas(0).TestObject;
+
+        MempoolFootprints recorded = new(head);
+        Address coinbase = TestItem.AddressF;
+        List<StateEffect> effects =
+        [
+            new() { Kind = EffectKind.AddToBalance, Cell = new StorageCell(TestItem.AddressC, 0), Value = 1 },
+            new()
+            {
+                Kind = difference == Difference.FeeOfAnotherKind ? EffectKind.AddToBalance : EffectKind.AddToBalanceAndCreateIfNotExists,
+                Cell = new StorageCell(recorded.Coinbase, 0),
+                Value = Fee
+            }
+        ];
+        if (difference == Difference.NoFee) effects.RemoveAt(1);
+        if (difference == Difference.TwoFees) effects.Add(effects[1]);
+        if (difference == Difference.CoinbaseChanged) effects.Add(new StateEffect { Kind = EffectKind.AddToBalance, Cell = new StorageCell(coinbase, 0), Value = 1 });
+
+        AccountPrecondition[] accounts = difference switch
+        {
+            Difference.CoinbaseRequired => [new AccountPrecondition { Address = coinbase, Fields = AccountFields.Balance }],
+            Difference.PredictedCoinbaseRequired => [new AccountPrecondition { Address = recorded.Coinbase, Fields = AccountFields.Existence }],
+            _ => []
+        };
+        SlotPrecondition[] slots = difference == Difference.CoinbaseSlotRead ? [new SlotPrecondition { Cell = new StorageCell(coinbase, 1), Read = true }] : [];
+        BlockContextReads reads = difference switch
+        {
+            Difference.TimestampRead => BlockContextReads.Timestamp,
+            Difference.GasLimitRead => BlockContextReads.GasLimit,
+            Difference.CoinbaseRead => BlockContextReads.Coinbase,
+            Difference.PrevRandaoRead => BlockContextReads.PrevRandao,
+            Difference.OutOfGas => BlockContextReads.OutOfGas,
+            _ => BlockContextReads.None
+        };
+        TransactionFootprint footprint = new(recordedTx, accounts, slots, [.. effects], default, default, default) { ContextReads = reads };
+
+        if (difference == Difference.RecordedAgainWhenFull)
+        {
+            // A later pass replaces a run that no longer holds even once no other transaction is taken.
+            recorded.Record(footprint, predicted, Prague.Instance);
+            for (int i = 1; i < MempoolFootprints.MaxEntries; i++)
+            {
+                Transaction other = Build.A.Transaction.WithNonce((ulong)i).WithHash(Keccak.Compute(BitConverter.GetBytes(i))).TestObject;
+                recorded.Record(new TransactionFootprint(other, [], [], [], default, default, default), predicted, Osaka.Instance);
+            }
+        }
+
+        recorded.Record(footprint, predicted, Osaka.Instance);
+        BlockFootprints footprints = new(block);
+        HashSet<Hash256>? seeded = recorded.Seed(block, difference == Difference.Spec ? Prague.Instance : Osaka.Instance, footprints);
+
+        bool holds = difference is Difference.None or Difference.TimestampUnread or Difference.GasLimitUnread or Difference.RecordedAgainWhenFull;
+        TransactionFootprint? stored = footprints.Get(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored is not null, Is.EqualTo(holds));
+            Assert.That(seeded?.Contains(tx.Hash!) == true, Is.EqualTo(holds));
+        }
+
+        if (stored is null) return;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored.Transaction, Is.SameAs(tx), "taken as the block's own transaction");
+            Assert.That(stored.FromMempool, Is.True);
+            Assert.That(stored.Effects[1].Address, Is.EqualTo(coinbase), "the fee goes to the block's coinbase");
+            Assert.That(stored.Effects[1].Value, Is.EqualTo((UInt256)Fee));
+            Assert.That(stored.Effects[0].Address, Is.EqualTo(TestItem.AddressC));
+            Assert.That(footprint.Effects[1].Address, Is.EqualTo(recorded.Coinbase), "the recorded run is left as it was");
+        }
+    }
+
+    [Test]
+    public void Runs_past_the_cap_are_not_kept()
+    {
+        MempoolFootprints recorded = new(Build.A.BlockHeader.WithHash(TestItem.KeccakA).TestObject);
+        BlockHeader predicted = Build.A.BlockHeader.TestObject;
+        for (int i = 0; i <= MempoolFootprints.MaxEntries; i++)
+        {
+            Transaction tx = Build.A.Transaction.WithNonce((ulong)i).WithHash(Keccak.Compute(BitConverter.GetBytes(i))).TestObject;
+            recorded.Record(new TransactionFootprint(tx, [], [], [], default, default, default), predicted, Osaka.Instance);
+        }
+
+        Assert.That(recorded.Count, Is.EqualTo(MempoolFootprints.MaxEntries));
     }
 }
