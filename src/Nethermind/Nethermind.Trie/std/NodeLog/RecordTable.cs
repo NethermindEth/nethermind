@@ -110,7 +110,7 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
     }
 
     /// <summary>Empties the table and rewinds the arena, keeping its first chunk.</summary>
-    /// <remarks>No reader may be running, since the arena bytes are reused.</remarks>
+    /// <remarks>No reader may be running, and no record reference handed out before may be used after, since the arena bytes are reused.</remarks>
     public void Reset()
     {
         lock (_lock)

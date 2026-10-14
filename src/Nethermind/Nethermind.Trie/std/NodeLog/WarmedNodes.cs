@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeLog;
@@ -35,6 +36,7 @@ internal sealed class WarmedNodes(int capacity)
     /// <summary>Verifies <paramref name="rlp"/> against <paramref name="expectedHash"/> and inserts its record.</summary>
     /// <param name="record">The inserted record, or the one already held for the same position and hash.</param>
     /// <returns>False when the RLP does not hash to <paramref name="expectedHash"/> or is not a valid trie node.</returns>
+    [SkipLocalsInit]
     public bool TryInsert(Hash256? address, in TreePath path, in ValueHash256 expectedHash, ReadOnlySpan<byte> rlp, out NodeRecordRef record)
     {
         if (ValueKeccak.Compute(rlp) != expectedHash || !NodeRecord.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask))

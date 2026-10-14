@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Trie.NodeLog;
 
 /// <summary>A trie node record held in place inside a buffer of the trie node log, warmed nodes or a record cache.</summary>
-/// <remarks>Records are immutable once published, so the referenced bytes never change while the buffer is reachable.</remarks>
+/// <remarks>Records are immutable once published, so the referenced bytes never change while the buffer is reachable, unless the record table that owns them is reset.</remarks>
 public readonly struct NodeRecordRef(byte[] buffer, int offset)
 {
     private readonly byte[] _buffer = buffer;

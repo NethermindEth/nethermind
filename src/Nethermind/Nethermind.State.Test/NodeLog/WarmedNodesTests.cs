@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -28,7 +29,7 @@ internal class WarmedNodesTests
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         byte[] otherRlp = TrieNodeLogTests.Leaf(1, 8);
         ValueHash256 otherHash = ValueKeccak.Compute(otherRlp);
-        byte[] invalidRlp = Bytes.FromHexString("e215a0" + "22222222222222222222222222222222222222222222222222222222222222");
+        byte[] truncatedExtensionRlp = Bytes.FromHexString("e215a0" + "22222222222222222222222222222222222222222222222222222222222222");
         TreePath path = Path(0);
         TreePath collidingPath = CollidingPath(address, path);
 
@@ -45,8 +46,8 @@ internal class WarmedNodesTests
             Assert.That(Get(warmed, otherAddress, path, hash), Is.Null, "other address");
             Assert.That(Get(warmed, address, Path(1), hash), Is.Null, "other path");
             Assert.That(warmed.TryInsert(address, Path(2), otherHash, rlp, out _), Is.False, "keccak mismatch");
-            Assert.That(warmed.TryInsert(address, Path(3), ValueKeccak.Compute(invalidRlp), invalidRlp, out _), Is.False, "invalid RLP");
-            Assert.That(Get(warmed, address, Path(2), otherHash) ?? Get(warmed, address, Path(3), ValueKeccak.Compute(invalidRlp)), Is.Null, "rejected inserts");
+            Assert.That(warmed.TryInsert(address, Path(3), ValueKeccak.Compute(truncatedExtensionRlp), truncatedExtensionRlp, out _), Is.False, "invalid RLP");
+            Assert.That(Get(warmed, address, Path(2), otherHash) ?? Get(warmed, address, Path(3), ValueKeccak.Compute(truncatedExtensionRlp)), Is.Null, "rejected inserts");
         }
 
         warmed.TryInsert(address, collidingPath, otherHash, otherRlp, out _);
@@ -86,6 +87,34 @@ internal class WarmedNodesTests
 
         warmed.TryInsert(address, path, hash, rlp, out _);
         Assert.That(Get(warmed, address, path, hash), Is.EqualTo(rlp), "reusable after reset");
+    }
+
+    [Test]
+    public void Record_table_add_fails_once_the_arena_budget_is_spent()
+    {
+        const int lastChunkBytes = 1000;
+        RecordTable table = new(1024, ChunkBytes + lastChunkBytes + NodeRecord.RecordAlignment - 1);
+        int alignedRecordLength = (Record(Path(0), TrieNodeLogTests.Leaf(0, 400)).Length + NodeRecord.RecordAlignment - 1) & -NodeRecord.RecordAlignment;
+        int fittingRecordCount = ChunkBytes / alignedRecordLength + lastChunkBytes / alignedRecordLength;
+
+        bool allAdded = Enumerable.Range(0, fittingRecordCount).All(i => table.TryAdd(Record(Path(i), TrieNodeLogTests.Leaf(i, 400)), out _));
+        bool overBudgetAdded = table.TryAdd(Record(Path(fittingRecordCount), TrieNodeLogTests.Leaf(fittingRecordCount, 400)), out NodeRecordRef overBudget);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allAdded, Is.True, "adds within the budget");
+            Assert.That(overBudgetAdded, Is.False, "add over the budget");
+            Assert.That(overBudget.IsNull, Is.True, "no record over the budget");
+            Assert.That(table.Count, Is.EqualTo(fittingRecordCount), "count");
+            Assert.That(table.ArenaBytes, Is.EqualTo(ChunkBytes + lastChunkBytes), "the last chunk is shortened to the budget");
+        }
+    }
+
+    private static byte[] Record(in TreePath path, byte[] rlp)
+    {
+        NodeRecord.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask);
+        byte[] record = new byte[NodeRecord.Length(BitOperations.PopCount(hashMask), rlp.Length)];
+        NodeRecord.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), NodeRecord.NodeKey(null, path), record);
+        return record;
     }
 
     private static TreePath Path(int seed) => new(ValueKeccak.Compute(BitConverter.GetBytes(seed)), 64);
