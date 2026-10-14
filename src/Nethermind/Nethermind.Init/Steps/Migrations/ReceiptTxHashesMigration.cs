@@ -93,7 +93,7 @@ public sealed class ReceiptTxHashesMigration(
     private async Task Migrate(CancellationToken cancellationToken)
     {
         ulong next = ReadNextBlock() ?? blockTree.Head?.Number ?? Completed;
-        ulong lowest = Math.Max(1, blockTree.GetLowestBlock());
+        ulong lowest = 1;
         if (next < lowest) return;
 
         if (_logger.IsInfo) _logger.Info($"Adding transaction hashes to stored receipts, blocks {lowest} to {next}.");
