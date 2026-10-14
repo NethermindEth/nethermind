@@ -19,7 +19,7 @@ on:
       - 'global.json'
       - '.github/workflows/eez-devnet-tests.yml'
   push:
-    branches: [master, feature/eez-l2-execution]
+    branches: [master]
     paths:
       - 'src/Nethermind/Nethermind.Eez*/**'
       - 'src/Nethermind/Nethermind.Consensus*/**'
@@ -49,8 +49,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: eez-live-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   follower:
