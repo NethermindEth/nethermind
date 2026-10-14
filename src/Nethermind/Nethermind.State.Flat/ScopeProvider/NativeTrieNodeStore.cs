@@ -12,14 +12,15 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 /// <summary>
 /// The <see cref="INativeNodeStore"/> of one trie in a <see cref="SnapshotBundle"/>: the state trie when
-/// <paramref name="addressHash"/> is null, otherwise that account's storage trie.
+/// <paramref name="addressHash"/> is null, otherwise that account's storage trie. Its nodes are also cached in
+/// <paramref name="cache"/>.
 /// </summary>
 /// <remarks>
 /// Written nodes stay pending in <see cref="NativePendingNodes"/>, where the native bulk set reads them back, until
 /// <see cref="Publish"/> moves them into the bundle, so like the managed tries nothing reaches the bundle before the scope
 /// commits. The native bulk set writes from several threads at once, which the bundle's node dictionaries do not allow.
 /// </remarks>
-internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addressHash) : INativeNodeStore
+internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addressHash, NativeTrieNodeCache cache) : INativeNodeStore
 {
     private const int MinNodesToPublishInParallel = 256;
 
@@ -30,7 +31,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
 
     /// <summary>Applies <paramref name="entries"/> to the trie rooted at <paramref name="root"/> and returns the new root.</summary>
     public Hash256 BulkSet(Hash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries) =>
-        NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), root.ValueHash256, entries);
+        NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), cache, addressHash, root.ValueHash256, entries);
 
     public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver)
     {

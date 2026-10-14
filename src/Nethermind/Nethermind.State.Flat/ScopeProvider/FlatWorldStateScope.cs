@@ -16,6 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -36,6 +37,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private StateTree? _stateTree;
     // Set with UseNativeBulkSet, which then maintains the state trie instead of _stateTree.
     private readonly NativeTrieNodeStore? _nativeStateStore;
+    private readonly NativeTrieNodeCache? _nativeTrieNodeCache;
     private Hash256 _nativeStateRoot;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
@@ -73,12 +75,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
     internal bool Trieless => _trieless;
 
+    // Provided whenever UseNativeBulkSet is set.
+    internal NativeTrieNodeCache NativeTrieNodeCache => _nativeTrieNodeCache!;
+
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
         IWorldStateScopeProvider.ICodeDb codeDb,
         IFlatCommitTarget commitTarget,
         IFlatDbConfig configuration,
+        NativeTrieNodeCache? nativeTrieNodeCache,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
@@ -93,6 +99,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _nativeStateRoot = _initialStateRoot;
 
         _configuration = configuration;
+        _nativeTrieNodeCache = nativeTrieNodeCache;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
@@ -101,7 +108,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
-        if (configuration.UseNativeBulkSet && !_trieless) _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null);
+        if (configuration.UseNativeBulkSet && !_trieless) _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null, NativeTrieNodeCache);
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
             && !configuration.UseNativeBulkSet && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)

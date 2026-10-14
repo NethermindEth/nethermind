@@ -39,6 +39,8 @@ public class NativePatriciaBulkSetBenchmarks
     private Hash256 _preloadedRootHash;
     private DictionaryNodeStore _nativeStore;
     private NativePendingNodes _nativePending;
+    // Disabled, so every batch reads the preloaded trie from the store.
+    private readonly NativeTrieNodeCache _nativeCache = new(0);
 
     [GlobalSetup]
     public void Setup()
@@ -61,7 +63,7 @@ public class NativePatriciaBulkSetBenchmarks
             _preloadedRootHash = preloadTree.RootHash;
 
             using NativePendingNodes preloadPending = NativePendingNodes.Rent(PreloadedCount);
-            Hash256 nativeRoot = NativePatriciaBulkSet.BulkSet(new DictionaryNodeStore(preloadedNodes), preloadPending, Keccak.EmptyTreeHash.ValueHash256, nativePreload, preloadValues);
+            Hash256 nativeRoot = NativePatriciaBulkSet.BulkSet(new DictionaryNodeStore(preloadedNodes), preloadPending, _nativeCache, null, Keccak.EmptyTreeHash.ValueHash256, nativePreload, preloadValues);
             if (nativeRoot != _preloadedRootHash) throw new InvalidOperationException($"Native root {nativeRoot} differs from {_preloadedRootHash}");
 
             NativePendingNodesView view = preloadPending.GetView();
@@ -73,7 +75,11 @@ public class NativePatriciaBulkSetBenchmarks
     }
 
     [GlobalCleanup]
-    public void Cleanup() => _nativePending.Dispose();
+    public void Cleanup()
+    {
+        _nativePending.Dispose();
+        _nativeCache.Dispose();
+    }
 
     /// <summary>The production flow: hash with the write batch, persist at the end of the block.</summary>
     [Benchmark(Baseline = true)]
@@ -95,7 +101,7 @@ public class NativePatriciaBulkSetBenchmarks
         _nativeEntries.CopyTo(_nativeBatches, 0);
         for (int start = 0; start < EntryCount; start += BatchSize)
         {
-            NativePatriciaBulkSet.BulkSet(_nativeStore, _nativePending, _preloadedRootHash.ValueHash256, _nativeBatches.AsSpan(start, BatchSize), _values);
+            NativePatriciaBulkSet.BulkSet(_nativeStore, _nativePending, _nativeCache, null, _preloadedRootHash.ValueHash256, _nativeBatches.AsSpan(start, BatchSize), _values);
             // Cleared after every batch, so every batch starts from the preloaded trie.
             _nativePending.Clear();
         }

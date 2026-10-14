@@ -1816,6 +1816,7 @@ public class FlatWorldStateScopeProviderTests
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
             Substitute.For<IFlatCommitTarget>(),
             config,
+            null,
             warmer,
             LimboLogs.Instance);
 
