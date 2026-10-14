@@ -165,7 +165,7 @@ public class ReleaseSpecTests
     public void Forwarding_spec_implements_every_member_itself(Type forwarder)
     {
         string[] inherited = forwarder.GetInterfaces()
-            .SelectMany(i => forwarder.GetInterfaceMap(i).TargetMethods.Where(m => m.DeclaringType == i))
+            .SelectMany(i => forwarder.GetInterfaceMap(i).TargetMethods.Where(m => m.DeclaringType!.IsInterface))
             .Select(m => m.Name)
             .Where(name => !DerivedDefaults.Contains(name))
             .ToArray();
