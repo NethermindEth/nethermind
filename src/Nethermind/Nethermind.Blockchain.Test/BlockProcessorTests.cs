@@ -53,6 +53,7 @@ using System.Runtime.ExceptionServices;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Security;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -2103,7 +2104,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void ProcessOne_wraps_parallel_bal_failure_for_sequential_retry()
+    public void ProcessOne_wraps_only_parallel_bal_failure_for_sequential_retry([Values] bool balFailure)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
@@ -2124,20 +2125,36 @@ public partial class BlockProcessorTests
             balManager);
 
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
-        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(block.Header, "invalid BAL");
+        // A plain tx failure reproduces sequentially whenever the BAL is right, and a wrong BAL fails the hash
+        // check anyway, so only a BAL failure is worth a sequential retry.
+        InvalidBlockException failure = balFailure
+            ? new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL")
+            : new InvalidTransactionException(block.Header, "invalid tx", TransactionResult.ErrorType.MalformedTransaction);
+        BlockAccessListManager.ParallelExecutionException parallelFailure = new(failure);
         transactionsExecutor.ProcessTransactions(
                 Arg.Any<Block>(),
                 Arg.Any<ProcessingOptions>(),
                 Arg.Any<BlockReceiptsTracer>(),
                 Arg.Any<CancellationToken>())
-            .Returns(_ => throw new BlockAccessListManager.ParallelExecutionException(failure));
+            .Returns(_ => throw parallelFailure);
 
         using IDisposable scope = stateProvider.BeginScope(null);
 
-        BlockProcessor.BlockAccessListSequentialRetryException? exception = Assert.Throws<BlockProcessor.BlockAccessListSequentialRetryException>(
+        InvalidBlockException? exception = Assert.Catch<InvalidBlockException>(
             () => processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None));
 
-        Assert.That(exception!.InnerException, Is.SameAs(failure));
+        if (balFailure)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exception, Is.TypeOf<BlockProcessor.BlockAccessListSequentialRetryException>());
+                Assert.That(exception!.InnerException, Is.SameAs(failure));
+            }
+        }
+        else
+        {
+            Assert.That(exception, Is.SameAs(parallelFailure));
+        }
     }
 
     [Test]
@@ -2867,9 +2884,10 @@ public partial class BlockProcessorTests
     [Test]
     public void Registered_parallel_and_fallback_validation_publish_only_accepted_canonical_receipt_events(
         [Values] bool retry,
-        [Values] bool validationSucceeds)
+        [Values] bool validationSucceeds,
+        [Values] bool eip8116)
     {
-        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(retry, validationSucceeds);
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(retry, validationSucceeds, eip8116);
         using IContainer container = setup.Container;
 
         if (validationSucceeds)
@@ -2887,7 +2905,7 @@ public partial class BlockProcessorTests
             Assert.That(setup.BalManager.ProcessingAttempts, Is.EqualTo(retry ? 2 : 1));
             Assert.That(
                 setup.Handler.Events,
-                validationSucceeds ? Is.EqualTo(CanonicalReceiptEvents) : Is.Empty,
+                validationSucceeds ? Is.EqualTo(eip8116 ? Eip8116ReceiptEvents : CanonicalReceiptEvents) : Is.Empty,
                 "only an accepted processing attempt may publish callbacks");
         }
     }
@@ -3379,11 +3397,75 @@ public partial class BlockProcessorTests
     public void Parallel_validation_stops_executing_once_out_of_order_gas_exceeds_block_limit([Values] bool stateGas)
     {
         const ulong gasUsed = 1_000_000;
-        const int heavyCount = 4096;
         const int heavyCountUnderLimit = 64;
         int lead = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(int.MaxValue);
-        // The lowest gas limit after the canonical prefix is scheduled last, holding the in-order validator
-        // there while the heavy tail runs; the prefix and that tx alone stay under the block gas limit.
+
+        using ManualResetEventSlim validationFinished = new(true);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, gasUsed, validationFinished, stateGas);
+        InvalidBlockException ex = ExecuteHeavyTail(lead, gasUsed, (ulong)(lead + 1 + heavyCountUnderLimit) * gasUsed, transactionProcessor);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain("Block gas limit exceeded"));
+            // The tally trips one tx past the limit; each worker may then finish the tx it already started,
+            // bounded loosely by twice the core count so the assertion does not depend on worker scheduling.
+            Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + heavyCountUnderLimit + 2 + 2 * Environment.ProcessorCount));
+        }
+    }
+
+    [Test]
+    public void Parallel_validation_stops_executing_once_a_transaction_fails([Values] bool balFailure)
+    {
+        const ulong gasUsed = 1_000_000;
+        int lead = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(int.MaxValue);
+
+        // Each heavy tx spins before failing, as one reading undeclared state mid-execution would; a failed tx
+        // spends no block gas, so only the failure itself can stop the tail. The 21k tx at index lead is scheduled
+        // last, so its earlier canonical slot is filled with a copied failure, which must name the tx that failed.
+        bool leadExecuted = false;
+        ConcurrentDictionary<int, InvalidBlockException?> failures = new();
+        using ManualResetEventSlim validationFinished = new(true);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(lead, gasUsed, validationFinished, outcome: tx =>
+        {
+            int index = (int)tx.Nonce;
+            if (index == lead) Volatile.Write(ref leadExecuted, true);
+            if (index <= lead) return TransactionResult.Ok;
+            if (!balFailure)
+            {
+                failures[index] = null;
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("VERIFY frame reverted");
+            }
+
+            BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(Build.A.BlockHeader.TestObject, "undeclared storage");
+            failures[index] = failure;
+            throw failure;
+        });
+        InvalidBlockException ex = ExecuteHeavyTail(lead, gasUsed, ulong.MaxValue, transactionProcessor);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The worker's own failure surfaces, so a BAL failure still reaches the sequential retry.
+            Assert.That(ex, Is.InstanceOf<BlockAccessListManager.ParallelExecutionException>());
+            Assert.That(Volatile.Read(ref leadExecuted), Is.False);
+            if (balFailure)
+            {
+                Assert.That(failures.Any(failure => ReferenceEquals(failure.Value, ex.InnerException)), Is.True);
+            }
+            else
+            {
+                Assert.That(ex.InnerException, Is.InstanceOf<InvalidTransactionException>());
+                Match named = Regex.Match(ex.Message, @"at index (\d+) failed");
+                Assert.That(failures.ContainsKey(int.Parse(named.Groups[1].Value)), Is.True);
+            }
+            Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + 1 + 2 * Environment.ProcessorCount));
+        }
+    }
+
+    /// <summary>Runs the canonical prefix, a 21k-gas tx scheduled last to hold the in-order validator, then a
+    /// heavy tail, and returns the block rejection.</summary>
+    private static InvalidBlockException ExecuteHeavyTail(int lead, ulong gasUsed, ulong blockGasLimit, ITransactionProcessorAdapter transactionProcessor)
+    {
+        const int heavyCount = 4096;
         Transaction[] transactions = CreateParallelValidationTransactions(lead + 1 + heavyCount, gasUsed);
         transactions[lead].GasLimit = 21_000;
 
@@ -3392,13 +3474,11 @@ public partial class BlockProcessorTests
 
         Block block = Build.A.Block
             .WithNumber(1)
-            .WithGasLimit((ulong)(lead + 1 + heavyCountUnderLimit) * gasUsed)
+            .WithGasLimit(blockGasLimit)
             .WithTransactions(transactions)
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        using ManualResetEventSlim validationFinished = new(true);
-        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, gasUsed, validationFinished, stateGas);
         BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
             stateProvider,
@@ -3406,19 +3486,11 @@ public partial class BlockProcessorTests
             new ParallelTestBlockAccessListManager(transactionProcessor) { IncrementalValidationAction = ReplayGasLimitChecks },
             LimboLogs.Instance);
 
-        InvalidBlockException? ex = Assert.Catch<InvalidBlockException>(() => executor.ProcessTransactions(
+        return Assert.Catch<InvalidBlockException>(() => executor.ProcessTransactions(
             block,
             ProcessingOptions.None,
             new BlockReceiptsTracer(),
-            CancellationToken.None));
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(ex!.Message, Does.Contain("Block gas limit exceeded"));
-            // The tally trips one tx past the limit; each worker may then finish the tx it already started,
-            // bounded loosely by twice the core count so the assertion does not depend on worker scheduling.
-            Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + heavyCountUnderLimit + 2 + 2 * Environment.ProcessorCount));
-        });
+            CancellationToken.None))!;
     }
 
     [Test]
@@ -3625,6 +3697,13 @@ public partial class BlockProcessorTests
         new(1, 1, 70_000, 120_000, 70_000, 1),
     ];
 
+    /// <summary>EIP-8116: events are published after the block is finalised, so the receipt gas is per transaction.</summary>
+    private static readonly TransactionProcessedSnapshot[] Eip8116ReceiptEvents =
+    [
+        new(0, 0, 50_000, 50_000, 30_000, 0),
+        new(1, 1, 70_000, 70_000, 70_000, 1),
+    ];
+
     private readonly record struct CanonicalReceiptEventSetup(
         Block Block,
         BlockHeader Parent,
@@ -3637,7 +3716,7 @@ public partial class BlockProcessorTests
     /// <summary>Wires the registered parallel decorator over a real <see cref="BlockProcessor"/> and
     /// <see cref="BranchProcessor"/> so a test can drive whole processing attempts — including the BAL
     /// sequential retry — against a recording transaction-processed handler.</summary>
-    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool retry, bool validationSucceeds)
+    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool retry, bool validationSucceeds, bool eip8116 = false)
     {
         GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
         Block block = BuildParallelValidationBlock(gasConsumed.Length);
@@ -3652,7 +3731,7 @@ public partial class BlockProcessorTests
             stateHeaderProvider.Parent = Build.A.BlockHeader.WithNumber(0).WithHash(block.ParentHash!).WithStateRoot(stateProvider.StateRoot).TestObject;
         }
 
-        TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
+        TestSingleReleaseSpecProvider specProvider = new(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8116Enabled = eip8116 });
         RecordingTransactionProcessedEventHandler handler = new();
         ReceiptMetadataTransactionProcessorAdapter transactionProcessorAdapter = new(gasConsumed);
         ParallelTestBlockAccessListManager balManager = new(transactionProcessorAdapter)
@@ -4111,7 +4190,8 @@ public partial class BlockProcessorTests
         int decisiveIndex,
         ulong gasUsed,
         ManualResetEventSlim validationFinished,
-        bool stateGas = false) : ITransactionProcessorAdapter
+        bool stateGas = false,
+        Func<Transaction, TransactionResult>? outcome = null) : ITransactionProcessorAdapter
     {
         private int _executedCount;
 
@@ -4128,6 +4208,9 @@ public partial class BlockProcessorTests
             }
 
             Interlocked.Increment(ref _executedCount);
+            TransactionResult result = outcome?.Invoke(transaction) ?? TransactionResult.Ok;
+            if (!result) return result;
+
             // BlockGasUsed reads back as GasLimit when zero, so the state-gas case charges 1 execution gas.
             transaction.BlockGasUsed = stateGas ? 1 : gasUsed;
             txTracer.MarkAsSuccess(Address.Zero, stateGas ? new GasConsumed(gasUsed, gasUsed, BlockGas: 1, BlockStateGas: gasUsed) : gasUsed, [], []);
