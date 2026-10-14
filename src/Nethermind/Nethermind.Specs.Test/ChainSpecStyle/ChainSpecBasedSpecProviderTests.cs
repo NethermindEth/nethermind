@@ -174,6 +174,10 @@ public class ChainSpecBasedSpecProviderTests
     {
         get
         {
+            yield return new TestCaseData(new ForkActivation(0)) { TestName = "Genesis" };
+            yield return new TestCaseData(new ForkActivation(SepoliaSpecProvider.MergeForkIdBlockNumber - 1)) { TestName = "Before merge netsplit" };
+            yield return new TestCaseData(new ForkActivation(SepoliaSpecProvider.MergeForkIdBlockNumber)) { TestName = "Merge netsplit" };
+            yield return new TestCaseData(new ForkActivation(SepoliaSpecProvider.MergeForkIdBlockNumber + 1)) { TestName = "After merge netsplit" };
             yield return new TestCaseData((ForkActivation)(2, 0)) { TestName = "First" };
             yield return new TestCaseData((ForkActivation)(120_000_000, 0)) { TestName = "Block number" };
             yield return new TestCaseData((ForkActivation)(1735372, 3)) { TestName = "Low timestamp" };
@@ -182,12 +186,16 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp)) { TestName = "First Cancun" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.CancunTimestamp + 1000)) { TestName = "Cancun" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp - 1)) { TestName = "Before Prague" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp)) { TestName = "First Prague" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.PragueTimestamp + 1000)) { TestName = "Prague" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.OsakaTimestamp - 1)) { TestName = "Before Osaka" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.OsakaTimestamp)) { TestName = "First Osaka" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.OsakaTimestamp + 1000)) { TestName = "Osaka" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp - 1)) { TestName = "Before BPO1" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp)) { TestName = "First BPO1" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp + 1000)) { TestName = "BPO1" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp - 1)) { TestName = "Before BPO2" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp)) { TestName = "First BPO2" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp + 1000)) { TestName = "BPO2" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.AmsterdamTimestamp - 1)) { TestName = "Before Amsterdam" };

@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Nethermind.Config;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,6 +18,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
@@ -63,10 +65,10 @@ public class GethGenesisLoaderTests
         return new GethGenesisLoader(new EthereumJsonSerializer()).Load(stream);
     }
 
-    private static ChainSpec LoadAutoDetecting(string json)
+    private static ChainSpec LoadAutoDetecting(string json, ILogManager? logManager = null)
     {
         using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
-        return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+        return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), logManager ?? LimboLogs.Instance).Load(stream);
     }
 
     private static ChainSpec LoadAutoDetectingNonSeekable(string json)
@@ -112,7 +114,8 @@ public class GethGenesisLoaderTests
         int chainId = 1,
         string configExtra = "",
         string allocJson = "{}",
-        ulong? timestamp = null)
+        ulong? timestamp = null,
+        string genesisExtra = "")
     {
         string configSuffix = configExtra.Length > 0 ? ", " + configExtra : "";
         string timestampField = timestamp.HasValue ? $"\"timestamp\": {timestamp.Value}, " : "";
@@ -127,6 +130,7 @@ public class GethGenesisLoaderTests
               },
               {{timestampField}}"difficulty": "0x1",
               "gasLimit": "0x8000000",
+              {{genesisExtra}}
               "alloc": {{allocJson}}
             }
             """;
@@ -136,8 +140,9 @@ public class GethGenesisLoaderTests
         int chainId = 1,
         string configExtra = "",
         string allocJson = "{}",
-        ulong? timestamp = null) =>
-        LoadFromString(BuildStandardGethGenesisJson(chainId, configExtra, allocJson, timestamp));
+        ulong? timestamp = null,
+        string genesisExtra = "") =>
+        LoadFromString(BuildStandardGethGenesisJson(chainId, configExtra, allocJson, timestamp, genesisExtra));
 
     private static void AssertAmsterdamEipsEnabled(IReleaseSpec spec, bool expected)
     {
@@ -274,6 +279,72 @@ public class GethGenesisLoaderTests
             Assert.That(genesisSpec.BlockReward, Is.EqualTo(new UInt256(5_000_000_000_000_000_000ul)));
         }
     }
+
+    [TestCase("true", false, (ulong)long.MaxValue)]
+    [TestCase("false", false, 5_000_000UL)]
+    [TestCase("null", false, 5_000_000UL)]
+    [TestCase(null, false, 5_000_000UL)]
+    [TestCase("true", true, (ulong)long.MaxValue)]
+    [TestCase(null, true, 0UL)]
+    public void Loads_difficulty_bomb_disabled(string? disabled, bool mergedAtGenesis, ulong expectedDelay)
+    {
+        string configExtra = "\"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"muirGlacierBlock\": 10";
+        if (disabled is not null) configExtra += $", \"difficultyBombDisabled\": {disabled}";
+        if (mergedAtGenesis) configExtra += ", \"terminalTotalDifficulty\": \"0x0\"";
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        EthashChainSpecEngineParameters engine = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<EthashChainSpecEngineParameters>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(expectedDelay));
+            Assert.That(provider.GetSpec(new ForkActivation(9)).DifficultyBombDelay, Is.EqualTo(expectedDelay));
+            Assert.That(provider.GetSpec(new ForkActivation(10)).DifficultyBombDelay,
+                Is.EqualTo(disabled == "true" || mergedAtGenesis ? expectedDelay : expectedDelay + 4_000_000));
+            Assert.That(engine.DifficultyBombDelays?[0] ?? 0, Is.EqualTo(expectedDelay));
+        }
+    }
+
+    [Test]
+    public void Loads_bootnodes_with_enode_and_enr([Values] bool includeInvalid)
+    {
+        const string enode = "enode://2112dd3839dd752813d4df7f40936f06829fc54c0e051a93967c26e5f5d27d99d886b57b4ffcc3c475e930ec9e79c56ef1dbb7d86ca5ee83a9d2ccf36e5c240c@134.209.138.84:30303";
+        const string enr = "enr:-KG4QHn1Os72NN5Z44Ehf9CHPmN490GBphTFirfk33pFuWnkY9UNrQMfHkuCw6a-ykeRhGKrPL5ppMXiZQchgPrCDJQBgmlkgnY0gmlwhNRj2kKDaXA2kCoAHKALAA0CAAAAAAAAAF6Jc2VjcDI1NmsxoQJK_ye9jx9mela-ME_Kt5e017Ywv3hYH_5rwNhIUrtzNoN1ZHCCTriEdWRwNoJOuA";
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        ILogger classLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<GethGenesisLoader>().Returns(classLogger);
+        string invalidRecord = includeInvalid ? "\"invalid\", " : "";
+        ChainSpec chainSpec = LoadAutoDetecting(BuildStandardGethGenesisJson(genesisExtra: $$"""
+            "bootnodes": [" {{enode}} ", {{invalidRecord}}"{{enr}}"],
+            """), logManager);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Bootnodes.Select(static node => node.ToString()), Is.EqualTo(new[] { enode, enr }));
+            Assert.That(chainSpec.Bootnodes.Select(static node => node.NodeId),
+                Is.EqualTo(new[] { new NetworkNode(enode).NodeId, new NetworkNode(enr).NodeId }));
+        }
+
+        logger.Received(includeInvalid ? 1 : 0).Error(Arg.Is<string>(static message => message.Contains("invalid")), Arg.Any<Exception>());
+    }
+
+    [Test]
+    public void Defaults_bootnodes_to_empty([Values("", "\"bootnodes\": null,", "\"bootnodes\": [],")] string genesisExtra)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(genesisExtra: genesisExtra);
+
+        Assert.That(chainSpec.Bootnodes, Is.Empty);
+    }
+
+    [Test]
+    public void Rejects_invalid_extension_types([Values("\"difficultyBombDisabled\": \"invalid\"", "\"difficultyBombDisabled\": 1")] string configExtra) =>
+        Assert.That(() => LoadStandardGethGenesis(configExtra: configExtra), Throws.TypeOf<InvalidDataException>());
+
+    [Test]
+    public void Rejects_invalid_bootnodes_types([Values("\"bootnodes\": \"enr:invalid\",", "\"bootnodes\": [1],")] string genesisExtra) =>
+        Assert.That(() => LoadStandardGethGenesis(genesisExtra: genesisExtra), Throws.TypeOf<InvalidDataException>());
 
     [Test]
     public void Can_load_genesis_with_timestamp_forks()

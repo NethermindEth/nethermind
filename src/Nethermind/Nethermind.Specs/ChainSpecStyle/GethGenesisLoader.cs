@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
@@ -19,8 +21,10 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// Loader for Geth-style genesis.json files as defined in EIP-7949.
 /// Converts Geth-style genesis format to Nethermind's ChainSpec format.
 /// </summary>
-public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
+public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManager = null) : IChainSpecLoader
 {
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<GethGenesisLoader>();
+
     public ChainSpec Load(Stream streamData)
     {
         try
@@ -43,6 +47,9 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         ChainSpec chainSpec = new()
         {
+            Name = gethGenesisJson.Name,
+            DataDir = gethGenesisJson.DataDir,
+            Bootnodes = NetworkNode.ParseNodes(gethGenesisJson.Bootnodes, _logger),
             ChainId = config.ChainId,
             NetworkId = config.ChainId
         };
@@ -256,7 +263,6 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.SlotNumber = gethGenesisJson.SlotNumber ?? 0;
         }
 
-        chainSpec.Bootnodes = [];
         chainSpec.Genesis = isAmsterdamActive
             ? new Block(genesisHeader, [], [], [], new())
             : isShanghaiActive
@@ -471,6 +477,11 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
 
         private static SortedDictionary<ulong, ulong>? BuildDifficultyBombDelays(GethGenesisConfigJson config)
         {
+            if (config.DifficultyBombDisabled == true)
+            {
+                return new SortedDictionary<ulong, ulong> { [0] = long.MaxValue };
+            }
+
             if (config.TerminalTotalDifficulty is not null && config.TerminalTotalDifficulty.Value == UInt256.Zero)
             {
                 return null;

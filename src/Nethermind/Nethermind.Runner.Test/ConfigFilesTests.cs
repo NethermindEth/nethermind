@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
+using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -16,10 +18,12 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.EthStats;
+using Nethermind.Evm.State;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
@@ -31,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using NUnit.Framework;
@@ -208,6 +213,40 @@ public class ConfigFilesTests : ConfigFileTestsBase
             Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
             Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
         }
+    }
+
+    [Test]
+    public void Sepolia_presets_use_shared_bootnodes_and_preserve_genesis([Values("sepolia.json", "sepolia_archive.json")] string configFile)
+    {
+        ConfigProvider configProvider = GetConfigProvider(configFile);
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile(initConfig.ChainSpecPath);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider, chainSpec, useTestSpecProvider: false))
+            .Build();
+        NetworkNode[] bootnodes = container.Resolve<INetworkConfig>().Bootnodes;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bootnodes, Has.Length.EqualTo(5));
+            Assert.That(bootnodes.Select(static node => node.ToString()),
+                Is.EqualTo(chainSpec.Bootnodes.Select(static node => node.ToString())));
+        }
+
+        foreach (NetworkNode bootnode in bootnodes)
+        {
+            Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
+            Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
+        }
+
+        using ILifetimeScope processingScope = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
+        IWorldState worldState = processingScope.Resolve<IWorldState>();
+        using IDisposable stateScope = worldState.BeginScope(IWorldState.PreGenesis);
+        Block genesis = processingScope.Resolve<IGenesisBuilder>().Build();
+
+        Assert.That(genesis.Hash!.ToString(), Is.EqualTo(initConfig.GenesisHash));
     }
 
     [TestCase("*")]
