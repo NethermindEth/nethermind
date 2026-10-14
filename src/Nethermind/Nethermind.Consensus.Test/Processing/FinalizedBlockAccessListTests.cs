@@ -32,6 +32,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
+using MergeMetrics = Nethermind.Merge.Plugin.Metrics;
 
 namespace Nethermind.Consensus.Test.Processing;
 
@@ -87,11 +88,16 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         using TestEnvironment env = new(useFlatDb);
         Block block = env.CreateBlock(matchingRoot: matchingRoot, matchingList: matchingList);
         env.Beacon.GetFinalizedHash().Returns(block.Hash);
+        long missingListsBefore = Fallbacks(BalCatchUpFallbackReason.NoBlockAccessList);
+        long rootMismatchesBefore = Fallbacks(BalCatchUpFallbackReason.StateRootMismatch);
         env.Branch.Process(env.Genesis.Header, [block], ProcessingOptions.None, NullBlockTracer.Instance);
         using IDisposable scope = env.State.BeginScope(block.Header);
         bool reconstructed = matchingRoot && matchingList;
         using (Assert.EnterMultipleScope())
         {
+            // Other tests count fallbacks concurrently, so only an increase is asserted.
+            if (!matchingList) Assert.That(Fallbacks(BalCatchUpFallbackReason.NoBlockAccessList), Is.GreaterThan(missingListsBefore));
+            if (matchingList && !matchingRoot) Assert.That(Fallbacks(BalCatchUpFallbackReason.StateRootMismatch), Is.GreaterThan(rootMismatchesBefore));
             Assert.That(env.Recording.Calls, Is.EqualTo(reconstructed ? 0 : 1));
             Assert.That(env.Recording.LastOptions.HasFlag(ProcessingOptions.ForceSequentialBlockAccessList),
                 Is.EqualTo(matchingList && !matchingRoot));
@@ -127,9 +133,11 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         env.ReceiptConfig.StoreReceipts = true;
         if (stored) env.Receipts.Insert(block, receipts, ensureCanonical: false);
         using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
+        long missingReceiptsBefore = Fallbacks(BalCatchUpFallbackReason.NoReceipts);
         (Block _, TxReceipt[] result) = env.Processor.ProcessOne(block, ProcessingOptions.StoreReceipts, NullBlockTracer.Instance, Amsterdam.Instance);
         using (Assert.EnterMultipleScope())
         {
+            if (!stored) Assert.That(Fallbacks(BalCatchUpFallbackReason.NoReceipts), Is.GreaterThan(missingReceiptsBefore));
             Assert.That(env.Recording.Calls, Is.EqualTo(stored ? 0 : 1));
             Assert.That(result, Has.Length.EqualTo(stored ? 1 : 0));
             Assert.That(env.State.StateRoot, Is.EqualTo(stored ? block.StateRoot : env.Genesis.StateRoot));
@@ -220,6 +228,8 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         Assert.That(policy.CanReconstruct(fourth.Header), Is.True);
         Assert.That(policy.CanReconstruct(third.Header), Is.False);
     }
+
+    private static long Fallbacks(BalCatchUpFallbackReason reason) => MergeMetrics.BalCatchUpFallbacks.GetValueOrDefault(reason);
 
     private sealed class TestEnvironment : IDisposable
     {
