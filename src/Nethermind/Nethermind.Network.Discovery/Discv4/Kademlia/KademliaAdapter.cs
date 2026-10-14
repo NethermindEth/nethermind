@@ -283,11 +283,8 @@ public class KademliaAdapter(
         {
             DiscoveryResponse<PongMsg> response = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, _pingTimeout, token);
             if (!response.HasResponse) return null;
-            if (response.Value.FarAddress is not { } pongEndpoint) return null;
 
-            session.OnPongReceived(pongEndpoint);
-            if (!session.HasEndpointBond(endpoint)) return null;
-
+            session.OnPongReceived(endpoint);
             return response.Value;
         }
         finally
