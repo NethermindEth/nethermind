@@ -19,8 +19,9 @@ namespace Nethermind.State.OverridableEnv;
 /// eth_call, eth_estimateGas and eth_createAccessList does with <see cref="ResolvedCodeClearingTransactionProcessor"/>,
 /// so the memo spans one transaction and its restored re-runs. State overrides are applied before the first transaction
 /// runs. After that, an address's code can change only through <see cref="InsertCode"/> (CREATE, CREATE2, a create
-/// transaction) or <see cref="SetDelegation"/> (EIP-7702), and both keep the address out of the memo until it is
-/// cleared. SELFDESTRUCT removes code only at the end of the transaction, or, since Cancun, only from accounts
+/// transaction), <see cref="InsertTransientCode"/> (EIP-8360 TCREATE) or <see cref="SetDelegation"/> (EIP-7702), and
+/// each keeps the address out of the memo until it is cleared, so the end-of-transaction removal of TCREATE code
+/// needs no forgetting of its own. SELFDESTRUCT removes code only at the end of the transaction, or, since Cancun, only from accounts
 /// created in it, which went through InsertCode. Precompiles and delegation designators are never remembered. Every
 /// lookup the memo answers skips the inner repositories' override checks, code-hash read and cache probe, which a
 /// contract-heavy call repeats on every CALL, STATICCALL and EXTCODE* to the same address.
@@ -64,6 +65,12 @@ public sealed class MemoizingCodeInfoRepository(ICodeInfoRepository codeInfoRepo
     {
         memo.Forget(codeOwner);
         codeInfoRepository.InsertCode(code, codeOwner, spec);
+    }
+
+    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        memo.Forget(codeOwner);
+        codeInfoRepository.InsertTransientCode(code, codeOwner, spec);
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)

@@ -96,7 +96,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MSTORE8] = AsTableEntry(&RawCalliHelper.ExecuteMStore8InsideActiveMemory);
         lookup[(int)Instruction.CALLDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CallDataSource>);
         if (SpecFlags.Eip2929(spec) && !SpecFlags.Eip8038(spec))
-            lookup[(int)Instruction.SLOAD] = AsTableEntry(&RawCalliHelper.ExecuteSLoad);
+        {
+            lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
+                ? AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>)
+                : AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>);
+        }
         if (spec.TransientStorageEnabled)
         {
             lookup[(int)Instruction.TLOAD] = AsTableEntry(&RawCalliHelper.ExecuteTLoad);
@@ -1365,11 +1369,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <remarks>
         /// The shared handler builds the storage cell twice and saves every callee-saved register around it. Running out
         /// of gas leaves the chain here, since the cell is warm by then and the shared handler would charge it as warm.
-        /// An empty stack runs the shared SLOAD handler instead, which faults on it.
+        /// An empty stack runs the shared SLOAD handler instead, which faults on it, and so does an EIP-8360 TCREATE
+        /// context, where SLOAD reads transient storage.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteSLoad(
+        internal static EvmExceptionType ExecuteSLoad<Eip8360>(
             ref EvmStack stack,
             ulong gas,
             ref DispatchState state,
@@ -1378,8 +1383,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte bottom)
+            where Eip8360 : struct, IFlag
         {
-            if (head > 0)
+            if (head > 0 && !(Eip8360.IsActive && state.Vm.VmState.IsTransientCreateContext))
             {
                 VirtualMachine<TGasPolicy> vm = state.Vm;
                 vm.MetricsCounters.IncrementSLoad();
@@ -1402,7 +1408,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag, Eip8360>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -1843,8 +1849,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>MUL of the top two stack words.</summary>
         /// <remarks>
-        /// Factors below 2^64 multiply here. Wider factors go to <see cref="ExecuteMulOfHalfWidthFactors"/> or <see cref="ExecuteMulOfWideFactors"/>, so
-        /// this handler needs no frame. A short stack or gas runs the shared MUL handler instead.
+        /// Factors below 2^64 multiply here. Wider factors go to <see cref="ExecuteMulOfHalfWidthFactors"/> or <see cref="ExecuteMulOfWideFactors"/>,
+        /// or in the OpenVM guest to <see cref="ExecuteMulOnOpenVmBigInt"/>, so this handler needs no frame. A short stack or gas runs the shared MUL handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1866,9 +1872,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong upperHalves = Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3) | Unsafe.Add(ref product, 2) | Unsafe.Add(ref product, 3);
                 if ((Unsafe.Add(ref top, 1) | Unsafe.Add(ref product, 1) | upperHalves) != 0)
                 {
-                    nint wide = upperHalves == 0
-                        ? Entry(&ExecuteMulOfHalfWidthFactors)
-                        : Entry(&ExecuteMulOfWideFactors);
+                    nint wide = OpenVmBigIntFlag.IsActive
+                        ? Entry(&ExecuteMulOnOpenVmBigInt)
+                        : upperHalves == 0
+                            ? Entry(&ExecuteMulOfHalfWidthFactors)
+                            : Entry(&ExecuteMulOfWideFactors);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, wide);
                 }
 
@@ -2019,6 +2027,37 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             Unsafe.Add(ref product, 1) = r1;
             Unsafe.Add(ref product, 2) = r2;
             Unsafe.Add(ref product, 3) = r3;
+            head--;
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = handlers[PairAt(ref ip)];
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+        }
+
+        /// <summary>The rest of <see cref="ExecuteMul"/> in the OpenVM guest, for factors at least one of which is 2^64 or more.</summary>
+        /// <remarks>
+        /// Entered only from there, with the stack checked and the gas charged. One instruction of OpenVM's bigint extension
+        /// takes the product in place of the second word, where software takes up to ten 64-bit products.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ExecuteMulOnOpenVmBigInt(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            // The stack is pinned and its words 32-byte aligned.
+            ulong* product = (ulong*)Unsafe.AsPointer(ref SlotAt(ref bottom, head - 2));
+            Accelerators.UInt256Mul(product, product + LimbsPerWord, product);
+
+            // Reloaded rather than held across the call, where each would take a callee-saved register.
+            handlers = state.OpcodeHandlers;
+            code = ref stack.Code;
+            bottom = ref stack.Bottom;
             head--;
             ip = ref Unsafe.Add(ref ip, 1);
             nint next = handlers[PairAt(ref ip)];

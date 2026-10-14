@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.State;
@@ -11,6 +12,8 @@ public partial class TrieStoreScopeProvider
 {
     private partial class WorldStateWriteBatch
     {
+        private readonly Queue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+
         /// <remarks>
         /// One at a time, deletions last - the guest's counterpart of the bulk set: on its one core, sorting the entries
         /// and recursing over them costs more than the shared descent saves. Deletions go last, as storage writes do in
