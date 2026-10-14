@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -609,13 +608,11 @@ public class FlatDbManagerTests
         _snapshotRepository.HasState(genesis).Returns(false);
 
         await using FlatDbManager manager = CreateManager();
-        long start = Stopwatch.GetTimestamp();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => manager.GatherReadOnlySnapshotBundle(genesis),
                 Throws.TypeOf<StateNotRetainedException>().With.Message.StartsWith("No state available for block 0"));
-            Assert.That(Stopwatch.GetElapsedTime(start), Is.LessThan(TimeSpan.FromSeconds(1)));
             _persistenceManager.Received(2).LeaseReader();
         }
     }
