@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -15,27 +15,25 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// <paramref name="addressHash"/> is null, otherwise that account's storage trie.
 /// </summary>
 /// <remarks>
-/// Written nodes stay pending, and are read back from here, until <see cref="Publish"/> moves them into the bundle,
-/// so like the managed tries nothing reaches the bundle before the scope commits. The native bulk set reads and writes
-/// from several threads at once, which the bundle's node dictionaries do not allow while they are written.
+/// Written nodes stay pending in <see cref="NativePendingNodes"/>, where the native bulk set reads them back, until
+/// <see cref="Publish"/> moves them into the bundle, so like the managed tries nothing reaches the bundle before the scope
+/// commits. The native bulk set writes from several threads at once, which the bundle's node dictionaries do not allow.
 /// </remarks>
 internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addressHash) : INativeNodeStore
 {
-    private readonly ConcurrentDictionary<TreePath, (ValueHash256 Hash, byte[] Rlp)> _pending = new();
-    private volatile bool _hasPending;
+    private const int MinNodesToPublishInParallel = 256;
+
+    private NativePendingNodes? _pending;
 
     /// <summary>Whether nodes were written since the last <see cref="Publish"/> or <see cref="Clear"/>.</summary>
-    public bool HasPending => _hasPending;
+    public bool HasPending => _pending is { Count: > 0 };
 
     /// <summary>Applies <paramref name="entries"/> to the trie rooted at <paramref name="root"/> and returns the new root.</summary>
     public Hash256 BulkSet(Hash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries) =>
-        NativePatriciaBulkSet.BulkSet(this, root.ValueHash256, entries);
+        NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), root.ValueHash256, entries);
 
     public int Fetch(in TreePath path, in ValueHash256 hash, Span<byte> buffer)
     {
-        if (_pending.TryGetValue(path, out (ValueHash256 Hash, byte[] Rlp) pending) && pending.Hash == hash)
-            return Copy(pending.Rlp, buffer);
-
         Hash256 nodeHash = new(hash);
         TrieNode node = addressHash is null
             ? bundle.FindStateNodeOrUnknown(path, nodeHash)
@@ -51,34 +49,45 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
         return Copy(rlp, buffer);
     }
 
-    public void Write(in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp)
-    {
-        _pending[path] = (hash, rlp.ToArray());
-        _hasPending = true;
-    }
-
     /// <summary>Moves the pending nodes into the bundle, as the managed committer would.</summary>
     public void Publish()
     {
-        if (!_hasPending) return;
+        if (_pending is null) return;
 
-        List<(TreePath Path, TrieNode Node)> nodes = new(_pending.Count);
-        foreach (KeyValuePair<TreePath, (ValueHash256 Hash, byte[] Rlp)> entry in _pending)
+        NativePendingNodesView view = _pending.GetView();
+        if (view.Count > 0)
         {
-            // Built from its RLP with no children loaded, which is how persisted nodes come back too.
-            nodes.Add((entry.Key, new TrieNode(NodeType.Unknown, new Hash256(entry.Value.Hash), new CappedArray<byte>(entry.Value.Rlp))));
+            List<(TreePath Path, TrieNode Node)> nodes = new(view.Count);
+            CollectionsMarshal.SetCount(nodes, view.Count);
+            if (view.Count < MinNodesToPublishInParallel)
+            {
+                Span<(TreePath Path, TrieNode Node)> destination = CollectionsMarshal.AsSpan(nodes);
+                for (int i = 0; i < destination.Length; i++) destination[i] = CreateNode(view, i);
+            }
+            else
+            {
+                Parallel.For(0, view.Count, i => CollectionsMarshal.AsSpan(nodes)[i] = CreateNode(view, i));
+            }
+
+            if (addressHash is null) bundle.PublishStateNodes([nodes]);
+            else bundle.PublishStorageNodes(bundle.GetStorageNodeDestination(addressHash), addressHash, [nodes]);
         }
 
-        if (addressHash is null) bundle.PublishStateNodes([nodes]);
-        else bundle.PublishStorageNodes(bundle.GetStorageNodeDestination(addressHash), addressHash, [nodes]);
         Clear();
     }
 
     /// <summary>Drops the pending nodes, as when the storage is cleared.</summary>
     public void Clear()
     {
-        _pending.Clear();
-        _hasPending = false;
+        _pending?.Dispose();
+        _pending = null;
+    }
+
+    // Built from its RLP with no children loaded, which is how persisted nodes come back too.
+    private static (TreePath, TrieNode) CreateNode(NativePendingNodesView view, int index)
+    {
+        ref readonly NativeWrittenNode written = ref view[index];
+        return (written.Path, new TrieNode(NodeType.Unknown, new Hash256(written.Hash), new CappedArray<byte>(view.GetRlp(written).ToArray())));
     }
 
     private static int Copy(ReadOnlySpan<byte> rlp, Span<byte> buffer)

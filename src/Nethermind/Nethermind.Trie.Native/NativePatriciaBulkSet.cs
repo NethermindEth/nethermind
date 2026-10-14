@@ -22,19 +22,19 @@ public readonly struct NativeBulkSetEntry(in ValueHash256 key, int offset, int l
 /// <summary>Patricia trie bulk set implemented in Rust (<c>rust/</c>) over an <see cref="INativeNodeStore"/>.</summary>
 public static unsafe partial class NativePatriciaBulkSet
 {
-    private const string LibraryName = "nethermind_patricia";
+    internal const string LibraryName = "nethermind_patricia";
 
     public static bool IsAvailable { get; } = NativeLibrary.TryLoad(LibraryName, typeof(NativePatriciaBulkSet).Assembly, null, out _);
 
     /// <summary>
-    /// Applies <paramref name="entries"/> to the trie in <paramref name="store"/> whose root hash is <paramref name="root"/>,
-    /// writing every new node referenced by hash, and returns the new root hash.
+    /// Applies <paramref name="entries"/> to the trie whose root hash is <paramref name="root"/>, writing every new node referenced by hash
+    /// into <paramref name="pending"/>, and returns the new root hash. Nodes are read from <paramref name="pending"/> before <paramref name="store"/>.
     /// </summary>
     /// <remarks>
     /// <paramref name="entries"/> is reordered in place and its keys must be unique. Hashing and node writes run in parallel on the native
     /// thread pool. Nodes that become unreachable are not removed.
     /// </remarks>
-    public static Hash256 BulkSet(INativeNodeStore store, in ValueHash256 root, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values)
+    public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, in ValueHash256 root, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values)
     {
         CallState state = new(store);
         GCHandle handle = GCHandle.Alloc(state);
@@ -46,7 +46,7 @@ public static unsafe partial class NativePatriciaBulkSet
             fixed (byte* valuesPointer = values)
             fixed (ValueHash256* rootPointer = &root)
             {
-                status = nm_patricia_bulk_set(entriesPointer, entries.Length, valuesPointer, values.Length, rootPointer, &Fetch, &Write, (void*)GCHandle.ToIntPtr(handle), &newRoot);
+                status = nm_patricia_bulk_set(entriesPointer, entries.Length, valuesPointer, values.Length, rootPointer, pending, &Fetch, (void*)GCHandle.ToIntPtr(handle), &newRoot);
             }
 
             if (state.Exception is not null) throw new InvalidOperationException("Native node store callback failed", state.Exception);
@@ -59,9 +59,9 @@ public static unsafe partial class NativePatriciaBulkSet
         }
     }
 
-    /// <inheritdoc cref="BulkSet(INativeNodeStore, in ValueHash256, Span{NativeBulkSetEntry}, ReadOnlySpan{byte})"/>
+    /// <inheritdoc cref="BulkSet(INativeNodeStore, NativePendingNodes, in ValueHash256, Span{NativeBulkSetEntry}, ReadOnlySpan{byte})"/>
     /// <remarks>A null or empty <see cref="PatriciaTree.BulkSetEntry.Value"/> deletes the key. Keys must be unique.</remarks>
-    public static Hash256 BulkSet(INativeNodeStore store, in ValueHash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, in ValueHash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
     {
         int valuesLength = 0;
         foreach (PatriciaTree.BulkSetEntry entry in entries) valuesLength += entry.Value?.Length ?? 0;
@@ -79,7 +79,7 @@ public static unsafe partial class NativePatriciaBulkSet
                 offset += value.Length;
             }
 
-            return BulkSet(store, in root, nativeEntries.AsSpan(0, entries.Length), values.AsSpan(0, valuesLength));
+            return BulkSet(store, pending, in root, nativeEntries.AsSpan(0, entries.Length), values.AsSpan(0, valuesLength));
         }
         finally
         {
@@ -103,20 +103,6 @@ public static unsafe partial class NativePatriciaBulkSet
         }
     }
 
-    [UnmanagedCallersOnly]
-    private static void Write(void* context, TreePath* path, ValueHash256* hash, byte* rlp, int length)
-    {
-        CallState state = CallState.From(context);
-        try
-        {
-            state.Store.Write(in *path, in *hash, new ReadOnlySpan<byte>(rlp, length));
-        }
-        catch (Exception e)
-        {
-            Interlocked.CompareExchange(ref state.Exception, e, null);
-        }
-    }
-
     [LibraryImport(LibraryName)]
     private static partial int nm_patricia_bulk_set(
         NativeBulkSetEntry* entries,
@@ -124,8 +110,8 @@ public static unsafe partial class NativePatriciaBulkSet
         byte* values,
         int valuesLength,
         ValueHash256* root,
+        NativePendingNodes pending,
         delegate* unmanaged<void*, TreePath*, ValueHash256*, byte*, int, int> fetch,
-        delegate* unmanaged<void*, TreePath*, ValueHash256*, byte*, int, void> write,
         void* context,
         ValueHash256* rootOut);
 
