@@ -208,7 +208,7 @@ public class ImportPbtFromPreimageFlatTests
         using PbtCodeReassembly codes = new(target, directory, SortBufferBytes, concurrency, LimboLogs.Instance, cancellationToken);
         using (PbtLeafIngestion.LogicalBatch batch = new(target, 1, cancellationToken))
         {
-            PbtLeafStaging.Stage(batch, leaves, codes, cancellationToken);
+            PbtLeafIngestion.Stage(batch, leaves, codes, cancellationToken);
             batch.Commit();
         }
         codes.Complete();
