@@ -43,9 +43,9 @@ public class ReceiptTxHashesMigrationTests
             Assert.That(chain.Read(number), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(number), RlpBehaviors.Storage)));
         }
 
-        chain.BlockStore.ClearReceivedCalls();
+        chain.ChainLevels.ClearReceivedCalls();
         await chain.RunMigration();
-        chain.BlockStore.DidNotReceiveWithAnyArgs().GetReceiptRecoveryBlock(default, default!);
+        chain.ChainLevels.DidNotReceiveWithAnyArgs().LoadLevel(default);
     }
 
     [Test]
@@ -148,9 +148,9 @@ public class ReceiptTxHashesMigrationTests
         public readonly IBlockStore BlockStore = Substitute.For<IBlockStore>();
         public readonly IBlockProcessingQueue ProcessingQueue = Substitute.For<IBlockProcessingQueue>();
         public readonly IHistoryPruner HistoryPruner = Substitute.For<IHistoryPruner>();
+        public readonly IChainLevelInfoRepository ChainLevels = Substitute.For<IChainLevelInfoRepository>();
         private readonly TestMemColumnsDb<ReceiptsColumns> _receiptsDb = new();
         private readonly IBlockTree _blockTree = Substitute.For<IBlockTree>();
-        private readonly IChainLevelInfoRepository _chainLevels = Substitute.For<IChainLevelInfoRepository>();
         private readonly ISyncModeSelector _syncModeSelector = Substitute.For<ISyncModeSelector>();
 
         public Chain(int length)
@@ -166,7 +166,7 @@ public class ReceiptTxHashesMigrationTests
                     .TestObject;
                 Blocks[number] = block;
                 BlockStore.GetReceiptRecoveryBlock(block.Number, block.Hash!).Returns(new ReceiptRecoveryBlock(block));
-                _chainLevels.LoadLevel(block.Number).Returns(new ChainLevelInfo(true, new BlockInfo(block.Hash!, 0)));
+                ChainLevels.LoadLevel(block.Number).Returns(new ChainLevelInfo(true, new BlockInfo(block.Hash!, 0)));
             }
 
             _blockTree.Head.Returns(Blocks[length]);
@@ -196,7 +196,7 @@ public class ReceiptTxHashesMigrationTests
                 _receiptsDb,
                 BlockStore,
                 _blockTree,
-                _chainLevels,
+                ChainLevels,
                 _syncModeSelector,
                 ProcessingQueue,
                 HistoryPruner,
