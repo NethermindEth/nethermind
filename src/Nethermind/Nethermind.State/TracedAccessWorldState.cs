@@ -159,6 +159,22 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return base.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
+    /// <remarks>
+    /// Recorded like <see cref="InsertCode"/> so a parallel run reads the code within the transaction; the
+    /// finalizing <see cref="DeleteAccount"/> drops the change, so the account has no code change in the list.
+    /// </remarks>
+    public override void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        _generatingBlockAccessList?.AddCodeChange(address, GetCodeInternal(address), code);
+        base.InsertTransientCode(address, in codeHash, code, spec);
+    }
+
+    public override bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        _generatingBlockAccessList?.AddAdoptedCodeChange(address, GetCodeInternal(address), code, in codeHash);
+        return base.AdoptCode(address, in codeHash, code, spec);
+    }
+
     public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
         if (_generatingBlockAccessList is null)
