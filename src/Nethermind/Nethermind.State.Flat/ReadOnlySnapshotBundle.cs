@@ -267,7 +267,7 @@ public sealed class ReadOnlySnapshotBundle(
         return false;
     }
 
-    public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags)
     {
         GuardDispose();
 
@@ -282,7 +282,7 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags)
     {
         GuardDispose();
 

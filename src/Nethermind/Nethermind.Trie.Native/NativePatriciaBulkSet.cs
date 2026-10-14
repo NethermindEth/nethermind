@@ -89,12 +89,12 @@ public static unsafe partial class NativePatriciaBulkSet
     }
 
     [UnmanagedCallersOnly]
-    private static int Fetch(void* context, TreePath* path, ValueHash256* hash, byte* buffer, int bufferLength)
+    private static int Fetch(void* context, TreePath* path, ValueHash256* hash, delegate* unmanaged<void*, byte*, int, void> receive, void* receiveContext)
     {
         CallState state = CallState.From(context);
         try
         {
-            return state.Store.Fetch(in *path, in *hash, new Span<byte>(buffer, bufferLength));
+            return state.Store.Fetch(in *path, in *hash, new NativeNodeReceiver(receive, receiveContext)) ? 1 : 0;
         }
         catch (Exception e)
         {
@@ -111,7 +111,7 @@ public static unsafe partial class NativePatriciaBulkSet
         int valuesLength,
         ValueHash256* root,
         NativePendingNodes pending,
-        delegate* unmanaged<void*, TreePath*, ValueHash256*, byte*, int, int> fetch,
+        delegate* unmanaged<void*, TreePath*, ValueHash256*, delegate* unmanaged<void*, byte*, int, void>, void*, int> fetch,
         void* context,
         ValueHash256* rootOut);
 
