@@ -1096,7 +1096,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for pair in 11eaee0455f572f69800cd5997aa24ba69d2f815:log-baseline-11eaee0 507e8e1b84bd4268125bc37c9532785743683006:log-json-only-507e8e1; do
+          for pair in 667047990c05a34b575ced8fe1bc60b6059f23f9:log-txhashes-only-6670479; do
             sha="${pair%%:*}"
             image="nethermind-rpcbench:${pair#*:}"
             git fetch --depth=1 origin "$sha"
