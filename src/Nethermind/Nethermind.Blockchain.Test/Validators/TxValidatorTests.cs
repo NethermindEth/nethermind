@@ -98,6 +98,27 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool(), Is.False);
     }
 
+    // 2 * chainId + 36 must fit in a ulong v; above that the EIP-155 values cannot be represented at all.
+    private const ulong MaxRepresentableChainId = (ulong.MaxValue - 36) / 2;
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(MaxRepresentableChainId, 2 * MaxRepresentableChainId + 35, ExpectedResult = true)]
+    [TestCase(MaxRepresentableChainId, 2 * MaxRepresentableChainId + 36, ExpectedResult = true)]
+    [TestCase(MaxRepresentableChainId + 1, 2 * MaxRepresentableChainId + 37, ExpectedResult = true)]
+    [TestCase((1ul << 63) - 1, 33ul, ExpectedResult = false)]
+    [TestCase((1ul << 63) - 1, 34ul, ExpectedResult = false)]
+    [TestCase(1ul << 63, 35ul, ExpectedResult = false)]
+    [TestCase(1ul << 63, 36ul, ExpectedResult = false)]
+    [TestCase(ulong.MaxValue, 33ul, ExpectedResult = false)]
+    public bool Legacy_v_is_checked_against_large_chain_ids(ulong chainId, ulong v)
+    {
+        Signature signature = new(UInt256.One, UInt256.One, v);
+        Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
+
+        TxValidator txValidator = new(chainId);
+        return txValidator.IsWellFormed(tx, MuirGlacier.Instance);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void No_chain_id_legacy_tx_is_valid()
     {

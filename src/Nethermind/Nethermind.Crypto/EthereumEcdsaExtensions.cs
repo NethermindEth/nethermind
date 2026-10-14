@@ -53,7 +53,7 @@ public static class EthereumEcdsaExtensions
 
         if (tx.Type == TxType.Legacy && isEip155Enabled)
         {
-            tx.Signature.V = tx.Signature.V + 8 + 2 * ecdsa.ChainId;
+            tx.Signature.V = checked(tx.Signature.V + 8 + 2 * ecdsa.ChainId);
         }
     }
 
@@ -153,9 +153,8 @@ public static class EthereumEcdsaExtensions
         useSignatureChainId &= signature.ChainId.HasValue;
 
         // feels like it is the same check twice
-        bool applyEip155 = useSignatureChainId
-                           || signature.V == CalculateV(ecdsa.ChainId, false)
-                           || signature.V == CalculateV(ecdsa.ChainId, true);
+        // Compared through the chain id the signature carries: 2 * chainId + 35 overflows a ulong for the largest chain ids.
+        bool applyEip155 = useSignatureChainId || signature.ChainId == ecdsa.ChainId;
         ulong chainId = tx.Type switch
         {
             TxType.Legacy when useSignatureChainId => signature.ChainId

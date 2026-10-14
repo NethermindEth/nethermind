@@ -20,6 +20,43 @@ namespace Nethermind.Core.Test.Crypto
             yield return ("access list", Build.A.Transaction.WithChainId(TestBlockchainIds.ChainId).WithType(TxType.AccessList).SignedAndResolved().TestObject);
         }
 
+        /// <summary>On these chains 2 * chainId + 35 or + 36 wraps around a ulong onto 27 or 28.</summary>
+        [TestCase((1ul << 63) - 4)]
+        [TestCase(ulong.MaxValue - 3)]
+        public void Pre_eip155_legacy_signature_recovers_without_chain_id_on_large_chain_ids(ulong chainId)
+        {
+            PrivateKey key = Build.A.PrivateKey.TestObject;
+            Transaction tx = Build.A.Transaction.WithType(TxType.Legacy).WithChainId(null).TestObject;
+            EthereumEcdsa ecdsa = new(chainId);
+            ecdsa.Sign(key, tx, isEip155Enabled: false);
+
+            Assert.That(tx.Signature!.V, Is.EqualTo(27).Or.EqualTo(28));
+            Assert.That(ecdsa.RecoverAddress(tx), Is.EqualTo(key.Address));
+        }
+
+        [TestCase((ulong.MaxValue - 36) / 2, true)]
+        [TestCase((ulong.MaxValue - 36) / 2 + 2, false)]
+        [TestCase(1ul << 63, false)]
+        public void Eip155_legacy_signature_round_trips_or_fails_on_large_chain_ids(ulong chainId, bool representable)
+        {
+            PrivateKey key = Build.A.PrivateKey.TestObject;
+            Transaction tx = Build.A.Transaction.WithType(TxType.Legacy).WithChainId(null).TestObject;
+            EthereumEcdsa ecdsa = new(chainId);
+
+            if (!representable)
+            {
+                Assert.That(() => ecdsa.Sign(key, tx), Throws.TypeOf<OverflowException>());
+                return;
+            }
+
+            ecdsa.Sign(key, tx);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tx.Signature!.ChainId, Is.EqualTo(chainId));
+                Assert.That(ecdsa.RecoverAddress(tx), Is.EqualTo(key.Address));
+            }
+        }
+
         [TestCaseSource(nameof(TestCaseSources))]
         public void Signature_verify_test((string Name, Transaction Tx) testCase)
         {
