@@ -2431,6 +2431,55 @@ public class ArchiveProofTests
         retrofit.PublishCoverage(0, _chain.Head);
     }
 
+    [Test]
+    public void A_walk_reuses_its_emitters_and_releases_them_all_when_it_ends()
+    {
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.Prepare();
+        CountingEmitterSource source = new(retrofit);
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, source, retrofit.Metadata);
+
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None);
+        int releasedDuringTheWalk = source.Released;
+        foreach (CommitmentEmitter emitter in source.Created)
+        {
+            emitter.Reuse();
+            emitter.Dispose();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Mismatches, Is.Empty, "precondition: the walk emits and proves its commitments");
+            Assert.That(releasedDuringTheWalk, Is.GreaterThan(source.Created.Count), "partitions, storage groups and contracts outnumber the emitters, so emitters were handed back and reused");
+            Assert.That(source.Released, Is.EqualTo(releasedDuringTheWalk), "once the walk ends no emitter hands itself back again: each was released for good, not kept for the life of the node");
+        }
+    }
+
+    private sealed class CountingEmitterSource(ICommitmentEmitterSource inner) : ICommitmentEmitterSource
+    {
+        public List<CommitmentEmitter> Created { get; } = [];
+
+        public int Released { get; private set; }
+
+        public CommitmentDepthPolicy Policy => inner.Policy;
+
+        public CommitmentMetadata Metadata => inner.Metadata;
+
+        public ulong WindowGranularity => inner.WindowGranularity;
+
+        public CommitmentEmitter CreateEmitter(Action<CommitmentEmitter>? release = null)
+        {
+            CommitmentEmitter emitter = inner.CreateEmitter(release is null ? null : spare =>
+            {
+                lock (Created) Released++;
+                release(spare);
+            });
+            lock (Created) Created.Add(emitter);
+            return emitter;
+        }
+    }
+
     private HistoryWalkVerdict WalkAndEmit(IHistoryHeaderSource headers, int workers, out ArchiveProofRetrofit retrofit, long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition, long minRowsToBorrow = HistoryWalkRun.DefaultMinRowsToBorrowASlot)
     {
         retrofit = CreateRetrofit(_policy);
