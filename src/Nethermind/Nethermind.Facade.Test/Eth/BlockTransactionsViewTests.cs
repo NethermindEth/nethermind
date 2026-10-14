@@ -86,6 +86,22 @@ public class BlockTransactionsViewTests
     }
 
     [Test]
+    public void Refilling_a_deserialized_request_clears_its_request_flags()
+    {
+        TransactionForRpc reused = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(
+            $$"""{"to":"{{TestItem.AddressA}}","maxFeePerBlobGas":"0x1"}""");
+        Assert.That(reused.HasBlobFeeCapWithoutBlobHashes, Is.True);
+
+        reused.Populate(Build.A.Transaction.TestObject, Mined);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reused.HasBlobFeeCapWithoutBlobHashes, Is.False);
+            Assert.That(reused.IsTypeDefaulted, Is.False);
+        }
+    }
+
+    [Test]
     public void Block_view_writes_what_fresh_transactions_write()
     {
         (string Name, Transaction Tx)[] transactions = DiverseTransactions();
