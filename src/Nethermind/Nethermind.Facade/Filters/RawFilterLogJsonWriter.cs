@@ -99,6 +99,11 @@ public static class RawFilterLogJsonWriter
     /// Writes topics from their stored list: full 32-byte hashes, or hashes without their leading zero bytes in
     /// the compact encoding, both right-aligned to 32 bytes.
     /// </summary>
+    /// <remarks>
+    /// This reads the layout that every <see cref="IReceiptRefDecoder.DecodeTopics"/> in the tree decodes
+    /// (<see cref="CompactLogEntryDecoder"/>, also used by the Optimism decoder, and the full receipt decoder) instead
+    /// of calling it, so that no hash is allocated. A decoder with another topic layout must change this method too.
+    /// </remarks>
     private static void WriteTopics(IBufferWriter<byte> writer, ReadOnlySpan<byte> topicsRlp)
     {
         RlpReader reader = new(topicsRlp);

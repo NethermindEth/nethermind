@@ -114,7 +114,7 @@ namespace Nethermind.Facade.Find
             && filter.AddressFilter.Addresses.Count != 0
             && prunedLogsRetention.RetainsLogsFor(filter.AddressFilter.Addresses, fromBlock, toBlock);
 
-        protected IEnumerable<TItem> FilterLogsInBlocksParallel<TItem, TCollector>(LogFilter filter, IEnumerable<ulong> blockNumbers, bool tryParallel, CancellationToken cancellationToken)
+        protected IEnumerable<TItem> FilterLogsInBlocksParallel<TItem, TCollector>(LogFilter filter, IEnumerable<ulong> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default)
             where TCollector : struct, IBlockLogCollector<TItem> =>
             RunParallel(blockNumbers,
                 number => FindLogsInBlock<TItem, TCollector>(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken), tryParallel, cancellationToken);
@@ -275,6 +275,11 @@ namespace Nethermind.Facade.Find
                     }
                 }
             }
+            catch
+            {
+                collector.Abandon();
+                throw;
+            }
             finally
             {
                 // Confusingly, the `using` statement causes the recovery context to be null during the dispose.
@@ -323,33 +328,41 @@ namespace Nethermind.Facade.Find
             long logIndexInBlock = 0;
             if (receipts is not null)
             {
-                for (int i = 0; i < receipts.Length; i++)
+                try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    TxReceipt receipt = receipts[i];
-                    if (logIndexPerReceipt) logIndexInBlock = 0;
-
-                    if (filter.Matches(receipt.Bloom))
+                    for (int i = 0; i < receipts.Length; i++)
                     {
-                        for (int j = 0; j < receipt.Logs.Length; j++)
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        TxReceipt receipt = receipts[i];
+                        if (logIndexPerReceipt) logIndexInBlock = 0;
+
+                        if (filter.Matches(receipt.Bloom))
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
-
-                            LogEntry log = receipt.Logs[j];
-                            if (filter.Accepts(log))
+                            for (int j = 0; j < receipt.Logs.Length; j++)
                             {
-                                RecoverReceiptsData(blockHash, receipts);
-                                collector.Add(logIndexInBlock, blockTimestamp, receipt, log);
-                            }
+                                cancellationToken.ThrowIfCancellationRequested();
 
-                            logIndexInBlock++;
+                                LogEntry log = receipt.Logs[j];
+                                if (filter.Accepts(log))
+                                {
+                                    RecoverReceiptsData(blockHash, receipts);
+                                    collector.Add(logIndexInBlock, blockTimestamp, receipt, log);
+                                }
+
+                                logIndexInBlock++;
+                            }
+                        }
+                        else
+                        {
+                            logIndexInBlock += receipt.Logs.Length;
                         }
                     }
-                    else
-                    {
-                        logIndexInBlock += receipt.Logs.Length;
-                    }
+                }
+                catch
+                {
+                    collector.Abandon();
+                    throw;
                 }
             }
 
@@ -372,6 +385,8 @@ namespace Nethermind.Facade.Find
                 (_logs ??= []).Add(new FilterLog(logIndex, receipt, log, blockTimestamp));
 
             public readonly IEnumerable<FilterLog> Complete() => _logs ?? (IEnumerable<FilterLog>)[];
+
+            public readonly void Abandon() { }
         }
 
         private struct LogsJsonCollector : IBlockLogCollector<LogsJsonChunk>
@@ -391,6 +406,8 @@ namespace Nethermind.Facade.Find
             }
 
             public readonly IEnumerable<LogsJsonChunk> Complete() => _chunk is null ? [] : [_chunk];
+
+            public readonly void Abandon() => _chunk?.Dispose();
 
             private LogsJsonChunk StartLog()
             {

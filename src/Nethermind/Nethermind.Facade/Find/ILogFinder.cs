@@ -32,6 +32,9 @@ namespace Nethermind.Facade.Find
         void Add(long logIndex, ulong blockTimestamp, TxReceipt receipt, LogEntry log);
 
         IEnumerable<TItem> Complete();
+
+        /// <summary>Releases what was collected when the block scan fails before <see cref="Complete"/>.</summary>
+        void Abandon();
     }
 
     /// <summary> Marks an <see cref="ILogFinder"/> intended to serve RPC logs queries. </summary>

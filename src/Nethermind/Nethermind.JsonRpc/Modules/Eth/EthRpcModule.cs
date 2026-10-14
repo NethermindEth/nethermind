@@ -1083,7 +1083,7 @@ public partial class EthRpcModule(
             if (!_rpcConfig.EnableLogsStreamMode
                 && _blockchainBridge.TryGetLogsJson(logFilter, fromBlockHeader, toBlockHeader, cancellationToken, out IEnumerable<LogsJsonChunk> chunks))
             {
-                return GetRawLogsResponse(chunks);
+                return GetRawLogsResponse(chunks, () => _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader));
             }
 
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
@@ -1207,7 +1207,7 @@ public partial class EthRpcModule(
         return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
     }
 
-    private ResultWrapper<IEnumerable<FilterLog>> GetRawLogsResponse(IEnumerable<LogsJsonChunk> chunks)
+    private ResultWrapper<IEnumerable<FilterLog>> GetRawLogsResponse(IEnumerable<LogsJsonChunk> chunks, Func<IEnumerable<FilterLog>> findLogs)
     {
         bool enforceMaxLogs = JsonRpcContext.Current.Value?.IsAuthenticated != true && _rpcConfig.MaxLogsPerResponse != 0;
         ArrayPoolList<LogsJsonChunk> collected = new(16);
@@ -1231,7 +1231,7 @@ public partial class EthRpcModule(
             throw;
         }
 
-        return new RawLogsResponse(collected);
+        return new RawLogsResponse(collected, findLogs);
     }
 
     private ResultWrapper<IEnumerable<FilterLog>> TooManyLogs() =>

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core.Collections;
@@ -12,14 +14,18 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// <summary>
 /// A logs result kept as the JSON of each block's logs, so that it is written without an object per log.
 /// </summary>
+/// <remarks>
+/// <see cref="ResultWrapper{T}.Data"/> runs the same query again as <see cref="FilterLog"/> objects when an
+/// in-process caller enumerates it; the transports write the JSON and never enumerate it.
+/// </remarks>
 internal sealed class RawLogsResponse : ResultWrapper<IEnumerable<FilterLog>>, IJsonRpcRawResponse
 {
     private readonly ArrayPoolList<LogsJsonChunk> _chunks;
 
-    public RawLogsResponse(ArrayPoolList<LogsJsonChunk> chunks)
+    public RawLogsResponse(ArrayPoolList<LogsJsonChunk> chunks, Func<IEnumerable<FilterLog>> findLogs)
     {
         _chunks = chunks;
-        Data = [];
+        Data = new DeferredLogs(findLogs);
     }
 
     void IJsonRpcRawResponse.WriteRaw(IBufferWriter<byte> writer)
@@ -46,6 +52,13 @@ internal sealed class RawLogsResponse : ResultWrapper<IEnumerable<FilterLog>>, I
     }
 
     protected override void DisposePayloads() => DisposeChunks(_chunks);
+
+    private sealed class DeferredLogs(Func<IEnumerable<FilterLog>> findLogs) : IEnumerable<FilterLog>
+    {
+        public IEnumerator<FilterLog> GetEnumerator() => findLogs().GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
 
     internal static void DisposeChunks(ArrayPoolList<LogsJsonChunk> chunks)
     {

@@ -969,6 +969,23 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(compact)["result"]!.Count(), Is.EqualTo(2));
     }
 
+    [Test]
+    public async Task Eth_get_logs_written_from_stored_json_still_returns_the_logs_as_data()
+    {
+        (TestRpcBlockchain test, Hash256 blockHash) = await CreateBlockWithTwoLogs(maxLogsPerResponse: 2);
+
+        BlockParameter block = new(test.BlockTree.FindHeader(blockHash)!.Number);
+        using ResultWrapper<IEnumerable<FilterLog>> response = test.EthRpcModule.eth_getLogs(new Filter { FromBlock = block, ToBlock = block });
+        string serialized = RpcTest.SerializeResponse(response);
+
+        Assert.That(response, Is.InstanceOf<IJsonRpcRawResponse>());
+        FilterLog[] logs = response.Data.ToArray();
+        Assert.That(logs, Has.Length.EqualTo(2));
+        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new long[] { 0, 1 }));
+        Assert.That(logs.All(l => l.BlockHash == blockHash), Is.True);
+        Assert.That(JToken.Parse(serialized)["result"]!.Count(), Is.EqualTo(2));
+    }
+
     private static async Task<(TestRpcBlockchain Test, Hash256 BlockHash)> CreateBlockWithTwoLogs(int maxLogsPerResponse)
     {
         byte[] twoLogsCode = Prepare.EvmCode
