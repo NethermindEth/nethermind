@@ -16,7 +16,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.History;
-using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Init.Modules;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Mcp.Plugin.Tools;
 using Nethermind.State;
@@ -27,8 +28,9 @@ using NUnit.Framework;
 namespace Nethermind.Mcp.Plugin.Test;
 
 /// <summary>
-/// <see cref="McpNodeCapabilities"/> over substituted services, with the production <see cref="EthCapabilitiesProvider"/>
-/// computing the ranges, for archive, pruned, fast-sync ancient-barrier and history-expiry nodes.
+/// <see cref="McpNodeCapabilities"/> resolved from the production container wiring over substituted node storage, with the
+/// production <see cref="Nethermind.JsonRpc.Modules.Eth.EthCapabilitiesProvider"/> computing the ranges, for archive, pruned,
+/// fast-sync ancient-barrier and history-expiry nodes.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class McpNodeCapabilitiesTests
@@ -247,9 +249,8 @@ public class McpNodeCapabilitiesTests
         Assert.That(capabilities.GetAvailability().OldestReceiptBlock, Is.EqualTo(600_001));
     }
 
-    [TestCase(140UL)]
-    [TestCase(100_000UL)]
-    public void Receipt_floor_is_not_lowered_by_empty_blocks_below_a_missing_one(ulong missing)
+    [Test]
+    public void Receipt_floor_is_not_lowered_by_empty_blocks_below_a_missing_one([Values(140UL, 100_000UL)] ulong missing)
     {
         // Every block below the missing one is empty, so no block below it has receipts to find missing.
         NodeFixture node = new() { BodiesFrom = 1, ReceiptsFrom = missing + 1, EmptyWhen = n => n < missing };
@@ -526,7 +527,8 @@ public class McpNodeCapabilitiesTests
     }
 
     /// <summary>
-    /// Substituted node services; every block header exists, and by default no state, body or receipts are stored.
+    /// Substituted node storage resolved through the production <see cref="McpToolsModule"/> and <see cref="RpcModules"/>
+    /// wiring; every block header exists, and by default no state, body or receipts are stored.
     /// <see cref="BodiesFrom"/> and <see cref="ReceiptsFrom"/> store bodies (and the genesis body) and receipts from a block up.
     /// </summary>
     private sealed class NodeFixture
@@ -567,11 +569,26 @@ public class McpNodeCapabilitiesTests
                 ReceiptStorage.HasBlock(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(c => c.Arg<ulong>() >= ReceiptsFrom);
             }
 
-            EthCapabilitiesProvider? provider = WithProvider
-                ? new EthCapabilitiesProvider(BlockTree, StateBoundary, Sync, Pointers, History, HistoryPruner)
-                : null;
-            return new McpNodeCapabilities(BlockTree, Sync, Receipts, Pruning, Flat, Init, LimboLogs.Instance,
-                provider, StateReader, ReceiptStorage, SyncingInfo, HistoryPruner, historyConfig: History);
+            ContainerBuilder builder = new ContainerBuilder().AddModule(new McpToolsModule());
+            if (WithProvider) builder.AddModule(new RpcModules(JsonRpcConfig.Default));
+            return builder
+                .AddSingleton<IBlockTree>(BlockTree)
+                .AddSingleton<IReadOnlyBlockTree>(BlockTree)
+                .AddSingleton<IStateReader>(StateReader)
+                .AddSingleton<IReceiptStorage>(ReceiptStorage)
+                .AddSingleton<IStateBoundary>(StateBoundary)
+                .AddSingleton<ISyncPointers>(Pointers)
+                .AddSingleton<IHistoryPruner>(HistoryPruner)
+                .AddSingleton<IEthSyncingInfo>(SyncingInfo)
+                .AddSingleton<ISyncConfig>(Sync)
+                .AddSingleton<IReceiptConfig>(Receipts)
+                .AddSingleton<IPruningConfig>(Pruning)
+                .AddSingleton<IFlatDbConfig>(Flat)
+                .AddSingleton<IInitConfig>(Init)
+                .AddSingleton<IHistoryConfig>(History)
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .Build()
+                .Resolve<McpNodeCapabilities>();
         }
 
         private BlockHeader Header(ulong number)

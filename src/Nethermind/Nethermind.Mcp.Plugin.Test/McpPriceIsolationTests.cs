@@ -38,10 +38,11 @@ public class McpPriceIsolationTests
     {
         await using McpTestNode node = await CreateNode(1000);
         Transaction deposit = await Deposit(node);
+        ManualTimeProvider time = node.UseManualClock();
         PriceRpcProvider provider = (PriceRpcProvider)node.Chain.Container.Resolve<IRpcModuleProvider>();
         provider.BeforeCall = (method, args) =>
         {
-            if (tool == "fee_estimate" && method == nameof(IEthRpcModule.eth_feeHistory)) Thread.Sleep(850);
+            if (tool == "fee_estimate" && method == nameof(IEthRpcModule.eth_feeHistory)) time.Advance(TimeSpan.FromMilliseconds(850));
             if (IsPriceCall(method, args)) Thread.Sleep(1500);
         };
         await using McpClient client = await node.CreateClient();
@@ -192,36 +193,50 @@ public class McpPriceIsolationTests
         {
             Dictionary<string, McpPriceResult> result = await prices.ReadOptionalBatchAsync(executor,
                 ["native", Weth.ToString(), "USDC"], BlockParameter.Latest, TimeSpan.FromMilliseconds(500), token);
-            Assert.That(result["native"].Quote, Is.Not.Null);
-            Assert.That(result[Weth.ToString()].Quote, Is.SameAs(result["native"].Quote));
-            Assert.That(result["USDC"].Quote, Is.Null, "the second feed has no contract in this genesis");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result["native"].Quote, Is.Not.Null);
+                Assert.That(result[Weth.ToString()].Quote, Is.SameAs(result["native"].Quote));
+                Assert.That(result["USDC"].Quote, Is.Null, "the second feed has no contract in this genesis");
+            }
+
             return executor.Success(new { ok = true });
         }, CancellationToken.None);
 
         McpAssert.Success(call);
-        Assert.That(calls, Is.EqualTo(2), "one round read and one decimals read for the shared feed");
-        Assert.That(provider.TotalEthLeases - rented, Is.EqualTo(1));
-        Assert.That(provider.ActiveEthLeases, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(2), "one round read and one decimals read for the shared feed");
+            Assert.That(provider.TotalEthLeases - rented, Is.EqualTo(1));
+            Assert.That(provider.ActiveEthLeases, Is.Zero);
+        }
     }
 
     [Test]
     public async Task Optional_price_budget_includes_the_initial_module_rental()
     {
-        await using McpTestNode node = await CreateNode(1000);
+        await using McpTestNode node = await CreateNode();
+        ManualTimeProvider time = node.UseManualClock();
         PriceRpcProvider provider = (PriceRpcProvider)node.Chain.Container.Resolve<IRpcModuleProvider>();
         provider.BeforeRent = method =>
         {
-            if (method == nameof(IEthRpcModule.eth_feeHistory)) Thread.Sleep(850);
+            if (method == nameof(IEthRpcModule.eth_feeHistory)) time.Advance(TimeSpan.FromMilliseconds(4900));
         };
+        int priceCalls = 0;
         provider.BeforeCall = (method, args) =>
         {
-            if (IsPriceCall(method, args)) Thread.Sleep(1500);
+            if (IsPriceCall(method, args)) Interlocked.Increment(ref priceCalls);
         };
         await using McpClient client = await node.CreateClient();
 
         CallToolResult call = await McpToolCalls.Call(client, "fee_estimate", []);
 
-        Assert.That(McpAssert.Success(call).GetProperty("usdNote").GetString(), Does.Contain("USD omitted because the price lookup deadline was reached."));
+        JsonElement result = McpAssert.Success(call);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("usdNote").GetString(), Does.Contain("USD omitted because the price lookup deadline was reached."));
+            Assert.That(priceCalls, Is.Zero, "the rental left less of the deadline than a price lookup needs");
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "fee_estimate", call);
     }
 

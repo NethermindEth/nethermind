@@ -126,7 +126,13 @@ public sealed class McpNodeCapabilities(
     }
 
     /// <summary>Gets how the node stores state, or <see langword="null"/> if it cannot be determined.</summary>
-    public McpStateStorage? GetStateStorage() => _storage ??= Try(DetectStorage);
+    public McpStateStorage? GetStateStorage()
+    {
+        lock (_lock)
+        {
+            return _storage ??= Try(DetectStorage);
+        }
+    }
 
     /// <summary>Returns an <c>unavailable</c> error naming the available state range, or <see langword="null"/> if state at <paramref name="blockNumber"/> is available.</summary>
     public CallToolResult? CheckState(long blockNumber) => blockNumber < 0 ? null : CheckState((ulong)blockNumber);

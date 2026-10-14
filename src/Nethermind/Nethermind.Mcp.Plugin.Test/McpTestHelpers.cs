@@ -119,16 +119,16 @@ internal static class McpSchemaValidator
     }
 }
 
-/// <summary>A clock that only moves when <see cref="Advance"/> is called; timestamps tick with it.</summary>
+/// <summary>A clock that only moves when <see cref="Advance"/> is called; timestamps tick with it, and any thread may read or advance it.</summary>
 internal sealed class ManualTimeProvider : TimeProvider
 {
-    private DateTimeOffset _now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private long _ticks = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero).UtcTicks;
 
-    public override DateTimeOffset GetUtcNow() => _now;
+    public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
 
-    public override long GetTimestamp() => _now.UtcTicks;
+    public override long GetTimestamp() => Interlocked.Read(ref _ticks);
 
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
-    public void Advance(TimeSpan by) => _now += by;
+    public void Advance(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
 }

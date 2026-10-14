@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -99,17 +98,21 @@ internal sealed partial class McpEthTools
 
         return _executor.ExecuteAsync("address_activity", nameof(IEthRpcModule.eth_getLogs), async (eth, cancellation) =>
         {
-            Stopwatch clock = Stopwatch.StartNew();
+            TimeProvider time = _executor.Time;
+            long started = time.GetTimestamp();
             bool descending = order == "desc";
-            bool Stop() => clock.Elapsed.TotalMilliseconds >= config.ToolTimeout * 0.6;
+            bool Stop() => Elapsed().TotalMilliseconds >= config.ToolTimeout * 0.6;
+            TimeSpan Elapsed() => time.GetElapsedTime(started);
             List<ActivityFilter> filters = ActivityFilters(owner, tokenAddress, chainProfile.WrappedNativeToken);
             ulong? clamped = null;
             ulong? receiptFloor = null;
             string? clampNote = null;
             McpActivityCursor state;
+            ScanAnchor anchor;
             if (resume is not null)
             {
-                if (!signature.IsAt(blockFinder.FindHeader(resume.To, BlockTreeLookupOptions.RequireCanonical)?.Hash))
+                anchor = CaptureAnchor(resume.To);
+                if (!signature.IsAt(anchor.Hash))
                     return McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, "The chain reorganised since this activity cursor was issued; restart without cursor.");
                 ulong requestedFrom = resume.RequestedFrom;
                 ulong requestedTo = resume.To;
@@ -136,6 +139,7 @@ internal sealed partial class McpEthTools
                 if (blockFinder.Head?.Number is not { } head)
                     return McpToolExecutor.Error(McpToolErrorCodes.Unavailable, "The node has no head block yet.");
                 if (end > head) return McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, $"toBlock {end} exceeds the current head {head}.");
+                anchor = CaptureAnchor(end);
                 ulong requestedFrom = start;
                 if (capabilities.GetAvailability().OldestReceiptBlock is { } floor && floor > 1 && start < (ulong)floor)
                 {
@@ -192,7 +196,7 @@ internal sealed partial class McpEthTools
                     if (!windowIndexed && (state.CheckedThrough is null || state.CheckedThrough < state.ScanTo))
                     {
                         scanFailure = FindMissingReceipts(state.CheckedThrough is { } checkedTo ? checkedTo + 1 : state.ScanFrom, state.ScanTo,
-                            bloom => filters.Any(filter => filter.LogFilter.Matches(bloom)), cancellation, Stop,
+                            bloom => MatchesAny(filters, bloom), cancellation, Stop,
                             number => state.CheckedThrough = number);
                         if (scanFailure is not null) break;
                     }
@@ -259,6 +263,7 @@ internal sealed partial class McpEthTools
             catch (Exception exception) { scanFailure = _executor.MapException("address_activity", exception); }
             if (streams is not null) state.Positions = PositionsOf(streams);
             if (scanFailure is not null && page.Count == 0 && coveredTo is null) return scanFailure;
+            if (!Holds(anchor)) return Reorganised(anchor);
             JsonArray movementsJson = [];
             List<(McpTokenMovement Movement, FilterLog Log)> movements = [];
             Dictionary<FilterLog, McpTokenTally> tallies = [];
@@ -292,7 +297,7 @@ internal sealed partial class McpEthTools
                 HashSet<AddressAsKey> skippedAtBlock = [];
                 (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(
                     tokenMetadata, eth, tokensAtBlock, new BlockParameter(blockGroup.Key), tokensAtBlock.Count, cancellation,
-                    () => clock.ElapsedMilliseconds > config.ToolTimeout * 0.7, detached, skippedAtBlock);
+                    () => Elapsed().TotalMilliseconds > config.ToolTimeout * 0.7, detached, skippedAtBlock);
                 foreach ((AddressAsKey tokenKey, McpTokenInfo info) in found) metadata[(tokenKey, blockGroup.Key)] = info;
                 foreach (AddressAsKey tokenKey in skippedAtBlock) skippedMetadata.Add((tokenKey, blockGroup.Key));
                 metadataOmitted += skipped;
@@ -370,17 +375,19 @@ internal sealed partial class McpEthTools
             }
             if (includeUsd)
             {
-                foreach ((McpTokenMovement movement, FilterLog log) in movements.Where(static item => item.Movement.IsFungible))
-                    if (chainProfile.PriceFeed(movement.Token.ToString()) is not null
-                        && (!metadata.TryGetValue((movement.Token, log.BlockHash), out McpTokenInfo? info) || info.Decimals is null))
+                List<string> pricedTokens = [];
+                foreach ((McpTokenMovement movement, FilterLog log) in movements)
+                {
+                    if (!movement.IsFungible) continue;
+                    if (metadata.TryGetValue((movement.Token, log.BlockHash), out McpTokenInfo? info) && info.Decimals is not null)
+                        pricedTokens.Add(movement.Token.ToString());
+                    else if (chainProfile.PriceFeed(movement.Token.ToString()) is not null)
                         usdNotes.Add($"USD omitted for {McpEthHelpers.Checksum(movement.Token)} at block {log.BlockNumber}: "
                             + (skippedMetadata.Contains((movement.Token, log.BlockHash))
                                 ? "metadata not read within the time budget or lookup limit." : McpTokenMetadata.MissingDecimalsNote(info)));
-                Dictionary<string, McpPriceResult> prices = await priceReader.ReadOptionalBatchAsync(_executor,
-                    movements.Where(item => item.Movement.IsFungible
-                            && metadata.TryGetValue((item.Movement.Token, item.Log.BlockHash), out McpTokenInfo? info) && info.Decimals is not null)
-                        .Select(static item => item.Movement.Token.ToString()), BlockParameter.Latest,
-                    McpPriceReader.OptionalBudget(config.ToolTimeout, clock.Elapsed, _executor.RemainingTime), cancellation);
+                }
+                Dictionary<string, McpPriceResult> prices = await priceReader.ReadOptionalBatchAsync(_executor, pricedTokens, BlockParameter.Latest,
+                    McpPriceReader.OptionalBudget(config.ToolTimeout, Elapsed(), _executor.RemainingTime), cancellation);
                 foreach ((string asset, McpPriceResult price) in prices)
                 {
                     quotes[new Address(asset)] = price.Quote;
@@ -505,8 +512,7 @@ internal sealed partial class McpEthTools
             if (truncated)
             {
                 output["truncationReason"] = truncationReason;
-                Hash256 blockHash = blockFinder.FindHeader(state.To, BlockTreeLookupOptions.RequireCanonical)?.Hash ?? Keccak.Zero;
-                output["nextCursor"] = state.Encode(blockHash);
+                output["nextCursor"] = state.Encode(anchor.Hash ?? Keccak.Zero);
             }
 
             return _executor.Success(output);
@@ -563,8 +569,16 @@ internal sealed partial class McpEthTools
             state.ScanTo = PlanLogPage(next, state.To, true).ScanTo;
         }
         state.CheckedThrough = null;
-        state.Positions = Enumerable.Repeat(new ActivityPosition(descending ? state.ScanTo : state.ScanFrom,
-            descending ? long.MaxValue : 0, state.ScanTo - state.ScanFrom + 1), filters).ToArray();
+        ActivityPosition[] positions = new ActivityPosition[filters];
+        Array.Fill(positions, new ActivityPosition(descending ? state.ScanTo : state.ScanFrom, descending ? long.MaxValue : 0, state.ScanTo - state.ScanFrom + 1));
+        state.Positions = positions;
+    }
+
+    private static bool MatchesAny(List<ActivityFilter> filters, Bloom bloom)
+    {
+        foreach (ActivityFilter filter in filters)
+            if (filter.LogFilter.Matches(bloom)) return true;
+        return false;
     }
 
     private CallToolResult? FillActivityStream(IEthRpcModule eth, ActivityStream stream, McpActivityCursor state,

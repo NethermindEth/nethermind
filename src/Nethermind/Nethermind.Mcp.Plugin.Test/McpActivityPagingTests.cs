@@ -166,7 +166,8 @@ public class McpActivityPagingTests
         (McpTxScenario scenario, Block last, _) = await Seed(node, [70, 70, .. new int[200]]);
         index.MaxBlockNumber.Returns((int)last.Number);
         McpPriceIsolationTests.PriceRpcProvider provider = (McpPriceIsolationTests.PriceRpcProvider)node.Chain.Container.Resolve<IRpcModuleProvider>();
-        provider.BeforeCall = (method, _) => { if (method == nameof(IEthRpcModule.eth_getLogs)) Thread.Sleep(40); };
+        ManualTimeProvider time = node.UseManualClock();
+        provider.BeforeCall = (method, _) => { if (method == nameof(IEthRpcModule.eth_getLogs)) time.Advance(TimeSpan.FromMilliseconds(40)); };
         await using McpClient client = await node.CreateClient();
         List<string> expected = ReceiptHashes(node, scenario.TokenContract);
         List<string> actual = [];
@@ -396,12 +397,16 @@ public class McpActivityPagingTests
         (McpTxScenario scenario, Block last, _) = await Seed(node, 1);
         index.MaxBlockNumber.Returns((int)last.Number);
         McpPriceIsolationTests.PriceRpcProvider provider = (McpPriceIsolationTests.PriceRpcProvider)node.Chain.Container.Resolve<IRpcModuleProvider>();
-        provider.BeforeCall = (method, _) => { if (method == nameof(IEthRpcModule.eth_getLogs)) Thread.Sleep(1900); };
+        ManualTimeProvider time = node.UseManualClock();
+        provider.BeforeCall = (method, _) => { if (method == nameof(IEthRpcModule.eth_getLogs)) time.Advance(TimeSpan.FromMilliseconds(1900)); };
         await using McpClient client = await node.CreateClient();
         CallToolResult call = await McpToolCalls.Call(client, "address_activity", Query(scenario, last, "desc", 50));
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("coveredTo").ValueKind, Is.EqualTo(JsonValueKind.Null), "no merged log or complete window was read");
-        Assert.That(result.GetProperty("truncationReason").GetString(), Is.EqualTo("time_budget"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("coveredTo").ValueKind, Is.EqualTo(JsonValueKind.Null), "no merged log or complete window was read");
+            Assert.That(result.GetProperty("truncationReason").GetString(), Is.EqualTo("time_budget"));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
     }
 
@@ -412,26 +417,67 @@ public class McpActivityPagingTests
             b => b.AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));
         (McpTxScenario scenario, Block last, _) = await Seed(node, 0);
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
-        static Hash256 Topic(Address address) => new(new byte[12].Concat(address.Bytes.ToArray()).ToArray());
-        byte[] data = new byte[64];
-        data[31] = data[63] = 1;
-        FilterLog log = new(0, last.Number, last.Timestamp, last.Hash!, 0, TestItem.KeccakB, scenario.TokenContract, data,
-            [Keccak.Compute("TransferSingle(address,address,address,uint256,uint256)"), Topic(TestItem.AddressD), Topic(TestItem.AddressC), Topic(TestItem.AddressB)]);
+        FilterLog[] logs = IncomingTransferSingles(scenario, last);
         int reads = 0;
+        ManualTimeProvider time = node.UseManualClock();
         eth.eth_getLogs(Arg.Any<Filter>()).Returns(_ =>
         {
             if (++reads != 4) return ResultWrapper<IEnumerable<FilterLog>>.Success([]);
-            Thread.Sleep(1900);
-            return ResultWrapper<IEnumerable<FilterLog>>.Success([log, new FilterLog(1, log.BlockNumber, log.BlockTimestamp, log.BlockHash,
-                0, log.TransactionHash, log.Address, log.Data, log.Topics)]);
+            time.Advance(TimeSpan.FromMilliseconds(1900));
+            return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
         });
         ((FaultInjectingRpcModuleProvider)node.Chain.Container.Resolve<IRpcModuleProvider>()).Override(nameof(IEthRpcModule.eth_getLogs), eth);
         await using McpClient client = await node.CreateClient();
         CallToolResult call = await McpToolCalls.Call(client, "address_activity", Query(scenario, last, "asc", 1));
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("movements").GetArrayLength(), Is.EqualTo(1));
-        Assert.That(result.GetProperty("truncationReason").GetString(), Is.EqualTo("limit"), "the returned page reached its requested count");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("movements").GetArrayLength(), Is.EqualTo(1));
+            Assert.That(result.GetProperty("truncationReason").GetString(), Is.EqualTo("limit"), "the returned page reached its requested count");
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
+    }
+
+    [Test]
+    public async Task Activity_reorganisation_while_a_page_is_read_fails_instead_of_signing_the_new_fork()
+    {
+        await using McpTestNode node = await McpTestNode.Create(configureContainer: static b =>
+            b.AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));
+        (McpTxScenario scenario, Block last, _) = await Seed(node, 0);
+        IEthRpcModule eth = Substitute.For<IEthRpcModule>();
+        FilterLog[] logs = IncomingTransferSingles(scenario, last);
+        int reads = 0;
+        Block? sibling = null;
+        eth.eth_getLogs(Arg.Any<Filter>()).Returns(_ =>
+        {
+            if (++reads != 4) return ResultWrapper<IEnumerable<FilterLog>>.Success([]);
+            sibling = node.Reorganise(last.Number);
+            return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
+        });
+        ((FaultInjectingRpcModuleProvider)node.Chain.Container.Resolve<IRpcModuleProvider>()).Override(nameof(IEthRpcModule.eth_getLogs), eth);
+        await using McpClient client = await node.CreateClient();
+
+        JsonElement error = McpAssert.Error(await McpToolCalls.Call(client, "address_activity", Query(scenario, last, "asc", 1)), McpAssert.Unavailable);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sibling, Is.Not.Null, "precondition: the chain must reorganise during the scan");
+            Assert.That(error.GetProperty("message").GetString(), Does.Contain($"block {last.Number} changed"));
+        }
+    }
+
+    /// <summary>Two ERC-1155 TransferSingle logs to <see cref="TestItem.AddressB"/> from <paramref name="scenario"/>'s token in <paramref name="block"/>.</summary>
+    private static FilterLog[] IncomingTransferSingles(McpTxScenario scenario, Block block)
+    {
+        static Hash256 Topic(Address address) => new(new byte[12].Concat(address.Bytes.ToArray()).ToArray());
+        byte[] data = new byte[64];
+        data[31] = data[63] = 1;
+        Hash256[] topics = [Keccak.Compute("TransferSingle(address,address,address,uint256,uint256)"), Topic(TestItem.AddressD), Topic(TestItem.AddressC), Topic(TestItem.AddressB)];
+        return
+        [
+            new FilterLog(0, block.Number, block.Timestamp, block.Hash!, 0, TestItem.KeccakB, scenario.TokenContract, data, topics),
+            new FilterLog(1, block.Number, block.Timestamp, block.Hash!, 0, TestItem.KeccakB, scenario.TokenContract, data, topics)
+        ];
     }
 
     [Test]
@@ -470,10 +516,11 @@ public class McpActivityPagingTests
         (McpTxScenario scenario, Block last, _) = await Seed(node, 1);
         IEthRpcModule slow = Substitute.For<IEthRpcModule>();
         int calls = 0;
+        ManualTimeProvider time = node.UseManualClock();
         slow.eth_getLogs(Arg.Any<Filter>()).Returns(_ =>
         {
             Interlocked.Increment(ref calls);
-            Thread.Sleep(350);
+            time.Advance(TimeSpan.FromMilliseconds(350));
             return ResultWrapper<IEnumerable<FilterLog>>.Success([]);
         });
         ((FaultInjectingRpcModuleProvider)node.Chain.Container.Resolve<IRpcModuleProvider>()).Override(nameof(IEthRpcModule.eth_getLogs), slow);
@@ -495,7 +542,8 @@ public class McpActivityPagingTests
         (McpTxScenario scenario, Block last, _) = await Seed(node, 1, 0, 0);
         index.MaxBlockNumber.Returns((int)last.Number);
         McpPriceIsolationTests.PriceRpcProvider provider = (McpPriceIsolationTests.PriceRpcProvider)node.Chain.Container.Resolve<IRpcModuleProvider>();
-        provider.BeforeCall = (method, _) => { if (method == nameof(IEthRpcModule.eth_getLogs)) Thread.Sleep(1900); };
+        ManualTimeProvider time = node.UseManualClock();
+        provider.BeforeCall = (method, _) => { if (method == nameof(IEthRpcModule.eth_getLogs)) time.Advance(TimeSpan.FromMilliseconds(1900)); };
         await using McpClient client = await node.CreateClient();
         List<string> actual = [];
         string? cursor = null;

@@ -290,22 +290,9 @@ public class McpContractToolsTests
         McpAssert.Error(await Call(_client, "token_info", ("token", Hex(_deployed.Token)), ("block", "earliest")), McpAssert.NotFound);
 
     [Test]
-    public async Task Resolve_ens_registry_wildcard_marks_ccip_read_as_offchain()
+    public async Task Resolve_ens_registry_marks_ccip_read_as_offchain([Values("sub.offchain.eth", "direct.eth")] string name)
     {
-        JsonElement result = await Success("resolve_ens", ("name", "sub.offchain.eth"));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.GetProperty("address").ValueKind, Is.EqualTo(JsonValueKind.Null));
-            Assert.That(result.GetProperty("offchain").GetBoolean(), Is.True);
-            Assert.That(result.GetProperty("message").GetString(), Does.Contain("CCIP-Read"));
-        }
-    }
-
-    [Test]
-    public async Task Resolve_ens_registry_direct_resolver_marks_ccip_read_as_offchain()
-    {
-        JsonElement result = await Success("resolve_ens", ("name", "direct.eth"));
+        JsonElement result = await Success("resolve_ens", ("name", name));
 
         using (Assert.EnterMultipleScope())
         {
@@ -511,6 +498,44 @@ public class McpContractToolsTests
             Assert.That(result.GetProperty("decoded").GetInt32(), Is.EqualTo(1));
             Assert.That(result.GetProperty("decodeBudgetExhausted").GetBoolean(), Is.True);
             Assert.That(result.GetProperty("logs")[1].GetProperty("decoded").GetBoolean(), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Decode_logs_shares_decode_budget_across_known_events()
+    {
+        const int logCount = 4;
+        const int arrayLength = 2500;
+        // Each TransferBatch's ids and values point at the same array, so one log decodes 2 * 2500 + 2 values: three fit the budget, four do not.
+        byte[] head = new byte[3 * 32];
+        head[31] = 64;
+        head[63] = 64;
+        BinaryPrimitives.WriteUInt32BigEndian(head.AsSpan(92), arrayLength);
+        Hash256 transferBatch = Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])");
+        Prepare code = Prepare.EvmCode.StoreDataInMemory(0, head);
+        for (int i = 0; i < logCount; i++)
+        {
+            code = code.Log((3 + arrayLength) * 32, 0, [Keccak.Zero, Keccak.Zero, Keccak.Zero, transferBatch]);
+        }
+
+        await using McpTestNode node = await McpTestNode.Create();
+        PrivateKey sender = TestItem.PrivateKeyB;
+        ulong nonce = node.Chain.WorldStateManager.GlobalStateReader.GetNonce(node.Chain.BlockTree.Head!.Header, sender.Address);
+        Transaction emitter = Build.A.Transaction.WithChainId(node.Chain.SpecProvider.ChainId).WithNonce(nonce).WithGasPrice(1)
+            .WithCode(code.Done).WithGasLimit(3_500_000).SignedAndResolved(node.Chain.EthereumEcdsa, sender).TestObject;
+        Block block = await node.Chain.AddBlock(emitter);
+        Assert.That(node.Chain.ReceiptStorage.Get(block)[0].Logs, Has.Length.EqualTo(logCount), "precondition: every TransferBatch log must be emitted");
+        await using McpClient client = await node.CreateClient();
+
+        JsonElement result = McpAssert.Success(await Call(client, "decode_logs", ("txHash", emitter.Hash!.ToString())));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("total").GetInt32(), Is.EqualTo(logCount));
+            Assert.That(result.GetProperty("decoded").GetInt32(), Is.EqualTo(logCount - 1));
+            Assert.That(result.GetProperty("logs")[0].GetProperty("source").GetString(), Is.EqualTo("known"));
+            Assert.That(result.GetProperty("decodeBudgetExhausted").GetBoolean(), Is.True);
+            Assert.That(result.GetProperty("logs")[logCount - 1].GetProperty("decoded").GetBoolean(), Is.False);
         }
     }
 

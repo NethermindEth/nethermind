@@ -187,13 +187,14 @@ internal sealed partial class McpEthTools
             }
 
             (ulong scanTo, bool indexed) = PlanLogPage(start, end, selective);
+            ScanAnchor anchor = CaptureAnchor(scanTo < end ? scanTo + 1 : scanTo);
             LogFilter logFilter = CreateLogFilter(addresses, topicFilter);
             if (!indexed && FindMissingReceipts(start, scanTo, logFilter, token) is { } missingReceipts)
             {
                 return Task.FromResult(missingReceipts);
             }
 
-            LogPage singleBlockPage = new([], start, startLogIndex, start, end, pageLimit, pageBytes, filterHash, false, clampedFrom, false, token);
+            LogPage singleBlockPage = new([], start, startLogIndex, start, end, pageLimit, pageBytes, filterHash, false, clampedFrom, false, anchor, token);
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -238,7 +239,7 @@ internal sealed partial class McpEthTools
                 }
 
                 // The logs may be produced lazily, so they are enumerated here, while the module is still rented.
-                LogPage page = new(logs, start, startLogIndex, scanTo, end, pageLimit, pageBytes, filterHash, indexed, clampedFrom, streamCap > 0, token);
+                LogPage page = new(logs, start, startLogIndex, scanTo, end, pageLimit, pageBytes, filterHash, indexed, clampedFrom, streamCap > 0, anchor, token);
                 return Task.FromResult(WriteLogPageResult(page));
             }
         }, cancellationToken);
@@ -454,6 +455,12 @@ internal sealed partial class McpEthTools
             (hasNext, nextBlock, nextLogIndex) = (true, page.ScanTo + 1, 0);
         }
 
+        Hash256? nextHash = hasNext ? CanonicalHash(nextBlock) : null;
+        if (!Holds(page.Anchor))
+        {
+            return Reorganised(page.Anchor);
+        }
+
         // A page that stopped inside a block reports that block as covered (partially); the cursor resumes inside it.
         ulong coveredTo = !hasNext ? page.ScanTo : nextLogIndex == 0 && nextBlock > page.Start ? nextBlock - 1 : nextBlock;
         writer.WritePropertyName("fromBlock"u8);
@@ -463,8 +470,7 @@ internal sealed partial class McpEthTools
         writer.WriteBoolean("truncated"u8, hasNext);
         if (hasNext)
         {
-            Hash256 nextHash = blockFinder.FindHeader(nextBlock, BlockTreeLookupOptions.RequireCanonical)?.Hash ?? Keccak.Zero;
-            writer.WriteString("nextCursor"u8, new McpLogCursor(nextBlock, nextLogIndex, page.End, page.FilterHash, nextHash.BytesToArray()).Encode());
+            writer.WriteString("nextCursor"u8, new McpLogCursor(nextBlock, nextLogIndex, page.End, page.FilterHash, (nextHash ?? Keccak.Zero).BytesToArray()).Encode());
         }
 
         writer.WriteBoolean("indexed"u8, page.Indexed);
@@ -499,6 +505,23 @@ internal sealed partial class McpEthTools
         return false;
     }
 
+    private Hash256? CanonicalHash(ulong number) => blockFinder.FindHeader(number, BlockTreeLookupOptions.RequireCanonical)?.Hash;
+
+    private ScanAnchor CaptureAnchor(ulong block) => new(block, CanonicalHash(block));
+
+    /// <summary>Whether <paramref name="anchor"/> is still canonical, and with it every block below it that a scan read.</summary>
+    private bool Holds(ScanAnchor anchor) => CanonicalHash(anchor.Block) == anchor.Hash;
+
+    private static CallToolResult Reorganised(ScanAnchor anchor) => McpToolExecutor.Error(McpToolErrorCodes.Unavailable,
+        $"The chain reorganised while this page was read (block {anchor.Block} changed); restart the query without 'cursor'.");
+
+    /// <summary>A canonical block captured before a scan, at or above every block the scan reads and every block a cursor it issues starts at.</summary>
+    /// <remarks>
+    /// A block hash commits to all its ancestors, so while the anchor keeps its hash the scanned blocks stay canonical. A page checks it after
+    /// reading its logs, so a cursor never pairs a log offset read from one fork with another fork's block hash.
+    /// </remarks>
+    private readonly record struct ScanAnchor(ulong Block, Hash256? Hash);
+
     /// <summary>One <c>eth_getLogs</c> result and the page it is cut into.</summary>
     private readonly record struct LogPage(
         IEnumerable<FilterLog> Logs,
@@ -512,5 +535,6 @@ internal sealed partial class McpEthTools
         bool Indexed,
         ulong? ClampedFrom,
         bool Capped,
+        ScanAnchor Anchor,
         CancellationToken Token);
 }

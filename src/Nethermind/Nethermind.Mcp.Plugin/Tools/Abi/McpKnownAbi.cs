@@ -80,7 +80,14 @@ public static class McpKnownAbi
     /// The chain's wrapped native token. <c>Deposit</c>/<c>Withdrawal</c> are generic names, so they get the <c>WETH</c> standard
     /// only when emitted by this contract; from any other emitter they decode as plain events without a standard.
     /// </param>
-    public static McpDecodedLog? TryDecodeLog(LogEntry log, Address? wrappedNativeToken = null)
+    public static McpDecodedLog? TryDecodeLog(LogEntry log, Address? wrappedNativeToken = null) =>
+        TryDecodeLog(log, wrappedNativeToken, new McpAbiCodec.DecodeBudget());
+
+    /// <summary>Decodes <paramref name="log"/> against the known events, charging the decoded values and bytes to <paramref name="budget"/>.</summary>
+    /// <param name="log">The log to decode.</param>
+    /// <param name="wrappedNativeToken">The chain's wrapped native token, as for <see cref="TryDecodeLog(LogEntry, Address?)"/>.</param>
+    /// <param name="budget">The allowance shared by every log of one result; a log that would exceed it is not decoded.</param>
+    internal static McpDecodedLog? TryDecodeLog(LogEntry log, Address? wrappedNativeToken, McpAbiCodec.DecodeBudget budget)
     {
         if (log?.Topics is not { Length: > 0 } topics || topics[0] is null || !Events.TryGetValue(topics[0], out KnownEvent[]? candidates))
         {
@@ -90,7 +97,7 @@ public static class McpKnownAbi
         foreach (KnownEvent candidate in candidates)
         {
             string? standard = candidate.Standard == Weth && log.Address != wrappedNativeToken ? null : candidate.Standard;
-            if (McpAbiCodec.TryDecodeEvent(candidate.Signature, log, standard, out McpDecodedLog? decoded))
+            if (McpAbiCodec.TryDecodeEvent(candidate.Signature, log, standard, budget, out McpDecodedLog? decoded))
             {
                 return decoded;
             }

@@ -87,7 +87,7 @@ internal sealed class McpToolExecutor(
 
     internal Func<Task>? BeforeBodyStart { get; set; }
 
-    /// <summary>The clock behind <see cref="RemainingTime"/>.</summary>
+    /// <summary>The clock behind <see cref="RemainingTime"/> and the soft deadlines of <c>address_activity</c>.</summary>
     internal TimeProvider Time { get; set; } = TimeProvider.System;
 
     /// <summary>How long a call waits for a free concurrency slot before failing with <c>resource_exhausted</c>.</summary>

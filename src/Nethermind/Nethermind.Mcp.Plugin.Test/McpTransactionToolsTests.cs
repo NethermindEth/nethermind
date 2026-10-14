@@ -1197,9 +1197,12 @@ public class McpTransactionToolsTests
     {
         JsonObject result = McpDiagnosisTools.Diagnose(DiagnosisFeeTransaction(TxType.Blob, 20, 5, 3), 5, 6,
             new McpDiagnosisTools.FeeSnapshot(10, 4, 3, 5, 8));
-        Assert.That(result["recommended"]!["maxFeePerBlobGasWei"]!.GetValue<string>(), Is.EqualTo("8"));
-        Assert.That(result["replacementMinimum"]!["maxFeePerBlobGasWei"]!.GetValue<string>(), Is.EqualTo("6"));
-        Assert.That(result["notes"]!.ToJsonString(), Does.Contain("twice the next block"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["recommended"]!["maxFeePerBlobGasWei"]!.GetValue<string>(), Is.EqualTo("8"));
+            Assert.That(result["replacementMinimum"]!["maxFeePerBlobGasWei"]!.GetValue<string>(), Is.EqualTo("6"));
+            Assert.That(result["notes"]!.ToJsonString(), Does.Contain("twice the next block"));
+        }
     }
 
     [Test]
@@ -1254,8 +1257,11 @@ public class McpTransactionToolsTests
     public void Diagnose_large_effective_tip_does_not_suggest_raising_it([Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559)] TxType type)
     {
         JsonObject result = McpDiagnosisTools.Diagnose(DiagnosisFeeTransaction(type, 1000, 500), 5, 6, new(10, 4, 3, 5, 8));
-        Assert.That(result["lowTip"]!.GetValue<bool>(), Is.False);
-        Assert.That(result["recommendations"]![0]!.GetValue<string>(), Does.Contain("fees are adequate").And.Not.Contain("Replace"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["lowTip"]!.GetValue<bool>(), Is.False);
+            Assert.That(result["recommendations"]![0]!.GetValue<string>(), Does.Contain("fees are adequate").And.Not.Contain("Replace"));
+        }
     }
 
     [Test]
@@ -1305,8 +1311,11 @@ public class McpTransactionToolsTests
     public void Diagnose_low_tip_is_ready_when_fee_cap_covers_next_base([Values(10UL, 11UL, 20UL)] ulong cap)
     {
         JsonObject result = McpDiagnosisTools.Diagnose(DiagnosisFeeTransaction(TxType.EIP1559, cap, 2), 5, 6, new McpDiagnosisTools.FeeSnapshot(10, 4, 3, 5, 8));
-        Assert.That(result["status"]!.GetValue<string>(), Is.EqualTo("pending_ready"));
-        Assert.That(result["lowTip"]!.GetValue<bool>(), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["status"]!.GetValue<string>(), Is.EqualTo("pending_ready"));
+            Assert.That(result["lowTip"]!.GetValue<bool>(), Is.True);
+        }
     }
 
     [TestCase(TxType.Legacy, 9UL, 9UL, "10", null, "25")]
@@ -1375,8 +1384,11 @@ public class McpTransactionToolsTests
         await using McpClient client = await node.CreateClient();
         CallToolResult call = await McpToolCalls.Call(client, "diagnose_transaction", [("hash", original.Hash!.ToString())]);
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("replaced"));
-        Assert.That(result.GetProperty("replacementHash").GetString(), Is.EqualTo(replacement.Hash.ToString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("replaced"));
+            Assert.That(result.GetProperty("replacementHash").GetString(), Is.EqualTo(replacement.Hash.ToString()));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "diagnose_transaction", call);
     }
 
@@ -1800,10 +1812,8 @@ public class McpTransactionToolsTests
     public async Task Block_summary_unknown_block_is_not_found() =>
         McpAssert.Error(await Call("block_summary", ("block", "0xffffff")), McpAssert.NotFound);
 
-    [TestCase("explain_transaction")]
-    [TestCase("simulate_transaction")]
-    [TestCase("block_summary")]
-    public async Task Tool_declares_an_output_schema_and_is_read_only(string toolName)
+    [Test]
+    public async Task Tool_declares_an_output_schema_and_is_read_only([Values("explain_transaction", "simulate_transaction", "block_summary")] string toolName)
     {
         McpClientTool tool = (await _client.ListToolsAsync()).Single(t => t.Name == toolName);
 

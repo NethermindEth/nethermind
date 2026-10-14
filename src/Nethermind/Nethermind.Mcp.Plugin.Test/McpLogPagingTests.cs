@@ -11,8 +11,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
+using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -488,6 +491,47 @@ public class McpLogPagingTests
 
         List<LogId> all = [.. first.GetProperty("logs").EnumerateArray().Select(LogIdOf), .. rest];
         Assert.That(all, Is.EqualTo(seeded.Expected), "logs of blocks added after the first page must not appear");
+    }
+
+    [Test]
+    public async Task Reorganisation_while_a_page_is_read_fails_instead_of_signing_the_new_fork()
+    {
+        await using McpTestNode node = await McpTestNode.Create(
+            c =>
+            {
+                c.MaxLogBlockRange = MaxLogBlockRange;
+                c.MaxLogs = MaxLogs;
+            },
+            static b => b.AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));
+        SeededLogs seeded = await SeedLogs(node, [1]);
+        Block scanned = node.Chain.BlockTree.FindBlock(seeded.Last, BlockTreeLookupOptions.RequireCanonical)!;
+        List<FilterLog> logs = [];
+        foreach (TxReceipt receipt in node.Chain.ReceiptStorage.Get(scanned))
+        {
+            foreach (LogEntry entry in receipt.Logs!)
+            {
+                logs.Add(new FilterLog(logs.Count, receipt, entry, scanned.Timestamp));
+            }
+        }
+
+        IEthRpcModule eth = Substitute.For<IEthRpcModule>();
+        Block? sibling = null;
+        eth.eth_getLogs(Arg.Any<Filter>()).Returns(_ =>
+        {
+            sibling = node.Reorganise(seeded.Last);
+            return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
+        });
+        ((FaultInjectingRpcModuleProvider)node.Chain.Container.Resolve<IRpcModuleProvider>()).Override(nameof(IEthRpcModule.eth_getLogs), eth);
+        await using McpClient client = await node.CreateClient();
+
+        JsonElement error = McpAssert.Error(await McpToolCalls.Call(client, "get_logs",
+            [("fromBlock", Hex(seeded.Last)), ("toBlock", Hex(seeded.Last)), ("limit", 2)]), McpAssert.Unavailable);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sibling, Is.Not.Null, "precondition: the chain must reorganise during the scan");
+            Assert.That(error.GetProperty("message").GetString(), Does.Contain($"block {seeded.Last} changed"));
+        }
     }
 
     private async Task<string> FirstCursor()

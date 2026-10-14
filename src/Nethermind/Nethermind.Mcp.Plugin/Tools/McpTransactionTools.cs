@@ -452,7 +452,6 @@ internal sealed class McpTransactionTools(
             json["logCount"] = receipt.Logs?.Count ?? 0;
         }
 
-        // Token movements from the receipt's logs.
         List<McpTokenMovement> movements = [];
         McpTokenTally tally = new();
         if (receipt?.Logs is { } logs)
@@ -1738,7 +1737,6 @@ internal sealed class McpTransactionTools(
             json["feeRecipient"] = recipient;
         }
 
-        // Transactions: types, recipients and creations.
         TransactionForRpc[] transactions = block.Transactions?.Full ?? [];
         SortedDictionary<string, int> types = new(StringComparer.Ordinal);
         Dictionary<AddressAsKey, int> recipients = [];

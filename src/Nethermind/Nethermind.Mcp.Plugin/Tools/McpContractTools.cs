@@ -804,7 +804,7 @@ internal sealed class McpContractTools(
 
         if (result is null)
         {
-            result = McpKnownAbi.TryDecodeLog(log, chain.WrappedNativeToken);
+            result = McpKnownAbi.TryDecodeLog(log, chain.WrappedNativeToken, decodeBudget);
             source = "known";
         }
 

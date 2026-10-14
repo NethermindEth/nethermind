@@ -343,7 +343,6 @@ internal static class McpTxTokens
 
         public bool Spent() => Volatile.Read(ref _abandoned) || cancellationToken.IsCancellationRequested || stop?.Invoke() == true;
 
-        // Reads the remaining tokens in order until done or spent.
         public void Run(IEthRpcModule eth)
         {
             while (true)

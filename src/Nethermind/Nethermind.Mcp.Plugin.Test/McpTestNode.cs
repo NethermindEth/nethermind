@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using Autofac;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -20,6 +21,7 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Mcp.Plugin.Tools;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -142,6 +144,26 @@ internal sealed class McpTestNode : IAsyncDisposable
         }
 
         return await McpClient.CreateAsync(new HttpClientTransport(options), cancellationToken: cancellationToken);
+    }
+
+    /// <summary>Replaces the tool executor's clock, so tests move tool deadlines with <see cref="ManualTimeProvider.Advance"/> instead of sleeping.</summary>
+    public ManualTimeProvider UseManualClock()
+    {
+        ManualTimeProvider time = new();
+        Chain.Container.Resolve<McpToolExecutor>().Time = time;
+        return time;
+    }
+
+    /// <summary>Reorganises the chain: an empty sibling of the canonical block at <paramref name="number"/> becomes the head.</summary>
+    public Block Reorganise(ulong number)
+    {
+        BlockHeader parent = Chain.BlockTree.FindHeader(number - 1, BlockTreeLookupOptions.RequireCanonical)!;
+        Block sibling = Build.A.Block.WithParent(parent).WithStateRoot(parent.StateRoot!).WithExtraData([0x72, 0x65, 0x6f, 0x72, 0x67])
+            .WithTotalDifficulty(parent.TotalDifficulty + parent.Difficulty).TestObject;
+        Assert.That(Chain.BlockTree.Insert(sibling, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(Chain.BlockTree.TryUpdateMainChain(sibling.Header, wereProcessed: true, forceUpdateHeadBlock: true, sibling), Is.True,
+            "precondition: the sibling must become canonical");
+        return sibling;
     }
 
     /// <summary>
