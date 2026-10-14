@@ -13,4 +13,6 @@ public sealed partial class JournalSet<T> where T : notnull, IEquatable<T>
         _set.Clear();
         GuestList<T>.Reset(_items);
     }
+
+    private partial void Truncate(int count) => GuestList<T>.Truncate(_items, count);
 }

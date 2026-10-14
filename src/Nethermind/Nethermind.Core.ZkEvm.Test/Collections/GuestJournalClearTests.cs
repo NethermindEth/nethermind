@@ -8,7 +8,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.ZkEvm.Test.Collections;
 
-/// <summary>The guest's journals reset their item lists without zeroing them, then must behave as freshly cleared.</summary>
+/// <summary>The guest's journals clear and truncate their item lists without zeroing them, then must behave as a zeroed list would.</summary>
 public class GuestJournalClearTests
 {
     private static readonly Address _a = new("0x000000000000000000000000000000000000000a");
@@ -48,12 +48,16 @@ public class GuestJournalClearTests
 
         collection.Clear();
         collection.Add("third");
+        int snapshot = collection.TakeSnapshot();
+        collection.Add("fourth");
+        collection.Restore(snapshot);
+        collection.Add("fifth");
 
-        Assert.That(collection.ToArray(), Is.EqualTo(new[] { "third" }));
+        Assert.That(collection.ToArray(), Is.EqualTo(new[] { "third", "fifth" }));
     }
 
     [Test]
-    public void Clearing_invalidates_running_enumerators([Values] bool set)
+    public void Clearing_and_restoring_invalidate_running_enumerators([Values] bool set, [Values] bool restore)
     {
         ICollection<Address> journal = set ? new JournalSet<Address>(Address.EqualityComparer) : new JournalCollection<Address>();
         journal.Add(_a);
@@ -62,7 +66,12 @@ public class GuestJournalClearTests
         Assert.Throws<InvalidOperationException>(() =>
         {
             foreach (Address _ in journal)
-                journal.Clear();
+            {
+                if (restore)
+                    ((IJournal<int>)journal).Restore(0);
+                else
+                    journal.Clear();
+            }
         });
     }
 }
