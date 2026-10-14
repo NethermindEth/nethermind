@@ -2626,6 +2626,7 @@ public partial class FrameTxProcessorTests
     [TestCase((byte)FrameFlags.AtomicBatch, TestName = "Execute_RefusedApproval_ScopeBeyondMask_ChargesMemoryExpansion")]
     public void Execute_RefusedApprovalChargesTheMemoryExpansionOfItsReturnData(byte scope)
     {
+        const ulong returnDataMemoryExpansionGas = 98;
         Address withoutReturnData = TestItem.AddressD;
         Address withReturnData = TestItem.AddressF;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
@@ -2645,7 +2646,7 @@ public partial class FrameTxProcessorTests
             Assert.That(result.TransactionExecuted, Is.True);
             Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
             Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
-            Assert.That(tracer.FrameReceipts[2].GasUsed - tracer.FrameReceipts[1].GasUsed, Is.EqualTo(98UL));
+            Assert.That(tracer.FrameReceipts[2].GasUsed - tracer.FrameReceipts[1].GasUsed, Is.EqualTo(returnDataMemoryExpansionGas));
         }
     }
 
