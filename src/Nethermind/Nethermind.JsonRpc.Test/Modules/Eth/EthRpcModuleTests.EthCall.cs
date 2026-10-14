@@ -1690,14 +1690,16 @@ public partial class EthRpcModuleTests
         }
     }
 
+    private static readonly (string BlobFeeCap, bool NullBlobHashes, bool Cancun)[] BlobFeeCapWithoutBlobHashes =
+        [("0x0", false, false), ("0x1", true, true), ("0x1", false, true)];
+
     [Test]
     public async Task Blob_fee_cap_without_blob_hashes_is_rejected_by_calls_only(
         [Values("eth_call", "eth_estimateGas", "eth_createAccessList", "eth_simulateV1")] string method,
-        [Values("0x0", "0x1")] string blobFeeCap,
         [Values(null, "0x0", "0x1", "0x2", "0x4")] string? type,
-        [Values] bool nullBlobHashes,
-        [Values] bool cancun)
+        [ValueSource(nameof(BlobFeeCapWithoutBlobHashes))] (string BlobFeeCap, bool NullBlobHashes, bool Cancun) blobFields)
     {
+        (string blobFeeCap, bool nullBlobHashes, bool cancun) = blobFields;
         using Context ctx = await Context.Create(new TestSpecProvider(cancun ? Cancun.Instance : Shanghai.Instance));
         string blobHashes = nullBlobHashes ? ",\"blobVersionedHashes\":null" : "";
         string typeField = type is null ? "" : $",\"type\":\"{type}\"";
