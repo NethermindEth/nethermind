@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
+using Nethermind.RocksDbBindings;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust.Interop;
 
@@ -50,10 +51,13 @@ internal sealed partial class NativeFlatManager : IDisposable
     private readonly ILogger _logger;
     private readonly bool _recordDetailedMetrics;
     private readonly Lock _eventLock = new();
+    private readonly Lock _fatalLock = new();
     private readonly CancellationTokenSource _stopPump = new();
     private readonly CancellationTokenRegistration _processExit;
     private readonly Task _pump;
     private Task _fatalReport = Task.CompletedTask;
+    private FatalErrorSource? _fatalSource;
+    private string? _fatalMessage;
     private int _disposed;
 
     /// <param name="catalogDb">The <see cref="DbNames.PersistedSnapshotCatalog"/> database, resolved only with
@@ -136,7 +140,25 @@ internal sealed partial class NativeFlatManager : IDisposable
     public void PublishMetrics() => _handle.PublishMetrics();
 
     /// <summary>Throws what the C# manager would for a failed native call.</summary>
-    public void ThrowIfFailed(FdbStatus status) => _persistence.Store.ThrowIfFailed(status);
+    /// <remarks>
+    /// The fatal RocksDB error of the persisted-snapshot catalog, which the manager then fails every persist with, is
+    /// thrown without reporting it to the flat DB, as on the C# backend only the catalog's <c>HandleFatalDbError</c>
+    /// sees it. Any other RocksDB error is the flat DB's.
+    /// </remarks>
+    public void ThrowIfFailed(FdbStatus status)
+    {
+        if (status != FdbStatus.RocksDb)
+        {
+            _persistence.Store.ThrowIfFailed(status);
+            return;
+        }
+
+        // Read first: taking a fatal error replaces this thread's last error with the fatal one.
+        string message = StatusMap.LastError();
+        TakeFatalError();
+        if (_fatalSource == FatalErrorSource.Catalog && message == _fatalMessage) throw new RocksDbException(message);
+        _persistence.Store.ThrowRocksDbError(message);
+    }
 
     /// <summary><c>GatherReadOnlySnapshotBundle</c>: the native read-only bundle of <paramref name="baseBlock"/>.</summary>
     /// <remarks>The bundle keeps the native manager alive until it is disposed.</remarks>
@@ -360,7 +382,7 @@ internal sealed partial class NativeFlatManager : IDisposable
             ProcessPersistedEvents();
             _handle.PublishMetrics();
             _persistence.Store.PumpLogs();
-            ReportFatalError();
+            TakeFatalError();
         }
         catch (ObjectDisposedException)
         {
@@ -371,12 +393,26 @@ internal sealed partial class NativeFlatManager : IDisposable
         }
     }
 
-    private unsafe void ReportFatalError()
+    /// <summary>
+    /// Takes the fatal error the native manager stored, if it stored one since, and reports it to the database it hit,
+    /// or exits the process on a failed validation.
+    /// </summary>
+    /// <remarks>Remembers the fatal error the manager fails its persists with in <see cref="_fatalSource"/> and <see cref="_fatalMessage"/>.</remarks>
+    private unsafe void TakeFatalError()
     {
-        FatalErrorSource source;
-        if (NativeMethods.fdb_take_fatal_error(_handle, &source) == FdbStatus.Ok) return;
+        lock (_fatalLock)
+        {
+            FatalErrorSource source;
+            if (NativeMethods.fdb_take_fatal_error(_handle, &source) == FdbStatus.Ok) return;
 
-        string message = StatusMap.LastError();
+            _fatalSource = source;
+            _fatalMessage = StatusMap.LastError();
+            Report(source, _fatalMessage);
+        }
+    }
+
+    private void Report(FatalErrorSource source, string message)
+    {
         if (source == FatalErrorSource.Validation)
         {
             // The dump file names the range, as PersistedSnapshotUtils names it; an error that left no dump names none.
@@ -389,7 +425,7 @@ internal sealed partial class NativeFlatManager : IDisposable
             _logger.Error($"Persisting the flat DB failed fatally: {message}");
         }
 
-        // Off the pump, which disposal waits for, as shutting down on the error disposes the node.
+        // On a pool thread, as shutting down on the error disposes the node, which waits for the pump.
         _fatalReport = source switch
         {
             FatalErrorSource.Validation => Task.Run(() => ExitProcess(ExitCodes.GeneralError)),

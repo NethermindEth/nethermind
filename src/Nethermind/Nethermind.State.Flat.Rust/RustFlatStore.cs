@@ -157,6 +157,9 @@ internal sealed unsafe class RustFlatStore : SafeHandle
     /// <summary>Throws what the C# persistence would for a failed call on the store.</summary>
     public void ThrowIfFailed(FdbStatus status) => ThrowIfFailed(status, _rocksDb);
 
+    /// <summary>Throws what <see cref="ThrowIfFailed(FdbStatus)"/> throws for a RocksDB failure with <paramref name="message"/>.</summary>
+    public void ThrowRocksDbError(string message) => ThrowRocksDbError(message, _rocksDb);
+
     /// <summary>Lets <see cref="DbOnTheRocks.HandleFatalDbError"/> shut the node down on a RocksDB error the native library hit off any call.</summary>
     public void ReportFatal(string message) => _rocksDb?.HandleFatalDbError(new RocksDbException(message));
 
@@ -167,14 +170,18 @@ internal sealed unsafe class RustFlatStore : SafeHandle
     private static void ThrowIfFailed(FdbStatus status, DbOnTheRocks? rocksDb)
     {
         if (status == FdbStatus.Ok) return;
-        if (status == FdbStatus.RocksDb && rocksDb is not null)
-        {
-            RocksDbException exception = new(StatusMap.LastError());
-            rocksDb.HandleFatalDbError(exception);
-            throw exception;
-        }
+        if (status == FdbStatus.RocksDb) ThrowRocksDbError(StatusMap.LastError(), rocksDb);
 
         StatusMap.Throw(status);
+    }
+
+    private static void ThrowRocksDbError(string message, DbOnTheRocks? rocksDb)
+    {
+        if (rocksDb is null) throw StatusMap.ToException(FdbStatus.RocksDb, message);
+
+        RocksDbException exception = new(message);
+        rocksDb.HandleFatalDbError(exception);
+        throw exception;
     }
 
     /// <summary>Takes a reference on the store for a handle about to be created; the handle releases it.</summary>

@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -14,6 +15,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Rust.Interop;
 using NUnit.Framework;
 using static Nethermind.State.Flat.Rust.Test.FlatManagerContainer;
@@ -149,6 +151,110 @@ public class RustLifecycleTests
             Assert.That(ended, Is.True, "process exit ended the stall");
             Assert.That(stalled?.Exception?.GetBaseException(), Is.InstanceOf<OperationCanceledException>());
             Assert.That(disposed, Is.True);
+        }
+    }
+
+    /// <summary>
+    /// Process exit signalled while the persisted-snapshot tier converts a long stretch of stalled blocks lets the
+    /// persist, at most cancelled, and the shutdown end, as with the C# manager, and leaves a tier the next start reads
+    /// exactly.
+    /// </summary>
+    /// <remarks>
+    /// Whether the exit stops the conversions is not observable here: the background workers convert the backlog as
+    /// it builds up, in milliseconds, and nothing holds a conversion on both backends. The cargo test
+    /// <c>process_exit_cancels_a_conversion</c> pins that.
+    /// </remarks>
+    [Test]
+    public async Task Process_exit_while_a_backlog_converts_lets_the_persist_and_the_shutdown_end([Values(FlatDbBackend.CSharp, FlatDbBackend.Rust)] FlatDbBackend backend)
+    {
+        if (backend != FlatDbBackend.CSharp) RustNativeLibrary.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        using CancellationTokenSource exit = new();
+        TestFinality finality = new();
+        finality.Finalize(StalledChain.FinalizedBlock, Block);
+        FlatManagerContainer.Overrides overrides = new() { RocksDbCatalog = true };
+        FlatManagerContainer container = new(StalledChain.Config(backend), path.Path, finality, overrides with { ProcessExitSource = new ProcessExitSource(exit.Token) });
+        for (ulong number = 0; number < 44; number++) StalledChain.AddBlock(container, number);
+
+        Task persisting = Task.Run(() => container.PersistUpTo(Block(43)));
+        await exit.CancelAsync();
+        bool ended = await Task.WhenAny(persisting, Task.Delay(Eventually)) == persisting;
+        Task disposal = container.DisposeAsync().AsTask();
+        bool disposed = await Task.WhenAny(disposal, Task.Delay(Eventually)) == disposal;
+
+        await using FlatManagerContainer reopened = new(StalledChain.Config(backend), path.Path, finality, overrides);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((ended, disposed), Is.EqualTo((true, true)), "the persist and the shutdown ended");
+            Assert.That(persisting.Exception?.GetBaseException(), Is.Null.Or.InstanceOf<OperationCanceledException>());
+            foreach (ulong number in StalledChain.Held(reopened, 43).Where(static number => number > StalledChain.FinalizedBlock))
+            {
+                Assert.That(StalledChain.Reads(reopened, Block(number)), Is.EqualTo(StalledChain.ExpectedReads(number)), $"reads {number}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Shutdown, with conversions into the persisted-snapshot tier and merges of it still in flight, keeps the files of
+    /// every snapshot the tier holds, so the next start reads each catalogued snapshot exactly.
+    /// </summary>
+    [Test]
+    public async Task Shutdown_keeps_the_files_of_the_persisted_snapshot_tier([Values(FlatDbBackend.CSharp, FlatDbBackend.Rust)] FlatDbBackend backend)
+    {
+        if (backend != FlatDbBackend.CSharp) RustNativeLibrary.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        TestFinality finality = new();
+        FlatManagerContainer.Overrides overrides = new() { RocksDbCatalog = true };
+        await using (FlatManagerContainer first = new(StalledChain.Config(backend), path.Path, finality, overrides))
+        {
+            StalledChain.Add(first, finality, 0, 31);
+        }
+
+        CatalogEntry[] rows = StalledChain.Catalog(path.Path);
+        await using FlatManagerContainer reopened = new(StalledChain.Config(backend), path.Path, finality, overrides);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rows.Select(static row => row.Tier), Is.SupersetOf(new[] { SnapshotTier.PersistedBase, SnapshotTier.PersistedCompactSized }), "the tier held bases and merges");
+            foreach (CatalogEntry row in rows)
+            {
+                long fileLength = Directory.EnumerateFiles(StalledChain.ArenaDirectory(path.Path), $"*_{row.Location.ArenaId:D4}.bin").Select(static file => new FileInfo(file).Length).DefaultIfEmpty(-1).Single();
+                Assert.That(fileLength, Is.GreaterThanOrEqualTo(row.Location.Offset + row.Location.Size), $"the file of {row.Tier} {row.To}");
+                Assert.That(StalledChain.Reads(reopened, row.To), Is.EqualTo(StalledChain.ExpectedReads(row.To.BlockNumber)), $"reads {row.Tier} {row.To}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A read-only bundle over the persisted-snapshot tier, held across shutdown, keeps reading the tier, and holds the
+    /// native manager, and with it the lease on the catalog, until it is disposed.
+    /// </summary>
+    [Test]
+    public async Task A_bundle_held_across_shutdown_keeps_reading_the_tier_and_holds_the_catalog()
+    {
+        RustNativeLibrary.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        TestFinality finality = new();
+        FlatManagerContainer container = new(StalledChain.Config(FlatDbBackend.Rust), path.Path, finality, new() { RocksDbCatalog = true });
+        StalledChain.Add(container, finality, 0, 23);
+        FlatTestDbs.TrackingCatalogDb catalog = (FlatTestDbs.TrackingCatalogDb)container.CatalogDb;
+        FfiRobInfo info = NativeTier.GatherInfo(container.Resolve<Fork.NativeFlatManager>(), Block(6));
+        IBundleView bundle = container.Arm.GatherReadOnly(Block(6), ReaderFlags.None);
+
+        Task disposal = Task.Run(async () => await container.DisposeAsync());
+        bool disposedWithBundleOpen = disposal.Wait(Briefly);
+        int catalogClosesWithBundleOpen = catalog.NativeCloses;
+        (Account? account, byte[]? node) = (bundle.GetAccount(BlockAddress), bundle.LoadStateRlp(StalledChain.NodePath));
+        bundle.Dispose();
+        bool disposed = disposal.Wait(Eventually);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info.PersistedCount, Is.Positive.And.EqualTo(info.SnapshotCount), "the bundle reads the tier alone");
+            Assert.That((disposedWithBundleOpen, catalogClosesWithBundleOpen), Is.EqualTo((false, 0)), "the open bundle holds the manager and the catalog");
+            Assert.That(account, Is.EqualTo(new Account(6, 6)), "the bundle reads the tier after the manager is gone");
+            Assert.That(node, Is.EqualTo(StalledChain.Rlp(6)));
+            Assert.That(disposed, Is.True, "the bundle let go");
+            Assert.That((catalog.NativeCloses, container.Db.NativeCloses), Is.EqualTo((1, 1)));
         }
     }
 

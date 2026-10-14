@@ -251,6 +251,19 @@ mod tests {
         );
     }
 
+    /// A filesystem without hole punching, procfs here, reports it as unsupported, on which the arena manager stops trying.
+    #[test]
+    fn a_filesystem_without_hole_punching_reports_it_unsupported() {
+        let Ok(file) = std::fs::OpenOptions::new().write(true).open("/proc/self/comm") else {
+            eprintln!("skipped: /proc/self/comm cannot be opened for writing");
+            return;
+        };
+        assert_eq!(
+            punch_hole(&file, 0, os_page_size() as i64),
+            PunchHoleOutcome::Unsupported
+        );
+    }
+
     #[test]
     fn mappings_read_from_unaligned_offsets_and_punched_pages_read_zero() {
         let page = os_page_size();

@@ -23,10 +23,11 @@ use flatdb_core::persisted::codec::{self, BlobRange};
 use flatdb_core::persisted::compactor::EnqueueError;
 use flatdb_core::persisted::io::ByteReader;
 use flatdb_core::persisted::keys;
+use flatdb_core::persisted::list::PersistedSnapshotList;
 use flatdb_core::persisted::reader::{read_blob_range, read_ref_ids};
 use flatdb_core::persisted::snapshot::PersistedSnapshot;
 use flatdb_core::persisted::sorted::table_reader;
-use flatdb_core::persisted::stack::PersistedLayer;
+use flatdb_core::persisted::stack::{PersistedLayer, PersistedSnapshotStack, StackSlot};
 use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv};
 use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::snapshot::content::SnapshotContentBuilder;
@@ -829,6 +830,44 @@ fn a_large_merge_shares_its_bloom_with_the_snapshots_inside() {
         assert!(Arc::ptr_eq(base.persisted_bloom(), shared), "base {block}");
         assert_eq!(balance_of(&base, block), Some(U256::from_u64(block * 100)));
     }
+}
+
+/// The probe of the probable C# bug `PersistedBloomShareTests` pins: a slot a base writes, below a later base of the
+/// same large window that self-destructs the account, reads back at a head between the two once the large merge shared
+/// its bloom with the bases. The merge drops the slot without its bloom key, so the bases skip it.
+#[test]
+#[ignore = "C# shares a merged bloom that lacks slots dropped below a self-destruct barrier (PersistedSnapshotMerger drops them without bloom keys; ShareBloomAcrossRange/ReconstructBloom hand that bloom to contained snapshots)"]
+fn a_slot_below_a_self_destruct_reads_back_through_a_shared_large_bloom() {
+    let tier = TemporaryTier::new();
+    let compactor = tier.compactor(schedule(4, 16, 0));
+    let target = address(0xA);
+    let slot = U256::from_u64(7);
+    for block in 1..=8 {
+        tier.convert(&snapshot(chain_state(block - 1), chain_state(block), |c| {
+            c.set_account(target, Some(account(block)));
+            match block {
+                1 | 3 => c.set_storage(target, slot, Some(U256::from_u64(block))),
+                6 => c.set_self_destruct(target, false),
+                _ => {}
+            }
+        }));
+    }
+    assert!(compactor.do_compact_snapshot(&chain_state(8), 0).unwrap());
+    assert!(lease(&tier, 8, SnapshotTier::PersistedLargeCompacted).is_some());
+
+    let stack = PersistedSnapshotStack::new(PersistedSnapshotList::new(
+        tier.repository
+            .assemble_snapshots(&chain_state(3), &chain_state(0), 4)
+            .persisted,
+    ));
+    let self_destruct = stack
+        .try_get_self_destruct(&target)
+        .unwrap()
+        .map_or(-1, |index| index as isize);
+    assert_eq!(
+        stack.try_get_slot(&target, &slot, self_destruct).unwrap(),
+        StackSlot::Found(Some(U256::from_u64(3)))
+    );
 }
 
 /// The batches `EnqueueAsync` hands the threads: the sub-`CompactSize` windows, the CompactSized snapshot at every

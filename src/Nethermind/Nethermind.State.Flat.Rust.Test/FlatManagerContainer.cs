@@ -60,11 +60,20 @@ internal sealed class FlatManagerContainer : IAsyncDisposable
         if (overrides.TrieNodeCache is not null) builder.AddSingleton<ITrieNodeCache>(overrides.TrieNodeCache);
         if (overrides.RocksDbCatalog) builder.AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, _ => FlatTestDbs.OpenRocksDbCatalog(basePath));
         _container = builder.Build();
-        PersistenceManager = _container.Resolve<IPersistenceManager>();
-        ResourcePool = _container.Resolve<IResourcePool>();
-        Arm = config.Backend == FlatDbBackend.Rust
-            ? new FlatArm.Rust(_container.Resolve<Fork.IFlatDbManager>(), ResourcePool)
-            : new FlatArm.CSharp(_container.Resolve<IFlatDbManager>(), ResourcePool);
+        try
+        {
+            if (overrides.StoreOpened is { } storeOpened) storeOpened(_container.Resolve<RustPersistence>().Store);
+            PersistenceManager = _container.Resolve<IPersistenceManager>();
+            ResourcePool = _container.Resolve<IResourcePool>();
+            Arm = config.Backend == FlatDbBackend.Rust
+                ? new FlatArm.Rust(_container.Resolve<Fork.IFlatDbManager>(), ResourcePool)
+                : new FlatArm.CSharp(_container.Resolve<IFlatDbManager>(), ResourcePool);
+        }
+        catch
+        {
+            _container.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            throw;
+        }
     }
 
     public FlatTestDbs.TrackingColumnsDb Db { get; }
@@ -174,8 +183,14 @@ internal sealed class FlatManagerContainer : IAsyncDisposable
         public IStatePersistenceBarrier? PersistenceBarrier { get; init; }
         public ITrieNodeCache? TrieNodeCache { get; init; }
 
-        /// <summary>Whether the persisted-snapshot catalog is a RocksDB in the base path, which a reopen reads again, rather than in memory.</summary>
+        /// <summary>
+        /// Whether the persisted-snapshot catalog is a <see cref="FlatTestDbs.TrackingCatalogDb"/> in the base path,
+        /// which a reopen reads again, rather than in memory.
+        /// </summary>
         public bool RocksDbCatalog { get; init; }
+
+        /// <summary>Runs on the store of a Rust backend before the native manager is created over it.</summary>
+        public Action<RustFlatStore>? StoreOpened { get; init; }
     }
 }
 

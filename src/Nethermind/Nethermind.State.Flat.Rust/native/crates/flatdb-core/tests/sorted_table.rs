@@ -110,6 +110,21 @@ fn corrupt_common_prefix_length_byte_fails_with_the_csharp_message() {
     );
 }
 
+/// A table cut short anywhere, as a torn write leaves it, reads as a miss, or as whatever its tail happens to encode, or
+/// fails as corrupt; it never panics or reads past its end, as the bounded C# reader does not.
+#[test]
+fn a_truncated_table_never_reads_past_its_end() {
+    let entries = (0..800).map(|i| (be_key(i), be_key(i ^ 0x5A))).collect::<Vec<_>>();
+    let bytes = build_table(&entries);
+    for length in 0..bytes.len() {
+        for (key, _) in entries.iter().step_by(97) {
+            if let Err(error) = seek(&bytes[..length], key) {
+                assert!(matches!(error, TierError::Corrupt(_)), "{length} bytes: {error}");
+            }
+        }
+    }
+}
+
 #[rstest]
 #[case::descending("02", "01", false)]
 #[case::duplicate("02", "02", false)]

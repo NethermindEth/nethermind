@@ -43,12 +43,7 @@ public static class FlatTestDbs
     public static ColumnsDb<FlatDbColumns> OpenRocksDb(string path) => new TrackingColumnsDb(path);
 
     /// <summary>The persisted-snapshot catalog in <paramref name="basePath"/>, opened as <c>FlatWorldStateModule</c> opens it.</summary>
-    public static DbOnTheRocks OpenRocksDbCatalog(string basePath)
-    {
-        DbConfig dbConfig = new();
-        return new DbOnTheRocks(basePath, new DbSettings(nameof(DbNames.PersistedSnapshotCatalog), Path.Combine("persistedSnapshot", "catalog")), dbConfig,
-            new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false), LimboLogs.Instance);
-    }
+    public static TrackingCatalogDb OpenRocksDbCatalog(string basePath) => new(basePath, new DbConfig());
 
     /// <summary>Forces the slot encoding the persistence resolves when it opens the database.</summary>
     public static void ForceSlotEncoding(IColumnsDb<FlatDbColumns> db, bool rlpSlots) =>
@@ -123,5 +118,30 @@ public static class FlatTestDbs
             FatalShuttingDown?.Invoke();
             Interlocked.Increment(ref _fatalShutdowns);
         }
+    }
+
+    /// <summary>
+    /// A persisted-snapshot catalog that counts its native closes and the fatal errors that would have shut the process
+    /// down, which it only counts, as <see cref="TrackingColumnsDb"/> does for the flat DB.
+    /// </summary>
+    public sealed class TrackingCatalogDb(string basePath, DbConfig dbConfig)
+        : DbOnTheRocks(basePath, new DbSettings(nameof(DbNames.PersistedSnapshotCatalog), Path.Combine("persistedSnapshot", "catalog")), dbConfig,
+            new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false), LimboLogs.Instance)
+    {
+        private int _nativeCloses;
+        private int _fatalShutdowns;
+
+        public int NativeCloses => Volatile.Read(ref _nativeCloses);
+
+        /// <inheritdoc cref="TrackingColumnsDb.FatalShutdowns"/>
+        public int FatalShutdowns => Volatile.Read(ref _fatalShutdowns);
+
+        protected override void ReleaseUnmanagedResources()
+        {
+            Interlocked.Increment(ref _nativeCloses);
+            base.ReleaseUnmanagedResources();
+        }
+
+        protected override void FatalShutdown() => Interlocked.Increment(ref _fatalShutdowns);
     }
 }
