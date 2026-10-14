@@ -1492,6 +1492,29 @@ public class BlockchainBridgeTests
         }
     }
 
+    [Test]
+    public void Simulate_adapter_leaves_a_frame_transaction_without_computable_reservations_to_the_processor()
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 10_000_000,
+            BlockGasLeft = 1_000_000,
+            Validate = true,
+        };
+        simulateRequestState.Calls = [new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 1_000_000, Transaction = new Transaction() }];
+
+        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
+        adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Eip8141Prototype.Instance, UInt256.Zero));
+        Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).WithSenderAddress(TestItem.AddressA).WithGasLimit(1_000_000).TestObject;
+        frameTx.Frames =
+        [
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, ulong.MaxValue, 0, UInt256.Zero, default),
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, 1, 0, UInt256.Zero, default)
+        ];
+
+        Assert.DoesNotThrow(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000));
+    }
+
     private static IEnumerable<TestCaseData> OverrideRoutingCases()
     {
         foreach (OverrideCall call in Enum.GetValues<OverrideCall>())

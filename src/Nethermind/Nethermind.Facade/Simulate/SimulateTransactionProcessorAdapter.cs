@@ -117,7 +117,8 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     {
         (remaining, required) = (blockGasAvailable, requestedGas);
         if (!transaction.SupportsFrames) return required <= remaining;
-        if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(transaction, _spec!, out ulong executionReservation, out ulong stateReservation)) return false;
+        // A malformed frame transaction is left to the processor, which reports its actual error.
+        if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(transaction, _spec!, out ulong executionReservation, out ulong stateReservation)) return true;
 
         (remaining, required) = executionReservation > simulateRequestState.BlockGasLeft
             ? (simulateRequestState.BlockGasLeft, executionReservation)
