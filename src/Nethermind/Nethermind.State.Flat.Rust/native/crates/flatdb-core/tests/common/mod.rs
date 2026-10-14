@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod any_kv;
+pub mod arena;
 pub mod faulty;
 pub mod loopback;
 pub mod manager;

@@ -1,11 +1,14 @@
-//! Port of the write path of `Nethermind.State.Flat/PersistedSnapshots/Storage/BlobArenaWriter.cs`: appends trie-node
-//! RLP to a blob file, padding so that no item of at most 4 KiB straddles a 4 KiB page.
+//! Port of `Nethermind.State.Flat/PersistedSnapshots/Storage/BlobArenaWriter.cs`: appends trie-node RLP to a blob file,
+//! padding so that no item of at most 4 KiB straddles a 4 KiB page.
 //!
-//! The writer appends to any [`Write`] from the file frontier it is given; the blob manager wraps it around a blob
-//! file, the tests around a buffer.
+//! [`BlobWriter`] appends to any [`Write`] from the file frontier it is given, a blob file ([`BlobArenaWriter`]) or a
+//! test buffer.
 
-use std::io::Write;
+use std::io::{self, Write};
+use std::sync::Arc;
 
+use super::blob_file::BlobFile;
+use super::blob_manager::BlobManager;
 use crate::persisted::page_layout::{NodeRef, PAGE_MASK, PAGE_SIZE};
 use crate::persisted::{TierError, TierResult};
 
@@ -76,9 +79,14 @@ impl<W: Write> BlobWriter<W> {
 
     /// Writes what is buffered and returns the sink; the frontier of the file is now [`Self::written`].
     pub fn finish(mut self) -> TierResult<W> {
-        self.flush_buffer()?;
-        self.sink.flush()?;
+        self.flush()?;
         Ok(self.sink)
+    }
+
+    /// Writes what is buffered through to the sink.
+    fn flush(&mut self) -> TierResult<()> {
+        self.flush_buffer()?;
+        Ok(self.sink.flush()?)
     }
 
     /// `EnsureBufferSpace`: flushes when `length` more bytes would not fit the buffer.
@@ -95,6 +103,106 @@ impl<W: Write> BlobWriter<W> {
             self.buffer.clear();
         }
         Ok(())
+    }
+}
+
+/// Positioned writes to a blob file from its frontier.
+pub struct BlobFileAppender {
+    file: Arc<BlobFile>,
+    position: u64,
+}
+
+impl Write for BlobFileAppender {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.file.write_at(bytes, self.position)?;
+        self.position += bytes.len() as u64;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// `BlobArenaWriter`: the writer of one base snapshot's RLP run, holding a lease of its file and the file's place in
+/// the pool. [`BlobArenaWriter::complete`] publishes the new frontier; dropped without completing, the writer returns
+/// the file to the pool with its frontier unmoved.
+pub struct BlobArenaWriter {
+    manager: Arc<BlobManager>,
+    file: Arc<BlobFile>,
+    writer: BlobWriter<BlobFileAppender>,
+    completed: bool,
+}
+
+impl BlobArenaWriter {
+    pub(super) fn new(manager: Arc<BlobManager>, file: Arc<BlobFile>, start_offset: i64) -> Self {
+        let appender = BlobFileAppender {
+            file: file.clone(),
+            position: start_offset as u64,
+        };
+        let writer = BlobWriter::new(appender, file.id(), start_offset);
+        Self {
+            manager,
+            file,
+            writer,
+            completed: false,
+        }
+    }
+
+    pub fn blob_arena_id(&self) -> u16 {
+        self.file.id()
+    }
+
+    /// `StartOffset`: where this writer's run starts, the file's frontier when it opened.
+    pub fn start_offset(&self) -> i64 {
+        self.writer.start_offset()
+    }
+
+    /// The writer of the RLP items, which fails as `WriteRlp` does once completed.
+    pub fn writer(&mut self) -> TierResult<&mut BlobWriter<BlobFileAppender>> {
+        if self.completed {
+            return Err(TierError::InvalidOperation("BlobArenaWriter is closed.".to_owned()));
+        }
+        Ok(&mut self.writer)
+    }
+
+    /// `Written`: the file offset of the next byte of this writer.
+    pub fn written(&self) -> i64 {
+        self.writer.written()
+    }
+
+    /// `Complete`: writes out the buffer and publishes the new frontier; the file stays leased until the writer drops.
+    pub fn complete(&mut self) -> TierResult<()> {
+        if self.completed {
+            return Err(TierError::InvalidOperation(
+                "BlobArenaWriter already completed.".to_owned(),
+            ));
+        }
+        self.writer.flush()?;
+        self.completed = true;
+        let written = self.writer.written();
+        self.file.frontier.store(written, std::sync::atomic::Ordering::Release);
+        self.manager
+            .on_write_completed(&self.file, written < self.file.max_size());
+        Ok(())
+    }
+
+    /// `Fsync`: makes the completed run durable before the catalog names it.
+    pub fn fsync(&self) -> TierResult<()> {
+        if !self.completed {
+            return Err(TierError::InvalidOperation(
+                "BlobArenaWriter.Fsync requires Complete first.".to_owned(),
+            ));
+        }
+        Ok(self.file.fsync()?)
+    }
+}
+
+impl Drop for BlobArenaWriter {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.manager.on_write_cancelled(self.file.id());
+        }
     }
 }
 

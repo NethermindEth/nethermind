@@ -65,6 +65,34 @@ pub struct ContentCounters {
     pub sorted_created: [AtomicI64; SORTED_CONTENT_USAGES],
 }
 
+/// The gauges and counters of the persisted-snapshot tier, named after their `Metrics` property.
+///
+/// `page_tracker_*_bytes` and `page_tracker_pages_refreshed` are set by value, as C# assigns them; every other one moves
+/// by deltas.
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct TierCounters {
+    pub bloom_memory: AtomicI64,
+    pub bloom_count: AtomicI64,
+    pub arena_file_count: AtomicI64,
+    /// Bytes below the frontiers of the arena files, not their pre-extended length.
+    pub arena_allocated_bytes: AtomicI64,
+    pub blob_file_count: AtomicI64,
+    /// Bytes below the frontiers of the blob files.
+    pub blob_allocated_bytes: AtomicI64,
+    pub arena_reservation_count: AtomicI64,
+    pub arena_reservation_bytes: AtomicI64,
+    pub page_tracker_resident_bytes: AtomicI64,
+    pub page_tracker_metadata_bytes: AtomicI64,
+    pub compactions: AtomicI64,
+    pub prunes: AtomicI64,
+    pub page_tracker_evictions_dispatched: AtomicI64,
+    pub page_tracker_evictions_inline_fallback: AtomicI64,
+    pub page_tracker_pages_refreshed: AtomicI64,
+    /// Writes to the catalog database, which `DbOnTheRocks` counts in its `TotalWrites` metric.
+    pub catalog_puts: AtomicI64,
+}
+
 /// The entry counts of the last content frozen under each usage, which size the maps of the next one.
 #[derive(Debug, Default)]
 pub(crate) struct ContentHints {

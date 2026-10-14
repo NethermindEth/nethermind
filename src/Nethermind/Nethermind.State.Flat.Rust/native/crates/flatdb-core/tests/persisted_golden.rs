@@ -32,6 +32,7 @@ use flatdb_core::persisted::scanner::Scanner;
 use flatdb_core::persisted::sorted::enumerator::SortedTableEnumerator;
 use flatdb_core::persisted::sorted::table_reader;
 use flatdb_core::persisted::stack::PersistedSnapshotStack;
+use flatdb_core::persisted::storage::pool_set::PoolSet;
 use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::snapshot::{Snapshot, SnapshotTier};
 use flatdb_core::types::{Account, StateId, TreePath, U256};
@@ -238,37 +239,6 @@ const PERSISTED_TIERS: [SnapshotTier; 4] = [
     SnapshotTier::PersistedLargeCompacted,
 ];
 
-/// The enumeration order of the blob manager's `HashSet<ushort>` of files with room: entries in slot order, a removed
-/// entry's slot reused by the next add, last freed first.
-#[derive(Default)]
-struct DotNetHashSetOrder {
-    slots: Vec<Option<u16>>,
-    free: Vec<usize>,
-}
-
-impl DotNetHashSetOrder {
-    fn add(&mut self, id: u16) {
-        if self.slots.contains(&Some(id)) {
-            return;
-        }
-        match self.free.pop() {
-            Some(slot) => self.slots[slot] = Some(id),
-            None => self.slots.push(Some(id)),
-        }
-    }
-
-    fn remove(&mut self, id: u16) {
-        if let Some(slot) = self.slots.iter().position(|entry| *entry == Some(id)) {
-            self.slots[slot] = None;
-            self.free.push(slot);
-        }
-    }
-
-    fn ids(&self) -> Vec<u16> {
-        self.slots.iter().flatten().copied().collect()
-    }
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Step {
     Skip,
@@ -282,7 +252,8 @@ struct Tier {
     blob_file_size: i64,
     schedule: CompactionSchedule,
     blobs: Blobs,
-    mutable_blobs: DotNetHashSetOrder,
+    /// The blob manager's `HashSet<ushort>` of files with room.
+    mutable_blobs: PoolSet<u16>,
     next_blob_id: u16,
     buckets: BTreeMap<u8, BTreeMap<StateId, Arc<MemSnapshot>>>,
     /// The catalog rows, as the C# state lists them (their locations are placement this replay does not model).
@@ -301,7 +272,7 @@ impl Tier {
             )
             .unwrap(),
             blobs: new_blobs(),
-            mutable_blobs: DotNetHashSetOrder::default(),
+            mutable_blobs: PoolSet::default(),
             next_blob_id: 0,
             buckets: PERSISTED_TIERS
                 .iter()
@@ -327,7 +298,7 @@ impl Tier {
     fn choose_blob_file(&mut self, estimate: i64) -> u16 {
         let blobs = self.blobs.read().unwrap();
         let mut chosen = None;
-        for id in self.mutable_blobs.ids() {
+        for id in self.mutable_blobs.items() {
             if blobs[&id].len() as i64 + estimate <= self.blob_file_size {
                 chosen = Some(id);
                 break;

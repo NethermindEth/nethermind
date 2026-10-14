@@ -7,7 +7,8 @@
 //! records. Every byte written is identical to what the C# tier writes for the same input.
 //!
 //! The readers and writers work over plain byte slices and sinks ([`io`]), so the same code serves memory-mapped arena
-//! files and the in-memory buffers of the tests.
+//! files and the in-memory buffers of the tests. [`storage`] holds the files and the catalog, [`sys`] their system
+//! calls, the tier's only raw memory and system access.
 
 pub mod bloom_keys;
 pub mod builder;
@@ -17,13 +18,17 @@ pub mod keys;
 pub mod list;
 pub mod merger;
 pub mod page_layout;
+pub mod parallel;
 pub mod reader;
 pub mod scanner;
 pub mod sorted;
 pub mod stack;
 pub mod storage;
+pub mod sys;
 
 use thiserror::Error;
+
+use crate::kv::KvError;
 
 /// A failure of the persisted tier, named after the C# exception it stands for.
 #[derive(Debug, Error)]
@@ -41,6 +46,9 @@ pub enum TierError {
     /// `ArgumentException`: an argument the caller should never pass, such as keys out of order.
     #[error("{0}")]
     InvalidArgument(String),
+    /// A failure of the catalog database, fatal when RocksDB reports corruption or an I/O error.
+    #[error(transparent)]
+    Catalog(#[from] KvError),
 }
 
 pub type TierResult<T> = Result<T, TierError>;

@@ -48,7 +48,8 @@ fn library_path() -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
-/// A database with the default column family and the seven flat-DB columns, closed on drop.
+/// A database with the default column family and, unless opened as a catalog, the seven flat-DB columns; closed on
+/// drop.
 pub struct TestDb {
     library: Library,
     _dir: tempfile::TempDir,
@@ -59,8 +60,18 @@ pub struct TestDb {
 }
 
 impl TestDb {
-    /// Opens a fresh database, or `None` (with a notice) when the library is missing.
+    /// Opens a fresh flat database, or `None` (with a notice) when the library is missing.
     pub fn open() -> Option<Self> {
+        Self::open_with(&COLUMN_NAMES)
+    }
+
+    /// Opens a fresh database of the default column family only, as the keyed catalog `IDb` is, or `None` (with a
+    /// notice) when the library is missing.
+    pub fn open_catalog() -> Option<Self> {
+        Self::open_with(&[])
+    }
+
+    fn open_with(column_names: &[&CStr]) -> Option<Self> {
         let Some(path) = library_path() else {
             eprintln!("skipped: librocksdb.so not found, restore the NuGet packages or set ROCKSDB_LIB");
             return None;
@@ -71,7 +82,7 @@ impl TestDb {
         let dir = tempfile::tempdir().unwrap();
         let db_path = CString::new(dir.path().to_str().unwrap()).unwrap();
         let mut names: Vec<*const c_char> = vec![c"default".as_ptr()];
-        names.extend(COLUMN_NAMES.iter().map(|name| name.as_ptr()));
+        names.extend(column_names.iter().map(|name| name.as_ptr()));
 
         // SAFETY: the C API is called as rocksdb/c.h declares it, and every buffer outlives the call using it.
         unsafe {
@@ -129,6 +140,20 @@ impl TestDb {
             prefix_extractor_length: 0,
         };
         // SAFETY: the handles stay open until `self` is dropped, after every store the test creates.
+        unsafe { RocksKv::new(&self.api(), desc) }.expect("the RocksApi table is complete")
+    }
+
+    /// A store whose every column is the default column family, as the tier drives the catalog database.
+    pub fn catalog_kv(&self) -> RocksKv {
+        let desc = RocksDesc {
+            db: self.db,
+            column_families: [self.handles[0]; Column::COUNT],
+            verify_checksums: true,
+            wal_sync: false,
+            readahead_size: 0,
+            prefix_extractor_length: 0,
+        };
+        // SAFETY: as above.
         unsafe { RocksKv::new(&self.api(), desc) }.expect("the RocksApi table is complete")
     }
 }

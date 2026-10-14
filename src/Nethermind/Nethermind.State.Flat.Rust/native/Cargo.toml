@@ -25,6 +25,7 @@ hashbrown = "0.17"
 proptest = "1"
 crossbeam-channel = "0.5"
 arc-swap = "1"
+libc = "0.2"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

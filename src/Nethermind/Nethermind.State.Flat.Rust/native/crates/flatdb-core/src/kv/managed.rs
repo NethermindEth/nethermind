@@ -119,7 +119,7 @@ unsafe impl Send for Fns {}
 // SAFETY: as above.
 unsafe impl Sync for Fns {}
 
-fn check(operation: &'static str, status: i32) -> KvResult<()> {
+pub(crate) fn check(operation: &'static str, status: i32) -> KvResult<()> {
     if status == 0 {
         Ok(())
     } else {

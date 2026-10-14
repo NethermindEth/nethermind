@@ -379,6 +379,7 @@ dependencies = [
  "arc-swap",
  "crossbeam-channel",
  "hashbrown",
+ "libc",
  "libloading",
  "log",
  "parking_lot",
