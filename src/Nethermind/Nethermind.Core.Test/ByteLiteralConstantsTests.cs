@@ -57,6 +57,8 @@ public class ByteLiteralConstantsTests
         yield return new TestCaseData(Eip6110Constants.HoleskyDepositContractAddress, "0x4242424242424242424242424242424242424242").SetName("Eip6110Holesky");
         yield return new TestCaseData(Eip6110Constants.SepoliaDepositContractAddress, "0x7f02c3e3c98b133055b8b348b2ac625669ed295d").SetName("Eip6110Sepolia");
         yield return new TestCaseData(Eip6110Constants.HoodiDepositContractAddress, "0x00000000219ab540356cBB839Cbe05303d7705Fa").SetName("Eip6110Hoodi");
+        yield return new TestCaseData(Eip6110Constants.GnosisDepositContractAddress, "0x0B98057eA310F4d31F2a452B414647007d1645d9").SetName("Eip6110Gnosis");
+        yield return new TestCaseData(Eip6110Constants.ChiadoDepositContractAddress, "0xb97036A26259B7147018913bD58a774cf91acf25").SetName("Eip6110Chiado");
         yield return new TestCaseData(Eip7002Constants.WithdrawalRequestPredeployAddress, "0x00000961Ef480Eb55e80D19ad83579A64c007002").SetName("Eip7002");
         yield return new TestCaseData(Eip7251Constants.ConsolidationRequestPredeployAddress, "0x0000BBdDc7CE488642fb579F8B00f3a590007251").SetName("Eip7251");
     }

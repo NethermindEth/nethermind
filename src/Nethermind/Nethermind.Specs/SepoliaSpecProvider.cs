@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
@@ -20,21 +19,16 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
     public const ulong BPO2Timestamp = 0x68fffd60;
     public const ulong AmsterdamTimestamp = 0x6ac4fd60;
 
-    private static IReleaseSpec? _prague;
-
-    private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
-        static () => new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress });
-
     private SepoliaSpecProvider() : this(new ForkSchedule
     {
         [GenesisBlockNumber] = London.Instance,
         [ShanghaiTimestamp] = Shanghai.Instance,
         [CancunTimestamp] = Cancun.Instance,
-        [PragueTimestamp] = Prague,
-        [OsakaTimestamp] = Osaka.Instance,
-        [BPO1Timestamp] = BPO1.Instance,
-        [BPO2Timestamp] = BPO2.Instance,
-        [AmsterdamTimestamp] = Amsterdam.Instance,
+        [PragueTimestamp] = new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress },
+        [OsakaTimestamp] = new Osaka { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress },
+        [BPO1Timestamp] = new BPO1 { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress },
+        [BPO2Timestamp] = new BPO2 { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress },
+        [AmsterdamTimestamp] = new Amsterdam { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress },
     })
     { }
 
