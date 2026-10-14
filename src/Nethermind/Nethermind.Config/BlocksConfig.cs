@@ -76,7 +76,7 @@ namespace Nethermind.Config
 
         public bool PreWarmHandoff { get; set; } = true;
 
-        public bool PreWarmInFlightReadAhead { get; set; } = true;
+        public bool PreWarmInFlightReadAhead { get; set; } = false;
 
         public int PreWarmInFlightReadAheadColdReads { get; set; } = 32;
 

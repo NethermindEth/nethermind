@@ -89,7 +89,7 @@ public interface IBlocksConfig : IConfig
     /// storage discovery leaves every transaction block processing has started, as before. Requires <see cref="PreWarming"/>;
     /// not applied to blocks with a block access list, nor to blocks being produced.
     /// </remarks>
-    [ConfigItem(Description = "Discover and read ahead the storage of the transaction block processing is executing once it has read PreWarmInFlightReadAheadColdReads values past the pre-block caches. Requires PreWarming.", DefaultValue = "true", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Discover and read ahead the storage of the transaction block processing is executing once it has read PreWarmInFlightReadAheadColdReads values past the pre-block caches. Requires PreWarming.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PreWarmInFlightReadAhead { get; set; }
 
     [ConfigItem(Description = "The reads past the pre-block caches within one transaction after which PreWarmInFlightReadAhead starts. `0` starts it at the first.", DefaultValue = "32", HiddenFromDocs = true)]
