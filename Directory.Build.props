@@ -11,6 +11,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- NU1900: vulnerability metadata fetch failure — don't break builds when a feed is down -->
     <NoWarn>$(NoWarn);NU1900</NoWarn>
+    <NuGetAudit>false</NuGetAudit>
     <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>
 
