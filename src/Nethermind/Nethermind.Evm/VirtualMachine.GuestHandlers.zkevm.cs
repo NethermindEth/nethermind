@@ -96,7 +96,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MSTORE8] = AsTableEntry(&RawCalliHelper.ExecuteMStore8InsideActiveMemory);
         lookup[(int)Instruction.CALLDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CallDataSource>);
         if (SpecFlags.Eip2929(spec) && !SpecFlags.Eip8038(spec))
-            lookup[(int)Instruction.SLOAD] = AsTableEntry(&RawCalliHelper.ExecuteSLoad);
+        {
+            lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
+                ? AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>)
+                : AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>);
+        }
         if (spec.TransientStorageEnabled)
         {
             lookup[(int)Instruction.TLOAD] = AsTableEntry(&RawCalliHelper.ExecuteTLoad);
@@ -787,7 +791,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong modulus = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 3));
                 if ((modulus | Unsafe.Add(ref modulus, 1) | Unsafe.Add(ref modulus, 2) | Unsafe.Add(ref modulus, 3)) != 0)
                 {
-                    if (ZiskArith256Flag.IsActive)
+                    if (ZiskFlag.IsActive)
                     {
                         // The stack is pinned. The result must not alias an operand.
                         ulong* m = (ulong*)Unsafe.AsPointer(ref modulus);
@@ -1376,11 +1380,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <remarks>
         /// The shared handler builds the storage cell twice and saves every callee-saved register around it. Running out
         /// of gas leaves the chain here, since the cell is warm by then and the shared handler would charge it as warm.
-        /// An empty stack runs the shared SLOAD handler instead, which faults on it.
+        /// An empty stack runs the shared SLOAD handler instead, which faults on it, and so does an EIP-8360 TCREATE
+        /// context, where SLOAD reads transient storage.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteSLoad(
+        internal static EvmExceptionType ExecuteSLoad<Eip8360>(
             ref EvmStack stack,
             ulong gas,
             ref DispatchState state,
@@ -1389,8 +1394,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint* handlers,
             ref byte code,
             ref byte bottom)
+            where Eip8360 : struct, IFlag
         {
-            if (head > 0)
+            if (head > 0 && !(Eip8360.IsActive && state.Vm.VmState.IsTransientCreateContext))
             {
                 VirtualMachine<TGasPolicy> vm = state.Vm;
                 vm.MetricsCounters.IncrementSLoad();
@@ -1413,7 +1419,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag, Eip8360>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -1916,7 +1922,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             ref ulong product = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
             ref ulong top = ref Unsafe.Add(ref product, LimbsPerWord);
-            if (ZiskArith256Flag.IsActive)
+            if (ZiskFlag.IsActive)
             {
                 // The product stays below 2^256 - 1, so reducing it modulo that leaves it whole. The result must not
                 // alias an operand; the stack is pinned.
@@ -1985,7 +1991,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ulong a0 = top, a1 = Unsafe.Add(ref top, 1), a2 = Unsafe.Add(ref top, 2), a3 = Unsafe.Add(ref top, 3);
             ulong b0 = product, b1 = Unsafe.Add(ref product, 1), b2 = Unsafe.Add(ref product, 2), b3 = Unsafe.Add(ref product, 3);
             ulong r0, r1, r2, r3;
-            if (ZiskArith256Flag.IsActive)
+            if (ZiskFlag.IsActive)
             {
                 // The low halves' product whole, as ExecuteMulOfHalfWidthFactors takes it, and the cross products of a low
                 // half with a high one only below 2^128, the part that reaches the low 256 bits of the product.
@@ -2112,7 +2118,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     CopyWord(ref dividend, ref quotient);
                     ShiftRight(ref quotient, shift);
                 }
-                else if (ZiskArith256Flag.IsActive)
+                else if (ZiskFlag.IsActive)
                 {
                     nint wide = Entry(&ExecuteDivOfWideOperands);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, wide);
