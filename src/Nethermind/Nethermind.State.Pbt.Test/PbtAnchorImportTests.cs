@@ -207,7 +207,8 @@ public class PbtAnchorImportTests
     [Test]
     public async Task Cancellation_during_snapshot_staging_cleans_code_spool_and_can_be_retried([Values] bool withPreimages)
     {
-        using Harness harness = new("a4", new PbtConfig { ExportSortBufferBytes = 1024, ImportConcurrency = 3 });
+        // A one-leaf window keeps the fold from reading the whole snapshot before staging creates its code spool.
+        using Harness harness = new("a4", new PbtConfig { ExportSortBufferBytes = 1024, ImportConcurrency = 3, ImportWindowSize = 1 });
         using CancellationTokenSource cancellation = new();
         bool observedCodeSpool = false;
         using MemoryStream snapshot = new ObservedSnapshot(File.ReadAllBytes(Eip8347FixtureState.ArtifactPath("a4", "snapshot.pbt")), () =>

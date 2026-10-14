@@ -208,7 +208,7 @@ public class ImportPbtFromPreimageFlatTests
         using PbtCodeReassembly codes = new(target, directory, SortBufferBytes, concurrency, LimboLogs.Instance, cancellationToken);
         using (PbtLeafIngestion.LogicalBatch batch = new(target, 1, cancellationToken))
         {
-            PbtLeafIngestion.Stage(batch, leaves, codes, cancellationToken);
+            PbtLeafIngestion.Stage(batch, leaves.GetEnumerator(), codes, cancellationToken);
             batch.Commit();
         }
         codes.Complete();
@@ -345,18 +345,19 @@ public class ImportPbtFromPreimageFlatTests
         PbtColumns[] groupColumns = [PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
         foreach (PbtColumns column in groupColumns)
             pbtDb.GetColumnDb(column)[maximumGroupKey] = Bytes.FromHexString("0x7f");
+        IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
+        byte[]? staleRoot = metadata.Get("rootNodeGroup"u8);
+        Assert.That(staleRoot, Is.Not.Null);
+        // The fold may already be writing the new tree here, so only the stale rows are checked.
         pbtDb.BeforeFirstBatch = () =>
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(pbtDb.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null, "the stale root must be removed before folding");
+                Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.EqualTo(staleRoot), "the stale root must be removed before folding");
                 foreach (PbtColumns column in groupColumns)
-                    Assert.That(pbtDb.GetColumnDb(column).GetAll(), Is.Empty, column.ToString());
+                    Assert.That(pbtDb.GetColumnDb(column).Get(maximumGroupKey), Is.Null, column.ToString());
             }
         };
-
-        IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
-        Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
 
         ValueHash256 rebuilt = await Import();
         Assert.That(rebuilt, Is.EqualTo(PbtReferenceModel.Root(model)), "a restart over an interrupted import must reproduce the source root");

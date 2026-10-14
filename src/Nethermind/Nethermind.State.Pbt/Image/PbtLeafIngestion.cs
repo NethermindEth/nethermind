@@ -33,8 +33,8 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
     /// <summary>Stages the logical accounts, slots and code of the leaves while folding them into the tree, and publishes the tree
     /// as <paramref name="targetState"/> once the staging is verified.</summary>
     /// <remarks>
-    /// The stream is read once, feeding both. Up to a fold window of leaves is buffered ahead of the fold, so staging keeps
-    /// going while a window commits. The staging and the fold write disjoint columns and neither reads the other's writes,
+    /// The stream is read once and teed to both. Either side may run up to a fold window of leaves ahead of the other, so
+    /// staging keeps going while a window folds and commits. The staging and the fold write disjoint columns and neither reads the other's writes,
     /// so the only ordering is the publication, which waits for the staging and <paramref name="verifyStaged"/>, and is
     /// refused when the root differs from <paramref name="expectedRoot"/>.
     /// </remarks>
@@ -44,21 +44,31 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
         StateId targetState, ValueHash256? expectedRoot, Action<CancellationToken> verifyStaged, CancellationToken cancellationToken)
     {
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(
-            (config.ImportWindowSize > 0 ? config.ImportWindowSize : PbtSortedLeafFold.DefaultWindowSize) / PbtSortedLeafFold.FoldChunkSize + 1);
+        IEnumerable<RebuildEntry> sourceLeaves = leaves(linked.Token);
+        IEnumerable<RebuildEntry> reportedLeaves = Reported(sourceLeaves, logManager);
+        IEnumerator<RebuildEntry> reportedEnumerator = reportedLeaves.GetEnumerator();
+        int windowSize = config.ImportWindowSize > 0 ? config.ImportWindowSize : PbtSortedLeafFold.DefaultWindowSize;
+        (IEnumerator<RebuildEntry> foldLeaves, IEnumerator<RebuildEntry> stagingLeaves) = reportedEnumerator.Teed(windowSize);
         Task<(ulong Accounts, ulong Slots)> staging = Task.Run(() =>
         {
             try
             {
-                (ulong Accounts, ulong Slots) staged = Stage(PbtSortedLeafFold.Teed(Reported(leaves(linked.Token), logManager), channel.Writer, linked.Token), linked.Token);
+                (ulong Accounts, ulong Slots) staged;
+                using (stagingLeaves) staged = Stage(stagingLeaves, linked.Token);
                 verifyStaged(linked.Token);
                 return staged;
             }
-            catch (Exception exception) { channel.Writer.TryComplete(exception); throw; }
+            catch
+            {
+                // Otherwise the fold would go on reading and folding the rest of the source for nothing.
+                linked.Cancel();
+                throw;
+            }
         }, CancellationToken.None);
         try
         {
-            ValueHash256 root = await rebuilder.Rebuild(channel.Reader, config.ImportWindowSize, linked.Token);
+            ValueHash256 root;
+            using (foldLeaves) root = await Task.Run(() => rebuilder.Rebuild(foldLeaves, config.ImportWindowSize, linked.Token), CancellationToken.None);
             linked.Token.ThrowIfCancellationRequested();
             target.Flush();
             if (expectedRoot is { } expected && root != expected)
@@ -74,11 +84,10 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
             await linked.CancelAsync();
             try { await staging; }
             catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
-            finally { while (channel.Reader.TryRead(out ArrayPoolList<RebuildEntry>? chunk)) chunk.Dispose(); }
         }
     }
 
-    private (ulong Accounts, ulong Slots) Stage(IEnumerable<RebuildEntry> leaves, CancellationToken cancellationToken)
+    private (ulong Accounts, ulong Slots) Stage(IEnumerator<RebuildEntry> leaves, CancellationToken cancellationToken)
     {
         int workers = config.ImportConcurrency > 0 ? config.ImportConcurrency : Environment.ProcessorCount;
         string scratchDirectory = Path.Combine(PbtMigrationAnchor.ScratchDirectory(dbFactory, "import"), $"pbt-import-codes-{Guid.NewGuid():N}");
@@ -109,7 +118,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
     /// section ends.
     /// </remarks>
     /// <returns>The staged accounts and slots.</returns>
-    public static (ulong Accounts, ulong Slots) Stage(LogicalBatch batch, IEnumerable<RebuildEntry> leaves,
+    public static (ulong Accounts, ulong Slots) Stage(LogicalBatch batch, IEnumerator<RebuildEntry> leaves,
         PbtCodeReassembly codes, CancellationToken cancellationToken)
     {
         ulong accounts = 0;
@@ -121,9 +130,10 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
         PbtVariableTreeKey? runKey = null;
         PackedSlotRun run = SlotRun.Empty;
 
-        foreach (RebuildEntry entry in leaves)
+        while (leaves.MoveNext())
         {
             cancellationToken.ThrowIfCancellationRequested();
+            RebuildEntry entry = leaves.Current;
             ReadOnlySpan<byte> key = entry.Key.Bytes;
             if (key[0] == Eip8297KeyDerivation.CodeZone)
             {
