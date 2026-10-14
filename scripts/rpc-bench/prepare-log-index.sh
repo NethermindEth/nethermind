@@ -32,6 +32,12 @@ for low, high in reversed(re.findall(r"Log index sync: ([0-9,]+) - ([0-9,]+) \(b
         Path(sys.argv[4]).write_text(json.dumps({"index_from": low, "index_to": high,
             "required_from": int(sys.argv[2]), "required_to": int(sys.argv[3])}, indent=2))
         sys.exit(0)
+# The range line is printed only when blocks were added since the last report, so the final one can be
+# missing. A completed backward sync at 100% has reached the receipts barrier, which is the first queried block.
+if re.search(r"Log index sync \(Backward\)\s+([0-9,]+) /\s+\1 \(100\.00 %\)", text):
+    Path(sys.argv[4]).write_text(json.dumps({"index_from": int(sys.argv[2]), "index_to": None, "derived_from": "backward sync completed at 100%",
+        "required_from": int(sys.argv[2]), "required_to": int(sys.argv[3])}, indent=2))
+    sys.exit(0)
 sys.exit(1)
 PY
 }
