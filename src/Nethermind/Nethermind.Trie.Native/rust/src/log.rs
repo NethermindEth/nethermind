@@ -11,6 +11,7 @@ use std::sync::Mutex;
 
 use rustc_hash::FxHasher;
 
+use crate::metrics;
 use crate::node::{record_length, record_length_of, write_record, Node, RECORD_HEADER_LENGTH};
 
 /// Where a node record is in a [`TrieNodeLog`]: its generation in the high 24 bits and its offset in that generation in
@@ -124,7 +125,7 @@ impl TrieNodeLog {
             storage_roots,
         };
         log.generation(1)
-            .start(allocate(generation_bytes), generation_bytes);
+            .start(allocate(generation_bytes), generation_bytes, temporary);
         log
     }
 
@@ -132,7 +133,7 @@ impl TrieNodeLog {
     fn empty_temporary(&mut self) {
         let active = *self.active.get_mut();
         for id in 2..=active {
-            self.generation(id).free();
+            self.generation(id).free(true);
         }
         *self.generations[slot(1)].used.get_mut() = 0;
         *self.active.get_mut() = 1;
@@ -180,7 +181,11 @@ impl TrieNodeLog {
             generation.base.load(Ordering::Relaxed).is_null(),
             "too many trie node log generations pinned"
         );
-        generation.start(allocate(generation_length), generation_length);
+        generation.start(
+            allocate(generation_length),
+            generation_length,
+            self.temporary,
+        );
         self.active.store(id, Ordering::Release);
         if !self.temporary {
             state.oldest_live = state.oldest_live.max(id + 1 - LIVE_GENERATIONS.min(id));
@@ -193,7 +198,7 @@ impl TrieNodeLog {
         while state.oldest_allocated < state.oldest_live
             && state.pins[slot(state.oldest_allocated)] == 0
         {
-            self.generation(state.oldest_allocated).free();
+            self.generation(state.oldest_allocated).free(self.temporary);
             state.oldest_allocated += 1;
         }
     }
@@ -202,22 +207,29 @@ impl TrieNodeLog {
 impl Drop for TrieNodeLog {
     fn drop(&mut self) {
         for generation in self.generations.iter() {
-            generation.free();
+            generation.free(self.temporary);
         }
     }
 }
 
 impl Generation {
-    fn start(&self, buffer: *mut u8, length: usize) {
+    fn start(&self, buffer: *mut u8, length: usize, temporary: bool) {
+        if !temporary {
+            metrics::generation_allocated(length);
+        }
         self.length.store(length, Ordering::Relaxed);
         self.used.store(0, Ordering::Relaxed);
         self.base.store(buffer, Ordering::Release);
     }
 
-    fn free(&self) {
+    fn free(&self, temporary: bool) {
         let base = self.base.swap(std::ptr::null_mut(), Ordering::Relaxed);
         if !base.is_null() {
-            free(base, self.length.load(Ordering::Relaxed));
+            let length = self.length.load(Ordering::Relaxed);
+            if !temporary {
+                metrics::generation_freed(length);
+            }
+            free(base, length);
         }
     }
 }
@@ -336,6 +348,14 @@ impl LogSession<'_> {
 
     /// The pointer of the root `root` of the trie of `address`, the state trie when `None`, or zero when not found.
     pub fn root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> LogPointer {
+        let pointer = self.find_root(address, root);
+        if !self.log.temporary {
+            metrics::root_looked_up(pointer != 0);
+        }
+        pointer
+    }
+
+    fn find_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> LogPointer {
         let Some(slot) = self.log.roots(address).slot(address, root) else {
             return 0;
         };

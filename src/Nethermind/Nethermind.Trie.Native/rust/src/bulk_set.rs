@@ -12,6 +12,7 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use crate::keccak::keccak_many;
 use crate::log::{LogPointer, LogSession, TrieNodeLog};
+use crate::metrics::NodeReads;
 use crate::node::{
     decode_inline_leaf, decode_rlp, empty_children, encode, nibble, ChildRef, InlineRlp,
     LoggedNode, Nibbles, Node, NodeKind, TreePath,
@@ -95,6 +96,7 @@ fn bulk_set_in<S: NodeStore>(
         read_pending: pending.count() > 0,
         log: &session,
         values,
+        node_reads: NodeReads::default(),
     };
     let root_reference = match *root {
         EMPTY_TREE_HASH => ChildRef::Empty,
@@ -123,6 +125,7 @@ struct Context<'a, S> {
     pending: &'a PendingNodes,
     read_pending: bool,
     log: &'a LogSession<'a>,
+    node_reads: NodeReads,
     values: &'a [u8],
 }
 
@@ -718,6 +721,7 @@ impl<S: NodeStore> Context<'_, S> {
             ChildRef::Pending(_) => unreachable!("only children of nodes read are walked into"),
             ChildRef::Inline(rlp) => Ok(Some(Source::InlineLeaf { rlp: *rlp, skip: 0 })),
             ChildRef::Hash { pointer, .. } if self.log.is_valid(*pointer) => {
+                self.node_reads.from_log();
                 Ok(Some(Source::Logged {
                     pointer: *pointer,
                     skip: 0,
@@ -734,8 +738,14 @@ impl<S: NodeStore> Context<'_, S> {
                     false => None,
                 };
                 let node = match pending {
-                    Some(node) => node,
-                    None => self.store.fetch(path, hash)?.ok_or(Error::MissingNode)?,
+                    Some(node) => {
+                        self.node_reads.from_pending();
+                        node
+                    }
+                    None => {
+                        self.node_reads.fetched();
+                        self.store.fetch(path, hash)?.ok_or(Error::MissingNode)?
+                    }
                 };
                 Ok(Some(Source::Decoded(node)))
             }

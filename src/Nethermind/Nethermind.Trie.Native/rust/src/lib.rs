@@ -9,6 +9,7 @@
 mod bulk_set;
 mod keccak;
 mod log;
+mod metrics;
 mod node;
 mod pending;
 
@@ -17,6 +18,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 
 pub use bulk_set::{bulk_set, EMPTY_TREE_HASH};
 pub use log::TrieNodeLog;
+pub use metrics::Metrics;
 pub use node::TreePath;
 use node::{decode_rlp, Node};
 pub use pending::{PendingNodes, WrittenNode};
@@ -243,4 +245,13 @@ pub unsafe extern "C" fn nm_patricia_pending_view(
         *rlp = arena.as_ptr();
         written.len() as i32
     })
+}
+
+/// Writes the process-wide bulk set and trie node log counters to `metrics`.
+///
+/// # Safety
+/// `metrics` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_metrics(metrics: *mut Metrics) {
+    *metrics = metrics::read();
 }

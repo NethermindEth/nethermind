@@ -12,6 +12,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.Native;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using NativeMetrics = Nethermind.Trie.Native.Metrics;
 
 namespace Nethermind.Store.Test;
 
@@ -54,6 +55,31 @@ public class NativePatriciaBulkSetTests
         {
             NativePendingNodesView view = pending.GetView(shard);
             Assert.That(Enumerable.Range(0, view.Count).Where(i => Keccak.Compute(view.GetRlp(view[i])).ValueHash256 != view[i].Hash), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void BulkSet_through_a_log_counts_root_hits_node_reads_and_log_memory()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 3);
+        DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
+        using NativePendingNodes pending = NativePendingNodes.Rent(items.Count);
+        using NativeTrieNodeLog log = new(64 * 1024 * 1024);
+        Hash256 root = BulkSet(store, pending, log, Keccak.EmptyTreeHash, items);
+
+        // Other tests run bulk sets and logs concurrently, so the counters are only known to have grown by at least this.
+        long rootHits = NativeMetrics.NativeTrieNodeLogRootHits;
+        long nodesFromLog = NativeMetrics.NativeBulkSetNodesFromLog;
+        BulkSet(store, pending, log, root, [(items[0].key, [1, 2, 3])]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NativeMetrics.NativeTrieNodeLogRootHits, Is.GreaterThan(rootHits));
+            Assert.That(NativeMetrics.NativeBulkSetNodesFromLog, Is.GreaterThan(nodesFromLog));
+            Assert.That(NativeMetrics.NativeTrieNodeLogMemory, Is.GreaterThanOrEqualTo(64 * 1024 * 1024 / 8));
+            Assert.That(NativeMetrics.NativeTrieNodeLogGenerations, Is.GreaterThanOrEqualTo(1));
         }
     }
 
