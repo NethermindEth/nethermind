@@ -32,14 +32,14 @@ public class MigrationEngineRpcE2ETests
         using TempPath scratch = TempPath.GetTempDirectory();
         await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable: true, FlatLayout.Flat,
             builder => builder.AddModule(new MergePluginModule()).AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>());
-        await harness.HeadFollower.DisposeAsync();
         IEngineRpcModule engine = harness.Container.Resolve<IEngineRpcModule>();
         IEthRpcModule eth = harness.Container.Resolve<IRpcModuleFactory<IEthRpcModule>>().Create();
         IMigrationDebugRpcModule debug = harness.Container.Resolve<IMigrationDebugRpcModule>();
         Hash256 anchorHash = harness.Anchor.Hash!;
         Hash256 anchorShadowRoot = harness.PbtRoot("anchor");
+        // The follower publishes its cursor on its next attempt after the anchor import lands.
+        Assert.That(() => debug.debug_migrationProgress().Data.Binary, Is.Not.Null.After(10_000, 50));
         MigrationProgressForRpc progress = debug.debug_migrationProgress().Data;
-        Assert.That(progress.Binary, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(progress.Phase, Is.EqualTo("running"));

@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Migration;
 using NSubstitute;
 using NUnit.Framework;
@@ -25,10 +24,9 @@ public class MigrationTelemetryTests
     {
         using MigrationBalFollowerTests.Harness harness = new();
         SelectHead(harness, "a3");
-        await using PbtBalHeadFollower headFollower = CreateHeadFollower(harness, new((_, _) => Task.FromResult(true)));
         MerkleShadowStub merkle = new();
         await using PbtMigrationImport import = new(_ => Task.CompletedTask, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
-        MigrationTelemetry telemetry = new(harness.BlockTree, harness.Manager, import, headFollower, merkle, harness.SpecProvider);
+        MigrationTelemetry telemetry = new(harness.BlockTree, harness.Manager, import, harness.Follower, merkle, harness.SpecProvider);
         Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("running", null, null)));
         Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.Null, "no state before the anchor import");
         await harness.Publish();
@@ -80,15 +78,11 @@ public class MigrationTelemetryTests
         SelectHead(harness, "a1");
         await harness.Publish();
         Assert.That(await harness.Follower.Follow(harness.Blocks["anchor"].Header, default), Is.True, harness.Follower.Error);
-        TaskCompletionSource attempted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        PbtBalFollowerScheduler scheduler = new((_, _) => { attempted.TrySetResult(); return Task.FromResult(false); });
-        await using PbtBalHeadFollower headFollower = CreateHeadFollower(harness, scheduler);
         await using PbtMigrationImport import = new(_ => Task.CompletedTask, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
-        MigrationTelemetry telemetry = new(harness.BlockTree, harness.Manager, import, headFollower, new MerkleShadowStub(), harness.SpecProvider);
+        MigrationTelemetry telemetry = new(harness.BlockTree, harness.Manager, import, harness.Follower, new MerkleShadowStub(), harness.SpecProvider);
         Assert.That(telemetry.GetProgress().Binary!.Phase, Is.EqualTo("following"));
-        scheduler.Schedule(harness.Blocks["a1"].Header);
-        await attempted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.That(() => scheduler.Error, Is.Not.Null.After(5000, 10));
+        harness.Store.Delete(harness.Blocks["a1"].Number, harness.Blocks["a1"].Hash!);
+        Assert.That(await harness.Follower.Follow(harness.Blocks["a1"].Header, default), Is.False);
         MigrationProgressForRpc stalled = telemetry.GetProgress();
         using (Assert.EnterMultipleScope())
         {
@@ -116,13 +110,12 @@ public class MigrationTelemetryTests
         SelectHead(harness, "a1");
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
-        await using PbtBalHeadFollower headFollower = CreateHeadFollower(harness, new((_, _) => Task.FromResult(true)));
         await using PbtMigrationImport import = new(async _ =>
         {
             await release.Task;
             if (failure is not null) throw failure;
         }, exitSource, LimboLogs.Instance);
-        MigrationTelemetry telemetry = new(harness.BlockTree, harness.Manager, import, headFollower, new MerkleShadowStub(), harness.SpecProvider);
+        MigrationTelemetry telemetry = new(harness.BlockTree, harness.Manager, import, harness.Follower, new MerkleShadowStub(), harness.SpecProvider);
 
         import.Start();
         Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("importing", null, null)));
@@ -137,9 +130,6 @@ public class MigrationTelemetryTests
         if (exitCode is null) exitSource.DidNotReceiveWithAnyArgs().Exit(default);
         else exitSource.Received(1).Exit(exitCode.Value);
     }
-
-    private static PbtBalHeadFollower CreateHeadFollower(MigrationBalFollowerTests.Harness harness, PbtBalFollowerScheduler scheduler) =>
-        new(scheduler, harness.Follower, harness.BlockTree, harness.Manager, Substitute.For<IFlatDbManager>(), harness.SpecProvider, LimboLogs.Instance);
 
     // The harness selects a5 (post-activation); the phases under test depend on where the head sits.
     private static void SelectHead(MigrationBalFollowerTests.Harness harness, string name) =>

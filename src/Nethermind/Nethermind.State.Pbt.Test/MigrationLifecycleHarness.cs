@@ -41,7 +41,7 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
     public IPbtDbManager Pbt => container.Resolve<IPbtDbManager>();
     public IStateReader Reader => container.Resolve<IWorldStateManager>().GlobalStateReader;
     public IMigrationTelemetry Telemetry => container.Resolve<IMigrationTelemetry>();
-    public PbtBalHeadFollower HeadFollower => container.Resolve<PbtBalHeadFollower>();
+    public PbtBalFollower Follower => container.Resolve<PbtBalFollower>();
     public Block Anchor => blocks["anchor"];
 
     /// <summary>Waits until the background BAL replay has brought PBT up to <paramref name="header"/>.</summary>

@@ -13,7 +13,6 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -115,56 +114,67 @@ public class MigrationBalFollowerTests
     }
 
     [Test]
-    public async Task Branch_follower_replays_any_branch_and_drops_only_one_beside_finality()
+    public async Task Follower_replays_the_head_and_suggested_blocks_of_any_branch_until_their_ancestry_and_bals_are_available()
     {
         using Harness harness = new();
-        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsWarn.Returns(true);
-        await using PbtBranchFollower follower = harness.CreateBranchFollower(new OneLoggerLogManager(new ILogger(logger)));
+        await using PbtBalFollower follower = harness.Follower;
+        harness.BlockTree.TryUpdateMainChain(harness.Blocks["a2"].Header, true, true, [harness.Blocks["a2"]]);
         follower.Start();
-        follower.Add(harness.Blocks["a1"].Header);
         await harness.Publish();
-        Assert.That(() => HasState(harness, "a1"), Is.True.After(10_000, 50), "a target queued before the anchor import is retried until PBT holds its ancestor");
-        harness.BlockTree.ForkChoiceUpdated(harness.Blocks["a1"].Hash, Hash256.Zero);
+        Assert.That(() => HasState(harness, "a2"), Is.True.After(10_000, 50), "the head at start is retried until PBT holds its ancestor");
+        AssertState(harness, "a2");
 
+        // A pre-activation child of the side branch b3, suggested with an empty BAL while b2's BAL is missing.
         Block missing = harness.Blocks["b2"];
         harness.Store.Delete(missing.Number, missing.Hash!);
-        follower.Add(harness.Blocks["b3"].Header);
-        Assert.That(() => logger.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(InterfaceLogger.Warn) && call.GetArguments()[0] is string message && message.Contains("No BAL")), Is.True.After(10_000, 50), "a missing BAL fails the replay");
-        AssertAbsent(harness, "b2");
-        harness.RestoreBal("b2");
-        Assert.That(() => HasState(harness, "b3"), Is.True.After(10_000, 50), "the failed replay is retried");
-        AssertState(harness, "b3");
-
-        harness.Canonical("b");
-        // A pre-activation child of b3 with an empty BAL: once it is replayed, the worker has handled the targets added before it.
         BlockHeader b3 = harness.Blocks["b3"].Header;
         BlockHeader child = Build.A.BlockHeader.WithParent(b3).WithStateRoot(b3.StateRoot!).WithTimestamp(b3.Timestamp + 1).TestObject;
         byte[] emptyBal = Bytes.FromHexString("c0");
         child.BlockAccessListHash = Keccak.Compute(emptyBal);
         child.Hash = child.CalculateHash();
-        harness.AddCanonical(new Block(child), emptyBal);
-        harness.BlockTree.ForkChoiceUpdated(b3.Hash, Hash256.Zero);
-        follower.Add(harness.Blocks["a3"].Header);
-        follower.Add(child);
-        Assert.That(() => harness.Manager.HasStateForBlock(new StateId(child)), Is.True.After(10_000, 50));
-        AssertAbsent(harness, "a2", "a3");
+        harness.Store.Insert(child.Number, child.Hash, emptyBal);
+        harness.BlockTree.SuggestBlock(new Block(child));
+        Assert.That(() => follower.Error?.Contains("No BAL") == true, Is.True.After(10_000, 50), "a side branch's missing BAL fails the replay");
+        AssertAbsent(harness, "b2");
+        harness.RestoreBal("b2");
+        Assert.That(() => harness.Manager.HasStateForBlock(new StateId(child)), Is.True.After(10_000, 50), "the failed replay is retried");
+        AssertState(harness, "b3");
+        Assert.That(follower.Cursor!.Hash, Is.EqualTo(harness.Blocks["a2"].Hash), "a side branch does not move the canonical cursor");
     }
 
     [Test]
-    public async Task Branch_follower_does_not_walk_the_ancestry_while_pbt_holds_no_state()
+    public async Task Follow_drops_only_a_disconnected_target_or_one_beside_finality()
+    {
+        using Harness harness = new();
+        await harness.Publish();
+        harness.BlockTree.ForkChoiceUpdated(harness.Blocks["a3"].Hash, Hash256.Zero);
+        BlockHeader disconnected = Build.A.BlockHeader.WithNumber(10).WithParentHash(Keccak.Compute("unknown")).TestObject;
+        disconnected.Hash = disconnected.CalculateHash();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await harness.Follower.Follow(harness.Blocks["b3"].Header, default), Is.True, "beside finality");
+            Assert.That(await harness.Follower.Follow(disconnected, default), Is.True, "disconnected");
+            Assert.That(harness.Manager.HasStateForBlock(new StateId(disconnected)), Is.False);
+        }
+        AssertAbsent(harness, "b2", "b3");
+    }
+
+    [Test]
+    public async Task Follower_does_not_walk_the_ancestry_while_pbt_holds_no_state()
     {
         using Harness harness = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindFinalizedHeader().Returns(_ => harness.BlockTree.FindFinalizedHeader());
         blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
             .Returns(call => harness.BlockTree.FindHeader(call.Arg<Hash256>(), call.Arg<BlockTreeLookupOptions>(), call.Arg<ulong?>()));
-        await using PbtBranchFollower follower = harness.CreateBranchFollower(LimboLogs.Instance, blockTree);
+        await using PbtBalFollower follower = harness.CreateFollower(blockTree, harness.Fetcher, harness.Store);
         follower.Start();
         follower.Add(harness.Blocks["a3"].Header);
 
+        // Start reads the finality once to decide on flushing flat; each replay attempt reads it again.
         Assert.That(() => blockTree.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IBlockTree.FindFinalizedHeader)),
-            Is.GreaterThanOrEqualTo(2).After(10_000, 50), "the target is retried");
+            Is.GreaterThanOrEqualTo(3).After(10_000, 50), "the target is retried");
         blockTree.DidNotReceive().FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
     }
 
@@ -303,6 +313,7 @@ public class MigrationBalFollowerTests
 
         public ISpecProvider SpecProvider => _container.Resolve<ISpecProvider>();
         public IBlockTree BlockTree => _blockTree;
+        public BalFetcher Fetcher => _fetcher;
 
         public Hash256 TreeRoot(BlockHeader header)
         {
@@ -341,11 +352,8 @@ public class MigrationBalFollowerTests
 
         private void Close() => _pbt.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
-        public PbtBranchFollower CreateBranchFollower(ILogManager logManager, IBlockTree? blockTree = null) =>
-            new(blockTree ?? _blockTree, Store, _pbt.Manager, _pbt.PersistenceManager, Replay, SpecProvider, Substitute.For<IMainProcessingContext>(), logManager);
-
         public PbtBalFollower CreateFollower(IBlockTree blockTree, BalFetcher fetcher, IBlockAccessListStore store) =>
-            new(blockTree, fetcher, store, _pbt.Manager, Replay, SpecProvider, LimboLogs.Instance);
+            new(blockTree, fetcher, store, _pbt.Manager, _pbt.PersistenceManager, Replay, SpecProvider, Substitute.For<IFlatDbManager>(), LimboLogs.Instance);
 
         public async Task Publish()
         {
@@ -408,6 +416,7 @@ public class MigrationBalFollowerTests
         [TearDown]
         public async Task TearDown()
         {
+            await _follower.DisposeAsync();
             _harness.Dispose();
             _balDb.Dispose();
             await _pool.DisposeAsync();

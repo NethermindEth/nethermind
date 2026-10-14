@@ -98,11 +98,11 @@ public class MigrationLifecycleE2ETests
             Assert.That(() => FlatState(flatPersistence), Is.EqualTo(new StateId(blocks["b3"].Header)).After(10_000, 50));
         }
 
-        // A request spanning activation needs PBT at the activation parent before main processing reaches it; the branch
+        // A request spanning activation needs PBT at the activation parent before main processing reaches it; the BAL
         // follower replays that non-canonical, not yet processed branch from its stored BALs.
         void ReplayIntoPbt(string activationParent)
         {
-            container.Resolve<PbtBranchFollower>().Add(blocks[activationParent].Header);
+            container.Resolve<PbtBalFollower>().Add(blocks[activationParent].Header);
             harness.WaitForPbt(blocks[activationParent].Header);
         }
 
@@ -150,7 +150,6 @@ public class MigrationLifecycleE2ETests
     {
         using TempPath scratch = TempPath.GetTempDirectory();
         await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable: true, FlatLayout.Flat);
-        await harness.HeadFollower.DisposeAsync();
         IMainProcessingContext processing = harness.Container.Resolve<IMainProcessingContext>();
         Block parent = harness.Anchor;
         if (afterActivation)

@@ -7,7 +7,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Pbt.Migration;
 
-/// <summary>Imports the configured EIP-8347 anchor in the background, then starts the BAL follower.</summary>
+/// <summary>Imports the configured EIP-8347 anchor in the background.</summary>
 /// <remarks>
 /// Main processing runs on flat until EIP-8347 activation (see <see cref="MigrationActivation.IsBinary"/>),
 /// so the node does not wait for the import. An import that fails validation stops the node, as it did when the import

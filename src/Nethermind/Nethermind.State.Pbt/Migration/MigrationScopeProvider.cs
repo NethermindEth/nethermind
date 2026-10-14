@@ -11,7 +11,7 @@ using Nethermind.State.Pbt.ScopeProvider;
 namespace Nethermind.State.Pbt.Migration;
 
 /// <summary>Main-processing scope provider: flat before activation, PBT after.</summary>
-/// <remarks>Before activation <see cref="PbtBranchFollower"/>, not main processing, brings PBT up to the processed blocks.</remarks>
+/// <remarks>Before activation <see cref="PbtBalFollower"/>, not main processing, brings PBT up to the processed blocks.</remarks>
 public sealed class MigrationScopeProvider(
     FlatWorldStateManager flat,
     PbtWorldStateManager pbt,

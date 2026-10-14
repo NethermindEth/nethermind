@@ -48,17 +48,10 @@ public sealed class PbtMigrationModule(IPbtConfig configuration) : Module
 
             .AddSingleton<MigrationFlatFinalizedStateProvider>()
             .AddSingleton<PbtMigrationBootstrap>()
-            .AddSingleton<PbtMigrationImport, PbtMigrationBootstrap, PbtBalHeadFollower, IProcessExitSource, ILogManager>((bootstrap, follower, processExitSource, logManager) =>
-                new PbtMigrationImport(async token =>
-                {
-                    await bootstrap.Initialize(token);
-                    follower.Start();
-                }, processExitSource, logManager))
+            .AddSingleton<PbtMigrationImport, PbtMigrationBootstrap, IProcessExitSource, ILogManager>((bootstrap, processExitSource, logManager) =>
+                new PbtMigrationImport(bootstrap.Initialize, processExitSource, logManager))
             .AddSingleton<PbtBalReplay>()
             .AddSingleton<PbtBalFollower>()
-            .AddSingleton<PbtBalFollowerScheduler, PbtBalFollower>(follower => new PbtBalFollowerScheduler(follower.Follow))
-            .AddSingleton<PbtBalHeadFollower>()
-            .AddSingleton<PbtBranchFollower>()
             .AddSingleton<MerkleShadowFollower>()
             .Bind<IMerkleShadowFollower, MerkleShadowFollower>()
             .AddSingleton<IMigrationTelemetry, MigrationTelemetry>()

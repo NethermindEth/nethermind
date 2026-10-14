@@ -6,13 +6,14 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Pbt.Migration;
 using NUnit.Framework;
+using NSubstitute;
 using NUnit.Framework.Interfaces;
 
 namespace Nethermind.State.Pbt.Test;
@@ -78,7 +79,7 @@ public class MigrationRestartE2ETests
         {
             Assert.That(migrating.Tree.Head!.Hash, Is.EqualTo(migrating.Blocks["a3"].Hash));
             Assert.That(migrating.Telemetry.GetShadowRoot(migrating.Anchor.Hash!), Is.EqualTo(migrating.PbtRoot("anchor")));
-            Assert.That(() => migrating.Pbt.HasStateForBlock(new StateId(migrating.Blocks["a3"].Header)), Is.True.After(30_000, 100), migrating.HeadFollower.Error);
+            Assert.That(() => migrating.Pbt.HasStateForBlock(new StateId(migrating.Blocks["a3"].Header)), Is.True.After(30_000, 100), migrating.Follower.Error);
             Assert.That(migrating.Telemetry.GetShadowRoot(migrating.Blocks["a3"].Hash!), Is.EqualTo(migrating.PbtRoot("a3")));
             Assert.That(migrating.Reader.HasStateForBlock(migrating.Blocks["a3"].Header), Is.True);
         }
@@ -88,9 +89,9 @@ public class MigrationRestartE2ETests
     public async Task Flat_processes_alone_while_pbt_lacks_the_base()
     {
         await RunFlatOnly("a1", "a2");
-        // A follower that never runs keeps PBT at the anchor, behind the flat head.
+        // Without stored BALs the follower keeps PBT at the anchor, behind the flat head.
         await using MigrationLifecycleHarness migrating = await OpenLifecycle(_directory, portable: true,
-            builder => builder.AddSingleton<PbtBalFollowerScheduler>(_ => new PbtBalFollowerScheduler((_, _) => Task.FromResult(false))), migration: true);
+            builder => builder.AddSingleton(Substitute.For<IBlockAccessListStore>()), migration: true);
         migrating.ProcessBranch(["a3"], expectPbt: false);
         using (Assert.EnterMultipleScope())
         {

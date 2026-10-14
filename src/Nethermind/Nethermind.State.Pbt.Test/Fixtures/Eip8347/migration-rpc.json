@@ -22,7 +22,7 @@
       "cursor": 0,
       "cursorHash": "0x35091d8791b6a548f2b95f4e8c0ad60efae033f4ccddbf58c60be1b36a107fce",
       "shadowRoot": "0xd7936293b851534fa6af126bdc2f5db471069aeea9b614856e0e1e871524522e",
-      "error": "BAL catch-up is stalled; required canonical data is unavailable."
+      "error": "BAL range unavailable or canonical ancestry changed."
     },
     "merkle": null
   },

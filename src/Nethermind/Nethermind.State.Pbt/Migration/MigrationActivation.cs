@@ -27,7 +27,7 @@ public static class MigrationActivation
     /// <remarks>
     /// The backend is chosen by the block about to be executed (or, for a pure read, by the block whose state is
     /// read): PBT once EIP-8347 is active, the flat MPT before. Pre-activation, main processing runs on flat alone and
-    /// the BAL followers bring PBT up to the blocks it processes (see <see cref="PbtBranchFollower"/>).
+    /// the BAL followers bring PBT up to the blocks it processes (see <see cref="PbtBalFollower"/>).
     /// </remarks>
     public static bool IsBinary(ISpecProvider specProvider, BlockHeader? baseBlock, BlockHeader? targetBlock)
     {
