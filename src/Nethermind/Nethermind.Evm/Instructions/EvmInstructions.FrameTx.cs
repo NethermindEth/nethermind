@@ -26,7 +26,7 @@ public static unsafe partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 offset, out UInt256 length, out UInt256 scope))
             return EvmExceptionType.StackUnderflow;
 
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory))
+        if (!ChargeApproveReturnDataBeforeRefusal(ref gas, in offset, in length, vm))
         {
             return EvmExceptionType.OutOfGas;
         }
@@ -75,6 +75,13 @@ public static unsafe partial class EvmInstructions
         vm.ReturnData = Array.Empty<byte>();
         return EvmExceptionType.Revert;
     }
+
+    /// <summary>EIP-8141: APPROVE charges the memory expansion of its return-data region like RETURN, and before
+    /// any refusal check, so a refused approval still pays for the region it names.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ChargeApproveReturnDataBeforeRefusal<TGasPolicy>(ref TGasPolicy gas, in UInt256 offset, in UInt256 length, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory);
 
     /// <summary>TXPARAM (0xb0): read a transaction-scoped field.</summary>
     /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0D through 0x10.</typeparam>
