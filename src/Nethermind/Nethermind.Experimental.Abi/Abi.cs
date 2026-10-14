@@ -15,5 +15,11 @@ public class Abi<T>
     public required AbiWriteAction<T> Write { get; init; }
     public required AbiSizeFunc<T> Size { get; init; }
 
+    internal int SizeInParent(T value)
+    {
+        const int offsetSize = 32;
+        return (IsDynamic ? offsetSize : 0) + Size(value);
+    }
+
     public override string ToString() => Name;
 }
