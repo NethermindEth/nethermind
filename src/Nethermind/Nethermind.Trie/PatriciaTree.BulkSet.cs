@@ -712,7 +712,7 @@ public partial class PatriciaTree
         return usedMask;
     }
 
-    private static int GetSpanOffset<T>(T[] array, Span<T> span)
+    internal static int GetSpanOffset<T>(T[] array, Span<T> span)
     {
         ref T spanRef = ref MemoryMarshal.GetReference(span);
         ref T arrRef = ref MemoryMarshal.GetArrayDataReference(array);

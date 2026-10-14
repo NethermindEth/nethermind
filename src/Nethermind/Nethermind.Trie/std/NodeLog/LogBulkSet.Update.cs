@@ -4,7 +4,11 @@
 using System;
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using BulkSetEntry = Nethermind.Trie.PatriciaTree.BulkSetEntry;
 
 namespace Nethermind.Trie.NodeLog;
@@ -96,11 +100,43 @@ internal static partial class LogBulkSet
         public ChildRef Reference => PendingIndex < 0 ? default : ChildRef.ForPending(PendingIndex);
     }
 
+    [InlineArray(BranchChildCount)]
+    private struct BranchArray<T>
+    {
+        private T _element0;
+    }
+
+    /// <summary>A branch level whose sixteen children are updated in parallel, each by a task that commits the child's subtree in an arena of its own, so only committed references cross threads.</summary>
+    private sealed class ParallelChildren : IDisposable
+    {
+        public bool Flipped;
+        public TreePath Path;
+        public int RemainderNibble;
+        public Source Remainder;
+
+        /// <summary>Each child's entries in the entries' array, or in the sort buffer's array when <see cref="Flipped"/>.</summary>
+        public BranchArray<(int Start, int Count)> Ranges;
+
+        /// <summary>The references to the children before the join, and the committed references of those in <see cref="ChangedMask"/> after it.</summary>
+        public BranchArray<ChildRef> Children;
+
+        public int ChangedMask;
+
+        /// <summary>The nodes each task wrote, recorded after the join.</summary>
+        public BranchArray<WrittenNodes?> Written;
+
+        public void Dispose()
+        {
+            foreach (WrittenNodes? written in Written) written?.Dispose();
+        }
+    }
+
     private readonly partial struct Context
     {
         /// <summary>Applies <paramref name="entries"/>, whose keys all start with <paramref name="path"/>, to <paramref name="node"/> at it.</summary>
         /// <param name="sortBuffer">Scratch of the same length, which may swap roles with <paramref name="entries"/> below this level.</param>
-        public Updated Update(Span<BulkSetEntry> entries, Span<BulkSetEntry> sortBuffer, ref TreePath path, in Source node)
+        /// <param name="flipped">Whether <paramref name="entries"/> is in the sort buffer's array rather than the entries' array.</param>
+        public Updated Update(Span<BulkSetEntry> entries, Span<BulkSetEntry> sortBuffer, bool flipped, ref TreePath path, in Source node)
         {
             switch (entries.Length)
             {
@@ -137,12 +173,15 @@ internal static partial class LogBulkSet
                 Span<BulkSetEntry> sorted = sortBuffer;
                 sortBuffer = entries;
                 entries = sorted;
+                flipped = !flipped;
             }
 
             bool remainderKept = remainderNibble >= 0;
             bool changed = false;
             bool hasRemove = false;
             int nonEmptyCount = 0;
+            using ParallelChildren? parallelChildren = IsParallel(entries.Length, mask) ? new ParallelChildren() : null;
+            if (parallelChildren is not null) UpdateInParallel(parallelChildren, entries, flipped, path, indexes, node, childrenStart, remainderNibble, remainder);
             path.AppendMut(0);
             for (int remaining = mask; remaining != 0;)
             {
@@ -153,12 +192,23 @@ internal static partial class LogBulkSet
                 path.SetLast(nibble);
 
                 bool isRemainder = nibble == remainderNibble;
-                Source child = isRemainder ? remainder
-                    : Load(path, childrenStart >= 0 ? _arena.Children[childrenStart + nibble] : node.Record.View.Child(nibble));
-                Updated updated = Update(entries[start..end], sortBuffer[start..end], ref path, child);
-                if (!updated.Changed) continue;
+                ChildRef reference;
+                if (parallelChildren is not null)
+                {
+                    if ((parallelChildren.ChangedMask & (1 << nibble)) == 0) continue;
 
-                ChildRef reference = updated.Reference;
+                    reference = parallelChildren.Children[nibble];
+                }
+                else
+                {
+                    Source child = isRemainder ? remainder
+                        : Load(path, childrenStart >= 0 ? _arena.Children[childrenStart + nibble] : node.Record.View.Child(nibble));
+                    Updated updated = Update(entries[start..end], sortBuffer[start..end], flipped, ref path, child);
+                    if (!updated.Changed) continue;
+
+                    reference = updated.Reference;
+                }
+
                 changed = true;
                 if (isRemainder) remainderKept = false;
                 if (reference.Kind == ChildRefKind.Empty) hasRemove = true;
@@ -180,6 +230,61 @@ internal static partial class LogBulkSet
             return Updated.To((hasRemove || isNew) && nonEmptyCount < 2
                 ? MaybeCombine(childrenStart, ref path)
                 : _arena.AddBranch(childrenStart));
+        }
+
+        private bool IsParallel(int count, int mask) =>
+            _canParallelize && mask == FullMask && count >= PatriciaTree.MinEntriesToParallelizeThreshold && !RuntimeInformation.IsSingleProcessor;
+
+        /// <summary>Updates the sixteen children of <paramref name="node"/> at <paramref name="path"/> in parallel into <paramref name="level"/>, as the serial loop of <see cref="Update"/> would, and records the nodes written.</summary>
+        /// <remarks>An unchanged remainder is left to the caller, which keeps it pending below the new branch.</remarks>
+        private void UpdateInParallel(ParallelChildren level, Span<BulkSetEntry> entries, bool flipped, in TreePath path, ReadOnlySpan<int> indexes,
+            in Source node, int childrenStart, int remainderNibble, in Source remainder)
+        {
+            int offset = PatriciaTree.GetSpanOffset(flipped ? _sortBuffer : _entries, entries);
+            level.Flipped = flipped;
+            level.Path = path;
+            level.RemainderNibble = remainderNibble;
+            level.Remainder = remainder;
+            for (int nibble = 0; nibble < BranchChildCount; nibble++)
+            {
+                int end = nibble == BranchChildCount - 1 ? entries.Length : indexes[nibble + 1];
+                level.Ranges[nibble] = (offset + indexes[nibble], end - indexes[nibble]);
+                if (nibble != remainderNibble) level.Children[nibble] = childrenStart >= 0 ? _arena.Children[childrenStart + nibble] : node.Record.View.Child(nibble);
+            }
+
+            ParallelUnbalancedWork.For(0, BranchChildCount, ParallelUnbalancedWork.DefaultOptions, (Context: this, Level: level),
+                static (nibble, state) =>
+                {
+                    state.Context.UpdateChild(state.Level, nibble);
+                    return state;
+                });
+
+            foreach (WrittenNodes? written in level.Written) _written.AddRange(written!.AsSpan());
+        }
+
+        /// <summary>Updates child <paramref name="nibble"/> of <paramref name="level"/> in an arena of its own, committing it when it changed.</summary>
+        private void UpdateChild(ParallelChildren level, int nibble)
+        {
+            WrittenNodes written = level.Written[nibble] = new WrittenNodes();
+            BulkSetArena arena = BulkSetArena.Rent();
+            try
+            {
+                Context context = new(_log, _source, _address, arena, written, _entries, _sortBuffer, _canParallelize);
+                (int start, int count) = level.Ranges[nibble];
+                Span<BulkSetEntry> entries = (level.Flipped ? _sortBuffer : _entries).AsSpan(start, count);
+                Span<BulkSetEntry> sortBuffer = (level.Flipped ? _entries : _sortBuffer).AsSpan(start, count);
+                TreePath path = level.Path.Append(nibble);
+                Source child = nibble == level.RemainderNibble ? level.Remainder : context.Load(path, level.Children[nibble]);
+                Updated updated = context.Update(entries, sortBuffer, level.Flipped, ref path, child);
+                if (!updated.Changed) return;
+
+                level.Children[nibble] = updated.PendingIndex < 0 ? default : context.Commit(updated.PendingIndex, path, isRoot: false);
+                Interlocked.Or(ref level.ChangedMask, 1 << nibble);
+            }
+            finally
+            {
+                ReturnArena(arena);
+            }
         }
 
         /// <summary>Turns the branch at <paramref name="path"/> left with fewer than two children into nothing, an extension, or its only child with the nibble prepended.</summary>

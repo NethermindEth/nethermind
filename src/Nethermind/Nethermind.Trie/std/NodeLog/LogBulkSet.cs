@@ -5,7 +5,9 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using BulkSetEntry = Nethermind.Trie.PatriciaTree.BulkSetEntry;
 
 namespace Nethermind.Trie.NodeLog;
@@ -16,6 +18,7 @@ namespace Nethermind.Trie.NodeLog;
 /// added to the log. Entries are bucketed by nibble one level at a time; a leaf or extension the entries split is walked in place, less
 /// the key nibbles the split dropped, and copied out only when it changes. New nodes stay pending in a <see cref="BulkSetArena"/> until
 /// the commit encodes them straight into the log one path depth at a time, deepest first, hashing each level together.
+/// A full branch level with enough entries may update its children in parallel, each task committing its subtree in its own arena.
 /// Nodes that become unreachable are not removed from the log.
 /// </remarks>
 internal static partial class LogBulkSet
@@ -24,12 +27,14 @@ internal static partial class LogBulkSet
     private const int TinySortMaxCount = 3;
     private const int MaxKeyNibbles = BulkSetArena.MaxKeyNibbles;
     private const int BranchChildCount = BulkSetArena.BranchChildCount;
+    private const int FullMask = (1 << BranchChildCount) - 1;
+    private const int MaxWorkers = 16;
 
     /// <summary>Sets every entry's key to its value, deleting it when the value is null or empty, and returns the new root.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="entries">Reordered in place; keys must be unique.</param>
     /// <param name="written">Receives the path and pointer of every node written.</param>
-    /// <param name="canParallelize">Ignored: the bulk set runs serially.</param>
+    /// <param name="canParallelize">Whether the children of a full branch level with enough entries may be updated in parallel.</param>
     /// <exception cref="MissingTrieNodeException">A node on a changed path is in neither the log nor the source.</exception>
     /// <exception cref="InvalidOperationException">Two entries have the same key.</exception>
     public static TrieRoot BulkSet(TrieNodeLog log, INodeRecordSource source, Hash256? address, TrieRoot root,
@@ -37,22 +42,31 @@ internal static partial class LogBulkSet
     {
         if (entries.Count == 0) return root;
 
+        using ParallelUnbalancedWork.WorkerScope? workers = canParallelize && !RuntimeInformation.IsSingleProcessor
+            && entries.Count >= PatriciaTree.MinEntriesToParallelizeThreshold
+            ? ParallelUnbalancedWork.BeginWorkerScope(Math.Min(MaxWorkers, RuntimeInformation.ProcessorCount))
+            : null;
         BulkSetArena arena = BulkSetArena.Rent();
         try
         {
-            Context context = new(log, source, address, arena, written);
-            Source rootNode = context.LoadRoot(root);
+            Source rootNode;
             TreePath path = TreePath.Empty;
             Updated updated;
+            Context context;
             if (entries.Count < InPlaceSortThreshold)
             {
                 // The in-place sorts below the threshold need no separate buffer.
-                updated = context.Update(entries.AsSpan(), entries.AsSpan(), ref path, rootNode);
+                BulkSetEntry[] entriesArray = entries.UnsafeGetInternalArray();
+                context = new(log, source, address, arena, written, entriesArray, entriesArray, canParallelize);
+                rootNode = context.LoadRoot(root);
+                updated = context.Update(entries.AsSpan(), entries.AsSpan(), flipped: false, ref path, rootNode);
             }
             else
             {
                 using ArrayPoolListRef<BulkSetEntry> sortBuffer = new(entries.Count, entries.Count);
-                updated = context.Update(entries.AsSpan(), sortBuffer.AsSpan(), ref path, rootNode);
+                context = new(log, source, address, arena, written, entries.UnsafeGetInternalArray(), sortBuffer.UnsafeGetInternalArray(), canParallelize);
+                rootNode = context.LoadRoot(root);
+                updated = context.Update(entries.AsSpan(), sortBuffer.AsSpan(), flipped: false, ref path, rootNode);
             }
 
             if (!updated.Changed) return root;
@@ -64,9 +78,7 @@ internal static partial class LogBulkSet
         }
         finally
         {
-            Metrics.AddBulkSetNodesFromLog(arena.NodesFromLog);
-            Metrics.AddBulkSetNodesFromSource(arena.NodesFromSource);
-            BulkSetArena.Return(arena);
+            ReturnArena(arena);
         }
     }
 
@@ -140,6 +152,13 @@ internal static partial class LogBulkSet
         }
     }
 
+    private static void ReturnArena(BulkSetArena arena)
+    {
+        Metrics.AddBulkSetNodesFromLog(arena.NodesFromLog);
+        Metrics.AddBulkSetNodesFromSource(arena.NodesFromSource);
+        BulkSetArena.Return(arena);
+    }
+
     [DoesNotReturn, StackTraceHidden]
     private static Source ThrowMissingNode(Hash256? address, in TreePath path, in ValueHash256 hash) =>
         throw new MissingTrieNodeException($"Trie node missing hash={hash} address={address} path={path}", address, path, new Hash256(hash));
@@ -147,13 +166,19 @@ internal static partial class LogBulkSet
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowNonUniqueKeys() => throw new InvalidOperationException("Non unique entry keys");
 
-    /// <summary>What a bulk set on one arena shares: the log and source it reads, the trie it writes and where it records writes.</summary>
-    private readonly partial struct Context(TrieNodeLog log, INodeRecordSource source, Hash256? address, BulkSetArena arena, WrittenNodes written)
+    /// <summary>What a bulk set on one arena shares: the log and source it reads, the trie it writes, where it records writes and the arrays its entries are in.</summary>
+    /// <param name="entries">The array of the entries passed in.</param>
+    /// <param name="sortBuffer">The array of the sort buffer, the same as <paramref name="entries"/> when there is none.</param>
+    private readonly partial struct Context(TrieNodeLog log, INodeRecordSource source, Hash256? address, BulkSetArena arena, WrittenNodes written,
+        BulkSetEntry[] entries, BulkSetEntry[] sortBuffer, bool canParallelize)
     {
         private readonly TrieNodeLog _log = log;
         private readonly INodeRecordSource _source = source;
         private readonly Hash256? _address = address;
         private readonly BulkSetArena _arena = arena;
         private readonly WrittenNodes _written = written;
+        private readonly BulkSetEntry[] _entries = entries;
+        private readonly BulkSetEntry[] _sortBuffer = sortBuffer;
+        private readonly bool _canParallelize = canParallelize;
     }
 }

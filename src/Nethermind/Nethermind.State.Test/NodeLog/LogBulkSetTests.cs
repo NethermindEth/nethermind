@@ -41,15 +41,18 @@ internal class LogBulkSetTests
             {
                 foreach (bool fromSource in new[] { false, true })
                 {
-                    yield return new TestCaseData(testCase.Arguments[0], testCase.Arguments[1], smallGenerations, fromSource)
-                        .SetName($"{testCase.TestName}, small generations {smallGenerations}, from source {fromSource}");
+                    foreach (bool canParallelize in new[] { false, true })
+                    {
+                        yield return new TestCaseData(testCase.Arguments[0], testCase.Arguments[1], smallGenerations, fromSource, canParallelize)
+                            .SetName($"{testCase.TestName}, small generations {smallGenerations}, from source {fromSource}, can parallelize {canParallelize}");
+                    }
                 }
             }
         }
     }
 
     [TestCaseSource(nameof(PatriciaTreeCases))]
-    public void Root_and_written_nodes_match_patricia_tree(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items, bool smallGenerations, bool fromSource)
+    public void Root_and_written_nodes_match_patricia_tree(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items, bool smallGenerations, bool fromSource, bool canParallelize)
     {
         CommitRecordingTrieStore trieStore = new();
         PatriciaTree tree = new(new ScopedTrieStore(trieStore, null), LimboLogs.Instance);
@@ -67,11 +70,11 @@ internal class LogBulkSetTests
         DictionaryNodeSource source = new(existingNodes, new WarmedNodes(existingNodes.Count), null);
         using WrittenNodes existingWritten = new();
         using WrittenNodes written = new();
-        TrieRoot existingRoot = BulkSet(existingLog, source, null, TrieRoot.Empty, existingItems, existingWritten);
+        TrieRoot existingRoot = BulkSet(existingLog, source, null, TrieRoot.Empty, existingItems, existingWritten, canParallelize);
         // From the source, the existing trie stands for one persisted before this log was created.
         TrieNodeLog log = fromSource ? new(0, generationBytes) : existingLog;
         using TrieNodeLogRetain retain = log.RetainActive();
-        TrieRoot root = BulkSet(log, source, null, fromSource ? new TrieRoot(expectedExistingRoot.ValueHash256, 0) : existingRoot, items, written);
+        TrieRoot root = BulkSet(log, source, null, fromSource ? new TrieRoot(expectedExistingRoot.ValueHash256, 0) : existingRoot, items, written, canParallelize);
         int fetchCount = source.FetchCount;
 
         Dictionary<Hash256, byte[]> expectedValues = [];
@@ -112,9 +115,9 @@ internal class LogBulkSetTests
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), null);
         using WrittenNodes existingWritten = new();
         using WrittenNodes written = new();
-        TrieRoot root = BulkSet(log, source, null, TrieRoot.Empty, existingKeys.Select(key => (new Hash256(key), ExistingValue)).ToList(), existingWritten);
+        TrieRoot root = BulkSet(log, source, null, TrieRoot.Empty, existingKeys.Select(key => (new Hash256(key), ExistingValue)).ToList(), existingWritten, canParallelize: false);
 
-        TrieRoot after = BulkSet(log, source, null, root, keys.Select(key => (new Hash256(key), existingKeys.Contains(key) ? ExistingValue : null)).ToList(), written);
+        TrieRoot after = BulkSet(log, source, null, root, keys.Select(key => (new Hash256(key), existingKeys.Contains(key) ? ExistingValue : null)).ToList(), written, canParallelize: false);
 
         using (Assert.EnterMultipleScope())
         {
@@ -132,7 +135,7 @@ internal class LogBulkSetTests
         TrieNodeLog log = new(0, SmallGenerationBytes);
         using TrieNodeLogRetain retain = log.RetainActive();
         using WrittenNodes written = new();
-        TrieRoot root = BulkSet(log, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address), address, TrieRoot.Empty, items, written);
+        TrieRoot root = BulkSet(log, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address), address, TrieRoot.Empty, items, written, canParallelize: false);
 
         // A log without the trie stands for one written before the trie was persisted.
         TrieNodeLog persistedLog = new(0, SmallGenerationBytes);
@@ -144,7 +147,7 @@ internal class LogBulkSetTests
         foreach ((Hash256 key, _) in items) WarmUp(persistedLog, persistedRoot, key);
         int fetchesBeforeBulkSet = source.FetchCount;
         using WrittenNodes newWritten = new();
-        TrieRoot newRoot = BulkSet(persistedLog, source, address, persistedRoot, [(items[0].key, NewValue)], newWritten);
+        TrieRoot newRoot = BulkSet(persistedLog, source, address, persistedRoot, [(items[0].key, NewValue)], newWritten, canParallelize: false);
 
         PatriciaTree tree = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach ((Hash256 key, byte[] value) in items) tree.Set(key.Bytes, value);
@@ -170,10 +173,10 @@ internal class LogBulkSetTests
         }
     }
 
-    private static TrieRoot BulkSet(TrieNodeLog log, INodeRecordSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, WrittenNodes written)
+    private static TrieRoot BulkSet(TrieNodeLog log, INodeRecordSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, WrittenNodes written, bool canParallelize)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = Entries(items);
-        return LogBulkSet.BulkSet(log, source, address, root, entries, written, canParallelize: false);
+        return LogBulkSet.BulkSet(log, source, address, root, entries, written, canParallelize);
     }
 
     private static ArrayPoolListRef<PatriciaTree.BulkSetEntry> Entries(List<(Hash256 key, byte[] value)> items)
