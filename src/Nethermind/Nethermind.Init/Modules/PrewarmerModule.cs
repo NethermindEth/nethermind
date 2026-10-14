@@ -77,7 +77,14 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 
                 // Envs that must send every lookup to the world state, as witness generation does, register their own.
                 .AddSingleton<BlockCodeCache>(_ => new BlockCodeCache(codeCache))
-                .Bind<ICodeCache, BlockCodeCache>();
+                .Bind<ICodeCache, BlockCodeCache>()
+                // On the factory rather than the adapter, as parallel execution builds its adapters from it.
+                .AddDecorator<TransactionProcessorAdapterFactory>(static (ctx, inner) =>
+                {
+                    if (ctx.Resolve<IPrewarmerState>().IsPrewarmer) return inner;
+                    BlockCodeCache blockCodeCache = ctx.Resolve<BlockCodeCache>();
+                    return transactionProcessor => new BlockCodeCacheTxAdapter(inner(transactionProcessor), blockCodeCache);
+                });
 
             if (blocksConfig.PrecompileCacheMaxKilobytes > 0)
             {
