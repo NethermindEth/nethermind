@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -94,7 +95,8 @@ public class BalFetcher(
 
         int requested = snap2 ? missing.Count : Math.Min(missing.Count, GethSyncLimits.MaxBodyFetch);
         int stored = 0;
-        bool peerAtFault = false;
+        string? invalidBalError = null;
+        bool requestFailed = false;
         try
         {
             IByteArrayList response;
@@ -119,27 +121,28 @@ public class BalFetcher(
                 {
                     ReadOnlySpan<byte> rlp = i < response.Count ? response[i] : default;
                     if (rlp.IsEmpty) continue;
-                    if (TryStore(missing[i], rlp)) stored++;
-                    else peerAtFault = true;
+                    if (TryStore(missing[i], rlp, out string? error)) stored++;
+                    else invalidBalError ??= error;
                 }
             }
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception e)
         {
-            peerAtFault = true;
+            requestFailed = true;
             if (_logger.IsDebug) _logger.Debug($"Error fetching block access lists from {peer}: {e}");
         }
 
-        // An empty entry is a well-formed answer from a peer that does not have that BAL; only a failed
-        // request or a list that does not match its header is the peer's own fault.
-        if (peerAtFault) peerPool.ReportWeakPeer(peer, AllocationContexts.State);
+        // An empty entry is a well-formed answer from a peer that does not have that BAL. A list that does not
+        // match the header it was requested by is provable misbehaviour; a failed request may be an honest timeout.
+        if (invalidBalError is not null) peerPool.ReportBreachOfProtocol(peer, DisconnectReason.InvalidTxOrUncle, $"invalid block access list: {invalidBalError}");
+        else if (requestFailed) peerPool.ReportWeakPeer(peer, AllocationContexts.State);
         return stored;
     }
 
-    private bool TryStore(BlockHeader header, ReadOnlySpan<byte> rlp)
+    private bool TryStore(BlockHeader header, ReadOnlySpan<byte> rlp, out string? error)
     {
-        if (!BlockAccessListHashValidator.Validate(header, rlp, out _)) return false;
+        if (!BlockAccessListHashValidator.Validate(header, rlp, out error)) return false;
         balStore.Insert(header.Number, header.Hash!, rlp);
         return true;
     }

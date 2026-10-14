@@ -925,6 +925,7 @@ namespace Nethermind.Blockchain
                 if (Logger.IsInfo) Logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
                 _blockStore.Delete(currentNumber, currentHash);
                 _headerStore.Delete(currentHash);
+                _balStore.Delete(currentNumber, currentHash);
 
                 if (nextHash is null)
                 {
@@ -1146,7 +1147,7 @@ namespace Nethermind.Blockchain
                 // Only needed on FCU reorgs (forceUpdateHeadBlock == true). During forward sync
                 // (BlockDownloader) and forward processing (BlockchainProcessor), the markers above
                 // are either not yet set or belong to the same chain and must not be cleared.
-                if (forceUpdateHeadBlock)
+                if (forceUpdateHeadBlock && ClearStaleMarkersOnForcedHeadUpdate)
                     ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
 
                 for (int i = 0; i < headers.Count; i++)

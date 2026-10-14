@@ -132,7 +132,11 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             new SyncConfig(),
             NullStateBoundary.Instance,
             new BlockTreeLogHider(logManager),
-            new BlockTreeMutationLock());
+            new BlockTreeMutationLock())
+        {
+            // Resetting the overlay head must not rewrite the base tree's levels above it into the in-memory write store.
+            ClearStaleMarkersOnForcedHeadUpdate = false
+        };
     }
 
     private class BlockTreeLogHider(ILogManager baseLogManager) : ILogManager
