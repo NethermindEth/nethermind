@@ -319,6 +319,7 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
 
     internal sealed class EvidenceHandler(EezSettlementContext context, BlockHeader parent, bool l2) : HttpMessageHandler
     {
+        internal IReadOnlyDictionary<Hash256, BlockHeader>? Headers { get; init; }
         internal string Mutation { get; set; } = "";
         internal Hash256? ExpectedParentHash { get; set; }
         internal Action? BeforeFinalRecheck { get; set; }
@@ -339,8 +340,14 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
             {
                 case "eth_chainId": result = Mutation is "l1chain" or "l2chain" ? "0x2" : l2 ? "0x1892" : "0x7a69"; break;
                 case "debug_getRawHeader":
-                    Assert.That((l2, parameters[0].GetString()), Is.EqualTo((true, (ExpectedParentHash ?? parent.Hash!).ToString())), "raw parent headers come from the configured L2 source");
-                    byte[] rlp = Rlp.Encode(parent).Bytes;
+                    BlockHeader selected = parent;
+                    if (Headers is not null)
+                    {
+                        if (!Headers.TryGetValue(new Hash256(parameters[0].GetString()!), out BlockHeader? recorded)) { result = null; break; }
+                        selected = recorded;
+                    }
+                    else Assert.That((l2, parameters[0].GetString()), Is.EqualTo((true, (ExpectedParentHash ?? parent.Hash!).ToString())), "raw parent headers come from the configured L2 source");
+                    byte[] rlp = Rlp.Encode(selected).Bytes;
                     result = (Mutation == "trailing" ? [.. rlp, 0] : rlp).ToHexString(true);
                     break;
                 case "eth_getBlockByNumber":

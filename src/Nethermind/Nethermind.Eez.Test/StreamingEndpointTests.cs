@@ -219,10 +219,11 @@ public class StreamingEndpointTests(string fixture, int from, int to)
 
     private static CallOptions Options(Metadata? headers = null) => new(headers, DateTime.UtcNow.AddSeconds(30));
 
-    private sealed class EndpointServer : IAsyncDisposable
+    internal sealed class EndpointServer : IAsyncDisposable
     {
         private readonly TempPath _directory = TempPath.GetTempDirectory();
         private readonly X509Certificate2 _certificate = Certificate("server", true);
+        private readonly WindowLimits _limits;
         private readonly HttpClient _sourceL1;
         private readonly HttpClient _sourceL2;
         private WebApplication _rpc = null!;
@@ -237,8 +238,9 @@ public class StreamingEndpointTests(string fixture, int from, int to)
         internal Uri PlainAddress { get; private set; } = null!;
         private Uri TlsAddress { get; set; } = null!;
 
-        private EndpointServer(string fixture, int from, int to)
+        private EndpointServer(string fixture, int from, int to, WindowLimits? limits, ulong? registeredParentNumber)
         {
+            _limits = limits ?? new WindowLimits(8, 16 * 1024 * 1024, 100_000);
             Chunks = AttesterTests.Window(fixture, from, to);
             SettlementBatch batch = EezCalldata.DecodePostAndVerifyBatch(Chunks[0].Header.PostBatch.AbiCalldata.Span);
             Chunks[0].Header.PostBatch.AbiCalldata = ByteString.CopyFrom(EezCalldata.EncodePostAndVerifyBatch(batch with { Proofs = [[]] }));
@@ -246,14 +248,29 @@ public class StreamingEndpointTests(string fixture, int from, int to)
             Anchor = new Begin { RollupId = 1, AnchorNumber = parent.Number, AnchorHash = ByteString.CopyFrom(parent.Hash!.Bytes), AnchorStateRoot = ByteString.CopyFrom(parent.StateRoot!.Bytes) };
             JsonElement oracle = StatelessFixtures.ReadJson(fixture, "oracle.json");
             EezSettlementContext context = new(1, 6290, new Address(oracle.GetProperty("proof_system").GetString()!), new ValueHash256(oracle.GetProperty("proof_system_vkey").GetString()!), 2);
-            L1 = new StreamingFinalizerTests.EvidenceHandler(context, parent, false);
+            Dictionary<Hash256, BlockHeader> headers = new() { [parent.Hash!] = parent };
+            if (registeredParentNumber is not null)
+            {
+                foreach (ProveChunk chunk in Chunks.Skip(1))
+                {
+                    foreach (ByteString encoded in chunk.Block.Witness.Headers)
+                    {
+                        BlockHeader header = Rlp.Decode<BlockHeader>(encoded.ToByteArray())!;
+                        headers.TryAdd(header.Hash!, header);
+                    }
+                }
+            }
+            BlockHeader registered = registeredParentNumber is { } number
+                ? headers.Values.Single(header => header.Number == number) : parent;
+            L1 = new StreamingFinalizerTests.EvidenceHandler(context, registered, false);
             _sourceL1 = new HttpClient(L1);
-            _sourceL2 = new HttpClient(new StreamingFinalizerTests.EvidenceHandler(context, parent, true));
+            _sourceL2 = new HttpClient(new StreamingFinalizerTests.EvidenceHandler(context, parent, true)
+            { Headers = registeredParentNumber is null ? null : headers });
         }
 
-        internal static async Task<EndpointServer> Start(string fixture, int from, int to)
+        internal static async Task<EndpointServer> Start(string fixture, int from, int to, WindowLimits? limits = null, ulong? registeredParentNumber = null)
         {
-            EndpointServer server = new(fixture, from, to);
+            EndpointServer server = new(fixture, from, to, limits, registeredParentNumber);
             try { await server.Start(fixture); return server; }
             catch { await server.DisposeAsync(); throw; }
         }
@@ -286,14 +303,14 @@ public class StreamingEndpointTests(string fixture, int from, int to)
                 serverCertificate = "server.pfx",
                 serverPasswordFile = "password",
                 composerCertificates = new[] { "composer-a.cer", "composer-b.cer" },
-                maxSessionBytes = 16 * 1024 * 1024,
+                maxSessionBytes = _limits.MaxBytes,
             }));
             ISpecProvider specs = StatelessFixtures.ReadSpecProvider(fixture, "chain-config.json");
             JsonElement oracle = StatelessFixtures.ReadJson(fixture, "oracle.json");
             EezSettlementContext context = new(1, specs.ChainId, new Address(oracle.GetProperty("proof_system").GetString()!),
                 new ValueHash256(oracle.GetProperty("proof_system_vkey").GetString()!), 2);
             AttesterOptions options = new(new IPEndPoint(IPAddress.Loopback, 0), "", 1, context.VerificationKey, AttesterServer.AttesterKey.Address, context.ProofSystem,
-                "", "", 2, context.GasLimit, new WindowLimits(8, 16 * 1024 * 1024, 100_000), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30), config);
+                "", "", 2, context.GasLimit, _limits, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30), config);
             EezAttestationSigner signer = new(AttesterServer.AttesterKey);
             AttestationPipeline pipeline = new(specs, context, signer, LimboLogs.Instance);
             _runtime = StreamingRuntime.Load(options, specs, pipeline, signer, LimboLogs.Instance);

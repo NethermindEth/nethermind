@@ -13,6 +13,7 @@ on:
       - 'src/Nethermind/Directory.*'
       - 'Directory.*'
       - 'global.json'
+      - 'scripts/eez/devnet/upstream.py'
       - '.github/workflows/eez-streaming-tests.yml'
   push:
     branches: [master]
@@ -27,8 +28,16 @@ on:
       - 'src/Nethermind/Directory.*'
       - 'Directory.*'
       - 'global.json'
+      - 'scripts/eez/devnet/upstream.py'
       - '.github/workflows/eez-streaming-tests.yml'
+  schedule:
+    - cron: '43 3 * * *'
   workflow_dispatch:
+    inputs:
+      upstream_revision:
+        description: 'Replay a public upstream main commit; empty selects current main'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -42,12 +51,21 @@ jobs:
     name: Session execution (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
+    env:
+      EEZ_REQUIRE_UPSTREAM_VECTORS: 'true'
     strategy:
       fail-fast: false
       matrix:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v6
+      - name: Resolve current upstream vector data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REVISION: ${{ inputs.upstream_revision }}
+        run: |
+          python3 -m unittest discover -s scripts/eez/devnet -p 'test_*.py'
+          python3 scripts/eez/devnet/upstream.py vectors --revision "$UPSTREAM_REVISION" --directory "$RUNNER_TEMP/eez-vectors" --output "$RUNNER_TEMP/eez-vectors/upstream.json"
       - uses: actions/setup-dotnet@v5
       - name: Restore
         run: dotnet restore src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj --locked-mode
@@ -58,7 +76,17 @@ jobs:
           dotnet test --project src/Nethermind/Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj -c Release \
             -- --filter 'FullyQualifiedName~Nethermind.Consensus.Test.Stateless.WitnessTests|FullyQualifiedName~Nethermind.Consensus.Test.ExecutionProcessorTests'
       - name: Test
+        env:
+          EEZ_CONFORMANCE_VECTOR_DIR: ${{ runner.temp }}/eez-vectors
         run: |
           dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
             --hangdump --hangdump-timeout 5m --hangdump-type Mini \
             --crashdump --crashdump-type Mini
+      - name: Retain vector provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eez-vector-provenance-${{ matrix.runner }}
+          path: ${{ runner.temp }}/eez-vectors/upstream.json
+          if-no-files-found: warn
+          retention-days: 14

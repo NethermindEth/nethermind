@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -123,6 +124,70 @@ def record_build(args):
     args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
 
 
+def validate_vectors(document):
+    cases = document.get("cases", [])
+    if document.get("format") != "eez-prove-v2-transcript-1" or not 0 < len(cases) <= 256:
+        raise ValueError("unsupported or empty vector suite")
+    names = set()
+    allowed = {"open", "send", "receive", "half_close", "rpc_error", "eof"}
+    for case in cases:
+        name = case.get("name")
+        steps = case.get("steps", [])
+        actions = {step.get("action") for step in steps}
+        if not isinstance(name, str) or not name or name in names or not 4 <= len(steps) <= 4096 or not {"open", "send", "receive", "eof"} <= actions:
+            raise ValueError("incomplete vector case")
+        names.add(name)
+        for step in steps:
+            if step.get("action") not in allowed or not isinstance(step.get("stream"), str) or not step["stream"]:
+                raise ValueError("unsupported vector step")
+            if step["action"] in ("send", "receive"):
+                bytes.fromhex(step["protobuf_hex"])
+
+
+def vectors(args):
+    names = ("rollup0-transcripts.json", "rollup0-limits-transcripts.json")
+    prefix = "crates/eez-control-rpc/conformance/"
+    args.directory.mkdir(parents=True, exist_ok=False)
+    resolve(args)
+    manifest = json.loads(args.output.read_text())
+    tree = api("git/trees/" + manifest["revision"] + "?recursive=1")
+    if tree.get("truncated"):
+        raise ValueError("upstream vector tree is incomplete")
+    available = {entry["path"]: entry["sha"] for entry in tree["tree"] if entry["type"] == "blob"}
+    found = [name for name in names if prefix + name in available]
+    snapshot = Path(__file__).resolve().parents[3] / "src/Nethermind/Nethermind.Eez.Test/Fixtures/streaming-conformance"
+    if len(found) == len(names):
+        source = {"source": "public-main", "revision": manifest["revision"], "core_revision": manifest["core_revision"], "files": {}}
+    elif found or api("pulls/205")["merged"]:
+        raise ValueError("selected upstream revision is missing the vector suite")
+    else:
+        source = json.loads((snapshot / "provenance.json").read_text())
+        source["source"] = "reviewed-pr-snapshot-before-merge"
+        print("PR205 vectors are not on public main yet; running the explicit reviewed snapshot " + sha(source["revision"]))
+    for name in names:
+        if found:
+            blob = sha(available[prefix + name])
+            content = api("git/blobs/" + blob)
+            if content["sha"] != blob or content["encoding"] != "base64" or not 0 < content["size"] <= 8 * 1024 * 1024:
+                raise ValueError("invalid bounded vector file")
+            data = base64.b64decode("".join(content["content"].split()), validate=True)
+            if len(data) != content["size"]:
+                raise ValueError("vector size differs from selected source")
+        else:
+            data = (snapshot / name).read_bytes()
+        if not 0 < len(data) <= 8 * 1024 * 1024:
+            raise ValueError("vector data exceeds its limit")
+        digest = hashlib.sha256(data).hexdigest()
+        if not found and digest != source["files"][name]:
+            raise ValueError("reviewed vector snapshot digest mismatch")
+        document = json.loads(data)
+        validate_vectors(document)
+        (args.directory / name).write_bytes(data)
+        source["files"][name] = digest
+    manifest["vectors"] = source
+    args.output.write_text(json.dumps(manifest, indent=2) + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser()
     modes = parser.add_subparsers(dest="mode", required=True)
@@ -136,8 +201,12 @@ def main():
     builder.add_argument("--manifest", type=Path, required=True)
     builder.add_argument("--output", type=Path, required=True)
     builder.add_argument("--checkout", type=Path, required=True)
+    vector = modes.add_parser("vectors")
+    vector.add_argument("--revision", default="")
+    vector.add_argument("--directory", type=Path, required=True)
+    vector.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    {"resolve": resolve, "runtime": runtime, "record-build": record_build}[args.mode](args)
+    {"resolve": resolve, "runtime": runtime, "record-build": record_build, "vectors": vectors}[args.mode](args)
 
 
 if __name__ == "__main__":
