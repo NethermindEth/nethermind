@@ -178,6 +178,9 @@ public sealed class BlockCodeCache : ICodeCache
 
         /// <summary>The latest transaction to use the code, or 0 if only code outside a transaction has.</summary>
         public long Transaction = transaction;
+
+        /// <summary>The stamp of the entry's latest queued copy.</summary>
+        public long Queued;
     }
 
     private sealed class Retained
@@ -220,8 +223,13 @@ public sealed class BlockCodeCache : ICodeCache
                 {
                     // Queuing would only keep alive an entry this queue cannot evict: one of a block cleared while the
                     // transaction ran, or of another cache. One a later transaction stamped since is that one's to queue.
+                    // One the transaction stamped again after another did is in the batch twice, and is queued once.
                     Entry entry = stamped[i];
-                    if (entry.Block == _block && entry.Transaction == transaction) _evictable.Add((entry, transaction));
+                    if (entry.Block == _block && entry.Transaction == transaction && entry.Queued != transaction)
+                    {
+                        entry.Queued = transaction;
+                        _evictable.Add((entry, transaction));
+                    }
                 }
             }
         }

@@ -288,6 +288,23 @@ public class BlockCodeCacheTests
     }
 
     [Test]
+    public void Code_a_transaction_stamps_twice_is_not_kept_alive_once_evicted()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: LargeCodeCharge);
+        WeakReference evicted;
+        using (cache.BeginTransaction())
+        {
+            evicted = LoadUnreferenced(cache);
+            using (cache.BeginTransaction()) Hit(cache, 0);
+            Hit(cache, 0);
+        }
+
+        using (cache.BeginTransaction()) Load(cache, count: 1, first: 1);
+
+        AssertCollected(evicted);
+    }
+
+    [Test]
     public void Clearing_the_block_keeps_the_process_wide_cache()
     {
         StaticCodeCache inner = new(maxCapacity: 64);
