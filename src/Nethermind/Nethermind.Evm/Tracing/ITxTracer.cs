@@ -46,6 +46,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// - <see cref="ReportActionEnd(ulong, Address, ReadOnlyMemory{byte})"/>
     /// - <see cref="ReportActionRevert"/>
     /// - <see cref="ReportActionError"/>
+    /// - <see cref="ReportPrecompileAccountRead"/>
     /// </remarks>
     bool IsTracingActions { get; }
 
@@ -409,6 +410,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// a new checkpoint, leaving the previous observation in effect. The default implementation drops it.
     /// </remarks>
     void ReportActionRemainingGas(ulong gas) { }
+
+    /// <summary>
+    /// Reports an account a precompile read, which no opcode names: EIP-8151 ecRecover reads the recovered account's code.
+    /// </summary>
+    /// <param name="address">The account read.</param>
+    /// <remarks>Depends on <see cref="IsTracingActions"/>. Reported only once the read happens, so a call that cannot
+    /// pay for the access reports nothing. The default implementation drops it.</remarks>
+    void ReportPrecompileAccountRead(Address address) { }
 
     /// <summary>
     /// Reports a CALL-family or CREATE operation that entered no frame: it failed its depth or balance precheck, which

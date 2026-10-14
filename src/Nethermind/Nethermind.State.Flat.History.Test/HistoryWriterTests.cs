@@ -177,6 +177,76 @@ public class HistoryWriterTests
         }
     }
 
+    [Test]
+    public void A_walk_whose_batch_fails_to_publish_leaves_nothing_pending_for_the_retry()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        PublishFailsOnceHistoryColumns failing = new(_historyColumns);
+        HistoryWriter writer = new(_db, failing, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> cleanColumns = new();
+        (HistoryAvailability cleanAvailability, HistoryRowFormat cleanRowFormat) = HistoryColumnsWriter.CreateSharedFormat(cleanColumns, config);
+        HistoryWriter clean = new(_db, cleanColumns, config, cleanAvailability, cleanRowFormat, LimboLogs.Instance, commitments: null);
+        clean.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))], storageChanges: [(AddrA, Slot1, 1)]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 200)), (AddrB, new Account(1, 1))], storageChanges: [(AddrA, Slot1, 2), (AddrA, Slot2, 7)]);
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 300))], storageChanges: [(AddrA, Slot1, 3)]);
+
+        failing.FailNextPublish = true;
+        Assert.That(() => writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None), Throws.InstanceOf<IOException>(),
+            "precondition: the walk fails while publishing its batch");
+        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+        clean.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (FlatHistoryColumns column in (ReadOnlySpan<FlatHistoryColumns>)[FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory])
+            {
+                Assert.That(_historyColumns.GetColumnDb(column).GetAll(ordered: true), Is.Not.Empty, $"precondition: the retry wrote {column} rows");
+                Assert.That(_historyColumns.GetColumnDb(column).GetAll(ordered: true), Is.EqualTo(cleanColumns.GetColumnDb(column).GetAll(ordered: true)).Using<KeyValuePair<byte[], byte[]>>(
+                        static (left, right) => left.Key.AsSpan().SequenceEqual(right.Key) && left.Value.AsSpan().SequenceEqual(right.Value)),
+                    $"{column}: a key the failed walk tracked must not reach the retry's rows");
+            }
+        }
+    }
+
+    private sealed class PublishFailsOnceHistoryColumns(IColumnsDb<FlatHistoryColumns> inner) : IColumnsDb<FlatHistoryColumns>
+    {
+        public bool FailNextPublish { get; set; }
+
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch() => new Batch(this, inner.StartWriteBatch());
+
+        public IDb GetColumnDb(FlatHistoryColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void SyncWal() => inner.SyncWal();
+        public void Dispose() { }
+
+        private sealed class Batch(PublishFailsOnceHistoryColumns owner, IColumnsWriteBatch<FlatHistoryColumns> inner) : IColumnsWriteBatch<FlatHistoryColumns>
+        {
+            public IWriteBatch GetColumnBatch(FlatHistoryColumns key) => inner.GetColumnBatch(key);
+
+            public void Clear() => inner.Clear();
+
+            public void Dispose()
+            {
+                if (!owner.FailNextPublish)
+                {
+                    inner.Dispose();
+                    return;
+                }
+
+                owner.FailNextPublish = false;
+                inner.Clear();
+                inner.Dispose();
+                throw new IOException("the disk is full");
+            }
+        }
+    }
+
     private sealed class ThrowingHistoryColumns(IColumnsDb<FlatHistoryColumns> inner, int throwOnAccountWrite) : IColumnsDb<FlatHistoryColumns>
     {
         public int AccountWrites { get; private set; }
@@ -1665,6 +1735,29 @@ public class HistoryWriterTests
         }
 
         _repository.RemoveAndReleaseInMemoryKnownState(StateAt(block), SnapshotTier.InMemoryBase);
+    }
+
+    [Test]
+    public void PendingV3Writes_AfterALongWalk_LetGoOfTheirCapacity_ButStayWarmForAShortOne()
+    {
+        HistoryWriter.PendingV3Writes pending = new(RlpWrapSlots);
+        for (int i = 0; i < 100_000; i++)
+        {
+            ValueHash256 key = Keccak.Compute(i.ToString()).ValueHash256;
+            pending.Storages[new HistoryWriter.PendingV3Writes.SlotKey(key, key)] = 1;
+        }
+
+        for (int i = 0; i < 1_000; i++) pending.Accounts[Keccak.Compute(i.ToString()).ValueHash256] = 1;
+
+        pending.Clear();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending.Storages, Is.Empty);
+            Assert.That(pending.Storages.EnsureCapacity(0), Is.LessThan(100_000), "a walk far longer than one persisted chunk must not hold its memory for the life of the process");
+            Assert.That(pending.Storages.EnsureCapacity(0), Is.GreaterThanOrEqualTo(1 << 16), "trimmed back to the limit, not to zero, so a chunk near it does not regrow the map from nothing");
+            Assert.That(pending.Accounts.EnsureCapacity(0), Is.GreaterThanOrEqualTo(1_000), "what a normal capture tracks stays allocated for the next one");
+        }
     }
 
     private void SeedGenesisFloor() => _writer.SeedGenesis([], StateAt(0).StateRoot);

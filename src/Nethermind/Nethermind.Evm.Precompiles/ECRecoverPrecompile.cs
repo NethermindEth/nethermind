@@ -21,7 +21,7 @@ public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(1);
 
-    public string Name => "ECREC";
+    public string Name => VirtualMachineStatics.EcRecoverPrecompileName;
 
     private const int InputLength = 128;
 
