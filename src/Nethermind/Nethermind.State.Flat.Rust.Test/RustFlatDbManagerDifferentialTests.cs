@@ -397,6 +397,10 @@ public partial class RustFlatDbManagerDifferentialTests
             // FlushCache persists up to the last committed state, so commit the canonical head last.
             if (!_headCommittedLast) AddCanonical(Head, RandomPlan());
             _step += " flush";
+            // The background persistence of the block just added races the flush, which seeds its walk from the
+            // finalized state rather than the head and so may persist bases where the forced persist takes a compacted
+            // snapshot, marking other nodes persisted: both managers persist what the head allows first.
+            Persist();
             WaitUntilTiersSettled();
             csharp.Arm.FlushCache(CancellationToken.None);
             rust.Arm.FlushCache(CancellationToken.None);
