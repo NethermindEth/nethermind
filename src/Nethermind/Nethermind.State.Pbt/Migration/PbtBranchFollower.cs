@@ -27,6 +27,7 @@ public sealed class PbtBranchFollower(
     IBlockTree blockTree,
     IBlockAccessListStore balStore,
     IPbtDbManager manager,
+    PbtPersistenceManager persistenceManager,
     PbtBalReplay replay,
     ISpecProvider specProvider,
     IMainProcessingContext mainProcessingContext,
@@ -116,13 +117,15 @@ public sealed class PbtBranchFollower(
     private bool Follow(BlockHeader target, CancellationToken token)
     {
         BlockHeader? finalized = blockTree.FindFinalizedHeader();
+        StateId persisted = persistenceManager.GetCurrentPersistedStateId();
         using ArrayPoolList<BlockHeader> path = new(1);
         BlockHeader cursor = target;
         while (!manager.HasStateForBlock(new StateId(cursor)))
         {
             token.ThrowIfCancellationRequested();
             if (IsBesideFinalized(cursor, finalized)) return true;
-            if (cursor.IsGenesis) return false;
+            // PBT holds no state below its persisted one, and none at all until the anchor is published.
+            if (persisted == StateId.PreGenesis || cursor.Number <= persisted.BlockNumber) return false;
             path.Add(cursor);
             cursor = blockTree.FindHeader(cursor.ParentHash!, BlockTreeLookupOptions.None)
                 ?? throw new InvalidOperationException($"The parent of {cursor.ToString(BlockHeader.Format.Short)} is unavailable.");

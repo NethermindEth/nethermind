@@ -152,6 +152,23 @@ public class MigrationBalFollowerTests
     }
 
     [Test]
+    public async Task Branch_follower_does_not_walk_the_ancestry_while_pbt_holds_no_state()
+    {
+        using Harness harness = new();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindFinalizedHeader().Returns(_ => harness.BlockTree.FindFinalizedHeader());
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(call => harness.BlockTree.FindHeader(call.Arg<Hash256>(), call.Arg<BlockTreeLookupOptions>(), call.Arg<ulong?>()));
+        await using PbtBranchFollower follower = harness.CreateBranchFollower(LimboLogs.Instance, blockTree);
+        follower.Start();
+        follower.Add(harness.Blocks["a3"].Header);
+
+        Assert.That(() => blockTree.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IBlockTree.FindFinalizedHeader)),
+            Is.GreaterThanOrEqualTo(2).After(10_000, 50), "the target is retried");
+        blockTree.DidNotReceive().FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
+    }
+
+    [Test]
     public async Task Cancellation_or_reorg_during_acquisition_discards_private_replay([Values] bool reorg)
     {
         using Harness harness = new();
@@ -324,8 +341,8 @@ public class MigrationBalFollowerTests
 
         private void Close() => _pbt.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
-        public PbtBranchFollower CreateBranchFollower(ILogManager logManager) =>
-            new(_blockTree, Store, _pbt.Manager, Replay, SpecProvider, Substitute.For<IMainProcessingContext>(), logManager);
+        public PbtBranchFollower CreateBranchFollower(ILogManager logManager, IBlockTree? blockTree = null) =>
+            new(blockTree ?? _blockTree, Store, _pbt.Manager, _pbt.PersistenceManager, Replay, SpecProvider, Substitute.For<IMainProcessingContext>(), logManager);
 
         public PbtBalFollower CreateFollower(IBlockTree blockTree, BalFetcher fetcher, IBlockAccessListStore store) =>
             new(blockTree, fetcher, store, _pbt.Manager, Replay, SpecProvider, LimboLogs.Instance);
