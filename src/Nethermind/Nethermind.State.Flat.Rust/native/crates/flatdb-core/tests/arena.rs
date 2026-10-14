@@ -2,8 +2,8 @@
 //! `ArenaManagerForgetOnAdviseTests`, `ArenaMetricsTests` and `ArenaReclaimPunchHoleTests`, and the blob manager.
 //!
 //! The eviction-queue cases are timing-free: instead of polling the advisor thread they dispose the manager, which
-//! dispatches everything still queued before returning. `PersistedSnapshotLoaderTests` needs the loader and is ported
-//! with it.
+//! dispatches everything still queued before returning. `PersistedSnapshotLoaderTests` is ported with the loader, in
+//! `persisted_repository.rs`.
 
 mod common;
 

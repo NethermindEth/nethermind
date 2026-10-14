@@ -5,10 +5,15 @@
 //! Like the C# statics, the gauges are adjusted by deltas at every add and remove site, so every component of one
 //! manager shares one [`FlatStats`]. Times are observed in nanoseconds, which are `Stopwatch` ticks on Linux.
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender, TrySendError};
+use parking_lot::Mutex;
+
+use crate::snapshot::SnapshotTier;
 
 /// The gauges and counters, one atomic per `Metrics` property, readable in place by the C# metrics bridge.
 #[repr(C)]
@@ -93,6 +98,45 @@ pub struct TierCounters {
     pub catalog_puts: AtomicI64,
 }
 
+/// The metrics of the persisted-snapshot tier: its counters and its gauges labelled by tier and size.
+#[derive(Debug, Default)]
+pub struct TierStats {
+    pub counters: Arc<TierCounters>,
+    pub gauges: TierGauges,
+}
+
+/// The gauges of one `{tier, size}` label, `size` being the blocks a snapshot spans.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TierGaugeRow {
+    /// `Metrics.PersistedSnapshotCount`: snapshots in the tier's bucket.
+    pub count: i64,
+    /// `Metrics.PersistedSnapshotMemory`: their table bytes.
+    pub memory: i64,
+    /// `Metrics.ActivePersistedSnapshotCount`: live snapshot objects, bucket entries and their twins included.
+    pub active: i64,
+}
+
+/// The `{tier, size}`-labelled gauges, moved by deltas as C# moves its `ConcurrentDictionary` entries.
+#[derive(Debug, Default)]
+pub struct TierGauges {
+    rows: Mutex<HashMap<(SnapshotTier, i64), TierGaugeRow>>,
+}
+
+impl TierGauges {
+    pub fn add(&self, tier: SnapshotTier, size: i64, delta: TierGaugeRow) {
+        let mut rows = self.rows.lock();
+        let row = rows.entry((tier, size)).or_default();
+        row.count += delta.count;
+        row.memory += delta.memory;
+        row.active += delta.active;
+    }
+
+    /// The row of a label, zero when it was never moved.
+    pub fn row(&self, tier: SnapshotTier, size: i64) -> TierGaugeRow {
+        self.rows.lock().get(&(tier, size)).copied().unwrap_or_default()
+    }
+}
+
 /// The entry counts of the last content frozen under each usage, which size the maps of the next one.
 #[derive(Debug, Default)]
 pub(crate) struct ContentHints {
@@ -139,6 +183,8 @@ pub enum Histogram {
     SnapshotBundleBlockNumberDepth = 4,
     /// `Metrics.InMemorySlotFilterBuildTime`, nanoseconds.
     InMemorySlotFilterBuildTime = 5,
+    /// `Metrics.PersistedSnapshotSize`, table bytes of a converted base.
+    PersistedSnapshotSize = 7,
 }
 
 /// The label of an observation, with the id C# maps back to its `StringLabel`.

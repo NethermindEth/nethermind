@@ -21,7 +21,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, TrySendError};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 
 use super::arena_file::ArenaFile;
 use super::arena_reservation::ArenaReservation;
@@ -29,6 +29,7 @@ use super::arena_writer::ArenaWriter;
 use super::page_tracker::PageResidencyTracker;
 use super::pool_set::PoolSet;
 use crate::persisted::codec::{CatalogEntry, SnapshotLocation};
+use crate::persisted::lock_rank::{self, LockRank, Ranked};
 use crate::persisted::sys::{PunchHoleOutcome, os_page_size};
 use crate::persisted::{TierError, TierResult};
 use crate::stats::TierCounters;
@@ -218,7 +219,7 @@ impl ArenaManager {
     /// every file. Released reservations stop reclaiming, so the files of live snapshots survive for the next session.
     pub fn dispose(&self) {
         {
-            let mut pool = self.shared.pool.lock();
+            let mut pool = self.shared.lock_pool();
             if pool.disposed {
                 return;
             }
@@ -241,7 +242,7 @@ impl ArenaManager {
                 .store(advisor.refreshed.load(Ordering::Relaxed), Ordering::Relaxed);
         }
 
-        let arenas = std::mem::take(&mut self.shared.pool.lock().arenas);
+        let arenas = std::mem::take(&mut self.shared.lock_pool().arenas);
         for file in arenas.values() {
             self.shared.report_removed(file);
         }
@@ -259,8 +260,12 @@ impl Drop for ArenaManager {
 }
 
 impl ArenaShared {
+    fn lock_pool(&self) -> Ranked<MutexGuard<'_, ArenaPool>> {
+        lock_rank::lock(LockRank::ArenaPool, || self.pool.lock())
+    }
+
     fn initialize(&self, entries: &[CatalogEntry]) -> io::Result<BTreeSet<i32>> {
-        let mut pool = self.pool.lock();
+        let mut pool = self.lock_pool();
         for entry in std::fs::read_dir(&self.base_path)? {
             let entry = entry?;
             let name = entry.file_name();
@@ -317,7 +322,7 @@ impl ArenaShared {
     }
 
     fn create_writer(self: &Arc<Self>, estimated_size: i64, small: bool) -> io::Result<ArenaWriter> {
-        let mut pool = self.pool.lock();
+        let mut pool = self.lock_pool();
         let dedicated = estimated_size >= self.config.dedicated_arena_threshold_bytes;
         let file = if dedicated {
             self.create_arena_file(&mut pool, estimated_size, true, small)?
@@ -421,7 +426,7 @@ impl ArenaShared {
 
     /// `OnWriteCompleted`: publishes the frontier of a completed write under the lock that `mark_dead` reads it under.
     pub(super) fn on_write_completed(&self, file: &Arc<ArenaFile>, new_frontier: i64, has_headroom: bool) {
-        let mut pool = self.pool.lock();
+        let mut pool = self.lock_pool();
         file.writer_active.store(false, Ordering::Relaxed);
         file.frontier.store(new_frontier, Ordering::Release);
         if has_headroom {
@@ -434,7 +439,7 @@ impl ArenaShared {
     /// `OnWriteCancelledShared`: the frontier did not move, so the file goes back to its pool, unless every byte of it
     /// was released while the writer held it.
     pub(super) fn on_write_cancelled_shared(&self, file: &Arc<ArenaFile>) {
-        let mut pool = self.pool.lock();
+        let mut pool = self.lock_pool();
         file.writer_active.store(false, Ordering::Relaxed);
         let frontier = file.frontier();
         if !pool.disposed && frontier > 0 && file.dead_bytes.load(Ordering::Relaxed) >= frontier {
@@ -446,7 +451,7 @@ impl ArenaShared {
 
     /// `OnWriteCancelledDedicated`: forgets the file, which its writer's lease then deletes.
     pub(super) fn on_write_cancelled_dedicated(&self, file: &ArenaFile) {
-        let removed = self.pool.lock().arenas.remove(&file.id());
+        let removed = self.lock_pool().arenas.remove(&file.id());
         self.report_removed(file);
         drop(removed);
     }
@@ -455,7 +460,7 @@ impl ArenaShared {
     /// whether the file survives; a disposed manager keeps every file, so it reports none surviving and nothing is
     /// reclaimed.
     pub(super) fn mark_dead(&self, file: &Arc<ArenaFile>, dead_size: i64) -> bool {
-        let mut pool = self.pool.lock();
+        let mut pool = self.lock_pool();
         if pool.disposed {
             return false;
         }
@@ -572,7 +577,7 @@ impl ArenaShared {
     }
 
     fn dispatch_inline(&self, advisor: &Advisor, arena_id: i32, page: u32) {
-        let Some(arena) = self.pool.lock().arenas.get(&arena_id).cloned() else {
+        let Some(arena) = self.lock_pool().arenas.get(&arena_id).cloned() else {
             return;
         };
         let page_size = os_page_size() as i64;
@@ -589,7 +594,7 @@ impl ArenaShared {
                 return;
             };
             // The lease keeps the mapping alive for the read.
-            let Some(arena) = self.pool.lock().arenas.get(&arena_id).cloned() else {
+            let Some(arena) = self.lock_pool().arenas.get(&arena_id).cloned() else {
                 continue;
             };
             let offset = i64::from(page) * os_page_size() as i64;

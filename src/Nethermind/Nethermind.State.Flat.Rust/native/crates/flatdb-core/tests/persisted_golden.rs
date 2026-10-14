@@ -5,12 +5,12 @@
 //! Every table the Rust tier builds or merges must hash to the C# one, every blob file must match the C# file byte for
 //! byte, and every bloom must report the C# key count and size, after every step; every read through the stack must
 //! return what C# returned. The C# tables and blob runs the vectors carry inline are read back with the Rust readers.
-//! Arena placement and the catalog rows' locations are the storage layer's and are not replayed here: the rows are
-//! decoded and re-encoded, and their sizes checked against the tables.
-//!
-//! The model of the tier mirrors the C# calls the generator makes: the repository's persisted walks
+//! In that replay the tier is a model of the C# calls the generator makes: the repository's persisted walks
 //! (`AssemblePersistedSnapshotsForCompaction`, `AssembleSnapshots`), `ShareBloomAcrossRange`, the blob manager's choice
-//! of file, and the loader's bloom rebuild.
+//! of file, and the loader's bloom rebuild; the catalog rows are decoded and re-encoded, and their sizes checked.
+//!
+//! The scenarios are then replayed through the storage tier itself, files, loader and buckets, which must leave the C#
+//! catalog rows and the C# files byte for byte, arena placement included.
 
 mod common;
 
@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use common::persisted::{Blobs, MemBlobs, MemSnapshot, convert, merge, new_blobs, snapshot_from_records};
+use common::persisted::{Blobs, MemBlobs, MemSnapshot, StorageTier, convert, merge, new_blobs, snapshot_from_records};
 use common::{hex, hex20, hex32, to_hex};
 use flatdb_core::bloom::BloomFilter;
 use flatdb_core::persisted::bloom_keys;
@@ -31,10 +31,14 @@ use flatdb_core::persisted::reader::{read_blob_range, read_ref_ids, resolve_trie
 use flatdb_core::persisted::scanner::Scanner;
 use flatdb_core::persisted::sorted::enumerator::SortedTableEnumerator;
 use flatdb_core::persisted::sorted::table_reader;
-use flatdb_core::persisted::stack::PersistedSnapshotStack;
+use flatdb_core::persisted::stack::{PersistedLayer, PersistedSnapshotStack};
+use flatdb_core::persisted::storage::arena_manager::ArenaConfig;
+use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv};
 use flatdb_core::persisted::storage::pool_set::PoolSet;
+use flatdb_core::persisted::{PersistedTierConfig, TierResult};
 use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::snapshot::{Snapshot, SnapshotTier};
+use flatdb_core::stats::TierStats;
 use flatdb_core::types::{Account, StateId, TreePath, U256};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -649,57 +653,65 @@ impl Tier {
     }
 
     fn reads(&self, step: &Value) -> Result<()> {
-        let mut stack = PersistedSnapshotList::empty();
-        for layer in step["stack"].as_array().unwrap() {
-            let (from, to) = (state_id(&layer["from"]), state_id(&layer["to"]));
-            let snapshot = self
-                .get(tier_of(&layer["tier"]), &to)
-                .filter(|snapshot| snapshot.from == from)
-                .ok_or_else(|| format!("no stack snapshot {from:?} -> {to:?}"))?;
-            stack.push(snapshot.clone());
-        }
-        let in_memory = step["inMemory"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|block| {
-                snapshot_from_records(
-                    state_id(&block["from"]),
-                    state_id(&block["to"]),
-                    &hex(block["records"].as_str().unwrap_or_default()),
-                )
-            })
-            .collect::<Vec<_>>();
-        let bundle = Bundle {
-            in_memory,
-            stack: PersistedSnapshotStack::new(stack),
-        };
-
-        for expected in step["expect"].as_array().unwrap() {
-            let address = || hex20(expected["address"].as_str().unwrap());
-            let actual = match expected["op"].as_str().unwrap() {
-                "getAccount" => account_json(bundle.get_account(&address())),
-                "selfDestructIdx" => Value::from(bundle.self_destruct_index(&address())),
-                "getSlot" => {
-                    let slot = U256::from_be_bytes(&hex32(expected["slot"].as_str().unwrap()));
-                    let index = expected["selfDestructIdx"].as_i64().unwrap() as isize;
-                    bundle
-                        .get_slot(&address(), &slot, index)
-                        .map_or(Value::Null, |value| Value::from(to_hex(&value.to_be_bytes())))
-                }
-                "loadStateRlp" => rlp_json(bundle.load_state_rlp(&tree_path(&expected["path"]))),
-                "loadStorageRlp" => rlp_json(bundle.load_storage_rlp(
-                    &hex32(expected["addressHash"].as_str().unwrap()),
-                    &tree_path(&expected["path"]),
-                )),
-                op => return Err(format!("unknown read {op}")),
-            };
-            if !same_result(&actual, &expected["result"]) {
-                return Err(format!("{expected}: Rust read {actual}"));
-            }
-        }
-        Ok(())
+        check_reads(step, |tier, from, to| {
+            self.get(tier, to).filter(|snapshot| snapshot.from == *from).cloned()
+        })
     }
+}
+
+/// A `reads` step through a bundle over the persisted snapshots `layer` finds by tier, `from` and `to`.
+fn check_reads<S: PersistedLayer>(
+    step: &Value,
+    layer: impl Fn(SnapshotTier, &StateId, &StateId) -> Option<Arc<S>>,
+) -> Result<()> {
+    let mut stack = PersistedSnapshotList::empty();
+    for layer_value in step["stack"].as_array().unwrap() {
+        let (from, to) = (state_id(&layer_value["from"]), state_id(&layer_value["to"]));
+        let snapshot = layer(tier_of(&layer_value["tier"]), &from, &to)
+            .ok_or_else(|| format!("no stack snapshot {from:?} -> {to:?}"))?;
+        stack.push(snapshot);
+    }
+    let in_memory = step["inMemory"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|block| {
+            snapshot_from_records(
+                state_id(&block["from"]),
+                state_id(&block["to"]),
+                &hex(block["records"].as_str().unwrap_or_default()),
+            )
+        })
+        .collect::<Vec<_>>();
+    let bundle = Bundle {
+        in_memory,
+        stack: PersistedSnapshotStack::new(stack),
+    };
+
+    for expected in step["expect"].as_array().unwrap() {
+        let address = || hex20(expected["address"].as_str().unwrap());
+        let actual = match expected["op"].as_str().unwrap() {
+            "getAccount" => account_json(bundle.get_account(&address())),
+            "selfDestructIdx" => Value::from(bundle.self_destruct_index(&address())),
+            "getSlot" => {
+                let slot = U256::from_be_bytes(&hex32(expected["slot"].as_str().unwrap()));
+                let index = expected["selfDestructIdx"].as_i64().unwrap() as isize;
+                bundle
+                    .get_slot(&address(), &slot, index)
+                    .map_or(Value::Null, |value| Value::from(to_hex(&value.to_be_bytes())))
+            }
+            "loadStateRlp" => rlp_json(bundle.load_state_rlp(&tree_path(&expected["path"]))),
+            "loadStorageRlp" => rlp_json(bundle.load_storage_rlp(
+                &hex32(expected["addressHash"].as_str().unwrap()),
+                &tree_path(&expected["path"]),
+            )),
+            op => return Err(format!("unknown read {op}")),
+        };
+        if !same_result(&actual, &expected["result"]) {
+            return Err(format!("{expected}: Rust read {actual}"));
+        }
+    }
+    Ok(())
 }
 
 const PERSISTED_TIERS_WIDEST_FIRST: [SnapshotTier; 4] = [
@@ -719,12 +731,12 @@ fn first_difference(rust: &[u8], csharp: &[u8]) -> String {
 
 /// The C# `ReadOnlySnapshotBundle` reads the vectors were taken through: the in-memory snapshots newest first, then
 /// the persisted stack, over an empty persistence.
-struct Bundle {
+struct Bundle<S> {
     in_memory: Vec<Snapshot>,
-    stack: PersistedSnapshotStack<MemSnapshot>,
+    stack: PersistedSnapshotStack<S>,
 }
 
-impl Bundle {
+impl<S: PersistedLayer> Bundle<S> {
     fn get_account(&self, address: &[u8; 20]) -> Option<Account> {
         if let Some(account) = self
             .in_memory
@@ -865,6 +877,261 @@ fn replay(vector: &Value) -> Result<()> {
         outcome
             .and_then(|()| match step.get("state") {
                 Some(state) => tier.check_state(state),
+                None => Ok(()),
+            })
+            .map_err(|error| format!("step {index} ({kind}): {error}"))?;
+    }
+    Ok(())
+}
+
+/// Every scenario through the storage tier: arena and blob files in a fresh directory, the loader converting and
+/// reopening, the repository's buckets, an in-memory catalog. After every step the catalog rows, every file of the
+/// tier (path, length, SHA-256) and every snapshot's table, blob range and bloom are the C# ones, and every read
+/// returns what C# returned.
+#[test]
+fn persisted_golden_vectors_replay_through_the_storage_tier() {
+    let failures = golden_files()
+        .iter()
+        .filter_map(|file| {
+            let vector: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+            replay_storage(&vector)
+                .err()
+                .map(|error| format!("{}: {error}", file.file_name().unwrap().to_string_lossy()))
+        })
+        .collect::<Vec<_>>();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+struct StorageReplay {
+    directory: tempfile::TempDir,
+    catalog_kv: MemCatalogKv,
+    stats: Arc<TierStats>,
+    arena_config: ArenaConfig,
+    config: PersistedTierConfig,
+    schedule: CompactionSchedule,
+    tier: Option<StorageTier>,
+}
+
+impl StorageReplay {
+    fn new(config: &Value) -> Result<Self> {
+        let mut replay = Self {
+            directory: tempfile::tempdir().unwrap(),
+            catalog_kv: MemCatalogKv::default(),
+            stats: Arc::default(),
+            arena_config: ArenaConfig {
+                arena_file_size_bytes: config["arenaFileSizeBytes"].as_i64().unwrap(),
+                dedicated_arena_threshold_bytes: config["dedicatedArenaThresholdBytes"].as_i64().unwrap(),
+                page_cache_bytes: config["arenaPageCacheBytes"].as_i64().unwrap(),
+                punch_hole_on_reclaim: config["punchHoleOnReclaim"].as_bool().unwrap(),
+            },
+            config: PersistedTierConfig {
+                bloom_bits_per_key: config["bloomBitsPerKey"].as_f64().unwrap(),
+                validate_persisted_snapshot: true,
+                processor_count: 4,
+            },
+            schedule: CompactionSchedule::new(
+                config["compactSize"].as_u64().unwrap(),
+                config["persistedSnapshotMaxCompactSize"].as_u64().unwrap(),
+                config["compactionOffset"].as_u64().unwrap(),
+            )
+            .unwrap(),
+            tier: None,
+        };
+        replay.tier = Some(replay.open().map_err(|error| error.to_string())?);
+        Ok(replay)
+    }
+
+    fn open(&self) -> TierResult<StorageTier> {
+        StorageTier::open(
+            self.directory.path(),
+            &self.catalog_kv,
+            self.arena_config,
+            self.config,
+            self.stats.clone(),
+        )
+    }
+
+    fn tier(&self) -> &StorageTier {
+        self.tier.as_ref().expect("a tier is open")
+    }
+
+    fn convert(&self, step: &Value) -> Result<()> {
+        let (from, to) = (state_id(&step["from"]), state_id(&step["to"]));
+        let snapshot = snapshot_from_records(from, to, &hex(step["records"].as_str().unwrap_or_default()));
+        let estimate = estimate_size(&snapshot);
+        if estimate != step["estimate"].as_i64().unwrap() {
+            return Err(format!("estimate {estimate}, C# {}", step["estimate"]));
+        }
+        self.tier()
+            .loader
+            .convert_and_register(&snapshot)
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    /// The tier shut down and opened again; `Some(error)` when the load refuses the catalog.
+    fn reload(&mut self) -> Option<String> {
+        self.tier.take().expect("a tier is open").shut_down();
+        match self.open() {
+            Ok(tier) => {
+                self.tier = Some(tier);
+                None
+            }
+            Err(error) => Some(error.to_string()),
+        }
+    }
+
+    fn check_state(&self, state: &Value) -> Result<()> {
+        let rows = self
+            .catalog_kv
+            .rows()
+            .iter()
+            .map(|(key, value)| serde_json::json!([to_hex(key), to_hex(value)]))
+            .collect::<Vec<_>>();
+        if Value::from(rows) != state["catalog"] {
+            return Err("the catalog rows differ from C#".to_owned());
+        }
+
+        let files = tier_files(&self.directory.path().join("persistedSnapshot"));
+        if Value::from(files.clone()) != state["files"] {
+            return Err(format!("files {files:?}, C# {}", state["files"]));
+        }
+
+        let repository = &self.tier().repository;
+        let expected_snapshots = state["snapshots"].as_array().unwrap();
+        for expected in expected_snapshots {
+            let value = self
+                .catalog_kv
+                .rows()
+                .into_iter()
+                .find(|(key, _)| to_hex(key) == expected["key"].as_str().unwrap())
+                .ok_or("a snapshot without a catalog row")?
+                .1;
+            let entry = codec::decode_value(&value.try_into().unwrap()).map_err(|error| error.to_string())?;
+            let label = format!(
+                "{:?} {} -> {}",
+                entry.tier, entry.from.block_number, entry.to.block_number
+            );
+            let snapshot = repository
+                .try_lease_persisted_state(&entry.to, entry.tier)
+                .filter(|snapshot| snapshot.from() == entry.from)
+                .ok_or_else(|| format!("{label}: not in the repository"))?;
+            let table = snapshot.reservation().bytes();
+            if snapshot.location() != entry.location {
+                return Err(format!(
+                    "{label}: at {:?}, the catalog says {:?}",
+                    snapshot.location(),
+                    entry.location
+                ));
+            }
+            if to_hex(&Sha256::digest(table)) != expected["table"].as_str().unwrap() {
+                let detail = expected["tableHex"]
+                    .as_str()
+                    .map(|csharp| first_difference(table, &hex(csharp)))
+                    .unwrap_or_default();
+                return Err(format!("{label}: the table differs from C#{detail}"));
+            }
+            if snapshot.blob_range() != blob_range_of(&expected["blobRange"]) {
+                return Err(format!("{label}: blob range {:?}", snapshot.blob_range()));
+            }
+            let filter = snapshot.persisted_bloom().filter();
+            let bloom = (filter.count() as i64, filter.data_bytes() as i64);
+            let csharp = (
+                expected["bloomCount"].as_i64().unwrap(),
+                expected["bloomDataBytes"].as_i64().unwrap(),
+            );
+            if bloom != csharp {
+                return Err(format!("{label}: bloom (count, bytes) {bloom:?}, C# {csharp:?}"));
+            }
+        }
+        if repository.persisted_snapshot_count() != expected_snapshots.len() as i64 {
+            return Err(format!(
+                "{} snapshots, C# lists {}",
+                repository.persisted_snapshot_count(),
+                expected_snapshots.len()
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Every file under `directory` as `[path, length, sha256]`, in path order.
+fn tier_files(directory: &Path) -> Vec<Value> {
+    let mut paths = Vec::new();
+    let mut pending = vec![directory.to_owned()];
+    while let Some(current) = pending.pop() {
+        for entry in std::fs::read_dir(&current).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                paths.push(path);
+            }
+        }
+    }
+    let mut files = paths
+        .into_iter()
+        .map(|path| {
+            let bytes = std::fs::read(&path).unwrap();
+            let relative = path.strip_prefix(directory).unwrap().to_string_lossy().into_owned();
+            (relative, bytes.len(), to_hex(&Sha256::digest(&bytes)))
+        })
+        .collect::<Vec<_>>();
+    files.sort();
+    files
+        .into_iter()
+        .map(|(path, length, sha256)| serde_json::json!([path, length, sha256]))
+        .collect()
+}
+
+fn replay_storage(vector: &Value) -> Result<()> {
+    let mut replay = StorageReplay::new(&vector["config"])?;
+    for (index, step) in vector["steps"].as_array().unwrap().iter().enumerate() {
+        let kind = step["kind"].as_str().unwrap();
+        let compacted = |done: bool| {
+            if done {
+                Ok(())
+            } else {
+                Err("the window holds one snapshot".to_owned())
+            }
+        };
+        let outcome = match kind {
+            "convert" => replay.convert(step),
+            "compact" => compacted(replay.tier().compact(
+                &replay.schedule,
+                &state_id(&step["to"]),
+                step["persistedBlock"].as_u64().unwrap(),
+            )),
+            "compactSized" => compacted(replay.tier().compact_sized(&replay.schedule, &state_id(&step["to"]))),
+            "reload" => match (replay.reload(), step["error"].as_str()) {
+                (Some(error), Some(expected)) if error == expected => return Ok(()),
+                (Some(error), _) => Err(error),
+                (None, Some(expected)) => Err(format!("the reload succeeded where C# refused: {expected}")),
+                (None, None) => Ok(()),
+            },
+            "catalogPut" => {
+                replay
+                    .catalog_kv
+                    .put(
+                        &hex(step["key"].as_str().unwrap()),
+                        &hex(step["value"].as_str().unwrap()),
+                    )
+                    .unwrap();
+                Ok(())
+            }
+            "reads" => {
+                let repository = &replay.tier().repository;
+                check_reads(step, |tier, from, to| {
+                    repository
+                        .try_lease_persisted_state(to, tier)
+                        .filter(|snapshot| snapshot.from() == *from)
+                })
+            }
+            other => Err(format!("unknown step {other}")),
+        };
+        outcome
+            .and_then(|()| match step.get("state") {
+                Some(state) => replay.check_state(state),
                 None => Ok(()),
             })
             .map_err(|error| format!("step {index} ({kind}): {error}"))?;

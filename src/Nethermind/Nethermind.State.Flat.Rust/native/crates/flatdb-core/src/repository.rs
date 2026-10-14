@@ -1,17 +1,18 @@
-//! Port of the in-memory tier of `Nethermind.State.Flat/SnapshotRepository.cs` (`ISnapshotRepository.cs`): the base and
-//! compacted snapshots not yet persisted, the block-ordered set of known states, and the backward walks over the
-//! snapshot graph that assemble read chains, compaction inputs and persist candidates.
+//! Port of `Nethermind.State.Flat/SnapshotRepository.cs` (`ISnapshotRepository.cs`): the base and compacted snapshots
+//! not yet persisted, the block-ordered set of known states, the persisted-snapshot tier of long finality (four
+//! [`PersistedSnapshotBucket`]s over one catalog), and the backward walks over the snapshot graph that assemble read
+//! chains, compaction inputs and persist candidates.
 //!
-//! The persisted-snapshot tier (`PersistedSnapshotBucket`s over the arena, blob and catalog stores) belongs to long
-//! finality and is not ported yet. The walks keep the C# edge priorities, persisted tiers included, and the driver
-//! keeps the rule that a walk crossing into the persisted tier never returns to memory;
-//! `SnapshotRepository::try_lease_edge` is the one place that tier plugs in, and finds nothing there until it exists.
-//! With long finality off C# never fills that tier, so every result here matches C#.
+//! A repository built with [`SnapshotRepository::new`] or [`SnapshotRepository::with_stats`] has no persisted tier:
+//! long finality is off, every persisted edge is absent and every result matches C#, which never fills that tier then.
+//! The walks keep the C# edge priorities, persisted tiers included, and the driver keeps the rule that a walk crossing
+//! into the persisted tier never returns to memory.
 //!
 //! Locking mirrors C#: each in-memory tier is one map behind its own lock (a `ConcurrentDictionary` there), the ordered
 //! state set has its own reader-writer lock, the last committed state its own lock, and the finality cache its own,
-//! which [`SnapshotRepository::remove_unreachable_from`] holds for its whole pass. No map lock is held while another
-//! lock is taken, except that pruning the ordered set reads the base map under the set's write lock, as C# does.
+//! which [`SnapshotRepository::remove_unreachable_from`] holds for its whole pass; each bucket has its own lock. No map
+//! lock is held while another lock is taken, except that pruning the ordered set reads the base map under the set's
+//! write lock, as C# does.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
@@ -21,8 +22,13 @@ use hashbrown::hash_map::Entry;
 use hashbrown::{HashMap, HashSet};
 use parking_lot::{Mutex, RwLock};
 
+use crate::persisted::TierResult;
+use crate::persisted::bloom_keys::PersistedBloom;
+use crate::persisted::bucket::PersistedSnapshotBucket;
+use crate::persisted::snapshot::PersistedSnapshot;
+use crate::persisted::storage::catalog::SnapshotCatalog;
 use crate::snapshot::{Snapshot, SnapshotTier};
-use crate::stats::FlatStats;
+use crate::stats::{FlatStats, TierStats};
 use crate::types::{Hash256, StateId};
 
 /// The ids of a block range in a walk batch, `PruneBatchSize`.
@@ -41,16 +47,68 @@ pub trait StateHeaderProvider: Send + Sync {
     fn finalized_state_root(&self, block_number: u64) -> Option<Hash256>;
 }
 
-/// The snapshots a backward walk assembled, oldest first. Port of `AssembledSnapshotResult`, whose persisted list
-/// stays empty until the persisted tier exists.
+/// The snapshots a backward walk assembled, oldest first: the persisted ones, then the in-memory ones above them. Port
+/// of `AssembledSnapshotResult`.
 #[derive(Default)]
 pub struct AssembledSnapshots {
     pub in_memory: Vec<Arc<Snapshot>>,
+    pub persisted: Vec<Arc<PersistedSnapshot>>,
 }
 
 impl AssembledSnapshots {
     pub fn snapshot_count(&self) -> usize {
-        self.in_memory.len()
+        self.in_memory.len() + self.persisted.len()
+    }
+}
+
+/// A leased edge of the snapshot graph, in memory or persisted.
+pub enum Edge {
+    InMemory(Arc<Snapshot>),
+    Persisted(Arc<PersistedSnapshot>),
+}
+
+impl Edge {
+    pub fn from(&self) -> StateId {
+        match self {
+            Edge::InMemory(snapshot) => snapshot.from(),
+            Edge::Persisted(snapshot) => snapshot.from(),
+        }
+    }
+}
+
+/// The four buckets of the persisted tier.
+struct PersistedBuckets {
+    base: PersistedSnapshotBucket,
+    small_compacted: PersistedSnapshotBucket,
+    large_compacted: PersistedSnapshotBucket,
+    compact_sized: PersistedSnapshotBucket,
+}
+
+impl PersistedBuckets {
+    /// `BucketFor`.
+    ///
+    /// # Panics
+    /// On an in-memory tier, as C# throws `ArgumentOutOfRangeException`.
+    fn bucket_for(&self, tier: SnapshotTier) -> &PersistedSnapshotBucket {
+        match tier {
+            SnapshotTier::PersistedBase => &self.base,
+            SnapshotTier::PersistedSmallCompacted => &self.small_compacted,
+            SnapshotTier::PersistedLargeCompacted => &self.large_compacted,
+            SnapshotTier::PersistedCompactSized => &self.compact_sized,
+            SnapshotTier::InMemoryBase | SnapshotTier::InMemoryCompacted => {
+                panic!("Only persisted tiers are valid here, got {tier:?}.")
+            }
+        }
+    }
+
+    /// The buckets in the order C# visits them.
+    fn all(&self) -> [&PersistedSnapshotBucket; 4] {
+        [
+            &self.base,
+            &self.small_compacted,
+            &self.large_compacted,
+            &self.compact_sized,
+        ]
     }
 }
 
@@ -69,6 +127,8 @@ pub struct SnapshotRepository {
     /// found once is kept until its height is pruned.
     finality_cache: Mutex<BTreeMap<u64, Hash256>>,
     stats: Arc<FlatStats>,
+    /// `None` with long finality off.
+    persisted: Option<PersistedBuckets>,
 }
 
 impl SnapshotRepository {
@@ -79,6 +139,31 @@ impl SnapshotRepository {
 
     /// A repository updating the snapshot gauges of `stats`, which the compactor also records into.
     pub fn with_stats(finalized_state_provider: Arc<dyn StateHeaderProvider>, stats: Arc<FlatStats>) -> Self {
+        Self::create(finalized_state_provider, stats, None)
+    }
+
+    /// A repository with a persisted tier, whose buckets write and remove their rows in `catalog`.
+    pub fn with_persisted_tier(
+        finalized_state_provider: Arc<dyn StateHeaderProvider>,
+        stats: Arc<FlatStats>,
+        catalog: Arc<SnapshotCatalog>,
+        tier_stats: Arc<TierStats>,
+    ) -> Self {
+        let bucket = |tier| PersistedSnapshotBucket::new(tier, catalog.clone(), tier_stats.clone());
+        let buckets = PersistedBuckets {
+            base: bucket(SnapshotTier::PersistedBase),
+            small_compacted: bucket(SnapshotTier::PersistedSmallCompacted),
+            large_compacted: bucket(SnapshotTier::PersistedLargeCompacted),
+            compact_sized: bucket(SnapshotTier::PersistedCompactSized),
+        };
+        Self::create(finalized_state_provider, stats, Some(buckets))
+    }
+
+    fn create(
+        finalized_state_provider: Arc<dyn StateHeaderProvider>,
+        stats: Arc<FlatStats>,
+        persisted: Option<PersistedBuckets>,
+    ) -> Self {
         Self {
             finalized_state_provider,
             base: RwLock::default(),
@@ -91,6 +176,7 @@ impl SnapshotRepository {
             last_committed_state_id: Mutex::new(None),
             finality_cache: Mutex::default(),
             stats,
+            persisted,
         }
     }
 
@@ -223,9 +309,13 @@ impl SnapshotRepository {
         self.get_states_in_range(0, block_number)
     }
 
-    /// The greatest known state.
+    /// The greatest known state, persisted tips included: they are not in the ordered set, and after a reorg the
+    /// persisted tier can hold an orphan above the in-memory tip.
     pub fn get_last_snapshot_id(&self) -> Option<StateId> {
-        self.sorted_snapshot_state_ids.read().last().copied()
+        let in_memory = self.sorted_snapshot_state_ids.read().last().copied();
+        self.persisted_buckets()
+            .filter_map(PersistedSnapshotBucket::max)
+            .fold(in_memory, |max, bucket_max| max.max(Some(bucket_max)))
     }
 
     /// Records `state_id` as the state the main processing scope committed last, without any monotonic guard: a reorg
@@ -392,9 +482,31 @@ impl SnapshotRepository {
         .in_memory
     }
 
+    /// The persisted chain from `to_state_id` back toward `min_block_number`, widest edge first, reaching the deepest
+    /// block at or above it, oldest first; empty unless it holds at least two snapshots. The window need not be fully
+    /// populated.
+    pub fn assemble_persisted_snapshots_for_compaction(
+        &self,
+        to_state_id: &StateId,
+        min_block_number: u64,
+    ) -> Vec<Arc<PersistedSnapshot>> {
+        let estimated_size = to_state_id.block_number.wrapping_sub(min_block_number).clamp(4, 4096) as usize;
+        let persisted = self
+            .walk_and_assemble(
+                to_state_id,
+                estimated_size,
+                &mut PersistedCompactionPolicy {
+                    min_block_number,
+                    winner_height: i64::MAX,
+                },
+            )
+            .persisted;
+        if persisted.len() < 2 { Vec::new() } else { persisted }
+    }
+
     /// The next snapshot to persist: the candidate spanning at most `compact_size` blocks whose `from` is
     /// `current_persisted_state`, found walking back from `seed`, and that does not conflict with a known finalized
-    /// root. `None` when no such snapshot is reachable.
+    /// root. `None` when no such snapshot is reachable or when the candidate is persisted.
     pub fn find_snapshot_to_persist(
         &self,
         seed: &StateId,
@@ -417,10 +529,167 @@ impl SnapshotRepository {
             unavailable_roots: HashSet::new(),
         };
         // The candidate is the chain's terminus, the oldest snapshot.
-        self.walk_and_assemble(seed, estimated_size, &mut policy)
-            .in_memory
-            .into_iter()
-            .next()
+        let assembled = self.walk_and_assemble(seed, estimated_size, &mut policy);
+        if !assembled.persisted.is_empty() {
+            return None;
+        }
+        assembled.in_memory.into_iter().next()
+    }
+
+    /// Persisted snapshots held, across the four buckets.
+    pub fn persisted_snapshot_count(&self) -> i64 {
+        self.persisted_buckets().map(PersistedSnapshotBucket::count).sum()
+    }
+
+    /// `AddPersistedSnapshot`: indexes `snapshot` in the bucket of its tier, replacing one ending at the same state;
+    /// the catalog row is the caller's.
+    ///
+    /// # Panics
+    /// Without a persisted tier.
+    pub fn add_persisted_snapshot(&self, snapshot: Arc<PersistedSnapshot>) {
+        log::debug!(
+            "Created persisted snapshot {:?} {}->{} ({} bytes)",
+            snapshot.tier(),
+            snapshot.from().block_number,
+            snapshot.to().block_number,
+            snapshot.size()
+        );
+        self.buckets().bucket_for(snapshot.tier()).add(snapshot);
+    }
+
+    /// `ReplacePersistedSnapshot`: swaps the snapshot ending at `to` in the bucket of `replacement`'s tier for
+    /// `replacement`; `false` when there is none.
+    ///
+    /// # Panics
+    /// Without a persisted tier.
+    pub fn replace_persisted_snapshot(&self, to: &StateId, replacement: Arc<PersistedSnapshot>) -> bool {
+        self.buckets().bucket_for(replacement.tier()).replace(to, replacement)
+    }
+
+    /// `TryLeasePersistedState`: the snapshot ending at `to` in the bucket of the persisted `tier`.
+    ///
+    /// # Panics
+    /// On an in-memory tier.
+    pub fn try_lease_persisted_state(&self, to: &StateId, tier: SnapshotTier) -> Option<Arc<PersistedSnapshot>> {
+        self.persisted.as_ref()?.bucket_for(tier).try_lease(to)
+    }
+
+    /// `TryLeaseBasePersistedSnapshot`.
+    pub fn try_lease_base_persisted_snapshot(&self, to: &StateId) -> Option<Arc<PersistedSnapshot>> {
+        self.try_lease_persisted_state(to, SnapshotTier::PersistedBase)
+    }
+
+    /// `LeaseBaseSnapshotsInRange`: the bases tiling `(from, to]`, newest first, following `from` back from `to` and
+    /// stopping at the first gap.
+    pub fn lease_base_snapshots_in_range(&self, from: &StateId, to: &StateId) -> Vec<Arc<PersistedSnapshot>> {
+        let mut bases = Vec::new();
+        let mut current = *to;
+        // `from` can be PreGenesis; the height keeps the walk going down to it.
+        while current != *from && height(&current) > height(from) {
+            let Some(base) = self.try_lease_base_persisted_snapshot(&current) else {
+                break;
+            };
+            let parent = base.from();
+            bases.push(base);
+            if parent == current {
+                break;
+            }
+            current = parent;
+        }
+        bases
+    }
+
+    /// `ShareBloomAcrossRange`: every persisted snapshot within `(from, to]`, down the base chain from `to`, becomes a
+    /// twin reading through `shared`, the bloom of a snapshot spanning the range. A gap in the base chain ends the walk;
+    /// the snapshots below it keep their own bloom.
+    pub fn share_bloom_across_range(
+        &self,
+        from: &StateId,
+        to: &StateId,
+        shared: &Arc<PersistedBloom>,
+    ) -> TierResult<()> {
+        let Some(buckets) = &self.persisted else {
+            return Ok(());
+        };
+        let mut current = *to;
+        while height(&current) > height(from) {
+            // A compacted snapshot's `from` can dip below `from`, so only the base chain advances the walk.
+            let Some(base_parent) = buckets.base.try_lease(&current).map(|base| base.from()) else {
+                break;
+            };
+            for bucket in buckets.all() {
+                self.share_bloom_at(bucket, &current, from, to, shared)?;
+            }
+            if base_parent == current {
+                break;
+            }
+            current = base_parent;
+        }
+        Ok(())
+    }
+
+    /// `ShareBloomAt`: the snapshot of `bucket` ending at `at` becomes a twin reading through `shared`, unless it already
+    /// does or it extends past `(from, to]`, whose keys the shared bloom does not cover.
+    fn share_bloom_at(
+        &self,
+        bucket: &PersistedSnapshotBucket,
+        at: &StateId,
+        from: &StateId,
+        to: &StateId,
+        shared: &Arc<PersistedBloom>,
+    ) -> TierResult<()> {
+        let Some(snapshot) = bucket.try_lease(at) else {
+            return Ok(());
+        };
+        if Arc::ptr_eq(snapshot.persisted_bloom(), shared)
+            || height(&snapshot.from()) < height(from)
+            || height(&snapshot.to()) > height(to)
+        {
+            return Ok(());
+        }
+        let twin = Arc::new(snapshot.twin(shared.clone())?);
+        // False on a racing removal, which drops the twin.
+        self.replace_persisted_snapshot(at, twin);
+        Ok(())
+    }
+
+    /// `RemovePersistedStatesUntil`: removes the persisted snapshots ending below `block_number`, with their catalog
+    /// rows, and the finalized roots cached below it.
+    pub fn remove_persisted_states_until(&self, block_number: u64) -> TierResult<()> {
+        for bucket in self.persisted_buckets() {
+            bucket.prune_before(block_number)?;
+        }
+        self.prune_finality_cache_before(block_number);
+        Ok(())
+    }
+
+    /// `RemovePersistedStateExact`: removes the persisted snapshots ending at `to` from every bucket, with their catalog
+    /// rows; whether there was one.
+    pub fn remove_persisted_state_exact(&self, to: &StateId) -> TierResult<bool> {
+        let mut removed = false;
+        // Every bucket: a state can end a snapshot of several tiers.
+        for bucket in self.persisted_buckets() {
+            removed |= bucket.remove_exact(to)?;
+        }
+        Ok(removed)
+    }
+
+    /// `MarkPersistedTierForShutdown`: keeps the files of every persisted snapshot for the next session. Runs over all
+    /// four buckets before any is released, as a file can be shared across tiers.
+    pub fn mark_persisted_tier_for_shutdown(&self) {
+        for bucket in self.persisted_buckets() {
+            bucket.persist_all_on_shutdown();
+        }
+    }
+
+    fn buckets(&self) -> &PersistedBuckets {
+        self.persisted
+            .as_ref()
+            .expect("this repository has no persisted tier: long finality is off")
+    }
+
+    fn persisted_buckets(&self) -> impl Iterator<Item = &PersistedSnapshotBucket> {
+        self.persisted.iter().flat_map(PersistedBuckets::all)
     }
 
     fn tier_map(&self, tier: SnapshotTier) -> &RwLock<HashMap<StateId, Arc<Snapshot>>> {
@@ -431,12 +700,13 @@ impl SnapshotRepository {
         }
     }
 
-    /// Leases the snapshot ending at `state_id` over an edge of `tier`; the persisted tiers hold nothing yet.
-    fn try_lease_edge(&self, state_id: &StateId, tier: SnapshotTier) -> Option<Arc<Snapshot>> {
+    /// Leases the snapshot ending at `state_id` over an edge of `tier`.
+    fn try_lease_edge(&self, state_id: &StateId, tier: SnapshotTier) -> Option<Edge> {
         if tier.is_persisted() {
-            return None;
+            self.try_lease_persisted_state(state_id, tier).map(Edge::Persisted)
+        } else {
+            self.try_lease_in_memory_state(state_id, tier).map(Edge::InMemory)
         }
-        self.try_lease_in_memory_state(state_id, tier)
     }
 
     fn get_states_in_range(&self, block_start_inclusive: u64, block_end_inclusive: u64) -> Vec<StateId> {
@@ -498,10 +768,10 @@ impl SnapshotRepository {
         let mut stack = vec![*head];
         while let Some(current) = stack.pop() {
             for tier in TIERS {
-                let Some(snapshot) = self.try_lease_edge(&current, tier) else {
+                let Some(edge) = self.try_lease_edge(&current, tier) else {
                     continue;
                 };
-                let from = snapshot.from();
+                let from = edge.from();
                 if seen.insert(from) {
                     stack.push(from);
                 }
@@ -530,11 +800,11 @@ impl SnapshotRepository {
                 if node.via_persisted && !tier.is_persisted() {
                     continue;
                 }
-                let Some(snapshot) = self.try_lease_edge(&node.current, tier) else {
+                let Some(edge) = self.try_lease_edge(&node.current, tier) else {
                     continue;
                 };
-                let parent_from = snapshot.from();
-                drop(snapshot);
+                let parent_from = edge.from();
+                drop(edge);
 
                 if parent_from == *target {
                     return true;
@@ -567,7 +837,7 @@ impl SnapshotRepository {
         }]);
         let mut seen: HashSet<StateId> = HashSet::from([*start]);
         // Holds a lease on every retained edge until the walk ends.
-        let mut visited: Vec<(Arc<Snapshot>, Option<usize>)> = Vec::with_capacity(estimated_size);
+        let mut visited: Vec<(Edge, Option<usize>)> = Vec::with_capacity(estimated_size);
         let mut winner = None;
 
         'walk: while let Some(node) = queue.pop_front() {
@@ -575,10 +845,10 @@ impl SnapshotRepository {
                 if node.via_persisted && !tier.is_persisted() {
                     continue;
                 }
-                let Some(snapshot) = self.try_lease_edge(&node.current, tier) else {
+                let Some(edge) = self.try_lease_edge(&node.current, tier) else {
                     continue;
                 };
-                let from = snapshot.from();
+                let from = edge.from();
 
                 let step = policy.decide(&node.current, &from, tier);
                 if step == AssembleStep::Skip {
@@ -591,7 +861,7 @@ impl SnapshotRepository {
                 }
 
                 let index = visited.len();
-                visited.push((snapshot, node.parent_index));
+                visited.push((edge, node.parent_index));
                 if step != AssembleStep::Traverse {
                     winner = Some(index);
                 }
@@ -607,15 +877,19 @@ impl SnapshotRepository {
             }
         }
 
-        // Port of `GatherChain`: the winner is the terminus, so walking parents from it lists the chain oldest first.
-        let mut in_memory = Vec::new();
+        // Port of `GatherChain`: the winner is the terminus, so walking parents from it lists the chain oldest first, and
+        // a walk never returning to memory keeps each tier's part contiguous.
+        let mut assembled = AssembledSnapshots::default();
         let mut walk = winner;
         while let Some(index) = walk {
-            let (snapshot, parent_index) = &visited[index];
-            in_memory.push(Arc::clone(snapshot));
+            let (edge, parent_index) = &visited[index];
+            match edge {
+                Edge::InMemory(snapshot) => assembled.in_memory.push(Arc::clone(snapshot)),
+                Edge::Persisted(snapshot) => assembled.persisted.push(Arc::clone(snapshot)),
+            }
             walk = *parent_index;
         }
-        AssembledSnapshots { in_memory }
+        assembled
     }
 }
 
@@ -631,14 +905,15 @@ struct WalkNode {
     parent_index: Option<usize>,
 }
 
-/// Port of `AssembleStep`: the verdict on one parent edge. `Win` (keep walking, the last winner wins) is only used by
-/// the persisted-tier compaction walk.
+/// Port of `AssembleStep`: the verdict on one parent edge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AssembleStep {
     /// Drop the edge.
     Skip,
     /// Follow the edge; not a winner.
     Traverse,
+    /// The winner so far; keep walking, the last winner wins.
+    Win,
     /// The winner; stop.
     WinAndStop,
 }
@@ -709,6 +984,38 @@ impl WalkPolicy for InMemoryCompactionPolicy {
             AssembleStep::Skip
         } else if from.block_number == self.min_block_number {
             AssembleStep::WinAndStop
+        } else {
+            AssembleStep::Traverse
+        }
+    }
+}
+
+/// Port of `PersistedCompactionPolicy`: the persisted tiers widest jump first, edges below the minimum block pruned,
+/// winning at the minimum block or else at the deepest node reached.
+struct PersistedCompactionPolicy {
+    min_block_number: u64,
+    /// The height of the deepest winner so far.
+    winner_height: i64,
+}
+
+impl WalkPolicy for PersistedCompactionPolicy {
+    fn edge_priority(&self) -> &'static [SnapshotTier] {
+        &[
+            SnapshotTier::PersistedLargeCompacted,
+            SnapshotTier::PersistedCompactSized,
+            SnapshotTier::PersistedSmallCompacted,
+            SnapshotTier::PersistedBase,
+        ]
+    }
+
+    fn decide(&mut self, _to: &StateId, from: &StateId, _tier: SnapshotTier) -> AssembleStep {
+        if height(from) < self.min_block_number as i64 {
+            AssembleStep::Skip
+        } else if from.block_number == self.min_block_number {
+            AssembleStep::WinAndStop
+        } else if height(from) < self.winner_height {
+            self.winner_height = height(from);
+            AssembleStep::Win
         } else {
             AssembleStep::Traverse
         }

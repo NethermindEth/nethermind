@@ -1,17 +1,57 @@
 //! Port of `Nethermind.State.Flat/PersistedSnapshots/PersistedSnapshotBloomBuilder.cs`: the keys a persisted snapshot's
-//! bloom holds, and the rebuild of a bloom from a table.
+//! bloom holds, and the rebuild of a bloom from a table; and of `Persistence/BloomFilter/RefCountedBloomFilter.cs`, the
+//! bloom one or more snapshots share.
 //!
 //! One filter covers every read: an address key (the first 8 bytes of the address, little-endian) gates the account,
 //! the self-destruct flag and the address half of every slot read; a slot key XORs the folded big-endian slot into it;
 //! trie-node keys fold the path in its on-disk encoding, so they hash the same whether a path arrives with a dirty tail
 //! or decoded from a table.
 
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+
 use super::io::ByteReader;
 use super::keys::{self, ADDRESS_HASH_PREFIX_LENGTH};
 use super::scanner::Scanner;
 use super::{TierError, TierResult};
 use crate::bloom::BloomFilter;
+use crate::stats::TierCounters;
 use crate::types::TreePath;
+
+/// `RefCountedBloomFilter`: a snapshot's bloom, shared through its `Arc` when a large compaction lends it to the
+/// snapshots it contains. It counts in `PersistedSnapshotBloomMemory` and `PersistedSnapshotBloomCount` while it lives.
+pub struct PersistedBloom {
+    filter: BloomFilter,
+    counters: Arc<TierCounters>,
+}
+
+impl PersistedBloom {
+    pub fn new(filter: BloomFilter, counters: Arc<TierCounters>) -> Arc<Self> {
+        counters
+            .bloom_memory
+            .fetch_add(filter.data_bytes() as i64, Ordering::Relaxed);
+        counters.bloom_count.fetch_add(1, Ordering::Relaxed);
+        Arc::new(Self { filter, counters })
+    }
+
+    /// `AlwaysTrue`: the placeholder of a snapshot whose bloom is built later, or of a tier without blooms.
+    pub fn always_true(counters: Arc<TierCounters>) -> Arc<Self> {
+        Self::new(BloomFilter::always_true(), counters)
+    }
+
+    pub fn filter(&self) -> &BloomFilter {
+        &self.filter
+    }
+}
+
+impl Drop for PersistedBloom {
+    fn drop(&mut self) {
+        self.counters
+            .bloom_memory
+            .fetch_sub(self.filter.data_bytes() as i64, Ordering::Relaxed);
+        self.counters.bloom_count.fetch_sub(1, Ordering::Relaxed);
+    }
+}
 
 fn u64_at(bytes: &[u8], at: usize) -> u64 {
     u64::from_le_bytes(bytes[at..at + 8].try_into().expect("8 bytes"))

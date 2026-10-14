@@ -6,25 +6,34 @@
 //! [`stack`] probes a list of them newest first behind their blooms ([`bloom_keys`]). [`codec`] holds the catalog
 //! records. Every byte written is identical to what the C# tier writes for the same input.
 //!
+//! [`snapshot`] is one persisted snapshot over its arena reservation and blob files, [`bucket`] the snapshots of one
+//! tier, and [`loader`] converts in-memory snapshots into the tier ([`validate`] checking them on request) and opens the
+//! tier again at startup.
+//!
 //! The readers and writers work over plain byte slices and sinks ([`io`]), so the same code serves memory-mapped arena
 //! files and the in-memory buffers of the tests. [`storage`] holds the files and the catalog, [`sys`] their system
 //! calls, the tier's only raw memory and system access.
 
 pub mod bloom_keys;
+pub mod bucket;
 pub mod builder;
 pub mod codec;
 pub mod io;
 pub mod keys;
 pub mod list;
+pub mod loader;
+mod lock_rank;
 pub mod merger;
 pub mod page_layout;
 pub mod parallel;
 pub mod reader;
 pub mod scanner;
+pub mod snapshot;
 pub mod sorted;
 pub mod stack;
 pub mod storage;
 pub mod sys;
+pub mod validate;
 
 use thiserror::Error;
 
@@ -49,6 +58,20 @@ pub enum TierError {
     /// A failure of the catalog database, fatal when RocksDB reports corruption or an I/O error.
     #[error(transparent)]
     Catalog(#[from] KvError),
+    /// A converted snapshot that does not read back as its source, with the C# message naming the dump file.
+    #[error("{0}")]
+    Validation(String),
 }
 
 pub type TierResult<T> = Result<T, TierError>;
+
+/// The `IFlatDbConfig` members the loader reads, and the processor count C# sizes its parallel loops with.
+#[derive(Clone, Copy, Debug)]
+pub struct PersistedTierConfig {
+    /// `PersistedSnapshotBloomBitsPerKey`: 0 gives every snapshot the always-true bloom.
+    pub bloom_bits_per_key: f64,
+    /// `ValidatePersistedSnapshot`: read every converted snapshot back against its source.
+    pub validate_persisted_snapshot: bool,
+    /// `Environment.ProcessorCount`.
+    pub processor_count: usize,
+}

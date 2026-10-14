@@ -3,19 +3,32 @@
 
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
+use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use flatdb_core::bloom::BloomFilter;
+use flatdb_core::persisted::bloom_keys::PersistedBloom;
 use flatdb_core::persisted::builder::{self, BuildOutput};
+use flatdb_core::persisted::codec::CatalogEntry;
 use flatdb_core::persisted::io::ByteReader;
+use flatdb_core::persisted::loader::PersistedSnapshotLoader;
 use flatdb_core::persisted::merger;
 use flatdb_core::persisted::reader::{BlobSource, TableView};
+use flatdb_core::persisted::snapshot::{PersistedSnapshot, SnapshotHeader};
 use flatdb_core::persisted::stack::PersistedLayer;
+use flatdb_core::persisted::storage::arena_manager::{ArenaConfig, ArenaManager};
+use flatdb_core::persisted::storage::blob_manager::BlobManager;
 use flatdb_core::persisted::storage::blob_writer::BlobWriter;
-use flatdb_core::persisted::{TierError, TierResult};
+use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv, SnapshotCatalog};
+use flatdb_core::persisted::{PersistedTierConfig, TierError, TierResult};
+use flatdb_core::repository::SnapshotRepository;
+use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::snapshot::content::SnapshotContentBuilder;
 use flatdb_core::snapshot::{Snapshot, SnapshotTier};
+use flatdb_core::stats::TierStats;
 use flatdb_core::types::{Account, Address, Hash256, StateId, TreePath, U256};
+
+use super::snapshots::FixedFinality;
 
 /// The blob files of a tier, by id, each from offset 0.
 pub type Blobs = Arc<RwLock<MemBlobs>>;
@@ -244,4 +257,211 @@ pub fn merge(sources: &[&MemSnapshot], tier: SnapshotTier, mut bloom: BloomFilte
 
 pub fn new_blobs() -> Blobs {
     Arc::new(RwLock::new(MemBlobs::default()))
+}
+
+/// A persisted tier over files in `{base}/persistedSnapshot/{arena,blob}` and an in-memory catalog: the C#
+/// `FlatTestContainer`'s tier. Dropping it releases everything; [`StorageTier::shut_down`] first keeps the files of the
+/// live snapshots, as the C# teardown does.
+pub struct StorageTier {
+    // Dropped in this order, as the C# container disposes them.
+    pub loader: PersistedSnapshotLoader,
+    pub repository: Arc<SnapshotRepository>,
+    pub arena: Arc<ArenaManager>,
+    pub blobs: Arc<BlobManager>,
+    pub catalog: Arc<SnapshotCatalog>,
+    pub stats: Arc<TierStats>,
+    pub config: PersistedTierConfig,
+}
+
+impl StorageTier {
+    /// The tier of `base`, loaded from the rows of `catalog_kv`.
+    pub fn open(
+        base: &Path,
+        catalog_kv: &MemCatalogKv,
+        arena_config: ArenaConfig,
+        config: PersistedTierConfig,
+        stats: Arc<TierStats>,
+    ) -> TierResult<Self> {
+        Self::open_with_catalog(
+            base,
+            &catalog_kv.rows(),
+            Box::new(catalog_kv.clone()),
+            arena_config,
+            config,
+            stats,
+        )
+    }
+
+    /// The tier of `base`, loaded from `catalog_rows` and writing its catalog through `catalog_kv`.
+    pub fn open_with_catalog(
+        base: &Path,
+        catalog_rows: &[(Vec<u8>, Vec<u8>)],
+        catalog_kv: Box<dyn CatalogKv>,
+        arena_config: ArenaConfig,
+        config: PersistedTierConfig,
+        stats: Arc<TierStats>,
+    ) -> TierResult<Self> {
+        let directory = base.join("persistedSnapshot");
+        let arena = Arc::new(ArenaManager::new(
+            &directory.join("arena"),
+            arena_config,
+            stats.counters.clone(),
+        )?);
+        let blobs = BlobManager::new(
+            &directory.join("blob"),
+            arena_config.arena_file_size_bytes,
+            stats.counters.clone(),
+        )?;
+        let catalog = Arc::new(SnapshotCatalog::new(catalog_kv));
+        let repository = Arc::new(SnapshotRepository::with_persisted_tier(
+            Arc::new(FixedFinality::default()),
+            Arc::default(),
+            catalog.clone(),
+            stats.clone(),
+        ));
+        let loader = PersistedSnapshotLoader::new(
+            repository.clone(),
+            arena.clone(),
+            blobs.clone(),
+            catalog.clone(),
+            stats.clone(),
+            config,
+        );
+        loader.load(&pack_rows(catalog_rows))?;
+        Ok(Self {
+            loader,
+            repository,
+            arena,
+            blobs,
+            catalog,
+            stats,
+            config,
+        })
+    }
+
+    /// Keeps the files of every live snapshot, then releases the tier; dropping the tier does the same.
+    pub fn shut_down(self) {
+        self.loader.mark_for_shutdown();
+    }
+
+    pub fn convert(&self, snapshot: &Snapshot) -> Arc<PersistedSnapshot> {
+        self.loader.convert_and_register(snapshot).unwrap();
+        self.repository
+            .try_lease_base_persisted_snapshot(&snapshot.to())
+            .unwrap()
+    }
+
+    /// `PersistedSnapshotCompactor.DoCompactSnapshot`: the merge of the block's window, clamped at the persisted block.
+    pub fn compact(&self, schedule: &CompactionSchedule, to: &StateId, persisted_block: u64) -> bool {
+        let size = schedule.get_persisted_snapshot_compact_size(to.block_number);
+        if size <= 1 || self.repository.persisted_snapshot_count() < 2 {
+            return false;
+        }
+        let start = (to.block_number as i64 - size as i64).max(persisted_block as i64) as u64;
+        self.compact_range(schedule, to, start, false)
+    }
+
+    /// `PersistedSnapshotCompactor.DoCompactCompactSized`: the CompactSize-wide merge ending at a boundary.
+    pub fn compact_sized(&self, schedule: &CompactionSchedule, to: &StateId) -> bool {
+        let block = to.block_number;
+        if !schedule.is_compact_size_boundary(block) && !schedule.is_large_compaction_boundary(block)
+            || self.repository.persisted_snapshot_count() < 2
+        {
+            return false;
+        }
+        self.compact_range(schedule, to, block - schedule.get_compact_size(block), true)
+    }
+
+    /// `PersistedSnapshotCompactor.CompactRange` without its metrics and page warming.
+    fn compact_range(&self, schedule: &CompactionSchedule, to: &StateId, start: u64, compact_sized: bool) -> bool {
+        let sources = self.repository.assemble_persisted_snapshots_for_compaction(to, start);
+        if sources.len() < 2 {
+            return false;
+        }
+        let sessions = sources
+            .iter()
+            .map(|source| source.begin_whole_read_session().unwrap())
+            .collect::<Vec<_>>();
+        let readers = sessions.iter().map(|session| session.reader()).collect::<Vec<_>>();
+
+        let mut owners: Vec<&Arc<PersistedBloom>> = Vec::new();
+        for source in &sources {
+            if !owners.iter().any(|owner| Arc::ptr_eq(owner, source.persisted_bloom())) {
+                owners.push(source.persisted_bloom());
+            }
+        }
+        let capacity = owners.iter().map(|bloom| bloom.filter().count() as i64).sum::<i64>();
+        let large_boundary = schedule.is_large_compaction_boundary(to.block_number);
+        let tier = if compact_sized {
+            SnapshotTier::PersistedCompactSized
+        } else if large_boundary {
+            SnapshotTier::PersistedLargeCompacted
+        } else {
+            SnapshotTier::PersistedSmallCompacted
+        };
+        let bits_per_key = self.config.bloom_bits_per_key;
+        let mut bloom = match (bits_per_key > 0.0 && capacity > 0, tier) {
+            (false, _) => BloomFilter::always_true(),
+            (true, SnapshotTier::PersistedSmallCompacted) => BloomFilter::new(1, bits_per_key).unwrap(),
+            (true, _) => BloomFilter::new(capacity, bits_per_key).unwrap(),
+        };
+
+        let estimate = sources.iter().map(|source| source.size()).sum();
+        let mut writer = self
+            .arena
+            .create_writer(estimate, tier == SnapshotTier::PersistedSmallCompacted)
+            .unwrap();
+        merger::merge(&readers, &mut writer, &mut bloom).unwrap();
+        let (location, reservation) = writer.complete().unwrap();
+        reservation.fsync().unwrap();
+        let header = SnapshotHeader {
+            from: sources[0].from(),
+            to: sources[sources.len() - 1].to(),
+            tier,
+            may_have_self_destructs: sources.iter().any(|source| source.header().may_have_self_destructs),
+        };
+        self.catalog
+            .add(&CatalogEntry {
+                from: header.from,
+                to: header.to,
+                location,
+                tier,
+            })
+            .unwrap();
+        let compacted = Arc::new(
+            PersistedSnapshot::open(
+                header,
+                reservation,
+                PersistedBloom::new(bloom, self.stats.counters.clone()),
+                self.blobs.clone(),
+                self.stats.clone(),
+            )
+            .unwrap(),
+        );
+        drop(sessions);
+        self.repository.add_persisted_snapshot(compacted.clone());
+        if tier == SnapshotTier::PersistedSmallCompacted {
+            compacted.demote();
+        } else if large_boundary {
+            self.repository
+                .share_bloom_across_range(&header.from, &header.to, compacted.persisted_bloom())
+                .unwrap();
+        }
+        true
+    }
+}
+
+/// Catalog rows packed as `codec::parse_rows` reads them.
+pub fn pack_rows(rows: &[(Vec<u8>, Vec<u8>)]) -> Vec<u8> {
+    rows.iter()
+        .flat_map(|(key, value)| {
+            [
+                &(key.len() as u32).to_le_bytes()[..],
+                key,
+                &(value.len() as u32).to_le_bytes(),
+                value,
+            ]
+            .concat()
+        })
+        .collect()
 }

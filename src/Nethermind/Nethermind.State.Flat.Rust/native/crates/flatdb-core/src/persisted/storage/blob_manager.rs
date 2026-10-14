@@ -11,12 +11,13 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::arena_manager::parse_file_id;
 use super::blob_file::BlobFile;
 use super::blob_writer::BlobArenaWriter;
 use super::pool_set::PoolSet;
+use crate::persisted::lock_rank::{self, LockRank, Ranked};
 use crate::persisted::reader::BlobSource;
 use crate::persisted::{TierError, TierResult};
 use crate::stats::TierCounters;
@@ -63,7 +64,7 @@ impl BlobManager {
     /// `Initialize`: registers the blob files on disk; each frontier is the file length, and a file shorter than the
     /// maximum joins the pool.
     pub fn initialize(&self) -> std::io::Result<()> {
-        let mut table = self.table.write();
+        let mut table = self.write_table();
         for entry in std::fs::read_dir(&self.base_path)? {
             let entry = entry?;
             let Some(id) = entry.file_name().to_str().and_then(parse_blob_file_id) else {
@@ -94,7 +95,7 @@ impl BlobManager {
     /// `CreateWriter`: a writer appending to the first pooled file with room for `estimated_size` bytes, dropping
     /// from the pool the files without, else to a new file.
     pub fn create_writer(self: &Arc<Self>, estimated_size: i64) -> TierResult<BlobArenaWriter> {
-        let mut table = self.table.write();
+        let mut table = self.write_table();
         if table.disposed {
             return Err(TierError::InvalidOperation(
                 "Cannot access a disposed object.\nObject name: 'BlobArenaManager'.".to_owned(),
@@ -142,13 +143,13 @@ impl BlobManager {
 
     /// `TryLeaseFile`: a lease of the file, `None` when the id has no file.
     pub fn try_lease_file(&self, id: u16) -> Option<Arc<BlobFile>> {
-        self.table.read().files[usize::from(id)].clone()
+        self.read_table().files[usize::from(id)].clone()
     }
 
     /// The release of a snapshot's lease (`PersistedSnapshot.CleanUp`): when only the manager's lease is left, the
     /// orphaned file is reset to empty for reuse.
     pub fn release_lease(&self, file: Arc<BlobFile>) {
-        let mut table = self.table.write();
+        let mut table = self.write_table();
         let registered = table.files[usize::from(file.id())]
             .as_ref()
             .is_some_and(|slot| ptr::eq(Arc::as_ptr(slot), Arc::as_ptr(&file)));
@@ -192,7 +193,7 @@ impl BlobManager {
     /// `SweepUnreferenced`: deletes the files no loaded snapshot leases, the orphans of a crash between a write and
     /// its catalog row.
     pub fn sweep_unreferenced(&self) {
-        let mut table = self.table.write();
+        let mut table = self.write_table();
         if table.disposed {
             return;
         }
@@ -209,7 +210,7 @@ impl BlobManager {
 
     /// `OnWriteCompleted`: returns a file with room to the pool and publishes its new frontier.
     pub(super) fn on_write_completed(&self, file: &BlobFile, has_headroom: bool) {
-        let mut table = self.table.write();
+        let mut table = self.write_table();
         if has_headroom {
             table.mutable.add(file.id());
         }
@@ -220,14 +221,14 @@ impl BlobManager {
 
     /// `OnWriteCancelled`: the frontier did not move, so the file still has room.
     pub(super) fn on_write_cancelled(&self, id: u16) {
-        self.table.write().mutable.add(id);
+        self.write_table().mutable.add(id);
     }
 
     /// `Dispose`, idempotent: drops the manager's lease of every file. A file a snapshot still leases goes when that
     /// lease does, kept on disk if the snapshot was marked for the next session.
     pub fn dispose(&self) {
         let files = {
-            let mut table = self.table.write();
+            let mut table = self.write_table();
             if table.disposed {
                 return;
             }
@@ -235,6 +236,14 @@ impl BlobManager {
             table.files.iter_mut().filter_map(Option::take).collect::<Vec<_>>()
         };
         drop(files);
+    }
+
+    fn read_table(&self) -> Ranked<RwLockReadGuard<'_, BlobTable>> {
+        lock_rank::lock(LockRank::BlobTable, || self.table.read())
+    }
+
+    fn write_table(&self) -> Ranked<RwLockWriteGuard<'_, BlobTable>> {
+        lock_rank::lock(LockRank::BlobTable, || self.table.write())
     }
 }
 
@@ -247,7 +256,7 @@ impl Drop for BlobManager {
 impl BlobSource for BlobManager {
     /// `GetFile(id).RandomRead`, for callers that already lease the file.
     fn random_read(&self, blob_arena_id: u16, offset: i32, buffer: &mut [u8]) -> TierResult<usize> {
-        let table = self.table.read();
+        let table = self.read_table();
         let file = table
             .files
             .get(usize::from(blob_arena_id))
