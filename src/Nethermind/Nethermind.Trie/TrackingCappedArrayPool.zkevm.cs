@@ -7,7 +7,6 @@ using Nethermind.Core.Buffers;
 
 namespace Nethermind.Trie;
 
-#pragma warning disable NETH003 // Build variant: only one of TrackingCappedArrayPool.std.cs / TrackingCappedArrayPool.zkevm.cs is compiled per build
 /// <summary>
 /// Allocating buffer source for the zkVM guest &mdash; see the std counterpart for the tracking pool.
 /// </summary>

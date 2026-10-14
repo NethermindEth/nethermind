@@ -454,10 +454,9 @@ namespace Nethermind.Consensus.Validators
         }
 
         /// <summary>Checks the logs bloom is zero-length exactly when EIP-7668 is active.</summary>
-        /// <remarks>Genesis is exempt: it keeps the bloom it was declared with.</remarks>
         protected bool ValidateBloom(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
-            if (header.IsGenesis || spec.IsEip7668Enabled == (header.Bloom?.IsZeroLength ?? false))
+            if (spec.IsEip7668Enabled == (header.Bloom?.IsZeroLength ?? false))
             {
                 return true;
             }

@@ -24,6 +24,8 @@ namespace Nethermind.TxPool.Test;
 public class FrameTxWidthConcurrencyTests
 {
     private static readonly Address Sender = new(new byte[20] { 0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+    private static readonly Address Other = new(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+    private static readonly Address Newcomer = new(new byte[20] { 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
     private const ulong Cost = 21_000;
 
     [Test]
@@ -69,56 +71,83 @@ public class FrameTxWidthConcurrencyTests
     [Test]
     public void FullLedger_EvictsASenderToAdmitANewEarner()
     {
-        Address newcomer = new(new byte[20] { 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-        SenderWidthCache cache = new(maxSenders: 2);
-        cache.Earn(Sender, Cost);
-        cache.Earn(new Address(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }), Cost);
+        SenderWidthCache cache = FullLedgerOfSenderAndOther();
 
-        cache.Earn(newcomer, 2 * Cost);
+        cache.Earn(Newcomer, 2 * Cost);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(cache.Count, Is.EqualTo(2));
-            Assert.That(cache.GetWidth(newcomer), Is.EqualTo((UInt256)(2 * Cost)));
+            Assert.That(cache.GetWidth(Newcomer), Is.EqualTo((UInt256)(2 * Cost)));
         }
     }
 
     [Test]
     public void FullLedger_EvictsTheSmallestBalance()
     {
-        Address small = new(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-        Address newcomer = new(new byte[20] { 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
         SenderWidthCache cache = new(maxSenders: 2);
         cache.Earn(Sender, 3 * Cost);
-        cache.Earn(small, Cost);
+        cache.Earn(Other, Cost);
 
-        cache.Earn(newcomer, 2 * Cost);
+        cache.Earn(Newcomer, 2 * Cost);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(cache.Count, Is.EqualTo(2));
             Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)(3 * Cost)));
-            Assert.That(cache.GetWidth(small), Is.EqualTo(UInt256.Zero));
-            Assert.That(cache.GetWidth(newcomer), Is.EqualTo((UInt256)(2 * Cost)));
+            Assert.That(cache.GetWidth(Other), Is.EqualTo(UInt256.Zero));
+            Assert.That(cache.GetWidth(Newcomer), Is.EqualTo((UInt256)(2 * Cost)));
+        }
+    }
+
+    [Test]
+    public void FullLedger_HolderWithReservedWidth_IsNotEvictedAndGetsItsRefund([Values(Cost - 1, Cost)] ulong reserved)
+    {
+        SenderWidthCache cache = FullLedgerOfSenderAndOther();
+        cache.TryReserve(Sender, reserved);
+        cache.Earn(Newcomer, Cost);
+
+        cache.Release(Sender, reserved);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Count, Is.EqualTo(2));
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)Cost));
+            Assert.That(cache.GetWidth(Other), Is.EqualTo((UInt256)Cost));
+            Assert.That(cache.GetWidth(Newcomer), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void FullLedger_HolderWhoseReservationSettled_GivesWayToARicherNewcomer([Values(Cost - 1, Cost)] ulong reserved)
+    {
+        SenderWidthCache cache = FullLedgerOfSenderAndOther();
+        cache.TryReserve(Sender, reserved);
+
+        cache.Release(Sender, UInt256.Zero);
+        cache.Earn(Newcomer, Cost);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Count, Is.EqualTo(2));
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero));
+            Assert.That(cache.GetWidth(Other), Is.EqualTo((UInt256)Cost));
+            Assert.That(cache.GetWidth(Newcomer), Is.EqualTo((UInt256)Cost));
         }
     }
 
     [Test]
     public void FullLedger_RefusesANewcomerNoRicherThanTheSmallestBalance([Values(1ul, Cost)] ulong newcomerGas)
     {
-        Address other = new(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-        Address newcomer = new(new byte[20] { 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-        SenderWidthCache cache = new(maxSenders: 2);
-        cache.Earn(Sender, Cost);
-        cache.Earn(other, Cost);
+        SenderWidthCache cache = FullLedgerOfSenderAndOther();
 
-        cache.Earn(newcomer, newcomerGas);
+        cache.Earn(Newcomer, newcomerGas);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cache.GetWidth(newcomer), Is.EqualTo(UInt256.Zero));
+            Assert.That(cache.GetWidth(Newcomer), Is.EqualTo(UInt256.Zero));
             Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)Cost));
-            Assert.That(cache.GetWidth(other), Is.EqualTo((UInt256)Cost));
+            Assert.That(cache.GetWidth(Other), Is.EqualTo((UInt256)Cost));
         }
     }
 
@@ -142,6 +171,14 @@ public class FrameTxWidthConcurrencyTests
         Assert.That(incumbents.Where(a => !cache.GetWidth(a).IsZero), Is.Empty);
     }
 
+    private static SenderWidthCache FullLedgerOfSenderAndOther()
+    {
+        SenderWidthCache cache = new(maxSenders: 2);
+        cache.Earn(Sender, Cost);
+        cache.Earn(Other, Cost);
+        return cache;
+    }
+
     private static Address SenderAt(int index)
     {
         byte[] bytes = new byte[20];
@@ -151,21 +188,26 @@ public class FrameTxWidthConcurrencyTests
     }
 
     [Test]
-    public void SenderGauge_ReturnsToBaseline_AfterConcurrentChurnToZero()
+    public void SenderGauge_ReturnsToBaseline_AfterConcurrentChurnToZero([Values] bool holdsPaymasters)
     {
         const int senders = 256;
-        long before = Volatile.Read(ref Metrics.FrameTxSendersWithWidth);
-        SenderWidthCache cache = new();
+        ref long gauge = ref holdsPaymasters ? ref Metrics.FrameTxPaymastersWithWidth : ref Metrics.FrameTxSendersWithWidth;
+        ref long otherGauge = ref holdsPaymasters ? ref Metrics.FrameTxSendersWithWidth : ref Metrics.FrameTxPaymastersWithWidth;
+        long before = Volatile.Read(ref gauge);
+        long otherBefore = Volatile.Read(ref otherGauge);
+        SenderWidthCache cache = new(holdsPaymasters: holdsPaymasters);
         Address[] all = BuildSenders(senders);
 
         Parallel.ForEach(all, s => cache.Earn(s, Cost));
-        long peak = Volatile.Read(ref Metrics.FrameTxSendersWithWidth) - before;
+        long peak = Volatile.Read(ref gauge) - before;
+        long otherPeak = Volatile.Read(ref otherGauge) - otherBefore;
         Parallel.ForEach(all, s => Assert.That(cache.TrySpend(s, Cost), Is.True));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(peak, Is.EqualTo(senders), "each first credit raises the gauge exactly once");
-            Assert.That(Volatile.Read(ref Metrics.FrameTxSendersWithWidth) - before, Is.EqualTo(0),
+            Assert.That(otherPeak, Is.Zero, "senders and paymasters are counted on separate gauges");
+            Assert.That(Volatile.Read(ref gauge) - before, Is.EqualTo(0),
                 "draining every sender to zero returns the gauge to baseline, so an idle pool reads no width");
         }
     }

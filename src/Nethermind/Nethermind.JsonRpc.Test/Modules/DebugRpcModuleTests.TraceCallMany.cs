@@ -183,7 +183,7 @@ public partial class DebugRpcModuleTests
         await using AsyncCompletingStream stream = new();
         PipeWriter writer = PipeWriter.Create(stream);
 
-        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+        await Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
 
         await writer.CompleteAsync();
     }
@@ -348,6 +348,22 @@ public partial class DebugRpcModuleTests
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
         Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(requestGas is not null));
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_resolves_calls_against_the_options_block_override([Values] bool stream, [Values] bool dynamicFees)
+    {
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)1, London.Instance)));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = stream;
+        TransactionForRpc call = dynamicFees
+            ? new EIP1559TransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = GasCostOf.Transaction, MaxFeePerGas = UInt256.Zero }
+            : new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = GasCostOf.Transaction };
+        GethTraceOptions options = new() { BlockOverrides = new BlockOverride { Number = 0 } };
+
+        JArray result = await RunTraceCallManyAsJson(ctx, [CreateBundle(call)], options);
+
+        // Overridden to a Berlin block, a call without fee fields still runs, and one with dynamic fees is rejected.
+        Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(dynamicFees), result.ToString());
     }
 
     [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]

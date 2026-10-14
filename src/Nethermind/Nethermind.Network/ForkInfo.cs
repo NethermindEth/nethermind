@@ -131,9 +131,10 @@ namespace Nethermind.Network
             if (found.Id.Next != peerId.Next) // if the next fork is different
             {
                 bool headPastLocalFork = headActivation >= found.Id.Next;
-                if (peerForkIsLast && !forkIsLast && headPastLocalFork)
+                if (!forkIsLast && headPastLocalFork)
                 {
-                    // Remote does not know about a fork that local has already went through. remote is stale.
+                    // EIP-2124 rule 2: the remote fork hash is a past local fork, so the remote must announce
+                    // exactly the fork local went through next. Anything else (none, or another activation) is stale.
                     return ValidationResult.RemoteStale;
                 }
 

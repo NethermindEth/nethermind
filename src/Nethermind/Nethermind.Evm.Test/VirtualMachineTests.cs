@@ -445,6 +445,30 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Cancellation_FusedJumpReachesInterval_PollsBeforeSuccessor([Values(2, 3)] int pushSize)
+    {
+        const int prefixLength = 1021;
+        int destination = prefixLength + pushSize + 2;
+        byte[] code = new byte[destination + 2];
+        code.AsSpan(0, prefixLength).Fill((byte)Instruction.JUMPDEST);
+        code[prefixLength] = (byte)((int)Instruction.PUSH1 + pushSize - 1);
+        code[destination - 3] = (byte)(destination >> 8);
+        code[destination - 2] = (byte)destination;
+        code[destination - 1] = (byte)Instruction.JUMP;
+        code[destination] = (byte)Instruction.JUMPDEST;
+        CountingCancellationTracer tracer = new();
+
+        Execute(tracer, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null, "the jump lands on a valid destination");
+            Assert.That(tracer.PollCount, Is.EqualTo(2), "the fused destination completes the 1024-opcode interval");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(1025), "the counter includes the jump, its destination and STOP");
+        }
+    }
+
     private static byte[] CreateCancellationCode(int continuingOpcodeCount, bool appendStop, Instruction opcode)
     {
         byte[] code = new byte[continuingOpcodeCount + (appendStop ? 1 : 0)];
@@ -3662,5 +3686,63 @@ public class CallFrameCacheTests(bool amsterdam) : VirtualMachineTestsBase
             Error = error;
             StatusCode = Evm.StatusCode.Failure;
         }
+    }
+}
+
+/// <summary>
+/// A run whose block context differs from the one it is replayed in holds only where it read none of the differing
+/// fields, so every opcode that reads one must report it, traced or not.
+/// </summary>
+[Parallelizable(ParallelScope.Self)]
+internal class BlockContextReadsTests : VirtualMachineTestsBase
+{
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
+
+    [TestCase(Instruction.COINBASE, BlockContextReads.Coinbase)]
+    [TestCase(Instruction.TIMESTAMP, BlockContextReads.Timestamp)]
+    [TestCase(Instruction.GASLIMIT, BlockContextReads.GasLimit)]
+    [TestCase(Instruction.PREVRANDAO, BlockContextReads.PrevRandao)]
+    [TestCase(Instruction.NUMBER, BlockContextReads.None)]
+    [TestCase(Instruction.BASEFEE, BlockContextReads.None)]
+    [TestCase(Instruction.BLOBBASEFEE, BlockContextReads.None)]
+    [TestCase(Instruction.CHAINID, BlockContextReads.None)]
+    public void Reads_of_the_block_context_are_reported(Instruction opcode, BlockContextReads expected)
+    {
+        byte[] code = [(byte)opcode, (byte)Instruction.POP, (byte)Instruction.STOP];
+
+        Machine.BlockContextReads = BlockContextReads.None;
+        Execute(code);
+        BlockContextReads traced = Machine.BlockContextReads;
+
+        Machine.BlockContextReads = BlockContextReads.None;
+        Execute(NullTxTracer.Instance, code);
+        BlockContextReads untraced = Machine.BlockContextReads;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced, Is.EqualTo(expected), "traced");
+            Assert.That(untraced, Is.EqualTo(expected), "untraced");
+        }
+    }
+
+    [TestCase(new byte[] { 0x5B, 0x5F, 0x56 }, BlockContextReads.OutOfGas, TestName = "A loop runs out of gas")]
+    [TestCase(new byte[] { 0x5F, 0x5F, 0xFD }, BlockContextReads.None, TestName = "A revert does not")]
+    public void Running_out_of_gas_is_reported(byte[] code, BlockContextReads expected)
+    {
+        Machine.BlockContextReads = BlockContextReads.None;
+        Execute(NullTxTracer.Instance, code);
+
+        Assert.That(Machine.BlockContextReads, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Reads_of_several_fields_are_all_reported()
+    {
+        Machine.BlockContextReads = BlockContextReads.None;
+        Execute(NullTxTracer.Instance,
+            [(byte)Instruction.TIMESTAMP, (byte)Instruction.GASLIMIT, (byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.STOP]);
+
+        Assert.That(Machine.BlockContextReads, Is.EqualTo(BlockContextReads.Timestamp | BlockContextReads.GasLimit));
     }
 }

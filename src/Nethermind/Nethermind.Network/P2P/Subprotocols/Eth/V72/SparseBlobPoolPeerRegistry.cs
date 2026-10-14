@@ -475,7 +475,22 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return false;
         }
 
-        TrackedSparseBlobTx state = GetOrAdd(hash, out bool added);
+        bool added = false;
+        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        {
+            lock (_accountingLock)
+            {
+                if (_peerUsage.TryGetValue(peer.Id, out PeerUsage? usage)
+                    && usage.Announcements >= MaxAnnouncementsPerPeer
+                    && !_transactions.TryGetValue(hash.ValueHash256, out state))
+                {
+                    return false;
+                }
+            }
+
+            state ??= GetOrAdd(hash, out added);
+        }
+
         bool accepted = false;
         lock (state.Lock)
         {
