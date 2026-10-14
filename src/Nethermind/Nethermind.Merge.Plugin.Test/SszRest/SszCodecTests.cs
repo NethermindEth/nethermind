@@ -48,7 +48,11 @@ public class SszCodecTests
         Block block = Build.A.Block.TestObject;
         RecursiveStark proof = new([1], Keccak.Zero);
         if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], proof)];
-        else block.Header.RecursiveStark = proof;
+        else
+        {
+            block.StarkProof = proof.StarkProof;
+            block.Header.RecursiveStark = new(Keccak.Compute(proof.StarkProof), proof.BlockDepsHash);
+        }
         Func<SszExecutionPayloadV1> create = () => version switch
         {
             1 => SszExecutionPayloadV1.From(block),

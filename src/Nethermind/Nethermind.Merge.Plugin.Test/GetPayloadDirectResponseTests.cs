@@ -233,6 +233,39 @@ public class GetPayloadDirectResponseTests
         Assert.That(() => { ExecutionPayloadBodyV1Result? _ = direct[direct.Count]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
+    [Test]
+    public async Task Payload_bodies_preserve_proof_in_raw_and_materialized_responses([Values(0, 65537)] int size, [Values(1, 2)] int version)
+    {
+        Block block = Build.A.Block.WithWithdrawals(0).TestObject;
+        block.StarkProof = new byte[size];
+        block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        byte[] encoded = Rlp.Encode(block).Bytes;
+        object dto;
+        IStreamableResult raw;
+        IStreamableResult materialized;
+        if (version == 1)
+        {
+            PayloadBodiesV1DirectResponse rawResponse = new(new PayloadBodiesV1DirectResponse.PayloadBody?[] { new(encoded) });
+            dto = new[] { rawResponse[0] };
+            raw = rawResponse;
+            materialized = new PayloadBodiesV1DirectResponse(new ExecutionPayloadBodyV1Result?[] { new([], [], block.StarkProof) });
+            Assert.That(rawResponse[0]!.RecursiveStarkProof, Is.EqualTo(block.StarkProof));
+        }
+        else
+        {
+            PayloadBodiesV2DirectResponse rawResponse = new([new(encoded, null)]);
+            dto = new[] { rawResponse[0] };
+            raw = rawResponse;
+            materialized = new PayloadBodiesV2DirectResponse([new([], [], null, block.StarkProof)]);
+            Assert.That(rawResponse[0]!.RecursiveStarkProof, Is.EqualTo(block.StarkProof));
+        }
+        byte[] expected = JsonSerializer.SerializeToUtf8Bytes(dto, dto.GetType(), EthereumJsonSerializer.JsonOptions);
+        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(await WriteStreamableAsync(raw))), Is.True);
+        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(await WriteStreamableAsync(materialized))), Is.True);
+        (raw as IDisposable)?.Dispose();
+        (materialized as IDisposable)?.Dispose();
+    }
+
     // The hand-rolled writer is the path a CL actually receives, and recursive_stark is the one field the
     // parity matrix does not vary: an empty proof and one past the hex chunking threshold both risk drift.
     [TestCase(0, false)]
@@ -244,7 +277,8 @@ public class GetPayloadDirectResponseTests
     public async Task Direct_response_json_matches_dto_json_with_recursive_stark(int proofLength, bool inclusionProof)
     {
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
-        block.Header.RecursiveStark = new RecursiveStark(new byte[proofLength], Keccak.Compute("deps"));
+        block.StarkProof = new byte[proofLength];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
         if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], new RecursiveStark(new byte[proofLength], Keccak.Compute("il-deps")))];
 
         object plain = CreatePlainResult(6, block, blobsBundle, executionRequests);

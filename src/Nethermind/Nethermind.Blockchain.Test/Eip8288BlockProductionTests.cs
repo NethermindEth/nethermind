@@ -88,12 +88,12 @@ public class Eip8288BlockProductionTests
         Assert.That(block, Is.Not.Null);
         Assert.That(block!.Transactions, Has.Length.EqualTo(1));
         ValueHash256 hash = Eip8288Dependencies.ComputeBlockDepsHash(block);
-        Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, block.Header.RecursiveStark!.StarkProof), Is.True);
+        Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, block.StarkProof), Is.True);
         Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a rejected optional cache entry cannot stall fresh proving");
         Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
-        Assert.That(replacement, Is.EqualTo(block.Header.RecursiveStark.StarkProof));
+        Assert.That(replacement, Is.EqualTo(block.StarkProof));
         Block? repeated = await chain.BlockProducer.BuildBlock();
-        Assert.That(repeated!.Header.RecursiveStark!.StarkProof, Is.EqualTo(replacement));
+        Assert.That(repeated!.StarkProof, Is.EqualTo(replacement));
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
@@ -255,7 +255,7 @@ public class Eip8288BlockProductionTests
         Block? first = await chain.BlockProducer.BuildBlock();
         Assert.That(first, Is.Not.Null);
         Assert.That(first!.Transactions, Has.Length.EqualTo(1));
-        first.Header.RecursiveStark!.StarkProof[0] ^= 0xff;
+        first.StarkProof[0] ^= 0xff;
         Block? second = await chain.BlockProducer.BuildBlock();
         Assert.That(second, Is.Not.Null);
         Assert.That(second!.Transactions, Has.Length.EqualTo(1));
@@ -263,14 +263,14 @@ public class Eip8288BlockProductionTests
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
             Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(2));
-            Assert.That(second.Header.RecursiveStark!.StarkProof,
+            Assert.That(second.StarkProof,
                 Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(second).ToByteArray()));
         }
 
         Block? empty = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
         Assert.That(empty, Is.Not.Null);
         Assert.That(empty!.Transactions, Is.Empty);
-        Assert.That(empty.Header.RecursiveStark!.StarkProof, Is.Empty, "a block without dependencies carries an empty proof");
+        Assert.That(empty.StarkProof, Is.Empty, "a block without dependencies carries an empty proof");
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
         Block? restored = await chain.BlockProducer.BuildBlock();
         Assert.That(restored, Is.Not.Null);
@@ -543,7 +543,7 @@ public class Eip8288BlockProductionTests
         Assert.That(processed, Is.Not.Null);
         Assert.That(processed!.Transactions, Is.Empty);
         Assert.That(Eip8288Dependencies.ForBlock(processed), Is.Empty);
-        Assert.That(processed.Header.RecursiveStark!.StarkProof, Is.Empty);
+        Assert.That(processed.StarkProof, Is.Empty);
     }
 
     [Test]
@@ -585,7 +585,7 @@ public class Eip8288BlockProductionTests
             Assert.That(processed!.Transactions, Is.EqualTo((Transaction[])[transaction]));
             Assert.That(Eip8288Dependencies.ForBlock(processed), Is.EqualTo((FrameDependency[])[dependency]));
             Assert.That(processed.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency]))));
-            Assert.That(processed.Header.RecursiveStark.StarkProof, Is.EqualTo(producing.InclusionListProofInput!.RecursiveProofs[0].Proof.ToArray()));
+            Assert.That(processed.StarkProof, Is.EqualTo(producing.InclusionListProofInput!.RecursiveProofs[0].Proof.ToArray()));
             Assert.That(verifier.ProofCalls, Is.EqualTo(proofCallsBefore), "the unchanged verified IL statement needs no new proof");
             Assert.That(verifier.RecursiveVerificationCalls, Is.GreaterThan(verificationCallsBefore));
             Assert.That(proofs.Covers(transaction), Is.False, "production owns the verified IL witness without evicting pending pool coverage");

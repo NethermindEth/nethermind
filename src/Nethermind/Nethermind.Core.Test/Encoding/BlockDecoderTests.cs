@@ -16,6 +16,34 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class BlockDecoderTests
 {
+    [TestCase(0)]
+    [TestCase(65536)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes)]
+    public void Block_roundtrip_preserves_proof_body(int size)
+    {
+        Block block = Build.A.Block.WithWithdrawals(0).TestObject;
+        block.StarkProof = new byte[size];
+        block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        BlockDecoder decoder = new();
+        byte[] encoded = decoder.Encode(block).Bytes;
+        RlpReader reader = new(encoded);
+        Block decoded = decoder.DecodeGuardNotNull(ref reader);
+        Assert.That(decoded.StarkProof, Is.EqualTo(block.StarkProof));
+        Assert.That(decoded.Header.RecursiveStark!.StarkProofHash, Is.EqualTo(block.Header.RecursiveStark.StarkProofHash));
+        Assert.That(decoded.IsBodyMissing, Is.False);
+        Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+        Assert.That(new Block(block.Header).IsBodyMissing, Is.True);
+        ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)!.Value;
+        try
+        {
+            Assert.That(recovery.Header.RecursiveStark!.StarkProofHash, Is.EqualTo(block.Header.RecursiveStark.StarkProofHash));
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
     private static readonly Block[] _scenarios = BuildScenarios();
 
     private static Block[] BuildScenarios()

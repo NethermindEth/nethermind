@@ -111,18 +111,25 @@ public class BlockValidator(
     /// </summary>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
     {
-        RecursiveStark? recursiveStark = block.Header.RecursiveStark;
+        RecursiveStarkCommitment? recursiveStark = block.Header.RecursiveStark;
         if (!spec.IsEip8288Enabled)
         {
-            if (recursiveStark is null) return true;
+            if (recursiveStark is null && block.StarkProof is null) return true;
             error = BlockErrorMessages.RecursiveStarkNotEnabled;
             return false;
         }
 
-        if (recursiveStark is null)
+        if (recursiveStark is null || block.StarkProof is null)
         {
             error = BlockErrorMessages.MissingRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Missing recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
+            return false;
+        }
+
+        if (block.StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes
+            || Keccak.Compute(block.StarkProof) != recursiveStark.StarkProofHash)
+        {
+            error = BlockErrorMessages.InvalidRecursiveStark;
             return false;
         }
 
@@ -142,7 +149,7 @@ public class BlockValidator(
             return false;
         }
 
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, dependencies.Count, in computed.ValueHash256, recursiveStark.StarkProof))
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, dependencies.Count, in computed.ValueHash256, block.StarkProof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");

@@ -30,7 +30,8 @@ namespace Nethermind.Serialization.Rlp
                 headerLength +
                 Rlp.LengthOfSequence(txs) +
                 Rlp.LengthOfSequence(uncles) +
-                (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0);
+                (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0) +
+                (item.StarkProof is { } proof ? Rlp.LengthOf(proof) : 0);
             return (contentLength, txs, uncles, withdrawals);
         }
 
@@ -132,6 +133,7 @@ namespace Nethermind.Serialization.Rlp
                     _withdrawalDecoder.Encode(ref writer, withdrawals[i]);
                 }
             }
+            if (item.StarkProof is { } proof) writer.Encode(proof);
         }
 
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
@@ -157,9 +159,13 @@ namespace Nethermind.Serialization.Rlp
 
             decoderContext.SkipItem(); // Skip uncles
 
-            if (decoderContext.Position != blockCheck)
+            if (decoderContext.Position < blockCheck && decoderContext.PeekByte() >= Rlp.EmptyListByte)
             {
                 decoderContext.SkipItem(); // Skip withdrawals
+            }
+            if (header.RecursiveStark is not null)
+            {
+                decoderContext.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.StarkProof)));
             }
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {

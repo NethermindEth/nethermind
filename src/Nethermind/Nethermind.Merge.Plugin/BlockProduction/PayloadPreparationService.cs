@@ -446,7 +446,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     }
                 }
 
-                // A consensus client that drops recursive_stark returns this block without it; keep the proof for its import.
+                // Retain the produced proof for optional EIP-8437 retrieval after the payload is delivered.
                 if (blockContext.Best.CurrentBestBlock is { } block) _proofSidecars?.RememberProduced(block);
                 return blockContext.Best;
             }

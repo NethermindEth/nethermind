@@ -2964,7 +2964,8 @@ public class BlockTreeTests
         for (int i = 0; i < invalid.Length; i++)
         {
             invalid[i] = Build.A.Block.WithParent(tree.Head!).WithNumber((ulong)i + 4).TestObject;
-            invalid[i].Header.RecursiveStark = new RecursiveStark(proof, TestItem.KeccakA);
+            invalid[i].StarkProof = proof;
+            invalid[i].Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(invalid[i].StarkProof), TestItem.KeccakA);
             if (withInclusionProof)
             {
                 Transaction[] listTransactions = [Build.A.Transaction.TestObject];
@@ -2980,8 +2981,8 @@ public class BlockTreeTests
         Assert.That(tree.FindHeader(invalid[1].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
         Assert.That(tree.SuggestBlock(invalid[1]), Is.EqualTo(AddBlockResult.InvalidBlock), "evicting proof bytes must not forget the invalid hash");
         Block returned = tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!;
-        Assert.That(returned.Header.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
-        returned.Header.RecursiveStark.StarkProof[0] = 99;
+        Assert.That(returned.StarkProof![0], Is.EqualTo(7));
+        returned.StarkProof![0] = 99;
         if (withInclusionProof)
         {
             Assert.That(returned.InclusionListTransactions, Is.SameAs(invalid[0].InclusionListTransactions));
@@ -2990,8 +2991,8 @@ public class BlockTreeTests
             returned.InclusionLists[0].Proof!.StarkProof[0] = 99;
         }
         Block again = tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!;
-        Assert.That(again.Header.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
-        Assert.That(tree.FindHeader(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
+        Assert.That(again.StarkProof![0], Is.EqualTo(7));
+        Assert.That(tree.FindHeader(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!.RecursiveStark!.StarkProofHash, Is.EqualTo(Keccak.Compute(again.StarkProof!)));
         if (withInclusionProof) Assert.That(again.InclusionLists![0].Proof!.StarkProof[0], Is.EqualTo(7));
     }
 
@@ -3000,7 +3001,8 @@ public class BlockTreeTests
     {
         BlockTree tree = Build.A.BlockTree().WithBadBlockStore(Substitute.For<IBadBlockStore>()).OfChainLength(3).TestObject;
         Block invalid = Build.A.Block.WithParent(tree.Head!).WithNumber(4).TestObject;
-        invalid.Header.RecursiveStark = new RecursiveStark(new byte[Eip8288Constants.MaxAggregateProofBytes + 1], TestItem.KeccakA);
+        invalid.StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes + 1];
+        invalid.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(invalid.StarkProof), TestItem.KeccakA);
         tree.ReportBadBlock(invalid);
         Assert.That(tree.FindBlock(invalid.Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
         Assert.That(tree.SuggestBlock(invalid), Is.EqualTo(AddBlockResult.InvalidBlock));

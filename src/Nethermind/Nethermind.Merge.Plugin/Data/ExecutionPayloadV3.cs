@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Consensus.Producers;
@@ -36,7 +37,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
         if (block.Header.RecursiveStark is { } recursiveStark)
         {
-            executionPayload.RecursiveStarkProof = recursiveStark.StarkProof;
+            executionPayload.RecursiveStarkProof = block.StarkProof ?? throw new InvalidOperationException("Missing block proof body");
             executionPayload.RecursiveStarkBlockDepsHash = recursiveStark.BlockDepsHash.Bytes.ToArray();
         }
 
@@ -87,7 +88,8 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
                 return Result<Block>.Fail($"Invalid {nameof(RecursiveStarkBlockDepsHash)}: expected {Hash256.Size} bytes, got {RecursiveStarkBlockDepsHash?.Length.ToString() ?? "none"}");
             }
 
-            block.Header.RecursiveStark = new RecursiveStark(RecursiveStarkProof, new Hash256(RecursiveStarkBlockDepsHash));
+            block.StarkProof = RecursiveStarkProof;
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(RecursiveStarkProof), new Hash256(RecursiveStarkBlockDepsHash));
         }
 
         return baseResult;
