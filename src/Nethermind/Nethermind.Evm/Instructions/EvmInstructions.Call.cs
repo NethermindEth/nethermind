@@ -573,7 +573,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
         }
 
-        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length));
+        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length), isRevert: false);
 
         return EvmExceptionType.Stop;
         // Jump forward to be unpredicted by the branch predictor.
