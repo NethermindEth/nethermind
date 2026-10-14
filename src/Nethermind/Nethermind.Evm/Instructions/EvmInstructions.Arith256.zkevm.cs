@@ -13,8 +13,8 @@ using Int256;
 public static unsafe partial class EvmInstructions
 {
     // Each routine keeps the software UInt256 path unless the ZisK guest switched ZiskFlag on, so
-    // every other guest and every zkEVM test on the host runs it. The operands are pinned rather than
-    // copied: DIV and MOD read them in place from stack slots, and a pinned local is free on NativeAOT.
+    // every other guest and every zkEVM test on the host runs it; only MULMOD on SP1 and OpenVM differs.
+    // The operands are pinned rather than copied: DIV and MOD read them in place from stack slots, and a pinned local is free on NativeAOT.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void AddMod256(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)
@@ -116,9 +116,9 @@ public static unsafe partial class EvmInstructions
         ulong* remainder = quotient + LimbsPerWord;
         fixed (UInt256* pa = &a, pb = &b, pm = &m)
         {
-            OpenVmMultiply512((ulong*)pa, (ulong*)pb, product);
-            OpenVmDivRemHint(product, (ulong*)pm, quotient);
-            if (OpenVmIsDivRem(product, (ulong*)pm, quotient, remainder) == 0)
+            Accelerators.UInt256MulWide((ulong*)pa, (ulong*)pb, product);
+            Accelerators.UInt512DivRemHint(product, (ulong*)pm, quotient);
+            if (!Accelerators.UInt512IsDivRem(product, (ulong*)pm, quotient, remainder))
             {
                 Unsafe.SkipInit(out result);
                 return false;
@@ -130,13 +130,4 @@ public static unsafe partial class EvmInstructions
     }
 
     private const int LimbsPerWord = 4;
-
-    [DllImport("__Internal", EntryPoint = "openvm_mul_512", ExactSpelling = true), SuppressGCTransition]
-    private static extern void OpenVmMultiply512(ulong* x, ulong* y, ulong* product);
-
-    [DllImport("__Internal", EntryPoint = "openvm_divrem_hint", ExactSpelling = true), SuppressGCTransition]
-    private static extern void OpenVmDivRemHint(ulong* numerator, ulong* divisor, ulong* quotientRemainder);
-
-    [DllImport("__Internal", EntryPoint = "openvm_is_divrem", ExactSpelling = true), SuppressGCTransition]
-    private static extern int OpenVmIsDivRem(ulong* numerator, ulong* divisor, ulong* quotient, ulong* remainder);
 }

@@ -1,0 +1,15 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+  SPDX-License-Identifier: LGPL-3.0-only
+
+  Substitutions only this guest applies, on top of the shared
+  ../Nethermind.Stateless.Guest/substitutions.xml.
+-->
+<linker>
+  <assembly fullname="Nethermind.Evm">
+    <!-- Only OpenVM's runtime exports the division hint MULMOD takes its quotient and remainder from. -->
+    <type fullname="Nethermind.Evm.OpenVmMulModHintFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+</linker>
