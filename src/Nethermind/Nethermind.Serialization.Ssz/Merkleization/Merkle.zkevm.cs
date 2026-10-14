@@ -158,9 +158,9 @@ public static partial class Merkle
         ulong* state = stackalloc ulong[Sp1Sha256StateLength];
         LoadSp1Sha256Block(in left, in right, schedule, state);
 
-        Sp1Sha256Extend(schedule);
-        Sp1Sha256Compress(schedule, state);
-        Sp1Sha256Compress((ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sp1Sha256PaddingSchedule)), state);
+        Accelerators.Sha256Extend(schedule);
+        Accelerators.Sp1Sha256Compress(schedule, state);
+        Accelerators.Sp1Sha256Compress((ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sp1Sha256PaddingSchedule)), state);
 
         parent = ReadSp1Sha256Digest(state);
     }
@@ -229,12 +229,4 @@ public static partial class Merkle
         0x69bc7ac4UL, 0xbd11375bUL, 0xe3ba71e5UL, 0x3b209ff2UL, 0x18feee17UL, 0xe25ad9e7UL, 0x13375046UL, 0x0515089dUL,
         0x4f0d0f04UL, 0x2627484eUL, 0x310128d2UL, 0xc668b434UL, 0x420841ccUL, 0x62d311b8UL, 0xe59ba771UL, 0x85a7a484UL
     ];
-
-    /// <summary>SP1's SHA-256 message schedule extension: fills slots 16 to 63 from the first sixteen.</summary>
-    [DllImport("__Internal", EntryPoint = "zkvm_sha256_extend", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe void Sp1Sha256Extend(ulong* schedule);
-
-    /// <summary>SP1's SHA-256 compression of one extended schedule into <paramref name="state"/>.</summary>
-    [DllImport("__Internal", EntryPoint = "zkvm_sha256_compress", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe void Sp1Sha256Compress(ulong* schedule, ulong* state);
 }
