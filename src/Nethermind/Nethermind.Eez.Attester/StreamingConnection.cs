@@ -50,7 +50,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         {
             case ClientFrame.KindOneofCase.Begin:
                 if (!frame.SessionId.IsEmpty) throw Error(StatusCode.InvalidArgument, "Begin requires empty session id");
-                if (frame.Begin.RollupId != _rollupId) throw Error(StatusCode.FailedPrecondition, "rollup identity rejected");
+                if (frame.Begin.RollupId != _rollupId) throw Error(StatusCode.Unimplemented, "rollup identity unsupported");
                 _session = registry.Begin(_owner, frame.Begin);
                 _binding = _session.Binding;
                 return StreamingDispatch.Reply(_session.Ready(_binding, frame.RequestId));
@@ -61,7 +61,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
             case ClientFrame.KindOneofCase.None:
                 throw Error(StatusCode.Unimplemented, "unsupported operation");
             default:
-                throw Error(StatusCode.FailedPrecondition, "Begin or Resume must be first");
+                throw Error(StatusCode.InvalidArgument, "Begin or Resume must be first");
         }
     }
 

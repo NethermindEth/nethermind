@@ -122,6 +122,44 @@ public class StreamingRegistryTests
             Is.EqualTo((6UL, ready.SessionId, ready.Epoch, 10UL, Hash(1))));
     }
 
+    [TestCase(0UL, TestName = "Connection_ZeroRollup_ReturnsUnsupportedProfile")]
+    [TestCase(2UL, TestName = "Connection_UnknownRollup_ReturnsUnsupportedProfile")]
+    public void Connection_UnsupportedRollup_RemainsUnboundAndAllowsCorrectBegin(ulong rollup)
+    {
+        using StreamingSessionRegistry registry = Registry(new ManualTime(), 1, 1, 2000);
+        StreamingConnection connection = new(registry, "first", 1);
+        Begin begin = Anchor();
+        begin.RollupId = rollup;
+        ServerFrame rejected = connection.Dispatch(new ClientFrame { RequestId = 7, Begin = begin }).Response!;
+        Assert.That((rejected.RequestId, rejected.SessionId.IsEmpty, rejected.Epoch, rejected.Rejected.Code, rejected.Rejected.ValidatedHash.IsEmpty),
+            Is.EqualTo((7UL, true, 0UL, (int)StatusCode.Unimplemented, true)), "unsupported rollups never obtain a binding or consume session capacity");
+        Assert.That(connection.Dispatch(new ClientFrame { RequestId = 8, Begin = Anchor() }).Response!.Ready.ValidatedThrough,
+            Is.EqualTo(10), "a valid Begin succeeds after the unsupported request");
+    }
+
+    [TestCase("Block", TestName = "Connection_BlockBeforeBegin_ReturnsMalformedEnvelope")]
+    [TestCase("Finalize", TestName = "Connection_FinalizeBeforeBegin_ReturnsMalformedEnvelope")]
+    [TestCase("Rewind", TestName = "Connection_RewindBeforeBegin_ReturnsMalformedEnvelope")]
+    [TestCase("Cancel", TestName = "Connection_CancelBeforeBegin_ReturnsMalformedEnvelope")]
+    public void Connection_OperationBeforeBegin_ReturnsUnboundRejection(string kind)
+    {
+        using StreamingSessionRegistry registry = Registry(new ManualTime(), 1, 1, 2000);
+        StreamingConnection connection = new(registry, "first", 1);
+        ClientFrame frame = new() { RequestId = 7 };
+        switch (kind)
+        {
+            case "Block": frame.Block = new Nethermind.Eez.Prove.V2.Block { Data = Block() }; break;
+            case "Finalize": frame.Finalize = new Finalize(); break;
+            case "Rewind": frame.Rewind = new Rewind { AncestorHash = Hash(1) }; break;
+            default: frame.Cancel = new Cancel(); break;
+        }
+        ServerFrame rejected = connection.Dispatch(frame).Response!;
+        Assert.That((rejected.RequestId, rejected.SessionId.IsEmpty, rejected.Epoch, rejected.Rejected.Code),
+            Is.EqualTo((7UL, true, 0UL, (int)StatusCode.InvalidArgument)), "operations without Begin or Resume cannot mutate any session");
+        Assert.That(connection.Dispatch(new ClientFrame { RequestId = 8, Begin = Anchor() }).Response!.Ready.ValidatedThrough,
+            Is.EqualTo(10), "the malformed envelope leaves admission available");
+    }
+
     [Test]
     public void Connection_OnlyResumeBySameTransportOwner_CanTakeAttachment()
     {

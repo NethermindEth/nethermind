@@ -19,6 +19,7 @@ internal sealed class StreamingSession
     private readonly object _lock = new();
     private readonly string _owner;
     private readonly StreamingSessionLimits _limits;
+    private readonly ulong _initialAnchorNumber;
     private readonly List<RetainedBlock> _blocks = [];
     private Begin _anchor;
     private SessionBinding _binding;
@@ -42,6 +43,7 @@ internal sealed class StreamingSession
         }
         _owner = authenticatedOwner;
         RollupId = begin.RollupId;
+        _initialAnchorNumber = begin.AnchorNumber;
         _anchor = new Begin
         {
             RollupId = begin.RollupId,
@@ -115,6 +117,7 @@ internal sealed class StreamingSession
         lock (_lock)
         {
             CheckBinding(binding);
+            if (ancestorHash.Length != 32) throw Error(StatusCode.InvalidArgument, "ancestor hash must be 32 bytes");
             int index = FindAncestor(ancestorHash);
             if (index == -2) throw Error(StatusCode.FailedPrecondition, "ancestor outside validated prefix");
             AdvanceEpoch();
@@ -156,8 +159,9 @@ internal sealed class StreamingSession
 
             long size = block.CalculateSize();
             long items = (long)block.Witness.State.Count + block.Witness.Codes.Count + block.Witness.Keys.Count + block.Witness.Headers.Count;
-            if (size > _limits.MaxBytes - _bytes || items > _limits.MaxWitnessItems - _witnessItems ||
-                (duplicate < 0 && _blocks.Count >= _limits.MaxBlocks))
+            long availableBytes = duplicate >= 0 ? _limits.MaxBytes : _limits.MaxBytes - _bytes;
+            long availableItems = duplicate >= 0 ? _limits.MaxWitnessItems : _limits.MaxWitnessItems - _witnessItems;
+            if (size > availableBytes || items > availableItems || (duplicate < 0 && _blocks.Count >= _limits.MaxBlocks))
                 throw Error(StatusCode.ResourceExhausted, "session block limit exceeded");
 
             ByteString preStateRoot = duplicate >= 0 ? PreStateRoot(duplicate) : TipStateRoot;
@@ -172,7 +176,7 @@ internal sealed class StreamingSession
         {
             CheckBinding(binding);
             CheckIdle();
-            if (finalize.Settlement is null || finalize.TerminalHash.Length != 32 || finalize.FromBlock > finalize.ToBlock)
+            if (finalize.Settlement is null || finalize.TerminalHash.Length != 32 || finalize.FromBlock <= _initialAnchorNumber || finalize.FromBlock > finalize.ToBlock)
                 throw Error(StatusCode.InvalidArgument, "invalid finalization range or settlement");
             int first = FindBlock(finalize.FromBlock);
             int last = FindBlock(finalize.ToBlock);

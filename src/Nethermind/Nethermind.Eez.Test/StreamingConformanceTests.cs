@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Eez.Attester;
+using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Prove.V2;
 using NUnit.Framework;
 
@@ -84,6 +85,11 @@ public class StreamingConformanceTests
             if (step.GetProperty("action").GetString() != "send") continue;
             ClientFrame frame = ClientFrame.Parser.ParseFrom(Convert.FromHexString(step.GetProperty("protobuf_hex").GetString()!));
             if (current is not null) { frame.SessionId = current.SessionId; frame.Epoch = current.Epoch; }
+            if (frame.Finalize is not null)
+            {
+                PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(frame.Finalize.Settlement.AbiCalldata.Span);
+                frame.Finalize.Settlement.AbiCalldata = ByteString.CopyFrom(EezCalldata.EncodePostAndVerifyBatch(batch with { Proofs = [[]] }));
+            }
             await call.RequestStream.WriteAsync(frame);
             Assert.That(await call.ResponseStream.MoveNext(), Is.True, "every request returns a correlated response");
             current = call.ResponseStream.Current;
@@ -172,6 +178,7 @@ public class StreamingConformanceTests
                         ServerFrame expected = ServerFrame.Parser.ParseFrom(Convert.FromHexString(step.GetProperty("protobuf_hex").GetString()!));
                         Assert.That(await streams[name].ResponseStream.MoveNext(), Is.True, context + ": expected response, not EOF");
                         ServerFrame actual = streams[name].ResponseStream.Current.Clone();
+                        string diagnostic = actual.Rejected?.Message ?? "";
                         NormalizeBindings(expected, actual, sessions, epochs, context);
                         if (actual.Validated is not null) actual.Validated.Reused = false;
                         if (actual.Rejected is not null) actual.Rejected.Message = "";
@@ -186,7 +193,7 @@ public class StreamingConformanceTests
                             Assert.That(new EthereumEcdsa(0).RecoverAddress(recoverable, in digest), Is.EqualTo(attester), context + ": signer is recovered over the independent expected digest");
                             actual.Proof.Proof_ = expected.Proof.Proof_;
                         }
-                        Assert.That(actual, Is.EqualTo(expected), context + ": response fields and cursor match unchanged upstream expectations");
+                        Assert.That(actual, Is.EqualTo(expected), context + ": response fields and cursor match unchanged upstream expectations; " + diagnostic);
                         break;
                     case "half_close":
                         await streams[name].RequestStream.CompleteAsync();

@@ -71,6 +71,69 @@ public class StreamingSessionTests
         Assert.That(finalize.CopyBlocks()[0].Number, Is.EqualTo(12));
     }
 
+    [TestCase(true, TestName = "Duplicate_AtByteQuota_ReexecutesWithoutReservingAnotherBlock")]
+    [TestCase(false, TestName = "Duplicate_AtWitnessQuota_ReexecutesWithoutReservingAnotherBlock")]
+    public void Duplicate_AtFullQuota_ReexecutesAndKeepsTheRetainedBudget(bool byteQuota)
+    {
+        BlockWitness block = Block(11, AnchorHash);
+        StreamingSession session = new("composer", Anchor(), new StreamingSessionLimits(2,
+            byteQuota ? block.CalculateSize() : 10000, byteQuota ? 16 : 1));
+        Add(session, 11, AnchorHash);
+        Assert.That(session.Ready(session.Binding, 1).Ready.ValidatedThrough, Is.EqualTo(11), "precondition: the retained window fills its configured quota");
+        using (SessionOperation duplicate = session.AdmitBlock(session.Binding, 2, block))
+            Assert.That(session.CommitBlock(duplicate, Executed(duplicate)).Validated.Number, Is.EqualTo(11), "duplicate execution is verified without retaining a second copy");
+        AssertCode(() => session.AdmitBlock(session.Binding, 3, Block(12, Hash(11))), StatusCode.ResourceExhausted);
+        Assert.That(session.Ready(session.Binding, 4).Ready.ValidatedThrough, Is.EqualTo(11), "a duplicate does not create capacity or advance the prefix");
+    }
+
+    [TestCase(true, TestName = "Duplicate_ReplacementOverByteQuota_IsRejectedWithWitnessCapacityAvailable")]
+    [TestCase(false, TestName = "Duplicate_ReplacementOverWitnessQuota_IsRejectedWithByteCapacityAvailable")]
+    public void Duplicate_WithOversizedReplacementWitness_IsStillRejected(bool byteQuota)
+    {
+        BlockWitness block = Block(11, AnchorHash);
+        long maxBytes = byteQuota ? block.CalculateSize() : 10000;
+        long maxWitnessItems = byteQuota ? 16 : 1;
+        StreamingSession session = new("composer", Anchor(), new StreamingSessionLimits(2, maxBytes, maxWitnessItems));
+        Add(session, 11, AnchorHash);
+        block.Witness.Codes.Add(Hash(90));
+        long items = (long)block.Witness.State.Count + block.Witness.Codes.Count + block.Witness.Keys.Count + block.Witness.Headers.Count;
+        if (byteQuota)
+        {
+            Assert.That(block.CalculateSize(), Is.GreaterThan(maxBytes));
+            Assert.That(items, Is.LessThanOrEqualTo(maxWitnessItems));
+        }
+        else
+        {
+            Assert.That(block.CalculateSize(), Is.LessThanOrEqualTo(maxBytes));
+            Assert.That(items, Is.GreaterThan(maxWitnessItems));
+        }
+        AssertCode(() => session.AdmitBlock(session.Binding, 2, block), StatusCode.ResourceExhausted);
+        Assert.That(session.Ready(session.Binding, 3).Ready.ValidatedThrough, Is.EqualTo(11), "temporary duplicate witness data remains independently bounded");
+    }
+
+    [TestCase(0, TestName = "Rewind_EmptyHash_RejectsWithoutChangingBinding")]
+    [TestCase(31, TestName = "Rewind_ShortHash_RejectsWithoutChangingBinding")]
+    [TestCase(33, TestName = "Rewind_LongHash_RejectsWithoutChangingBinding")]
+    public void Rewind_MalformedHash_RejectsWithoutChangingProgress(int size)
+    {
+        StreamingSession session = Session();
+        Add(session, 11, AnchorHash);
+        SessionBinding binding = session.Binding;
+        AssertCode(() => session.Rewind(binding, 2, ByteString.CopyFrom(new byte[size])), StatusCode.InvalidArgument);
+        Assert.That((session.Binding, session.Ready(binding, 3).Ready.ValidatedThrough), Is.EqualTo((binding, 11UL)), "malformed controls do not fence valid work or change the cursor");
+    }
+
+    [TestCase(0UL, TestName = "Finalize_ZeroStart_RejectsMalformedRange")]
+    [TestCase(10UL, TestName = "Finalize_InitialAnchorStart_RejectsMalformedRange")]
+    public void Finalize_BeforeInitialExecutableRange_RejectsWithoutConsumingAdmission(ulong from)
+    {
+        StreamingSession session = Session();
+        Add(session, 11, AnchorHash);
+        AssertCode(() => session.AdmitFinalize(session.Binding, 2, FinalizeRange(from, 11)), StatusCode.InvalidArgument);
+        using SessionOperation retry = session.AdmitFinalize(session.Binding, 3, FinalizeRange(11, 11));
+        Assert.That(retry.CopyBlocks()[0].Number, Is.EqualTo(11), "an invalid range does not prevent a valid proof attempt");
+    }
+
     [Test]
     public void Resume_FencesOldAttachment_EvenWithNewEpoch_AndChecksOwner()
     {
