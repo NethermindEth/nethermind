@@ -18,4 +18,10 @@
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
   </assembly>
+  <assembly fullname="Nethermind.Serialization.Ssz">
+    <!-- Merkleization hashes pairs with the three-operand zkvm_sha256_compress only OpenVM's runtime exports; SP1's takes two. -->
+    <type fullname="Nethermind.Serialization.Ssz.Merkleization.OpenVmSha256Flag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
 </linker>
