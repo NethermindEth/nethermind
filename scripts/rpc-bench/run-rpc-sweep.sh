@@ -514,7 +514,7 @@ for entry in "${schedule[@]}"; do
   fi
   LABELS+=("$label")
 
-  if [[ "$ctype" == "nethermind" && "$JB_BENCHMARK_CONFIG" =~ ^config/benchmark/log-data-(filtering|huge)\.yaml$ && "$arm_flags" == *"--LogIndex.Enabled=true"* ]]; then
+  if [[ "$ctype" == "nethermind" && "$JB_BENCHMARK_CONFIG" =~ ^config/benchmark/log-data-(filtering|huge|receipts)\.yaml$ && "$arm_flags" == *"--LogIndex.Enabled=true"* ]]; then
     if ! bash "$here/prepare-log-index.sh" "$cname" "$RPC" "$SNAPSHOT_BLOCK" 25390001 25406300 "$OUT_DIR/index-preparation/$label"; then
       STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" "$here/stop-node.sh" || true
       echo "::error::${label}: verified log index preparation failed"
@@ -526,7 +526,7 @@ for entry in "${schedule[@]}"; do
     for corpus in "${CORPORA[@]}"; do run_corpus "$(corpus_label "$corpus")" "$label" "$corpus" "$ctype" "$cname"; done
     [[ -n "$BASELINE_LABEL" ]] || BASELINE_LABEL="$label"
   else
-    if [[ "$JB_BENCHMARK_CONFIG" =~ ^config/benchmark/log-data-(filtering|huge)\.yaml$ && "$WARMUP_SECONDS" -gt 0 ]]; then
+    if [[ "$JB_BENCHMARK_CONFIG" =~ ^config/benchmark/log-data-(filtering|huge|receipts)\.yaml$ && "$WARMUP_SECONDS" -gt 0 ]]; then
       warm_cell="$SCRATCH_ROOT/warmup-cell/logs/$label"
       measured_seed="$JB_SEED"
       JB_SEED=$((measured_seed + 1000))
