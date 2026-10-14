@@ -15,7 +15,7 @@ public class F_Encode
     [Benchmark(Baseline = true)]
     public byte[] Current()
     {
-        AbiSignature signature = new AbiSignature("f",
+        AbiSignature signature = new("f",
             AbiType.UInt256,
             new AbiArray(AbiType.UInt32),
             new AbiBytes(10),
@@ -33,7 +33,7 @@ public class F_Encode
     [Benchmark]
     public byte[] Experimental()
     {
-        var signature = new Exp.AbiSignature("f")
+        Exp.AbiSignature<(UInt256, uint[], byte[], byte[])> signature = new Exp.AbiSignature("f")
             .With(
                 Exp.AbiType.UInt256,
                 Exp.AbiType.Array(Exp.AbiType.UInt32),
