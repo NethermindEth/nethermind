@@ -3,9 +3,12 @@
 
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -159,6 +162,56 @@ public class ReadOnlySnapshotBundlePersistedTests
 
         Assert.That(result, Is.EqualTo(dbRlp));
         reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
+    }
+
+    [Test]
+    public void Span_and_array_rlp_reads_agree([Values] bool storage, [Values(3, 10, 40)] int pathLength)
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+
+        Hash256 address = Keccak.Compute("address");
+        TreePath dbPath = new(Keccak.Compute("db"), pathLength);
+        TreePath persistedPath = new(Keccak.Compute("persisted"), pathLength);
+        TreePath missingPath = new(Keccak.Compute("missing"), pathLength);
+        byte[] dbRlp = Bytes.FromHexString("c3018080");
+        byte[] persistedRlp = Bytes.FromHexString("c20280");
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance);
+        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            if (storage) batch.SetStorageTrieNode(address, dbPath, dbRlp);
+            else batch.SetStateTrieNode(dbPath, dbRlp);
+        }
+
+        SnapshotContent content = new();
+        if (storage) content.StorageNodes[(address, persistedPath)] = new TrieNode(NodeType.Leaf, persistedRlp);
+        else content.StateNodes[persistedPath] = new TrieNode(NodeType.Leaf, persistedRlp);
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        PersistedSnapshotList list = new(1) { CreatePersistedSnapshot(s0, s1, PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs)) };
+
+        using ReadOnlySnapshotBundle bundle = new(
+            new SnapshotPooledList(0),
+            persistence.CreateReader(),
+            recordDetailedMetrics: false,
+            persistedSnapshots: AlwaysTrueStack(list));
+
+        foreach ((TreePath path, byte[]? expected) in new[] { (dbPath, dbRlp), (persistedPath, persistedRlp), (missingPath, (byte[]?)null) })
+        {
+            byte[]? arrayRlp = storage
+                ? bundle.TryLoadStorageRlp(address, path, Keccak.Compute("hash"), ReadFlags.None)
+                : bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
+
+            StrongBox<byte[]?> spanRlp = new();
+            bool found = storage
+                ? bundle.TryLoadStorageRlp(address, path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp)
+                : bundle.TryLoadStateRlp(path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
+
+            Assert.That(arrayRlp, Is.EqualTo(expected), path.ToString());
+            Assert.That(found, Is.EqualTo(expected is not null), path.ToString());
+            Assert.That(spanRlp.Value, Is.EqualTo(expected), path.ToString());
+        }
     }
 
     // Each test snapshot is constructed without a bloom, so it carries the AlwaysTrue

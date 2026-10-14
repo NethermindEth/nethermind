@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -419,6 +420,22 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
+    }
+
+    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadStateRlp{TArg}(in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
+    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        GuardDispose();
+
+        return _readOnlySnapshotBundle.TryLoadStateRlp(path, flags, action, arg);
+    }
+
+    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadStorageRlp{TArg}(Hash256, in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
+    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        GuardDispose();
+
+        return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, flags, action, arg);
     }
 
     // This is called only during trie commit
