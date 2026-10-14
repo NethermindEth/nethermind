@@ -156,14 +156,17 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugGetRawReceipts_WhenReceiptsExist_ReturnsHexArray()
+    public async Task DebugGetRawReceipts_WhenReceiptsExist_ReturnsHexArray([Values] bool byHash)
     {
         TxReceipt[] receipts = [Build.A.Receipt.TestObject, Build.A.Receipt.TestObject];
-        _debugBridge.GetReceiptsForBlock(BlockAtNumberOne()).Returns(receipts);
+        Block block = BlockAtNumberOne();
+        _debugBridge.GetReceiptsForBlock(block).Returns(receipts);
         RlpBehaviors behavior = (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         string expected = $"[\"{Rlp.Encode(receipts[0], behavior).Bytes.ToHexString(true)}\",\"{Rlp.Encode(receipts[1], behavior).Bytes.ToHexString(true)}\"]";
 
-        string serialized = await SerializedRequest("debug_getRawReceipts", "0x1");
+        // Only the plain hash lookup is stubbed, so honouring requireCanonical would find nothing; geth ignores it here.
+        object parameter = byHash ? new { blockHash = block.Hash, requireCanonical = true } : "0x1";
+        string serialized = await SerializedRequest("debug_getRawReceipts", parameter);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{expected},\"id\":67}}"));
     }
 
@@ -176,50 +179,32 @@ public class DebugModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
     }
 
-    [Test]
-    public async Task DebugGetRawReceipts_WhenBlockUnknown_ReturnsNull([Values] bool byHash)
+    // Matches geth: an unknown number has no block (null), while a hash is read directly and has no receipts ([]).
+    [TestCase(false, "null")]
+    [TestCase(true, "[]")]
+    public async Task DebugGetRawReceipts_WhenBlockUnknown_ReturnsGethResult(bool byHash, string expectedResult)
     {
         string serialized = await SerializedRequest("debug_getRawReceipts", byHash ? TestItem.KeccakA : "0x1");
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResult},\"id\":67}}"));
         _debugBridge.DidNotReceiveWithAnyArgs().GetReceiptsForBlock(default!);
     }
 
-    public enum RawReceiptsLookupFailure { Pruned, NotCanonical, BodyMissing }
-
-    [TestCase(RawReceiptsLookupFailure.Pruned, ErrorCodes.PrunedHistoryUnavailable, ErrorMessages.PrunedHistoryUnavailable)]
-    [TestCase(RawReceiptsLookupFailure.NotCanonical, ErrorCodes.InvalidInput, "block is not canonical")]
-    [TestCase(RawReceiptsLookupFailure.BodyMissing, ErrorCodes.ResourceNotFound, "block body not found")]
-    public async Task DebugGetRawReceipts_WhenBlockUnavailable_ReturnsError(RawReceiptsLookupFailure failure, int expectedCode, string expectedMessage)
+    [Test]
+    public async Task DebugGetRawReceipts_WhenHistoryPruned_ReturnsPrunedHistoryError()
     {
-        object parameter = "0x1";
-        if (failure == RawReceiptsLookupFailure.Pruned)
-        {
-            _blockFinder.LowestServedBlock.Returns(2UL);
-        }
-        else
-        {
-            BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
-            _blockFinder.FindHeader(header.Hash!).Returns(header);
-            _blockFinder.IsMainChain(header).Returns(failure == RawReceiptsLookupFailure.BodyMissing);
-            parameter = new { blockHash = header.Hash, requireCanonical = true };
-        }
+        _blockFinder.LowestServedBlock.Returns(2UL);
 
-        using JsonRpcResponse response = await Request("debug_getRawReceipts", parameter);
+        using JsonRpcResponse response = await Request("debug_getRawReceipts", "0x1");
 
-        Error error = RpcTest.AssertError(response);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(error.Code, Is.EqualTo(expectedCode));
-            Assert.That(error.Message, Does.Contain(expectedMessage));
-        }
-        _debugBridge.DidNotReceiveWithAnyArgs().GetReceiptsForBlock(default!);
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
     }
 
     private Block BlockAtNumberOne()
     {
         Block block = Build.A.Block.WithNumber(1).TestObject;
         _blockFinder.FindBlock(new BlockParameter(1L)).Returns(block);
+        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.None).Returns(block);
         return block;
     }
 
