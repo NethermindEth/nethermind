@@ -19,8 +19,8 @@ public class RollupXPublicInputsTests
     private const ulong RollupId = 1;
 
     /// <summary>The eez.dev proof system and the signer its verification key names.</summary>
-    private static readonly Address ProofSystem = new("0xff0cf5519b755f569f39a4b1ee09bedc984a5b10");
-    private static readonly Address OperatorSigner = new("0x72a5ed7ab535f5760a77d1770a49cf212e20bc3b");
+    internal static readonly Address ProofSystem = new("0xff0cf5519b755f569f39a4b1ee09bedc984a5b10");
+    internal static readonly Address OperatorSigner = new("0x72a5ed7ab535f5760a77d1770a49cf212e20bc3b");
 
     /// <summary>
     /// The batches the eez.dev testnet settled: each carries the operator signer's signature over its public inputs hash,
@@ -55,7 +55,7 @@ public class RollupXPublicInputsTests
         Assert.That(checkedBatches, Is.EqualTo(14));
     }
 
-    private static ValueHash256 VerificationKey(Address signer)
+    internal static ValueHash256 VerificationKey(Address signer)
     {
         byte[] key = new byte[32];
         signer.Bytes.CopyTo(key.AsSpan(12));

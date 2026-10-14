@@ -25,27 +25,29 @@ public static class BlobStream
         byte[] stream = new byte[blobs.Count * DataBytesPerBlob];
         for (int b = 0; b < blobs.Count; b++)
         {
-            byte[] blob = blobs[b];
-            if (blob.Length != BytesPerBlob)
-            {
-                throw DaReader.Invalid($"blob {b} has {blob.Length} bytes, expected {BytesPerBlob}");
-            }
-
-            for (int e = 0; e < FieldElementsPerBlob; e++)
-            {
-                ReadOnlySpan<byte> element = blob.AsSpan(e * BytesPerFieldElement, BytesPerFieldElement);
-                if (element[0] != 0)
-                {
-                    throw DaReader.Invalid($"field element {e} of blob {b} has a non-zero top byte");
-                }
-
-                Span<byte> data = stream.AsSpan(b * DataBytesPerBlob + e * DataBytesPerFieldElement, DataBytesPerFieldElement);
-                element[1..].CopyTo(data);
-                data.Reverse();
-            }
+            Unpack(blobs[b], stream.AsSpan(b * DataBytesPerBlob, DataBytesPerBlob), b);
         }
 
         return stream;
+    }
+
+    /// <summary>Unpacks one physical blob into its exact logical-byte destination.</summary>
+    /// <exception cref="EezSettlementException">The blob size or a field element's top byte is invalid.</exception>
+    /// <exception cref="ArgumentException">The destination does not have <see cref="DataBytesPerBlob"/> bytes.</exception>
+    public static void Unpack(ReadOnlySpan<byte> blob, Span<byte> destination) => Unpack(blob, destination, 0);
+
+    private static void Unpack(ReadOnlySpan<byte> blob, Span<byte> destination, int index)
+    {
+        if (destination.Length != DataBytesPerBlob) throw new ArgumentException("invalid logical blob destination", nameof(destination));
+        if (blob.Length != BytesPerBlob) throw DaReader.Invalid($"blob {index} has {blob.Length} bytes, expected {BytesPerBlob}");
+        for (int e = 0; e < FieldElementsPerBlob; e++)
+        {
+            ReadOnlySpan<byte> element = blob.Slice(e * BytesPerFieldElement, BytesPerFieldElement);
+            if (element[0] != 0) throw DaReader.Invalid($"field element {e} of blob {index} has a non-zero top byte");
+            Span<byte> data = destination.Slice(e * DataBytesPerFieldElement, DataBytesPerFieldElement);
+            element[1..].CopyTo(data);
+            data.Reverse();
+        }
     }
 
     /// <summary>The fewest blobs that carry <paramref name="stream"/>, the remainder zero.</summary>

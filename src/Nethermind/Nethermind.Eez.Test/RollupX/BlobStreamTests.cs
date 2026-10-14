@@ -46,6 +46,21 @@ public class BlobStreamTests
         Assert.Throws<EezSettlementException>(() => BlobStream.Unpack([blob]));
     }
 
+    [TestCase(-1, TestName = "Unpack_ShortDestination_Rejects")]
+    [TestCase(1, TestName = "Unpack_LongDestination_Rejects")]
+    public void Unpack_DestinationOfWrongSize_Throws(int delta) =>
+        Assert.That(() => BlobStream.Unpack(new byte[BlobStream.BytesPerBlob], new byte[BlobStream.DataBytesPerBlob + delta]),
+            Throws.TypeOf<ArgumentException>(), "the span caller must supply exactly one logical blob");
+
+    [Test]
+    public void Unpack_SecondBlobInvalid_PreservesIndexedError()
+    {
+        byte[] second = new byte[BlobStream.BytesPerBlob];
+        second[32] = 1;
+        Assert.That(() => BlobStream.Unpack([new byte[BlobStream.BytesPerBlob], second]),
+            Throws.TypeOf<EezSettlementException>().With.Message.Contains("field element 1 of blob 1"), "existing follower errors identify the actual failing blob");
+    }
+
     [Test]
     public void Unpack_BlobOfTheWrongSize_Throws() =>
         Assert.Throws<EezSettlementException>(() => BlobStream.Unpack([new byte[BlobStream.BytesPerBlob - 1]]));
