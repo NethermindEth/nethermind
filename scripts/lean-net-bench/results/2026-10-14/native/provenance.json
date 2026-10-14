@@ -1,0 +1,26 @@
+{
+  "adapterRevision": "04da763081",
+  "forkRevision": "cf1e92f87a7aec052b680f73e56145e866218583",
+  "profileKey": "00f24bbdf44a31139c975223b77510cd93a905664da3c4a52b5eba4e9b07de9e",
+  "abi": 6,
+  "cpu": "Apple M2 Max",
+  "physicalRamBytes": 34359738368,
+  "logicalCpuCount": 12,
+  "workers": 1,
+  "rustToolchain": "1.99.0",
+  "rustFlags": "-C target-cpu=native",
+  "cargoBuildJobs": 2,
+  "poison": false,
+  "probeSourceSha256": "dd7ce0619bcd2b4c8e162d9d9e37805aca0ad99b63abe0228e64844eec2bf4a6",
+  "executableSha256": "e40b23d9124a30d58d0801201e07607a36403f3db18d5d30fd00775ebc38e631",
+  "captureMethod": "Python os.wait4 child rusage; macOS ru_maxrss inbytes",
+  "cpuIsolation": "one native process at a time; managed builds/tests ran concurrently during part of capture; host not exclusive",
+  "limitations": [
+    "No native/prover tuning",
+    "Generic fixture is trivial2048-instruction public-input program, not worstallowed\u03bc22/arbitraryprogram",
+    "SPH64 exploratorysinglesample; otherfivecases3freshprocesssamples",
+    "RSS entireprocessincludingfixtures, not perstage bound",
+    "Original /private/tmp commandpaths preservedhistoricalprovenance; portablebuildrecipe provided",
+    "Fullspec4096 aggregatecapacity unsupported byactive256 profile"
+  ]
+}
