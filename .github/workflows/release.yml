@@ -60,7 +60,7 @@ jobs:
         run: |
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
-          for rid in "linux-arm64" "linux-x64" "macos-arm64" "macos-x64" "windows-x64"; do
+          for rid in "linux-arm64" "linux-x64" "macos-arm64" "macos-x64" "windows-arm64" "windows-x64"; do
             file_name=$(basename *$rid*)
             gpg --no-tty --batch --yes --pinentry-mode loopback \
               --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
@@ -93,6 +93,13 @@ jobs:
         with:
           name: ${{ env.PACKAGE_PREFIX }}-macos-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+
+      - name: Upload Nethermind Windows arm64 package
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-windows-arm64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-arm64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind Windows x64 package
@@ -182,6 +189,11 @@ jobs:
     name: Publish to Docker Hub
     runs-on: ubuntu-latest
     needs: [approval, build]
+    # The release Docker Hub OIDC connection only trusts tokens issued for this environment
+    environment: Releases
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
@@ -201,9 +213,12 @@ jobs:
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_RELEASE_OIDC_CONNECTIONID }}
+          # The token must outlive the multi-platform build, as buildx only pushes at the end
+          DOCKERHUB_OIDC_EXPIREIN: 3600
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          username: ${{ vars.DOCKERHUB_RELEASE_ORGANIZATION }}
 
       - name: Build and push image to Docker Hub
         run: |

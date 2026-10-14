@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -108,6 +109,12 @@ internal sealed class TracingProducedBlockProcessor(
                     r.BlockHash = processed.Hash;
                     r.BlockNumber = processed.Number;
                 }).ToArray();
+                // EIP-8116: the dump tracer bypasses FinalizeBlock, so match the per-transaction gas the block commits.
+                if (specProvider.GetSpec(processed.Header).IsEip8116Enabled)
+                {
+                    receipts.SetEip8116GasUsed();
+                }
+
                 WriteJson($"receipts_{name}.json", receipts);
             }
 
