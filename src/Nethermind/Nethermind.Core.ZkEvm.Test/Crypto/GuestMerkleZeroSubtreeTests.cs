@@ -18,8 +18,11 @@ public class GuestMerkleZeroSubtreeTests
     [Test]
     public void Zero_hash_is_a_zero_subtree_at_its_own_level_only([Range(0, Levels - 1)] int level)
     {
-        Assert.That(Merkle.IsZeroSubtree(Merkle.ZeroHashes[level], level), Is.True);
-        Assert.That(Merkle.IsZeroSubtree(Merkle.ZeroHashes[(level + 1) % Levels], level), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Merkle.IsZeroSubtree(Merkle.ZeroHashes[level], level), Is.True);
+            Assert.That(Merkle.IsZeroSubtree(Merkle.ZeroHashes[(level + 1) % Levels], level), Is.False);
+        }
     }
 
     [Test]
