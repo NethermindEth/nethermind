@@ -87,7 +87,7 @@ public sealed class FlatStorageTree(
 
     private bool UsesNativeBulkSet => _config.UseNativeBulkSet && !_scope.Trieless;
 
-    private NativeTrieNodeStore NativeStore => _nativeStore ??= new NativeTrieNodeStore(_bundle, AddressHash);
+    private NativeTrieNodeStore NativeStore => _nativeStore ??= new NativeTrieNodeStore(_bundle, AddressHash, _scope.NativeTrieNodeCache);
 
     private LoggedTrie Trie => _trie ??= CreateTrie();
 

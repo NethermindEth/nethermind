@@ -66,6 +66,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<TrieNodeLog, IFlatDbConfig>(c => new TrieNodeLog(c.CompressedTrieNodeLogMemoryBudget, TrieNodeLog.DefaultGenerationBytes))
+            // Only created with UseNativeBulkSet, which needs libnethermind_patricia.
+            .AddSingleton<NativeTrieNodeCache, IFlatDbConfig>(config => new NativeTrieNodeCache(config.TrieCacheMemoryBudget))
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()

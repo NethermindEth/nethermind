@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -39,11 +40,13 @@ public class NativePatriciaBulkSetTests
         foreach ((Hash256 key, byte[] value) in existingItems.Concat(items)) tree.Set(key.Bytes, value);
         tree.UpdateRootHash();
 
-        // Nothing is in the store, so the second bulk set reads the first one's nodes back from the pending nodes.
+        // Nothing is in the store, so the second bulk set reads the first one's nodes back from the cache, or from the
+        // pending nodes when the small cache evicted or replaced them.
         DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
         using NativePendingNodes pending = NativePendingNodes.Rent(existingItems.Count);
-        Hash256 existingRoot = BulkSet(store, pending, Keccak.EmptyTreeHash, existingItems);
-        Assert.That(BulkSet(store, pending, existingRoot, items), Is.EqualTo(tree.RootHash));
+        using NativeTrieNodeCache cache = new(256 * 1024);
+        Hash256 existingRoot = BulkSet(store, pending, cache, Keccak.EmptyTreeHash, existingItems);
+        Assert.That(BulkSet(store, pending, cache, existingRoot, items), Is.EqualTo(tree.RootHash));
 
         NativePendingNodesView view = pending.GetView();
         Assert.That(Unsafe.SizeOf<TreePath>(), Is.EqualTo(40));
@@ -51,7 +54,7 @@ public class NativePatriciaBulkSetTests
         Assert.That(Enumerable.Range(0, view.Count).Where(i => Keccak.Compute(view.GetRlp(view[i])).ValueHash256 != view[i].Hash), Is.Empty);
     }
 
-    private static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, Hash256 root, List<(Hash256 key, byte[] value)> items)
+    private static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeCache cache, Hash256 root, List<(Hash256 key, byte[] value)> items)
     {
         NativeBulkSetEntry[] entries = new NativeBulkSetEntry[items.Count];
         int offset = 0;
@@ -62,6 +65,6 @@ public class NativePatriciaBulkSetTests
             offset += length;
         }
 
-        return NativePatriciaBulkSet.BulkSet(store, pending, root.ValueHash256, entries, items.SelectMany(item => item.value ?? []).ToArray());
+        return NativePatriciaBulkSet.BulkSet(store, pending, cache, TestItem.KeccakA, root.ValueHash256, entries, items.SelectMany(item => item.value ?? []).ToArray());
     }
 }

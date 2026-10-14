@@ -8,6 +8,7 @@ use std::cell::RefCell;
 
 use rayon::prelude::*;
 
+use crate::cache::TrieNodeCache;
 use crate::keccak::keccak_many;
 use crate::node::{decode_rlp, empty_children, encode, nibble, ChildRef, Nibbles, Node, TreePath};
 use crate::pending::PendingNodes;
@@ -33,13 +34,16 @@ thread_local! {
 }
 
 /// Applies `entries` to the trie whose root hash is `root`, writing every new node referenced by hash at its path into
-/// `pending`, and returns the new root hash. Nodes are read from `pending` before `store`. `entries` is reordered in
-/// place and its keys must be unique.
+/// `pending`, and returns the new root hash. Nodes are read from `cache`, then `pending`, then `store`, and every node
+/// read or written is cached as the trie of `address`, the state trie when `None`. `entries` is reordered in place and
+/// its keys must be unique.
 ///
 /// Nodes that become unreachable are not removed.
 pub fn bulk_set<S: NodeStore>(
     store: &S,
     pending: &PendingNodes,
+    cache: Option<&TrieNodeCache>,
+    address: Option<&[u8; 32]>,
     root: &[u8; 32],
     entries: &mut [Entry],
     values: &[u8],
@@ -57,6 +61,8 @@ pub fn bulk_set<S: NodeStore>(
     let context = Context {
         store,
         pending,
+        cache,
+        address,
         values,
     };
     let mut root_reference = match *root {
@@ -78,6 +84,8 @@ pub fn bulk_set<S: NodeStore>(
 struct Context<'a, S> {
     store: &'a S,
     pending: &'a PendingNodes,
+    cache: Option<&'a TrieNodeCache>,
+    address: Option<&'a [u8; 32]>,
     values: &'a [u8],
 }
 
@@ -494,21 +502,31 @@ impl<S: NodeStore> Context<'_, S> {
             },
             ChildRef::Inline(rlp) => decode_rlp(rlp.as_slice()).map(Some),
             ChildRef::Hash(hash) => {
+                if let Some(node) = self
+                    .cache
+                    .and_then(|cache| cache.get(self.address, path, hash))
+                {
+                    return Ok(Some(node));
+                }
                 let pending = BUFFER.with_borrow_mut(|buffer| {
                     self.pending
                         .copy_to(path, hash, buffer)
                         .then(|| decode_rlp(buffer))
                         .transpose()
                 })?;
-                match pending {
-                    Some(node) => Ok(Some(node)),
-                    None => self
-                        .store
-                        .fetch(path, hash)?
-                        .ok_or(Error::MissingNode)
-                        .map(Some),
-                }
+                let node = match pending {
+                    Some(node) => node,
+                    None => self.store.fetch(path, hash)?.ok_or(Error::MissingNode)?,
+                };
+                self.cache_node(path, hash, &node);
+                Ok(Some(node))
             }
+        }
+    }
+
+    fn cache_node(&self, path: &TreePath, hash: &[u8; 32], node: &Node) {
+        if let Some(cache) = self.cache {
+            cache.insert(self.address, path, hash, node);
         }
     }
 
@@ -594,6 +612,9 @@ impl<S: NodeStore> Context<'_, S> {
                         },
                     ));
                     for (&(index, _, _), &hash) in hashed.iter().zip(hashes.iter()) {
+                        // Deeper levels are done, so the node's children are all resolved.
+                        let PendingNode { path, node, .. } = &nodes[index as usize];
+                        self.cache_node(path, &hash, node);
                         resolve(nodes, index, ChildRef::Hash(hash));
                     }
                     start = end;
@@ -867,6 +888,15 @@ mod tests {
     type Item = ([u8; 32], Vec<u8>);
 
     fn apply(pending: &PendingNodes, root: [u8; 32], items: &[Item]) -> Result<[u8; 32], Error> {
+        apply_cached(pending, None, root, items)
+    }
+
+    fn apply_cached(
+        pending: &PendingNodes,
+        cache: Option<&TrieNodeCache>,
+        root: [u8; 32],
+        items: &[Item],
+    ) -> Result<[u8; 32], Error> {
         let mut values = Vec::new();
         let mut entries: Vec<Entry> = items
             .iter()
@@ -880,7 +910,15 @@ mod tests {
                 entry
             })
             .collect();
-        bulk_set(&EmptyStore, pending, &root, &mut entries, &values)
+        bulk_set(
+            &EmptyStore,
+            pending,
+            cache,
+            None,
+            &root,
+            &mut entries,
+            &values,
+        )
     }
 
     /// Checks every written node's hash and returns the RLP written at `path`.
@@ -959,6 +997,17 @@ mod tests {
         expected.extend_from_slice(&items[5020..]);
         let changed_root = apply(&store, root, &changes).unwrap();
         assert_eq!(changed_root, root_of(&expected));
+
+        // Every node the first bulk set wrote is cached, so the second needs neither the pending nodes nor the store.
+        let cache = TrieNodeCache::new(256 << 20);
+        let cached = PendingNodes::default();
+        let cached_root =
+            apply_cached(&cached, Some(&cache), EMPTY_TREE_HASH, &items[..300]).unwrap();
+        cached.clear();
+        assert_eq!(
+            apply_cached(&cached, Some(&cache), cached_root, &items[300..600]),
+            Ok(root_of(&items[..600]))
+        );
 
         let deletes: Vec<Item> = expected.iter().map(|(key, _)| (*key, Vec::new())).collect();
         assert_eq!(apply(&store, changed_root, &deletes), Ok(EMPTY_TREE_HASH));

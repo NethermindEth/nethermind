@@ -16,6 +16,7 @@ using Nethermind.Trie.NodeLog;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie.Native;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
@@ -43,6 +44,7 @@ public class StorageRootCommitBenchmark
     private const ulong BaseBlockNumber = 1;
 
     private FlatDbConfig _config = null!;
+    private NativeTrieNodeCache _nativeTrieNodeCache;
     private ResourcePool _resourcePool = null!;
     private TrieNodeLog _trieNodeLog = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
@@ -64,6 +66,8 @@ public class StorageRootCommitBenchmark
         FlatWorldStateBenchmarkHarness.RequireTieredCompilationDisabled();
 
         _config = new FlatDbConfig { UseNativeBulkSet = UseNativeBulkSet };
+        // Disabled, like the NullTrieNodeCache the managed tries get.
+        _nativeTrieNodeCache = UseNativeBulkSet ? new NativeTrieNodeCache(0) : null;
         _resourcePool = new ResourcePool(_config);
         _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
         _baseSnapshots = new List<FlatSnapshot>(1);
@@ -85,6 +89,7 @@ public class StorageRootCommitBenchmark
             codeDb: new NullCodeDb(),
             commitTarget: commitTarget,
             configuration: _config,
+            nativeTrieNodeCache: _nativeTrieNodeCache,
             trieCacheWarmer: new NoopTrieWarmer(),
             logManager: NullLogManager.Instance);
 
@@ -140,6 +145,7 @@ public class StorageRootCommitBenchmark
             codeDb: new NullCodeDb(),
             commitTarget: _commitTarget,
             configuration: _config,
+            nativeTrieNodeCache: _nativeTrieNodeCache,
             trieCacheWarmer: new NoopTrieWarmer(),
             logManager: NullLogManager.Instance);
     }

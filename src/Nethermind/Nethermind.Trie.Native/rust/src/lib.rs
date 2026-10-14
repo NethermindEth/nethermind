@@ -4,9 +4,10 @@
 //! Patricia trie bulk set over a path-keyed node store, exposed to Nethermind via FFI.
 //!
 //! Every node referenced by hash is stored at its `TreePath` as its RLP. Bulk sets write new nodes into a pooled
-//! [`PendingNodes`] the caller publishes from.
+//! [`PendingNodes`] the caller publishes from, and keep decoded nodes in a shared [`TrieNodeCache`].
 
 mod bulk_set;
+mod cache;
 mod keccak;
 mod node;
 mod pending;
@@ -15,6 +16,7 @@ use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 pub use bulk_set::{bulk_set, EMPTY_TREE_HASH};
+pub use cache::TrieNodeCache;
 pub use node::TreePath;
 use node::{decode_rlp, Node};
 pub use pending::{PendingNodes, WrittenNode};
@@ -109,13 +111,14 @@ unsafe extern "C" fn receive(context: *mut c_void, rlp: *const u8, length: i32) 
 }
 
 /// Applies `entries` to the trie whose root hash is `root`, writing new nodes into `pending`, and writes the new root
-/// hash to `root_out`. Nodes are read from `pending` before `fetch`. `entries` is reordered in place. Returns 0 on
-/// success, -1 on panic, or an [`Error::code`].
+/// hash to `root_out`. Nodes are read from `cache`, then `pending`, then `fetch`, and cached as the trie of `address`,
+/// the state trie when null. `entries` is reordered in place. Returns 0 on success, -1 on panic, or an
+/// [`Error::code`].
 ///
 /// # Safety
-/// `entries`, `values`, `root` and `root_out` must be valid for the given lengths (32 bytes for `root` and
-/// `root_out`), `pending` must come from [`nm_patricia_pending_rent`], and `fetch` must be callable concurrently with
-/// `context`.
+/// `entries`, `values`, `root`, `address` and `root_out` must be valid for the given lengths (32 bytes for `root`,
+/// `address` and `root_out`), `pending` must come from [`nm_patricia_pending_rent`], `cache` must be null or come
+/// from [`nm_patricia_cache_new`], and `fetch` must be callable concurrently with `context`.
 #[no_mangle]
 pub unsafe extern "C" fn nm_patricia_bulk_set(
     entries: *mut Entry,
@@ -124,6 +127,8 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
     values_length: i32,
     root: *const [u8; 32],
     pending: *const PendingNodes,
+    cache: *const TrieNodeCache,
+    address: *const [u8; 32],
     fetch: FetchFn,
     context: *mut c_void,
     root_out: *mut u8,
@@ -151,6 +156,8 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
         bulk_set(
             &CallbackStore { fetch, context },
             &*pending,
+            cache.as_ref(),
+            address.as_ref(),
             &*root,
             entries,
             values,
@@ -165,6 +172,19 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
         Ok(Err(error)) => error.code(),
         Err(_) => -1,
     }
+}
+
+/// Creates a [`TrieNodeCache`] of about `max_memory` bytes, to free with [`nm_patricia_cache_free`].
+#[no_mangle]
+pub extern "C" fn nm_patricia_cache_new(max_memory: u64) -> *mut TrieNodeCache {
+    Box::into_raw(Box::new(TrieNodeCache::new(max_memory)))
+}
+
+/// # Safety
+/// `cache` must come from [`nm_patricia_cache_new`], not be freed yet, and not be in use by a bulk set.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_cache_free(cache: *mut TrieNodeCache) {
+    drop(Box::from_raw(cache));
 }
 
 /// Takes an empty [`PendingNodes`] sized for a bulk set of about `estimated_entries`, to give back with

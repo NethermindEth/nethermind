@@ -58,6 +58,7 @@ public class ReadOnlyScopeLifecycleBenchmark
             new NullCodeDb(),
             new CapturingCommitTarget(),
             _config,
+            null,
             _warmer,
             NullLogManager.Instance,
             isReadOnly: true);

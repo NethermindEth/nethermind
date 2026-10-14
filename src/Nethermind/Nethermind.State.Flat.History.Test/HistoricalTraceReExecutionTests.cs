@@ -192,6 +192,7 @@ public class HistoricalTraceReExecutionTests
         new MemDb(),
         manager,
         new FlatDbConfig { CompactSize = 16, HistoryEnabled = true },
+        null,
         new NoopTrieWarmer(),
         usage,
         UnavailableStateHeaderProvider.Instance,

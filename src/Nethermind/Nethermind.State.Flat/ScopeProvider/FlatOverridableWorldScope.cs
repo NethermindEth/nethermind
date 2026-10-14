@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -34,6 +35,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
+        Lazy<NativeTrieNodeCache> nativeTrieNodeCache,
         ITrieNodeCache trieNodeCache,
         TrieNodeLog trieNodeLog,
         IResourcePool resourcePool,
@@ -49,6 +51,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
+            configuration.UseNativeBulkSet ? nativeTrieNodeCache.Value : null,
             new NoopTrieWarmer(),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
             headerProvider,
@@ -137,6 +140,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private class OverridableFlatScopeProvider(
         FlatOverridableWorldScope flatOverrideScope,
         IFlatDbConfig configuration,
+        NativeTrieNodeCache? nativeTrieNodeCache,
         ITrieWarmer trieWarmer,
         IWorldStateScopeProvider.ICodeDb codeDb,
         IStateHeaderProvider stateHeaderProvider,
@@ -172,6 +176,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 codeDb,
                 flatOverrideScope,
                 configuration,
+                nativeTrieNodeCache,
                 trieWarmer,
                 logManager);
             return true;
