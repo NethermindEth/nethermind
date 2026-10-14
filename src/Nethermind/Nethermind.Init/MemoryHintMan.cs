@@ -126,7 +126,8 @@ namespace Nethermind.Init
 
         private void AssignTxPoolMemory(ITxPoolConfig txPoolConfig)
         {
-            ulong hashCacheMemory = (ulong)txPoolConfig.Size / 1024UL * 128UL;
+            // 64 hash entries of 128 bytes per pool slot: 2048 slots → 131072 entries (16 MiB), the no-hint default.
+            ulong hashCacheMemory = (ulong)txPoolConfig.Size * 64UL * 128UL;
             if (_remainingMemory / 20 < hashCacheMemory)
             {
                 hashCacheMemory = Math.Min(_remainingMemory / 20, hashCacheMemory);

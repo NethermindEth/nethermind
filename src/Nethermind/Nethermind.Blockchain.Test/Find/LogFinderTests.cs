@@ -26,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -155,7 +156,8 @@ public class LogFinderTests
             receiptFinder,
             _receiptStorage,
             LimboLogs.Instance,
-            _receiptsRecovery);
+            _receiptsRecovery,
+            MainnetSpecProvider.Instance);
 
         FilterLog[] allLogs = logFinder.FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray();
         FilterLog[] addressedLogs = logFinder.FindLogs(
@@ -196,7 +198,7 @@ public class LogFinderTests
 
         ThrowingReceiptFinder throwing = new(exceptionType);
         LogFinder logFinder = new(_blockTree, throwing, _receiptStorage, LimboLogs.Instance,
-            _receiptsRecovery, new ReceiptConfig { DeriveFromState = true });
+            _receiptsRecovery, MainnetSpecProvider.Instance, new ReceiptConfig { DeriveFromState = true });
 
         Assert.That(() => logFinder.FindLogs(AllBlockFilter().Build()).ToArray(),
             Throws.TypeOf(exceptionType));
@@ -445,7 +447,7 @@ public class LogFinderTests
         ReceiptsRecovery recovery = new(Substitute.For<IEthereumEcdsa>(), _specProvider);
         LegacyReceiptFinder receiptFinder = new(encoded, decoder,
             () => recovery.CreateLogRecoveryContext(new ReceiptRecoveryBlock(block)));
-        LogFinder finder = new(_blockTree, receiptFinder, _receiptStorage, LimboLogs.Instance, recovery);
+        LogFinder finder = new(_blockTree, receiptFinder, _receiptStorage, LimboLogs.Instance, recovery, _specProvider!);
         FilterBuilder builder = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA);
         if (filterByTopic) builder = builder.WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA));
 
@@ -483,7 +485,7 @@ public class LogFinderTests
         index.MaxBlockNumber.Returns(indexFrom is null ? (int?)null : BoundaryTo);
         return new IndexedLogFinder(
             blockFinder, Substitute.For<IReceiptFinder>(), Substitute.For<IReceiptStorage>(), LimboLogs.Instance,
-            Substitute.For<IReceiptsRecovery>(), index, prunedLogsRetention: retention, historyPruner: historyPruner);
+            Substitute.For<IReceiptsRecovery>(), MainnetSpecProvider.Instance, index, prunedLogsRetention: retention, historyPruner: historyPruner);
     }
 
     private static LogFilter BoundaryFilter(ulong from = BoundaryFrom) =>
@@ -732,10 +734,10 @@ public class LogFinderTests
     }
 
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
-        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery);
+        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery, MainnetSpecProvider.Instance);
 
     private IndexedLogFinder CreateIndexedLogFinder(ILogIndexStorage logIndexStorage) =>
-        new(_blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, logIndexStorage, minBlocksToUseIndex: 1);
+        new(_blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, MainnetSpecProvider.Instance, logIndexStorage, minBlocksToUseIndex: 1);
 
     private static ILogIndexStorage CreateLogIndexStorage(int? indexFrom, int? indexTo)
     {
