@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs;
 
-public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
+public abstract partial class ForkScheduleSpecProvider : IForkAwareSpecProvider
 {
     public const ulong GenesisBlockNumber = 0;
     public const ulong GenesisTimestamp = 0UL;
@@ -23,7 +23,6 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
     protected internal ForkSpec[] ForkSchedule => _schedule.Value;
     public FrozenDictionary<string, IReleaseSpec> Forks => _forks.Value;
     public IEnumerable<string> AvailableForks => _availableForks.Value;
-    public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => Forks.TryGetValue(forkName, out spec);
 
     protected ForkScheduleSpecProvider(ForkSpec[] schedule, UInt256? terminalTotalDifficulty = null, ForkActivation? mergeBlockNumber = null)
         : this(new Lazy<ForkSpec[]>(schedule), terminalTotalDifficulty, mergeBlockNumber) { }
