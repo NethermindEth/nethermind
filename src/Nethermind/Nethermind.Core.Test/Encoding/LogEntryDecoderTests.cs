@@ -331,6 +331,21 @@ public class LogEntryDecoderTests
         });
     }
 
+    private const string AddressRlp = "94" + "1111111111111111111111111111111111111111";
+
+    [TestCase("d6" + AddressRlp + "e1", "a0" + "2222222222222222222222222222222222222222222222222222222222222222" + "80", TestName = "Topics past the entry end")]
+    [TestCase("d7" + AddressRlp + "c0" + "82", "abcd", TestName = "Data past the entry end")]
+    public void Rejects_items_running_into_the_next_entry(string entry, string sibling)
+    {
+        byte[] malformed = Bytes.FromHexString(entry + sibling);
+
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            RlpReader ctx = new(malformed);
+            LogEntryDecoder.Instance.Decode(ref ctx, RlpBehaviors.AllowExtraBytes);
+        });
+    }
+
     [Test]
     public void Compact_decoder_rejects_zero_prefix_that_expands_data_beyond_limit([Values] bool useStructRef)
     {
