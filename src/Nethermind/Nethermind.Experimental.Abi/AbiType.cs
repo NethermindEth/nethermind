@@ -127,16 +127,15 @@ public static partial class AbiType
         },
         Size = array =>
         {
-            const int offsetSize = 32;
             const int lengthSize = 32;
 
             int elementsSize = 0;
             foreach (T e in array)
             {
-                elementsSize += abi.Size(e);
+                elementsSize += abi.SizeInParent(e);
             }
 
-            return offsetSize + lengthSize + elementsSize;
+            return lengthSize + elementsSize;
         }
     };
 
@@ -194,11 +193,10 @@ public static partial class AbiType
         },
         Size = bytes =>
         {
-            const int offsetSize = 32;
             const int lengthSize = 32;
             int bytesSize = Math.PadTo32(bytes.Length);
 
-            return offsetSize + lengthSize + bytesSize;
+            return lengthSize + bytesSize;
         }
     };
 
@@ -241,12 +239,11 @@ public static partial class AbiType
         },
         Size = v =>
         {
-            const int offsetSize = 32;
             const int lengthSize = 32;
             int byteCount = Encoding.UTF8.GetByteCount(v);
             int byteSize = Math.PadTo32(byteCount);
 
-            return offsetSize + lengthSize + byteSize;
+            return lengthSize + byteSize;
         }
     };
 
