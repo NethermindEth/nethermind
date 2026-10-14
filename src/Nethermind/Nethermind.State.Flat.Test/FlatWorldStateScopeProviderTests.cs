@@ -988,7 +988,7 @@ public class FlatWorldStateScopeProviderTests
 
         int ownerThread = Environment.CurrentManagedThreadId;
         bool backgroundRootLookup = false;
-        nodeCache.TryGet(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<Hash256>(), out Arg.Any<TrieNode?>())
+        nodeCache.TryGet(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), out Arg.Any<TrieNode?>())
             .Returns(call =>
             {
                 call[3] = null;

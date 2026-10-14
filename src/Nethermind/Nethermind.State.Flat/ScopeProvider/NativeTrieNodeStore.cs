@@ -32,21 +32,26 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
     public Hash256 BulkSet(Hash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries) =>
         NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), root.ValueHash256, entries);
 
-    public int Fetch(in TreePath path, in ValueHash256 hash, Span<byte> buffer)
+    public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver)
     {
-        Hash256 nodeHash = new(hash);
-        TrieNode node = addressHash is null
-            ? bundle.FindStateNodeOrUnknown(path, nodeHash)
-            : bundle.FindStorageNodeOrUnknown(addressHash, path, nodeHash);
-        if (node.Keccak != nodeHash)
-            throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash}. Path: {path}. Hash: {node.Keccak} vs Requested: {nodeHash}");
+        bool found = addressHash is null
+            ? bundle.TryFindStateNode(path, hash, out TrieNode? node)
+            : bundle.TryFindStorageNode(addressHash, path, hash, out node);
+        if (found)
+        {
+            if (node!.Keccak != hash)
+                throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}");
 
-        if (!node.FullRlp.IsNull) return Copy(node.FullRlp.AsSpan(), buffer);
+            if (!node.FullRlp.IsNull)
+            {
+                receiver.Receive(node.FullRlp.AsSpan());
+                return true;
+            }
+        }
 
-        byte[]? rlp = addressHash is null
-            ? bundle.TryLoadStateRlp(path, nodeHash, ReadFlags.None)
-            : bundle.TryLoadStorageRlp(addressHash, path, nodeHash, ReadFlags.None);
-        return Copy(rlp, buffer);
+        return addressHash is null
+            ? bundle.TryLoadStateRlp(path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver)
+            : bundle.TryLoadStorageRlp(addressHash, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
     }
 
     /// <summary>Moves the pending nodes into the bundle, as the managed committer would.</summary>
@@ -88,11 +93,5 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
     {
         ref readonly NativeWrittenNode written = ref view[index];
         return (written.Path, new TrieNode(NodeType.Unknown, new Hash256(written.Hash), new CappedArray<byte>(view.GetRlp(written).ToArray())));
-    }
-
-    private static int Copy(ReadOnlySpan<byte> rlp, Span<byte> buffer)
-    {
-        if (rlp.Length <= buffer.Length) rlp.CopyTo(buffer);
-        return rlp.Length;
     }
 }

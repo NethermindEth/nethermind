@@ -493,14 +493,22 @@ impl<S: NodeStore> Context<'_, S> {
                 _ => unreachable!(),
             },
             ChildRef::Inline(rlp) => decode_rlp(rlp.as_slice()).map(Some),
-            ChildRef::Hash(hash) => BUFFER.with_borrow_mut(|buffer| {
-                if !self.pending.copy_to(path, hash, buffer)
-                    && !self.store.fetch(path, hash, buffer)?
-                {
-                    return Err(Error::MissingNode);
+            ChildRef::Hash(hash) => {
+                let pending = BUFFER.with_borrow_mut(|buffer| {
+                    self.pending
+                        .copy_to(path, hash, buffer)
+                        .then(|| decode_rlp(buffer))
+                        .transpose()
+                })?;
+                match pending {
+                    Some(node) => Ok(Some(node)),
+                    None => self
+                        .store
+                        .fetch(path, hash)?
+                        .ok_or(Error::MissingNode)
+                        .map(Some),
                 }
-                decode_rlp(buffer).map(Some)
-            }),
+            }
         }
     }
 
@@ -851,8 +859,8 @@ mod tests {
     struct EmptyStore;
 
     impl NodeStore for EmptyStore {
-        fn fetch(&self, _: &TreePath, _: &[u8; 32], _: &mut Vec<u8>) -> Result<bool, Error> {
-            Ok(false)
+        fn fetch(&self, _: &TreePath, _: &[u8; 32]) -> Result<Option<Node>, Error> {
+            Ok(None)
         }
     }
 

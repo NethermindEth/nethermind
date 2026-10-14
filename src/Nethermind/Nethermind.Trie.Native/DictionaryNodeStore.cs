@@ -10,10 +10,10 @@ namespace Nethermind.Trie.Native;
 /// <summary>An in-memory <see cref="INativeNodeStore"/> over <paramref name="nodes"/>, keyed by path alone.</summary>
 public sealed class DictionaryNodeStore(IReadOnlyDictionary<TreePath, byte[]> nodes) : INativeNodeStore
 {
-    public int Fetch(in TreePath path, in ValueHash256 hash, Span<byte> buffer)
+    public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver)
     {
-        if (!nodes.TryGetValue(path, out byte[]? node)) return 0;
-        if (node.Length <= buffer.Length) node.CopyTo(buffer);
-        return node.Length;
+        if (!nodes.TryGetValue(path, out byte[]? node)) return false;
+        receiver.Receive(node);
+        return true;
     }
 }

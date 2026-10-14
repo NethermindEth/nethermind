@@ -37,7 +37,7 @@ public class SnapshotBundleWarmerTests
     {
         public int TryGetCount;
 
-        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+        public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
             TryGetCount++;
             node = null;
@@ -50,7 +50,7 @@ public class SnapshotBundleWarmerTests
 
     private sealed class BlockingTrieNodeCache(ManualResetEventSlim entered, ManualResetEventSlim release) : ITrieNodeCache
     {
-        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+        public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
             entered.Set();
             if (!release.Wait(BailOutTimeout)) throw new TimeoutException("warmer read was not released");

@@ -16,6 +16,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 
 pub use bulk_set::{bulk_set, EMPTY_TREE_HASH};
 pub use node::TreePath;
+use node::{decode_rlp, Node};
 pub use pending::{PendingNodes, WrittenNode};
 
 #[global_allocator]
@@ -52,18 +53,21 @@ impl Error {
 }
 
 pub trait NodeStore: Sync {
-    /// Replaces `buffer` with the RLP of the node at `path` whose hash is `hash`. Returns `false` when there is none.
-    fn fetch(&self, path: &TreePath, hash: &[u8; 32], buffer: &mut Vec<u8>) -> Result<bool, Error>;
+    /// Returns the node at `path` whose hash is `hash`, or `None` when there is none.
+    fn fetch(&self, path: &TreePath, hash: &[u8; 32]) -> Result<Option<Node>, Error>;
 }
 
-/// Returns the length of the node at `path` with hash `hash`, 0 when missing, or a negative value on failure.
-/// A length greater than `buffer_length` means nothing was copied and the buffer must grow.
+/// Receives the RLP of a fetched node, valid only for the duration of the call.
+pub type ReceiveFn = unsafe extern "C" fn(context: *mut c_void, rlp: *const u8, length: i32);
+
+/// Passes the RLP of the node at `path` with hash `hash` to `receive` with `receive_context` and returns 1, returns 0
+/// when missing, or a negative value on failure.
 pub type FetchFn = unsafe extern "C" fn(
     context: *mut c_void,
     path: *const TreePath,
     hash: *const [u8; 32],
-    buffer: *mut u8,
-    buffer_length: i32,
+    receive: ReceiveFn,
+    receive_context: *mut c_void,
 ) -> i32;
 
 struct CallbackStore {
@@ -75,33 +79,33 @@ struct CallbackStore {
 unsafe impl Sync for CallbackStore {}
 
 impl NodeStore for CallbackStore {
-    fn fetch(&self, path: &TreePath, hash: &[u8; 32], buffer: &mut Vec<u8>) -> Result<bool, Error> {
-        buffer.clear();
-        buffer.reserve(1024);
-        loop {
-            let capacity = buffer.capacity();
-            let length = unsafe {
-                (self.fetch)(
-                    self.context,
-                    path,
-                    hash,
-                    buffer.as_mut_ptr(),
-                    capacity as i32,
-                )
-            };
-            if length < 0 {
-                return Err(Error::Callback);
-            }
-            if length == 0 {
-                return Ok(false);
-            }
-            if length as usize <= capacity {
-                unsafe { buffer.set_len(length as usize) };
-                return Ok(true);
-            }
-            buffer.reserve(length as usize);
+    fn fetch(&self, path: &TreePath, hash: &[u8; 32]) -> Result<Option<Node>, Error> {
+        let mut decoded: Option<Result<Node, Error>> = None;
+        let status = unsafe {
+            (self.fetch)(
+                self.context,
+                path,
+                hash,
+                receive,
+                &mut decoded as *mut Option<Result<Node, Error>> as *mut c_void,
+            )
+        };
+        match status {
+            0 => Ok(None),
+            1 => decoded.ok_or(Error::Callback)?.map(Some),
+            _ => Err(Error::Callback),
         }
     }
+}
+
+unsafe extern "C" fn receive(context: *mut c_void, rlp: *const u8, length: i32) {
+    let rlp: &[u8] = if length <= 0 {
+        &[]
+    } else {
+        std::slice::from_raw_parts(rlp, length as usize)
+    };
+    let decoded = catch_unwind(|| decode_rlp(rlp)).unwrap_or(Err(Error::CorruptNode));
+    *(context as *mut Option<Result<Node, Error>>) = Some(decoded);
 }
 
 /// Applies `entries` to the trie whose root hash is `root`, writing new nodes into `pending`, and writes the new root

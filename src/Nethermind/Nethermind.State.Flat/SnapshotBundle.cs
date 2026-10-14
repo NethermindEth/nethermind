@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -178,29 +179,23 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
+    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash) =>
+        TryFindStateNode(path, hash.ValueHash256, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
+
+    public bool TryFindStateNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
 
         HashedKey<TreePath> key = new(path);
 
-        if (_trieChanged && _changedStateNodes.TryGetValue(key, out TrieNode? node))
+        if ((_trieChanged && _changedStateNodes.TryGetValue(key, out node))
+            || (_transientResource.TryGetStateNode(path, hash, out node) && node.NodeType != NodeType.Unknown))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (_transientResource.TryGetStateNode(path, hash, out node) && node.NodeType != NodeType.Unknown)
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (DoFindStateNodeExternal(path, hash, out node))
-        {
-        }
-        else
-        {
-            node = new TrieNode(NodeType.Unknown, hash);
+            return true;
         }
 
-        return node;
+        return DoFindStateNodeExternal(path, hash, out node);
     }
 
     public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
@@ -287,7 +282,7 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
     }
 
-    private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    private bool DoFindStateNodeExternal(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         if (_trieNodeCache.TryGet(null, path, hash, out node))
         {
@@ -308,30 +303,23 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
     }
 
-    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
+    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash) =>
+        TryFindStorageNode(address, path, hash.ValueHash256, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
+
+    public bool TryFindStorageNode(Hash256 address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
 
         HashedKey<(Hash256, TreePath)> key = new((address, path));
 
-        if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
+        if ((_trieChanged && _changedStorageNodes.TryGetValue(key, out node))
+            || (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node) && node.NodeType != NodeType.Unknown))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node)
-                 && node.NodeType != NodeType.Unknown)
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
-        {
-        }
-        else
-        {
-            node = new TrieNode(NodeType.Unknown, hash);
+            return true;
         }
 
-        return node;
+        return DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null;
     }
 
 
@@ -386,7 +374,7 @@ public sealed class SnapshotBundle : IDisposable
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed. So we skip the
     // check for slightly improved latency.
-    private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
+    private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, in ValueHash256 hash, out TrieNode? node)
     {
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
@@ -407,18 +395,34 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
     }
 
-    public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags)
     {
         GuardDispose();
 
         return _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
     }
 
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags)
     {
         GuardDispose();
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
+    }
+
+    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadStateRlp{TArg}(in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
+    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        GuardDispose();
+
+        return _readOnlySnapshotBundle.TryLoadStateRlp(path, flags, action, arg);
+    }
+
+    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadStorageRlp{TArg}(Hash256, in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
+    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        GuardDispose();
+
+        return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, flags, action, arg);
     }
 
     // This is called only during trie commit
