@@ -35,6 +35,35 @@ public class PayloadPreparationServiceTests
 
     [Test]
     [CancelAfter(30000)]
+    public async Task GetPayload_keeps_returning_the_block_it_handed_out_when_a_late_build_finishes()
+    {
+        Block empty = Build.A.Block.WithNumber(1).TestObject;
+        Block full = Build.A.Block.WithNumber(1).WithGasUsed(21000).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        TaskCompletionSource<Block?> build = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Block?>(empty));
+        // A build past its last cancellation check finishes anyway.
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>())
+            .Returns(build.Task);
+        using TestPayloadPreparationService service = new(producer, Substitute.For<ITxPool>(),
+            new BlockImprovementContextFactory(producer, TimePerSlot), Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(1));
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+
+        Block? handedOut = (await service.GetPayload(payloadId))!.CurrentBestBlock;
+        build.SetResult(full);
+        Assert.That(() => service.Stored(payloadId)!.ImprovementTask.IsCompleted, Is.True.After(5000, 10));
+        Block? again = (await service.GetPayload(payloadId))!.CurrentBestBlock;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handedOut, Is.SameAs(empty));
+            Assert.That(again, Is.SameAs(handedOut), "a second getPayload must return the payload the first one committed to");
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
     public void GetPayload_disposes_the_replacement_published_after_it_cancelled()
     {
         RecordingBlockImprovementContextFactory factory = new();

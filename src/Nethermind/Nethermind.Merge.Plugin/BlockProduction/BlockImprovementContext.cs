@@ -21,6 +21,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     private CancellationTokenSource? _linkedCancellation;
     private readonly FeesTracer _feesTracer = new();
     private volatile BlockProductionSnapshot _best;
+    private readonly Lock _lock = new();
 
     public BlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
@@ -56,13 +57,17 @@ public class BlockImprovementContext : IBlockImprovementContext
             if (block is not null)
             {
                 UInt256 fees = _feesTracer.Fees;
-                BlockProductionSnapshot best = _best;
-                if (best.CurrentBestBlock is null ||
-                    fees > best.BlockFees ||
-                    (fees == best.BlockFees && block.GasUsed > best.CurrentBestBlock.GasUsed))
+                // A build that ignored cancellation can finish after the payload was handed out; it must not replace it.
+                lock (_lock)
                 {
-                    // Only update block if block has actually improved.
-                    _best = new(block, fees);
+                    BlockProductionSnapshot best = _best;
+                    if (!Disposed && (best.CurrentBestBlock is null ||
+                        fees > best.BlockFees ||
+                        (fees == best.BlockFees && block.GasUsed > best.CurrentBestBlock.GasUsed)))
+                    {
+                        // Only update block if block has actually improved.
+                        _best = new(block, fees);
+                    }
                 }
             }
         }
@@ -77,7 +82,7 @@ public class BlockImprovementContext : IBlockImprovementContext
 
     public void Dispose()
     {
-        Disposed = true;
+        lock (_lock) Disposed = true;
         CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
         CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }
