@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -161,16 +163,25 @@ public class ReceiptsMessageSerializerTests
         Assert.That(receiptsMessage.TxReceipts, Has.Count.EqualTo(0));
     }
 
-    [Test]
-    public void Deserialize_empty_list_is_usable_after_an_earlier_one_is_disposed()
+    private static IEnumerable<TestCaseData> EmptyResponses()
+    {
+        yield return new TestCaseData(Array.Empty<byte>()).SetName("Deserialize_empty_is_usable_after_an_earlier_one_is_disposed(no bytes)");
+        yield return new TestCaseData(Rlp.OfEmptyList.Bytes).SetName("Deserialize_empty_is_usable_after_an_earlier_one_is_disposed(empty list)");
+    }
+
+    [TestCaseSource(nameof(EmptyResponses))]
+    public void Deserialize_empty_is_usable_after_an_earlier_one_is_disposed(byte[] bytes)
     {
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-        ReceiptsMessage first = serializer.Deserialize(Rlp.OfEmptyList.Bytes);
+        ReceiptsMessage first = serializer.Deserialize(bytes);
         first.Dispose();
 
-        using ReceiptsMessage second = serializer.Deserialize(Rlp.OfEmptyList.Bytes);
-        Assert.That(second, Is.Not.SameAs(first));
-        Assert.That(second.TxReceipts.ToArray(), Is.Empty);
+        using ReceiptsMessage second = serializer.Deserialize(bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second.TxReceipts.ToArray(), Is.Empty);
+        }
     }
 
     [Test]
