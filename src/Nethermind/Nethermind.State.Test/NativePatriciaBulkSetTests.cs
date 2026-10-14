@@ -59,27 +59,46 @@ public class NativePatriciaBulkSetTests
     }
 
     [Test]
-    public void BulkSet_through_a_log_counts_root_hits_node_reads_and_log_memory()
+    public void BulkSet_metrics_count_log_hits_node_reads_log_memory_and_time()
     {
         Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
 
         List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 3);
-        DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
+        Dictionary<TreePath, byte[]> nodes = [];
+        DictionaryNodeStore store = new(nodes);
         using NativePendingNodes pending = NativePendingNodes.Rent(items.Count);
         using NativeTrieNodeLog log = new(64 * 1024 * 1024);
         Hash256 root = BulkSet(store, pending, log, Keccak.EmptyTreeHash, items);
+        for (int shard = 0; shard < pending.ShardCount; shard++)
+        {
+            NativePendingNodesView view = pending.GetView(shard);
+            for (int i = 0; i < view.Count; i++) nodes[view[i].Path] = view.GetRlp(view[i]).ToArray();
+        }
 
         // Other tests run bulk sets and logs concurrently, so the counters are only known to have grown by at least this.
         long rootHits = NativeMetrics.NativeTrieNodeLogRootHits;
         long nodesFromLog = NativeMetrics.NativeBulkSetNodesFromLog;
+        long nodesFetched = NativeMetrics.NativeBulkSetNodesFetched;
+        long bulkSetTime = NativeMetrics.NativeBulkSetTime;
+        long callTime = NativeMetrics.NativeBulkSetCallTime;
+        long fetchTime = NativeMetrics.NativeBulkSetFetchTime;
+
         BulkSet(store, pending, log, root, [(items[0].key, [1, 2, 3])]);
+        // A new log does not have the trie, so its nodes are fetched from the store.
+        using NativePendingNodes freshPending = NativePendingNodes.Rent(1);
+        using NativeTrieNodeLog freshLog = new(64 * 1024 * 1024);
+        NativePatriciaBulkSet.BulkSet(store, freshPending, freshLog, TestItem.KeccakA, root.ValueHash256, [new PatriciaTree.BulkSetEntry(items[1].key.ValueHash256, [4, 5, 6])]);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(NativeMetrics.NativeTrieNodeLogRootHits, Is.GreaterThan(rootHits));
             Assert.That(NativeMetrics.NativeBulkSetNodesFromLog, Is.GreaterThan(nodesFromLog));
-            Assert.That(NativeMetrics.NativeTrieNodeLogMemory, Is.GreaterThanOrEqualTo(64 * 1024 * 1024 / 8));
-            Assert.That(NativeMetrics.NativeTrieNodeLogGenerations, Is.GreaterThanOrEqualTo(1));
+            Assert.That(NativeMetrics.NativeBulkSetNodesFetched, Is.GreaterThan(nodesFetched));
+            Assert.That(NativeMetrics.NativeTrieNodeLogMemory, Is.GreaterThanOrEqualTo(2 * 64 * 1024 * 1024 / 8));
+            Assert.That(NativeMetrics.NativeTrieNodeLogGenerations, Is.GreaterThanOrEqualTo(2));
+            Assert.That(NativeMetrics.NativeBulkSetTime, Is.GreaterThan(bulkSetTime));
+            Assert.That(NativeMetrics.NativeBulkSetCallTime, Is.GreaterThan(callTime));
+            Assert.That(NativeMetrics.NativeBulkSetFetchTime, Is.GreaterThan(fetchTime));
         }
     }
 

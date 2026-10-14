@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -58,6 +59,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
     {
         if (_pending is null) return;
 
+        long start = Stopwatch.GetTimestamp();
         NativePendingNodesView[] views = new NativePendingNodesView[_pending.ShardCount];
         int[] starts = new int[views.Length];
         int count = 0;
@@ -85,6 +87,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
         }
 
         Clear();
+        Metrics.AddNativeTrieNodePublishTime(Stopwatch.GetElapsedTime(start).Ticks);
     }
 
     /// <summary>Drops the pending nodes, as when the storage is cleared.</summary>

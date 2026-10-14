@@ -3,6 +3,7 @@
 
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core.Attributes;
 
 namespace Nethermind.Trie.Native;
@@ -38,6 +39,29 @@ public static partial class Metrics
     [CounterMetric]
     [Description("Trie nodes native bulk sets fetched from the node store")]
     public static long NativeBulkSetNodesFetched => (long)Read().NodesFetched;
+
+    [CounterMetric]
+    [Description("Time spent in native bulk sets over managed entries, converting the entries and calling the native library (ticks)")]
+    public static long NativeBulkSetTime => Volatile.Read(ref _bulkSetTime);
+    private static long _bulkSetTime;
+
+    [CounterMetric]
+    [Description("Time spent in the native bulk set call alone, node store callbacks included (ticks)")]
+    public static long NativeBulkSetCallTime => Volatile.Read(ref _bulkSetCallTime);
+    private static long _bulkSetCallTime;
+
+    [CounterMetric]
+    [Description("Time spent in the managed node store callbacks of native bulk set calls, summed over the threads calling back, native decoding of the nodes they hand over included (ticks)")]
+    public static long NativeBulkSetFetchTime => Volatile.Read(ref _bulkSetFetchTime);
+    private static long _bulkSetFetchTime;
+
+    internal static void AddBulkSet(long ticks) => Interlocked.Add(ref _bulkSetTime, ticks);
+
+    internal static void AddBulkSetCall(long callTicks, long fetchTicks)
+    {
+        Interlocked.Add(ref _bulkSetCallTime, callTicks);
+        Interlocked.Add(ref _bulkSetFetchTime, fetchTicks);
+    }
 
     private static unsafe NativeMetrics Read()
     {

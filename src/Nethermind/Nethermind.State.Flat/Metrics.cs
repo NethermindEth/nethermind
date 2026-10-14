@@ -29,6 +29,12 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
     public static IMetricObserver TrieNodePublishTime { get; set; } = new NoopMetricObserver();
 
+    [CounterMetric]
+    [Description("Time spent publishing the trie nodes native bulk sets wrote into the snapshot bundle (ticks)")]
+    public static long NativeTrieNodePublishTime => Volatile.Read(ref _nativeTrieNodePublishTime);
+    private static long _nativeTrieNodePublishTime;
+    internal static void AddNativeTrieNodePublishTime(long ticks) => Interlocked.Add(ref _nativeTrieNodePublishTime, ticks);
+
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
