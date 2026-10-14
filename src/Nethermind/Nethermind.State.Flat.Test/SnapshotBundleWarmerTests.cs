@@ -95,7 +95,7 @@ public class SnapshotBundleWarmerTests
 
         // Commit folds the written nodes into the bundle's recyclable _snapshots and swaps the transient away
         // from them, so afterwards they are reachable only through the path the warmer must not take.
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null, returnSnapshot: false);
 
         TrieNode warmedCommittedState = bundle.FindStateNodeOrUnknownForTrieWarmer(committedPath, TestItem.KeccakA);
         TrieNode warmedCommittedStorage = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, committedStoragePath, TestItem.KeccakA);
@@ -136,7 +136,7 @@ public class SnapshotBundleWarmerTests
             ? bundle.FindStorageNodeOrUnknown(address, path, hash)
             : bundle.FindStateNodeOrUnknown(path, hash);
 
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
         cache.Add(retired!);
         retired!.ReleaseLease();
 
@@ -242,7 +242,7 @@ public class SnapshotBundleWarmerTests
             ? bundle.FindStorageNodeOrUnknown(address, path, hash)
             : bundle.FindStateNodeOrUnknown(path, hash);
 
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
         cache.Add(retired!);
         retired!.ReleaseLease();
 
@@ -287,7 +287,7 @@ public class SnapshotBundleWarmerTests
         Task<TrieNode> warmerRead = Task.Run(() => bundle.FindStateNodeOrUnknownForTrieWarmer(path, TestItem.KeccakA));
         Assert.That(readEntered.Wait(BailOutTimeout), Is.True, "the warmer read did not reach the cache");
 
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
         TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
         Task add = Task.Run(() => cache.Add(retired!));
         bool addCompletedWhileRead = add.Wait(TimeSpan.FromMilliseconds(200));
@@ -330,7 +330,7 @@ public class SnapshotBundleWarmerTests
         source.AppendChildPath(ref childPath, 0);
         TrieNode sourceChild = source.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref childPath, 0, keepChildRef: true)!;
 
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
         cache.Add(retired!);
         retired!.ReleaseLease();
 
@@ -381,7 +381,7 @@ public class SnapshotBundleWarmerTests
             ? bundle.FindStorageNodeOrUnknown(address, path, requestedHash)
             : bundle.FindStateNodeOrUnknown(path, requestedHash);
 
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
         cache.Add(retired!);
         retired!.ReleaseLease();
 
@@ -426,7 +426,7 @@ public class SnapshotBundleWarmerTests
             ? bundle.FindStorageNodeOrUnknown(address, path, hash)
             : bundle.FindStateNodeOrUnknown(path, hash);
 
-        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
         Assert.DoesNotThrow(() => cache.Add(retired!));
         retired!.ReleaseLease();
 
@@ -477,7 +477,7 @@ public class SnapshotBundleWarmerTests
             }), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
         if (storage) bundle.SetStorageNode(address, childPath, child);
         else bundle.SetStateNode(childPath, child);
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null, returnSnapshot: false);
 
         ITrieNodeResolver warmer = WarmerResolver(bundle, storage ? address : null);
         TrieNode warmedParent = warmer.FindCachedOrUnknown(rootPath, branch.Keccak!);
@@ -622,7 +622,7 @@ public class SnapshotBundleWarmerTests
         {
             StateId from = new(blockNumber, TestItem.KeccakA);
             StateId to = new(++blockNumber, TestItem.KeccakA);
-            current.Bundle.CollectAndApplySnapshot(from, to, returnSnapshot: false);
+            current.Bundle.CollectAndApplySnapshot(from, to, null, returnSnapshot: false);
             commits++;
 
             ChurnEpoch next = NewEpoch();

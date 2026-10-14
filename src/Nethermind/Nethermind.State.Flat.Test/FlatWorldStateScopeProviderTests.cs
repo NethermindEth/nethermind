@@ -1220,9 +1220,13 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void TestStorageRootAfterMultipleCommits([Values] bool useNativeBulkSet)
+    public void TestStorageRootAfterMultipleCommits([Values] bool useNativeBulkSet, [Values(0, 20)] int blocksBetweenCommits)
     {
-        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
+        // The blocks in between outgrow a log this small, which then keeps the first commit's nodes only as its
+        // snapshot pins them, and the native bulk set does not look for them in the in-memory snapshots.
+        FlatDbConfig config = CreateConfig(useNativeBulkSet);
+        config.TrieCacheMemoryBudget = 256 * 1024;
+        using TestContext ctx = new(config: config);
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -1232,7 +1236,7 @@ public class FlatWorldStateScopeProviderTests
         byte[] value2 = { 0x22 };
 
         Account initialAccount = TestItem.GenerateRandomAccount();
-        ctx.PersistenceReader.GetAccount(testAddress).Returns(initialAccount);
+        ctx.PersistenceReader.GetAccount(Arg.Any<Address>()).Returns(initialAccount);
 
         // First commit - set slot1
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
@@ -1243,6 +1247,17 @@ public class FlatWorldStateScopeProviderTests
         }
         scope.Commit(1);
 
+        for (int block = 0; block < blocksBetweenCommits; block++)
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(TestItem.Addresses[block], 500);
+                for (int slot = 0; slot < 500; slot++) storageBatch.Set((UInt256)slot, (UInt256)(block * 1000 + slot + 1));
+                storageBatch.Dispose();
+            }
+            scope.Commit((ulong)block + 2);
+        }
+
         // Second commit - set slot2
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
@@ -1250,7 +1265,7 @@ public class FlatWorldStateScopeProviderTests
             storageBatch.Set(slot2, new UInt256(value2, isBigEndian: true));
             storageBatch.Dispose();
         }
-        scope.Commit(2);
+        scope.Commit((ulong)blocksBetweenCommits + 2);
 
         // Compute expected storage root with both slots
         TestMemDb testDb = new();

@@ -38,6 +38,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // Set with UseNativeBulkSet, which then maintains the state trie instead of _stateTree.
     private readonly NativeTrieNodeStore? _nativeStateStore;
     private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
+    // With _nativeStateStore, the pin of the block being processed, handed to its snapshot on commit.
+    private NativeTrieNodeLogPin? _logPin;
     private Hash256 _nativeStateRoot;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
@@ -108,7 +110,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
-        if (configuration.UseNativeBulkSet && !_trieless) _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null, NativeTrieNodeLog);
+        if (configuration.UseNativeBulkSet && !_trieless)
+        {
+            _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null, NativeTrieNodeLog);
+            _logPin = NativeTrieNodeLog.PinActiveGeneration();
+        }
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
             && !configuration.UseNativeBulkSet && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
@@ -149,6 +155,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CancelHintBal();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
+        _logPin?.Dispose();
         _warmer.OnExitScope();
     }
 
@@ -586,7 +593,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
+        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _logPin, shouldAddSnapshot);
+        _logPin = _nativeStateStore is null ? null : NativeTrieNodeLog.PinActiveGeneration();
 
         if (shouldAddSnapshot)
         {

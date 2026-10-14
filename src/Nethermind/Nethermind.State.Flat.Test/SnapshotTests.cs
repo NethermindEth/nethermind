@@ -287,11 +287,11 @@ public class SnapshotTests
         Account accountB = new(2, 200);
 
         bundle.SetAccount(TestItem.AddressA, accountA);
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null, returnSnapshot: false);
 
         bundle.SetAccount(TestItem.AddressB, accountB);
         (Snapshot? second, TransientResource? transientResource) =
-            bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakB));
+            bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakB), null);
         using Snapshot? snapshotLease = second;
         transientResource?.Dispose();
 

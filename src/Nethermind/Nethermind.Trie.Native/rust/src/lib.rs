@@ -190,6 +190,34 @@ pub unsafe extern "C" fn nm_patricia_log_free(log: *mut TrieNodeLog) {
     drop(Box::from_raw(log));
 }
 
+/// Retains the active generation of `log`, and so every later one, for bulk sets until [`nm_patricia_log_release`],
+/// and returns it.
+///
+/// # Safety
+/// `log` must come from [`nm_patricia_log_new`] and not be freed yet.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_retain_active(log: *const TrieNodeLog) -> u64 {
+    (*log).retain_active()
+}
+
+/// Retains `generation` of `log` once more, until [`nm_patricia_log_release`].
+///
+/// # Safety
+/// `log` must come from [`nm_patricia_log_new`] and not be freed yet, and `generation` must be retained.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_retain(log: *const TrieNodeLog, generation: u64) {
+    (*log).retain(generation)
+}
+
+/// Releases a retain of `generation` of `log`.
+///
+/// # Safety
+/// `log` must come from [`nm_patricia_log_new`] and not be freed yet, and `generation` must be retained.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_release(log: *const TrieNodeLog, generation: u64) {
+    (*log).release(generation)
+}
+
 /// Writes to `hash_out` the hash of the first node on the path to `key` in the trie of `address`, the state trie when
 /// null, with root hash `root`, that bulk sets cannot read from `log`, and returns its depth in nibbles. Returns -1 when
 /// they read every node on it from `log`, or -2 on panic.

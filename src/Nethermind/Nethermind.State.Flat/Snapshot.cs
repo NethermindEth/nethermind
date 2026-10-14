@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.Collections;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
+using Nethermind.Trie.Native;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
@@ -84,6 +85,16 @@ public class Snapshot : RefCountingDisposable
 
     public bool IsSorted => _isSorted;
 
+    /// <summary>
+    /// With the native bulk set, the pin on the trie node log generation this snapshot's first block started writing
+    /// to, released with the snapshot.
+    /// </summary>
+    /// <remarks>
+    /// While held, native bulk sets read every trie node of this snapshot from the log, so they never look nodes up in
+    /// the in-memory snapshots, see <c>NativeTrieNodeStore</c>.
+    /// </remarks>
+    internal NativeTrieNodeLogPin? LogPin { get; init; }
+
     public StateId From => _from;
     public StateId To => _to;
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _sorted!.Accounts : _mutable!.Accounts;
@@ -149,6 +160,7 @@ public class Snapshot : RefCountingDisposable
     {
         if (_isSorted) _resourcePool.ReturnSortedSnapshotContent(_usage, _sorted!);
         else _resourcePool.ReturnSnapshotContent(_usage, _mutable!);
+        LogPin?.Dispose();
     }
 
     public bool TryAcquire() => TryAcquireLease();

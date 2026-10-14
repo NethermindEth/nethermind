@@ -16,6 +16,7 @@ namespace Nethermind.Trie.Native;
 /// by hash, storage roots by address and hash. A trie is therefore found by its root and walked in place, so nodes of every
 /// branch can be kept without being invalidated on reorgs. Holds about <c>maxMemory</c> bytes of nodes in generations,
 /// dropping the oldest when a new one starts, which is freed once no bulk set that started before is still running.
+/// A <see cref="NativeTrieNodeLogPin"/> keeps its generation and every later one, so the log holds more while pinned.
 /// </remarks>
 public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
 {
@@ -27,6 +28,31 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
     {
         nm_patricia_log_free(handle);
         return true;
+    }
+
+    /// <summary>
+    /// Pins the generation nodes are written to now, so native bulk sets started before the returned pin is disposed
+    /// read every node written from now on from this log, reached from its trie's root.
+    /// </summary>
+    public NativeTrieNodeLogPin PinActiveGeneration()
+    {
+        bool referenced = false;
+        DangerousAddRef(ref referenced);
+        return new NativeTrieNodeLogPin(this, nm_patricia_log_retain_active(this));
+    }
+
+    internal NativeTrieNodeLogPin Pin(ulong generation)
+    {
+        bool referenced = false;
+        DangerousAddRef(ref referenced);
+        nm_patricia_log_retain(this, generation);
+        return new NativeTrieNodeLogPin(this, generation);
+    }
+
+    internal void Unpin(ulong generation)
+    {
+        nm_patricia_log_release(this, generation);
+        DangerousRelease();
     }
 
     /// <summary>
@@ -66,6 +92,15 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial int nm_patricia_log_first_missing(NativeTrieNodeLog log, ValueHash256* address, ValueHash256* root, ValueHash256* key, ValueHash256* hashOut);
+
+    [LibraryImport(NativePatriciaBulkSet.LibraryName)]
+    private static partial ulong nm_patricia_log_retain_active(NativeTrieNodeLog log);
+
+    [LibraryImport(NativePatriciaBulkSet.LibraryName)]
+    private static partial void nm_patricia_log_retain(NativeTrieNodeLog log, ulong generation);
+
+    [LibraryImport(NativePatriciaBulkSet.LibraryName)]
+    private static partial void nm_patricia_log_release(NativeTrieNodeLog log, ulong generation);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial void nm_patricia_log_free(nint log);

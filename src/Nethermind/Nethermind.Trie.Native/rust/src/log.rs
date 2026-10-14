@@ -33,8 +33,9 @@ const MAX_GROWN_GENERATION_BYTES: usize = 64 << 20;
 const RECORD_ALIGNMENT: usize = 8;
 const STATE_ROOT_SLOTS: usize = 1024;
 const MEMORY_PER_STORAGE_ROOT_SLOT: u64 = 4096;
-/// address: [u8; 32], zero for the state trie, root hash: [u8; 32], pointer of the root's record: u64.
-const ROOT_KEY_LENGTH: usize = 72;
+/// address: [u8; 32], zero for the state trie, root hash: [u8; 32], pointer of the root's record: u64, pointer of the
+/// previous root key record of the slot: u64.
+const ROOT_KEY_LENGTH: usize = 80;
 
 thread_local! {
     static TEMPORARY: RefCell<Option<TrieNodeLog>> = const { RefCell::new(None) };
@@ -49,8 +50,12 @@ thread_local! {
 /// it starts, and generations are freed oldest first, so a pointer is readable by a session exactly when its generation
 /// is not older than the session's floor.
 ///
-/// Under pressure, while sessions pin dropped generations, each new generation is twice the size of the one before, up
-/// to [`MAX_GROWN_GENERATION_BYTES`], so a bulk set larger than the log still fits in the generation table.
+/// A generation [`TrieNodeLog::retain_active`] retained is not dropped, nor is any later one, until
+/// [`TrieNodeLog::release`], so every record appended since stays readable by later sessions too, and the log then
+/// holds more than its memory.
+///
+/// Under pressure, while more than [`LIVE_GENERATIONS`] are allocated, each new generation is twice the size of the one
+/// before, up to [`MAX_GROWN_GENERATION_BYTES`], so a bulk set larger than the log still fits in the generation table.
 pub struct TrieNodeLog {
     generations: Box<[Generation]>,
     active: AtomicU64,
@@ -73,6 +78,8 @@ struct State {
     oldest_allocated: u64,
     /// Sessions by floor, indexed like the generation table.
     pins: Box<[u32]>,
+    /// Retains by generation, indexed like the generation table.
+    retains: Box<[u32]>,
 }
 
 impl TrieNodeLog {
@@ -122,6 +129,7 @@ impl TrieNodeLog {
                 oldest_live: 1,
                 oldest_allocated: 1,
                 pins: vec![0; MAX_GENERATIONS].into_boxed_slice(),
+                retains: vec![0; MAX_GENERATIONS].into_boxed_slice(),
             }),
             generation_bytes,
             temporary,
@@ -149,6 +157,29 @@ impl TrieNodeLog {
         let floor = state.oldest_live;
         state.pins[slot(floor)] += 1;
         LogSession { log: self, floor }
+    }
+
+    /// Retains the active generation until [`TrieNodeLog::release`] and returns it.
+    pub fn retain_active(&self) -> u64 {
+        let mut state = self.state.lock().unwrap();
+        let active = self.active.load(Ordering::Acquire);
+        state.retains[slot(active)] += 1;
+        active
+    }
+
+    /// Retains `generation` once more until [`TrieNodeLog::release`]. It must still be live, as it is while retained.
+    pub fn retain(&self, generation: u64) {
+        let mut state = self.state.lock().unwrap();
+        debug_assert!(generation >= state.oldest_live);
+        state.retains[slot(generation)] += 1;
+    }
+
+    /// Releases a retain of `generation`.
+    pub fn release(&self, generation: u64) {
+        let mut state = self.state.lock().unwrap();
+        state.retains[slot(generation)] -= 1;
+        self.drop_old_generations(&mut state);
+        self.reclaim(&mut state);
     }
 
     /// The depth and hash of the first node on the path to `key` in the trie of `address`, the state trie when `None`,
@@ -215,7 +246,7 @@ impl TrieNodeLog {
         }
 
         self.reclaim(&mut state);
-        let under_pressure = self.temporary || state.oldest_allocated < state.oldest_live;
+        let under_pressure = self.temporary || state.oldest_allocated + LIVE_GENERATIONS <= full;
         let generation_length = match under_pressure {
             true => (self.generation(full).length.load(Ordering::Relaxed) * 2).clamp(
                 self.generation_bytes,
@@ -237,9 +268,18 @@ impl TrieNodeLog {
         );
         self.active.store(id, Ordering::Release);
         if !self.temporary {
-            state.oldest_live = state.oldest_live.max(id + 1 - LIVE_GENERATIONS.min(id));
+            self.drop_old_generations(&mut state);
         }
         self.reclaim(&mut state);
+    }
+
+    /// Drops generations, oldest first, until [`LIVE_GENERATIONS`] are live or the oldest live one is retained.
+    fn drop_old_generations(&self, state: &mut State) {
+        let active = self.active.load(Ordering::Acquire);
+        let oldest_to_keep = active + 1 - LIVE_GENERATIONS.min(active);
+        while state.oldest_live < oldest_to_keep && state.retains[slot(state.oldest_live)] == 0 {
+            state.oldest_live += 1;
+        }
     }
 
     /// Frees dropped generations, oldest first, up to the first one still pinned.
@@ -404,23 +444,26 @@ impl LogSession<'_> {
         pointer
     }
 
+    /// Walks the root key records of the slot, newest first, up to the first this session cannot read. A chain never
+    /// links a record to one of a newer generation, so the records left are all dropped.
     fn find_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> LogPointer {
         let Some(slot) = self.log.roots(address).slot(address, root) else {
             return 0;
         };
-        let key = slot.load(Ordering::Acquire);
-        if !self.is_valid(key) {
-            return 0;
+        let address = address.copied().unwrap_or_default();
+        let mut key = slot.load(Ordering::Acquire);
+        while self.is_valid(key) {
+            let record = self.bytes(key, ROOT_KEY_LENGTH);
+            if record[..32] == address && record[32..64] == *root {
+                let pointer = u64::from_le_bytes(record[64..72].try_into().unwrap());
+                return match self.is_valid(pointer) {
+                    true => pointer,
+                    false => 0,
+                };
+            }
+            key = u64::from_le_bytes(record[72..].try_into().unwrap());
         }
-        let record = self.bytes(key, ROOT_KEY_LENGTH);
-        if record[..32] != address.copied().unwrap_or_default() || record[32..64] != *root {
-            return 0;
-        }
-        let pointer = u64::from_le_bytes(record[64..].try_into().unwrap());
-        match self.is_valid(pointer) {
-            true => pointer,
-            false => 0,
-        }
+        0
     }
 
     /// Indexes `pointer` as the root `root` of the trie of `address`, the state trie when `None`.
@@ -428,12 +471,20 @@ impl LogSession<'_> {
         let Some(slot) = self.log.roots(address).slot(address, root) else {
             return;
         };
-        let key = self.append_bytes(ROOT_KEY_LENGTH, |out| {
-            out[..32].copy_from_slice(&address.copied().unwrap_or_default());
-            out[32..64].copy_from_slice(root);
-            out[64..].copy_from_slice(&pointer.to_le_bytes());
-        });
-        slot.store(key, Ordering::Release);
+        let mut previous = slot.load(Ordering::Acquire);
+        loop {
+            let key = self.append_bytes(ROOT_KEY_LENGTH, |out| {
+                out[..32].copy_from_slice(&address.copied().unwrap_or_default());
+                out[32..64].copy_from_slice(root);
+                out[64..72].copy_from_slice(&pointer.to_le_bytes());
+                out[72..].copy_from_slice(&previous.to_le_bytes());
+            });
+            // On a race the record is appended again rather than relinked, as the winner may be of a newer generation.
+            match slot.compare_exchange(previous, key, Ordering::Release, Ordering::Acquire) {
+                Ok(_) => return,
+                Err(current) => previous = current,
+            }
+        }
     }
 }
 
@@ -445,8 +496,8 @@ impl Drop for LogSession<'_> {
     }
 }
 
-/// Root key records by a hash of the address and root hash they hold, a colliding root replacing the old one. Lookups
-/// check the record, so a slot is a single pointer and needs no lock.
+/// Root key records by a hash of the address and root hash they hold. A slot points to the newest record, each record
+/// to the one it replaced, so colliding roots are all kept, and lookups check the records, so a slot needs no lock.
 struct RootTable {
     slots: Box<[AtomicU64]>,
 }
@@ -563,7 +614,7 @@ mod tests {
         }
         assert_eq!(active_length(&log), MIN_GENERATION_BYTES);
 
-        // Roots hit on the same trie and hash only, and a colliding root replaces the old one.
+        // Roots hit on the same trie and hash only, and colliding roots are all kept.
         let pointer = session.append(&filler);
         let address = [0x33; 32];
         session.set_root(None, &[0x44; 32], pointer);
@@ -583,11 +634,49 @@ mod tests {
         let single_pointer = single_session.append(&filler);
         single_session.set_root(Some(&address), &[0x44; 32], single_pointer);
         single_session.set_root(Some(&[0x66; 32]), &[0x44; 32], single_pointer);
-        assert_eq!(single_session.root(Some(&address), &[0x44; 32]), 0);
+        assert_eq!(
+            single_session.root(Some(&address), &[0x44; 32]),
+            single_pointer
+        );
         assert_eq!(
             single_session.root(Some(&[0x66; 32]), &[0x44; 32]),
             single_pointer
         );
+
+        // A lookup stops at the first root key record of a dropped generation.
+        while single.active.load(Ordering::Relaxed) <= LIVE_GENERATIONS + 1 {
+            single_session.append(&filler);
+        }
+        let newest_pointer = single_session.append(&filler);
+        single_session.set_root(Some(&[0x77; 32]), &[0x44; 32], newest_pointer);
+        drop(single_session);
+        let single_session = single.pin();
+        assert_eq!(single_session.root(Some(&address), &[0x44; 32]), 0);
+        assert_eq!(
+            single_session.root(Some(&[0x77; 32]), &[0x44; 32]),
+            newest_pointer
+        );
+
+        // A retained generation, and every later one, stays live for later sessions until released, with generations
+        // growing meanwhile, and a second retain keeps it once the first is released.
+        drop(session);
+        let retained = log.retain_active();
+        let session = log.pin();
+        let retained_pointer = session.append(&filler);
+        while log.active.load(Ordering::Relaxed) <= retained + LIVE_GENERATIONS {
+            session.append(&filler);
+        }
+        drop(session);
+        assert!(log.pin().is_valid(retained_pointer));
+        assert!(active_length(&log) > MIN_GENERATION_BYTES);
+        log.retain(retained);
+        log.release(retained);
+        assert!(log.pin().is_valid(retained_pointer));
+        log.release(retained);
+        assert!(!log.pin().is_valid(retained_pointer));
+        let state = log.state.lock().unwrap();
+        assert!(state.oldest_allocated > retained && state.oldest_allocated == state.oldest_live);
+        drop(state);
 
         // A temporary log keeps every generation, which keep growing, and indexes no root.
         let temporary = TrieNodeLog::temporary();

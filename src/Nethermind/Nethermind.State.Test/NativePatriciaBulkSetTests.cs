@@ -126,6 +126,33 @@ public class NativePatriciaBulkSetTests
         }
     }
 
+    [Test]
+    public void PinActiveGeneration_keeps_tries_written_after_it_in_the_log_until_every_copy_is_disposed()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 5);
+        DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
+        using NativePendingNodes pending = NativePendingNodes.Rent(items.Count);
+        using NativeTrieNodeLog log = new(256 * 1024);
+        NativeTrieNodeLogPin pin = log.PinActiveGeneration();
+        Hash256 root = BulkSet(store, pending, log, Keccak.EmptyTreeHash, items);
+        NativeTrieNodeLogPin copy = pin.Copy();
+        pin.Dispose();
+
+        // Many times what the log holds, so without the pin it would have dropped the trie.
+        for (int i = 0; i < 20; i++) BulkSet(store, pending, log, Keccak.EmptyTreeHash, PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 10 + i));
+        bool missingWhilePinned = log.TryFindFirstMissingNode(TestItem.KeccakA, root.ValueHash256, items[0].key.ValueHash256, out _, out _);
+        copy.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copy.Generation, Is.EqualTo(pin.Generation));
+            Assert.That(missingWhilePinned, Is.False);
+            Assert.That(log.TryFindFirstMissingNode(TestItem.KeccakA, root.ValueHash256, items[0].key.ValueHash256, out _, out _), Is.True);
+        }
+    }
+
     private static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog log, Hash256 root, List<(Hash256 key, byte[] value)> items)
     {
         NativeBulkSetEntry[] entries = new NativeBulkSetEntry[items.Count];

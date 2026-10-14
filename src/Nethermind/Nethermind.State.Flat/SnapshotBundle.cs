@@ -9,6 +9,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat;
 
@@ -198,6 +199,17 @@ public sealed class SnapshotBundle : IDisposable
         return DoFindStateNodeExternal(path, hash, out node);
     }
 
+    /// <summary>Finds a state node among the nodes the trie warmer loaded.</summary>
+    internal bool TryGetWarmedStateNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        GuardDispose();
+
+        if (!_transientResource.TryGetStateNode(path, hash, out node) || node.NodeType == NodeType.Unknown) return false;
+
+        Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+        return true;
+    }
+
     public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
     {
         // The warmer never reads the recyclable _snapshots; it warms nodes from persistence into the
@@ -322,6 +334,17 @@ public sealed class SnapshotBundle : IDisposable
         return DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null;
     }
 
+
+    /// <summary>Finds a storage node among the nodes the trie warmer loaded.</summary>
+    internal bool TryGetWarmedStorageNode(Hash256 address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        GuardDispose();
+
+        if (!_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node) || node.NodeType == NodeType.Unknown) return false;
+
+        Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+        return true;
+    }
 
     public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
     {
@@ -603,7 +626,8 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
     internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
-    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
+    // The snapshot takes over logPin, as its Snapshot.LogPin.
+    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, NativeTrieNodeLogPin? logPin, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
@@ -612,7 +636,10 @@ public sealed class SnapshotBundle : IDisposable
             to: to,
             content: _currentPooledContent,
             resourcePool: _resourcePool,
-            usage: _usage);
+            usage: _usage)
+        {
+            LogPin = logPin
+        };
 
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct
