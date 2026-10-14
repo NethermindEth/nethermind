@@ -81,15 +81,16 @@ internal class TrieNodeLogTests
             log.SetRoot(address, roots[i], pointers[i]);
         }
 
+        Hash256 otherAddress = storage ? SameSlotAddress(address) : Hash256.Zero;
         ulong otherAddressPointer = Append(log, Leaf(-2, 8));
-        log.SetRoot(TestItem.KeccakB, roots[0], otherAddressPointer);
+        log.SetRoot(otherAddress, roots[0], otherAddressPointer);
         pointers[1] = Append(log, Leaf(-3, 8));
         log.SetRoot(address, roots[1], pointers[1]);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(roots.Select(root => log.FindRoot(address, root)), Is.EqualTo(pointers), "newest pointer of every root");
-            Assert.That(log.FindRoot(TestItem.KeccakB, roots[0]), Is.EqualTo(otherAddressPointer), "the same root under another address");
+            Assert.That(log.FindRoot(otherAddress, roots[0]), Is.EqualTo(otherAddressPointer), "the same root under another address");
             Assert.That(log.FindRoot(address, Root(-1)), Is.Zero, "a root never set");
         }
 
@@ -139,6 +140,13 @@ internal class TrieNodeLogTests
         }
 
         Assert.That(failures, Is.Empty);
+    }
+
+    private static Hash256 SameSlotAddress(Hash256 address)
+    {
+        byte[] bytes = address.BytesToArray();
+        bytes[^1] ^= 1;
+        return new Hash256(bytes);
     }
 
     private static Hash256 ConcurrentAddress(int thread) => thread % 2 == 0 ? null : Keccak.Compute(BitConverter.GetBytes(thread));

@@ -37,6 +37,7 @@ public sealed partial class TrieNodeLog
     private ulong _oldestLive = 1;
     private long _liveBytes;
 
+    /// <summary>Creates an empty log with generation 1 active.</summary>
     /// <param name="compressedMaxMemory">The memory budget in bytes for compacted generations; it also sizes the storage root index.</param>
     /// <param name="generationBytes">The size of a generation in bytes; a larger record gets a generation of its own size.</param>
     public TrieNodeLog(ulong compressedMaxMemory, int generationBytes)
@@ -71,6 +72,7 @@ public sealed partial class TrieNodeLog
     {
         lock (_lock)
         {
+            Debug.Assert(_retains[generation & GenerationSlotMask] > 0, "Only a retained generation can be released.");
             _retains[generation & GenerationSlotMask]--;
             DropOldGenerations();
         }
