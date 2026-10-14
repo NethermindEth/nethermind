@@ -597,8 +597,7 @@ public class PbtAnchorImportTests
         public readonly IBlockTree BlockTree = Substitute.For<IBlockTree>();
         public PbtTestContext Pbt { get; private set; } = null!;
         private PbtAnchorImport? _anchorImport;
-        public PbtAnchorImport AnchorImport => _anchorImport ??=
-            new PbtAnchorImport(new PbtRocksDbPersistence(Target, _config, NullTrieNodeLog.Instance), Target, Pbt.PersistenceManager, BlockTree, _config, LimboLogs.Instance);
+        public PbtAnchorImport AnchorImport => _anchorImport ??= CreateAnchorImport();
         private readonly string _name;
         private readonly PbtConfig _config;
 
@@ -630,6 +629,12 @@ public class PbtAnchorImportTests
         {
             Pbt = new PbtTestContext(Target, _config);
             _anchorImport = null;
+        }
+
+        private PbtAnchorImport CreateAnchorImport()
+        {
+            PbtRocksDbPersistence target = new(Target, _config, NullTrieNodeLog.Instance);
+            return new PbtAnchorImport(target, Target, Pbt.PersistenceManager, BlockTree, new PbtLeafIngestion(target, _config, LimboLogs.Instance), _config, LimboLogs.Instance);
         }
 
         public async Task Publish(CancellationToken cancellationToken = default)

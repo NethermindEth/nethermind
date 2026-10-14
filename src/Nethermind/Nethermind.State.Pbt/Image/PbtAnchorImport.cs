@@ -24,6 +24,7 @@ public sealed class PbtAnchorImport(
     IColumnsDb<PbtColumns> targetDb,
     PbtPersistenceManager persistenceManager,
     IBlockTree blockTree,
+    PbtLeafIngestion leafIngestion,
     IPbtConfig config,
     ILogManager logManager)
 {
@@ -61,9 +62,8 @@ public sealed class PbtAnchorImport(
         Directory.CreateDirectory(directory);
         try
         {
-            (ValueHash256 root, ulong accounts, ulong slots) = await PbtLeafIngestion.Ingest(target, new PbtRebuilder(target, config, config.ImportConcurrency, logManager),
-                Leaves, Progress, config.ImportConcurrency,
-                new StateId(anchor.Header), windowSize: 0, claimedRoot, VerifyStaged, directory, config.ExportSortBufferBytes, logManager, cancellationToken);
+            (ValueHash256 root, ulong accounts, ulong slots) = await leafIngestion.Ingest(new PbtRebuilder(target, config, config.ImportConcurrency, logManager),
+                Leaves, Progress, new StateId(anchor.Header), windowSize: 0, claimedRoot, VerifyStaged, directory, cancellationToken);
             Finish(anchor, root, accounts, slots, importing, cancellationToken);
         }
         finally
