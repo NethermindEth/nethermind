@@ -16,6 +16,11 @@ export EEZ_PREBUILT_BIN_DIR="$EEZ_RUNTIME_DIR"
 export KURTOSIS_PRIVILEGED=0
 export EEZ_PRUNE_BUILD_CACHE=0
 mkdir -p "$EEZ_CI_RESULT_DIR"
+{
+    free -h
+    df -h "$EEZ_CI_RESULT_DIR"
+    docker system df
+} > "$EEZ_CI_RESULT_DIR/resources.txt"
 cleanup() {
     local status=$?
     trap - EXIT

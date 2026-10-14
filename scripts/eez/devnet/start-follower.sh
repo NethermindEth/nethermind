@@ -25,7 +25,7 @@ exec /nethermind/entrypoint.sh \
     --Eez.L1LogScanBlocks 128 \
     --Sync.FastSync false \
     --Sync.SnapSync false \
-    --Network.DiscoveryEnabled false \
+    --Init.DiscoveryEnabled false \
     --Pruning.Mode None \
     --Receipt.TxLookupLimit 0 \
     --JsonRpc.Enabled true \
