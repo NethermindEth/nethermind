@@ -162,6 +162,18 @@ public class ReceiptsMessageSerializerTests
     }
 
     [Test]
+    public void Deserialize_empty_list_is_usable_after_an_earlier_one_is_disposed()
+    {
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+        ReceiptsMessage first = serializer.Deserialize(Rlp.OfEmptyList.Bytes);
+        first.Dispose();
+
+        using ReceiptsMessage second = serializer.Deserialize(Rlp.OfEmptyList.Bytes);
+        Assert.That(second, Is.Not.SameAs(first));
+        Assert.That(second.TxReceipts.ToArray(), Is.Empty);
+    }
+
+    [Test]
     public void Deserialize_non_empty_but_bytebuffer_starts_with_empty()
     {
         TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject], [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
