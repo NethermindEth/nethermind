@@ -521,8 +521,15 @@ public class DebugRpcModule(
         BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
-            return headerError;
+            return headerError.ErrorCode == ErrorCodes.ResourceNotFound
+                && headerError.Result.Error == $"Cannot find header for block hash: {blockHash}"
+                ? ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block {blockHash} not found", ErrorCodes.ResourceNotFound, headerError.IsTemporary)
+                : headerError;
         }
+
+        // HasBlock excludes cache-only bodies that FindBlock can still serve.
+        if (!blockFinder.HasBlock(header.Number, blockHash) && blockFinder.FindBlock(blockHash, header.Number) is null)
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block {blockHash} not found", ErrorCodes.ResourceNotFound);
 
         if (header.Number == 0)
         {
@@ -540,7 +547,7 @@ public class DebugRpcModule(
             Block? resolvedBlock = blockFinder.FindBlock(blockHash);
             if (resolvedBlock is null)
             {
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockHash}", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block {blockHash} not found", ErrorCodes.ResourceNotFound);
             }
 
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
