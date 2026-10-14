@@ -17,14 +17,16 @@ namespace Nethermind.Runner.Test;
 public class ConfigDefaultValueTests
 {
     /// <summary>
-    /// Properties whose default depends on the machine, so no literal <c>DefaultValue</c> can match it.
+    /// Properties whose default depends on the machine or on process-wide state, so no literal
+    /// <c>DefaultValue</c> can match it in every run.
     /// </summary>
-    private static readonly HashSet<string> MachineDependentDefaults =
+    private static readonly HashSet<string> NonDeterministicDefaults =
     [
         "ILogIndexConfig.MaxReceiptsParallelism",     // Max(ProcessorCount / 2, 1)
         "ILogIndexConfig.MaxAggregationParallelism",  // Max(ProcessorCount / 2, 1)
         "ILogIndexConfig.MaxCompressionParallelism",  // Max(ProcessorCount / 2, 1)
         "ILogIndexConfig.CompressionAlgorithm",       // depends on the CPU instruction sets
+        "IBlocksConfig.GasToken",                     // backed by the static GasTokenTicker, so any config that set it earlier (e.g. XDAI) wins
     ];
 
     /// <remarks>
@@ -58,6 +60,6 @@ public class ConfigDefaultValueTests
         from config in ConfigTypes()
         from property in config.Interface.GetProperties()
         let name = $"{config.Interface.Name}.{property.Name}"
-        where !MachineDependentDefaults.Contains(name)
+        where !NonDeterministicDefaults.Contains(name)
         select new TestCaseData(config.Interface, config.Implementation, property.Name).SetName(name);
 }
