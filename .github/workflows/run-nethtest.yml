@@ -466,7 +466,8 @@ jobs:
           elif [ "$TEST_TYPE" = "frameTest" ] || [ "$TEST_TYPE" = "frameBlockTest" ] || [ "$TEST_TYPE" = "frameTxTest" ]; then
             RESOLVED_EEST_VERSION="$RESOLVED_FRAMES"
             VERSION_INPUT="$FRAMES_VERSION"
-            EEST_ARCHIVE="fixtures_frames-devnet.tar.gz"
+            # tests-frames-devnet@v1.0.0 renamed its asset from fixtures_frames-devnet.tar.gz.
+            EEST_ARCHIVE="fixtures_bogota-devnet.tar.gz"
           else
             RESOLVED_EEST_VERSION="$RESOLVED_EEST"
             VERSION_INPUT="$EEST_VERSION"
