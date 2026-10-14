@@ -62,6 +62,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     private static readonly FieldInfo? QueuedCopiesField =
         typeof(NewPayloadHandler).GetField("_queuedCopies", BindingFlags.Instance | BindingFlags.NonPublic);
 
+    // The budget outlasts the answer wait, so a runner stall cannot turn the answer into Syncing,
+    // and a handler that waits for the wrong event is still pending when the wait gives up.
+    private const int LongRequestBudgetMs = 60_000;
+    private static readonly TimeSpan AnswerWait = TimeSpan.FromSeconds(30);
+
     [Test]
     public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash)
     {
@@ -292,7 +297,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000);
+            timeoutMs: LongRequestBudgetMs);
 
         TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
         ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
@@ -301,7 +306,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ParallelUnbalancedWork.WorkerGroup? queuedWorkers = await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         // The verdict lands; BlockRemoved never does, as if the commit were still running.
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(30));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         using (Assert.EnterMultipleScope())
         {
@@ -337,7 +342,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000);
+            timeoutMs: LongRequestBudgetMs);
 
         BlockVerdictEventArgs unwaited = new(TestItem.KeccakB, ProcessingResult.Success);
         processingQueue.BlockExecuted += Raise.EventWith(unwaited);
@@ -346,7 +351,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         BlockVerdictEventArgs verdict = new(block.Hash!, ProcessingResult.Success);
         processingQueue.BlockExecuted += Raise.EventWith(verdict);
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(30));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         using (Assert.EnterMultipleScope())
         {
@@ -377,9 +382,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000);
+            timeoutMs: LongRequestBudgetMs);
 
-        Assert.That(async () => await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(TimeSpan.FromSeconds(30)),
+        Assert.That(async () => await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(AnswerWait),
             Throws.InstanceOf<InvalidOperationException>().With.Message.EqualTo("queue refused the block"),
             "the failure reaches the request well inside its 60 s budget");
         Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0));
@@ -412,7 +417,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000,
+            timeoutMs: LongRequestBudgetMs,
             wasProcessedNow: () => committed);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
@@ -422,7 +427,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         committed = true;
         firstCopyRemoved.SetResult();
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(30));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), "once the first copy is committed the tree's answer is the block's");
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
@@ -461,7 +466,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000);
+            timeoutMs: LongRequestBudgetMs);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
         // Awaited first, so the assertion below means the request is on the wait, not at an earlier await.
@@ -475,7 +480,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(request.IsCompleted, Is.False, "the request must wait for its own attempt's verdict");
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(30));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the answer is the re-submission's own verdict");
         await processingQueue.Received(1).Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
@@ -514,7 +519,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: true,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000);
+            timeoutMs: LongRequestBudgetMs);
 
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
         payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
@@ -528,7 +533,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(30));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }
@@ -622,7 +627,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000);
+            timeoutMs: LongRequestBudgetMs);
 
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
         payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
@@ -630,7 +635,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        await request.WaitAsync(TimeSpan.FromSeconds(30));
+        await request.WaitAsync(AnswerWait);
 
         object copy = ((Array)QueuedCopiesField!.GetValue(handler)!).GetValue(0)!;
         await ((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).WaitAsync(TimeSpan.FromSeconds(10));
@@ -1033,7 +1038,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000);
+            timeoutMs: LongRequestBudgetMs);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
         await firstEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -1042,13 +1047,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.Exception, new Exception("commit failed")));
 
-        ResultWrapper<PayloadStatusV1> answer = await request.WaitAsync(TimeSpan.FromSeconds(30));
+        ResultWrapper<PayloadStatusV1> answer = await request.WaitAsync(AnswerWait);
         Assert.That(answer.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         Task<ResultWrapper<PayloadStatusV1>> retry = handler.HandleAsync(ExecutionPayload.Create(block));
         await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        await retry.WaitAsync(TimeSpan.FromSeconds(30));
+        await retry.WaitAsync(AnswerWait);
 
         await processingQueue.Received(2).Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
@@ -1080,19 +1085,19 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000,
+            timeoutMs: LongRequestBudgetMs,
             wasProcessedNow: () => committed);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        await request.WaitAsync(TimeSpan.FromSeconds(30));
+        await request.WaitAsync(AnswerWait);
 
         // The block is in the chain now, and a copy of it that was queued earlier is skipped as no better than head.
         committed = true;
         processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.ProcessingError, "skipped"));
 
-        ResultWrapper<PayloadStatusV1> again = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(TimeSpan.FromSeconds(30));
+        ResultWrapper<PayloadStatusV1> again = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(AnswerWait);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1135,7 +1140,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 60_000,
+            timeoutMs: LongRequestBudgetMs,
             parentProcessedNow: () => parentCommitted);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
@@ -1148,7 +1153,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         parentRemoved.SetResult();
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(30));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
@@ -1169,7 +1174,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             processingQueue: processingQueue,
             timeoutMs: 100);
 
-        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(TimeSpan.FromSeconds(30));
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the request times out the way a pending block does");
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
