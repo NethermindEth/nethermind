@@ -1,14 +1,40 @@
 name: EEZ streaming session tests
 
 on:
+  pull_request:
+    paths:
+      - 'src/Nethermind/Nethermind.Eez*/**'
+      - 'src/Nethermind/Nethermind.Consensus*/**'
+      - 'src/Nethermind/Nethermind.Core*/**'
+      - 'src/Nethermind/Nethermind.Evm*/**'
+      - 'src/Nethermind/Nethermind.Blockchain*/**'
+      - 'src/Nethermind/Nethermind.Specs*/**'
+      - 'src/Nethermind/Nethermind.Serialization.Rlp*/**'
+      - 'src/Nethermind/Directory.*'
+      - 'Directory.*'
+      - 'global.json'
+      - '.github/workflows/eez-streaming-tests.yml'
   push:
-    branches: [feature/eez-prove-v2-sessions]
+    branches: [master, feature/eez-l2-execution]
+    paths:
+      - 'src/Nethermind/Nethermind.Eez*/**'
+      - 'src/Nethermind/Nethermind.Consensus*/**'
+      - 'src/Nethermind/Nethermind.Core*/**'
+      - 'src/Nethermind/Nethermind.Evm*/**'
+      - 'src/Nethermind/Nethermind.Blockchain*/**'
+      - 'src/Nethermind/Nethermind.Specs*/**'
+      - 'src/Nethermind/Nethermind.Serialization.Rlp*/**'
+      - 'src/Nethermind/Directory.*'
+      - 'Directory.*'
+      - 'global.json'
+      - '.github/workflows/eez-streaming-tests.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: eez-streaming-${{ github.ref }}
+  group: eez-streaming-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,10 +53,10 @@ jobs:
         run: dotnet restore src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj --locked-mode
       - name: Compile
         run: dotnet build src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj -c Release --no-restore
-      - name: Witness header tests
+      - name: Execution requests and witness tests
         run: |
           dotnet test --project src/Nethermind/Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj -c Release \
-            -- --filter 'FullyQualifiedName~Nethermind.Consensus.Test.Stateless.WitnessTests'
+            -- --filter 'FullyQualifiedName~Nethermind.Consensus.Test.Stateless.WitnessTests|FullyQualifiedName~Nethermind.Consensus.Test.ExecutionProcessorTests'
       - name: Test
         run: |
           dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
