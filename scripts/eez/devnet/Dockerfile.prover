@@ -1,0 +1,7 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chmod=0555 start-prover.sh /attester/eez-proof-signer
+RUN mkdir -p /data && chown app:app /data
+ENV PATH="/attester:${PATH}"
+USER app
+ENTRYPOINT ["/attester/eez-proof-signer"]

@@ -54,7 +54,7 @@ concurrency:
 
 jobs:
   follower:
-    name: Live follower, restart and fresh recovery
+    name: Live follower and prover, restart and fresh recovery
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -62,6 +62,7 @@ jobs:
       EEZ_CI_RESULT_DIR: ${{ github.workspace }}/artifacts/eez-live
       EEZ_RUNTIME_DIR: ${{ github.workspace }}/artifacts/eez-runtime
       EEZ_NETHERMIND_BASE_IMAGE: nethermind:eez-${{ github.run_id }}-${{ github.run_attempt }}
+      EEZ_NETHERMIND_PROVER_BASE_IMAGE: nethermind-eez-attester:eez-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -84,7 +85,7 @@ jobs:
       - name: Script regression checks
         run: |
           python3 -m unittest discover -s scripts/eez/devnet -p 'test_*.py'
-          bash -n scripts/eez/devnet/run.sh scripts/eez/devnet/observe.sh
+          bash -n scripts/eez/devnet/run.sh scripts/eez/devnet/observe.sh scripts/eez/devnet/start-prover.sh
       - name: Fetch matching trusted runtime
         env:
           GH_TOKEN: ${{ github.token }}
@@ -107,10 +108,12 @@ jobs:
             cp target/ci-e2e/examples/genesis_block_hash "$EEZ_RUNTIME_DIR/eez-genesis-block-hash"
             python3 "$GITHUB_WORKSPACE/scripts/eez/devnet/upstream.py" record-build --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --checkout "$EEZ_UPSTREAM" --output "$EEZ_RUNTIME_DIR"
           fi
-      - name: Build Nethermind image
+      - name: Build Nethermind follower and prover images
         run: |
           docker build -t "$EEZ_NETHERMIND_BASE_IMAGE" --build-arg COMMIT_HASH="$GITHUB_SHA" -f Dockerfile .
           docker run --rm --entrypoint /bin/sh "$EEZ_NETHERMIND_BASE_IMAGE" -c 'test -f /nethermind/plugins/Nethermind.Eez.dll'
+          docker build -t "$EEZ_NETHERMIND_PROVER_BASE_IMAGE" --build-arg COMMIT_HASH="$GITHUB_SHA" \
+            -f src/Nethermind/Nethermind.Eez.Attester/Dockerfile .
           git rev-parse HEAD > "$EEZ_CI_RESULT_DIR/nethermind-revision.txt"
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a

@@ -85,8 +85,11 @@ internal sealed class ProverService : Prover.ProverBase
                 throw new RpcException(new Status(StatusCode.Internal, "request pipeline worker failed"));
             }
 
-            _logger.LogInformation("window validated and signed: blocks {From}..{To}, public inputs hash 0x{Hash}, {Elapsed} ms", window.FromBlock, window.ToBlock,
-                Convert.ToHexStringLower(response.PublicInputsHash.Span), Environment.TickCount64 - started);
+            _logger.LogInformation(
+                "{{\"event_name\":\"eez.proof_signer.window_signed\",\"fields\":{{" +
+                "\"validated_from_block\":{From},\"validated_to_block\":{To}," +
+                "\"recomputed_public_inputs_hash\":\"0x{Hash}\",\"elapsed_ms\":{Elapsed}}}}}",
+                window.FromBlock, window.ToBlock, Convert.ToHexStringLower(response.PublicInputsHash.Span), Environment.TickCount64 - started);
             return response;
         }
         catch (RpcException e) when (e.StatusCode == StatusCode.Cancelled)

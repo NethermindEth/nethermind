@@ -11,6 +11,8 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Grpc.Core;
+using Microsoft.Extensions.Logging;
+using NSubstitute;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -39,10 +41,17 @@ public class AttesterTests
     [TestCase(AnchorWindow, 79, 84, TestName = "AnchorOnlyWindow")]
     public async Task Prove_RecordedWindow_ReturnsTheReferenceAttestation(string fixture, int from, int to)
     {
-        await using AttesterServer server = await AttesterServer.Start(fixture);
+        ILogger<ProverService> logger = Substitute.For<ILogger<ProverService>>();
+        await using AttesterServer server = await AttesterServer.Start(fixture, logger: logger);
         JsonElement oracle = StatelessFixtures.ReadJson(fixture, "oracle.json");
 
         ProveResponse response = await server.Prove(Window(fixture, from, to));
+        JsonElement[] events = SignedEvents(logger);
+        Assert.That(events, Has.Length.EqualTo(1), "only completed signed windows produce upstream proof evidence");
+        JsonElement fields = events[0].GetProperty("fields");
+        Assert.That((fields.GetProperty("validated_from_block").GetInt32(), fields.GetProperty("validated_to_block").GetInt32(),
+            fields.GetProperty("recomputed_public_inputs_hash").GetString()),
+            Is.EqualTo((from, to, oracle.GetProperty("public_inputs_hash").GetString())), "upstream state-chaining matches the actual signed height and independently expected digest");
 
         Assert.That(response.PublicInputsHash.ToByteArray().ToHexString(true), Is.EqualTo(oracle.GetProperty("public_inputs_hash").GetString()));
         if (oracle.TryGetProperty("mined_proof", out JsonElement proof))
@@ -58,13 +67,21 @@ public class AttesterTests
     [TestCaseSource(nameof(RejectedStreams))]
     public async Task Prove_StreamOutsideTheRules_IsRejectedWithTheReferenceStatus(Func<List<ProveChunk>, List<ProveChunk>> mutate, StatusCode code, string message)
     {
-        await using AttesterServer server = await AttesterServer.Start(EffectWindow);
+        ILogger<ProverService> logger = Substitute.For<ILogger<ProverService>>();
+        await using AttesterServer server = await AttesterServer.Start(EffectWindow, logger: logger);
 
         RpcException e = (await Assert.ThrowsAsync<RpcException>(() => server.Prove(mutate(Window(EffectWindow, 463, 468)))))!;
 
         Assert.That(e.StatusCode, Is.EqualTo(code));
         Assert.That(e.Status.Detail, Does.StartWith(message));
+        Assert.That(SignedEvents(logger), Is.Empty, "rejected input cannot count as a successful signed window");
     }
+
+    private static JsonElement[] SignedEvents(ILogger<ProverService> logger) => logger.ReceivedCalls()
+        .Where(call => call.GetMethodInfo().Name == nameof(ILogger<ProverService>.Log))
+        .Select(call => call.GetArguments()[2]?.ToString())
+        .Where(message => message?.StartsWith("{\"event_name\":\"eez.proof_signer.window_signed\"", StringComparison.Ordinal) == true)
+        .Select(message => JsonSerializer.Deserialize<JsonElement>(message!)).ToArray();
 
     [Test]
     public async Task Prove_WhileAnotherRequestIsActive_IsUnavailable()

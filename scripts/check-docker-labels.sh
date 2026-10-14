@@ -74,6 +74,7 @@ not_published=(
   scripts/build/Dockerfile                        # builds the release packages, the image is not pushed
   scripts/build/deb/Dockerfile                    # builds the .deb, the image is not pushed
   scripts/eez/devnet/Dockerfile                    # wraps the candidate follower for CI, never pushed
+  scripts/eez/devnet/Dockerfile.prover             # wraps the candidate prover for CI, never pushed
   src/Nethermind/Nethermind.Eez.Attester/Dockerfile  # EEZ attester, built by the operators who run it, never pushed
   src/Nethermind/Nethermind.Runner/Dockerfile     # Visual Studio's debug container
   src/Nethermind/Nethermind.Test.Runner/Dockerfile

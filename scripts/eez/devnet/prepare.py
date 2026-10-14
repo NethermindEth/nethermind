@@ -24,8 +24,12 @@ def prepare(args):
         raise ValueError("integration sources do not match their pinned revisions")
     source = Path(__file__).resolve().parent
     package = upstream / "testing/kurtosis"
+    if 'EEZ_SKIP_PROOF_SIGNER_BUILD' not in (package / "start.sh").read_text():
+        raise ValueError("upstream no longer supports the candidate prover image")
     main = package / "main.star"
     original = main.read_text()
+    if 'exec eez-proof-signer' not in original or '"EEZ_PROVER_URL": "http://eez-proof-signer:' not in original:
+        raise ValueError("upstream prover deployment seam changed")
     if "nethermind.add_initial" in original:
         raise ValueError("the integration overlay was already applied")
     if 'l1_el = participants[0].el_context' not in original or 'name="eez-deployments"' not in original:

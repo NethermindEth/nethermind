@@ -11,6 +11,7 @@ using Grpc.Net.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -43,7 +44,7 @@ internal sealed class AttesterServer : IAsyncDisposable
 
     internal BackendAdmission Admission => _app.Services.GetRequiredService<BackendAdmission>();
 
-    public static async Task<AttesterServer> Start(string fixture, TimeSpan? idleTimeout = null)
+    public static async Task<AttesterServer> Start(string fixture, TimeSpan? idleTimeout = null, ILogger<ProverService>? logger = null)
     {
         JsonElement oracle = StatelessFixtures.ReadJson(fixture, "oracle.json");
         ISpecProvider specProvider = StatelessFixtures.ReadSpecProvider(fixture, "chain-config.json");
@@ -55,6 +56,7 @@ internal sealed class AttesterServer : IAsyncDisposable
 
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseTestServer();
+        if (logger is not null) builder.Services.AddSingleton(logger);
         WebApplication app = Program.Build(builder, options, new AttestationPipeline(specProvider, context, new EezAttestationSigner(AttesterKey), LimboLogs.Instance));
         await app.StartAsync();
         GrpcChannel channel = GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions { HttpHandler = app.GetTestServer().CreateHandler() });
