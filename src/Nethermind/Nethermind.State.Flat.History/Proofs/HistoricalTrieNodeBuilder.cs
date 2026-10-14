@@ -44,7 +44,7 @@ internal sealed class HistoricalTrieNodeBuilder
         if (_prefetched is not null && _prefetched.TryRemove(path, out byte[]? prefetched) && ValueKeccak.Compute(prefetched) == expected) return Publish(expected, prefetched);
 
         bool rebuilt = false;
-        byte[]? rlp = _scope.IsComposed(path.Length) || _scope.HasCommitmentRows(path.Length) ? ResolveRlp(path, _fanOut > 1, out rebuilt) : null;
+        byte[]? rlp = _scope.IsComposed(path.Length) || _scope.HasCommitmentRows(path.Length) ? ResolveRlp(path, _fanOut > 1, out rebuilt, out _) : null;
         if (rlp is not null && ValueKeccak.Compute(rlp) == expected) return Publish(expected, rlp);
 
         if (!rebuilt) rlp = RebuildRlp(path, _fanOut > 1);
@@ -99,11 +99,13 @@ internal sealed class HistoricalTrieNodeBuilder
         });
     }
 
-    private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, bool allowRebuild = true) => ResolveRlp(path, parallelChildren, out _, allowRebuild);
+    private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, bool allowRebuild = true) => ResolveRlp(path, parallelChildren, out _, out _, allowRebuild);
 
-    private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, out bool rebuilt, bool allowRebuild = true)
+    /// <param name="provenEmpty">True when a row valid at the block records the node as absent, so a <c>null</c> result needs no rebuild.</param>
+    private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, out bool rebuilt, out bool provenEmpty, bool allowRebuild = true)
     {
         rebuilt = false;
+        provenEmpty = false;
         if (_scope.IsComposed(path.Length)) return Compose(path, parallelChildren, allowRebuild);
         if (!_scope.HasCommitmentRows(path.Length))
         {
@@ -119,13 +121,18 @@ internal sealed class HistoricalTrieNodeBuilder
                 if (path.Length == 0) _scope.NoteRootLastBlock(ParentRowCodec.LastBlock(exact.CurrentValue));
                 if (DemotionCannotHideNewerRows(exact.CurrentSuffix) || !NewerCheckpointRowExists(path, ParentRowCodec.LastBlock(exact.CurrentValue)))
                 {
-                    if (ParentRowCodec.IsEmptyRow(exact.CurrentValue)) return null;
+                    if (ParentRowCodec.IsEmptyRow(exact.CurrentValue))
+                    {
+                        provenEmpty = true;
+                        return null;
+                    }
+
                     if (TryMaterialize(exact, out byte[]? fromExact) && fromExact is not null) return fromExact;
                 }
             }
         }
 
-        return ResolveCheckpointed(path, parallelChildren, allowRebuild, out rebuilt);
+        return ResolveCheckpointed(path, parallelChildren, allowRebuild, out rebuilt, out provenEmpty);
     }
 
     private bool DemotionCannotHideNewerRows(ulong exactRowBlock) => _scope.Policy.Epoch(exactRowBlock) == _scope.Policy.Epoch(_block);
@@ -136,9 +143,10 @@ internal sealed class HistoricalTrieNodeBuilder
         return chain.MoveNext() && ParentRowCodec.IsValid(chain.CurrentValue) && ParentRowCodec.LastBlock(chain.CurrentValue) > exactLastBlock && ParentRowCodec.LastBlock(chain.CurrentValue) <= _block;
     }
 
-    private byte[]? ResolveCheckpointed(in TreePath path, bool parallelChildren, bool allowRebuild, out bool rebuilt)
+    private byte[]? ResolveCheckpointed(in TreePath path, bool parallelChildren, bool allowRebuild, out bool rebuilt, out bool provenEmpty)
     {
         rebuilt = false;
+        provenEmpty = false;
         ulong anchor = _scope.Policy.WindowAtOrBelow(_block);
         using CommitmentStore.RowChain chain = _scope.OpenRows(path, exact: false, anchor + 1, _budget, bounded: !allowRebuild && path.Length > 0);
         if (!chain.MoveNext() || !ParentRowCodec.IsValid(chain.CurrentValue))
@@ -150,7 +158,11 @@ internal sealed class HistoricalTrieNodeBuilder
         if (path.Length == 0) _scope.NoteRootLastBlock(ParentRowCodec.LastBlock(chain.CurrentValue));
         if (chain.CurrentSuffix <= anchor || ParentRowCodec.LastBlock(chain.CurrentValue) <= _block)
         {
-            if (TryMaterialize(chain, out byte[]? settled)) return settled;
+            if (TryMaterialize(chain, out byte[]? settled))
+            {
+                provenEmpty = settled is null;
+                return settled;
+            }
 
             rebuilt = allowRebuild;
             return allowRebuild ? RebuildRlp(path, parallelChildren) : null;
@@ -370,8 +382,8 @@ internal sealed class HistoricalTrieNodeBuilder
     {
         if (_prefetched is not null && _prefetched.TryGetValue(childPath, out byte[]? prefetched)) return prefetched;
 
-        byte[]? rlp = ResolveRlp(childPath, parallelChildren: false, out bool rebuilt, allowRebuild);
-        return rlp is null && allowRebuild && !rebuilt ? RebuildRlp(childPath, parallelChildren: false) : rlp;
+        byte[]? rlp = ResolveRlp(childPath, parallelChildren: false, out bool rebuilt, out bool provenEmpty, allowRebuild);
+        return rlp is null && allowRebuild && !rebuilt && !provenEmpty ? RebuildRlp(childPath, parallelChildren: false) : rlp;
     }
 
     private void PublishSubtree(TrieNode node)

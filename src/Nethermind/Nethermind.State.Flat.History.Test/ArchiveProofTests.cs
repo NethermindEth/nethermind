@@ -708,6 +708,44 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void A_sparse_composed_node_does_not_rebuild_its_empty_children_from_later_history()
+    {
+        Address target = AddressUnder("a1", 0x3000_0000);
+        Address sibling = AddressUnder("a2", 0x3100_0000);
+        Address elsewhere = AddressUnder("5", 0x3200_0000);
+        List<Address> later = [];
+        for (uint seed = 0x3300_0000; later.Count < 280; seed++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            BitConverter.TryWriteBytes(bytes.AsSpan(), seed);
+            Address candidate = new(bytes);
+            string hash = HashNibbles(candidate);
+            if (hash[0] == 'a' && hash[1] is not '1' and not '2') later.Add(candidate);
+        }
+
+        ReplaceChain();
+        _chain.AddBlock(0, block =>
+        {
+            block.SetBalance(target, 1);
+            block.SetBalance(sibling, 2);
+            block.SetBalance(elsewhere, 3);
+        });
+        for (ulong number = 1; number <= 4; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block =>
+            {
+                for (int i = (int)current - 1; i < later.Count; i += 4) block.SetBalance(later[i], (UInt256)(100 + current));
+            });
+        }
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+
+        AssertProofsMatch(ProveFromArchive(target, block: 0, maxScannedRows: 50), _chain.ExpectedProof(target, 0), target, 0);
+    }
+
+    [Test]
     public void A_proof_served_from_commitments_never_touches_the_history_rows()
     {
         BuildCommitments();
