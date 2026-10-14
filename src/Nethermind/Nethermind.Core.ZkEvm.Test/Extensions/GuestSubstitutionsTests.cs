@@ -22,6 +22,8 @@ public class GuestSubstitutionsTests
     private const BindingFlags AnyMethod =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
+    private static readonly HashSet<string> NativeAotOnlyCoreLibTypes = ["System.RuntimeExceptionHelpers"];
+
     private static IEnumerable<TestCaseData> SubstitutedMethods()
     {
         foreach (string guest in new[] { "Guest", "ZiskGuest", "Sp1Guest" })
@@ -50,7 +52,7 @@ public class GuestSubstitutionsTests
         Assembly assembly = Assembly.Load(assemblyName);
 
         Type? type = assembly.GetType(typeName);
-        if (type is null && assemblyName == "System.Private.CoreLib")
+        if (type is null && assemblyName == "System.Private.CoreLib" && NativeAotOnlyCoreLibTypes.Contains(typeName))
         {
             Assert.Ignore($"{typeName} is NativeAOT-only, so the host's CoreLib cannot resolve it");
         }
