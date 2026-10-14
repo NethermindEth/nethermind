@@ -111,8 +111,6 @@ public static class VirtualMachineStatics
 /// <summary>Retains nested return scratch and tracks the logical length of the currently staged output.</summary>
 internal struct ReturnDataScratch
 {
-    internal const int MaxRetainedLength = 32 * 1024;
-
     private byte[] _retained;
     private byte[]? _staged;
     private int _stagedLength;
@@ -230,17 +228,21 @@ public partial class VirtualMachine<TGasPolicy>(
     public ref readonly UInt256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
 
-    internal void StageReturnData(ReadOnlySpan<byte> returnData)
+    internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert)
     {
-        // Only nested non-create outputs are consumed before this buffer can be reused by a later child call.
+        // Only nested outputs are consumed before this buffer can be reused by a later child call, and a create's
+        // output may become the deployed code.
         bool allowReuse = _tracerAllowsReturnScratch
             && !returnData.IsEmpty
-            && returnData.Length <= ReturnDataScratch.MaxRetainedLength
+            && returnData.Length <= MaxRetainedReturnDataLength
             && !_currentState.IsTopLevel
-            && !_currentState.ExecutionType.IsAnyCreate();
+            && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length, isRevert));
 
         ReturnData = _returnDataScratch.Stage(returnData, allowReuse);
     }
+
+    /// <summary>Whether a create frame's output of <paramref name="length"/> bytes, reverted or returned, is never deployed, so nothing reads it once the frame returns.</summary>
+    private partial bool IsUndeployableCreateOutput(int length, bool isRevert);
 
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
