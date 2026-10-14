@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,7 +13,6 @@ using System.Threading.Tasks;
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
-using NSubstitute;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -23,6 +23,7 @@ using Nethermind.Eez.Prove;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Logging;
 using NUnit.Framework;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 using SettlementBatch = Nethermind.Eez.Execution.Settlement.PostBatch;
 using WirePostBatch = Nethermind.Eez.Prove.PostBatch;
 
@@ -41,7 +42,7 @@ public class AttesterTests
     [TestCase(AnchorWindow, 79, 84, TestName = "AnchorOnlyWindow")]
     public async Task Prove_RecordedWindow_ReturnsTheReferenceAttestation(string fixture, int from, int to)
     {
-        ILogger<ProverService> logger = Substitute.For<ILogger<ProverService>>();
+        RecordingLogger logger = new();
         await using AttesterServer server = await AttesterServer.Start(fixture, logger: logger);
         JsonElement oracle = StatelessFixtures.ReadJson(fixture, "oracle.json");
 
@@ -67,7 +68,7 @@ public class AttesterTests
     [TestCaseSource(nameof(RejectedStreams))]
     public async Task Prove_StreamOutsideTheRules_IsRejectedWithTheReferenceStatus(Func<List<ProveChunk>, List<ProveChunk>> mutate, StatusCode code, string message)
     {
-        ILogger<ProverService> logger = Substitute.For<ILogger<ProverService>>();
+        RecordingLogger logger = new();
         await using AttesterServer server = await AttesterServer.Start(EffectWindow, logger: logger);
 
         RpcException e = (await Assert.ThrowsAsync<RpcException>(() => server.Prove(mutate(Window(EffectWindow, 463, 468)))))!;
@@ -77,11 +78,9 @@ public class AttesterTests
         Assert.That(SignedEvents(logger), Is.Empty, "rejected input cannot count as a successful signed window");
     }
 
-    private static JsonElement[] SignedEvents(ILogger<ProverService> logger) => logger.ReceivedCalls()
-        .Where(call => call.GetMethodInfo().Name == nameof(ILogger<ProverService>.Log))
-        .Select(call => call.GetArguments()[2]?.ToString())
-        .Where(message => message?.StartsWith("{\"event_name\":\"eez.proof_signer.window_signed\"", StringComparison.Ordinal) == true)
-        .Select(message => JsonSerializer.Deserialize<JsonElement>(message!)).ToArray();
+    private static JsonElement[] SignedEvents(RecordingLogger logger) => logger.Messages
+        .Where(message => message.StartsWith("{\"event_name\":\"eez.proof_signer.window_signed\"", StringComparison.Ordinal))
+        .Select(message => JsonSerializer.Deserialize<JsonElement>(message)).ToArray();
 
     [Test]
     public async Task Prove_WhileAnotherRequestIsActive_IsUnavailable()
@@ -385,4 +384,16 @@ public class AttesterTests
 
     private static IEnumerable<ByteString> Items(JsonElement witness, string property) =>
         witness.GetProperty(property).EnumerateArray().Select(static item => ByteString.CopyFrom(Bytes.FromHexString(item.GetString()!)));
+
+    private sealed class RecordingLogger : ILogger<ProverService>
+    {
+        public ConcurrentQueue<string> Messages { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Enqueue(formatter(state, exception));
+    }
 }
