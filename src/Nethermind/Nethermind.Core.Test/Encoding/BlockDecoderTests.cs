@@ -388,8 +388,9 @@ public class BlockDecoderTests
         [0xb8, 0x01, 0x01],
     ];
 
-    [TestCaseSource(nameof(MalformedRecoveryTransactions))]
-    public void Receipt_recovery_rejects_malformed_transaction_envelopes(byte[] transactionData)
+    [Test]
+    public void Receipt_recovery_rejects_malformed_transaction_envelopes(
+        [ValueSource(nameof(MalformedRecoveryTransactions))] byte[] transactionData, [Values] bool skip)
     {
         ReceiptRecoveryBlock recovery = new(
             null,
@@ -397,7 +398,11 @@ public class BlockDecoderTests
             transactionData,
             transactionCount: 1);
 
-        Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+        Assert.Throws<RlpException>(() =>
+        {
+            if (skip) recovery.SkipNextTransaction();
+            else recovery.GetNextTransactionHash();
+        });
     }
 
     [Test]
