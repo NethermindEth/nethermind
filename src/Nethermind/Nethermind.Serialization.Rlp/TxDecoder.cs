@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp.TxDecoders;
 namespace Nethermind.Serialization.Rlp;
 
 [Rlp.SkipGlobalRegistration]
-public sealed class TxDecoder : TxDecoder<Transaction>
+public sealed partial class TxDecoder : TxDecoder<Transaction>
 {
     /// <summary>Locates the signed payload inside a transaction's canonical encoding.</summary>
     /// <param name="encoded">The encoding, typed transactions left unwrapped (<see cref="RlpBehaviors.SkipTypedWrapping"/>).</param>
@@ -75,9 +75,11 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     {
         // Retain reusable gossip and owned block-body transactions across receive/processing threads. This caps lazy retention, not preallocation;
         // PoolPolicy clears payload references before retaining a transaction.
-        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), MaxRetainedTransactions);
+        TxObjectPool = CreateTxObjectPool(new Transaction.PoolPolicy(), MaxRetainedTransactions);
         Instance = new TxDecoder(static () => TxObjectPool.Get());
     }
+
+    private static partial ObjectPool<Transaction> CreateTxObjectPool(Transaction.PoolPolicy policy, int maxRetained);
 
     /// <summary>
     /// Gets the block-format length of a pre-encoded CL-format transaction.
