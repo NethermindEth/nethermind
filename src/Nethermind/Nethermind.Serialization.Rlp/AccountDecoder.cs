@@ -75,10 +75,12 @@ namespace Nethermind.Serialization.Rlp
                 return false;
             }
 
+            int end = position + length;
             reader.DecodeULong(ref position, out ulong nonce);
             reader.DecodeUInt256(ref position, out UInt256 balance);
             position = DecodeValueHash(reader, position, Keccak.EmptyTreeHash.ValueHash256, out ValueHash256 storageRoot);
             endPosition = DecodeValueHash(reader, position, Keccak.OfAnEmptyString.ValueHash256, out ValueHash256 codeHash);
+            RlpHelpers.Check(endPosition, end);
 
             account = new AccountStruct(nonce, balance, storageRoot, codeHash);
             return true;
@@ -218,10 +220,13 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
+            int end = position + length;
             reader.DecodeULong(ref position, out ulong nonce);
             reader.DecodeUInt256(ref position, out UInt256 balance);
             position = DecodeHash(reader, position, Keccak.EmptyTreeHash, out Hash256 storageRoot);
-            decoderContext.Position = DecodeHash(reader, position, Keccak.OfAnEmptyString, out Hash256 codeHash);
+            position = DecodeHash(reader, position, Keccak.OfAnEmptyString, out Hash256 codeHash);
+            RlpHelpers.Check(position, end);
+            decoderContext.Position = position;
 
             if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {

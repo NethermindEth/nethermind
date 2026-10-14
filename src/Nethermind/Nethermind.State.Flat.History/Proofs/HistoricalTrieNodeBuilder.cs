@@ -246,6 +246,7 @@ internal sealed class HistoricalTrieNodeBuilder
         try
         {
             NodeViews.FromChildrenRlp(children, views);
+            PublishChildren(children, views);
 
             NodeView composed = NodeViews.Combine(views);
             try
@@ -364,6 +365,17 @@ internal sealed class HistoricalTrieNodeBuilder
         List<TrieLeaf> leaves = new(total);
         foreach (List<TrieLeaf> part in parts) leaves.AddRange(part);
         return leaves;
+    }
+
+    // The views already hold each child's keccak, so the cache can serve the children a later proof descends into.
+    private void PublishChildren(byte[]?[] children, NodeView[] views)
+    {
+        if (_cache is null) return;
+
+        for (int index = 0; index < BranchRlp.ChildCount; index++)
+        {
+            if (children[index] is { Length: >= Hash256.Size } child) _cache.Set(views[index].Hash, child);
+        }
     }
 
     private byte[]? ResolveComposedChild(in TreePath childPath, bool allowRebuild)
