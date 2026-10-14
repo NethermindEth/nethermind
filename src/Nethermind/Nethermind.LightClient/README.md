@@ -30,6 +30,10 @@ trusted HTTPS provider explicitly, for example:
 dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDiskSpace=true -- --network mainnet --checkpoint-url https://mainnet.checkpoint.sigp.io
 ```
 
+The `Nethermind.LightClient` debug profile selects mainnet and supplies the
+checkpoint URL above automatically. Edit its command-line arguments to select
+another trusted provider or root.
+
 The example mainnet URL is operated by Sigma Prime, not the EF. The client
 fetches its finalized checkpoint through the standard
 [`finality_checkpoints` Beacon API](https://github.com/ethereum/beacon-APIs/blob/master/apis/beacon/states/finality_checkpoints.yaml)

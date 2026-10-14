@@ -2,6 +2,7 @@
   "profiles": {
     "Nethermind.LightClient": {
       "commandName": "Project",
+      "commandLineArgs": "--network mainnet --checkpoint-url https://mainnet.checkpoint.sigp.io",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
