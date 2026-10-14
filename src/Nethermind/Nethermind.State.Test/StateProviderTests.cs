@@ -449,6 +449,36 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Original_balance_is_the_balance_at_transaction_start()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 1);
+        provider.Commit(Frontier.Instance);
+
+        // After a commit the committed state is the transaction start.
+        provider.AddToBalance(_address1, 2, Frontier.Instance);
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+        Assert.That(provider.GetOriginalBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+
+        // A transaction stacked without a commit starts at its snapshot.
+        Snapshot txStart = provider.TakeSnapshot(newTransactionStart: true);
+        provider.AddToBalance(_address1, 4, Frontier.Instance);
+        provider.AddToBalance(_address1, 8, Frontier.Instance);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)15));
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)3));
+
+        // Reverting the transaction drops its start, back to the commit.
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, txStart.StateSnapshot - 1));
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+
+        // A write after the revert must not see the dropped start.
+        provider.AddToBalance(_address1, 16, Frontier.Instance);
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+    }
+
+    [Test]
     public void Keep_in_cache()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -624,6 +654,51 @@ public class StateProviderTests(bool useFlat)
 
         Assert.That(provider.GetCode(keptCodeHash), Is.SequenceEqualTo(keptCode));
         Assert.That(() => provider.GetCode(revertedCodeHash), Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void Transient_code_is_readable_until_the_transaction_ends_and_is_not_persisted([Values] bool endsWithCommit, [Values] bool alsoDeployedPersistently)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x02, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertTransientCode(TestItem.AddressB, codeHash, code, spec);
+        if (alsoDeployedPersistently)
+        {
+            provider.CreateAccount(TestItem.AddressC, 0);
+            provider.InsertCode(TestItem.AddressC, code, spec);
+        }
+
+        // Transient storage is discarded between EIP-8141 frames, but the code lasts the whole transaction.
+        provider.ResetTransient();
+        Assert.That(provider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(code));
+        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+
+        // The transaction's finalization removes the account before it ends.
+        provider.DeleteAccount(TestItem.AddressB);
+        if (endsWithCommit) provider.Commit(spec, commitRoots: false);
+        else provider.DiscardTransientCode();
+        if (!alsoDeployedPersistently)
+        {
+            Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+        }
+
+        provider.Commit(spec);
+
+        if (alsoDeployedPersistently)
+        {
+            Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        }
+        else
+        {
+            Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+        }
     }
 
     [Test]

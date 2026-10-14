@@ -11,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true) : IReceiptsRecovery
+    public partial class ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true) : IReceiptsRecovery
     {
         private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -82,6 +82,7 @@ namespace Nethermind.Blockchain.Receipts
             private ReceiptRecoveryBlock _block = block;
             private readonly bool _forceRecoverSender = forceRecoverSender;
             private readonly IEthereumEcdsa _ecdsa = ecdsa;
+            private readonly bool _isEip8116Enabled = releaseSpec.IsEip8116Enabled;
 
             private ulong _gasUsedBefore = 0;
             private int _transactionIndex = 0;
@@ -110,7 +111,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 // how would it be in CREATE2?
                 receipt.ContractAddress = transaction.CreatesTopLevelContract && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null;
-                receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
+                receipt.GasUsed = _isEip8116Enabled ? receipt.GasUsedTotal : receipt.GasUsedTotal - _gasUsedBefore;
                 // The log-count heuristic below assumes a failed transaction has no logs; a frame transaction
                 // can fail while carrying the logs of the frames that succeeded (EIP-8141).
                 if (receipt.StatusCode != StatusCode.Success && !receipt.TxType.SupportsFrames())
@@ -143,7 +144,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 // how would it be in CREATE2?
                 receipt.ContractAddress = (transaction.CreatesTopLevelContract && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce) : Address.Zero)!.ToStructRef();
-                receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
+                receipt.GasUsed = _isEip8116Enabled ? receipt.GasUsedTotal : receipt.GasUsedTotal - _gasUsedBefore;
                 // See the note on the same heuristic in the overload above.
                 if (receipt.StatusCode != StatusCode.Success && !receipt.TxType.SupportsFrames())
                 {
@@ -163,10 +164,12 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         /// <summary>Takes each transaction hash from its encoding instead of decoding the transaction.</summary>
-        private sealed class LogRecoveryContext(ReceiptRecoveryBlock block) : IReceiptsRecovery.IRecoveryContext
+        private sealed class LogRecoveryContext(ReceiptRecoveryBlock block) : IReceiptsRecovery.ISelectiveLogRecoveryContext
         {
             private ReceiptRecoveryBlock _block = block;
             private int _transactionIndex;
+            private int _lastTransactionIndex = -1;
+            private Hash256? _lastTransactionHash;
 
             public void RecoverReceiptData(TxReceipt receipt)
             {
@@ -182,6 +185,36 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.BlockHash = _block.Hash!.ToStructRef();
                 receipt.BlockNumber = _block.Number;
                 receipt.Index = _transactionIndex++;
+            }
+
+            public Hash256 RecoverReceiptData(ref TxReceiptStructRef receipt, int transactionIndex)
+            {
+                if (transactionIndex != _lastTransactionIndex)
+                {
+                    if (transactionIndex < _transactionIndex)
+                    {
+                        throw new InvalidOperationException("Log receipt recovery cannot move backwards.");
+                    }
+
+                    if (transactionIndex >= _block.TransactionCount)
+                    {
+                        throw new InvalidOperationException("Trying to recover more receipt that transaction");
+                    }
+
+                    while (_transactionIndex < transactionIndex)
+                    {
+                        _block.SkipNextTransaction();
+                        _transactionIndex++;
+                    }
+
+                    _lastTransactionHash = _block.GetNextTransactionHash();
+                    _lastTransactionIndex = _transactionIndex++;
+                }
+
+                receipt.BlockHash = _block.Hash!.ToStructRef();
+                receipt.BlockNumber = _block.Number;
+                receipt.Index = transactionIndex;
+                return _lastTransactionHash!;
             }
 
             private Hash256 NextTransactionHash()
