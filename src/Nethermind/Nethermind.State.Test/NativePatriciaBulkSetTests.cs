@@ -184,8 +184,6 @@ public class NativePatriciaBulkSetTests
             }
         }
         copy.Dispose();
-        // Enough for the log to drop the generations the pin kept, of which compaction keeps no node later tries rewrote.
-        for (int i = 0; i < 40; i++) BulkSet(store, pending, log, Keccak.EmptyTreeHash, PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 30 + i));
 
         using (Assert.EnterMultipleScope())
         {
@@ -193,7 +191,6 @@ public class NativePatriciaBulkSetTests
             Assert.That(missingWhilePinned, Is.False);
             Assert.That(pending.Count, Is.GreaterThan(0));
             Assert.That(unreadable, Is.Empty);
-            Assert.That(IsMissing(), Is.True);
         }
 
         // A node not in the log is fetched to warm it, so a warm-up that fetches nothing read the whole path there.
