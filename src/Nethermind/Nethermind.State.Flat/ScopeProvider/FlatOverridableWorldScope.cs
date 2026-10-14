@@ -29,6 +29,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly KnownHeadersScopeProvider _worldState;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly TrieNodeLog _trieNodeLog;
+    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
@@ -48,10 +49,11 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _flatDbManager = flatDbManager;
         _trieNodeCache = trieNodeCache;
         _trieNodeLog = trieNodeLog;
+        _nativeTrieNodeLog = configuration.UseNativeBulkSet ? nativeTrieNodeLog.Value : null;
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
-            configuration.UseNativeBulkSet ? nativeTrieNodeLog.Value : null,
+            _nativeTrieNodeLog,
             new NoopTrieWarmer(),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
             headerProvider,
@@ -122,6 +124,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             _trieNodeLog,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
+            _nativeTrieNodeLog,
             snapshots,
             filterInMemorySlotReads: true
         );

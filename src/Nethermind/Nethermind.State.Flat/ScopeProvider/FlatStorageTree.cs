@@ -87,7 +87,11 @@ public sealed class FlatStorageTree(
 
     private bool UsesNativeBulkSet => _config.UseNativeBulkSet && !_scope.Trieless;
 
-    private NativeTrieNodeStore NativeStore => _nativeStore ??= new NativeTrieNodeStore(_bundle, AddressHash, _scope.NativeTrieNodeLog);
+    // Warmers read it concurrently with the owner, which must not lose its pending nodes to a store a warmer created.
+    private NativeTrieNodeStore NativeStore =>
+        Volatile.Read(ref _nativeStore)
+        ?? Interlocked.CompareExchange(ref _nativeStore, new NativeTrieNodeStore(_bundle, AddressHash, _scope.NativeTrieNodeLog), null)
+        ?? _nativeStore!;
 
     private LoggedTrie Trie => _trie ??= CreateTrie();
 
@@ -269,6 +273,8 @@ public sealed class FlatStorageTree(
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
+                if (UsesNativeBulkSet) _bundle.WarmUpNative(NativeStore, _scope.NativeTrieNodeLog, AddressHash, _storageRoot, key);
+                else
                 _bundle.WarmUp(AddressHash, PreBlockRoot, key, forDelete: isDelete);
                 return true;
             }

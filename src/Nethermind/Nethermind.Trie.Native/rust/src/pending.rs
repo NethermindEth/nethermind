@@ -9,9 +9,11 @@ use std::sync::Mutex;
 
 use rustc_hash::FxBuildHasher;
 
+use crate::log::LogPointer;
 use crate::node::TreePath;
 
-/// A written node, whose RLP is `rlp_length` bytes at `rlp_offset` in the arena of its [`PendingNodes`].
+/// A written node, whose RLP is `rlp_length` bytes at `rlp_offset` in the arena of its [`PendingNodes`], and whose
+/// record is at `log_pointer` in the log of the bulk set that wrote it, meaningless for a temporary log.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct WrittenNode {
@@ -19,15 +21,17 @@ pub struct WrittenNode {
     pub hash: [u8; 32],
     pub rlp_offset: i32,
     pub rlp_length: i32,
+    pub log_pointer: LogPointer,
 }
 
 // Mirrored by NativeWrittenNode in C#.
 const _: () = {
-    assert!(std::mem::size_of::<WrittenNode>() == 80);
+    assert!(std::mem::size_of::<WrittenNode>() == 88);
     assert!(std::mem::offset_of!(WrittenNode, path) == 0);
     assert!(std::mem::offset_of!(WrittenNode, hash) == 40);
     assert!(std::mem::offset_of!(WrittenNode, rlp_offset) == 72);
     assert!(std::mem::offset_of!(WrittenNode, rlp_length) == 76);
+    assert!(std::mem::offset_of!(WrittenNode, log_pointer) == 80);
 };
 
 /// The nodes bulk sets wrote, one per path with the last write winning, so later bulk sets read them back. Sharded by
@@ -93,12 +97,12 @@ impl PendingNodes {
         (path.path[0] as usize * self.0.len()) >> 8
     }
 
-    /// Stores `record(index)`, a `(path, hash, rlp)`, for every index below `count`, locking each shard written to
-    /// once. Overwriting a path leaves its old RLP in the arena until [`PendingNodes::clear`].
+    /// Stores `record(index)`, a `(path, hash, rlp, log pointer)`, for every index below `count`, locking each shard
+    /// written to once. Overwriting a path leaves its old RLP in the arena until [`PendingNodes::clear`].
     pub fn write<'a>(
         &self,
         count: usize,
-        record: impl Fn(usize) -> (&'a TreePath, &'a [u8; 32], &'a [u8]),
+        record: impl Fn(usize) -> (&'a TreePath, &'a [u8; 32], &'a [u8], LogPointer),
     ) {
         if self.0.len() == 1 {
             self.write_shard(0, (0..count).map(record));
@@ -133,16 +137,17 @@ impl PendingNodes {
     fn write_shard<'a>(
         &self,
         shard: usize,
-        records: impl Iterator<Item = (&'a TreePath, &'a [u8; 32], &'a [u8])>,
+        records: impl Iterator<Item = (&'a TreePath, &'a [u8; 32], &'a [u8], LogPointer)>,
     ) {
         let mut inner = self.0[shard].lock().unwrap();
         let Inner { nodes, rlp, .. } = &mut *inner;
-        for (path, hash, node_rlp) in records {
+        for (path, hash, node_rlp, log_pointer) in records {
             nodes.push(WrittenNode {
                 path: *path,
                 hash: *hash,
                 rlp_offset: rlp.len() as i32,
                 rlp_length: node_rlp.len() as i32,
+                log_pointer,
             });
             rlp.extend_from_slice(node_rlp);
         }
@@ -212,8 +217,8 @@ impl PendingNodes {
 /// Pooled size classes as (most nodes, structures kept, shards). A bulk set writes about [`NODES_PER_ENTRY`] nodes per
 /// entry, and is sharded only when large enough to write and be published in parallel.
 ///
-/// Worst case retained: 262,144 nodes × (80 B record + ~90 B index + at most [`MAX_ARENA_BYTES_PER_NODE`] arena),
-/// about 110 MB.
+/// Worst case retained: 262,144 nodes × (88 B record + ~90 B index + at most [`MAX_ARENA_BYTES_PER_NODE`] arena),
+/// about 115 MB.
 const CLASSES: [(usize, usize, usize); 3] = [(64, 1024, 1), (1024, 64, 4), (16384, 8, 16)];
 const NODES_PER_ENTRY: usize = 4;
 const INITIAL_ARENA_BYTES_PER_NODE: usize = 128;

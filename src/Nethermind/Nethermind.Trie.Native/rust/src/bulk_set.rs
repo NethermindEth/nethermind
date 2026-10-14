@@ -14,10 +14,11 @@ use crate::keccak::keccak_many;
 use crate::log::{LogPointer, LogSession, TrieNodeLog};
 use crate::metrics::NodeReads;
 use crate::node::{
-    decode_inline_leaf, decode_rlp, empty_children, encode, nibble, ChildRef, InlineRlp,
-    LoggedNode, Nibbles, Node, NodeKind, TreePath,
+    decode_inline_leaf, decode_rlp, empty_children, encode, nibble, ChildRef, InlineRlp, Nibbles,
+    Node, NodeKind, RecordPtr, TreePath,
 };
 use crate::pending::PendingNodes;
+use crate::warmed::WarmedNodes;
 use crate::{Entry, Error, NodeStore};
 
 /// Same as `PatriciaTree.MinEntriesToParallelizeThreshold`.
@@ -48,14 +49,16 @@ thread_local! {
 /// Applies `entries` to the trie whose root hash is `root`, writing every new node referenced by hash at its path into
 /// `pending`, and returns the new root hash. Every node written also goes into `log`, or a temporary log when `None`,
 /// with the new root indexed as the root of the trie of `address`, the state trie when `None`. Nodes reachable through
-/// the root in `log` are read there in place, and the others from `pending`, then `store`, without being added to
-/// `log`. `entries` is reordered in place and its keys must be unique.
+/// the root in `log` are read there in place, and the others from `pending`, then in place from `warmed`, then from
+/// `store`, without being added to `log`. `entries` is reordered in place and its keys must be unique.
 ///
 /// Nodes that become unreachable are not removed.
+#[allow(clippy::too_many_arguments)]
 pub fn bulk_set<S: NodeStore>(
     store: &S,
     pending: &PendingNodes,
     log: Option<&TrieNodeLog>,
+    warmed: Option<&WarmedNodes>,
     address: Option<&[u8; 32]>,
     root: &[u8; 32],
     entries: &mut [Entry],
@@ -71,17 +74,19 @@ pub fn bulk_set<S: NodeStore>(
     }
 
     match log {
-        Some(log) => bulk_set_in(store, pending, log, address, root, entries, values),
+        Some(log) => bulk_set_in(store, pending, log, warmed, address, root, entries, values),
         None => TrieNodeLog::with_temporary(|log| {
-            bulk_set_in(store, pending, log, address, root, entries, values)
+            bulk_set_in(store, pending, log, warmed, address, root, entries, values)
         }),
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn bulk_set_in<S: NodeStore>(
     store: &S,
     pending: &PendingNodes,
     log: &TrieNodeLog,
+    warmed: Option<&WarmedNodes>,
     address: Option<&[u8; 32]>,
     root: &[u8; 32],
     entries: &mut [Entry],
@@ -95,6 +100,8 @@ fn bulk_set_in<S: NodeStore>(
         // Nodes written during this bulk set are never read back, so with none before it the lookups always miss.
         read_pending: pending.count() > 0,
         log: &session,
+        warmed,
+        address,
         values,
         node_reads: NodeReads::default(),
     };
@@ -125,18 +132,22 @@ struct Context<'a, S> {
     pending: &'a PendingNodes,
     read_pending: bool,
     log: &'a LogSession<'a>,
+    warmed: Option<&'a WarmedNodes>,
+    /// The account of the storage trie, `None` for the state trie, under which `warmed` holds its nodes.
+    address: Option<&'a [u8; 32]>,
     node_reads: NodeReads,
     values: &'a [u8],
 }
 
 /// A node the walk reads.
 enum Source {
-    /// Read in place from the log, less the first `skip` nibbles of its key, dropped by the fake branches above it.
-    /// Only a leaf or an extension is ever skipped.
-    Logged { pointer: LogPointer, skip: u8 },
+    /// Read in place from its record in the log or the warmed nodes, less the first `skip` nibbles of its key, dropped
+    /// by the fake branches above it. Only a leaf or an extension is ever skipped.
+    Logged { record: RecordPtr, skip: u8 },
     /// Embedded in its parent, so always a leaf, see [`decode_inline_leaf`], less the first `skip` nibbles of its key.
     InlineLeaf { rlp: InlineRlp, skip: u8 },
-    /// Read from the pending nodes or the store, as the log does not have it, and not added to the log.
+    /// Read from the pending nodes or the store, as neither the log nor the warmed nodes have it, and not added to the
+    /// log.
     Decoded(Node),
 }
 
@@ -152,7 +163,7 @@ enum Updated {
 enum Frame {
     /// A logged branch or extension, the extension less the first `skip` nibbles of its key.
     Logged {
-        pointer: LogPointer,
+        record: RecordPtr,
         skip: u8,
         child_nibble: u8,
     },
@@ -182,7 +193,7 @@ struct CommitScratch {
     /// (index, RLP start, RLP end) of every node referenced by hash, level by level.
     hashed: Vec<(u32, usize, usize)>,
     hashes: Vec<[u8; 32]>,
-    /// Log pointers of the nodes of the current level referenced by hash.
+    /// Log pointers of the nodes referenced by hash, in the order of `hashed`.
     pointers: Vec<LogPointer>,
 }
 
@@ -215,14 +226,12 @@ impl<S: NodeStore> Context<'_, S> {
         let (mut children, is_new) = match node {
             None => (empty_children(), true),
             Some(Source::Decoded(Node::Branch { children })) => (children, false),
-            Some(Source::Logged { pointer, .. })
-                if self.view(pointer).kind() == NodeKind::Branch =>
-            {
+            Some(Source::Logged { record, .. }) if record.node().kind() == NodeKind::Branch => {
                 // Copied out up front, as at least two entries land in it, so it nearly always changes.
-                let Node::Branch { children } = self.view(pointer).to_owned(0) else {
+                let Node::Branch { children } = record.node().to_owned(0) else {
                     unreachable!("checked to be a branch")
                 };
-                logged = Some(pointer);
+                logged = Some(record);
                 (children, false)
             }
             Some(source) => (self.make_fake_branch(source, &mut remainders)?, true),
@@ -325,7 +334,7 @@ impl<S: NodeStore> Context<'_, S> {
 
         if !changed {
             return Ok(Updated::Unchanged(Some(match logged {
-                Some(pointer) => Source::Logged { pointer, skip: 0 },
+                Some(record) => Source::Logged { record, skip: 0 },
                 None => Source::Decoded(Node::Branch { children }),
             })));
         }
@@ -369,8 +378,8 @@ impl<S: NodeStore> Context<'_, S> {
                     Source::InlineLeaf { .. } | Source::Decoded(Node::Leaf { .. }) => {
                         break self.set_leaf(entry, depth, source, value)?
                     }
-                    Source::Logged { pointer, skip } => {
-                        let view = self.view(pointer);
+                    Source::Logged { record, skip } => {
+                        let view = record.node();
                         match view.kind() {
                             NodeKind::Leaf => break self.set_leaf(entry, depth, source, value)?,
                             NodeKind::Branch => {
@@ -378,13 +387,14 @@ impl<S: NodeStore> Context<'_, S> {
                                 path.push(child_nibble);
                                 node = self.load(path, &view.child(child_nibble))?;
                                 stack.push(Frame::Logged {
-                                    pointer,
+                                    record,
                                     skip,
                                     child_nibble,
                                 });
                             }
                             NodeKind::Extension => {
-                                let key = &view.key()[skip as usize..];
+                                let view_key = view.key();
+                                let key = &view_key.as_slice()[skip as usize..];
                                 let matched = matched_length(key, &entry.key, depth);
                                 if matched < key.len() {
                                     break match value {
@@ -402,7 +412,7 @@ impl<S: NodeStore> Context<'_, S> {
                                 path.push_all(key);
                                 node = self.load(path, &view.child(0))?;
                                 stack.push(Frame::Logged {
-                                    pointer,
+                                    record,
                                     skip,
                                     child_nibble: 0,
                                 });
@@ -446,19 +456,20 @@ impl<S: NodeStore> Context<'_, S> {
             while let Some(frame) = stack.pop() {
                 result = match frame {
                     Frame::Logged {
-                        pointer,
+                        record,
                         skip,
                         child_nibble,
                     } => {
-                        let view = self.view(pointer);
-                        let key = &view.key()[skip as usize..];
+                        let view = record.node();
+                        let view_key = view.key();
+                        let key = &view_key.as_slice()[skip as usize..];
                         match view.kind() {
                             NodeKind::Extension => path.truncate(path.depth() - key.len()),
                             _ => path.truncate(path.depth() - 1),
                         }
                         match (result, view.kind()) {
                             (Updated::Unchanged(_), _) => {
-                                Updated::Unchanged(Some(Source::Logged { pointer, skip }))
+                                Updated::Unchanged(Some(Source::Logged { record, skip }))
                             }
                             (Updated::Changed(node), NodeKind::Extension) => {
                                 Updated::Changed(node.map(|node| prepend(key, node)))
@@ -522,12 +533,12 @@ impl<S: NodeStore> Context<'_, S> {
         value: &[u8],
     ) -> Result<Updated, Error> {
         let change = match &source {
-            Source::Logged { pointer, skip } => {
-                let view = self.view(*pointer);
+            Source::Logged { record, skip } => {
+                let view = record.node();
                 leaf_change(
                     entry,
                     depth,
-                    &view.key()[*skip as usize..],
+                    &view.key().as_slice()[*skip as usize..],
                     view.value(),
                     value,
                 )
@@ -634,9 +645,7 @@ impl<S: NodeStore> Context<'_, S> {
             reference => {
                 let source = self.load(path, &reference)?.ok_or(Error::MissingNode)?;
                 let is_branch = match &source {
-                    Source::Logged { pointer, .. } => {
-                        self.view(*pointer).kind() == NodeKind::Branch
-                    }
+                    Source::Logged { record, .. } => record.node().kind() == NodeKind::Branch,
                     Source::Decoded(node) => matches!(node, Node::Branch { .. }),
                     Source::InlineLeaf { .. } => false,
                 };
@@ -663,9 +672,10 @@ impl<S: NodeStore> Context<'_, S> {
     ) -> Result<Box<[ChildRef; 16]>, Error> {
         let mut children = empty_children();
         let (child_nibble, remainder) = match source {
-            Source::Logged { pointer, skip } => {
-                let view = self.view(pointer);
-                let key = &view.key()[skip as usize..];
+            Source::Logged { record, skip } => {
+                let view = record.node();
+                let view_key = view.key();
+                let key = &view_key.as_slice()[skip as usize..];
                 if view.kind() == NodeKind::Extension && key.len() == 1 {
                     children[key[0] as usize] = view.child(0);
                     return Ok(children);
@@ -673,7 +683,7 @@ impl<S: NodeStore> Context<'_, S> {
                 (
                     key[0],
                     Source::Logged {
-                        pointer,
+                        record,
                         skip: skip + 1,
                     },
                 )
@@ -714,7 +724,8 @@ impl<S: NodeStore> Context<'_, S> {
     }
 
     /// Returns the node `child` refers to. A node referenced by hash is read in place from the log when its pointer is
-    /// valid, and otherwise from the pending nodes or the store, without adding it to the log.
+    /// valid, and otherwise from the pending nodes, in place from the warmed nodes, or from the store, without adding
+    /// it to the log.
     fn load(&self, path: &TreePath, child: &ChildRef) -> Result<Option<Source>, Error> {
         match child {
             ChildRef::Empty => Ok(None),
@@ -723,7 +734,7 @@ impl<S: NodeStore> Context<'_, S> {
             ChildRef::Hash { pointer, .. } if self.log.is_valid(*pointer) => {
                 self.node_reads.from_log();
                 Ok(Some(Source::Logged {
-                    pointer: *pointer,
+                    record: RecordPtr::of(self.log.record(*pointer)),
                     skip: 0,
                 }))
             }
@@ -737,6 +748,14 @@ impl<S: NodeStore> Context<'_, S> {
                     })?,
                     false => None,
                 };
+                if pending.is_none() {
+                    if let Some(record) = self
+                        .warmed
+                        .and_then(|warmed| warmed.get(self.address, path, hash))
+                    {
+                        return Ok(Some(Source::Logged { record, skip: 0 }));
+                    }
+                }
                 let node = match pending {
                     Some(node) => {
                         self.node_reads.from_pending();
@@ -752,14 +771,10 @@ impl<S: NodeStore> Context<'_, S> {
         }
     }
 
-    fn view(&self, pointer: LogPointer) -> LoggedNode<'_> {
-        LoggedNode::new(self.log.record(pointer))
-    }
-
     /// Copies `source` out, to be changed or kept below a new node.
     fn into_node(&self, source: Source) -> Result<Node, Error> {
         Ok(match source {
-            Source::Logged { pointer, skip } => self.view(pointer).to_owned(skip as usize),
+            Source::Logged { record, skip } => record.node().to_owned(skip as usize),
             Source::InlineLeaf { rlp, skip } => {
                 let (key, value) = decode_inline_leaf(rlp.as_slice())?;
                 Node::Leaf {
@@ -820,6 +835,7 @@ impl<S: NodeStore> Context<'_, S> {
             BUFFER.with_borrow_mut(|buffer| {
                 buffer.clear();
                 hashed.clear();
+                pointers.clear();
                 let mut start = 0;
                 for &end in level_ends.iter().rev() {
                     if end == start {
@@ -852,17 +868,22 @@ impl<S: NodeStore> Context<'_, S> {
                     );
                     // Appended, not read: deeper levels already pointed these nodes' children at their records, and
                     // their parents, appended with the next level, get these records' pointers.
-                    pointers.clear();
                     self.log.append_all(
-                        level
-                            .iter()
-                            .map(|&(index, _, _)| &*nodes[index as usize].node),
+                        level.iter().zip(&hashes[level_start..]).map(
+                            |(&(index, rlp_start, rlp_end), hash)| {
+                                (
+                                    &*nodes[index as usize].node,
+                                    hash,
+                                    &buffer[rlp_start..rlp_end],
+                                )
+                            },
+                        ),
                         pointers,
                     );
                     for ((&(index, _, _), &hash), &pointer) in level
                         .iter()
                         .zip(&hashes[level_start..])
-                        .zip(pointers.iter())
+                        .zip(&pointers[level_start..])
                     {
                         link_to_parent(nodes, index, ChildRef::Hash { hash, pointer });
                     }
@@ -874,6 +895,7 @@ impl<S: NodeStore> Context<'_, S> {
                         &nodes[index as usize].path,
                         &hashes[position],
                         &buffer[rlp_start..rlp_end],
+                        pointers[position],
                     )
                 });
             });
@@ -1171,7 +1193,12 @@ mod tests {
     struct EmptyStore;
 
     impl NodeStore for EmptyStore {
-        fn fetch(&self, _: &TreePath, _: &[u8; 32]) -> Result<Option<Node>, Error> {
+        fn fetch_rlp<R>(
+            &self,
+            _: &TreePath,
+            _: &[u8; 32],
+            _: impl FnOnce(&[u8]) -> R,
+        ) -> Result<Option<R>, Error> {
             Ok(None)
         }
     }
@@ -1181,6 +1208,16 @@ mod tests {
     fn apply(
         pending: &PendingNodes,
         log: Option<&TrieNodeLog>,
+        root: [u8; 32],
+        items: &[Item],
+    ) -> Result<[u8; 32], Error> {
+        apply_warmed(pending, log, None, root, items)
+    }
+
+    fn apply_warmed(
+        pending: &PendingNodes,
+        log: Option<&TrieNodeLog>,
+        warmed: Option<&WarmedNodes>,
         root: [u8; 32],
         items: &[Item],
     ) -> Result<[u8; 32], Error> {
@@ -1201,6 +1238,7 @@ mod tests {
             &EmptyStore,
             pending,
             log,
+            warmed,
             None,
             &root,
             &mut entries,
@@ -1318,10 +1356,30 @@ mod tests {
         let log = TrieNodeLog::new(256 << 20);
         let logged = PendingNodes::default();
         let logged_root = apply(&logged, Some(&log), EMPTY_TREE_HASH, &items[..300]).unwrap();
+        let warmed = WarmedNodes::default();
+        for shard in 0..logged.shard_count() {
+            logged.with_view(shard, |nodes, rlp| {
+                for node in nodes {
+                    let node_rlp = &rlp[node.rlp_offset as usize..][..node.rlp_length as usize];
+                    warmed
+                        .insert(None, &node.path, &node.hash, node_rlp)
+                        .unwrap();
+                }
+            });
+        }
         logged.clear();
         assert_eq!(
             apply(&logged, Some(&log), logged_root, &items[300..600]),
             Ok(root_of(&items[..600]))
+        );
+        // Neither are needed for a trie whose nodes are warmed, which a temporary log never has.
+        assert_eq!(
+            apply_warmed(&logged, None, Some(&warmed), logged_root, &items[300..600]),
+            Ok(root_of(&items[..600]))
+        );
+        assert_eq!(
+            apply(&logged, None, logged_root, &items[300..600]),
+            Err(Error::MissingNode)
         );
 
         // Two entries landing at an existing leaf, inline or not, or extension split it below its first nibble, with

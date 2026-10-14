@@ -11,6 +11,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat;
 
@@ -27,6 +28,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ISnapshotRepository _snapshotRepository;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly TrieNodeLog _trieNodeLog;
+    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private readonly IResourcePool _resourcePool;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
@@ -65,6 +67,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IProcessExitSource processExitSource,
         ITrieNodeCache trieNodeCache,
         TrieNodeLog trieNodeLog,
+        NativeTrieNodeLog? nativeTrieNodeLog,
         ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
@@ -76,6 +79,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     {
         _trieNodeCache = trieNodeCache;
         _trieNodeLog = trieNodeLog;
+        _nativeTrieNodeLog = nativeTrieNodeLog;
         _snapshotCompactor = snapshotCompactor;
         _snapshotRepository = snapshotRepository;
         _resourcePool = resourcePool;
@@ -293,6 +297,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             _trieNodeLog,
             _resourcePool,
             usage: usage,
+            nativeTrieNodeLog: _nativeTrieNodeLog,
             filterInMemorySlotReads: filterInMemorySlotReads);
     }
 

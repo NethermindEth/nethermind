@@ -94,7 +94,8 @@ public class Snapshot : RefCountingDisposable
     /// </summary>
     /// <remarks>
     /// While held, native bulk sets read every trie node of this snapshot from the log, so they never look nodes up in
-    /// the in-memory snapshots, see <c>NativeTrieNodeStore</c>.
+    /// the in-memory snapshots, see <c>NativeTrieNodeStore</c>, and the nodes this snapshot holds as log pointers are
+    /// read through it.
     /// </remarks>
     internal NativeTrieNodeLogPin? LogPin { get; init; }
 

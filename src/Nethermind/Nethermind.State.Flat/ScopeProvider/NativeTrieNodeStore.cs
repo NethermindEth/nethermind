@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Native;
@@ -30,66 +28,30 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
 
     /// <summary>Applies <paramref name="entries"/> to the trie rooted at <paramref name="root"/> and returns the new root.</summary>
     public Hash256 BulkSet(Hash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries) =>
-        NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), log, addressHash, root.ValueHash256, entries);
+        NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), log, bundle.WarmedNodes, addressHash, root.ValueHash256, entries);
 
     /// <inheritdoc/>
     /// <remarks>
     /// Skips the bundle's changes and its in-memory snapshots: each pins, through <see cref="Snapshot.LogPin"/> or the
     /// scope's pin of the block in progress, the log generation its first node was written to, so the native bulk set
-    /// reads all of their nodes from the log, and only fetches persisted ones.
+    /// reads all of their nodes from the log, and only fetches persisted ones. Those the trie warmer loaded it reads from
+    /// <see cref="SnapshotBundle.WarmedNodes"/> instead.
     /// </remarks>
-    public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver)
-    {
-        bool found = addressHash is null
-            ? bundle.TryGetWarmedStateNode(path, hash, out TrieNode? node)
-            : bundle.TryGetWarmedStorageNode(addressHash, path, hash, out node);
-        if (found)
-        {
-            if (node!.Keccak != hash)
-                throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}");
-
-            if (!node.FullRlp.IsNull)
-            {
-                receiver.Receive(node.FullRlp.AsSpan());
-                return true;
-            }
-        }
-
-        return addressHash is null
+    public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) =>
+        addressHash is null
             ? bundle.TryLoadStateRlp(path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver)
             : bundle.TryLoadStorageRlp(addressHash, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
-    }
 
-    /// <summary>Moves the pending nodes into the bundle, as the managed committer would.</summary>
+    /// <summary>Moves the pending nodes into the bundle as their pointers in the log, which holds them.</summary>
     public void Publish()
     {
         if (_pending is null) return;
 
         long start = Stopwatch.GetTimestamp();
-        NativePendingNodesView[] views = new NativePendingNodesView[_pending.ShardCount];
-        int[] starts = new int[views.Length];
-        int count = 0;
-        for (int shard = 0; shard < views.Length; shard++)
+        if (_pending.Count > 0)
         {
-            views[shard] = _pending.GetView(shard);
-            starts[shard] = count;
-            count += views[shard].Count;
-        }
-
-        if (count > 0)
-        {
-            List<(TreePath Path, TrieNode Node)> nodes = new(count);
-            CollectionsMarshal.SetCount(nodes, count);
-            // Large bulk sets are split into more shards, so publishing is as parallel as they are large.
-            Parallel.For(0, views.Length, shard =>
-            {
-                NativePendingNodesView view = views[shard];
-                Span<(TreePath Path, TrieNode Node)> destination = CollectionsMarshal.AsSpan(nodes).Slice(starts[shard], view.Count);
-                for (int i = 0; i < destination.Length; i++) destination[i] = CreateNode(view, i);
-            });
-
-            if (addressHash is null) bundle.PublishStateNodes([nodes]);
-            else bundle.PublishStorageNodes(bundle.GetStorageNodeDestination(addressHash), addressHash, [nodes]);
+            if (addressHash is null) bundle.PublishLoggedStateNodes(_pending);
+            else bundle.PublishLoggedStorageNodes(bundle.GetStorageNodeDestination(addressHash), _pending);
         }
 
         Clear();
@@ -101,12 +63,5 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
     {
         _pending?.Dispose();
         _pending = null;
-    }
-
-    // Built from its RLP with no children loaded, which is how persisted nodes come back too.
-    private static (TreePath, TrieNode) CreateNode(NativePendingNodesView view, int index)
-    {
-        ref readonly NativeWrittenNode written = ref view[index];
-        return (written.Path, new TrieNode(NodeType.Unknown, new Hash256(written.Hash), new CappedArray<byte>(view.GetRlp(written).ToArray())));
     }
 }

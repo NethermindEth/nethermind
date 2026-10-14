@@ -204,11 +204,13 @@ pub fn empty_children() -> Box<[ChildRef; 16]> {
 
 const LEAF: u8 = 0;
 const EXTENSION: u8 = 1;
-const BRANCH: u8 = 2;
-/// kind: u8, key length: u8, child mask: u16, value length: u32.
-pub const RECORD_HEADER_LENGTH: usize = 8;
-/// pointer: u64, hash or inline RLP: [u8; 32], inline length: u8 (zero for a hash), padding.
-const CHILD_SLOT_LENGTH: usize = 48;
+/// A branch whose every non-empty child is referenced by hash, so each child is found without parsing the others.
+const HASHED_BRANCH: u8 = 2;
+/// A branch with an inline child, whose children are found by parsing those before them.
+const INLINE_BRANCH: u8 = 3;
+/// kind: u8, zero: u8, hash mask: u16, RLP length: u32, node hash: [u8; 32].
+pub const RECORD_HEADER_LENGTH: usize = 40;
+const POINTER_LENGTH: usize = 8;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NodeKind {
@@ -217,110 +219,93 @@ pub enum NodeKind {
     Branch,
 }
 
-/// Length of the log record of `node`.
-pub fn record_length(node: &Node) -> usize {
-    RECORD_HEADER_LENGTH
-        + match node {
-            Node::Leaf { key, value } => key.len() + value.len(),
-            Node::Extension { key, .. } => CHILD_SLOT_LENGTH + key.len(),
-            Node::Branch { children } => {
-                CHILD_SLOT_LENGTH
-                    * children
-                        .iter()
-                        .filter(|child| !matches!(child, ChildRef::Empty))
-                        .count()
-            }
-        }
+fn children(node: &Node) -> &[ChildRef] {
+    match node {
+        Node::Leaf { .. } => &[],
+        Node::Extension { child, .. } => std::slice::from_ref(child),
+        Node::Branch { children } => &children[..],
+    }
+}
+
+/// Bit `i` set when child `i` is referenced by hash, the child of an extension being child 0.
+fn hash_mask(node: &Node) -> u16 {
+    children(node)
+        .iter()
+        .enumerate()
+        .filter(|(_, child)| matches!(child, ChildRef::Hash { .. }))
+        .fold(0, |mask, (index, _)| mask | 1 << index)
+}
+
+/// Length of the log record of `node`, whose RLP is `rlp_length` bytes.
+pub fn record_length(node: &Node, rlp_length: usize) -> usize {
+    RECORD_HEADER_LENGTH + POINTER_LENGTH * hash_mask(node).count_ones() as usize + rlp_length
 }
 
 /// Length of the log record starting with `header`.
 pub fn record_length_of(header: &[u8]) -> usize {
-    let key_length = header[1] as usize;
     RECORD_HEADER_LENGTH
-        + match header[0] {
-            LEAF => key_length + u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize,
-            EXTENSION => CHILD_SLOT_LENGTH + key_length,
-            _ => {
-                CHILD_SLOT_LENGTH
-                    * u16::from_le_bytes(header[2..4].try_into().unwrap()).count_ones() as usize
-            }
-        }
+        + POINTER_LENGTH
+            * u16::from_le_bytes(header[2..4].try_into().unwrap()).count_ones() as usize
+        + u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize
 }
 
-/// Writes the log record of `node`, whose children must all be resolved, to `out` of [`record_length`] bytes.
+/// Writes the log record of `node`, whose children must all be resolved, with hash `hash` and RLP `rlp`, to `out` of
+/// [`record_length`] bytes.
 ///
-/// A leaf is its header, key nibbles and value, an extension its header, child slot and key nibbles, and a branch its
-/// header and the slot of every child in its mask. Nibbles are kept one per byte, so keys are read in place.
-pub fn write_record(node: &Node, out: &mut [u8]) {
-    match node {
-        Node::Leaf { key, value } => {
-            write_record_header(out, LEAF, key.len(), 0, value.len());
-            let (key_out, value_out) = out[RECORD_HEADER_LENGTH..].split_at_mut(key.len());
-            key_out.copy_from_slice(key.as_slice());
-            value_out.copy_from_slice(value);
-        }
-        Node::Extension { key, child } => {
-            write_record_header(out, EXTENSION, key.len(), 0, 0);
-            let (slot, key_out) = out[RECORD_HEADER_LENGTH..].split_at_mut(CHILD_SLOT_LENGTH);
-            write_child_slot(child, slot);
-            key_out.copy_from_slice(key.as_slice());
-        }
-        Node::Branch { children } => {
-            let mask = children
+/// A record is its header, the log pointer of every child referenced by hash, in child order, then the RLP, which
+/// [`LoggedNode`] decodes in place.
+pub fn write_record(node: &Node, hash: &[u8; 32], rlp: &[u8], out: &mut [u8]) {
+    let mask = hash_mask(node);
+    out[0] = match node {
+        Node::Leaf { .. } => LEAF,
+        Node::Extension { .. } => EXTENSION,
+        Node::Branch { children }
+            if children
                 .iter()
-                .enumerate()
-                .filter(|(_, child)| !matches!(child, ChildRef::Empty))
-                .fold(0u16, |mask, (index, _)| mask | 1 << index);
-            write_record_header(out, BRANCH, 0, mask, 0);
-            let slots = out[RECORD_HEADER_LENGTH..].chunks_exact_mut(CHILD_SLOT_LENGTH);
-            for (child, slot) in children
-                .iter()
-                .filter(|child| !matches!(child, ChildRef::Empty))
-                .zip(slots)
-            {
-                write_child_slot(child, slot);
-            }
+                .any(|child| matches!(child, ChildRef::Inline(_))) =>
+        {
+            INLINE_BRANCH
         }
-    }
-}
-
-fn write_record_header(
-    out: &mut [u8],
-    kind: u8,
-    key_length: usize,
-    mask: u16,
-    value_length: usize,
-) {
-    out[0] = kind;
-    out[1] = key_length as u8;
+        Node::Branch { .. } => HASHED_BRANCH,
+    };
+    out[1] = 0;
     out[2..4].copy_from_slice(&mask.to_le_bytes());
-    out[4..8].copy_from_slice(&(value_length as u32).to_le_bytes());
-}
-
-fn write_child_slot(child: &ChildRef, slot: &mut [u8]) {
-    slot.fill(0);
-    match child {
-        ChildRef::Hash { hash, pointer } => {
-            slot[..8].copy_from_slice(&pointer.to_le_bytes());
-            slot[8..40].copy_from_slice(hash);
-        }
-        ChildRef::Inline(rlp) => {
-            slot[8..39].copy_from_slice(&rlp.data);
-            slot[40] = rlp.length;
-        }
-        ChildRef::Empty | ChildRef::Pending(_) => {
-            unreachable!("only resolved children have a slot")
+    out[4..8].copy_from_slice(&(rlp.len() as u32).to_le_bytes());
+    out[8..RECORD_HEADER_LENGTH].copy_from_slice(hash);
+    let mut offset = RECORD_HEADER_LENGTH;
+    for child in children(node) {
+        match child {
+            ChildRef::Hash { pointer, .. } => {
+                out[offset..offset + POINTER_LENGTH].copy_from_slice(&pointer.to_le_bytes());
+                offset += POINTER_LENGTH;
+            }
+            ChildRef::Pending(_) => unreachable!("only resolved children are logged"),
+            ChildRef::Empty | ChildRef::Inline(_) => {}
         }
     }
+    out[offset..].copy_from_slice(rlp);
 }
 
-fn read_child_slot(slot: &[u8]) -> ChildRef {
-    match slot[40] {
-        0 => ChildRef::Hash {
-            hash: slot[8..40].try_into().unwrap(),
-            pointer: u64::from_le_bytes(slot[..8].try_into().unwrap()),
-        },
-        length => ChildRef::inline(&slot[8..8 + length as usize]),
+/// The address of a node record, in a log or in warmed nodes, which its holder keeps for as long as it is used.
+#[derive(Clone, Copy)]
+pub struct RecordPtr(*const u8);
+
+// Records are never written once appended, and a bulk set only reads them while their log session or warmed nodes
+// keep them.
+unsafe impl Send for RecordPtr {}
+unsafe impl Sync for RecordPtr {}
+
+impl RecordPtr {
+    pub fn of(record: &[u8]) -> RecordPtr {
+        RecordPtr(record.as_ptr())
+    }
+
+    /// The node of the record, which must still be kept.
+    pub fn node<'a>(self) -> LoggedNode<'a> {
+        unsafe {
+            let length = record_length_of(std::slice::from_raw_parts(self.0, RECORD_HEADER_LENGTH));
+            LoggedNode::new(std::slice::from_raw_parts(self.0, length))
+        }
     }
 }
 
@@ -343,57 +328,127 @@ impl<'a> LoggedNode<'a> {
         }
     }
 
-    /// The key nibbles of a leaf or an extension.
-    pub fn key(&self) -> &'a [u8] {
-        let start = match self.kind() {
-            NodeKind::Extension => RECORD_HEADER_LENGTH + CHILD_SLOT_LENGTH,
-            _ => RECORD_HEADER_LENGTH,
-        };
-        &self.record[start..start + self.record[1] as usize]
+    pub fn hash(&self) -> &'a [u8; 32] {
+        self.record[8..RECORD_HEADER_LENGTH].try_into().unwrap()
+    }
+
+    pub fn rlp(&self) -> &'a [u8] {
+        &self.record
+            [RECORD_HEADER_LENGTH + POINTER_LENGTH * self.hash_mask().count_ones() as usize..]
+    }
+
+    /// The key nibbles of a leaf or an extension, empty for a branch.
+    pub fn key(&self) -> Nibbles {
+        match self.kind() {
+            NodeKind::Branch => Nibbles::from_slice(&[]),
+            _ => {
+                let (key, _) = logged_item(self.payload());
+                decode_hex_prefix(key.payload)
+                    .expect("logged RLP is well formed")
+                    .0
+            }
+        }
     }
 
     /// The value of a leaf.
     pub fn value(&self) -> &'a [u8] {
-        &self.record[RECORD_HEADER_LENGTH + self.record[1] as usize..]
+        let (_, rest) = logged_item(self.payload());
+        logged_item(rest).0.payload
     }
 
     /// Child `index` of a branch, or the child of an extension.
     pub fn child(&self, index: u8) -> ChildRef {
-        let position = match self.kind() {
-            NodeKind::Extension => 0,
-            NodeKind::Branch => {
-                let mask = u16::from_le_bytes(self.record[2..4].try_into().unwrap());
+        let mask = self.hash_mask();
+        let position = (mask & ((1 << index) - 1)).count_ones() as usize;
+        match self.record[0] {
+            HASHED_BRANCH => {
                 if mask & (1 << index) == 0 {
                     return ChildRef::Empty;
                 }
-                (mask & ((1 << index) - 1)).count_ones() as usize
+                // Every child before is an empty string or a hash string of 33 bytes.
+                let start = index as usize + 32 * position + 1;
+                ChildRef::Hash {
+                    hash: self.payload()[start..start + 32].try_into().unwrap(),
+                    pointer: self.pointer(position),
+                }
             }
-            NodeKind::Leaf => unreachable!("a leaf has no children"),
-        };
-        let start = RECORD_HEADER_LENGTH + position * CHILD_SLOT_LENGTH;
-        read_child_slot(&self.record[start..start + CHILD_SLOT_LENGTH])
+            INLINE_BRANCH => {
+                let mut remaining = self.payload();
+                for _ in 0..index {
+                    remaining = logged_item(remaining).1;
+                }
+                self.read_child(&logged_item(remaining).0, position)
+            }
+            EXTENSION => self.read_child(&logged_item(logged_item(self.payload()).1).0, 0),
+            _ => unreachable!("a leaf has no children"),
+        }
     }
 
     /// Copies the node out, to be changed, less the first `skip` nibbles of the key of a leaf or an extension.
     pub fn to_owned(&self, skip: usize) -> Node {
         match self.kind() {
             NodeKind::Leaf => Node::Leaf {
-                key: Nibbles::from_slice(&self.key()[skip..]),
+                key: Nibbles::from_slice(&self.key().as_slice()[skip..]),
                 value: self.value().to_vec(),
             },
             NodeKind::Extension => Node::Extension {
-                key: Nibbles::from_slice(&self.key()[skip..]),
+                key: Nibbles::from_slice(&self.key().as_slice()[skip..]),
                 child: self.child(0),
             },
             NodeKind::Branch => {
                 let mut children = empty_children();
-                for (index, child) in children.iter_mut().enumerate() {
-                    *child = self.child(index as u8);
+                let mut remaining = self.payload();
+                let mut position = 0;
+                for child in children.iter_mut() {
+                    let (item, rest) = logged_item(remaining);
+                    remaining = rest;
+                    *child = self.read_child(&item, position);
+                    if matches!(child, ChildRef::Hash { .. }) {
+                        position += 1;
+                    }
                 }
                 Node::Branch { children }
             }
         }
     }
+
+    fn hash_mask(&self) -> u16 {
+        u16::from_le_bytes(self.record[2..4].try_into().unwrap())
+    }
+
+    /// The pointer of the child at `position` among those referenced by hash.
+    fn pointer(&self, position: usize) -> LogPointer {
+        let start = RECORD_HEADER_LENGTH + POINTER_LENGTH * position;
+        u64::from_le_bytes(
+            self.record[start..start + POINTER_LENGTH]
+                .try_into()
+                .unwrap(),
+        )
+    }
+
+    fn payload(&self) -> &'a [u8] {
+        let rlp = self.rlp();
+        match rlp[0] {
+            0xc0..=0xf7 => &rlp[1..],
+            first => &rlp[1 + (first - 0xf7) as usize..],
+        }
+    }
+
+    /// The child `item`, at `position` among those referenced by hash when it is one.
+    fn read_child(&self, item: &Item, position: usize) -> ChildRef {
+        match (item.is_list, item.payload.len()) {
+            (true, _) => ChildRef::inline(item.encoded),
+            (false, 0) => ChildRef::Empty,
+            _ => ChildRef::Hash {
+                hash: item.payload.try_into().unwrap(),
+                pointer: self.pointer(position),
+            },
+        }
+    }
+}
+
+fn logged_item(data: &[u8]) -> (Item<'_>, &[u8]) {
+    next_item(data).expect("logged RLP is well formed")
 }
 
 /// Appends the RLP of `node` to `out`.

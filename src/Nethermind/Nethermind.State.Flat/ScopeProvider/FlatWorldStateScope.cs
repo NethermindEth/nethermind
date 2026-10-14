@@ -460,6 +460,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
+                if (_nativeStateStore is not null) _snapshotBundle.WarmUpNative(_nativeStateStore, NativeTrieNodeLog, null, _initialStateRoot, address.ToAccountPath);
+                else
                 _snapshotBundle.WarmUp(null, _initialTrieRoot, address.ToAccountPath);
 
                 return true;

@@ -47,6 +47,7 @@ public sealed class SnapshotBundle : IDisposable
     internal SnapshotPooledList _snapshots;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly TrieNodeLog? _trieNodeLog;
+    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
@@ -56,6 +57,8 @@ public sealed class SnapshotBundle : IDisposable
     // block processing keeps the plain loop, so its reads do not depend on the filter.
     private readonly bool _filterInMemorySlotReads;
 
+    /// <param name="nativeTrieNodeLog">The log the native bulk set writes the nodes of this bundle to, when it is
+    /// used.</param>
     /// <param name="filterInMemorySlotReads">Serve slot reads with
     /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
     public SnapshotBundle(
@@ -64,6 +67,7 @@ public sealed class SnapshotBundle : IDisposable
         TrieNodeLog? trieNodeLog,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
+        NativeTrieNodeLog? nativeTrieNodeLog,
         SnapshotPooledList? snapshots = null,
         bool filterInMemorySlotReads = false)
     {
@@ -71,6 +75,7 @@ public sealed class SnapshotBundle : IDisposable
         _snapshots = snapshots ?? new SnapshotPooledList(1);
         _trieNodeCache = trieNodeCache;
         _trieNodeLog = trieNodeLog;
+        _nativeTrieNodeLog = nativeTrieNodeLog;
         _resourcePool = resourcePool;
         _usage = usage;
         // A bundle that can never have a filter would only pay GetSlotFiltered's extra checks on every read.
@@ -205,6 +210,28 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         return node;
+    }
+
+    /// <summary>The nodes the native trie warmer decoded into the current transient resource, which this bundle's native bulk sets read.</summary>
+    internal NativeWarmedNodes WarmedNodes => _transientResource.WarmedNodes;
+
+    /// <summary>
+    /// Warms the path to <paramref name="key"/> in the trie with root hash <paramref name="root"/> into the transient
+    /// resource, see <see cref="NativePatriciaBulkSet.WarmUp"/>, unless the bundle is being torn down.
+    /// </summary>
+    internal void WarmUpNative(INativeNodeStore store, NativeTrieNodeLog log, Hash256? address, Hash256 root, in ValueHash256 key)
+    {
+        TransientResource? transientResource = TryLeaseTransientResource();
+        if (transientResource is null) return;
+
+        try
+        {
+            NativePatriciaBulkSet.WarmUp(store, log, transientResource.WarmedNodes, address, root.ValueHash256, key);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
     }
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a

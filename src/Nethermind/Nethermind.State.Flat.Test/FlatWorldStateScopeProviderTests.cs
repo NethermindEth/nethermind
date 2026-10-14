@@ -182,7 +182,8 @@ public class FlatWorldStateScopeProviderTests
             Substitute.For<ITrieNodeCache>(),
             trieNodeLog,
             resourcePool,
-            ResourcePool.Usage.ReadOnlyProcessingEnv);
+            ResourcePool.Usage.ReadOnlyProcessingEnv,
+            nativeTrieNodeLog: null);
     }
 
     private class TestContext : IDisposable
@@ -1232,6 +1233,14 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(nodesAtCommit, Is.Not.Empty);
         Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
         Assert.That(rootsAtCommit, Is.EqualTo(rootsInBatch));
+
+        // The native bulk set's snapshot holds log pointers, which must read back as the nodes the managed trie commits.
+        if (useNativeBulkSet)
+        {
+            (HashSet<string> managedNodes, Hash256[] managedRoots) = CommitStorageSlots(deferStorageTrieCommit: false, contractCount, clearInSecondBatch, useNativeBulkSet: false);
+            Assert.That(nodesInBatch, Is.EquivalentTo(managedNodes));
+            Assert.That(rootsInBatch, Is.EqualTo(managedRoots));
+        }
     }
 
     [Test]

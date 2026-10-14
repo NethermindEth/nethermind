@@ -442,7 +442,8 @@ public class SnapshotTests
             Substitute.For<ITrieNodeCache>(),
             null,
             _pool,
-            ResourcePool.Usage.MainBlockProcessing);
+            ResourcePool.Usage.MainBlockProcessing,
+            nativeTrieNodeLog: null);
         Account accountA = new(1, 100);
         Account accountB = new(2, 200);
 

@@ -12,6 +12,7 @@ mod log;
 mod metrics;
 mod node;
 mod pending;
+mod warmed;
 
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -22,6 +23,7 @@ pub use metrics::Metrics;
 pub use node::TreePath;
 use node::{decode_rlp, Node};
 pub use pending::{PendingNodes, WrittenNode};
+pub use warmed::{warm_up, WarmedNodes};
 
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -57,8 +59,19 @@ impl Error {
 }
 
 pub trait NodeStore: Sync {
+    /// Passes the RLP of the node at `path` whose hash is `hash` to `receive` and returns what it returned, or `None`
+    /// when there is no such node.
+    fn fetch_rlp<R>(
+        &self,
+        path: &TreePath,
+        hash: &[u8; 32],
+        receive: impl FnOnce(&[u8]) -> R,
+    ) -> Result<Option<R>, Error>;
+
     /// Returns the node at `path` whose hash is `hash`, or `None` when there is none.
-    fn fetch(&self, path: &TreePath, hash: &[u8; 32]) -> Result<Option<Node>, Error>;
+    fn fetch(&self, path: &TreePath, hash: &[u8; 32]) -> Result<Option<Node>, Error> {
+        self.fetch_rlp(path, hash, decode_rlp)?.transpose()
+    }
 }
 
 /// Receives the RLP of a fetched node, valid only for the duration of the call.
@@ -83,45 +96,72 @@ struct CallbackStore {
 unsafe impl Sync for CallbackStore {}
 
 impl NodeStore for CallbackStore {
-    fn fetch(&self, path: &TreePath, hash: &[u8; 32]) -> Result<Option<Node>, Error> {
-        let mut decoded: Option<Result<Node, Error>> = None;
+    fn fetch_rlp<R>(
+        &self,
+        path: &TreePath,
+        hash: &[u8; 32],
+        receive: impl FnOnce(&[u8]) -> R,
+    ) -> Result<Option<R>, Error> {
+        let mut receive = Some(receive);
+        let mut received = None;
+        let mut call = |rlp: &[u8]| {
+            if let Some(receive) = receive.take() {
+                received = Some(receive(rlp));
+            }
+        };
+        let mut receiver = Receiver {
+            receive: &mut call,
+            panicked: false,
+        };
         let status = unsafe {
             (self.fetch)(
                 self.context,
                 path,
                 hash,
-                receive,
-                &mut decoded as *mut Option<Result<Node, Error>> as *mut c_void,
+                receive_rlp,
+                &mut receiver as *mut Receiver as *mut c_void,
             )
         };
+        let panicked = receiver.panicked;
         match status {
             0 => Ok(None),
-            1 => decoded.ok_or(Error::Callback)?.map(Some),
+            1 if !panicked => received.ok_or(Error::Callback).map(Some),
+            1 => Err(Error::CorruptNode),
             _ => Err(Error::Callback),
         }
     }
 }
 
-unsafe extern "C" fn receive(context: *mut c_void, rlp: *const u8, length: i32) {
+/// What [`receive_rlp`] passes the RLP to, as its context.
+struct Receiver<'a> {
+    receive: &'a mut dyn FnMut(&[u8]),
+    panicked: bool,
+}
+
+unsafe extern "C" fn receive_rlp(context: *mut c_void, rlp: *const u8, length: i32) {
     let rlp: &[u8] = if length <= 0 {
         &[]
     } else {
         std::slice::from_raw_parts(rlp, length as usize)
     };
-    let decoded = catch_unwind(|| decode_rlp(rlp)).unwrap_or(Err(Error::CorruptNode));
-    *(context as *mut Option<Result<Node, Error>>) = Some(decoded);
+    let receiver = &mut *(context as *mut Receiver);
+    // Unwinding must not cross the caller's frames.
+    if catch_unwind(AssertUnwindSafe(|| (receiver.receive)(rlp))).is_err() {
+        receiver.panicked = true;
+    }
 }
 
 /// Applies `entries` to the trie whose root hash is `root`, writing new nodes into `pending`, and writes the new root
 /// hash to `root_out`. Nodes written also go into `log`, or a temporary log when null, the new root indexed as that of
 /// the trie of `address`, the state trie when null. Nodes reachable through that root in `log` are read there, and the
-/// others from `pending`, then `fetch`. `entries` is reordered in place.
+/// others from `pending`, then `warmed` unless null, then `fetch`. `entries` is reordered in place.
 /// Returns 0 on success, -1 on panic, or an [`Error::code`].
 ///
 /// # Safety
 /// `entries`, `values`, `root`, `address` and `root_out` must be valid for the given lengths (32 bytes for `root`,
 /// `address` and `root_out`), `pending` must come from [`nm_patricia_pending_rent`], `log` must be null or come
-/// from [`nm_patricia_log_new`], and `fetch` must be callable concurrently with `context`.
+/// from [`nm_patricia_log_new`], `warmed` must be null or come from [`nm_patricia_warmed_new`] and not be reset
+/// during the call, and `fetch` must be callable concurrently with `context`.
 #[no_mangle]
 pub unsafe extern "C" fn nm_patricia_bulk_set(
     entries: *mut Entry,
@@ -131,6 +171,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
     root: *const [u8; 32],
     pending: *const PendingNodes,
     log: *const TrieNodeLog,
+    warmed: *const WarmedNodes,
     address: *const [u8; 32],
     fetch: FetchFn,
     context: *mut c_void,
@@ -160,6 +201,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
             &CallbackStore { fetch, context },
             &*pending,
             log.as_ref(),
+            warmed.as_ref(),
             address.as_ref(),
             &*root,
             entries,
@@ -218,30 +260,82 @@ pub unsafe extern "C" fn nm_patricia_log_release(log: *const TrieNodeLog, genera
     (*log).release(generation)
 }
 
-/// Writes to `hash_out` the hash of the first node on the path to `key` in the trie of `address`, the state trie when
-/// null, with root hash `root`, that bulk sets cannot read from `log`, and returns its depth in nibbles. Returns -1 when
-/// they read every node on it from `log`, or -2 on panic.
+/// Warms the path to `key` in the trie of `address`, the state trie when null, with root hash `root`: every node on it
+/// that bulk sets cannot read from `log` nor `warmed` is fetched through `fetch` and added to `warmed`.
+/// Returns 0 on success, -1 on panic, or an [`Error::code`].
 ///
 /// # Safety
-/// `log` must come from [`nm_patricia_log_new`], `address` must be null or valid for 32 bytes, and `root`, `key` and
-/// `hash_out` must be valid for 32 bytes.
+/// `log` must come from [`nm_patricia_log_new`], `warmed` from [`nm_patricia_warmed_new`] and not be reset during the
+/// call, `address` must be null or valid for 32 bytes, `root` and `key` must be valid for 32 bytes, and `fetch` must be
+/// callable with `context`.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_first_missing(
+pub unsafe extern "C" fn nm_patricia_warm_up(
     log: *const TrieNodeLog,
+    warmed: *const WarmedNodes,
     address: *const [u8; 32],
     root: *const [u8; 32],
     key: *const [u8; 32],
-    hash_out: *mut [u8; 32],
+    fetch: FetchFn,
+    context: *mut c_void,
 ) -> i32 {
     match catch_unwind(AssertUnwindSafe(|| {
-        (*log).first_missing(address.as_ref(), &*root, &*key)
+        warm_up(
+            &CallbackStore { fetch, context },
+            &*log,
+            &*warmed,
+            address.as_ref(),
+            &*root,
+            &*key,
+        )
     })) {
-        Ok(Some((depth, hash))) => {
-            *hash_out = hash;
-            depth as i32
+        Ok(Ok(())) => 0,
+        Ok(Err(error)) => error.code(),
+        Err(_) => -1,
+    }
+}
+
+/// Creates empty [`WarmedNodes`], to free with [`nm_patricia_warmed_free`].
+#[no_mangle]
+pub extern "C" fn nm_patricia_warmed_new() -> *mut WarmedNodes {
+    Box::into_raw(Box::default())
+}
+
+/// # Safety
+/// `warmed` must come from [`nm_patricia_warmed_new`], not be freed yet, and not be in use.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_warmed_free(warmed: *mut WarmedNodes) {
+    drop(Box::from_raw(warmed));
+}
+
+/// Drops every node of `warmed`.
+///
+/// # Safety
+/// `warmed` must come from [`nm_patricia_warmed_new`] and not be in use.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_warmed_reset(warmed: *const WarmedNodes) {
+    (*warmed).reset();
+}
+
+/// Writes to `hash_out` the hash of the node whose record is at `pointer` in `log`, points `rlp_out` at its RLP, valid
+/// as long as the record, and returns the RLP length, or -1 on panic.
+///
+/// # Safety
+/// `log` must come from [`nm_patricia_log_new`], `pointer` must be a node record of a generation retained, as by
+/// [`nm_patricia_log_retain_active`], and `hash_out` and `rlp_out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_node(
+    log: *const TrieNodeLog,
+    pointer: u64,
+    hash_out: *mut [u8; 32],
+    rlp_out: *mut *const u8,
+) -> i32 {
+    match catch_unwind(AssertUnwindSafe(|| (*log).node(pointer))) {
+        Ok(node) => {
+            *hash_out = *node.hash();
+            *rlp_out = node.rlp().as_ptr();
+            node.rlp().len() as i32
         }
-        Ok(None) => -1,
-        Err(_) => -2,
+        Err(_) => -1,
     }
 }
 

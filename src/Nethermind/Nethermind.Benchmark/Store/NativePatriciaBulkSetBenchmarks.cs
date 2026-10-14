@@ -63,7 +63,7 @@ public class NativePatriciaBulkSetBenchmarks
             _preloadedRootHash = preloadTree.RootHash;
 
             using NativePendingNodes preloadPending = NativePendingNodes.Rent(PreloadedCount);
-            Hash256 nativeRoot = NativePatriciaBulkSet.BulkSet(new DictionaryNodeStore(preloadedNodes), preloadPending, _warmLog, null, Keccak.EmptyTreeHash.ValueHash256, nativePreload, preloadValues);
+            Hash256 nativeRoot = NativePatriciaBulkSet.BulkSet(new DictionaryNodeStore(preloadedNodes), preloadPending, _warmLog, null, null, Keccak.EmptyTreeHash.ValueHash256, nativePreload, preloadValues);
             if (nativeRoot != _preloadedRootHash) throw new InvalidOperationException($"Native root {nativeRoot} differs from {_preloadedRootHash}");
 
             for (int shard = 0; shard < preloadPending.ShardCount; shard++)
@@ -104,7 +104,7 @@ public class NativePatriciaBulkSetBenchmarks
         _nativeEntries.CopyTo(_nativeBatches, 0);
         for (int start = 0; start < EntryCount; start += BatchSize)
         {
-            NativePatriciaBulkSet.BulkSet(_nativeStore, _nativePending, null, null, _preloadedRootHash.ValueHash256, _nativeBatches.AsSpan(start, BatchSize), _values);
+            NativePatriciaBulkSet.BulkSet(_nativeStore, _nativePending, null, null, null, _preloadedRootHash.ValueHash256, _nativeBatches.AsSpan(start, BatchSize), _values);
             // Cleared after every batch, so every batch starts from the preloaded trie.
             _nativePending.Clear();
         }
@@ -117,7 +117,7 @@ public class NativePatriciaBulkSetBenchmarks
         _nativeEntries.CopyTo(_nativeBatches, 0);
         for (int start = 0; start < EntryCount; start += BatchSize)
         {
-            NativePatriciaBulkSet.BulkSet(_nativeStore, _nativePending, _warmLog, null, _preloadedRootHash.ValueHash256, _nativeBatches.AsSpan(start, BatchSize), _values);
+            NativePatriciaBulkSet.BulkSet(_nativeStore, _nativePending, _warmLog, null, null, _preloadedRootHash.ValueHash256, _nativeBatches.AsSpan(start, BatchSize), _values);
             _nativePending.Clear();
         }
     }
