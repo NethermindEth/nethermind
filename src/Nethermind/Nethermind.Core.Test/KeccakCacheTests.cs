@@ -63,6 +63,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        [NonParallelizable]
         public void Output_aliasing_the_input_caches_the_input([Values(20, 32, 64)] int length)
         {
             byte[] input = new byte[length];

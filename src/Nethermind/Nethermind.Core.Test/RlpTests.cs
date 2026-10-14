@@ -1364,6 +1364,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        [NonParallelizable]
         public unsafe void PeekLongPrefixAndContentLength_throws_on_truncated_length_ending_at_int_max([Values(0xB8, 0xF8)] byte prefix)
         {
             // The span's last byte is the prefix, so position + 1 + lengthOfLength wraps an int. The native
