@@ -84,12 +84,6 @@ namespace Nethermind.Evm.TransactionProcessing
         /// </remarks>
         public bool SkipSenderChecks { get; set; }
 
-        /// <summary>
-        /// When set, a transaction run with validation skipped fails at the maximum sender nonce (EIP-2681) instead of
-        /// wrapping it to 0, as eth_simulateV1 requires. eth_call-style calls leave it unset.
-        /// </summary>
-        public bool EnforceNonceLimitWithoutValidation { get; set; }
-
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
         /// <remarks>Deliberately narrower than the tracer-requirement test the non-frame path uses: a frame
         /// transaction reads its own logs from a POST_TX frame (EIP-7906), which no tracer flag describes.
@@ -1341,7 +1335,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         $"nonce too low: address {sender}, tx: {tx.Nonce} state: {nonce}");
             }
 
-            if (nonce == ulong.MaxValue && !validate && EnforceNonceLimitWithoutValidation)
+            if (nonce == ulong.MaxValue && !validate && opts.HasFlag(ExecutionOptions.EnforceNonceLimit))
             {
                 TraceLogInvalidTx(tx, "NONCE_OVERFLOW");
                 return TransactionResult.NonceOverflow;

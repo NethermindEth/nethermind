@@ -40,12 +40,13 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         BlockReceiptsTracer? receiptsTracer = txTracer.GetTracer<BlockReceiptsTracer>();
         Debug.Assert(receiptsTracer is not null, $"Simulate must be traced through a {nameof(BlockReceiptsTracer)}.");
         ulong cumulativeStateGasBefore = receiptsTracer?.BlockStateGasUsed ?? 0;
-        if (transactionProcessor is TransactionProcessorBase processor)
+        ExecutionOptions options = simulateRequestState.Validate ? ExecutionOptions.Commit : ExecutionOptions.SkipValidationAndCommit;
+        if (!simulateRequestState.Validate && simulateRequestState.TxsEnforcingNonceLimit[_currentTxIndex])
         {
-            processor.EnforceNonceLimitWithoutValidation = simulateRequestState.TxsEnforcingNonceLimit[_currentTxIndex];
+            options |= ExecutionOptions.EnforceNonceLimit;
         }
 
-        TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
+        TransactionResult result = transactionProcessor.Process(transaction, txTracer, options);
 
         ulong blockGasUsed = transaction.BlockGasUsed;
         ulong blockStateGasUsed = receiptsTracer?.BlockStateGasUsed.SaturatingSub(cumulativeStateGasBefore) ?? 0;

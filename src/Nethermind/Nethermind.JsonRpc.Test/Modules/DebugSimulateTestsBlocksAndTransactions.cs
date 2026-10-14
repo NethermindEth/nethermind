@@ -65,7 +65,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
     [Test]
     public async Task Test_debug_simulate_call_tracer_reports_the_gas_capped_gas([Values] bool validation)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         chain.Container.Resolve<IJsonRpcConfig>().GasCap = 30_000;
         SimulatePayload<TransactionForRpc> payload = EthRpcSimulateTestsBase.CreateGasProbePayload(50_000);
         payload.BlockStateCalls![0].BlockOverrides = new BlockOverride { GasLimit = 100_000, BaseFeePerGas = 0 };
@@ -74,7 +74,8 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         string serialized = await RpcTest.TestSerializedRequest(
             chain.DebugRpcModule, "debug_simulateV1", payload, "latest", new GethTraceOptions { Tracer = "callTracer" });
 
-        JsonElement root = JsonDocument.Parse(serialized).RootElement;
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement root = document.RootElement;
         Assert.That(root.TryGetProperty("result", out JsonElement result), Is.True, serialized);
         string gas = result[0].GetProperty("traces")[0].GetProperty("gas").GetString()!;
         Assert.That(Convert.ToUInt64(gas, 16), Is.EqualTo(30_000UL));

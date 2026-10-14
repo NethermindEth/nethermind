@@ -57,6 +57,9 @@ public enum ExecutionOptions
     /// <summary>With <see cref="Warmup"/>: charge gas and value in full, so a sender that cannot pay fails the run.</summary>
     StrictWarmup = 256,
 
+    /// <summary>Reject an exhausted EIP-2681 sender nonce even when validation is skipped.</summary>
+    EnforceNonceLimit = 512,
+
     /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
