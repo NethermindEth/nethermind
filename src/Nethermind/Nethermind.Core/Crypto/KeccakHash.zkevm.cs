@@ -199,14 +199,18 @@ public sealed partial class KeccakHash
     {
         unsafe
         {
+            // Unchecked, the counts checked once: a bounds check per node loads a 32-bit length, a narrow access.
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)count, (uint)Math.Min(nodes.Length, hashes.Length));
             // Native rather than a managed array, which the guest's allocator zeroes word by word. Left uninitialized: only
             // a full branch's lanes are written, and ComputeHash256OfEdited reads no other.
             ulong* states = (ulong*)NativeMemory.Alloc((nuint)count, RetainedLanes * sizeof(ulong));
-            for (int i = 0; i < count; i++)
+            ref byte[] firstNode = ref MemoryMarshal.GetArrayDataReference(nodes);
+            ref ValueHash256 firstHash = ref MemoryMarshal.GetReference(hashes);
+            for (nint i = 0; i < count; i++)
             {
-                byte[] node = nodes[i];
-                hashes[i] = node.Length == Hash532InputLength
-                    ? ComputeHash532Retaining(node, ref states[(nuint)i * RetainedLanes])
+                byte[] node = Unsafe.Add(ref firstNode, i);
+                Unsafe.Add(ref firstHash, i) = node.Length == Hash532InputLength
+                    ? ComputeHash532Retaining(node, ref states[i * RetainedLanes])
                     : ComputeHash256(node);
             }
 
@@ -457,11 +461,11 @@ public sealed partial class KeccakHash
         : PaddedLastWord(data + length, length & 7);
 
     /// <summary>Zeroes all twenty-five lanes of a state.</summary>
-    /// <remarks>Where <see cref="ZiskMemmoveFlag"/> is on this is one DMA <c>memset</c> rather than twenty-five stores.</remarks>
+    /// <remarks>Where <see cref="ZiskFlag"/> is on this is one DMA <c>memset</c> rather than twenty-five stores.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void ZeroState(ref ulong lane)
     {
-        if (ZiskMemmoveFlag.IsActive)
+        if (ZiskFlag.IsActive)
         {
             Bytes.Memset(Unsafe.AsPointer(ref lane), 0, STATE_LANES * sizeof(ulong));
             return;
@@ -506,12 +510,12 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>Absorbs the first rate block of <paramref name="data"/> into a state whose rate lanes are uninitialized.</summary>
-    /// <remarks>Into an all-zero state an XOR is a copy, so where <see cref="ZiskMemmoveFlag"/> is on the block goes
+    /// <remarks>Into an all-zero state an XOR is a copy, so where <see cref="ZiskFlag"/> is on the block goes
     /// through the zkVM's DMA <c>memmove</c>: one call instead of seventeen load/store pairs.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void CopyFirstBlock(ref ulong lane, byte* data)
     {
-        if (ZiskMemmoveFlag.IsActive)
+        if (ZiskFlag.IsActive)
         {
             Bytes.Memmove(Unsafe.AsPointer(ref lane), data, HASH_DATA_AREA);
             return;
@@ -560,7 +564,10 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>Whether <paramref name="data"/> can be absorbed with OpenVM's XORIN instruction, which takes only 8-byte aligned operands.</summary>
-    /// <remarks>Every state is ulong-aligned; a caller-chosen input often is not, and is absorbed lane by lane.</remarks>
+    /// <remarks>
+    /// Every state is ulong-aligned, being a stack <see cref="KeccakState"/> of ulong lanes or a <see cref="NativeMemory"/> witness state;
+    /// a caller-chosen input often is not, and is absorbed lane by lane.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe bool CanXorin(byte* data) => OpenVmXorinFlag.IsActive && ((nuint)data & 7) == 0;
 
@@ -569,12 +576,8 @@ public sealed partial class KeccakHash
     private static unsafe void Xorin(ref ulong lane, byte* data, nuint length)
     {
         if (length != 0)
-            OpenVmXorin((ulong*)Unsafe.AsPointer(ref lane), data, length);
+            Accelerators.KeccakXorin((ulong*)Unsafe.AsPointer(ref lane), data, length);
     }
-
-    /// <summary>OpenVM's XORIN instruction: XORs <paramref name="length"/> bytes of <paramref name="input"/> into <paramref name="state"/>.</summary>
-    [DllImport("__Internal", EntryPoint = "zkvm_keccak_xorin", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe void OpenVmXorin(ulong* state, byte* input, nuint length);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CopyState(ref ulong lane, ref ulong source) =>
