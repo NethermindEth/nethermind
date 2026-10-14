@@ -1,5 +1,5 @@
 # Contracts IL-EVM compiles at startup, before blocks or calls run: one keccak code hash per line, busiest first.
-# Anything after the hash on a line is ignored (the profile's counts are kept there for reference).
+# After the hash, the profile's counts: PrecompileMinOpsPerFrame reads ops= and frames=, and the rest is kept for reference.
 # Source: EXPB run 38450805166, payload set fusaka, first 1000 payloads, pre-warming off, image ethpandaops/nethermind:vm-frame-ext-3ef7fd6.
 # Profile: 14890 contracts, 3812473 frames, 1519749821 interpreted opcodes.
 # Rule: busiest by interpreted opcodes until 90% coverage or 300 entries, at least 50 frames.

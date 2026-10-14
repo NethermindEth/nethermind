@@ -52,26 +52,42 @@ public sealed class IlEvmModule(IIlEvmConfig config) : Module
         IlEvmSettings.HotOpcodesPerSecond = Math.Max(0, config.HotOpcodesPerSecond);
         IlEvmSettings.CompileSynchronously = config.CompileSynchronously;
         IlEvmSettings.Profile = config.Profile;
+        IlEvmSettings.Stats = config.Stats;
+        // A measurement run times compiled code on every frame it runs; no sample of it may go to the interpreter.
+        if (config.Stats)
+            IlEvmSettings.SelfCheck = false;
         IlEvmSettings.BlockRuntimeCompile = config.BlockRuntimeCompile;
         IlEvmSettings.BlockSelfCheck = config.BlockSelfCheck;
 
         // Block processing and everything else get the block runner; the read-only query environments get their own,
         // which compiles at run time, so calls keep doing so whatever block processing does.
         // With Scope=All every kind of read-only query compiles at run time, as before the block runner existed.
+        // A measurement run gets the timed runners instead, so the production ones carry nothing of the timing.
         ReadOnlyQueryKind surfaces = config.Scope == IlEvmScope.All ? ReadOnlyQueryKind.All : config.Surfaces;
+        FrameCodeRunner<EthereumGasPolicy> blockRunner = config.Stats ? IlEvmTimedFrameRunner.Block : IlEvmFrameRunner.Block;
+        FrameCodeRunner<EthereumGasPolicy> queryRunner = config.Stats ? IlEvmTimedFrameRunner.Instance : IlEvmFrameRunner.Instance;
         if (config.Scope == IlEvmScope.All)
-            builder.RegisterInstance(IlEvmFrameRunner.Block).As<FrameCodeRunner<EthereumGasPolicy>>();
+            builder.RegisterInstance(blockRunner).As<FrameCodeRunner<EthereumGasPolicy>>();
         if (surfaces != ReadOnlyQueryKind.None)
-            builder.AddSingleton<IReadOnlyQueryModule>(new IlEvmQueryModule(surfaces));
+            builder.AddSingleton<IReadOnlyQueryModule>(new IlEvmQueryModule(surfaces, queryRunner));
         builder.AddStep(typeof(IlEvmStartupStep));
     }
 }
 
 /// <summary>Attaches the compiler's frame runner to the machines of the read-only query environments.</summary>
-public sealed class IlEvmQueryModule(ReadOnlyQueryKind surfaces) : Module, IReadOnlyQueryModule
+/// <param name="runner">The runner to attach: <see cref="IlEvmFrameRunner.Instance"/> unless a measurement run times frames.</param>
+public sealed class IlEvmQueryModule(ReadOnlyQueryKind surfaces, FrameCodeRunner<EthereumGasPolicy> runner) : Module, IReadOnlyQueryModule
 {
+    /// <summary>Attaches the production runner, <see cref="IlEvmFrameRunner.Instance"/>.</summary>
+    public IlEvmQueryModule(ReadOnlyQueryKind surfaces) : this(surfaces, IlEvmFrameRunner.Instance)
+    {
+    }
+
     public ReadOnlyQueryKind AppliesTo => surfaces;
 
+    /// <summary>The runner the module attaches.</summary>
+    public FrameCodeRunner<EthereumGasPolicy> Runner { get; } = runner;
+
     protected override void Load(ContainerBuilder builder) =>
-        builder.RegisterInstance(IlEvmFrameRunner.Instance).As<FrameCodeRunner<EthereumGasPolicy>>();
+        builder.RegisterInstance(Runner).As<FrameCodeRunner<EthereumGasPolicy>>();
 }

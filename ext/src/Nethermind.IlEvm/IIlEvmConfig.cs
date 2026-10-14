@@ -14,6 +14,15 @@ public enum IlEvmScope
     All,
 }
 
+/// <summary>Which of the lists embedded in the plugin the startup compile reads.</summary>
+public enum IlEvmPrecompileSource
+{
+    /// <summary>The shipped list: the busiest contracts of the reference blocks.</summary>
+    Shipped,
+    /// <summary>The measurement candidates: a wider list, for a <see cref="IIlEvmConfig.Stats"/> run to time against the interpreter.</summary>
+    Candidates,
+}
+
 [ConfigCategory(Description = "IL-EVM: compiles hot EVM contracts to native code for faster read-only calls.", HiddenFromDocs = true)]
 public interface IIlEvmConfig : IConfig
 {
@@ -38,11 +47,17 @@ public interface IIlEvmConfig : IConfig
     [ConfigItem(Description = "Compile on the thread that makes a contract hot instead of in the background. For tests and benchmarks.", DefaultValue = "false", HiddenFromDocs = true)]
     bool CompileSynchronously { get; set; }
 
-    [ConfigItem(Description = "Compiles the contracts of the list shipped with the plugin at startup, before blocks or calls run, so they run compiled from their first frame.", DefaultValue = "true")]
+    [ConfigItem(Description = "Compiles the contracts of the list PrecompileList names (or of the file NETHERMIND_ILEVM_PRECOMPILE_LIST names) at startup, before blocks or calls run, so they run compiled from their first frame.", DefaultValue = "true")]
     bool Precompile { get; set; }
 
-    [ConfigItem(Description = "The most entries of the shipped list compiled at startup, in list order; 0 compiles all of them.", DefaultValue = "0")]
+    [ConfigItem(Description = "The most entries of the list compiled at startup, in list order, counted after PrecompileMinOpsPerFrame skipped its entries; 0 compiles all of them.", DefaultValue = "0")]
     int PrecompileLimit { get; set; }
+
+    [ConfigItem(Description = "Which embedded list the startup compile reads: Shipped, the busiest contracts of the reference blocks, or Candidates, the wider list a Stats run times against the interpreter. NETHERMIND_ILEVM_PRECOMPILE_LIST, naming a file, overrides either.", DefaultValue = "Shipped")]
+    IlEvmPrecompileSource PrecompileList { get; set; }
+
+    [ConfigItem(Description = "Skips the list entries whose profile counts (ops= over frames=) give fewer opcodes per frame than this; entries without the counts are kept. 0 keeps every entry.", DefaultValue = "0")]
+    int PrecompileMinOpsPerFrame { get; set; }
 
     [ConfigItem(Description = "In block processing (Scope=All), also compile contracts outside the shipped list once they get hot. Off, block processing runs only the shipped contracts compiled and leaves the rest to the interpreter with no bookkeeping.", DefaultValue = "false")]
     bool BlockRuntimeCompile { get; set; }
@@ -55,6 +70,12 @@ public interface IIlEvmConfig : IConfig
 
     [ConfigItem(Description = "How many of the busiest contracts the profile logs at shutdown.", DefaultValue = "4000", HiddenFromDocs = true)]
     int ProfileTop { get; set; }
+
+    [ConfigItem(Description = "Times every contract's frame parts, interpreted and compiled, and logs per-contract totals at shutdown: the ProfileTop contracts with the most time, and every contract that ran compiled. For measurement runs: it turns the self-check off, keeps counts for every contract until shutdown, and block processing runs only the shipped contracts compiled. Block processing is timed only with Scope=All; for block-processing times two runs can compare per contract, also set Blocks.PreWarmHandoff to false.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool Stats { get; set; }
+
+    [ConfigItem(Description = "With Stats, also logs the totals so far every this many blocks, tagged @<blocks>, so one run splits into a training range and a test range; 0 logs them only at shutdown.", DefaultValue = "0", HiddenFromDocs = true)]
+    int StatsSnapshotBlocks { get; set; }
 }
 
 public class IlEvmConfig : IIlEvmConfig
@@ -68,8 +89,12 @@ public class IlEvmConfig : IIlEvmConfig
     public bool CompileSynchronously { get; set; }
     public bool Precompile { get; set; } = true;
     public int PrecompileLimit { get; set; }
+    public IlEvmPrecompileSource PrecompileList { get; set; } = IlEvmPrecompileSource.Shipped;
+    public int PrecompileMinOpsPerFrame { get; set; }
     public bool BlockRuntimeCompile { get; set; }
     public bool BlockSelfCheck { get; set; }
     public bool Profile { get; set; }
     public int ProfileTop { get; set; } = 4000;
+    public bool Stats { get; set; }
+    public int StatsSnapshotBlocks { get; set; }
 }

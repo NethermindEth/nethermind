@@ -12,9 +12,10 @@
     <InternalsVisibleTo Include="Nethermind.IlEvm.Test" />
   </ItemGroup>
 
-  <!-- The contracts compiled at startup: code hashes, busiest first. -->
+  <!-- The contracts compiled at startup: code hashes, busiest first; the candidates are the wider list measurement runs time. -->
   <ItemGroup>
     <EmbeddedResource Include="Precompile.txt" LogicalName="Nethermind.IlEvm.Precompile.txt" />
+    <EmbeddedResource Include="PrecompileCandidates.txt" LogicalName="Nethermind.IlEvm.PrecompileCandidates.txt" />
   </ItemGroup>
 
   <!--

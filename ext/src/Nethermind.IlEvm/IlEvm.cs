@@ -218,6 +218,17 @@ public static class IlEvmSettings
     /// </summary>
     public static bool Profile { get; set; }
 
+    /// <summary>
+    /// Time every contract's frame parts on the path each took - the interpreter, compiled code, or compiled code that
+    /// handed back - and run no self-check; <see cref="IlEvmStats"/> logs the per-contract totals at shutdown.
+    /// </summary>
+    /// <remarks>
+    /// For measurement runs: the module attaches <see cref="IlEvmTimedFrameRunner"/> instead of the production runner,
+    /// and block processing runs compiled only the contracts the startup compile shipped. The counts take memory for
+    /// every contract each thread ran, kept until shutdown.
+    /// </remarks>
+    public static bool Stats { get; set; }
+
     /// <summary>Whether block processing (Scope=All) compiles contracts outside the shipped list once they get hot.</summary>
     /// <remarks>Off, a block frame runs compiled only when its code was precompiled, and otherwise goes to the interpreter with no bookkeeping.</remarks>
     public static bool BlockRuntimeCompile { get; set; }
@@ -864,6 +875,31 @@ public static unsafe partial class IlEvm
     }
 
     /// <summary>
+    /// As <see cref="FindPrecompiledOnly"/>, but never a contract the read-only query path compiled at run time: the
+    /// block frames of a <see cref="IlEvmSettings.Stats"/> run differ between two runs only by the list they shipped.
+    /// </summary>
+    internal static IlContract? FindShippedOnly(CodeInfo codeInfo, OpcodeBodySet bodies)
+    {
+        ref object? slot = ref IlEvmFrameRunner.CodeSlot(codeInfo);
+        if (slot is IlCodeState state)
+        {
+            IlContract? shipped = state.Shipped;
+            if (shipped is null && state.PrecompileChecked)
+                return null;
+            IlFork fork = IlGetFork(bodies);
+            if (shipped is not null && ReferenceEquals(shipped.Fork, fork))
+                return shipped;
+            return state.PrecompileChecked ? null : Attach(codeInfo, state, fork);
+        }
+
+        if (Volatile.Read(ref _precompiled) is null)
+            return null;
+        IlCodeState created = new();
+        created = Interlocked.CompareExchange(ref slot, created, null) as IlCodeState ?? created;
+        return Attach(codeInfo, created, IlGetFork(bodies));
+    }
+
+    /// <summary>
     /// Looks the code up among the precompiled contracts and attaches the one for <paramref name="fork"/>. The code is
     /// marked checked unless it was shipped for another fork, so a frame of that fork looks again.
     /// </summary>
@@ -916,6 +952,9 @@ public static unsafe partial class IlEvm
 
     /// <summary>How many contracts the startup compile published, for tests and diagnostics.</summary>
     public static int PrecompiledCount => Volatile.Read(ref _precompiled)?.Count ?? 0;
+
+    /// <summary>Whether the startup compile published a contract for the code of keccak <paramref name="hash"/>.</summary>
+    public static bool IsPrecompiled(in ValueHash256 hash) => Volatile.Read(ref _precompiled)?.ContainsKey(hash) == true;
 
     private static IlContract? Precompiled(CodeInfo codeInfo, IlCodeState state, IlFork fork, out bool otherFork)
     {
