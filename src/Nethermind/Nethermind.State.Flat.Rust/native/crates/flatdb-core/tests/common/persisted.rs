@@ -4,12 +4,12 @@
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use flatdb_core::bloom::BloomFilter;
 use flatdb_core::persisted::bloom_keys::PersistedBloom;
 use flatdb_core::persisted::builder::{self, BuildOutput};
-use flatdb_core::persisted::codec::CatalogEntry;
+use flatdb_core::persisted::compactor::{CompactorConfig, PersistedSnapshotCompactor};
 use flatdb_core::persisted::io::ByteReader;
 use flatdb_core::persisted::loader::PersistedSnapshotLoader;
 use flatdb_core::persisted::merger;
@@ -21,11 +21,11 @@ use flatdb_core::persisted::storage::blob_manager::BlobManager;
 use flatdb_core::persisted::storage::blob_writer::BlobWriter;
 use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv, SnapshotCatalog};
 use flatdb_core::persisted::{PersistedTierConfig, TierError, TierResult};
-use flatdb_core::repository::SnapshotRepository;
+use flatdb_core::repository::{SnapshotRepository, StateHeaderProvider};
 use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::snapshot::content::SnapshotContentBuilder;
 use flatdb_core::snapshot::{Snapshot, SnapshotTier};
-use flatdb_core::stats::TierStats;
+use flatdb_core::stats::{FlatStats, TierStats};
 use flatdb_core::types::{Account, Address, Hash256, StateId, TreePath, U256};
 
 use super::snapshots::FixedFinality;
@@ -289,10 +289,12 @@ impl StorageTier {
             arena_config,
             config,
             stats,
+            Arc::new(FixedFinality::default()),
         )
     }
 
-    /// The tier of `base`, loaded from `catalog_rows` and writing its catalog through `catalog_kv`.
+    /// The tier of `base`, loaded from `catalog_rows` and writing its catalog through `catalog_kv`, its repository
+    /// asking `finality` for the canonical roots and queueing the latest observations of its metrics.
     pub fn open_with_catalog(
         base: &Path,
         catalog_rows: &[(Vec<u8>, Vec<u8>)],
@@ -300,6 +302,7 @@ impl StorageTier {
         arena_config: ArenaConfig,
         config: PersistedTierConfig,
         stats: Arc<TierStats>,
+        finality: Arc<dyn StateHeaderProvider>,
     ) -> TierResult<Self> {
         let directory = base.join("persistedSnapshot");
         let arena = Arc::new(ArenaManager::new(
@@ -314,8 +317,8 @@ impl StorageTier {
         )?;
         let catalog = Arc::new(SnapshotCatalog::new(catalog_kv));
         let repository = Arc::new(SnapshotRepository::with_persisted_tier(
-            Arc::new(FixedFinality::default()),
-            Arc::default(),
+            finality,
+            Arc::new(FlatStats::new(64)),
             catalog.clone(),
             stats.clone(),
         ));
@@ -351,103 +354,113 @@ impl StorageTier {
             .unwrap()
     }
 
-    /// `PersistedSnapshotCompactor.DoCompactSnapshot`: the merge of the block's window, clamped at the persisted block.
-    pub fn compact(&self, schedule: &CompactionSchedule, to: &StateId, persisted_block: u64) -> bool {
-        let size = schedule.get_persisted_snapshot_compact_size(to.block_number);
-        if size <= 1 || self.repository.persisted_snapshot_count() < 2 {
-            return false;
-        }
-        let start = (to.block_number as i64 - size as i64).max(persisted_block as i64) as u64;
-        self.compact_range(schedule, to, start, false)
+    pub fn compactor(&self, schedule: CompactionSchedule) -> PersistedSnapshotCompactor {
+        self.compactor_recording_panics(schedule, Arc::default())
     }
 
-    /// `PersistedSnapshotCompactor.DoCompactCompactSized`: the CompactSize-wide merge ending at a boundary.
-    pub fn compact_sized(&self, schedule: &CompactionSchedule, to: &StateId) -> bool {
-        let block = to.block_number;
-        if !schedule.is_compact_size_boundary(block) && !schedule.is_large_compaction_boundary(block)
-            || self.repository.persisted_snapshot_count() < 2
-        {
-            return false;
-        }
-        self.compact_range(schedule, to, block - schedule.get_compact_size(block), true)
+    /// A compactor over the tier with `schedule`, recording the jobs that panicked in `panicked`.
+    pub fn compactor_recording_panics(
+        &self,
+        schedule: CompactionSchedule,
+        panicked: Arc<Mutex<Vec<String>>>,
+    ) -> PersistedSnapshotCompactor {
+        PersistedSnapshotCompactor::new(
+            self.repository.clone(),
+            self.arena.clone(),
+            self.blobs.clone(),
+            self.catalog.clone(),
+            self.stats.clone(),
+            CompactorConfig {
+                schedule,
+                tier: self.config,
+            },
+            move |job| panicked.lock().unwrap().push(job.to_owned()),
+        )
+    }
+}
+
+/// A tier in a temporary directory over an in-memory catalog, with 64 KiB arena files and 14 bloom bits per key; the
+/// directory goes with it.
+pub struct TemporaryTier {
+    // Dropped in this order: the tier keeps its files on shutdown, which the directory then takes.
+    pub tier: StorageTier,
+    pub catalog_kv: MemCatalogKv,
+    /// An empty base no bucket holds, whose table the snapshots [`TemporaryTier::register`] indexes share.
+    template: Arc<PersistedSnapshot>,
+    _directory: tempfile::TempDir,
+}
+
+impl TemporaryTier {
+    pub fn new() -> Self {
+        Self::with_finality(Arc::new(FixedFinality::default()))
     }
 
-    /// `PersistedSnapshotCompactor.CompactRange` without its metrics and page warming.
-    fn compact_range(&self, schedule: &CompactionSchedule, to: &StateId, start: u64, compact_sized: bool) -> bool {
-        let sources = self.repository.assemble_persisted_snapshots_for_compaction(to, start);
-        if sources.len() < 2 {
-            return false;
-        }
-        let sessions = sources
-            .iter()
-            .map(|source| source.begin_whole_read_session().unwrap())
-            .collect::<Vec<_>>();
-        let readers = sessions.iter().map(|session| session.reader()).collect::<Vec<_>>();
+    pub fn with_finality(finality: Arc<dyn StateHeaderProvider>) -> Self {
+        Self::with_catalog(finality, |catalog_kv| Box::new(catalog_kv))
+    }
 
-        let mut owners: Vec<&Arc<PersistedBloom>> = Vec::new();
-        for source in &sources {
-            if !owners.iter().any(|owner| Arc::ptr_eq(owner, source.persisted_bloom())) {
-                owners.push(source.persisted_bloom());
-            }
-        }
-        let capacity = owners.iter().map(|bloom| bloom.filter().count() as i64).sum::<i64>();
-        let large_boundary = schedule.is_large_compaction_boundary(to.block_number);
-        let tier = if compact_sized {
-            SnapshotTier::PersistedCompactSized
-        } else if large_boundary {
-            SnapshotTier::PersistedLargeCompacted
-        } else {
-            SnapshotTier::PersistedSmallCompacted
+    /// The tier writing its catalog through what `wrap_catalog` makes of the in-memory rows, its repository asking
+    /// `finality` for the canonical roots.
+    pub fn with_catalog(
+        finality: Arc<dyn StateHeaderProvider>,
+        wrap_catalog: impl FnOnce(MemCatalogKv) -> Box<dyn CatalogKv>,
+    ) -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let catalog_kv = MemCatalogKv::default();
+        let config = PersistedTierConfig {
+            bloom_bits_per_key: 14.0,
+            validate_persisted_snapshot: false,
+            processor_count: 4,
         };
-        let bits_per_key = self.config.bloom_bits_per_key;
-        let mut bloom = match (bits_per_key > 0.0 && capacity > 0, tier) {
-            (false, _) => BloomFilter::always_true(),
-            (true, SnapshotTier::PersistedSmallCompacted) => BloomFilter::new(1, bits_per_key).unwrap(),
-            (true, _) => BloomFilter::new(capacity, bits_per_key).unwrap(),
-        };
-
-        let estimate = sources.iter().map(|source| source.size()).sum();
-        let mut writer = self
-            .arena
-            .create_writer(estimate, tier == SnapshotTier::PersistedSmallCompacted)
-            .unwrap();
-        merger::merge(&readers, &mut writer, &mut bloom).unwrap();
-        let (location, reservation) = writer.complete().unwrap();
-        reservation.fsync().unwrap();
-        let header = SnapshotHeader {
-            from: sources[0].from(),
-            to: sources[sources.len() - 1].to(),
+        let tier = StorageTier::open_with_catalog(
+            directory.path(),
+            &[],
+            wrap_catalog(catalog_kv.clone()),
+            super::arena::config(64 * 1024),
+            config,
+            Arc::default(),
+            finality,
+        )
+        .unwrap();
+        let template_to = StateId::new(u64::MAX >> 1, [0xEE; 32]);
+        let template = tier.convert(&Snapshot::new(
+            StateId::new(template_to.block_number - 1, [0xEE; 32]),
+            template_to,
+            SnapshotContentBuilder::new().build(),
+        ));
+        assert!(tier.repository.remove_persisted_state_exact(&template_to).unwrap());
+        Self {
             tier,
-            may_have_self_destructs: sources.iter().any(|source| source.header().may_have_self_destructs),
-        };
-        self.catalog
-            .add(&CatalogEntry {
-                from: header.from,
-                to: header.to,
-                location,
-                tier,
-            })
-            .unwrap();
-        let compacted = Arc::new(
-            PersistedSnapshot::open(
-                header,
-                reservation,
-                PersistedBloom::new(bloom, self.stats.counters.clone()),
-                self.blobs.clone(),
-                self.stats.clone(),
-            )
-            .unwrap(),
-        );
-        drop(sessions);
-        self.repository.add_persisted_snapshot(compacted.clone());
-        if tier == SnapshotTier::PersistedSmallCompacted {
-            compacted.demote();
-        } else if large_boundary {
-            self.repository
-                .share_bloom_across_range(&header.from, &header.to, compacted.persisted_bloom())
-                .unwrap();
+            catalog_kv,
+            template,
+            _directory: directory,
         }
-        true
+    }
+
+    /// Indexes an empty persisted snapshot of `tier` from `from` to `to`, without a catalog row: an edge for the walks.
+    pub fn register(&self, from: StateId, to: StateId, tier: SnapshotTier) {
+        let snapshot = PersistedSnapshot::open(
+            SnapshotHeader {
+                from,
+                to,
+                tier,
+                may_have_self_destructs: false,
+            },
+            self.template.reservation().clone(),
+            PersistedBloom::always_true(self.tier.stats.counters.clone()),
+            self.tier.blobs.clone(),
+            self.tier.stats.clone(),
+        )
+        .unwrap();
+        self.tier.repository.add_persisted_snapshot(Arc::new(snapshot));
+    }
+}
+
+impl Deref for TemporaryTier {
+    type Target = StorageTier;
+
+    fn deref(&self) -> &StorageTier {
+        &self.tier
     }
 }
 

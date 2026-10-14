@@ -9,6 +9,7 @@
 //! nothing to retry.
 
 use std::collections::{BTreeSet, HashMap};
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
@@ -55,6 +56,16 @@ impl PersistedSnapshotBucket {
     /// `Max`: the greatest `to` held.
     pub fn max(&self) -> Option<StateId> {
         self.read_entries().ordered.last().copied()
+    }
+
+    /// `ContainsKey`.
+    pub fn contains_key(&self, to: &StateId) -> bool {
+        self.read_entries().by_to.contains_key(to)
+    }
+
+    /// `CollectRange`: the `to` of every snapshot within `range`, in order.
+    pub fn collect_range(&self, range: RangeInclusive<StateId>) -> Vec<StateId> {
+        self.read_entries().ordered.range(range).copied().collect()
     }
 
     /// `TryLease`.

@@ -1,28 +1,39 @@
-//! The N-way merge of persisted snapshots: the merge cases of `PersistedSnapshotCompactorTests`, with a property test of
-//! the merge against a newest-wins model with the self-destruct barrier.
+//! The persisted compactor: port of `PersistedSnapshotCompactorTests`, with a property test of the merge against a
+//! newest-wins model with the self-destruct barrier.
 //!
-//! Here the merges run over in-memory tables. The compactor's own cases (its queue, windows, schedule offsets, tier
-//! split, tiny and shared blooms, warm-up) come with the compactor.
+//! The merge cases run over in-memory tables; the compactor's own (its queues and threads, windows, schedule offsets,
+//! tier split, tiny and shared blooms, warm-up) over a tier on disk. `EnqueueAsync_FailedHandoff_ReturnsBatchToPool`
+//! keeps its refusals; the batch is a plain vector here, with no pool to return it to.
 
 mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
-use common::persisted::{MemSnapshot, convert, merge, new_blobs};
-use common::snapshots::{address, indexed_address, snapshot, state_id};
+use common::persisted::{MemSnapshot, TemporaryTier, convert, merge, new_blobs};
+use common::snapshots::{FixedFinality, address, indexed_address, snapshot, state_id};
 use flatdb_core::bloom::BloomFilter;
 use flatdb_core::keccak::keccak256;
-use flatdb_core::persisted::bloom_keys;
-use flatdb_core::persisted::codec::BlobRange;
+use flatdb_core::kv::{KvError, KvResult};
+use flatdb_core::log_ring::LogSink;
+use flatdb_core::persisted::bloom_keys::{self, PersistedBloom};
+use flatdb_core::persisted::codec::{self, BlobRange};
+use flatdb_core::persisted::compactor::EnqueueError;
 use flatdb_core::persisted::io::ByteReader;
 use flatdb_core::persisted::keys;
 use flatdb_core::persisted::reader::{read_blob_range, read_ref_ids};
+use flatdb_core::persisted::snapshot::PersistedSnapshot;
 use flatdb_core::persisted::sorted::table_reader;
 use flatdb_core::persisted::stack::PersistedLayer;
+use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv};
+use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::snapshot::content::SnapshotContentBuilder;
 use flatdb_core::snapshot::{Snapshot, SnapshotTier};
-use flatdb_core::types::{Account, Address, Hash256, TreePath, U256};
+use flatdb_core::stats::{COMPACT_SIZE_LABEL_BASE, Histogram};
+use flatdb_core::types::{Account, Address, Hash256, StateId, TreePath, U256};
+use log::{Level, LevelFilter};
 use proptest::prelude::*;
 use rstest::rstest;
 
@@ -508,4 +519,516 @@ proptest! {
             prop_assert!(merged.bloom.might_contain(bloom_keys::state_path_key(&path)));
         }
     }
+}
+
+/// The state at `block` of the compactor cases' chains.
+fn chain_state(block: u64) -> StateId {
+    state_id(block, 1)
+}
+
+/// `BuildBase`: the base ending at `block`, writing its own account with balance `block * 100`.
+fn build_base(tier: &TemporaryTier, block: u64) {
+    tier.convert(&snapshot(chain_state(block - 1), chain_state(block), |c| {
+        c.set_account(indexed_address(block as u32), Some(account(block * 100)))
+    }));
+}
+
+fn schedule(compact_size: u64, max_compact_size: u64, offset: u64) -> CompactionSchedule {
+    CompactionSchedule::new(compact_size, max_compact_size, offset).unwrap()
+}
+
+fn lease(tier: &TemporaryTier, block: u64, snapshot_tier: SnapshotTier) -> Option<Arc<PersistedSnapshot>> {
+    tier.repository
+        .try_lease_persisted_state(&chain_state(block), snapshot_tier)
+}
+
+fn balance_of(snapshot: &PersistedSnapshot, block: u64) -> Option<U256> {
+    snapshot
+        .try_get_account(&indexed_address(block as u32))
+        .unwrap()
+        .flatten()
+        .map(|account| account.balance)
+}
+
+#[rstest]
+fn enqueue_refuses_a_batch_after_disposal_or_process_exit(#[values(false, true)] disposed: bool) {
+    let tier = TemporaryTier::new();
+    let compactor = tier.compactor(schedule(4, 16, 0));
+    if disposed {
+        compactor.dispose();
+    } else {
+        compactor.signal_exit();
+    }
+
+    let refused = compactor.enqueue(vec![chain_state(1)], 0);
+
+    assert_eq!(
+        refused,
+        Err(if disposed {
+            EnqueueError::Disposed
+        } else {
+            EnqueueError::Cancelled
+        })
+    );
+}
+
+/// `DoCompactSnapshot_CompactsPartialWindow`: with every block a boundary, block 8's window merges whatever chain
+/// reaches back into it.
+#[rstest]
+#[case::non_power_of_two_start(&[3, 4, 5, 6, 7, 8], Some(2))]
+#[case::half(&[5, 6, 7, 8], Some(4))]
+#[case::quarter(&[7, 8], Some(6))]
+#[case::single_snapshot(&[8], None)]
+fn a_partial_window_merges_the_chain_reaching_into_it(#[case] present_blocks: &[u64], #[case] from_block: Option<u64>) {
+    let tier = TemporaryTier::new();
+    for &block in present_blocks {
+        build_base(&tier, block);
+    }
+
+    let compacted = tier
+        .compactor(schedule(1, 8, 0))
+        .do_compact_snapshot(&chain_state(8), 0)
+        .unwrap();
+
+    assert_eq!(compacted, from_block.is_some());
+    assert_eq!(
+        lease(&tier, 8, SnapshotTier::PersistedLargeCompacted).map(|large| (large.from(), large.to())),
+        from_block.map(|from_block| (chain_state(from_block), chain_state(8)))
+    );
+}
+
+/// `DoCompactSnapshot_ClampsWindowToPersistencePoint`, `LargeBoundary_DoesNotShareBloomIntoSnapshotExtendingBelowFrom`
+/// and `LargeBoundary_MergedBloomCapacity_DeduplicatesSharedSourceBloom`: block 16's window, every block a boundary,
+/// over the bases and a [0,8] merge. Clamped above 0 it skips that wider merge for the bases, and the merge keeps its
+/// own bloom; the bases [5,8] already share the [0,8] bloom, which sizes the merged bloom once.
+#[rstest]
+#[case::at_genesis(0, 0)]
+#[case::inside_the_wider_merge(4, 4)]
+#[case::at_its_end(8, 8)]
+fn the_window_is_clamped_to_the_persisted_block(#[case] persisted_block: u64, #[case] from_block: u64) {
+    let tier = TemporaryTier::new();
+    let compactor = tier.compactor(schedule(1, 16, 0));
+    for block in 1..=8 {
+        build_base(&tier, block);
+    }
+    assert!(compactor.do_compact_snapshot(&chain_state(8), 0).unwrap());
+    for block in 9..=16 {
+        build_base(&tier, block);
+    }
+    let source_blooms = (from_block + 1..=16)
+        .map(|block| {
+            lease(&tier, block, SnapshotTier::PersistedBase)
+                .unwrap()
+                .persisted_bloom()
+                .clone()
+        })
+        .collect::<Vec<_>>();
+    let (mut distinct, mut deduplicated_keys) = (Vec::<&Arc<PersistedBloom>>::new(), 0);
+    for bloom in &source_blooms {
+        if !distinct.iter().any(|seen| Arc::ptr_eq(seen, bloom)) {
+            distinct.push(bloom);
+            deduplicated_keys += bloom.filter().count() as i64;
+        }
+    }
+
+    assert!(
+        compactor
+            .do_compact_snapshot(&chain_state(16), persisted_block)
+            .unwrap()
+    );
+
+    let large = lease(&tier, 16, SnapshotTier::PersistedLargeCompacted).unwrap();
+    assert_eq!((large.from(), large.to()), (chain_state(from_block), chain_state(16)));
+    assert_eq!(
+        large.persisted_bloom().filter().data_bytes(),
+        BloomFilter::new(deduplicated_keys, BITS_PER_KEY).unwrap().data_bytes()
+    );
+    let below = lease(&tier, 8, SnapshotTier::PersistedLargeCompacted).unwrap();
+    assert_eq!(
+        Arc::ptr_eq(below.persisted_bloom(), large.persisted_bloom()),
+        persisted_block == 0,
+        "a merge reaching below the new one's start keeps its own bloom"
+    );
+    if persisted_block == 4 {
+        let naive_keys = source_blooms
+            .iter()
+            .map(|bloom| bloom.filter().count() as i64)
+            .sum::<i64>();
+        assert!(distinct.len() < source_blooms.len());
+        assert!(
+            BloomFilter::new(naive_keys, BITS_PER_KEY).unwrap().data_bytes()
+                > large.persisted_bloom().filter().data_bytes(),
+            "a bloom shared by several sources counts once"
+        );
+    }
+}
+
+/// `DoCompactSnapshot_WithNonZeroScheduleOffset_StartingBlockSpansFullAlignment`: at block 45 with offset 3 the
+/// alignment is 16, so the window is (29, 45].
+#[test]
+fn an_offset_window_spans_the_whole_alignment() {
+    let tier = TemporaryTier::new();
+    for block in 1..=45 {
+        build_base(&tier, block);
+    }
+
+    assert!(
+        tier.compactor(schedule(64, 64, 3))
+            .do_compact_snapshot(&chain_state(45), 0)
+            .unwrap()
+    );
+
+    let compacted = lease(&tier, 45, SnapshotTier::PersistedSmallCompacted).unwrap();
+    assert_eq!((compacted.from(), compacted.to()), (chain_state(29), chain_state(45)));
+}
+
+/// `DoCompactSnapshot_NoOp_WhenWindowSizeOneOrTooFewSnapshots`, `DoCompactCompactSized_NoOp_WhenNotBoundaryOrTooFewSnapshots`
+/// and `DoCompactCompactSized_AtBoundary_ProducesCompactSizedSnapshot`.
+#[test]
+fn compact_sized_merges_only_at_a_boundary_holding_two_snapshots() {
+    let tier = TemporaryTier::new();
+    let compactor = tier.compactor(schedule(4, 16, 0));
+    assert!(
+        !compactor.do_compact_snapshot(&chain_state(1), 0).unwrap(),
+        "a window of one block"
+    );
+    assert!(
+        !compactor.do_compact_snapshot(&chain_state(4), 0).unwrap(),
+        "an empty tier"
+    );
+    assert!(
+        !compactor.do_compact_compact_sized(&chain_state(4)).unwrap(),
+        "an empty tier"
+    );
+    for block in 1..=4 {
+        build_base(&tier, block);
+    }
+    assert!(
+        !compactor.do_compact_compact_sized(&chain_state(3)).unwrap(),
+        "not a boundary"
+    );
+    assert_eq!(tier.repository.persisted_snapshot_count(), 4);
+
+    assert!(compactor.do_compact_compact_sized(&chain_state(4)).unwrap());
+
+    let compact_sized = lease(&tier, 4, SnapshotTier::PersistedCompactSized).unwrap();
+    assert_eq!(
+        (compact_sized.from(), compact_sized.to()),
+        (chain_state(0), chain_state(4))
+    );
+    for block in 1..=4 {
+        assert_eq!(balance_of(&compact_sized, block), Some(U256::from_u64(block * 100)));
+    }
+    assert_eq!(tier.stats.counters.compactions.load(Ordering::Relaxed), 1);
+}
+
+/// `DoCompactSnapshot_AtBoundary_NoAddressColumn_WarmsGracefully`: warming the index of a table without accounts.
+#[test]
+fn a_boundary_merge_without_accounts_is_warmed() {
+    let tier = TemporaryTier::new();
+    for block in 1..=2u8 {
+        tier.convert(&snapshot(
+            chain_state(block as u64 - 1),
+            chain_state(block as u64),
+            |c| c.set_state_node(path(&format!("node{block}"), 4), [block; 32], &[0xC2, 0x80, block]),
+        ));
+    }
+
+    assert!(
+        tier.compactor(schedule(2, 16, 0))
+            .do_compact_snapshot(&chain_state(2), 0)
+            .unwrap()
+    );
+
+    let compacted = lease(&tier, 2, SnapshotTier::PersistedSmallCompacted).unwrap();
+    assert_eq!(
+        compacted.try_load_state_node_rlp(&path("node2", 4)).unwrap(),
+        Some(vec![0xC2, 0x80, 2])
+    );
+}
+
+/// `DoCompactSnapshot_SplitsCompactedAndLargeCompactedByWindowWidth` and `SubCompactSizeIntermediate_UsesTinyBloom`: a
+/// window narrower than `CompactSize` is a small compacted snapshot with a one-line bloom, still filled; a wider one is
+/// a large compacted snapshot; each is found only in its own tier.
+#[test]
+fn windows_split_by_width_into_small_and_large_tiers() {
+    let tier = TemporaryTier::new();
+    let compactor = tier.compactor(schedule(4, 16, 0));
+    for block in 1..=8 {
+        build_base(&tier, block);
+    }
+
+    assert!(compactor.do_compact_snapshot(&chain_state(2), 0).unwrap());
+    let small = lease(&tier, 2, SnapshotTier::PersistedSmallCompacted).unwrap();
+    assert_eq!(small.persisted_bloom().filter().data_bytes(), 64);
+    assert!(small.persisted_bloom().filter().count() > 0);
+    assert_eq!(
+        (balance_of(&small, 1), balance_of(&small, 2)),
+        (Some(U256::from_u64(100)), Some(U256::from_u64(200)))
+    );
+
+    assert!(compactor.do_compact_snapshot(&chain_state(8), 0).unwrap());
+    assert_eq!(
+        lease(&tier, 8, SnapshotTier::PersistedLargeCompacted).unwrap().to(),
+        chain_state(8)
+    );
+    assert!(lease(&tier, 2, SnapshotTier::PersistedLargeCompacted).is_none());
+    assert!(lease(&tier, 8, SnapshotTier::PersistedSmallCompacted).is_none());
+
+    // Each merge observes its size and time, labelled by its span: 2, then 8.
+    let (size, time) = (
+        Histogram::PersistedSnapshotCompactedSize as u16,
+        Histogram::PersistedSnapshotCompactTime as u16,
+    );
+    let observations = tier
+        .repository
+        .stats()
+        .drain_observations(usize::MAX)
+        .into_iter()
+        .filter(|observation| [size, time].contains(&observation.metric))
+        .collect::<Vec<_>>();
+    let (span_2, span_8) = (COMPACT_SIZE_LABEL_BASE + 1, COMPACT_SIZE_LABEL_BASE + 3);
+    assert_eq!(
+        observations
+            .iter()
+            .map(|observation| (observation.metric, observation.label))
+            .collect::<Vec<_>>(),
+        [(size, span_2), (time, span_2), (size, span_8), (time, span_8)]
+    );
+    assert!(observations[0].value > 0.0 && observations[2].value > 0.0);
+}
+
+/// `LargeBoundary_SharesBloomAcrossContainedSnapshots`: a merge at a large boundary hands its bloom to every snapshot
+/// within its window, which still read their own accounts.
+#[test]
+fn a_large_merge_shares_its_bloom_with_the_snapshots_inside() {
+    let tier = TemporaryTier::new();
+    let compactor = tier.compactor(schedule(4, 16, 0));
+    for block in 1..=8 {
+        build_base(&tier, block);
+    }
+    assert!(compactor.do_compact_snapshot(&chain_state(2), 0).unwrap());
+    assert!(compactor.do_compact_compact_sized(&chain_state(4)).unwrap());
+
+    assert!(compactor.do_compact_snapshot(&chain_state(8), 0).unwrap());
+
+    let large = lease(&tier, 8, SnapshotTier::PersistedLargeCompacted).unwrap();
+    let shared = large.persisted_bloom();
+    assert!(shared.filter().count() > 0);
+    for (block, snapshot_tier) in [
+        (2, SnapshotTier::PersistedSmallCompacted),
+        (4, SnapshotTier::PersistedCompactSized),
+    ] {
+        assert!(Arc::ptr_eq(
+            lease(&tier, block, snapshot_tier).unwrap().persisted_bloom(),
+            shared
+        ));
+    }
+    for block in 1..=8 {
+        let base = lease(&tier, block, SnapshotTier::PersistedBase).unwrap();
+        assert!(Arc::ptr_eq(base.persisted_bloom(), shared), "base {block}");
+        assert_eq!(balance_of(&base, block), Some(U256::from_u64(block * 100)));
+    }
+}
+
+/// The batches `EnqueueAsync` hands the threads: the sub-`CompactSize` windows, the CompactSized snapshot at every
+/// boundary and the wider merge at every large one, which the boundary threads make; disposal waits for all of them.
+#[test]
+fn a_batch_compacts_every_window_its_states_end() {
+    let tier = TemporaryTier::new();
+    for block in 1..=16 {
+        build_base(&tier, block);
+    }
+    let panicked = Arc::new(Mutex::new(Vec::new()));
+    let compactor = tier.compactor_recording_panics(schedule(4, 16, 0), panicked.clone());
+
+    compactor.enqueue((0..=16).map(chain_state).collect(), 0).unwrap();
+    compactor.dispose();
+
+    let ends = |snapshot_tier| {
+        (1..=16)
+            .filter_map(|block| lease(&tier, block, snapshot_tier))
+            .map(|snapshot| (snapshot.from().block_number, snapshot.to().block_number))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        ends(SnapshotTier::PersistedSmallCompacted),
+        [(0, 2), (4, 6), (8, 10), (12, 14)]
+    );
+    assert_eq!(
+        ends(SnapshotTier::PersistedCompactSized),
+        [(0, 4), (4, 8), (8, 12), (12, 16)]
+    );
+    assert_eq!(ends(SnapshotTier::PersistedLargeCompacted), [(0, 8), (0, 16)]);
+    assert_eq!(tier.stats.counters.compactions.load(Ordering::Relaxed), 10);
+    let widest = lease(&tier, 16, SnapshotTier::PersistedLargeCompacted).unwrap();
+    for block in 1..=16 {
+        assert_eq!(balance_of(&widest, block), Some(U256::from_u64(block * 100)));
+    }
+    assert!(panicked.lock().unwrap().is_empty());
+    assert_eq!(compactor.enqueue(Vec::new(), 0), Err(EnqueueError::Disposed));
+}
+
+/// How [`ScriptedCatalog`] fails the put of its faulty row.
+#[derive(Clone, Copy, Debug)]
+enum Fault {
+    Error,
+    Panic,
+}
+
+/// An in-memory catalog whose every put counts itself and waits for the gate, then fails or panics on one row.
+struct ScriptedCatalog {
+    rows: MemCatalogKv,
+    faulty_row: Option<(Vec<u8>, Fault)>,
+    gate: Arc<Mutex<()>>,
+    puts: Arc<AtomicUsize>,
+}
+
+impl CatalogKv for ScriptedCatalog {
+    fn put(&self, key: &[u8], value: &[u8]) -> KvResult<()> {
+        self.puts.fetch_add(1, Ordering::SeqCst);
+        drop(self.gate.lock());
+        match &self.faulty_row {
+            Some((faulty_key, Fault::Error)) if faulty_key == key => Err(KvError::Callback {
+                operation: "put",
+                status: 1,
+            }),
+            Some((faulty_key, Fault::Panic)) if faulty_key == key => panic!("injected catalog fault"),
+            _ => self.rows.put(key, value),
+        }
+    }
+
+    fn key_exists(&self, key: &[u8]) -> KvResult<bool> {
+        self.rows.key_exists(key)
+    }
+
+    fn remove(&self, key: &[u8]) -> KvResult<()> {
+        self.rows.remove(key)
+    }
+}
+
+/// A tier over a [`ScriptedCatalog`] faulting on `faulty_row` and waiting for `gate`, counting its puts in `puts`.
+fn scripted_tier(
+    faulty_row: Option<(Vec<u8>, Fault)>,
+    gate: &Arc<Mutex<()>>,
+    puts: &Arc<AtomicUsize>,
+) -> TemporaryTier {
+    let (gate, puts) = (gate.clone(), puts.clone());
+    TemporaryTier::with_catalog(Arc::new(FixedFinality::default()), |rows| {
+        Box::new(ScriptedCatalog {
+            rows,
+            faulty_row,
+            gate,
+            puts,
+        })
+    })
+}
+
+/// The `(from, to)` blocks of the small, CompactSized and large compacted snapshots.
+type Windows = [&'static [(u64, u64)]; 3];
+
+/// A failed or panicking compaction is logged into the sink of the thread that made the compactor, a panicking one
+/// also handed to the job panic hook under its thread's name, and the threads go on: a failed window of a bucket still
+/// leaves the CompactSized snapshots to make, a failed CompactSized merge abandons the rest of its batch, and a failed
+/// large boundary merge only itself. The fault is the catalog row of the merge from `to - depth` to `to`.
+#[rstest]
+#[case::bucket_window(
+    2, 2, "fdb-pcompact", "Error compacting persisted snapshot ",
+    [&[(4, 6)][..], &[(0, 4), (4, 8)], &[(0, 8)]]
+)]
+#[case::compact_sized(
+    4, 4, "fdb-pcompact", "Error compacting persisted snapshot batch",
+    [&[(0, 2), (4, 6)][..], &[], &[]]
+)]
+#[case::large_boundary(
+    8, 8, "fdb-pcompact-boundary-", "Error compacting boundary persisted snapshot ",
+    [&[(0, 2), (4, 6)][..], &[(0, 4), (4, 8)], &[]]
+)]
+fn a_failed_compaction_is_logged_and_the_threads_go_on(
+    #[values(Fault::Error, Fault::Panic)] fault: Fault,
+    #[case] faulty_to: u64,
+    #[case] faulty_depth: i64,
+    #[case] job: &str,
+    #[case] logged: &str,
+    #[case] windows: Windows,
+) {
+    let faulty_key = codec::catalog_key(&chain_state(faulty_to), faulty_depth).to_vec();
+    let tier = scripted_tier(Some((faulty_key, fault)), &Arc::default(), &Arc::default());
+    for block in 1..=8 {
+        build_base(&tier, block);
+    }
+    let panicked = Arc::new(Mutex::new(Vec::new()));
+    let sink = LogSink::new(LevelFilter::Error);
+    let compactor = sink.scope(|| tier.compactor_recording_panics(schedule(4, 16, 0), panicked.clone()));
+
+    compactor.enqueue((0..=8).map(chain_state).collect(), 0).unwrap();
+    compactor.dispose();
+
+    let ends = |snapshot_tier| {
+        (1..=8)
+            .filter_map(|block| lease(&tier, block, snapshot_tier))
+            .map(|snapshot| (snapshot.from().block_number, snapshot.to().block_number))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        [
+            ends(SnapshotTier::PersistedSmallCompacted),
+            ends(SnapshotTier::PersistedCompactSized),
+            ends(SnapshotTier::PersistedLargeCompacted)
+        ],
+        windows.map(<[_]>::to_vec)
+    );
+    let records = sink.ring().drain(usize::MAX);
+    assert_eq!(records.len(), 1, "{records:?}");
+    assert_eq!(records[0].level, Level::Error);
+    assert!(records[0].message.starts_with(logged), "{}", records[0].message);
+    let panicked_jobs = panicked
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|name| {
+            name.trim_end_matches(|character: char| character.is_ascii_digit())
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        panicked_jobs,
+        match fault {
+            Fault::Error => Vec::<String>::new(),
+            Fault::Panic => vec![job.to_owned()],
+        }
+    );
+}
+
+/// Process exit while the batch thread compacts: an enqueue waiting on the full queue gives up, the compaction under way
+/// completes and the queued batches are dropped.
+#[test]
+fn process_exit_drops_the_queued_batches() {
+    let (gate, puts) = (Arc::new(Mutex::new(())), Arc::new(AtomicUsize::new(0)));
+    let tier = scripted_tier(None, &gate, &puts);
+    for block in 1..=8 {
+        build_base(&tier, block);
+    }
+    let compactor = tier.compactor(schedule(4, 16, 0));
+
+    let closed = gate.lock().unwrap();
+    let puts_before = puts.load(Ordering::SeqCst);
+    compactor.enqueue(vec![chain_state(2)], 0).unwrap();
+    while puts.load(Ordering::SeqCst) == puts_before {
+        thread::yield_now();
+    }
+    for _ in 0..16 {
+        compactor.enqueue(vec![chain_state(6)], 0).unwrap();
+    }
+    let refused = thread::scope(|scope| {
+        let waiting = scope.spawn(|| compactor.enqueue(vec![chain_state(6)], 0));
+        compactor.signal_exit();
+        waiting.join().unwrap()
+    });
+    drop(closed);
+    compactor.dispose();
+
+    assert_eq!(refused, Err(EnqueueError::Cancelled));
+    assert!(lease(&tier, 2, SnapshotTier::PersistedSmallCompacted).is_some());
+    assert!(lease(&tier, 6, SnapshotTier::PersistedSmallCompacted).is_none());
 }

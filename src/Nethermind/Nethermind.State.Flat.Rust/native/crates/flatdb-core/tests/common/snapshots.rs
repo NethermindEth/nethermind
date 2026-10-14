@@ -154,3 +154,58 @@ impl StateHeaderProvider for FixedFinality {
         self.roots.get(&block_number).copied()
     }
 }
+
+/// Finality a test moves, as the C# persistence manager tests' `TestFinalizedStateProvider`: a finalized block, roots
+/// set per height and served only up to a lookup ceiling, and the lookups counted per height.
+#[derive(Default)]
+pub struct SettableFinality {
+    state: std::sync::Mutex<SettableFinalityState>,
+}
+
+#[derive(Default)]
+struct SettableFinalityState {
+    finalized_block_number: u64,
+    roots: HashMap<u64, Hash256>,
+    root_lookup_ceiling: Option<u64>,
+    lookups: HashMap<u64, usize>,
+}
+
+impl SettableFinality {
+    pub fn set_finalized_block_number(&self, block_number: u64) {
+        self.state.lock().unwrap().finalized_block_number = block_number;
+    }
+
+    pub fn set_finalized_state_root_at(&self, block_number: u64, root: Hash256) {
+        self.state.lock().unwrap().roots.insert(block_number, root);
+    }
+
+    /// Roots above `ceiling` are not served; `None` serves every root.
+    pub fn set_root_lookup_ceiling(&self, ceiling: Option<u64>) {
+        self.state.lock().unwrap().root_lookup_ceiling = ceiling;
+    }
+
+    pub fn lookup_count(&self, block_number: u64) -> usize {
+        self.state
+            .lock()
+            .unwrap()
+            .lookups
+            .get(&block_number)
+            .copied()
+            .unwrap_or(0)
+    }
+}
+
+impl StateHeaderProvider for SettableFinality {
+    fn finalized_block_number(&self) -> u64 {
+        self.state.lock().unwrap().finalized_block_number
+    }
+
+    fn finalized_state_root(&self, block_number: u64) -> Option<Hash256> {
+        let mut state = self.state.lock().unwrap();
+        *state.lookups.entry(block_number).or_default() += 1;
+        if state.root_lookup_ceiling.is_some_and(|ceiling| block_number > ceiling) {
+            return None;
+        }
+        state.roots.get(&block_number).copied()
+    }
+}

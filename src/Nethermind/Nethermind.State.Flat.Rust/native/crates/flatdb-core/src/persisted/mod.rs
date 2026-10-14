@@ -8,7 +8,7 @@
 //!
 //! [`snapshot`] is one persisted snapshot over its arena reservation and blob files, [`bucket`] the snapshots of one
 //! tier, and [`loader`] converts in-memory snapshots into the tier ([`validate`] checking them on request) and opens the
-//! tier again at startup.
+//! tier again at startup. [`compactor`] merges the snapshots of the tier into wider ones on threads of its own.
 //!
 //! The readers and writers work over plain byte slices and sinks ([`io`]), so the same code serves memory-mapped arena
 //! files and the in-memory buffers of the tests. [`storage`] holds the files and the catalog, [`sys`] their system
@@ -18,11 +18,12 @@ pub mod bloom_keys;
 pub mod bucket;
 pub mod builder;
 pub mod codec;
+pub mod compactor;
 pub mod io;
 pub mod keys;
 pub mod list;
 pub mod loader;
-mod lock_rank;
+pub(crate) mod lock_rank;
 pub mod merger;
 pub mod page_layout;
 pub mod parallel;

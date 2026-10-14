@@ -10,9 +10,10 @@
 //!
 //! Locking mirrors C#: each in-memory tier is one map behind its own lock (a `ConcurrentDictionary` there), the ordered
 //! state set has its own reader-writer lock, the last committed state its own lock, and the finality cache its own,
-//! which [`SnapshotRepository::remove_unreachable_from`] holds for its whole pass; each bucket has its own lock. No map
-//! lock is held while another lock is taken, except that pruning the ordered set reads the base map under the set's
-//! write lock, as C# does.
+//! which [`SnapshotRepository::remove_unreachable_from`] and [`SnapshotRepository::remove_finalized_persisted_forks`]
+//! hold for their whole pass; each bucket has its own lock, which may nest inside the finality cache's but never the
+//! reverse. No map lock is held while another lock is taken, except that pruning the ordered set reads the base map
+//! under the set's write lock, as C# does.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
@@ -20,11 +21,12 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use hashbrown::hash_map::Entry;
 use hashbrown::{HashMap, HashSet};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{Mutex, MutexGuard, RwLock};
 
 use crate::persisted::TierResult;
 use crate::persisted::bloom_keys::PersistedBloom;
 use crate::persisted::bucket::PersistedSnapshotBucket;
+use crate::persisted::lock_rank::{self, LockRank, Ranked};
 use crate::persisted::snapshot::PersistedSnapshot;
 use crate::persisted::storage::catalog::SnapshotCatalog;
 use crate::snapshot::{Snapshot, SnapshotTier};
@@ -112,7 +114,28 @@ impl PersistedBuckets {
     }
 }
 
-/// Port of `SnapshotRepository`, in-memory tier.
+/// The finality-pruning caches, valid across passes: finalized roots are immutable per height, and the states reachable
+/// from a committed head stay reachable while later heads extend it. Reachable states form a single chain, so one root
+/// per height suffices and any other root at that height is unreachable.
+#[derive(Default)]
+struct FinalityCache {
+    /// `_finalizedRoots`.
+    finalized_roots: BTreeMap<u64, Hash256>,
+    /// `_reachableFromHead`.
+    reachable_from_head: BTreeMap<u64, Hash256>,
+    /// `_reachabilityHead`: the head `reachable_from_head` was verified against.
+    reachability_head: Option<StateId>,
+}
+
+impl FinalityCache {
+    /// `PruneFinalityCachesBefore`.
+    fn prune_before(&mut self, block_number: u64) {
+        self.finalized_roots = self.finalized_roots.split_off(&block_number);
+        self.reachable_from_head = self.reachable_from_head.split_off(&block_number);
+    }
+}
+
+/// Port of `SnapshotRepository`.
 pub struct SnapshotRepository {
     finalized_state_provider: Arc<dyn StateHeaderProvider>,
     base: RwLock<HashMap<StateId, Arc<Snapshot>>>,
@@ -123,9 +146,8 @@ pub struct SnapshotRepository {
     in_memory_bytes: AtomicI64,
     sorted_snapshot_state_ids: RwLock<BTreeSet<StateId>>,
     last_committed_state_id: Mutex<Option<StateId>>,
-    /// `_finalityCacheLock` and the finalized roots it guards. Finalized roots are immutable per height, so a root
-    /// found once is kept until its height is pruned.
-    finality_cache: Mutex<BTreeMap<u64, Hash256>>,
+    /// `_finalityCacheLock` and the caches it guards.
+    finality_cache: Mutex<FinalityCache>,
     stats: Arc<FlatStats>,
     /// `None` with long finality off.
     persisted: Option<PersistedBuckets>,
@@ -291,9 +313,9 @@ impl SnapshotRepository {
         FlatStats::add(&counters.total_snapshot_memory, bytes);
     }
 
-    /// Whether a base snapshot ends at `state_id`.
+    /// Whether a base snapshot, in memory or persisted, ends at `state_id`.
     pub fn has_state(&self, state_id: &StateId) -> bool {
-        self.base.read().contains_key(state_id)
+        self.base.read().contains_key(state_id) || self.has_base_persisted_snapshot(state_id)
     }
 
     /// The known states at `block_number`, a fork having several.
@@ -329,43 +351,98 @@ impl SnapshotRepository {
     }
 
     /// Removes every snapshot a persist to `block_number` supersedes: the known states up to and including it, from
-    /// both in-memory tiers. Also prunes the finalized roots cached below it.
-    pub fn remove_states_until(&self, block_number: u64) {
+    /// both in-memory tiers, and the persisted snapshots ending below it, with their catalog rows; the persisted base at
+    /// the block stays a read and compaction source until the state moves past it. Also prunes the finality caches
+    /// below the block.
+    pub fn remove_states_until(&self, block_number: u64) -> TierResult<()> {
         for state_id in self.get_states_up_to_block(block_number) {
             // A To can live in both in-memory tiers.
             self.remove_and_release_in_memory_known_state(&state_id, SnapshotTier::InMemoryCompacted);
             self.remove_and_release_in_memory_known_state(&state_id, SnapshotTier::InMemoryBase);
         }
 
-        self.prune_finality_cache_before(block_number);
+        self.remove_persisted_states_until(block_number)
     }
 
-    /// The in-memory part of `RemoveFinalizedPersistedForks`: prunes the finalized roots cached below the persisted
-    /// block. Removing finalized forks only concerns the persisted tier.
-    pub fn remove_finalized_persisted_forks(&self, current_persisted_state: &StateId) {
-        let first_block = if *current_persisted_state == StateId::PRE_GENESIS {
+    /// `RemoveFinalizedPersistedForks`: removes the persisted states from the persisted block up to the finalized block
+    /// whose root is not the canonical one there, and which the committed head does not reach.
+    ///
+    /// Nothing is removed while the committed head is unknown or below the finalized block, or once the local chain
+    /// disagrees with finality: a canonical root at the finalized block the head does not reach, a persisted state the
+    /// head does not reach, or a head moved during the pass. A canonical root not yet known skips its height; a local
+    /// ancestor whose root differs from a lagging canonical one is kept. Also prunes the finality caches below the
+    /// persisted block.
+    pub fn remove_finalized_persisted_forks(&self, current_persisted_state: &StateId) -> TierResult<()> {
+        let persisted = *current_persisted_state;
+        let first_block = if persisted == StateId::PRE_GENESIS {
             0
         } else {
-            current_persisted_state.block_number
+            persisted.block_number
         };
-        self.prune_finality_cache_before(first_block);
-    }
-
-    /// Removes the snapshots of forks that persisting `canonical_state_id` orphans: the known states above its block
-    /// that do not descend from it. Must run before the persist commits.
-    pub fn remove_sibling_and_descendents(&self, canonical_state_id: &StateId) {
-        let canonical_block = canonical_state_id.block_number;
-        // With a single state at the block, everything above it descends from it.
-        if !self.has_fork_at(canonical_block) {
-            return;
+        // Held for the whole pass, as C# does.
+        let mut cache = self.lock_finality_cache();
+        cache.prune_before(first_block);
+        // Without a persisted tier there is nothing to remove, so finality is not asked.
+        if self.persisted.is_none() {
+            return Ok(());
         }
 
+        let finalized_block = self.finalized_state_provider.finalized_block_number();
+        let Some(head) = self
+            .get_last_committed_state_id()
+            .filter(|committed| *committed != StateId::PRE_GENESIS && finalized_block <= committed.block_number)
+        else {
+            return Ok(());
+        };
+        self.rebase_reachability_cache(&mut cache, &head);
+
+        let mut pass = FinalizedForkPass {
+            repository: self,
+            cache: &mut cache,
+            head,
+            persisted,
+            finalized_block,
+            unavailable_heights: HashSet::new(),
+            ancestry_verified: false,
+            total_pruned: 0,
+        };
+        // Batched, so a long-finality gap is never collected in one range.
+        let mut batch_start = first_block;
+        while batch_start <= finalized_block {
+            let batch_end = batch_start.saturating_add(PRUNE_BATCH_SIZE - 1).min(finalized_block);
+            if !pass.prune_batch(&self.get_persisted_states_in_range(batch_start, batch_end))? {
+                break;
+            }
+            let Some(next) = batch_end.checked_add(1) else { break };
+            batch_start = next;
+        }
+
+        if pass.total_pruned > 0 {
+            log::info!(
+                "Pruned {} finalized non-canonical persisted state(s) at or below block {finalized_block}.",
+                pass.total_pruned
+            );
+        }
+        Ok(())
+    }
+
+    /// Removes the snapshots of forks that persisting `canonical_state_id` orphans: the known states above its block,
+    /// in memory or persisted, that do not descend from it. Must run before the persist commits.
+    pub fn remove_sibling_and_descendents(&self, canonical_state_id: &StateId) -> TierResult<()> {
+        let canonical_block = canonical_state_id.block_number;
+        // With a single state at the block in either tier, everything above it descends from it. A sibling may have
+        // been converted into the persisted tier before the reorg orphaned it.
+        if !self.has_fork_at(canonical_block) && !self.has_persisted_fork_at(canonical_state_id) {
+            return Ok(());
+        }
+
+        // Bounded by the highest state of either tier: a persisted orphan can sit above the in-memory tip.
         let Some(last_snapshot_id) = self.get_last_snapshot_id() else {
-            return;
+            return Ok(());
         };
         let max_block = last_snapshot_id.block_number;
         if height(&last_snapshot_id) <= height(canonical_state_id) {
-            return;
+            return Ok(());
         }
 
         let mut batch_start = canonical_block.wrapping_add(1);
@@ -381,6 +458,14 @@ impl SnapshotRepository {
                 }
             }
 
+            for state_id in self.get_persisted_states_in_range(batch_start, batch_end) {
+                if !self.can_reach_state(&state_id, canonical_state_id)
+                    && self.remove_persisted_state_exact(&state_id)?
+                {
+                    total_pruned += 1;
+                }
+            }
+
             let Some(next) = batch_end.checked_add(1) else { break };
             batch_start = next;
         }
@@ -390,21 +475,22 @@ impl SnapshotRepository {
                 "Pruned {total_pruned} orphaned non-canonical snapshot(s) above persisted state {canonical_state_id}."
             );
         }
+        Ok(())
     }
 
-    /// Removes every snapshot whose `to` is not on the `from`-edge ancestry of `head` and records `head` as the last
-    /// committed state. Does nothing when `head` is neither `current_persisted_state` nor a state a base snapshot
-    /// holds, or when `current_persisted_state` is not on that ancestry.
+    /// Removes every snapshot, in memory or persisted, whose `to` is not on the `from`-edge ancestry of `head` and
+    /// records `head` as the last committed state. Does nothing when `head` is neither `current_persisted_state` nor a
+    /// state a base snapshot holds, or when `current_persisted_state` is not on that ancestry.
     ///
-    /// Returns the number of states removed from the in-memory tier.
-    pub fn remove_unreachable_from(&self, head: &StateId, current_persisted_state: &StateId) -> usize {
+    /// Returns the number of states removed, once per tier holding the state.
+    pub fn remove_unreachable_from(&self, head: &StateId, current_persisted_state: &StateId) -> TierResult<usize> {
         if head != current_persisted_state && !self.has_state(head) {
             log::warn!("Cannot reset head to {head}: no snapshot holds its state.");
-            return 0;
+            return Ok(0);
         }
 
         // Held for the whole pass, as C# does.
-        let _pass = self.finality_cache.lock();
+        let mut cache = self.lock_finality_cache();
 
         // Collected before the walk so a snapshot added concurrently is never removed.
         let mut candidates: Vec<StateId> = self.base.read().keys().copied().collect();
@@ -417,7 +503,7 @@ impl SnapshotRepository {
             log::warn!(
                 "Cannot reset head to {head}: it does not descend from persisted state {current_persisted_state}."
             );
-            return 0;
+            return Ok(0);
         }
 
         let mut total_pruned = 0usize;
@@ -433,6 +519,22 @@ impl SnapshotRepository {
             }
         }
 
+        // No candidates collected up front: a persisted snapshot registered concurrently ends at a state an existing base
+        // already holds, so the reachable set decides it the same way. Batched, so a long-finality tier is never
+        // collected in one range.
+        let max_block = self.get_last_snapshot_id().map_or(0, |state_id| state_id.block_number);
+        let mut batch_start = 0;
+        while batch_start <= max_block {
+            let batch_end = batch_start.saturating_add(PRUNE_BATCH_SIZE - 1).min(max_block);
+            for state_id in self.get_persisted_states_in_range(batch_start, batch_end) {
+                if !reachable.contains(&state_id) && self.remove_persisted_state_exact(&state_id)? {
+                    total_pruned += 1;
+                }
+            }
+            let Some(next) = batch_end.checked_add(1) else { break };
+            batch_start = next;
+        }
+
         // Only ids whose snapshot is gone: one registered for a snapshot added during this pass must stay.
         {
             let mut sorted = self.sorted_snapshot_state_ids.write();
@@ -441,11 +543,13 @@ impl SnapshotRepository {
         }
 
         self.set_last_committed_state_id(*head);
+        cache.reachable_from_head.clear();
+        cache.reachability_head = None;
 
         if total_pruned > 0 {
             log::info!("Pruned {total_pruned} snapshot(s) unreachable from head {head}.");
         }
-        total_pruned
+        Ok(total_pruned)
     }
 
     /// Assembles the chain from `base_block` back to `target_state`, the persisted state a reader sees: the
@@ -504,15 +608,15 @@ impl SnapshotRepository {
         if persisted.len() < 2 { Vec::new() } else { persisted }
     }
 
-    /// The next snapshot to persist: the candidate spanning at most `compact_size` blocks whose `from` is
-    /// `current_persisted_state`, found walking back from `seed`, and that does not conflict with a known finalized
-    /// root. `None` when no such snapshot is reachable or when the candidate is persisted.
+    /// The next snapshot to persist, in memory or persisted: the candidate spanning at most `compact_size` blocks whose
+    /// `from` is `current_persisted_state`, found walking back from `seed`, and that does not conflict with a known
+    /// finalized root. `None` when no such snapshot is reachable.
     pub fn find_snapshot_to_persist(
         &self,
         seed: &StateId,
         current_persisted_state: &StateId,
         compact_size: u64,
-    ) -> Option<Arc<Snapshot>> {
+    ) -> Option<Edge> {
         // Height restores the sentinel order: a PreGenesis persisted state is below every seed.
         if height(seed) <= height(current_persisted_state) {
             return None;
@@ -528,12 +632,12 @@ impl SnapshotRepository {
             repository: self,
             unavailable_roots: HashSet::new(),
         };
-        // The candidate is the chain's terminus, the oldest snapshot.
+        // The candidate is the chain's terminus, the oldest snapshot, persisted when the chain reaches the tier.
         let assembled = self.walk_and_assemble(seed, estimated_size, &mut policy);
-        if !assembled.persisted.is_empty() {
-            return None;
+        match assembled.persisted.into_iter().next() {
+            Some(persisted) => Some(Edge::Persisted(persisted)),
+            None => assembled.in_memory.into_iter().next().map(Edge::InMemory),
         }
-        assembled.in_memory.into_iter().next()
     }
 
     /// Persisted snapshots held, across the four buckets.
@@ -572,6 +676,13 @@ impl SnapshotRepository {
     /// On an in-memory tier.
     pub fn try_lease_persisted_state(&self, to: &StateId, tier: SnapshotTier) -> Option<Arc<PersistedSnapshot>> {
         self.persisted.as_ref()?.bucket_for(tier).try_lease(to)
+    }
+
+    /// `HasBasePersistedSnapshot`.
+    pub fn has_base_persisted_snapshot(&self, to: &StateId) -> bool {
+        self.persisted
+            .as_ref()
+            .is_some_and(|buckets| buckets.base.contains_key(to))
     }
 
     /// `TryLeaseBasePersistedSnapshot`.
@@ -654,12 +765,12 @@ impl SnapshotRepository {
     }
 
     /// `RemovePersistedStatesUntil`: removes the persisted snapshots ending below `block_number`, with their catalog
-    /// rows, and the finalized roots cached below it.
+    /// rows, and the finality caches below it.
     pub fn remove_persisted_states_until(&self, block_number: u64) -> TierResult<()> {
         for bucket in self.persisted_buckets() {
             bucket.prune_before(block_number)?;
         }
-        self.prune_finality_cache_before(block_number);
+        self.lock_finality_cache().prune_before(block_number);
         Ok(())
     }
 
@@ -725,9 +836,36 @@ impl SnapshotRepository {
             .is_some()
     }
 
-    fn prune_finality_cache_before(&self, block_number: u64) {
-        let mut finalized_roots = self.finality_cache.lock();
-        *finalized_roots = finalized_roots.split_off(&block_number);
+    /// `HasPersistedForkAt`: whether the persisted tier holds another state at `canonical_state_id`'s block, a fork
+    /// the canonical persist orphans.
+    fn has_persisted_fork_at(&self, canonical_state_id: &StateId) -> bool {
+        let block_number = canonical_state_id.block_number;
+        self.get_persisted_states_in_range(block_number, block_number)
+            .iter()
+            .any(|state_id| state_id != canonical_state_id)
+    }
+
+    /// `GetPersistedStatesInRange`: the `to` of every persisted snapshot ending in the block range, once each, the
+    /// bucket order of C#'s insertion-ordered set: the base bucket's states in order, then each other bucket's new ones.
+    fn get_persisted_states_in_range(&self, block_start_inclusive: u64, block_end_inclusive: u64) -> Vec<StateId> {
+        let mut seen = HashSet::new();
+        let mut states = Vec::new();
+        if block_end_inclusive < block_start_inclusive {
+            return states;
+        }
+        let range = StateId::new(block_start_inclusive, MIN_ROOT)..=StateId::new(block_end_inclusive, MAX_ROOT);
+        for bucket in self.persisted_buckets() {
+            for state_id in bucket.collect_range(range.clone()) {
+                if seen.insert(state_id) {
+                    states.push(state_id);
+                }
+            }
+        }
+        states
+    }
+
+    fn lock_finality_cache(&self) -> Ranked<MutexGuard<'_, FinalityCache>> {
+        lock_rank::lock(LockRank::FinalityCache, || self.finality_cache.lock())
     }
 
     /// Port of `GetFinalizedRoot`: the canonical root at `height`, cached once known; heights found unavailable in this
@@ -736,21 +874,36 @@ impl SnapshotRepository {
         if unavailable_roots.contains(&height) {
             return None;
         }
-
-        let mut finalized_roots = self.finality_cache.lock();
-        if let Some(root) = finalized_roots.get(&height) {
-            return Some(*root);
-        }
-        let root = self.finalized_state_provider.finalized_state_root(height);
-        match root {
-            Some(root) => {
-                finalized_roots.insert(height, root);
-            }
-            None => {
-                unavailable_roots.insert(height);
-            }
+        let root = self.get_finalized_root_locked(&mut self.lock_finality_cache(), height);
+        if root.is_none() {
+            unavailable_roots.insert(height);
         }
         root
+    }
+
+    /// `GetFinalizedRootLocked`.
+    fn get_finalized_root_locked(&self, cache: &mut FinalityCache, height: u64) -> Option<Hash256> {
+        if let Some(root) = cache.finalized_roots.get(&height) {
+            return Some(*root);
+        }
+        let root = self.finalized_state_provider.finalized_state_root(height)?;
+        cache.finalized_roots.insert(height, root);
+        Some(root)
+    }
+
+    /// `RebaseReachabilityCache`: keeps the verified ancestry while `head` extends the head it was verified against; a
+    /// reorg discards it.
+    fn rebase_reachability_cache(&self, cache: &mut FinalityCache, head: &StateId) {
+        if cache.reachability_head == Some(*head) {
+            return;
+        }
+        if cache
+            .reachability_head
+            .is_none_or(|verified_head| !self.can_reach_state(head, &verified_head))
+        {
+            cache.reachable_from_head.clear();
+        }
+        cache.reachability_head = Some(*head);
     }
 
     /// Every `to` on the `from`-edge ancestry of `head`, following every tier at every node.
@@ -890,6 +1043,90 @@ impl SnapshotRepository {
             walk = *parent_index;
         }
         assembled
+    }
+}
+
+/// One `RemoveFinalizedPersistedForks` pass, under the finality cache's lock: its local functions and captured state.
+struct FinalizedForkPass<'a> {
+    repository: &'a SnapshotRepository,
+    cache: &'a mut FinalityCache,
+    head: StateId,
+    persisted: StateId,
+    finalized_block: u64,
+    /// Heights whose canonical root was not available in this pass.
+    unavailable_heights: HashSet<u64>,
+    ancestry_verified: bool,
+    total_pruned: usize,
+}
+
+impl FinalizedForkPass<'_> {
+    /// `PruneBatch`: `false` aborts the pass.
+    fn prune_batch(&mut self, states: &[StateId]) -> TierResult<bool> {
+        for state in states {
+            if *state == self.persisted {
+                continue;
+            }
+            let Some(finalized_root) = self.get_root(state.block_number) else {
+                continue;
+            };
+            if state.state_root == finalized_root {
+                continue;
+            }
+
+            if !self.ancestry_verified {
+                // Canonical marking can lag local processing; an unavailable tip root must not gate known lower roots.
+                if let Some(anchor_root) = self.get_root(self.finalized_block)
+                    && !self.head_reaches(&StateId::new(self.finalized_block, anchor_root))
+                {
+                    self.cache.finalized_roots.remove(&self.finalized_block);
+                    return Ok(false);
+                }
+                let persisted = self.persisted;
+                if persisted != StateId::PRE_GENESIS && !self.head_reaches(&persisted) {
+                    return Ok(false);
+                }
+                self.ancestry_verified = true;
+            }
+            if self.repository.get_last_committed_state_id() != Some(self.head) {
+                return Ok(false);
+            }
+
+            if self.head_reaches(state) {
+                self.cache.finalized_roots.remove(&state.block_number);
+                continue;
+            }
+
+            if self.repository.remove_persisted_state_exact(state)? {
+                self.total_pruned += 1;
+            }
+        }
+        Ok(true)
+    }
+
+    /// `HeadReaches`: whether the committed head reaches `target`, cached per height.
+    fn head_reaches(&mut self, target: &StateId) -> bool {
+        if let Some(reachable_root) = self.cache.reachable_from_head.get(&target.block_number) {
+            return *reachable_root == target.state_root;
+        }
+        if !self.repository.can_reach_state(&self.head, target) {
+            return false;
+        }
+        self.cache
+            .reachable_from_head
+            .insert(target.block_number, target.state_root);
+        true
+    }
+
+    /// `GetRoot`: the canonical root at `height`, not asked again in this pass once unavailable.
+    fn get_root(&mut self, height: u64) -> Option<Hash256> {
+        if self.unavailable_heights.contains(&height) {
+            return None;
+        }
+        let root = self.repository.get_finalized_root_locked(self.cache, height);
+        if root.is_none() {
+            self.unavailable_heights.insert(height);
+        }
+        root
     }
 }
 

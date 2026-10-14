@@ -1,9 +1,12 @@
-//! The persisted tier's snapshots, buckets and loader: ports of `PersistedSnapshotRepositoryTests` (the cases without a
-//! repository walk over persisted edges), `PersistedSnapshotLoaderTests`, the validation of a converted snapshot, and
-//! the crash cases of the loader.
+//! The persisted tier's snapshots, buckets, loader and the repository over them: ports of
+//! `PersistedSnapshotRepositoryTests`, `PersistedSnapshotLoaderTests`, the repository cases of
+//! `LongFinalityIntegrationTests` and `PersistenceManagerPersistedTests`, the repository half of the finalized-fork
+//! cases of `PersistenceManagerTests` (one `AddToPersistence` with nothing to persist is one
+//! `RemoveFinalizedPersistedForks` at the persisted state), the validation of a converted snapshot, and the crash cases
+//! of the loader.
 //!
 //! Not ported: `TryAcquire_WhenObservedSnapshotIsRetired_UsesCurrentEntry`, as a bucket hands out `Arc` clones, which
-//! cannot be observed retired. Compactions are the test fixture's port of `CompactRange`.
+//! cannot be observed retired.
 
 mod common;
 
@@ -11,8 +14,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use common::persisted::StorageTier;
+use common::persisted::{StorageTier, TemporaryTier};
+use common::snapshots::{FixedFinality, SettableFinality, state_id};
 use common::{hex20, hex32};
+use flatdb_core::keccak::keccak256;
 use flatdb_core::kv::{KvError, KvResult};
 use flatdb_core::persisted::bloom_keys;
 use flatdb_core::persisted::list::PersistedSnapshotList;
@@ -21,6 +26,7 @@ use flatdb_core::persisted::storage::arena_manager::ArenaConfig;
 use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv};
 use flatdb_core::persisted::validate::validate_persisted_snapshot;
 use flatdb_core::persisted::{PersistedTierConfig, TierError};
+use flatdb_core::repository::Edge;
 use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::snapshot::content::SnapshotContentBuilder;
 use flatdb_core::snapshot::{Snapshot, SnapshotTier};
@@ -102,6 +108,7 @@ impl Fixture {
             self.arena,
             self.config,
             self.stats.clone(),
+            Arc::new(FixedFinality::default()),
         )
         .unwrap()
     }
@@ -378,9 +385,11 @@ fn a_reload_shares_the_widest_snapshots_blooms(#[case] count: u64, #[case] compa
     for block in 1..=count {
         tier.convert(&account_snapshot(block - 1, block, chain_address(block), block));
     }
+    let compactor = tier.compactor(schedule);
     for &boundary in &boundaries {
-        assert!(tier.compact_sized(&schedule, &state(boundary)));
+        assert!(compactor.do_compact_compact_sized(&state(boundary)).unwrap());
     }
+    drop(compactor);
     let expected_count = (count + boundaries.len() as u64) as i64;
     assert_eq!(tier.repository.persisted_snapshot_count(), expected_count);
     tier.shut_down();
@@ -423,7 +432,7 @@ fn a_reload_shares_the_widest_snapshots_blooms(#[case] count: u64, #[case] compa
 }
 
 /// The walks cross from memory into the persisted tier and never back: a read chain lists the persisted part below
-/// the in-memory one, the newest state counts persisted tips, and a persisted persist candidate is not returned.
+/// the in-memory one, the newest state counts persisted tips, and a persist candidate may be persisted.
 #[test]
 fn walks_cross_from_memory_into_the_persisted_tier() {
     let fixture = Fixture::new(64 * 1024, 14.0);
@@ -446,17 +455,14 @@ fn walks_cross_from_memory_into_the_persisted_tier() {
     );
     assert_eq!(assembled.in_memory.len(), 1);
     assert_eq!(assembled.snapshot_count(), 3);
-    assert!(
-        tier.repository
-            .find_snapshot_to_persist(&state(3), &state(0), 4)
-            .is_none()
-    );
-    assert_eq!(
-        tier.repository
-            .find_snapshot_to_persist(&state(3), &state(2), 4)
-            .map(|snapshot| snapshot.to()),
-        Some(state(3))
-    );
+    assert!(matches!(
+        tier.repository.find_snapshot_to_persist(&state(3), &state(0), 4),
+        Some(Edge::Persisted(snapshot)) if snapshot.to() == state(1)
+    ));
+    assert!(matches!(
+        tier.repository.find_snapshot_to_persist(&state(3), &state(2), 4),
+        Some(Edge::InMemory(snapshot)) if snapshot.to() == state(3)
+    ));
 
     tier.convert(&account_snapshot(3, 5, chain_address(5), 5));
     assert_eq!(tier.repository.get_last_snapshot_id(), Some(state(5)));
@@ -708,4 +714,406 @@ fn validation_dumps_a_snapshot_that_does_not_read_back(
         ["accounts", "selfDestructed", "stateNodes", "storageNodes", "storages"]
     );
     assert!(validate_persisted_snapshot(&source, &converted, Path::new("/nonexistent")).is_err());
+}
+
+/// `Repository_Restart_PreservesAllData`: a restart keeps every snapshot with its trie nodes and only its own accounts,
+/// whether each table fills an arena file of its own or the tables share one, holes punched on reclaim.
+#[rstest]
+fn a_restart_keeps_every_snapshot_and_its_trie_nodes(#[values(4096, 1024 * 1024)] arena_file_size_bytes: i64) {
+    let mut fixture = Fixture::new(arena_file_size_bytes, 14.0);
+    fixture.arena.punch_hole_on_reclaim = true;
+    // Ten nodes of 503 bytes per snapshot take the shared blob file past its first page, which a stray reset zeroes.
+    let node_rlp = |fill: u8| [&common::hex("0xb901f4")[..], &[fill; 500]].concat();
+    let paths = |block: u64| (1..=10u8).map(move |index| TreePath::new([block as u8 * 16 + index; 32], 4));
+    let chain = [(1, 0xAA, ADDRESS_A, ADDRESS_B), (2, 0xBB, ADDRESS_B, ADDRESS_A)];
+
+    let tier = fixture.open();
+    for (block, fill, address, _) in chain {
+        tier.convert(&snapshot(block - 1, block, |builder| {
+            for path in paths(block) {
+                builder.set_state_node(path, [fill; 32], &node_rlp(fill));
+            }
+            builder.set_account(hex20(address), Some(Account::new(1, U256::from_u64(block * 100))));
+        }));
+    }
+    tier.shut_down();
+
+    assert!(
+        fixture
+            .files("arena")
+            .iter()
+            .any(|name| name.starts_with("small_arena_"))
+    );
+    let blob_files = fixture.files("blob");
+    assert!(!blob_files.is_empty());
+    for name in &blob_files {
+        let length = fixture.file_length("blob", name);
+        assert!(length > 0 && length <= 1024 * 1024, "{name}: {length} bytes");
+    }
+
+    let tier = fixture.open();
+    assert_eq!(tier.repository.persisted_snapshot_count(), 2);
+    for (block, fill, address, other_address) in chain {
+        let reloaded = tier
+            .repository
+            .try_lease_base_persisted_snapshot(&state(block))
+            .unwrap();
+        for path in paths(block) {
+            assert_eq!(reloaded.try_load_state_node_rlp(&path).unwrap(), Some(node_rlp(fill)));
+        }
+        assert_eq!(
+            balance(&tier, block, SnapshotTier::PersistedBase, address),
+            Some(U256::from_u64(block * 100))
+        );
+        assert_eq!(reloaded.try_get_account(&hex20(other_address)).unwrap(), None);
+    }
+}
+
+/// `Prune_AfterRestart_Works` and `EmptySnapshot_PersistsAndLoads`.
+#[test]
+fn pruning_after_a_restart_lasts_into_the_next_session() {
+    let fixture = Fixture::new(4096, 14.0);
+    let tier = fixture.open();
+    let empty = tier.convert(&snapshot(5, 6, |_| {}));
+    assert_eq!(empty.try_get_account(&hex20(ADDRESS_A)).unwrap(), None);
+    assert_eq!(
+        empty.try_load_state_node_rlp(&TreePath::new([0x77; 32], 4)).unwrap(),
+        None
+    );
+    drop(empty);
+    for (from, to, address) in [(0, 1, ADDRESS_A), (1, 2, ADDRESS_B), (2, 5, ADDRESS_C)] {
+        tier.convert(&account_snapshot(from, to, hex20(address), to));
+    }
+    tier.shut_down();
+
+    let tier = fixture.open();
+    assert_eq!(tier.repository.persisted_snapshot_count(), 4);
+    tier.repository.remove_persisted_states_until(3).unwrap();
+    assert_eq!(tier.repository.persisted_snapshot_count(), 2);
+    tier.shut_down();
+
+    assert_eq!(fixture.open().repository.persisted_snapshot_count(), 2);
+}
+
+/// A state of the `RemoveSiblingAndDescendents` cases: its block is the name's last digit, its root the name's hash.
+fn named_state(name: &str) -> StateId {
+    let block = name[name.len() - 1..].parse().unwrap();
+    StateId::new(block, keccak256(name.as_bytes()))
+}
+
+fn named_edges(edges: &str) -> impl Iterator<Item = (StateId, StateId)> + '_ {
+    edges.split_whitespace().map(|edge| {
+        let (from, to) = edge.split_once('-').unwrap();
+        (named_state(from), named_state(to))
+    })
+}
+
+/// The `RemoveSiblingAndDescendents_*` cases of `PersistenceManagerPersistedTests`: over the persisted chain
+/// s0-s1-s2 and the `persisted` and `in_memory` edges, persisting `canonical` removes exactly the orphans above it,
+/// found through the persisted tier and bounded by its newest state.
+#[rstest]
+#[case::orphans_reached_through_the_tier("s2-c3 c3-c4 s2-nc3 nc3-nc4", "c4-c5", "c3", "nc4", "c3 c4 nc3 c5")]
+#[case::an_orphan_above_the_in_memory_tip("s2-c3 s2-nc3 nc3-nc4", "s2-c3", "c3", "nc4", "c3 nc3")]
+#[case::a_linear_chain("s2-s3", "", "s1", "", "s2 s3")]
+fn persisting_removes_the_persisted_orphans_above_the_canonical_state(
+    #[case] persisted: &str,
+    #[case] in_memory: &str,
+    #[case] canonical: &str,
+    #[case] removed: &str,
+    #[case] kept: &str,
+) {
+    let tier = TemporaryTier::new();
+    for (from, to) in named_edges("s0-s1 s1-s2").chain(named_edges(persisted)) {
+        tier.convert(&Snapshot::new(from, to, SnapshotContentBuilder::new().build()));
+    }
+    for (from, to) in named_edges(in_memory) {
+        assert!(tier.repository.try_add(
+            Arc::new(Snapshot::new(from, to, SnapshotContentBuilder::new().build())),
+            SnapshotTier::InMemoryBase
+        ));
+        tier.repository.add_state_id(to);
+    }
+    let persisted_count = tier.repository.persisted_snapshot_count();
+
+    tier.repository
+        .remove_sibling_and_descendents(&named_state(canonical))
+        .unwrap();
+
+    for name in removed.split_whitespace() {
+        assert!(!tier.repository.has_state(&named_state(name)), "{name} removed");
+    }
+    for name in kept.split_whitespace() {
+        assert!(tier.repository.has_state(&named_state(name)), "{name} kept");
+    }
+    assert_eq!(
+        tier.repository.persisted_snapshot_count(),
+        persisted_count - removed.split_whitespace().count() as i64
+    );
+}
+
+/// `PersistBase`: a persisted base from `from` to `to` writing account A.
+fn persist_base(tier: &TemporaryTier, from: StateId, to: StateId) {
+    let mut builder = SnapshotContentBuilder::new();
+    builder.set_account(hex20(ADDRESS_A), Some(Account::new(1, U256::from_u64(100))));
+    tier.convert(&Snapshot::new(from, to, builder.build()));
+}
+
+const BLOCK_0: StateId = StateId::new(0, [0; 32]);
+
+/// `AddToPersistence_PrunesOnlyKnownFinalizedPersistedForks`, direct: the forks at heights whose canonical root is
+/// known are removed with their catalog rows; a reader of one keeps reading until it lets go, and a root that becomes
+/// known later is asked for again.
+#[rstest]
+fn only_forks_at_heights_with_a_known_canonical_root_are_removed(
+    #[values(0, 1, 2)] finalized_block: u64,
+    #[values(0, 1, 2)] root_lookup_ceiling: u64,
+) {
+    let finality = Arc::new(SettableFinality::default());
+    let tier = TemporaryTier::with_finality(finality.clone());
+    let (canonical_1, canonical_2) = (state_id(1, 1), state_id(2, 1));
+    let (orphan_1, orphan_2) = (state_id(1, 2), state_id(2, 2));
+    let (tip, sibling) = (state_id(3, 1), state_id(3, 2));
+    for (from, to) in [
+        (BLOCK_0, canonical_1),
+        (canonical_1, canonical_2),
+        (BLOCK_0, orphan_1),
+        (orphan_1, orphan_2),
+        (canonical_2, tip),
+        (canonical_2, sibling),
+    ] {
+        persist_base(&tier, from, to);
+    }
+    tier.repository.set_last_committed_state_id(tip);
+    finality.set_finalized_block_number(finalized_block);
+    finality.set_root_lookup_ceiling(Some(root_lookup_ceiling));
+    finality.set_finalized_state_root_at(1, canonical_1.state_root);
+    finality.set_finalized_state_root_at(2, canonical_2.state_root);
+    let reader = tier.repository.try_lease_base_persisted_snapshot(&orphan_1).unwrap();
+    let orphan_reservation = Arc::downgrade(reader.reservation());
+    let prune_parent = finalized_block >= 1 && root_lookup_ceiling >= 1;
+    let prune_child = finalized_block >= 2 && root_lookup_ceiling >= 2;
+    let expected_count = 6 - i64::from(prune_parent) - i64::from(prune_child);
+
+    tier.repository.remove_finalized_persisted_forks(&BLOCK_0).unwrap();
+
+    assert_eq!(tier.repository.persisted_snapshot_count(), expected_count);
+    assert_eq!(tier.catalog_kv.rows().len() as i64, expected_count);
+    assert_eq!(tier.repository.has_base_persisted_snapshot(&orphan_1), !prune_parent);
+    assert_eq!(tier.repository.has_base_persisted_snapshot(&orphan_2), !prune_child);
+    assert!(tier.repository.has_base_persisted_snapshot(&sibling));
+    assert_eq!(
+        tier.repository.assemble_snapshots(&tip, &BLOCK_0, 3).persisted.len(),
+        3,
+        "the canonical ancestry above the persisted state stays"
+    );
+    assert_eq!(
+        reader.try_get_account(&hex20(ADDRESS_A)).unwrap(),
+        Some(Some(Account::new(1, U256::from_u64(100))))
+    );
+    drop(reader);
+    assert_eq!(
+        orphan_reservation.upgrade().is_none(),
+        prune_parent,
+        "released with its last reader"
+    );
+
+    if finalized_block == 2 && root_lookup_ceiling < 2 {
+        finality.set_root_lookup_ceiling(None);
+        tier.repository.remove_finalized_persisted_forks(&BLOCK_0).unwrap();
+        assert_eq!(
+            tier.repository.persisted_snapshot_count(),
+            4,
+            "a missing root is asked for again at the same finalized block"
+        );
+    }
+}
+
+/// `AddToPersistence_CachesFinalizedRootsUntilHeightsExpire`: a canonical root is looked up once until its height is
+/// pruned below the persisted block or the tier.
+#[rstest]
+#[case(true, false, true)]
+#[case(false, false, true)]
+#[case(false, true, true)]
+#[case(true, false, false)]
+fn canonical_roots_are_cached_until_their_heights_are_pruned(
+    #[case] connected_to_persisted_state: bool,
+    #[case] has_fork: bool,
+    #[case] prune_snapshots: bool,
+) {
+    let finality = Arc::new(SettableFinality::default());
+    let tier = TemporaryTier::with_finality(finality.clone());
+    let (parent, tip, orphan) = (state_id(1, 0), state_id(2, 0), state_id(1, 2));
+    let from = if connected_to_persisted_state {
+        BLOCK_0
+    } else {
+        state_id(0, 2)
+    };
+    persist_base(&tier, from, parent);
+    persist_base(&tier, parent, tip);
+    if has_fork {
+        persist_base(&tier, from, orphan);
+    }
+    tier.repository.set_last_committed_state_id(tip);
+    finality.set_finalized_block_number(2);
+    finality.set_finalized_state_root_at(1, parent.state_root);
+    finality.set_finalized_state_root_at(2, tip.state_root);
+
+    for _ in 0..2 {
+        tier.repository.remove_finalized_persisted_forks(&BLOCK_0).unwrap();
+    }
+    assert_eq!((finality.lookup_count(1), finality.lookup_count(2)), (1, 1));
+    assert_eq!(tier.repository.has_base_persisted_snapshot(&orphan), has_fork);
+
+    if prune_snapshots {
+        tier.repository.remove_persisted_states_until(2).unwrap();
+        persist_base(&tier, BLOCK_0, parent);
+    } else {
+        tier.repository.remove_finalized_persisted_forks(&tip).unwrap();
+    }
+    tier.repository.remove_finalized_persisted_forks(&BLOCK_0).unwrap();
+    assert_eq!(
+        (finality.lookup_count(1), finality.lookup_count(2)),
+        (2, 1),
+        "the pruned height is asked for again"
+    );
+}
+
+/// `AddToPersistence_DefersFinalizedForkPruningWhenLocalChainDisagrees`: while the head does not reach the canonical
+/// root at the finalized block, or the finalized block is above the head, nothing is removed; once finality agrees,
+/// the forks go.
+#[rstest]
+#[case(2, false)]
+#[case(2, true)]
+#[case(100, false)]
+fn forks_stay_while_the_local_chain_disagrees_with_finality(
+    #[case] finalized_block: u64,
+    #[case] anchor_matches: bool,
+) {
+    let finality = Arc::new(SettableFinality::default());
+    let tier = TemporaryTier::with_finality(finality.clone());
+    let (parent, tip) = (state_id(1, 1), state_id(2, 1));
+    persist_base(&tier, BLOCK_0, parent);
+    persist_base(&tier, parent, tip);
+    tier.repository.set_last_committed_state_id(tip);
+    finality.set_finalized_block_number(finalized_block);
+    finality.set_finalized_state_root_at(1, [0xA1; 32]);
+    finality.set_finalized_state_root_at(2, if anchor_matches { tip.state_root } else { [0xB2; 32] });
+
+    tier.repository.remove_finalized_persisted_forks(&BLOCK_0).unwrap();
+    assert_eq!(
+        tier.repository.assemble_snapshots(&tip, &BLOCK_0, 2).persisted.len(),
+        2,
+        "the branch being built keeps its ancestry"
+    );
+
+    finality.set_finalized_block_number(2);
+    finality.set_finalized_state_root_at(1, parent.state_root);
+    finality.set_finalized_state_root_at(2, tip.state_root);
+    let orphan = state_id(1, 2);
+    persist_base(&tier, BLOCK_0, orphan);
+    tier.repository.remove_finalized_persisted_forks(&BLOCK_0).unwrap();
+    assert!(!tier.repository.has_base_persisted_snapshot(&orphan));
+}
+
+/// `AddToPersistence_FinalizedPruningPreservesCurrentPersistedBase`: the persisted state's base stays, whatever the
+/// canonical root at its height, while its sibling goes.
+#[rstest]
+fn the_persisted_states_base_stays_while_its_sibling_goes(#[values(false, true)] root_matches: bool) {
+    let finality = Arc::new(SettableFinality::default());
+    let tier = TemporaryTier::with_finality(finality.clone());
+    let (persisted, tip, sibling) = (state_id(1, 1), state_id(2, 1), state_id(1, 2));
+    persist_base(&tier, BLOCK_0, persisted);
+    persist_base(&tier, persisted, tip);
+    persist_base(&tier, BLOCK_0, sibling);
+    tier.repository.set_last_committed_state_id(tip);
+    finality.set_finalized_block_number(2);
+    finality.set_finalized_state_root_at(1, if root_matches { persisted.state_root } else { [0xA1; 32] });
+    finality.set_finalized_state_root_at(2, tip.state_root);
+
+    tier.repository.remove_finalized_persisted_forks(&persisted).unwrap();
+
+    assert!(tier.repository.has_base_persisted_snapshot(&persisted));
+    assert!(!tier.repository.has_base_persisted_snapshot(&sibling));
+}
+
+/// `RemoveFinalizedPersistedForks_PrunesAcrossPruneBatches`: forks in the first and in a later batch of 1,000 blocks go.
+#[test]
+fn finalized_forks_are_removed_across_batches() {
+    const TIP_BLOCK: u64 = 1001;
+    let finality = Arc::new(SettableFinality::default());
+    let tier = TemporaryTier::with_finality(finality.clone());
+    let mut parent = BLOCK_0;
+    for block in 1..=TIP_BLOCK {
+        let canonical = state_id(block, 1);
+        persist_base(&tier, parent, canonical);
+        finality.set_finalized_state_root_at(block, canonical.state_root);
+        parent = canonical;
+    }
+    let (first_batch_orphan, second_batch_orphan) = (state_id(1, 2), state_id(1000, 2));
+    persist_base(&tier, BLOCK_0, first_batch_orphan);
+    persist_base(&tier, state_id(999, 1), second_batch_orphan);
+    tier.repository.set_last_committed_state_id(parent);
+    finality.set_finalized_block_number(TIP_BLOCK);
+
+    tier.repository.remove_finalized_persisted_forks(&BLOCK_0).unwrap();
+
+    assert!(!tier.repository.has_base_persisted_snapshot(&first_batch_orphan));
+    assert!(!tier.repository.has_base_persisted_snapshot(&second_batch_orphan));
+    assert_eq!(tier.repository.persisted_snapshot_count(), TIP_BLOCK as i64);
+    assert_eq!(
+        tier.repository
+            .assemble_snapshots(&parent, &BLOCK_0, TIP_BLOCK as usize)
+            .persisted
+            .len() as u64,
+        TIP_BLOCK
+    );
+}
+
+/// `AddToPersistence_ReusesVerifiedAncestryUntilReorg`: a committed ancestor outranks a lagging canonical root while
+/// the head extends the head it was verified against; after a reorg the first pass only drops the stale canonical root
+/// of the finalized block, and the next removes the old branch.
+#[rstest]
+fn verified_ancestry_is_reused_until_a_reorg(
+    #[values(false, true)] reorg: bool,
+    #[values(false, true)] orphan_root_above_parent: bool,
+) {
+    let finality = Arc::new(SettableFinality::default());
+    let tier = TemporaryTier::with_finality(finality.clone());
+    // States at one height are visited by root, so one order meets the orphan after the parent dropped the root.
+    let (parent_root, orphan_root) = if orphan_root_above_parent { (1, 3) } else { (3, 1) };
+    let (parent, orphan, tip) = (state_id(1, parent_root), state_id(1, orphan_root), state_id(2, 1));
+    persist_base(&tier, BLOCK_0, parent);
+    persist_base(&tier, parent, tip);
+    persist_base(&tier, BLOCK_0, orphan);
+    tier.repository.set_last_committed_state_id(tip);
+    finality.set_finalized_block_number(2);
+    finality.set_finalized_state_root_at(1, [0xA1; 32]);
+    finality.set_finalized_state_root_at(2, tip.state_root);
+
+    tier.repository.remove_finalized_persisted_forks(&BLOCK_0).unwrap();
+    assert!(
+        tier.repository.has_base_persisted_snapshot(&parent),
+        "a committed ancestor outranks a lagging canonical root"
+    );
+    assert!(!tier.repository.has_base_persisted_snapshot(&orphan));
+
+    let next = if reorg {
+        let (alternative_parent, next) = (state_id(1, 2), state_id(2, 2));
+        persist_base(&tier, BLOCK_0, alternative_parent);
+        persist_base(&tier, alternative_parent, next);
+        finality.set_finalized_state_root_at(1, alternative_parent.state_root);
+        finality.set_finalized_state_root_at(2, next.state_root);
+        next
+    } else {
+        let next = state_id(3, 1);
+        persist_base(&tier, tip, next);
+        next
+    };
+    tier.repository.set_last_committed_state_id(next);
+    for _ in 0..2 {
+        tier.repository.remove_finalized_persisted_forks(&BLOCK_0).unwrap();
+    }
+
+    assert_eq!(tier.repository.has_base_persisted_snapshot(&parent), !reorg);
+    assert_eq!(tier.repository.has_base_persisted_snapshot(&tip), !reorg);
 }

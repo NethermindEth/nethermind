@@ -116,7 +116,7 @@ pub type SharedBundle<P> = Arc<ReadOnlySnapshotBundle<<P as Persistence>::Reader
 type Work = Box<dyn FnOnce() + Send>;
 
 /// Called with the name of a worker job that panicked.
-type PanicHook = Box<dyn Fn(&str) + Send + Sync>;
+pub(crate) type PanicHook = Box<dyn Fn(&str) + Send + Sync>;
 
 pub struct FlatDbManager<P: Persistence> {
     shared: Arc<Shared<P>>,
@@ -740,14 +740,14 @@ impl From<PersistenceError> for JobError {
 }
 
 /// A broadcast that fires once: raising drops the only sender, which wakes every receiver.
-struct Signal {
+pub(crate) struct Signal {
     raised: AtomicBool,
     sender: Mutex<Option<Sender<()>>>,
     receiver: Receiver<()>,
 }
 
 impl Signal {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let (sender, receiver) = crossbeam_channel::bounded(0);
         Self {
             raised: AtomicBool::new(false),
@@ -756,17 +756,22 @@ impl Signal {
         }
     }
 
-    fn raise(&self) {
+    pub(crate) fn raise(&self) {
         self.raised.store(true, Ordering::Release);
         drop(self.sender.lock().take());
     }
 
-    fn is_raised(&self) -> bool {
+    pub(crate) fn is_raised(&self) -> bool {
         self.raised.load(Ordering::Acquire)
     }
 
+    /// The flag [`Signal::raise`] sets, for loops that check it between items.
+    pub(crate) fn flag(&self) -> &AtomicBool {
+        &self.raised
+    }
+
     /// Ready, with an error, once raised.
-    fn receiver(&self) -> &Receiver<()> {
+    pub(crate) fn receiver(&self) -> &Receiver<()> {
         &self.receiver
     }
 }
@@ -814,7 +819,7 @@ fn join_worker(worker: JoinHandle<()>) {
     }
 }
 
-fn panic_message(panic: &(dyn Any + Send)) -> &str {
+pub(crate) fn panic_message(panic: &(dyn Any + Send)) -> &str {
     panic
         .downcast_ref::<&str>()
         .copied()

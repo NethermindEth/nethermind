@@ -9,8 +9,8 @@
 //! (`AssemblePersistedSnapshotsForCompaction`, `AssembleSnapshots`), `ShareBloomAcrossRange`, the blob manager's choice
 //! of file, and the loader's bloom rebuild; the catalog rows are decoded and re-encoded, and their sizes checked.
 //!
-//! The scenarios are then replayed through the storage tier itself, files, loader and buckets, which must leave the C#
-//! catalog rows and the C# files byte for byte, arena placement included.
+//! The scenarios are then replayed through the storage tier itself, files, loader, buckets and the compactor's merges,
+//! which must leave the C# catalog rows and the C# files byte for byte, arena placement included.
 
 mod common;
 
@@ -24,6 +24,7 @@ use flatdb_core::bloom::BloomFilter;
 use flatdb_core::persisted::bloom_keys;
 use flatdb_core::persisted::builder::estimate_size;
 use flatdb_core::persisted::codec::{self, BlobRange, CATALOG_KEY_SIZE};
+use flatdb_core::persisted::compactor::PersistedSnapshotCompactor;
 use flatdb_core::persisted::io::ByteReader;
 use flatdb_core::persisted::list::PersistedSnapshotList;
 use flatdb_core::persisted::page_layout::{NodeRef, PAGE_SIZE};
@@ -955,6 +956,11 @@ impl StorageReplay {
         self.tier.as_ref().expect("a tier is open")
     }
 
+    /// The compactor over the open tier, its merges called directly as the C# generator calls them.
+    fn compactor(&self) -> PersistedSnapshotCompactor {
+        self.tier().compactor(self.schedule)
+    }
+
     fn convert(&self, step: &Value) -> Result<()> {
         let (from, to) = (state_id(&step["from"]), state_id(&step["to"]));
         let snapshot = snapshot_from_records(from, to, &hex(step["records"].as_str().unwrap_or_default()));
@@ -1097,12 +1103,16 @@ fn replay_storage(vector: &Value) -> Result<()> {
         };
         let outcome = match kind {
             "convert" => replay.convert(step),
-            "compact" => compacted(replay.tier().compact(
-                &replay.schedule,
-                &state_id(&step["to"]),
-                step["persistedBlock"].as_u64().unwrap(),
-            )),
-            "compactSized" => compacted(replay.tier().compact_sized(&replay.schedule, &state_id(&step["to"]))),
+            "compact" => replay
+                .compactor()
+                .do_compact_snapshot(&state_id(&step["to"]), step["persistedBlock"].as_u64().unwrap())
+                .map_err(|error| error.to_string())
+                .and_then(compacted),
+            "compactSized" => replay
+                .compactor()
+                .do_compact_compact_sized(&state_id(&step["to"]))
+                .map_err(|error| error.to_string())
+                .and_then(compacted),
             "reload" => match (replay.reload(), step["error"].as_str()) {
                 (Some(error), Some(expected)) if error == expected => return Ok(()),
                 (Some(error), _) => Err(error),

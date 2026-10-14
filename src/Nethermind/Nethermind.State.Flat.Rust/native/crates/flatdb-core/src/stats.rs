@@ -185,7 +185,14 @@ pub enum Histogram {
     InMemorySlotFilterBuildTime = 5,
     /// `Metrics.PersistedSnapshotSize`, table bytes of a converted base.
     PersistedSnapshotSize = 7,
+    /// `Metrics.PersistedSnapshotCompactedSize`, table bytes of a merge, labelled by compact size.
+    PersistedSnapshotCompactedSize = 8,
+    /// `Metrics.PersistedSnapshotCompactTime`, nanoseconds, labelled by compact size.
+    PersistedSnapshotCompactTime = 9,
 }
+
+/// The label id of `CompactSizeLabel(1)`; `CompactSizeLabel(2^n)` is this plus `n`.
+pub const COMPACT_SIZE_LABEL_BASE: u16 = 16;
 
 /// The label of an observation, with the id C# maps back to its `StringLabel`.
 #[repr(u16)]
@@ -238,12 +245,21 @@ impl FlatStats {
 
     /// Queues an observation of `metric`, dropping it when the queue is full.
     pub fn observe(&self, metric: Histogram, label: HistogramLabel, value: f64) {
+        self.push(metric, label as u16, value);
+    }
+
+    /// Queues an observation labelled `CompactSizeLabel(size)`, `size` being a power of two.
+    pub fn observe_compact_size(&self, metric: Histogram, size: u64, value: f64) {
+        self.push(metric, COMPACT_SIZE_LABEL_BASE + size.max(1).ilog2() as u16, value);
+    }
+
+    fn push(&self, metric: Histogram, label: u16, value: f64) {
         let Some((sender, _)) = &self.observations else {
             return;
         };
         let observation = Observation {
             metric: metric as u16,
-            label: label as u16,
+            label,
             value,
         };
         if let Err(TrySendError::Full(_)) = sender.try_send(observation) {
@@ -304,6 +320,16 @@ mod tests {
             }]
         );
         assert_eq!(stats.counters.observations_dropped.load(Ordering::Relaxed), 1);
+
+        stats.observe_compact_size(Histogram::PersistedSnapshotCompactTime, 64, 2.0);
+        assert_eq!(
+            stats.drain_observations(10),
+            [Observation {
+                metric: 9,
+                label: 16 + 6,
+                value: 2.0
+            }]
+        );
 
         let off = FlatStats::default();
         off.observe(Histogram::CompactTime, HistogramLabel::None, 1.0);

@@ -1,11 +1,12 @@
-//! The lock order of the persisted tier: a bucket, then the arena pool, then the blob table. No two buckets nest, and
-//! each lock is otherwise a leaf. Debug and test builds check, per thread, that every lock taken ranks above the locks
-//! the thread already holds.
+//! The lock order of the persisted tier: the repository's finality cache, a bucket, then the arena pool, then the blob
+//! table. No two buckets nest, and each lock is otherwise a leaf. Debug and test builds check, per thread, that every
+//! lock taken ranks above the locks the thread already holds.
 
 use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum LockRank {
+    FinalityCache,
     Bucket,
     ArenaPool,
     BlobTable,
@@ -106,6 +107,8 @@ mod tests {
     #[case(LockRank::BlobTable, LockRank::ArenaPool, false)]
     #[case(LockRank::ArenaPool, LockRank::Bucket, false)]
     #[case(LockRank::Bucket, LockRank::Bucket, false)]
+    #[case(LockRank::FinalityCache, LockRank::Bucket, true)]
+    #[case(LockRank::Bucket, LockRank::FinalityCache, false)]
     fn locks_nest_only_in_rank_order(#[case] outer: LockRank, #[case] inner: LockRank, #[case] allowed: bool) {
         let (first, second) = (Mutex::new(1), Mutex::new(2));
         let nested = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

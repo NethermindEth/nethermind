@@ -24,10 +24,11 @@ use thiserror::Error;
 use crate::events::{PersistedNode, PersistedNodeEvents, PersistedNodes};
 use crate::host::{Host, HostError};
 use crate::kv::WriteFlags;
+use crate::persisted::TierError;
 use crate::persistence::{
     Persistence, PersistenceError, PersistenceReader, PersistenceResult, PersistenceWriteBatch, ReaderFlags,
 };
-use crate::repository::SnapshotRepository;
+use crate::repository::{Edge, SnapshotRepository};
 use crate::schedule::CompactionSchedule;
 use crate::snapshot::Snapshot;
 use crate::stats::{FlatStats, Histogram, HistogramLabel};
@@ -210,10 +211,9 @@ impl<P: Persistence> PersistenceManager<P> {
         if finalized_block_number >= next_boundary
             && latest_snapshot.block_number.saturating_sub(next_boundary) >= self.min_reorg_depth
             && let Some(canonical_root) = self.host.finalized_state_root(next_boundary)
-            && let Some(snapshot) = self.repository.find_snapshot_to_persist(
+            && let Some(snapshot) = self.find_in_memory_snapshot_to_persist(
                 &StateId::new(next_boundary, canonical_root),
                 &current_persisted_state,
-                self.compact_size,
             )
         {
             return Ok(Some(snapshot));
@@ -222,10 +222,9 @@ impl<P: Persistence> PersistenceManager<P> {
         // Seeded from the committed head so the forced persist follows the canonical chain rather than the longest
         // fork, which RemoveSiblingAndDescendents would then orphan.
         if snapshots_depth > self.backstop_reorg_depth
-            && let Some(snapshot) = self.repository.find_snapshot_to_persist(
+            && let Some(snapshot) = self.find_in_memory_snapshot_to_persist(
                 &self.forced_persist_seed(latest_snapshot),
                 &current_persisted_state,
-                self.compact_size,
             )
         {
             log::warn!(
@@ -267,6 +266,22 @@ impl<P: Persistence> PersistenceManager<P> {
         Ok(None)
     }
 
+    /// The repository's next snapshot to persist when it is in memory; persisting a persisted-tier snapshot needs long
+    /// finality.
+    fn find_in_memory_snapshot_to_persist(
+        &self,
+        seed: &StateId,
+        current_persisted_state: &StateId,
+    ) -> Option<Arc<Snapshot>> {
+        match self
+            .repository
+            .find_snapshot_to_persist(seed, current_persisted_state, self.compact_size)?
+        {
+            Edge::InMemory(snapshot) => Some(snapshot),
+            Edge::Persisted(_) => None,
+        }
+    }
+
     fn forced_persist_seed(&self, latest_snapshot: &StateId) -> StateId {
         self.repository
             .get_last_committed_state_id()
@@ -285,9 +300,7 @@ impl<P: Persistence> PersistenceManager<P> {
         let seed = committed_head
             .or_else(|| self.repository.get_last_snapshot_id())
             .unwrap_or(*latest_snapshot);
-        let in_memory = self
-            .repository
-            .find_snapshot_to_persist(&seed, current_persisted_state, self.compact_size)?;
+        let in_memory = self.find_in_memory_snapshot_to_persist(&seed, current_persisted_state)?;
         let head_block = committed_head.unwrap_or(*latest_snapshot).block_number;
         (head_block.saturating_sub(in_memory.to().block_number) >= self.min_reorg_depth).then_some(in_memory)
     }
@@ -314,20 +327,25 @@ impl<P: Persistence> PersistenceManager<P> {
 
         // Finality can rule out forks before the depth and compaction gates allow a persist.
         self.repository
-            .remove_finalized_persisted_forks(&self.get_current_persisted_state_id()?);
+            .remove_finalized_persisted_forks(&self.get_current_persisted_state_id()?)
+            .map_err(removal_failure)?;
         Ok(())
     }
 
     fn persist_and_release(&self, snapshot: &Snapshot) -> Result<(), PersistError> {
         let to = snapshot.to();
-        self.repository.remove_sibling_and_descendents(&to);
+        self.repository
+            .remove_sibling_and_descendents(&to)
+            .map_err(removal_failure)?;
         self.persist_snapshot(snapshot).inspect_err(|error| {
             if error.is_fatal() {
                 self.fatal_error.lock().get_or_insert_with(|| error.clone());
             }
         })?;
         self.set_current_persisted_state_id(to);
-        self.repository.remove_states_until(to.block_number);
+        self.repository
+            .remove_states_until(to.block_number)
+            .map_err(removal_failure)?;
         Ok(())
     }
 
@@ -364,10 +382,7 @@ impl<P: Persistence> PersistenceManager<P> {
             }
             let seed = seed.unwrap_or(latest_state_id);
 
-            let Some(to_persist) =
-                self.repository
-                    .find_snapshot_to_persist(&seed, &current_persisted_state, self.compact_size)
-            else {
+            let Some(to_persist) = self.find_in_memory_snapshot_to_persist(&seed, &current_persisted_state) else {
                 break;
             };
             self.persist_and_release(&to_persist)?;
@@ -388,7 +403,8 @@ impl<P: Persistence> PersistenceManager<P> {
     pub fn drop_state_not_reachable_from(&self, head: &StateId) -> PersistenceResult<()> {
         let _lock = self.persistence_lock.lock();
         self.repository
-            .remove_unreachable_from(head, &self.get_current_persisted_state_id()?);
+            .remove_unreachable_from(head, &self.get_current_persisted_state_id()?)
+            .map_err(removal_failure)?;
         Ok(())
     }
 
@@ -480,5 +496,14 @@ impl<P: Persistence> PersistenceManager<P> {
             self.events.push(PersistedNodes { from, to, nodes });
         }
         Ok(())
+    }
+}
+
+/// A failed removal from the persisted tier, which fails only on the catalog row it removes: a database write, as the
+/// persist's own.
+fn removal_failure(error: TierError) -> PersistenceError {
+    match error {
+        TierError::Catalog(error) => PersistenceError::Kv(error),
+        error => PersistenceError::InvalidOperation(error.to_string()),
     }
 }
