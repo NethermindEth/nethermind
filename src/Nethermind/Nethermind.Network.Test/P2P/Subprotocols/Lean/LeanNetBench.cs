@@ -543,7 +543,8 @@ public class LeanNetBenchNode
     }
 
     /// <summary>The RLPx binding over TCP: production handshake, framing, Snappy, P2P Hello and the lean/1 handler.</summary>
-    private sealed class RlpxBinding(RlpxHost host, ProtocolsManager manager, ConcurrentDictionary<PublicKey, ISession> sessions, BackgroundTaskScheduler scheduler) : IBenchBinding
+    private sealed class RlpxBinding(RlpxHost host, ProtocolsManager manager, ConcurrentDictionary<PublicKey, ISession> sessions, BackgroundTaskScheduler scheduler,
+        SessionMonitor monitor) : IBenchBinding
     {
         private readonly ProtocolsManager _manager = manager;
 
@@ -563,7 +564,8 @@ public class LeanNetBenchNode
             resolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(address, address)));
             IPrivilegedIpProvider privileged = Substitute.For<IPrivilegedIpProvider>();
             privileged.IsPrivileged(Arg.Any<IPAddress>()).Returns(true);
-            RlpxHost host = new(serializer, handshake, Substitute.For<ISessionMonitor>(), NullDisconnectsAnalyzer.Instance, config, resolver, privileged, logs,
+            SessionMonitor monitor = new(config, logs);
+            RlpxHost host = new(serializer, handshake, monitor, NullDisconnectsAnalyzer.Instance, config, resolver, privileged, logs,
                 new NetworkListenerState(config, resolver, logs));
 
             INodeStatsManager stats = Substitute.For<INodeStatsManager>();
@@ -595,7 +597,8 @@ public class LeanNetBenchNode
                 };
             };
             await host.Init();
-            return new RlpxBinding(host, manager, sessions, scheduler);
+            monitor.Start();
+            return new RlpxBinding(host, manager, sessions, scheduler, monitor);
         }
 
         public LeanBroadcastEngine? Broadcast => null;
@@ -610,6 +613,7 @@ public class LeanNetBenchNode
         public async ValueTask DisposeAsync()
         {
             GC.KeepAlive(_manager);
+            monitor.Stop();
             await host.Shutdown();
             await scheduler.DisposeAsync();
         }
