@@ -18,6 +18,5 @@ public static class EezExecutionRequests
         ReadsRequests = false,
     };
 
-    /// <summary>rollup0 reads requests and treats absent predeploys as producing none; RollupX never reads them.</summary>
     public static ExecutionRequestsOptions For(EezChainRules rules) => rules.ReadsExecutionRequests ? Options : WithoutRequests;
 }

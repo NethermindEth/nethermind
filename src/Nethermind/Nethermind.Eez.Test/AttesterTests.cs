@@ -65,6 +65,16 @@ public class AttesterTests
         }
     }
 
+    [TestCase(EffectWindow, 463, 468)]
+    [TestCase(AnchorWindow, 79, 84)]
+    public async Task Prove_L2OnlyProfile_PreservesCapturedProofWhenConsensusContractsAreAbsent(string fixture, int from, int to)
+    {
+        await using AttesterServer server = await AttesterServer.Start(fixture, skipConsensusLayerCalls: true);
+        JsonElement oracle = StatelessFixtures.ReadJson(fixture, "oracle.json");
+        ProveResponse response = await server.Prove(Window(fixture, from, to));
+        Assert.That(response.PublicInputsHash.ToByteArray().ToHexString(true), Is.EqualTo(oracle.GetProperty("public_inputs_hash").GetString()));
+    }
+
     [TestCaseSource(nameof(RejectedStreams))]
     public async Task Prove_StreamOutsideTheRules_IsRejectedWithTheReferenceStatus(Func<List<ProveChunk>, List<ProveChunk>> mutate, StatusCode code, string message)
     {
@@ -274,6 +284,17 @@ public class AttesterTests
         Assert.That(options.StreamingConfigPath, Is.EqualTo(path), "v2 activation must reach production startup from the CLI");
     }
 
+    [TestCase(null, false)]
+    [TestCase("true", true)]
+    [TestCase("false", false)]
+    public void Parse_ConsensusSystemCalls_RequiresExplicitSelection(string? selection, bool expected)
+    {
+        System.CommandLine.RootCommand root = [];
+        AttesterCommandLine.AddTo(root);
+        string[] args = selection is null ? ValidArgs() : [.. ValidArgs(), "--skip-consensus-layer-calls=" + selection];
+        Assert.That(AttesterCommandLine.Parse(root.Parse(args)).SkipConsensusLayerCalls, Is.EqualTo(expected));
+    }
+
     private static string[] ValidArgs() =>
     [
         "--listen-addr=0.0.0.0:50061", "--chain-config=genesis.json", "--rollup-id=1", $"--vkey=0x{new string('0', 24)}70997970c51812dc3a010c7d01b50e0d17dc79c8",
@@ -283,6 +304,7 @@ public class AttesterTests
 
     private static TestCaseData[] InvalidSettings() =>
     [
+        new(new[] { "--skip-consensus-layer-calls=auto" }, "must be true or false") { TestName = "InvalidConsensusSystemCalls" },
         new(new[] { "--rollup-id=0" }, "--rollup-id must be a positive integer") { TestName = "ZeroRollupId" },
         new(new[] { $"--vkey=0x{new string('0', 64)}" }, "vkey must be non-zero") { TestName = "ZeroVerificationKey" },
         new(new[] { $"--proof-system=0x{new string('0', 40)}" }, "proof-system address must be non-zero") { TestName = "ZeroProofSystem" },

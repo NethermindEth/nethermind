@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Eez.Proving;
@@ -26,7 +27,7 @@ public interface IBatchCheck
 /// Runs the attesters' own check on the batch the first registered attester is sent, so a batch nobody can attest is
 /// caught here. It re-executes the span statelessly from the same witnesses the attesters get.
 /// </summary>
-public sealed class LocalSettlementCheck(ISpecProvider specProvider, EezSettlementContext context, ILogManager logManager) : IBatchCheck
+public sealed class LocalSettlementCheck(ISpecProvider specProvider, EezSettlementContext context, ILogManager logManager, EezChainRules? rules = null) : IBatchCheck
 {
     public void Check(ProveRequest request, QuorumRegistration registration, IReadOnlyList<IAttester> attesters)
     {
@@ -38,7 +39,7 @@ public sealed class LocalSettlementCheck(ISpecProvider specProvider, EezSettleme
 
         IAttester attester = attesters[first];
         ProveRequest own = request.For(attester.ProofSystem);
-        SettlementCheck check = new(specProvider, context with { ProofSystem = attester.ProofSystem, VerificationKey = registration.VerificationKeys[first] }, logManager);
+        SettlementCheck check = new(specProvider, context with { ProofSystem = attester.ProofSystem, VerificationKey = registration.VerificationKeys[first] }, logManager, rules ?? EezChainRules.Rollup0);
         EezStatelessBlock[] statelessBlocks = new EezStatelessBlock[own.Blocks.Count];
         (Hash256, Hash256)[] claims = new (Hash256, Hash256)[own.Blocks.Count];
         for (int i = 0; i < statelessBlocks.Length; i++)

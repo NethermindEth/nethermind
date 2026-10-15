@@ -93,7 +93,7 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, EezChainRul
             TransactionProcessorFactory = processorFactory,
             TxValidator = CreateTxValidator(),
             BlockValidatorFactory = (txValidator, headerValidator, unclesValidator) => new EezBlockValidator(txValidator,
-                rules.IsRollupX ? new RollupXHeaderValidator(headerValidator, rules) : headerValidator, unclesValidator, specProvider, logManager),
+                rules.IsRollupX ? new RollupXHeaderValidator(headerValidator, rules) : headerValidator, unclesValidator, specProvider, logManager, rules),
             ExecutionRequestsOptions = EezExecutionRequests.For(rules),
             TransactionProcessedEventHandler = transactionProcessed,
             TransactionsExecutorDecorator = (inner, worldState) => Decorate(inner, worldState, transactionsExecutorDecorator),

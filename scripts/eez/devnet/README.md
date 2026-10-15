@@ -17,3 +17,10 @@ PRs and pushes touching EEZ or its execution dependencies start the workflow. Th
 The result records the candidate prover image ID, candidate revision and nonzero signed-window/remote-attestation counts in `candidate-prover.json`. The upstream image build is skipped through its existing switch; an image ID change fails the lane. This proves only the legacy Rollup0 profile and scenarios that actually run.
 
 All nodes and Docker builds run on disposable CI runners. Cleanup removes only this run's named enclave and candidate images. Existing VM services are not used or modified.
+
+The candidate follower and prover select `SkipConsensusLayerCalls=true` for the
+current upstream Rollup0 execution profile. Beacon-root and consensus-request
+transitions are omitted; EIP-2935 remains active. The upstream genesis, test
+requests and expected outputs are unchanged. An explicit old-source replay can
+set `EEZ_SKIP_CONSENSUS_LAYER_CALLS=false` on both candidate services. This mode
+is trusted startup configuration, not a request field or a missing-proof fallback.

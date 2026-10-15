@@ -11,6 +11,9 @@ public interface IEezConfig : IConfig
     [ConfigItem(Description = "Whether to execute the chain under the EEZ L2 rules. Requires an EEZ genesis.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
+    [ConfigItem(Description = "Whether the EEZ L2 omits beacon-root updates, consensus requests and block rewards, and rejects mining fields and ommers. Select the same execution rules on every node and prover.", DefaultValue = "false")]
+    bool SkipConsensusLayerCalls { get; set; }
+
     [ConfigItem(Description = "Whether to follow the rollup from L1: derive every L2 block from the batches L1 settled. Requires `Eez.Enabled`. " +
         "The follower must be the only driver of the node's engine API: a consensus client that moves the forkchoice shuts the node down.", DefaultValue = "false")]
     bool FollowerEnabled { get; set; }

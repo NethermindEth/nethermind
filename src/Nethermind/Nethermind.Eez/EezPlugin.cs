@@ -44,13 +44,14 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig in
     public IModule Module => new EezModule(eezConfig, Rules);
 
     /// <summary>The genesis decides the rules: a <c>rollupX</c> section in its configuration makes the chain a RollupX chain.</summary>
-    private EezChainRules Rules => _rules ??= LoadRules(initConfig.ChainSpecPath.GetApplicationResourcePath());
+    private EezChainRules Rules => _rules ??= LoadRules(initConfig.ChainSpecPath.GetApplicationResourcePath(), eezConfig.SkipConsensusLayerCalls);
 
-    internal static EezChainRules LoadRules(string genesisPath)
+    internal static EezChainRules LoadRules(string genesisPath, bool skipConsensusLayerCalls = false)
     {
         try
         {
-            return EezChainRules.FromGenesisFile(genesisPath);
+            EezChainRules rules = EezChainRules.FromGenesisFile(genesisPath);
+            return skipConsensusLayerCalls ? rules.WithoutConsensusLayerCalls() : rules;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException)
         {

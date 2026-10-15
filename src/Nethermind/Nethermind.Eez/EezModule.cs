@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -59,6 +60,8 @@ public class EezModule(IEezConfig config, EezChainRules rules) : Module
         if (!rules.CallsBeaconRootsContract)
         {
             builder.AddSingleton<IBeaconBlockRootHandler>(NoBeaconRootsCall.Instance);
+            builder.AddSingleton<IRewardCalculator>(NoBlockRewards.Instance);
+            builder.AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance);
         }
 
         if (rules.BurnedAtBlockStart.Length != 0)

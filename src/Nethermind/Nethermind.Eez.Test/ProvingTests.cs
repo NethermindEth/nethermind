@@ -10,10 +10,12 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Eez.Attester;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Posting;
 using Nethermind.Eez.Proving;
@@ -32,6 +34,30 @@ public class ProvingTests
 
     /// <summary>For attesters that fail until the budget ends, so the retries end quickly.</summary>
     private static readonly RollupTiming ShortProofTime = new(12_000, 2_000, 300, 100);
+
+    [Test]
+    public void LocalCheck_UsesSelectedConsensusRules([Values] bool skipConsensusLayerCalls)
+    {
+        JsonElement oracle = StatelessFixtures.ReadJson(Window, "oracle.json");
+        EezSettlementContext context = new(oracle.GetProperty("rollup_id").GetUInt64(), oracle.GetProperty("l2_chain_id").GetUInt64(),
+            new Address(oracle.GetProperty("proof_system").GetString()!), new ValueHash256(oracle.GetProperty("proof_system_vkey").GetString()!),
+            oracle.GetProperty("l2_block_time_seconds").GetUInt64());
+        ISpecProvider provider = new ConsensusReadTrapProvider(StatelessFixtures.ReadSpecProvider(Window, "chain-config.json"));
+        EezChainRules rules = skipConsensusLayerCalls ? EezChainRules.Rollup0.WithoutConsensusLayerCalls() : EezChainRules.Rollup0;
+        LocalSettlementCheck check = new(provider, context, LimboLogs.Instance, rules);
+        IAttester attester = Substitute.For<IAttester>();
+        attester.ProofSystem.Returns(context.ProofSystem);
+        ProveRequest request = RecordedRequest();
+        if (skipConsensusLayerCalls)
+        {
+            Assert.That(() => check.Check(request, Registration(oracle), [attester]), Throws.Nothing);
+        }
+        else
+        {
+            Assert.That(() => check.Check(request, Registration(oracle), [attester]),
+                Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("consensus transition consulted"));
+        }
+    }
 
     [Test]
     public async Task Attest_OneRemoteAttesterOnARecordedWindow_ReturnsItsValidProof()
@@ -306,4 +332,26 @@ public class ProvingTests
         Keys = key.Length == 0 ? new ArrayPoolList<byte[]>(0) : new ArrayPoolList<byte[]>(1) { key },
         Headers = header.Length == 0 ? new ArrayPoolList<byte[]>(0) : new ArrayPoolList<byte[]>(1) { header },
     };
+    private sealed class ConsensusReadTrapSpec(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
+    {
+        public override Address? Eip4788ContractAddress => throw new InvalidOperationException("consensus transition consulted");
+    }
+
+    private sealed class ConsensusReadTrapProvider(ISpecProvider inner) : ISpecProvider
+    {
+        public ForkActivation? MergeBlockNumber => inner.MergeBlockNumber;
+        public ulong TimestampFork => inner.TimestampFork;
+        public UInt256? TerminalTotalDifficulty => inner.TerminalTotalDifficulty;
+        public IReleaseSpec GenesisSpec => new ConsensusReadTrapSpec(inner.GenesisSpec);
+        public bool GenesisStateUnavailable => inner.GenesisStateUnavailable;
+        public ulong? DaoBlockNumber => inner.DaoBlockNumber;
+        public ulong? BeaconChainGenesisTimestamp => inner.BeaconChainGenesisTimestamp;
+        public ulong NetworkId => inner.NetworkId;
+        public ulong ChainId => inner.ChainId;
+        public string SealEngine => inner.SealEngine;
+        public ForkActivation[] TransitionActivations => inner.TransitionActivations;
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => new ConsensusReadTrapSpec(inner.GetSpec(forkActivation));
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null) => inner.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
+    }
+
 }

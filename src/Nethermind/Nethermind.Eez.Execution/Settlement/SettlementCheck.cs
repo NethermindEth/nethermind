@@ -16,11 +16,23 @@ namespace Nethermind.Eez.Execution.Settlement;
 /// witness, then verify every settlement claim of the batch against it. A composer runs the same check before it asks
 /// the attesters, so a batch it built wrong is caught locally instead of costing an attempt with each of them.
 /// </summary>
-public sealed class SettlementCheck(ISpecProvider specProvider, EezSettlementContext context, ILogManager logManager)
+public sealed class SettlementCheck
 {
-    private readonly EezStatelessExecutor _executor = new(specProvider, EezChainRules.Rollup0, logManager);
+    private readonly EezStatelessExecutor _executor;
+    private readonly ISpecProvider _specProvider;
+    private readonly EezSettlementContext _context;
 
-    public EezSettlementContext Context => context;
+    public SettlementCheck(ISpecProvider specProvider, EezSettlementContext context, ILogManager logManager)
+        : this(specProvider, context, logManager, EezChainRules.Rollup0) { }
+
+    internal SettlementCheck(ISpecProvider specProvider, EezSettlementContext context, ILogManager logManager, EezChainRules rules)
+    {
+        _specProvider = specProvider;
+        _context = context;
+        _executor = new EezStatelessExecutor(specProvider, rules, logManager);
+    }
+
+    public EezSettlementContext Context => _context;
 
     /// <summary>Re-executes the window, checkpointing the settling block at <see cref="SettlingBlock.CheckpointsOf"/>.</summary>
     /// <param name="claims">The hash and parent hash the composer sealed for each block, from <paramref name="fromBlock"/> up.</param>
@@ -53,7 +65,7 @@ public sealed class SettlementCheck(ISpecProvider specProvider, EezSettlementCon
     /// <returns>The public inputs hash the attesters sign.</returns>
     /// <exception cref="EezSettlementException">The batch claims something the executed window does not show.</exception>
     public ValueHash256 Verify(byte[] postBatchCalldata, IReadOnlyList<EezStatelessBlockResult> executed) =>
-        EezSettlementVerifier.Verify(postBatchCalldata, executed, context, specProvider);
+        EezSettlementVerifier.Verify(postBatchCalldata, executed, _context, _specProvider);
 
     private static Block DecodeSettling(EezStatelessBlock settling)
     {

@@ -25,4 +25,7 @@ public sealed record AttesterOptions(
     WindowLimits Limits,
     TimeSpan StreamIdleTimeout,
     TimeSpan RequestTimeout,
-    string? StreamingConfigPath = null);
+    string? StreamingConfigPath = null)
+{
+    public bool SkipConsensusLayerCalls { get; init; }
+}

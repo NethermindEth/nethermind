@@ -27,8 +27,11 @@ public sealed class EezChainRules
 
     private static readonly Address[] RollupXBurned = [EezConstants.RollupXEezl2Address, EezConstants.SystemAddress];
 
-    private EezChainRules(Address eezl2Address, RollupXSchedule? schedule, Address? feeCollector = null)
+    private readonly bool _skipConsensusLayerCalls;
+
+    private EezChainRules(Address eezl2Address, RollupXSchedule? schedule, Address? feeCollector = null, bool skipConsensusLayerCalls = false)
     {
+        _skipConsensusLayerCalls = skipConsensusLayerCalls;
         Eezl2Address = eezl2Address;
         Schedule = schedule;
         FeeCollector = feeCollector;
@@ -97,10 +100,12 @@ public sealed class EezChainRules
     public ulong? BaseFeeMaxChangeDenominator => IsRollupX ? RollupXBaseFeeMaxChangeDenominator : null;
 
     /// <summary>Whether a block calls the EIP-4788 beacon roots contract; RollupX headers carry a zero root and skip the call.</summary>
-    public bool CallsBeaconRootsContract => !IsRollupX;
+    public bool CallsBeaconRootsContract => !IsRollupX && !_skipConsensusLayerCalls;
 
     /// <summary>Whether blocks read deposits and request contracts; RollupX blocks never carry requests.</summary>
-    public bool ReadsExecutionRequests => !IsRollupX;
+    public bool ReadsExecutionRequests => !IsRollupX && !_skipConsensusLayerCalls;
+
+    internal EezChainRules WithoutConsensusLayerCalls() => new(Eezl2Address, Schedule, FeeCollector, true);
 
     /// <summary>
     /// The gas a RollupX system transaction executes with, given the gas the block has used before it: what is left,

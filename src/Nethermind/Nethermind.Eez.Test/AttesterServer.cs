@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Eez.Attester;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Prove;
 using Nethermind.Logging;
@@ -44,7 +45,7 @@ internal sealed class AttesterServer : IAsyncDisposable
 
     internal BackendAdmission Admission => _app.Services.GetRequiredService<BackendAdmission>();
 
-    public static async Task<AttesterServer> Start(string fixture, TimeSpan? idleTimeout = null, ILogger<ProverService>? logger = null)
+    public static async Task<AttesterServer> Start(string fixture, TimeSpan? idleTimeout = null, ILogger<ProverService>? logger = null, bool skipConsensusLayerCalls = false)
     {
         JsonElement oracle = StatelessFixtures.ReadJson(fixture, "oracle.json");
         ISpecProvider specProvider = StatelessFixtures.ReadSpecProvider(fixture, "chain-config.json");
@@ -52,12 +53,14 @@ internal sealed class AttesterServer : IAsyncDisposable
         EezSettlementContext context = new(oracle.GetProperty("rollup_id").GetUInt64(), specProvider.ChainId, new Address(oracle.GetProperty("proof_system").GetString()!),
             new ValueHash256(oracle.GetProperty("proof_system_vkey").GetString()!), blockTime);
         AttesterOptions options = new(IPEndPoint.Parse("127.0.0.1:0"), "", context.RollupId, context.VerificationKey, AttesterKey.Address, context.ProofSystem, "", "", blockTime,
-            context.GasLimit, WindowLimits.Default, idleTimeout ?? TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(10));
+            context.GasLimit, WindowLimits.Default, idleTimeout ?? TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(10))
+        { SkipConsensusLayerCalls = skipConsensusLayerCalls };
 
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseTestServer();
         if (logger is not null) builder.Services.AddSingleton(logger);
-        WebApplication app = Program.Build(builder, options, new AttestationPipeline(specProvider, context, new EezAttestationSigner(AttesterKey), LimboLogs.Instance));
+        WebApplication app = Program.Build(builder, options, new AttestationPipeline(specProvider, context, new EezAttestationSigner(AttesterKey), LimboLogs.Instance,
+            skipConsensusLayerCalls ? EezChainRules.Rollup0.WithoutConsensusLayerCalls() : EezChainRules.Rollup0));
         await app.StartAsync();
         GrpcChannel channel = GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions { HttpHandler = app.GetTestServer().CreateHandler() });
         return new AttesterServer(app, channel);

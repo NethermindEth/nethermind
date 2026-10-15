@@ -30,6 +30,7 @@ class ProverBootstrapTests(unittest.TestCase):
             trace.append({"import": importing, "args": sys.argv[1:],
                           "stdin": sys.stdin.read() if importing else None,
                           "key_in_environment": "EEZ_PROOF_SIGNER_KEY" in os.environ,
+                          "skip_consensus_calls": os.environ.get("EEZ_SKIP_CONSENSUS_LAYER_CALLS"),
                           "block_time": os.environ.get("EEZ_L2_BLOCK_TIME_SECS")})
             path.write_text(json.dumps(trace))
             if importing:
@@ -46,6 +47,7 @@ class ProverBootstrapTests(unittest.TestCase):
             EEZ_KEYSTORE_PASSWORD_FILE=str(self.root / "password"),
             PROVER_TRACE=str(self.trace), IMPORTED_ADDRESS=self.address)
         self.environment.pop("EEZ_L2_BLOCK_TIME_SECS", None)
+        self.environment.pop("EEZ_SKIP_CONSENSUS_LAYER_CALLS", None)
 
     def run_launcher(self):
         return subprocess.run(["/bin/sh", str(self.launcher), "--listen-addr=0.0.0.0:50061",
@@ -63,8 +65,15 @@ class ProverBootstrapTests(unittest.TestCase):
         self.assertEqual(calls[1]["args"], ["--listen-addr=0.0.0.0:50061", "--chain-config=/out/l2-genesis.json"])
         self.assertFalse(calls[1]["key_in_environment"])
         self.assertEqual(calls[1]["block_time"], "2")
+        self.assertEqual(calls[1]["skip_consensus_calls"], "true")
         self.assertEqual((self.root / "password").stat().st_mode & 0o777, 0o600)
         self.assertNotIn("fixture-private-key", result.stdout + result.stderr)
+
+    def test_legacy_consensus_execution_can_be_selected_for_an_old_source_replay(self):
+        self.environment["EEZ_SKIP_CONSENSUS_LAYER_CALLS"] = "false"
+        result = self.run_launcher()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.trace.read_text())[1]["skip_consensus_calls"], "false")
 
     def test_missing_deployment_binding_never_starts_import(self):
         for name in ("EEZ_PROOF_SIGNER_KEY", "EEZ_ATTESTER_ADDRESS", "EEZ_PROOF_SYSTEM", "EEZ_VKEY", "EEZ_ROLLUP_ID"):

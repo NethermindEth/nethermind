@@ -14,6 +14,7 @@ exec /nethermind/entrypoint.sh \
     --Init.BaseDbPath /data \
     --Init.LogDirectory /logs \
     --Eez.Enabled true \
+    --Eez.SkipConsensusLayerCalls "${EEZ_SKIP_CONSENSUS_LAYER_CALLS:-true}" \
     --Eez.FollowerEnabled true \
     --Eez.L1RpcUrl "$NETHERMIND_L1_RPC" \
     --Eez.L1ChainId "$NETHERMIND_L1_CHAIN_ID" \

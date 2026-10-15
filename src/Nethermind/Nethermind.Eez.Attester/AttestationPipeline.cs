@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Eez.Prove;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Logging;
@@ -19,12 +20,14 @@ namespace Nethermind.Eez.Attester;
 /// Re-executes an admitted window, checks every settlement claim against it and signs the public inputs hash.
 /// Failures surface as the gRPC statuses the reference signer returns, so a composer handles either signer alike.
 /// </summary>
-internal sealed class AttestationPipeline(ISpecProvider specProvider, EezSettlementContext context, EezAttestationSigner signer, ILogManager logManager)
+internal sealed class AttestationPipeline(ISpecProvider specProvider, EezSettlementContext context, EezAttestationSigner signer, ILogManager logManager, EezChainRules? rules = null)
 {
     public const string WindowRejected = "window validation rejected";
     public const string SettlementRejected = "settlement validation rejected";
 
-    private readonly SettlementCheck _check = new(specProvider, context, logManager);
+    private readonly SettlementCheck _check = new(specProvider, context, logManager, rules ?? EezChainRules.Rollup0);
+
+    internal EezChainRules Rules { get; } = rules ?? EezChainRules.Rollup0;
 
     public EezSettlementContext Context => context;
 

@@ -96,7 +96,8 @@ internal sealed class StreamingRuntime : IDisposable
             else
             {
                 if (chainRules is { IsRollupX: true }) throw StreamingOptions.Invalid();
-                rules = EezChainRules.Rollup0;
+                rules = pipeline.Rules;
+                if (options.SkipConsensusLayerCalls != !rules.CallsBeaconRootsContract) throw StreamingOptions.Invalid();
                 Rollup0ParentAuthorizer authorizer = new(l1Reader, l2Reader,
                     settings.L1ChainId, settings.Registry, settings.Manager, pipeline.Context, signer.Address);
                 finalize = new StreamingFinalizer(pipeline, signer, authorizer).Finalize;

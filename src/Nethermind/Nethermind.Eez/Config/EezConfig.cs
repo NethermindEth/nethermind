@@ -10,6 +10,7 @@ namespace Nethermind.Eez.Config;
 public class EezConfig : IEezConfig
 {
     public bool Enabled { get; set; }
+    public bool SkipConsensusLayerCalls { get; set; }
     public bool FollowerEnabled { get; set; }
     public string? SequencerRpcUrl { get; set; }
     public string? L1RpcUrl { get; set; }

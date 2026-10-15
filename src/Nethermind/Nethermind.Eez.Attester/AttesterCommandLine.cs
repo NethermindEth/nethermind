@@ -35,6 +35,8 @@ internal static class AttesterCommandLine
     public static readonly Option<string?> IdleTimeout = Flag("--stream-idle-timeout-secs", "EEZ_PROOF_SIGNER_STREAM_IDLE_TIMEOUT_SECS", "Seconds to wait for each streamed message", "120");
     public static readonly Option<string?> RequestTimeout = Flag("--request-timeout-secs", "EEZ_PROOF_SIGNER_REQUEST_TIMEOUT_SECS", "Seconds one request may take", "600");
 
+    public static readonly Option<string?> SkipConsensusLayerCalls = Flag("--skip-consensus-layer-calls", "EEZ_SKIP_CONSENSUS_LAYER_CALLS", "Omit L2 beacon-root updates and consensus requests", "false");
+
     public static readonly Option<string?> StreamingConfig = Flag("--streaming-config", "EEZ_STREAMING_CONFIG", "Trusted configuration for the optional mutual-TLS prove.v2 endpoint");
 
     /// <exception cref="FormatException">A setting is missing or invalid.</exception>
@@ -72,13 +74,16 @@ internal static class AttesterCommandLine
             new WindowLimits(checked((int)NonZero(result, MaxBlocks)), checked((long)NonZero(result, MaxBytes)), checked((long)NonZero(result, MaxWitnessItems))),
             TimeSpan.FromSeconds(NonZero(result, IdleTimeout)),
             TimeSpan.FromSeconds(NonZero(result, RequestTimeout)),
-            result.GetValue(StreamingConfig));
+            result.GetValue(StreamingConfig))
+        {
+            SkipConsensusLayerCalls = Boolean(result, SkipConsensusLayerCalls),
+        };
     }
 
     public static void AddTo(Command command)
     {
         foreach (Option option in (Option[])[ListenAddress, ChainConfig, RollupId, VerificationKey, AttesterAddress, SystemAddress, ProofSystem, KeyStoreDirectory,
-                     PasswordFile, BlockTime, GasLimit, MaxBlocks, MaxBytes, MaxWitnessItems, IdleTimeout, RequestTimeout, StreamingConfig])
+                     PasswordFile, BlockTime, GasLimit, MaxBlocks, MaxBytes, MaxWitnessItems, IdleTimeout, RequestTimeout, StreamingConfig, SkipConsensusLayerCalls])
         {
             command.Options.Add(option);
         }
@@ -86,6 +91,9 @@ internal static class AttesterCommandLine
 
     public static string Required(ParseResult result, Option<string?> option) =>
         result.GetValue(option) is { } value ? value : throw new FormatException($"{option.Name} is required");
+
+    private static bool Boolean(ParseResult result, Option<string?> option) =>
+        bool.TryParse(Required(result, option), out bool value) ? value : throw new FormatException($"{option.Name} must be true or false");
 
     private static ulong NonZero(ParseResult result, Option<string?> option) =>
         ulong.TryParse(Required(result, option), out ulong value) && value != 0 ? value : throw new FormatException($"{option.Name} must be a positive integer");

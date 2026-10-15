@@ -47,3 +47,12 @@ This profile supports timeless calldata Rollup0 settlement only. Finalize requir
 strict proofless PostBatch ABI calldata. Blobs, posting context and other profiles are
 refused before signing. This endpoint does not imply RollupX or nonzero synchronous
 delivery support. No performance claim or remote deployment is included.
+
+For a Rollup0 chain that omits L1 consensus transitions, set
+`--skip-consensus-layer-calls=true` or `EEZ_SKIP_CONSENSUS_LAYER_CALLS=true`.
+The matching node setting is `Eez.SkipConsensusLayerCalls=true`. Select the same
+mode on every follower and prover before starting the chain. This skips
+EIP-4788 and EIP-6110/7002/7251 calls and retains EIP-2935. The default is false
+for compatibility with existing deployments and recorded execution profiles.
+It does not define an activation block for an existing chain. RollupX already
+omits these calls.
