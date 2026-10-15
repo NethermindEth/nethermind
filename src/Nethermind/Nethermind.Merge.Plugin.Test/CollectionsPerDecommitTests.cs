@@ -84,7 +84,7 @@ public class CollectionsPerDecommitTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(NoGCStrategy.Instance.CollectionsPerDecommit, Is.EqualTo(-1));
-            Assert.That(NoGCStrategy.Instance.CollectionsPerUnconditionalDecommit, Is.EqualTo(-1));
+            Assert.That(((IGCStrategy)NoGCStrategy.Instance).CollectionsPerUnconditionalDecommit, Is.EqualTo(-1));
         }
     }
 }

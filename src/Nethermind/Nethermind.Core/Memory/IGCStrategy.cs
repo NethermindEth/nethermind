@@ -13,10 +13,12 @@ public interface IGCStrategy
     /// and runs only while <see cref="DecommitMemoryLoadPercent"/> is reached or once <see cref="CollectionsPerUnconditionalDecommit"/> payloads have been counted.</remarks>
     int CollectionsPerDecommit { get; }
     /// <summary>Gets the memory load, in percent of physical memory or of the container's memory limit, at which a due decommit runs; 0 or less runs it whenever due.</summary>
-    /// <remarks>The load is the one the runtime recorded at its last collection (<see cref="System.GCMemoryInfo.MemoryLoadBytes"/>).</remarks>
-    int DecommitMemoryLoadPercent { get; }
+    /// <remarks>The load is the one the runtime recorded at its last collection (<see cref="System.GCMemoryInfo.MemoryLoadBytes"/>).
+    /// Defaults to 0, so a strategy that does not implement it decommits whenever due.</remarks>
+    int DecommitMemoryLoadPercent => 0;
     /// <summary>Gets the payload count after which a due decommit runs below <see cref="DecommitMemoryLoadPercent"/>: -1 never; a count below <see cref="CollectionsPerDecommit"/> runs it whenever due.</summary>
-    int CollectionsPerUnconditionalDecommit { get; }
+    /// <remarks>Defaults to -1; not read while <see cref="DecommitMemoryLoadPercent"/> is 0 or less.</remarks>
+    int CollectionsPerUnconditionalDecommit => -1;
     /// <summary>Gets the delay in milliseconds before attempting a post-payload collection.</summary>
     int PostBlockDelayMs { get; }
     /// <summary>Returns whether no-GC-region entry is currently permitted.</summary>

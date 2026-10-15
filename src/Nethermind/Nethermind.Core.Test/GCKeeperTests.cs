@@ -651,6 +651,43 @@ public class GCKeeperTests
         }
     }
 
+    /// <summary>A strategy written against <see cref="IGCStrategy"/> before it had the memory-pressure members.</summary>
+    private sealed class CadenceOnlyStrategy(int collectionsPerDecommit) : IGCStrategy
+    {
+        public (GcLevel Generation, GcCompaction Compacting) ForcedGCParams { get; set; } = (GcLevel.Gen1, GcCompaction.No);
+        public int CollectionsPerDecommit => collectionsPerDecommit;
+        public int PostBlockDelayMs => 0;
+        public bool CanStartNoGCRegion() => true;
+        public (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams() => ForcedGCParams;
+    }
+
+    [Test]
+    public async Task Strategy_without_the_pressure_members_decommits_whenever_due([Values(10, 95)] long memoryLoadPercent)
+    {
+        CadenceOnlyStrategy strategy = new(collectionsPerDecommit: 5);
+        RegionRuntime runtime = new() { MemoryLoadBytes = memoryLoadPercent, TotalMemoryBytes = 100 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        List<int> decommits = [];
+        for (int i = 1; i <= 20; i++)
+        {
+            strategy.ForcedGCParams = (GcLevel.NoGC, GcCompaction.No);
+            using (keeper.TryStartNoGCRegion()) { }
+            strategy.ForcedGCParams = (GcLevel.Gen1, GcCompaction.No);
+            await keeper.ScheduleGCInternal(throttle: false);
+            if (runtime.Collections[^1] == Decommit) decommits.Add(i);
+        }
+
+        IGCStrategy defaults = strategy;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(defaults.DecommitMemoryLoadPercent, Is.Zero);
+            Assert.That(defaults.CollectionsPerUnconditionalDecommit, Is.EqualTo(-1));
+            Assert.That(decommits, Is.EqualTo(new[] { 5, 10, 15, 20 }));
+            Assert.That(runtime.MemoryReads, Is.Zero);
+        }
+    }
+
     private static void CountPayload(GCKeeper keeper, IGCStrategy strategy)
     {
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
