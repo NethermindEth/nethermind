@@ -85,6 +85,9 @@ public enum ColumnGossipDropReason
 
     /// <summary>A Fulu sidecar whose block's parent, or a Gloas sidecar whose block, the importer refused for failing validation.</summary>
     FailedBlockValidation,
+
+    /// <summary>A queued Fulu sidecar retried after <see cref="ColumnGossipRouter.ParkedRetriesPerSlot"/> KZG batches ran for queued sidecars in the slot; it stays queued.</summary>
+    RetryBudgetSpent,
 }
 
 /// <summary>
@@ -149,7 +152,7 @@ public sealed class ColumnGossipRouter(
     /// <summary>The most (block root, index) keys one proposer_index may hold in the queue, so a single key holder cannot evict every honest column.</summary>
     internal const int ParkedColumnsPerProposer = ParkedColumnCacheSize / 2;
 
-    /// <summary>The most queued sidecars retried per slot, each retry costing at most one KZG batch that no penalty bounds.</summary>
+    /// <summary>The most KZG batches run per slot for retried queued sidecars, which no penalty bounds; a retried copy that is queued again costs none.</summary>
     internal const int ParkedRetriesPerSlot = ParkedColumnCacheSize * KzgBatchesPerColumn;
 
     /// <summary>The most Gloas sidecars of one delivering peer whose pubsub verdict waits for their unseen block, across its subnets.</summary>
@@ -223,6 +226,7 @@ public sealed class ColumnGossipRouter(
     private readonly PerSlotBudget _storeDecodes = new(StoreDecodesPerSlot);
     private readonly PerSlotBudget _parentSlotReads = new(ParentSlotReadsPerSlot);
     private readonly PerSlotBudget _parkedRetries = new(ParkedRetriesPerSlot);
+    private int _parkedRetryStart;
     private readonly StoredBlockSlots? _storedBlockSlots = store is null ? null : new(store, slotClock, logManager.GetClassLogger<ColumnGossipRouter>(), "beacon column gossip parent slots");
 
     // gloas/p2p-interface.md compute_max_data_column_sidecar_size: the progressive lists carry no SSZ bound of their own.
@@ -638,6 +642,13 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.ProposerNotVerifiable, MessageValidity.Ignored);
         }
 
+        // A retried copy is charged to the retry budget only when its KZG batch would run; one past the budget waits for the next retry.
+        if (_retrying && !_parkedRetries.TryTake(slotClock.CurrentSlot))
+        {
+            ParkUnverifiable(sidecar, blockRoot);
+            return Drop(ColumnGossipDropReason.RetryBudgetSpent, MessageValidity.Ignored);
+        }
+
         // [REJECT] verify_data_column_sidecar_kzg_proofs: a sidecar reaches the pool only after it passes, so a forgery never displaces the honest copy.
         if (VerifyKzgProofs(sidecar, blockRoot) is { } kzgFailure)
         {
@@ -827,7 +838,7 @@ public sealed class ColumnGossipRouter(
     }
 
     /// <summary>Queues a signed sidecar whose expected proposer cannot be verified yet, keeping at most <see cref="KzgBatchesPerColumn"/> copies per (block root, index, delivering peer).</summary>
-    /// <remarks>Copies from many peers may share a key, so their retries are charged to <see cref="ParkedRetriesPerSlot"/>.</remarks>
+    /// <remarks>Copies from many peers may share a key, so the KZG batches their retries run are charged to <see cref="ParkedRetriesPerSlot"/>.</remarks>
     private void ParkUnverifiable(DataColumnSidecar sidecar, Hash256 blockRoot)
     {
         (Hash256, ulong) key = (blockRoot, sidecar.Index);
@@ -906,17 +917,13 @@ public sealed class ColumnGossipRouter(
         _retrying = true;
         try
         {
-            foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> entry in parked)
+            // Each retry starts at another key, so the keys queued first do not always take the budget of KZG batches.
+            int start = (int)((uint)Interlocked.Increment(ref _parkedRetryStart) % (uint)parked.Length);
+            for (int i = 0; i < parked.Length; i++)
             {
+                KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> entry = parked[(start + i) % parked.Length];
                 foreach (DataColumnSidecar sidecar in entry.Value)
                 {
-                    // Queued again rather than dropped, so forged copies retried first cannot spend the honest copy's turn.
-                    if (!_parkedRetries.TryTake(slotClock.CurrentSlot))
-                    {
-                        ParkUnverifiable(sidecar, entry.Key.BlockRoot);
-                        continue;
-                    }
-
                     // Its message was already Ignored, so the tuple stays unmarked for any equal copy that reaches this router.
                     if (ValidateFulu(CustodyGroups.ComputeSubnetForDataColumnSidecar(sidecar.Index), sidecar) == MessageValidity.Accepted
                         && sidecar.SignedBlockHeader?.Message is { } header)

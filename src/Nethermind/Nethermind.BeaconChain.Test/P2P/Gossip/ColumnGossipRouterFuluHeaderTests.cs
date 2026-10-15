@@ -632,6 +632,36 @@ public class ColumnGossipRouterFuluHeaderTests
         Assert.That(router.KzgBatchCount, Is.EqualTo(ColumnGossipRouter.ParkedRetriesPerSlot), "copies past the budget wait for a later retry");
     }
 
+    [Test]
+    public void Queued_copies_that_stay_unverifiable_spend_no_retry_budget_before_a_verifiable_copy()
+    {
+        const int stuckColumns = ColumnGossipRouter.ParkedColumnsPerProposer - 1;
+        const int copiesPerColumn = 16;
+        ForkChoiceSnapshot snapshot = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true);
+        snapshot = snapshot with { Nodes = [.. snapshot.Nodes, Node(BeaconStateAccessors.ComputeStartSlotAtEpoch(Spec.GetEpoch(CurrentSlot) - 1), MidRoot, ParentRoot)] };
+        ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(OtherRoot, 0) };
+        (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(null, subnets: AllSubnets, lookaheads: lookaheads, forkChoice: new ForkChoiceSnapshotHolder { Current = snapshot });
+        PeerId[] peers = [.. Enumerable.Range(0, copiesPerColumn / ColumnGossipRouter.KzgBatchesPerColumn).Select(static _ => new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId)];
+        for (ulong column = 0; column < stuckColumns; column++)
+        {
+            DataColumnSidecar offLookahead = DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot);
+            ParentInLookahead(offLookahead);
+            Signed(offLookahead, signer: 0);
+            for (int copy = 0; copy < copiesPerColumn; copy++)
+                router.Handle(column, gloasTopic: false, Message(Altered(offLookahead, copy)), source: peers[copy % peers.Length]);
+        }
+
+        DataColumnSidecar honest = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(stuckColumns, CurrentSlot), signer: 0);
+        router.Handle(stuckColumns, gloasTopic: false, Message(honest));
+        lookaheads.Current = Lookahead(ParentRoot, 0);
+        router.Handle(Column, gloasTopic: false, UndecodableMessage);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(stuckColumns * copiesPerColumn, Is.GreaterThan(ColumnGossipRouter.ParkedRetriesPerSlot), "fixture: the copies that stay queued outnumber the budget");
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), stuckColumns, out _), Is.True, "copies queued again without KZG work must not spend the verifiable copy's turn");
+        Assert.That(router.KzgBatchCount, Is.EqualTo(1));
+    }
+
     // phase0 p2p-interface.md beacon_block: the block signing root is its header root.
     [TestCase(0, 0UL, true, MessageValidity.Accepted, 1, TestName = "Fulu_block_header_that_verifies_is_accepted_at_once")]
     [TestCase(0, 1UL, true, MessageValidity.Rejected, 0, TestName = "Fulu_block_from_an_unexpected_proposer_is_rejected")]
