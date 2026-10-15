@@ -23,7 +23,8 @@ public class GethTraceOptionsDeserializationTests
         };
         JsonElement json = JsonSerializer.Deserialize<JsonElement>("""
             {"ONLY_TOP_CALL":"true","only_top_call":null,"WITH_LOG":"true","with_log":null,
-             "DIFF_MODE":"true","diff_mode":null,"unknown":[]}
+             "DIFF_MODE":"true","diff_mode":null,"DISABLE_CODE":"true","disable_code":null,
+             "DISABLE_STORAGE":"true","disable_storage":null,"unknown":[]}
             """);
 
         NativeCallTracerConfig call = NativeCallTracerConfig.FromJson(json, options);
@@ -34,6 +35,8 @@ public class GethTraceOptionsDeserializationTests
             Assert.That(call.OnlyTopCall, Is.EqualTo(caseInsensitive));
             Assert.That(call.WithLog, Is.EqualTo(caseInsensitive));
             Assert.That(prestate.DiffMode, Is.EqualTo(caseInsensitive));
+            Assert.That(prestate.DisableCode, Is.EqualTo(caseInsensitive));
+            Assert.That(prestate.DisableStorage, Is.EqualTo(caseInsensitive));
         }
     }
 

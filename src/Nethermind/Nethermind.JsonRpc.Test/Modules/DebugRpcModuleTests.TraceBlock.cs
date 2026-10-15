@@ -101,7 +101,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceBlockByNumber_native_boolean_config_rejects_invalid_types(
-        [Values("onlyTopCall", "withLog", "diffMode")] string field,
+        [Values("onlyTopCall", "withLog", "diffMode", "disableCode", "disableStorage")] string field,
         [Values("1", "[]", "{}", "\"invalid\"")] string value)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -112,7 +112,7 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new
             {
-                tracer = field == "diffMode" ? "prestateTracer" : "callTracer",
+                tracer = field is "onlyTopCall" or "withLog" ? "callTracer" : "prestateTracer",
                 tracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"{{field}}":{{value}}}"""),
                 timeout = "0s"
             });
