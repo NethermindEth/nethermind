@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Sockets;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Sockets;
