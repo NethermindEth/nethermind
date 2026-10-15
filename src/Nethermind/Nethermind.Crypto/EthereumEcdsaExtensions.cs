@@ -257,7 +257,7 @@ public static class EthereumEcdsaExtensions
     public static bool TryCalculateV(ulong chainId, bool addParity, out ulong v)
     {
         ulong parity = addParity ? 1u : 0u;
-        // Past the shared bound, only the even v = 2^64 - 1 still fits.
+        // Past the shared bound, only the parity-0 v (2^64 - 1) still fits.
         bool fits = chainId <= MaxEip155ChainId + (1 - parity);
         v = fits ? chainId * 2 + 35 + parity : 0;
         return fits;

@@ -4,8 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using Nethermind.Core;
-using Nethermind.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;

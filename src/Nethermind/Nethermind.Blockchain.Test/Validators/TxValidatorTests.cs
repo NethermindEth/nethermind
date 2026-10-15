@@ -99,7 +99,6 @@ public class TxValidatorTests
     }
 
     // 2 * chainId + 36 must fit in a ulong v; above that the EIP-155 values cannot be represented at all.
-
     [MaxTime(Timeout.MaxTestTime)]
     [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, 2 * EthereumEcdsaExtensions.MaxEip155ChainId + 35, ExpectedResult = true)]
     [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, 2 * EthereumEcdsaExtensions.MaxEip155ChainId + 36, ExpectedResult = true)]
