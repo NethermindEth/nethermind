@@ -173,7 +173,7 @@ public class TxGossipAllocationTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(measured.AnnouncePerHashPerPeer, Is.LessThanOrEqualTo(96), "announce, bytes per hash per peer");
-            Assert.That(measured.DeliverPerTx, Is.LessThanOrEqualTo(1620), "deliver, bytes per tx");
+            Assert.That(measured.DeliverPerTx, Is.LessThanOrEqualTo(1440), "deliver, bytes per tx");
             Assert.That(measured.DuplicatePerTxPerPeer, Is.LessThanOrEqualTo(8), "duplicate, bytes per tx per peer");
             Assert.That(measured.ServePerTx, Is.LessThanOrEqualTo(8), "serve, bytes per tx");
         }

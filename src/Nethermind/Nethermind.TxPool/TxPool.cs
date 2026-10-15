@@ -2216,7 +2216,7 @@ namespace Nethermind.TxPool
             bool evictNextTxs = false;
             int invalidatedByFork = 0;
 
-            foreach (Transaction tx in transactions)
+            foreach (Transaction tx in TxDistinctSortedPool.InOrder(transactions))
             {
                 if (KeyedNonceManager.UsesKeyedNonce(tx))
                 {
