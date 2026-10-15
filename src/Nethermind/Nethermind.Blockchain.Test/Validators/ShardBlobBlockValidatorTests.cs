@@ -29,6 +29,7 @@ public class ShardBlobBlockValidatorTests
             Build.A.Block
                 .WithBlobGasUsed(blobGasUsed)
                 .WithExcessBlobGas(excessBlobGas)
+                .WithParentBeaconBlockRoot(spec.IsEip4788Enabled ? TestItem.KeccakB : null)
                 .WithWithdrawalsRoot(TestItem.KeccakA)
                 .WithWithdrawals(TestItem.WithdrawalA_1Eth)
                 .WithParent(parent)

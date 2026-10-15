@@ -41,7 +41,9 @@ public static class Spec
         {
             OptimismReleaseSpec spec = Substitute.For<OptimismReleaseSpec>();
 
+            spec.IsEip4895Enabled = true;
             spec.IsEip4844Enabled = true;
+            spec.IsEip4788Enabled = true;
             spec.IsOpGraniteEnabled = Instance.IsGranite(header);
             spec.IsOpHoloceneEnabled = Instance.IsHolocene(header);
             spec.IsOpIsthmusEnabled = Instance.IsIsthmus(header);
@@ -62,7 +64,9 @@ public static class Spec
         {
             OptimismReleaseSpec spec = Substitute.For<OptimismReleaseSpec>();
 
+            spec.IsEip4895Enabled = true;
             spec.IsEip4844Enabled = true;
+            spec.IsEip4788Enabled = true;
             spec.IsOpGraniteEnabled = timestamp >= GraniteTimestamp;
             spec.IsOpHoloceneEnabled = timestamp >= HoloceneTimeStamp;
             spec.IsOpIsthmusEnabled = timestamp >= IsthmusTimeStamp;
