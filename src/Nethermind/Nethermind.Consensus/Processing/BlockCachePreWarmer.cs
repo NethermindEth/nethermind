@@ -383,14 +383,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     /// block processing still walks it one read at a time.
     /// </summary>
     /// <remarks>
-    /// Told about block processing's reads on its own thread, in the order it makes them, so its counting needs no
-    /// synchronisation. Its runs are discovery hand-offs: they share the block's hand-off cap and cell budget, put only
-    /// values read at the parent state into the caches, and record no footprint. The session's end closes it after
-    /// cancelling the block's token, and joins every run it started; none starts after that.
+    /// Counts only the reads of the block's transactions, which block processing makes on its own thread, in order, so
+    /// its counting needs no synchronisation. The block's token is cancelled once the transactions are executed; the
+    /// reads that follow, of the work that finalises the block, may run on other threads and belong to no transaction,
+    /// so they are not counted. Its runs are discovery hand-offs: they share the block's hand-off cap and cell budget,
+    /// put only values read at the parent state into the caches, and record no footprint. The session's end closes it
+    /// after cancelling the block's token, and joins every run it started; none starts after that.
     /// </remarks>
     private sealed class ReadAhead(BlockCachePreWarmer preWarmer, BlockState blockState, int coldReads) : IConsumerColdReadObserver
     {
         private readonly int _threshold = Math.Max(1, coldReads);
+        private readonly CancellationToken _token = blockState.Token;
         private readonly Lock _gate = new();
         private readonly List<ParallelUnbalancedWork.BackgroundWork> _runs = [];
         private bool _closed;
@@ -403,9 +406,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         public void OnColdRead()
         {
-            // Written by this thread, so read as it is.
+            // Written by block processing's thread, so read as it is; a read on another thread is turned away by the token.
             int index = preWarmer._mainThreadTxIndex;
-            if (index < 0) return;
+            if (index < 0 || _token.IsCancellationRequested) return;
             if (index != _countedIndex)
             {
                 _countedIndex = index;
@@ -424,7 +427,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 Transaction[] transactions = blockState.Block.Transactions;
                 if ((uint)index >= (uint)transactions.Length) return;
                 Transaction tx = transactions[index];
-                CancellationToken token = blockState.Token;
+                CancellationToken token = _token;
                 // A transaction the block's up-front discovery is still on is left to it.
                 if (tx.SenderAddress is null || token.IsCancellationRequested
                     || (blockState.IsDiscoveredUpFront(index) && !blockState.UpFrontDiscoveryEnded)

@@ -288,6 +288,40 @@ public class PrewarmerReadAheadTests
         }
     }
 
+    /// <summary>
+    /// The block's token is cancelled once its transactions are executed. The reads that follow, of the work that
+    /// finalises the block, belong to no transaction, and may come from other threads: they are not counted.
+    /// </summary>
+    [Test]
+    public void Reads_after_the_transactions_are_executed_are_not_counted()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, coldReads: 3);
+        Block block = BuildBlock(WalkerCall(TestItem.PrivateKeyA, 0, 0x5000, 6), Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0));
+        using CancellationTokenSource transactionsExecuted = new();
+        using IDisposable session = OpenSession(preWarmer, block, transactionsExecuted.Token);
+        _caches.StorageCache.Clear();
+
+        preWarmer.OnBeforeTxExecution();
+        for (int i = 0; i < 3; i++) _caches.ReportConsumerColdRead();
+        bool idle = SpinWait.SpinUntil(() => preWarmer.ReadAheadsRunning == 0, Timeout);
+        long lateMisses = Blockchain.Metrics.PrewarmInFlightLateMisses;
+        _caches.ReportConsumerColdRead();
+        long lateWhileExecuting = Blockchain.Metrics.PrewarmInFlightLateMisses - lateMisses;
+
+        transactionsExecuted.Cancel();
+        lateMisses = Blockchain.Metrics.PrewarmInFlightLateMisses;
+        for (int i = 0; i < 2 * 3; i++) _caches.ReportConsumerColdRead();
+        long lateAfterwards = Blockchain.Metrics.PrewarmInFlightLateMisses - lateMisses;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(idle, Is.True);
+            Assert.That(lateWhileExecuting, Is.EqualTo(1), "precondition: a read past the started read-ahead counts as a late miss");
+            Assert.That(lateAfterwards, Is.Zero, "a read after the transactions is no late miss of the last one");
+            Assert.That(preWarmer.ReadAheadsStarted, Is.EqualTo(1), "nor does it start a read-ahead");
+        }
+    }
+
     [Test]
     public void The_sessions_end_stops_and_joins_its_read_ahead()
     {
@@ -392,12 +426,12 @@ public class PrewarmerReadAheadTests
     }
 
     /// <summary>Opens the block's session and waits for its warm pass, leaving the session, and its read-ahead, open.</summary>
-    private IDisposable OpenSession(BlockCachePreWarmer preWarmer, Block block)
+    private IDisposable OpenSession(BlockCachePreWarmer preWarmer, Block block, CancellationToken token = default)
     {
         IWorldState worldState = _scope.Resolve<IWorldState>();
         using (worldState.BeginScope(_parent))
         {
-            IDisposable? session = preWarmer.PreWarmCaches(block, _parent, Spec);
+            IDisposable? session = preWarmer.PreWarmCaches(block, _parent, Spec, token);
             Assert.That(session, Is.Not.Null, "precondition: the block is warmed");
             ((PrewarmingSession)session!).WaitForCompletion();
             return session;
