@@ -1364,8 +1364,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             Metrics.BeaconChainPeerCount = _peers.Count;
         }
 
-        // The peer store never removes an entry: any key can open a session here, so only peers this node chose to dial are recorded.
-        if (info.Identify is { } identify && (info.Direction == PeerDirection.Outbound || IsStaticPeer(peerId)))
+        // The peer store never removes an entry, and any key can open a session or be discovered, so only static peers are recorded there.
+        if (info.Identify is { } identify && IsStaticPeer(peerId))
         {
             _p2p.RecordIdentify(session, identify);
         }

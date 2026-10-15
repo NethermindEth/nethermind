@@ -369,9 +369,9 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(120_000)]
-    public async Task Admitted_sessions_the_remote_opened_with_fresh_keys_add_no_peer_store_entry_unless_static([Values] bool staticPeers, CancellationToken token)
+    public async Task Admitted_sessions_with_fresh_keys_add_no_peer_store_entry_unless_static([Values] bool weDial, [Values] bool staticPeers, CancellationToken token)
     {
-        Node[] remotes = [.. Enumerable.Range(0, 4).Select(_ => CreateNode())];
+        Node[] remotes = [.. Enumerable.Range(0, 50).Select(_ => CreateNode())];
         Node local = CreateNode();
         SetMatchingStatus([.. remotes, local]);
         await using PeerHostScope nodes = new([local.P2P, .. remotes.Select(static node => node.P2P)]);
@@ -382,7 +382,8 @@ public class PeerBandTests
         foreach (Node remote in remotes)
         {
             PeerId remoteId = remote.P2P.LocalPeerId!;
-            await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
+            if (weDial) Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True);
+            else await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
             await WaitUntilAsync(() => manager.PeerCount == 1 && local.P2P.HasGossipChannel(remoteId), token, "the admitted peer got no gossip channel from its identify answer");
             Assert.That(local.P2P.TryGetEstablishedSession(remoteId, out ISession? session), Is.True);
             await session!.DisconnectAsync();
