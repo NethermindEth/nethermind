@@ -445,6 +445,125 @@ public class LeanObjectTransportTests
     }
 
     [Test]
+    public async Task ETH_recovery_and_gossip_metadata_preserve_waited_import_capacity()
+    {
+        using LeanTestNode node = new();
+        using ManualResetEventSlim resumeRecovery = new();
+        TaskCompletionSource recovering = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        List<IDisposable> pressure = [];
+        Transaction transaction = FrameTransaction(135);
+        FakeLink gossip = Link("recovering-gossip", transaction);
+        LeanPeer peer = node.Connect(gossip);
+        bool firstRecovery = true;
+        bool recoveryResumed = false;
+        gossip.OnRecover = _ =>
+        {
+            if (firstRecovery)
+            {
+                firstRecovery = false;
+                long target = LeanLimits.MaxIncompleteBytes - (long)LeanLimits.MaxObjectBytes - LeanProtocol.MaxCreditBytes - 1;
+                ReserveGlobalBytes(node, target - node.Transport.IncompleteBytes - node.Transport.CompletionBytes, pressure);
+                recovering.TrySetResult();
+                recoveryResumed = resumeRecovery.Wait(Timeout);
+            }
+            return [transaction];
+        };
+        byte[] body = Wrapper(ChunkBytes, true, transaction);
+        LeanDescriptor descriptor = Describe(body);
+        node.Transport.OnAnnounce(peer, new([descriptor]));
+        ServeAll(node, peer, gossip, descriptor, body);
+        try
+        {
+            await recovering.Task.WaitAsync(Timeout);
+            int assemblies = node.Transport.AssemblyCount;
+            FakeLink deferred = Link("metadata-gossip");
+            LeanPeer deferredSource = node.Connect(deferred);
+            node.Transport.OnAnnounce(deferredSource, new([Describe(Wrapper(ChunkBytes, true, FrameTransaction(136)))]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Transport.AssemblyCount, Is.EqualTo(assemblies), "gossip metadata cannot consume the import margin");
+                Assert.That(deferred.Sent<GetChunksMessage>(), Is.Empty);
+            }
+            node.Transport.Remove(deferredSource);
+
+            FakeLink healthy = Link("recovery-import");
+            LeanPeer source = node.Connect(healthy);
+            byte[] proofBody = LeanBodies.EncodeBlockProof(Proof(Eip8288Constants.MaxAggregateProofBytes));
+            LeanDescriptor proofDescriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+                LeanDescriptor.BlockProofContext(TestItem.KeccakA.ValueHash256), proofBody);
+            using CancellationTokenSource cancellation = new(Timeout);
+            Task<LeanFetchedBody?> fetching = node.Transport.FetchBodyAsync(proofDescriptor, source, cancellation.Token);
+            Assert.That(healthy.Sent<GetChunksMessage>(), Is.Not.Empty, "waited metadata and body use the import margin");
+            ServeAll(node, source, healthy, proofDescriptor, proofBody);
+            using LeanFetchedBody? fetched = await fetching.WaitAsync(Timeout);
+            Assert.That(fetched?.Body, Is.EqualTo(proofBody));
+            resumeRecovery.Set();
+            await Until(() => node.Transport.AssemblyCount == 0);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gossip.RecoveryCalls, Is.EqualTo(1));
+                Assert.That(recoveryResumed, Is.True, "recovery stayed in flight until the waited proof completed");
+                Assert.That(node.Pending, Is.Empty, "the ETH envelope could not reserve the protected margin");
+                Assert.That(node.Transport.IsStored(descriptor.ObjectId), Is.False);
+                Assert.That(gossip.Penalties, Is.Empty, "local recovery pressure is not invalid peer data");
+                Assert.That(healthy.Penalties, Is.Empty);
+            }
+        }
+        finally
+        {
+            resumeRecovery.Set();
+            foreach (IDisposable lease in pressure) lease.Dispose();
+        }
+        node.Tick(LeanLimits.SoftTombstone + TimeSpan.FromSeconds(1));
+        gossip.Clear();
+        node.Transport.OnAnnounce(peer, new([descriptor]));
+        ServeAll(node, peer, gossip, descriptor, body);
+        await Until(() => node.Transport.IsStored(descriptor.ObjectId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gossip.RecoveryCalls, Is.EqualTo(2));
+            Assert.That(node.Pending.Any(pending => pending.Hash == transaction.Hash), Is.True);
+            Assert.That(gossip.Penalties, Is.Empty);
+        }
+    }
+
+    private static void ReserveGlobalBytes(LeanTestNode node, long bytes, List<IDisposable> leases)
+    {
+        for (int index = 0; bytes > 0; index++)
+        {
+            long part = Math.Min(bytes, LeanLimits.MaxPeerBytes);
+            Assert.That(node.Transport.TryReserveNodeBytes(Link($"global-pressure:{index}").NodeKey, part, out IDisposable? lease), Is.True);
+            leases.Add(lease!);
+            bytes -= part;
+        }
+    }
+
+    [Test]
+    public void Connection_reservation_preserves_import_and_ingress_capacity()
+    {
+        using LeanTestNode node = new();
+        List<IDisposable> pressure = [];
+        const int connectionBytes = 896 * 1024;
+        long target = LeanLimits.MaxIncompleteBytes - (long)LeanLimits.MaxObjectBytes - LeanProtocol.MaxCreditBytes;
+        try
+        {
+            ReserveGlobalBytes(node, target - connectionBytes, pressure);
+            FakeLink connection = Link("new-connection");
+            Assert.That(node.Transport.TryReserveNodeBytes(connection.NodeKey, connectionBytes, out IDisposable? admitted,
+                preserveImportCapacity: true), Is.True);
+            using (admitted)
+            {
+                Assert.That(node.Transport.TryReserveNodeBytes(Link("later-connection").NodeKey, 1, out _,
+                    preserveImportCapacity: true), Is.False);
+                Assert.That(node.Transport.TryReserveNodeBytes(connection.NodeKey, LeanProtocol.MaxMessageBytes, out IDisposable? ingress),
+                    Is.True, "existing waited-response ingress retains access to reserved scratch");
+                ingress!.Dispose();
+            }
+        }
+        finally { foreach (IDisposable lease in pressure) lease.Dispose(); }
+    }
+
+    [Test]
     public void Request_ids_allow_gaps_but_reuse_and_decrease_are_violations([Values(0UL, 7UL, 3UL)] ulong invalid)
     {
         using LeanTestNode node = new();
