@@ -151,6 +151,8 @@ public abstract class BlockchainTestBase
         // Bench harness, not for merge: the blocks are processed with block prewarming on.
         blocksConfig.PreWarmStateConcurrency = 4;
         blocksConfig.PreWarming = PreWarmMode.Block;
+        // Bench harness, not for merge: the invalidated footprints are refreshed on several workers.
+        blocksConfig.PreWarmRefreshWorkers = 2;
         if (ParallelExecutionOverride.HasValue)
         {
             blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
