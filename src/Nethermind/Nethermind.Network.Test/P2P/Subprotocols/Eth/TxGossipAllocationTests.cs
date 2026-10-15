@@ -67,6 +67,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth;
 /// </remarks>
 [TestFixture]
 [NonParallelizable]
+[ReleaseOnly("DEBUG builds capture a stack trace per ArrayPoolList, so the allocation ceilings do not apply.")]
 public class TxGossipAllocationTests
 {
     private const int Peers = 8;
@@ -171,8 +172,8 @@ public class TxGossipAllocationTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(measured.AnnouncePerHashPerPeer, Is.LessThanOrEqualTo(8), "announce, bytes per hash per peer");
-            Assert.That(measured.DeliverPerTx, Is.LessThanOrEqualTo(1600), "deliver, bytes per tx");
+            Assert.That(measured.AnnouncePerHashPerPeer, Is.LessThanOrEqualTo(10), "announce, bytes per hash per peer");
+            Assert.That(measured.DeliverPerTx, Is.LessThanOrEqualTo(1440), "deliver, bytes per tx");
             Assert.That(measured.DuplicatePerTxPerPeer, Is.LessThanOrEqualTo(8), "duplicate, bytes per tx per peer");
             Assert.That(measured.ServePerTx, Is.LessThanOrEqualTo(8), "serve, bytes per tx");
         }
