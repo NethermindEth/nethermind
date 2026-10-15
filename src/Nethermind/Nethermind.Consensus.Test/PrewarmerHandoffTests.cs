@@ -1326,11 +1326,11 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         f.EndWarmPass();
         f.StopWaitingForBlockProcessing();
         // A, B and C wake: A takes the refresh, B and C find nothing to take.
-        f.WaitForWork(CancellationToken.None);
+        Woken(f);
         Assert.That(f.TryTakeInvalidated(after, out int position, out int take), Is.True);
         for (int idle = 0; idle < 2; idle++)
         {
-            f.WaitForWork(CancellationToken.None);
+            Woken(f);
             Assert.That(f.TryTakeInvalidated(after, out _, out _), Is.False);
         }
 
@@ -1340,10 +1340,10 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             // work left and wait again, each taking a wake; then A takes the position itself.
             StoreChainedRefresh(f, txs, position, take);
             Assert.That(f.TryEnd(processing), Is.False);
-            f.WaitForWork(CancellationToken.None);
+            Woken(f);
             Assert.That(f.TryEnd(processing), Is.False);
             if (round == 3) Assert.That(f.PendingWakes, Is.Zero, "C waits with no wake left");
-            else f.WaitForWork(CancellationToken.None);
+            else Woken(f);
             f.ApplyExecuted();
             Assert.That(f.TryTakeInvalidated(after, out position, out take), Is.True);
             Assert.That(f.TryTakeInvalidated(after, out _, out _), Is.False);
@@ -1487,6 +1487,13 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         TestContext.Out.WriteLine($"{rounds} rounds");
         Assert.That(mismatches, Is.Zero);
+    }
+
+    // A waiting worker woken: fails rather than blocks when no wake is left for it.
+    private static void Woken(BlockFootprints footprints)
+    {
+        using CancellationTokenSource limit = new(TimeSpan.FromSeconds(1));
+        Assert.That(() => footprints.WaitForWork(limit.Token), Throws.Nothing, "no wake was left");
     }
 
     private static StorageCell Chained(int position) => new(TestItem.AddressC, (UInt256)(0x4e4d + position));
