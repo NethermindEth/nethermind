@@ -97,7 +97,8 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
         _transactions.RecoverAsync(RemoteKey, hashes, reserve, cancellationToken);
 
     internal bool TryReserveReceiveCredit() =>
-        _transport.TryReserveNodeBytes(RemoteKey, LeanEthp2pProtocol.ConnectionReceiveWindow + LeanEthp2pProtocol.ControlReceiveBytes, out _receiveCredit);
+        _transport.TryReserveConnectionBytes(RemoteKey, LeanEthp2pProtocol.ConnectionReceiveWindow + LeanEthp2pProtocol.ControlReceiveBytes,
+            out _receiveCredit);
 
     private IDisposable? ReserveFrame(int bytes) =>
         _transport.TryReserveNodeBytes(RemoteKey, bytes, out IDisposable? lease) ? lease : null;

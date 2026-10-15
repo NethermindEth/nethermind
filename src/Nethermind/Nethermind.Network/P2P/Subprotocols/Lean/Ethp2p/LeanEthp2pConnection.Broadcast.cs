@@ -301,29 +301,32 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
         return session;
     }
 
-    async ValueTask<bool> ILeanBroadcastPeer.SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard)
+    async ValueTask<LeanShardSendResult> ILeanBroadcastPeer.SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard)
     {
-        if (_closing.IsCancellationRequested || session is not OutgoingSession outgoing) return false;
+        if (_closing.IsCancellationRequested || session is not OutgoingSession outgoing) return LeanShardSendResult.Failed;
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token);
         deadline.CancelAfter(LeanProtocol.MaxRequestIdle);
         try
         {
             // The SESS Open goes first, so the receiver normally knows the session before its shards.
-            if (!await outgoing.Opened.WaitAsync(deadline.Token).ConfigureAwait(false)) return false;
+            if (!await outgoing.Opened.WaitAsync(deadline.Token).ConfigureAwait(false)) return LeanShardSendResult.Failed;
             await using QuicStream stream = await _quic.OpenOutboundStreamAsync(QuicStreamType.Unidirectional, deadline.Token).ConfigureAwait(false);
             byte[] header = LeanBroadcastWire.Envelope(LeanBroadcastWire.ChunkHeader(outgoing.Channel, outgoing.MessageId,
                 LeanBroadcastWire.ShardId(index), (uint)shard.Length));
             byte[] chunk = [LeanEthp2pProtocol.ChunkStream, .. header, .. shard.Span];
             await stream.WriteAsync(chunk, completeWrites: true, deadline.Token).ConfigureAwait(false);
             LeanMetrics.Ethp2pBytes(outbound: true, LeanEthp2pProtocol.ChunkStream, chunk.Length);
-            return true;
+            return LeanShardSendResult.Sent;
         }
         catch (Exception exception) when (exception is QuicException or OperationCanceledException or ObjectDisposedException)
         {
-            // Refused as unneeded or a duplicate, or the peer left: not a fault on either side.
-            return false;
+            return ClassifyShardFailure(exception);
         }
     }
+
+    internal static LeanShardSendResult ClassifyShardFailure(Exception exception) =>
+        exception is QuicException { QuicError: QuicError.StreamAborted, ApplicationErrorCode: LeanEthp2pProtocol.RefusedError }
+            ? LeanShardSendResult.Refused : LeanShardSendResult.Failed;
 
     /// <summary>This node's SESS stream toward the peer: Open, routing updates, then FIN or the completion reset.</summary>
     /// <remarks>Open is always written first. Only routing updates queue behind it; each carries the cumulative inventory, so

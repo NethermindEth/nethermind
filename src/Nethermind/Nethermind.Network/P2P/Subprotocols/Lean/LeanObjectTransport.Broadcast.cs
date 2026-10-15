@@ -84,14 +84,14 @@ public sealed partial class LeanObjectTransport
             long now = _clock.GetTimestamp();
             if (_disposed || !IsEnabled || _tombstones.Contains(descriptor.ObjectId, now)) return LeanBroadcastAdmission.Rejected;
             bool held = _store.Contains(descriptor.ObjectId);
-            if (codedBytes > LeanLimits.MaxIncompleteBytes - _incompleteBytes - _completionBytes
+            if (!CanReserveObjectBytes(codedBytes, waited: false)
                 || (source is not null && codedBytes > LeanLimits.MaxPeerBytes - source.ChargedBytes)) return LeanBroadcastAdmission.Busy;
             if (!held && !_assemblies.ContainsKey(descriptor.ObjectId))
             {
                 if (TryCreateAssembly(descriptor, source, now) is not { } assembly) return LeanBroadcastAdmission.Busy;
                 assembly.Validate = false;
             }
-            if (codedBytes > LeanLimits.MaxIncompleteBytes - _incompleteBytes - _completionBytes
+            if (!CanReserveObjectBytes(codedBytes, waited: false)
                 || (source is not null && codedBytes > LeanLimits.MaxPeerBytes - source.ChargedBytes)) return LeanBroadcastAdmission.Busy;
             _incompleteBytes += codedBytes;
             if (source is not null) source.ChargedBytes += codedBytes;
@@ -242,7 +242,7 @@ public sealed partial class LeanObjectTransport
         {
             if (_disposed) return null;
             if (_broadcastSidecars.ContainsKey(descriptor.BlockHash)) return null;
-            if (proof.Length > LeanLimits.MaxIncompleteBytes - _incompleteBytes - _completionBytes
+            if (!CanReserveObjectBytes(proof.Length, waited: false)
                 || (source is not null && proof.Length > LeanLimits.MaxPeerBytes - source.ChargedBytes)) return null;
             if (_broadcastSidecarOrder.Count >= MaxBroadcastSidecars && _broadcastSidecarOrder.TryDequeue(out ValueHash256 oldest))
                 ReleaseBroadcastSidecar(oldest);

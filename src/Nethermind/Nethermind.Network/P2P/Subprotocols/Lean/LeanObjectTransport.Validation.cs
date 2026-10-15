@@ -366,7 +366,8 @@ public sealed partial class LeanObjectTransport
         lock (_gate)
         {
             if (bytes < 0 || assembly.Dropped || assembly.CompletionSource != source
-                || bytes > LeanLimits.MaxIncompleteBytes - BufferedBytes || bytes > LeanLimits.MaxPeerBytes - source.ChargedBytes) return false;
+                || !CanReserveObjectBytes(bytes, assembly.Waiters.Count != 0)
+                || bytes > LeanLimits.MaxPeerBytes - source.ChargedBytes - 4 * LeanProtocol.MaxMessageBytes) return false;
             _completionBytes += bytes;
             source.ChargedBytes += bytes;
             assembly.RecoveryBytes += bytes;
@@ -389,7 +390,7 @@ public sealed partial class LeanObjectTransport
             if (_store.TryGet(descriptor.ObjectId, out LeanObjectStore.Entry entry)) return new LeanFetchedBody(entry.Body);
             if (_tombstones.Contains(descriptor.ObjectId, now)) return null;
             if (!_assemblies.TryGetValue(descriptor.ObjectId, out assembly))
-                assembly = TryCreateAssembly(descriptor, source.Closed ? null : source, now);
+                assembly = TryCreateAssembly(descriptor, source.Closed ? null : source, now, waited: true);
             if (assembly is null || assembly.Dropped) return null;
             if (!source.Closed) assembly.AddSource(source);
             assembly.Waiters.Add(waiter);

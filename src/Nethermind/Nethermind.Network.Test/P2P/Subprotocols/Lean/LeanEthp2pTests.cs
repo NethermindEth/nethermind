@@ -5,12 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Quic;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using PublicKey = Nethermind.Core.Crypto.PublicKey;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -109,6 +111,56 @@ public class LeanEthp2pTests
             Assert.That(int.IsPow2(LeanEthp2pProtocol.StreamReceiveWindow) && int.IsPow2(LeanEthp2pProtocol.ConnectionReceiveWindow), Is.True);
         }
     }
+
+    [Test]
+    public void Connection_reservation_preserves_import_and_ingress_capacity()
+    {
+        using LeanTestNode node = new();
+        using CompositeDisposable pressure = [];
+        int connectionBytes = LeanEthp2pProtocol.ConnectionReceiveWindow + LeanEthp2pProtocol.ControlReceiveBytes;
+        long bytes = LeanLimits.MaxIncompleteBytes - (long)LeanLimits.MaxObjectBytes - LeanProtocol.MaxCreditBytes - connectionBytes;
+        for (int i = 0; bytes > 0; i++)
+        {
+            long part = Math.Min(bytes, LeanLimits.MaxPeerBytes);
+            Assert.That(node.Transport.TryReserveNodeBytes(new FakeLink($"connection-pressure:{i}").NodeKey, part, out IDisposable? lease), Is.True);
+            pressure.Add(lease!);
+            bytes -= part;
+        }
+        FakeLink connection = new("new-connection");
+        Assert.That(node.Transport.TryReserveConnectionBytes(connection.NodeKey, connectionBytes, out IDisposable? admitted), Is.True);
+        using (admitted)
+        {
+            Assert.That(node.Transport.TryReserveConnectionBytes(new FakeLink("later-connection").NodeKey, 1, out _), Is.False);
+            Assert.That(node.Transport.TryReserveNodeBytes(connection.NodeKey, LeanProtocol.MaxMessageBytes, out IDisposable? ingress), Is.True,
+                "existing waited-response ingress retains access to reserved scratch");
+            ingress!.Dispose();
+        }
+    }
+
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("windows")]
+    private static IEnumerable<TestCaseData> ShardFailures()
+    {
+        yield return new TestCaseData(new QuicException(QuicError.StreamAborted, LeanEthp2pProtocol.RefusedError, "refused shard"), true)
+            .SetName("Explicit shard refusal");
+        yield return new TestCaseData(new QuicException(QuicError.StreamAborted, LeanEthp2pProtocol.ReconstructedError, "other stream reset"), false)
+            .SetName("Other stream reset");
+        yield return new TestCaseData(new QuicException(QuicError.ConnectionAborted, LeanEthp2pProtocol.RefusedError, "closed connection"), false)
+            .SetName("Connection close with refusal-valued code");
+        yield return new TestCaseData(new QuicException(QuicError.ConnectionTimeout, null, "connection timeout"), false)
+            .SetName("Connection timeout");
+        yield return new TestCaseData(new OperationCanceledException("write deadline"), false).SetName("Shard write deadline");
+        yield return new TestCaseData(new ObjectDisposedException("stream"), false).SetName("Disposed shard stream");
+    }
+
+    [TestCaseSource(nameof(ShardFailures))]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("windows")]
+    public void Shard_send_distinguishes_explicit_refusal_from_transport_failures(Exception exception, bool refused) =>
+        Assert.That(LeanEthp2pConnection.ClassifyShardFailure(exception),
+            Is.EqualTo(refused ? LeanShardSendResult.Refused : LeanShardSendResult.Failed));
 
     private static IEnumerable<TestCaseData> Fragmented()
     {

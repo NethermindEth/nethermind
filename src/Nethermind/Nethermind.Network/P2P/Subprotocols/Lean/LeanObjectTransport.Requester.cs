@@ -114,11 +114,11 @@ public sealed partial class LeanObjectTransport
         return created;
     }
 
-    private LeanAssembly? TryCreateAssembly(LeanDescriptor descriptor, LeanPeer? origin, long now)
+    private LeanAssembly? TryCreateAssembly(LeanDescriptor descriptor, LeanPeer? origin, long now, bool waited = false)
     {
         // A declared length never triggers an allocation of that length: only per-chunk bookkeeping is charged here.
         long metadata = descriptor.ChunkCount * 24L + 1024;
-        if (_assemblies.Count >= LeanLimits.MaxAssemblies || metadata > LeanLimits.MaxIncompleteBytes - BufferedBytes
+        if (_assemblies.Count >= LeanLimits.MaxAssemblies || !CanReserveObjectBytes(metadata, waited)
             || (origin is not null && metadata > LeanLimits.MaxPeerBytes - origin.ChargedBytes)) return null;
         LeanAssembly assembly = new(descriptor, now, metadata) { Origin = origin };
         _incompleteBytes += metadata;
@@ -183,9 +183,8 @@ public sealed partial class LeanObjectTransport
                     + (long)Eip8288Constants.MaxLeanSigDepsPerWrapper * Eip8288Constants.LeanSphincsWitnessBytes)
                 : 0;
             long reserved = bodyBytes + workingBytes;
-            long importHeadroom = assembly.Waiters.Count == 0 ? (long)LeanLimits.MaxObjectBytes : 0;
             // Gossip leaves room for a waited block proof as well as ingress frames and decode scratch.
-            if (reserved > LeanLimits.MaxIncompleteBytes - BufferedBytes - LeanProtocol.MaxCreditBytes - importHeadroom
+            if (!CanReserveObjectBytes(reserved, assembly.Waiters.Count != 0)
                 || reserved > LeanLimits.MaxPeerBytes - source.ChargedBytes - 4 * LeanProtocol.MaxMessageBytes) return;
             assembly.RetrievalBytes = reserved;
             _incompleteBytes += reserved;

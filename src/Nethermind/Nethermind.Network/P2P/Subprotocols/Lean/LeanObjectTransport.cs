@@ -159,6 +159,12 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         PruneNode(peer.Node);
     }
 
+    private bool CanReserveObjectBytes(long bytes, bool waited) =>
+        bytes <= LeanLimits.MaxIncompleteBytes - BufferedBytes - LeanProtocol.MaxCreditBytes
+            - (waited ? 0 : (long)LeanLimits.MaxObjectBytes);
+
+    /// <summary>Charges bounded receive credit and ingress scratch, including the reserved ingress margin.</summary>
+    /// <remarks>Object storage, metadata and recovery use <see cref="CanReserveObjectBytes"/> instead.</remarks>
     internal bool TryReserveNodeBytes(PublicKey key, long bytes, out IDisposable? lease)
     {
         lock (_gate)

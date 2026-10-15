@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
 /// <summary>What an incoming ethp2p response stream prefix names.</summary>
@@ -21,6 +24,16 @@ internal enum LeanResponseTarget
 
 public sealed partial class LeanObjectTransport
 {
+    /// <summary>Reserves a connection's fixed receive capacity while preserving waited import and ingress margins.</summary>
+    internal bool TryReserveConnectionBytes(PublicKey key, long bytes, out IDisposable? lease)
+    {
+        lock (_gate)
+        {
+            lease = null;
+            return CanReserveObjectBytes(bytes, waited: false) && TryReserveNodeBytes(key, bytes, out lease);
+        }
+    }
+
     /// <summary>Resolves the request named by a new response stream and marks it as having one.</summary>
     internal LeanResponseTarget OpenResponseStream(LeanPeer peer, ulong requestId)
     {
