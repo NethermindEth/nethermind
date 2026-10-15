@@ -49,6 +49,27 @@ public class BeaconApiHeadSnapshotTests
     }
 
     [Test]
+    public async Task Head_state_routes_serve_the_held_state_without_encoding_it_to_ssz()
+    {
+        HeadSnapshotHolder snapshots = new();
+        ForkChoiceSnapshotHolder forkChoice = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots, forkChoiceSnapshots: forkChoice);
+        Seed(host);
+        Publish(host, snapshots, forkChoice, finalizedEpoch: 0, executionInSync: true);
+        // A state without its registry cannot be SSZ-encoded, so a request that encodes it first fails.
+        BeaconStateFulu held = BeaconApiTestHost.RichState(host.Spec, Slot);
+        held.Validators = null;
+        snapshots.Current = snapshots.Current! with { State = new ForkedBeaconState.OfFulu(held) };
+
+        using HttpResponseMessage unacceptable = await host.GetAsync("/eth/v2/debug/beacon/states/head", "text/plain");
+        using HttpResponseMessage list = await host.GetAsync("/eth/v1/beacon/states/head/pending_consolidations", "application/json");
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(list.StatusCode, Is.EqualTo(HttpStatusCode.OK), "a list route reads the held head state");
+        Assert.That(unacceptable.StatusCode, Is.EqualTo(HttpStatusCode.NotAcceptable), "Accept is negotiated before any state is encoded");
+    }
+
+    [Test]
     [NonParallelizable]
     public async Task Host_ignores_ambient_kestrel_endpoints()
     {

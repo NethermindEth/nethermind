@@ -49,6 +49,21 @@ internal static class BeaconApiJson
         await stream.FlushAsync();
     }
 
+    /// <summary>Streams the unversioned <c>execution_optimistic</c>, <c>finalized</c>, <c>data</c> envelope with <paramref name="writeData"/> producing the <c>data</c> value, so a large list is never buffered whole.</summary>
+    public static async Task WriteStreamedEnvelopeAsync(HttpContext ctx, bool executionOptimistic, bool finalized, Func<BeaconJsonStream, Task> writeData)
+    {
+        ctx.Response.ContentType = ContentNegotiation.Json;
+        await using BeaconJsonStream stream = new(ctx.Response.BodyWriter, ctx.RequestAborted);
+        Utf8JsonWriter w = stream.Writer;
+        w.WriteStartObject();
+        w.WriteBoolean("execution_optimistic", executionOptimistic);
+        w.WriteBoolean("finalized", finalized);
+        w.WritePropertyName("data");
+        await writeData(stream);
+        w.WriteEndObject();
+        await stream.FlushAsync();
+    }
+
     private sealed record DataEnvelope<T>([property: JsonPropertyName("data")] T Data);
 
     private sealed record FullEnvelope<T>(

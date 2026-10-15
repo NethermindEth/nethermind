@@ -49,12 +49,14 @@ internal sealed class StateRequestLimiter : IDisposable
     private readonly PartitionedRateLimiter<HttpContext> _downloadInFlightPerClient;
     private readonly PartitionedRateLimiter<HttpContext> _inFlightPerClient;
     private readonly PartitionedRateLimiter<HttpContext>? _downloadsPerClient;
+    private readonly PartitionedRateLimiter<HttpContext>? _queriesPerClient;
 
     /// <exception cref="ArgumentOutOfRangeException">A limit in <paramref name="config"/> is out of range.</exception>
     public StateRequestLimiter(IBeaconApiConfig config)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(config.MaxConcurrentStateRequests, 1, nameof(IBeaconApiConfig.MaxConcurrentStateRequests));
         ArgumentOutOfRangeException.ThrowIfNegative(config.StateDownloadsPerMinutePerClient, nameof(IBeaconApiConfig.StateDownloadsPerMinutePerClient));
+        ArgumentOutOfRangeException.ThrowIfNegative(config.StateQueriesPerMinutePerClient, nameof(IBeaconApiConfig.StateQueriesPerMinutePerClient));
 
         ArgumentOutOfRangeException.ThrowIfLessThan(config.MaxConcurrentStateRequestsPerClient, 1, nameof(IBeaconApiConfig.MaxConcurrentStateRequestsPerClient));
         ArgumentOutOfRangeException.ThrowIfLessThan(config.StateResponseTimeoutSeconds, 1, nameof(IBeaconApiConfig.StateResponseTimeoutSeconds));
@@ -82,21 +84,21 @@ internal sealed class StateRequestLimiter : IDisposable
         _downloadInFlightPerClient = PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetConcurrencyLimiter(
             ClientKey(c.Connection.RemoteIpAddress),
             _ => new ConcurrencyLimiterOptions { PermitLimit = perClient, QueueLimit = 0 }));
-        int perMinute = config.StateDownloadsPerMinutePerClient;
-        if (perMinute > 0)
-        {
-            _downloadsPerClient = PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetTokenBucketLimiter(
-                ClientKey(c.Connection.RemoteIpAddress),
-                _ => new TokenBucketRateLimiterOptions
-                {
-                    TokenLimit = perMinute,
-                    TokensPerPeriod = perMinute,
-                    ReplenishmentPeriod = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0,
-                    AutoReplenishment = true,
-                }));
-        }
+        _downloadsPerClient = CreatePerMinuteLimiter(config.StateDownloadsPerMinutePerClient);
+        _queriesPerClient = CreatePerMinuteLimiter(config.StateQueriesPerMinutePerClient);
     }
+
+    private static PartitionedRateLimiter<HttpContext>? CreatePerMinuteLimiter(int perMinute) => perMinute <= 0 ? null
+        : PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetTokenBucketLimiter(
+            ClientKey(c.Connection.RemoteIpAddress),
+            _ => new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = perMinute,
+                TokensPerPeriod = perMinute,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
 
     public async Task InvokeAsync(HttpContext c, RequestDelegate next)
     {
@@ -125,9 +127,9 @@ internal sealed class StateRequestLimiter : IDisposable
             return;
         }
 
-        if (download && _downloadsPerClient is not null)
+        if ((download ? _downloadsPerClient : _queriesPerClient) is { } perMinuteLimiter)
         {
-            using RateLimitLease clientLease = _downloadsPerClient.AttemptAcquire(c);
+            using RateLimitLease clientLease = perMinuteLimiter.AttemptAcquire(c);
             if (!clientLease.IsAcquired)
             {
                 if (clientLease.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan retryAfter))
@@ -135,7 +137,7 @@ internal sealed class StateRequestLimiter : IDisposable
                     c.Response.Headers.RetryAfter = Math.Ceiling(retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
                 }
 
-                await ApiErrors.Write(c, StatusCodes.Status429TooManyRequests, "Too many beacon state downloads from this client; retry later.", c.RequestAborted);
+                await ApiErrors.Write(c, StatusCodes.Status429TooManyRequests, $"Too many beacon state {(download ? "downloads" : "queries")} from this client; retry later.", c.RequestAborted);
                 return;
             }
         }
@@ -230,12 +232,26 @@ internal sealed class StateRequestLimiter : IDisposable
         public override void SetLength(long value) => throw new NotSupportedException();
     }
 
-    /// <summary>Whether a route under <c>/eth/v1/beacon/states</c> is <c>/{state_id}/root</c>, which reads the block's <c>state_root</c> rather than the state.</summary>
+    /// <summary>Whether a route under <c>/eth/v1/beacon/states</c> reads no state beyond a fixed prefix, the block header or the already-materialized head state, so it holds no state-sized memory.</summary>
+    /// <remarks><c>fork</c>, <c>finality_checkpoints</c> and <c>randao</c> read the persisted state's fixed-offset prefix; <c>root</c> reads the block's <c>state_root</c>; the small lists of <c>head</c> come from the head clone.</remarks>
     private static bool LoadsNoState(PathString stateRoute)
     {
         ReadOnlySpan<char> route = stateRoute.Value.AsSpan().TrimEnd('/');
         int leaf = route.LastIndexOf('/');
-        return leaf > 0 && route[..leaf].LastIndexOf('/') == 0 && route[(leaf + 1)..].Equals("root", StringComparison.OrdinalIgnoreCase);
+        if (leaf <= 0 || route[..leaf].LastIndexOf('/') != 0) return false;
+
+        ReadOnlySpan<char> name = route[(leaf + 1)..];
+        if (name.Equals("root", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("fork", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("finality_checkpoints", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("randao", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return route[1..leaf].Equals("head", StringComparison.Ordinal)
+            && (name.Equals("pending_deposits", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("pending_partial_withdrawals", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("pending_consolidations", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("proposer_lookahead", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>One partition per IPv4 address and per IPv6 /64, so a client cannot mint fresh budgets by rotating the addresses of one IPv6 subnet.</summary>
@@ -259,5 +275,6 @@ internal sealed class StateRequestLimiter : IDisposable
         _inFlight.Dispose();
         _inFlightPerClient.Dispose();
         _downloadsPerClient?.Dispose();
+        _queriesPerClient?.Dispose();
     }
 }

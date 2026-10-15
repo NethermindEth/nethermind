@@ -65,6 +65,16 @@ internal static class StateIdResolver
         return true;
     }
 
+    /// <summary>Resolves <paramref name="stateId"/> to the already-materialized head state, without encoding or decoding it; <c>false</c> when it names any other state or does not resolve.</summary>
+    public static bool TryResolveHead(BeaconApiContext ctx, string stateId, out ResolvedState resolved)
+    {
+        resolved = default;
+        return TryResolveRoot(ctx, stateId, out Hash256? root, out _, out _)
+            && root == ctx.StatusSource.CurrentStatus.HeadRoot
+            && ctx.HeadState is not null
+            && TryResolve(ctx, stateId, out resolved, out _, out _);
+    }
+
     internal static bool TryResolvePrefix(BeaconApiContext ctx, string stateId, bool forkOnly, out ResolvedState resolved, out int errorStatus, out string? errorMessage, bool includeRandao = false)
     {
         resolved = default;

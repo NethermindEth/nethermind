@@ -29,6 +29,8 @@ internal static class BeaconStatesEndpoints
     /// <summary>One <c>postStateValidatorIdentities</c> SSZ entry: uint64 index, 48-byte pubkey, uint64 activation epoch.</summary>
     private const int ValidatorIdentitySszLength = sizeof(ulong) + BlsPublicKey.Length + sizeof(ulong);
 
+    private const int IdentitySszEntriesPerWrite = 1024;
+
     /// <summary>altair/validator.md <c>SYNC_COMMITTEE_SUBNET_COUNT</c>.</summary>
     private const int SyncCommitteeSubnetCount = 4;
     public static void Map(WebApplication app, BeaconApiContext ctx)
@@ -193,20 +195,29 @@ internal static class BeaconStatesEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
-        if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState raw, out int errorStatus, out string? errorMessage))
+        if (!StateIdResolver.TryResolveHead(ctx, stateId, out ResolvedState resolved))
         {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
-        }
+            if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState raw, out int errorStatus, out string? errorMessage))
+            {
+                return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            }
 
-        ulong slot = BeaconStateCodec.ReadSlot(raw.Ssz);
-        ulong forkEpoch = introducedAtEpoch(ctx.Spec);
-        if (ctx.Spec.GetEpoch(slot) < forkEpoch)
+            ulong slot = BeaconStateCodec.ReadSlot(raw.Ssz);
+            ulong forkEpoch = introducedAtEpoch(ctx.Spec);
+            if (ctx.Spec.GetEpoch(slot) < forkEpoch)
+            {
+                return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
+                    $"The state for '{stateId}' is at slot {slot}, before epoch {forkEpoch} where the requested field was introduced.", c.RequestAborted);
+            }
+
+            resolved = new ResolvedState(raw.Root, ApiStateDecoding.Decode(raw.Ssz, ctx.Spec));
+        }
+        else if (ctx.Spec.GetEpoch(resolved.State.Slot) < introducedAtEpoch(ctx.Spec))
         {
             return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
-                $"The state for '{stateId}' is at slot {slot}, before epoch {forkEpoch} where the requested field was introduced.", c.RequestAborted);
+                $"The state for '{stateId}' is at slot {resolved.State.Slot}, before epoch {introducedAtEpoch(ctx.Spec)} where the requested field was introduced.", c.RequestAborted);
         }
 
-        ResolvedState resolved = new(raw.Root, ApiStateDecoding.Decode(raw.Ssz, ctx.Spec));
         ApiState state = resolved.State;
         T[] items = select(state);
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
@@ -275,6 +286,23 @@ internal static class BeaconStatesEndpoints
             ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
             c.RequestAborted);
 
+    /// <summary>Writes <paramref name="entries"/> as the envelope's <c>data</c> array one element at a time, so a registry-sized response holds no registry-sized buffer while a slow reader drains it.</summary>
+    private static Task WriteStateEnvelopeStreamed<T>(HttpContext c, BeaconApiContext ctx, ResolvedState resolved, IEnumerable<T> entries) =>
+        BeaconApiJson.WriteStreamedEnvelopeAsync(c,
+            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
+            async s =>
+            {
+                s.Writer.WriteStartArray();
+                foreach (T entry in entries)
+                {
+                    JsonSerializer.Serialize(s.Writer, entry, BeaconApiJson.Options);
+                    await s.CheckpointAsync();
+                }
+
+                s.Writer.WriteEndArray();
+            });
+
     private static CheckpointDto ToCheckpointDto(Checkpoint checkpoint) =>
         new(checkpoint.Epoch.ToString(), checkpoint.Root!.ToString());
 
@@ -333,18 +361,20 @@ internal static class BeaconStatesEndpoints
             // unrecognized ids are dropped from the response, not treated as an error).
         }
 
-        List<ValidatorEntryDto> entries = [];
-        for (int i = 0; i < validators.Length; i++)
+        IEnumerable<ValidatorEntryDto> SelectEntries()
         {
-            if (indexFilter is not null && !indexFilter.Contains(i)) continue;
+            for (int i = 0; i < validators.Length; i++)
+            {
+                if (indexFilter is not null && !indexFilter.Contains(i)) continue;
 
-            string status = ValidatorStatus.Classify(validators[i], epoch);
-            if (statusFilters.Count > 0 && !MatchesAny(status, statusFilters)) continue;
+                string status = ValidatorStatus.Classify(validators[i], epoch);
+                if (statusFilters.Count > 0 && !MatchesAny(status, statusFilters)) continue;
 
-            entries.Add(ToValidatorEntry(i, validators[i], balances[i], status));
+                yield return ToValidatorEntry(i, validators[i], balances[i], status);
+            }
         }
 
-        return WriteStateEnvelope(c, ctx, resolved, entries);
+        return WriteStateEnvelopeStreamed(c, ctx, resolved, SelectEntries());
     }
 
     private static Task ValidatorById(HttpContext c, string stateId, string validatorId, BeaconApiContext ctx)
@@ -411,23 +441,17 @@ internal static class BeaconStatesEndpoints
             return WriteInvalidValidatorId(c, invalidId);
         }
 
-        List<ValidatorBalanceEntryDto> entries = new(indices?.Count ?? balances.Length);
-        if (indices is null)
+        IEnumerable<ValidatorBalanceEntryDto> SelectEntries()
         {
-            for (int i = 0; i < balances.Length; i++)
+            int count = indices?.Count ?? balances.Length;
+            for (int i = 0; i < count; i++)
             {
-                entries.Add(new ValidatorBalanceEntryDto(i.ToString(), balances[i].ToString()));
-            }
-        }
-        else
-        {
-            foreach (int index in indices)
-            {
-                entries.Add(new ValidatorBalanceEntryDto(index.ToString(), balances[index].ToString()));
+                int index = indices?[i] ?? i;
+                yield return new ValidatorBalanceEntryDto(index.ToString(), balances[index].ToString());
             }
         }
 
-        return WriteStateEnvelope(c, ctx, resolved, entries);
+        return WriteStateEnvelopeStreamed(c, ctx, resolved, SelectEntries());
     }
 
     /// <summary>
@@ -467,29 +491,36 @@ internal static class BeaconStatesEndpoints
         int count = indices?.Count ?? validators.Length;
         if (format == ContentNegotiation.ResponseFormat.Ssz)
         {
-            byte[] ssz = new byte[count * ValidatorIdentitySszLength];
-            for (int i = 0; i < count; i++)
+            c.Response.ContentType = ContentNegotiation.OctetStream;
+            byte[] ssz = new byte[Math.Min(count, IdentitySszEntriesPerWrite) * ValidatorIdentitySszLength];
+            for (int start = 0; start < count; start += IdentitySszEntriesPerWrite)
             {
-                int index = indices?[i] ?? i;
-                Span<byte> entry = ssz.AsSpan(i * ValidatorIdentitySszLength, ValidatorIdentitySszLength);
-                BinaryPrimitives.WriteUInt64LittleEndian(entry, (ulong)index);
-                validators[index].Pubkey.Bytes.CopyTo(entry[sizeof(ulong)..]);
-                BinaryPrimitives.WriteUInt64LittleEndian(entry[(sizeof(ulong) + BlsPublicKey.Length)..], validators[index].ActivationEpoch);
+                int batch = Math.Min(count - start, IdentitySszEntriesPerWrite);
+                for (int i = 0; i < batch; i++)
+                {
+                    int index = indices?[start + i] ?? start + i;
+                    Span<byte> entry = ssz.AsSpan(i * ValidatorIdentitySszLength, ValidatorIdentitySszLength);
+                    BinaryPrimitives.WriteUInt64LittleEndian(entry, (ulong)index);
+                    validators[index].Pubkey.Bytes.CopyTo(entry[sizeof(ulong)..]);
+                    BinaryPrimitives.WriteUInt64LittleEndian(entry[(sizeof(ulong) + BlsPublicKey.Length)..], validators[index].ActivationEpoch);
+                }
+
+                await c.Response.Body.WriteAsync(ssz.AsMemory(0, batch * ValidatorIdentitySszLength), c.RequestAborted);
             }
 
-            c.Response.ContentType = ContentNegotiation.OctetStream;
-            await c.Response.Body.WriteAsync(ssz, c.RequestAborted);
             return;
         }
 
-        ValidatorIdentityDto[] entries = new ValidatorIdentityDto[count];
-        for (int i = 0; i < count; i++)
+        IEnumerable<ValidatorIdentityDto> SelectEntries()
         {
-            int index = indices?[i] ?? i;
-            entries[i] = new ValidatorIdentityDto(index.ToString(), validators[index].Pubkey.ToString(), validators[index].ActivationEpoch.ToString());
+            for (int i = 0; i < count; i++)
+            {
+                int index = indices?[i] ?? i;
+                yield return new ValidatorIdentityDto(index.ToString(), validators[index].Pubkey.ToString(), validators[index].ActivationEpoch.ToString());
+            }
         }
 
-        await WriteStateEnvelope(c, ctx, resolved, entries);
+        await WriteStateEnvelopeStreamed(c, ctx, resolved, SelectEntries());
     }
 
     /// <summary>Resolves request ids to distinct registry indices in first-seen order, dropping well-formed ids that name no validator.</summary>

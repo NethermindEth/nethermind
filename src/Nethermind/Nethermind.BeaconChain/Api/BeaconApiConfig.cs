@@ -11,6 +11,7 @@ public class BeaconApiConfig : IBeaconApiConfig
     public int Port { get; set; } = 5052;
     public int MaxConcurrentStateRequests { get; set; } = 2;
     public int StateDownloadsPerMinutePerClient { get; set; } = 30;
+    public int StateQueriesPerMinutePerClient { get; set; } = 60;
     public int MaxConcurrentStateRequestsPerClient { get; set; } = 1;
     public int StateResponseTimeoutSeconds { get; set; } = 3600;
     public int StateResponseIdleTimeoutSeconds { get; set; } = 120;

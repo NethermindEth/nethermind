@@ -80,11 +80,6 @@ internal static class DebugEndpoints
     /// </summary>
     private static Task State(HttpContext c, string stateId, BeaconApiContext ctx)
     {
-        if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState resolved, out int errorStatus, out string? errorMessage))
-        {
-            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
-        }
-
         ContentNegotiation.ResponseFormat? format = ContentNegotiation.Negotiate(c, sszSupported: true);
         if (format is null)
         {
@@ -93,7 +88,12 @@ internal static class DebugEndpoints
 
         if (format == ContentNegotiation.ResponseFormat.Json)
         {
-            return StateJson(c, stateId, resolved, ctx);
+            return StateJson(c, stateId, ctx);
+        }
+
+        if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState resolved, out int errorStatus, out string? errorMessage))
+        {
+            return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
         ulong slot;
@@ -120,20 +120,28 @@ internal static class DebugEndpoints
         return c.Response.Body.WriteAsync(resolved.Ssz, c.RequestAborted).AsTask();
     }
 
-    private static Task StateJson(HttpContext c, string stateId, ResolvedRawState resolved, BeaconApiContext ctx)
+    private static Task StateJson(HttpContext c, string stateId, BeaconApiContext ctx)
     {
-        ApiState state;
-        try
+        if (!StateIdResolver.TryResolveHead(ctx, stateId, out ResolvedState resolved))
         {
-            // A fork before Electra throws UnsupportedForkException, which the host middleware turns into a labelled 501.
-            state = ApiStateDecoding.Decode(resolved.Ssz, ctx.Spec);
-        }
-        catch (BeaconStateException e)
-        {
-            return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
-                $"The state persisted for '{stateId}' ({resolved.Root}) is not decodable: {e.Message}", c.RequestAborted);
+            if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState raw, out int errorStatus, out string? errorMessage))
+            {
+                return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
+            }
+
+            try
+            {
+                // A fork before Electra throws UnsupportedForkException, which the host middleware turns into a labelled 501.
+                resolved = new ResolvedState(raw.Root, ApiStateDecoding.Decode(raw.Ssz, ctx.Spec));
+            }
+            catch (BeaconStateException e)
+            {
+                return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
+                    $"The state persisted for '{stateId}' ({raw.Root}) is not decodable: {e.Message}", c.RequestAborted);
+            }
         }
 
+        ApiState state = resolved.State;
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
         return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(state.Fork),
             ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
