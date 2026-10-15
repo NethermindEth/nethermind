@@ -19,7 +19,7 @@ public interface IHistoryConfig : IConfig
     uint RetentionEpochs { get; set; }
 
     [ConfigItem(
-        Description = "The number of epochs to retain block access lists (BALs) in any `Pruning` mode. Must be at least the chain's minBalRetentionEpochs chainspec parameter, which is the default (the consensus layer's history serving window).",
+        Description = "The number of epochs to retain block access lists (BALs). Must be at least the chain's minBalRetentionEpochs chainspec parameter. If not set, that minimum, except that archive nodes (`Pruning.Mode` `None`, no history pruning) keep all BALs.",
         DefaultValue = "null")]
     uint? BalRetentionEpochs { get; set; }
 
