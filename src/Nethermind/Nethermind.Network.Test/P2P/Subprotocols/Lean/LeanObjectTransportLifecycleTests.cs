@@ -273,7 +273,92 @@ public class LeanObjectTransportLifecycleTests
         node.Transport.OnAnnounce(source, new([closedDescriptor]));
         Serve(node, source, healthy, closedDescriptor, closedBody);
         await Until(() => node.Transport.IsStored(closedDescriptor.ObjectId) && node.Transport.CompletionBytes == 0);
-        Assert.That(healthy.Penalties, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(healthy.Penalties, Is.Empty);
+            Assert.That(node.Verifier.Calls, Is.EqualTo(2), "recovery retries reuse both previously verified statements");
+        }
+    }
+
+    [Test]
+    public async Task Lost_recovery_link_stops_batches_and_late_reservations_without_tombstoning([Values] bool loseEth)
+    {
+        using LeanTestNode node = new();
+        Transaction[] transactions = [.. Enumerable.Range(200, 17).Select(FrameTransaction)];
+        byte[] body = Wrapper(4096, true, transactions);
+        LeanDescriptor descriptor = Describe(body);
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            TaskCompletionSource recovering = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            FakeLink link = new("recovery-reconnect")
+            {
+                OnRecoverAsync = async (hashes, token) =>
+                {
+                    recovering.TrySetResult();
+                    await reply.Task.WaitAsync(token);
+                    return transactions.Where(transaction => hashes.Contains(transaction.Hash!.ValueHash256)).ToArray();
+                }
+            };
+            LeanPeer peer = node.Connect(link);
+            node.Transport.OnAnnounce(peer, new([descriptor]));
+            Serve(node, peer, link, descriptor, body);
+            await recovering.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            if (loseEth) link.HasTransactionRecovery = false;
+            else node.Transport.Remove(peer);
+            reply.TrySetResult();
+            await Until(() => node.Transport.AssemblyCount == 0 && node.Transport.CompletionBytes == 0);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.Closed, Is.EqualTo(!loseEth), "the ETH-loss case leaves QUIC open");
+                Assert.That(link.RecoveryCalls, Is.EqualTo(1), "the second batch cannot use the lost source");
+                Assert.That(link.RecoveryBytes, Is.Zero, "a late response cannot reserve or decode envelopes");
+                Assert.That(node.Transport.IsTombstoned(descriptor.ObjectId), Is.False);
+                Assert.That(peer.ChargedBytes, Is.Zero);
+                Assert.That(node.Transport.IncompleteBytes, Is.Zero);
+                Assert.That(link.Penalties, Is.Empty);
+                Assert.That(node.Verifier.Calls, Is.EqualTo(1), "repeated refusals do not repeat native claims verification");
+            }
+            node.Transport.Remove(peer);
+        }
+        FakeLink healthy = new("recovery-reconnect")
+        {
+            OnRecover = hashes => transactions.Where(transaction => hashes.Contains(transaction.Hash!.ValueHash256)).ToArray()
+        };
+        LeanPeer source = node.Connect(healthy);
+        node.Transport.OnAnnounce(source, new([descriptor]));
+        Serve(node, source, healthy, descriptor, body);
+        await Until(() => node.Transport.IsStored(descriptor.ObjectId) && node.Transport.CompletionBytes == 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(healthy.RecoveryCalls, Is.EqualTo(2), "healthy recovery still obtains all seventeen envelopes");
+            Assert.That(node.Verifier.Calls, Is.EqualTo(1));
+            Assert.That(source.ChargedBytes, Is.Zero);
+            Assert.That(healthy.Penalties, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Locally_resolved_wrapper_still_validates_after_ETH_link_loss()
+    {
+        using LeanTestNode node = new();
+        Transaction transaction = FrameTransaction(218);
+        node.Pending.Add(transaction);
+        byte[] body = Wrapper(4096, true, transaction);
+        LeanDescriptor descriptor = Describe(body);
+        FakeLink link = new("local-envelope");
+        LeanPeer peer = node.Connect(link);
+        link.HasTransactionRecovery = false;
+        node.Transport.OnAnnounce(peer, new([descriptor]));
+        Serve(node, peer, link, descriptor, body);
+        await Until(() => node.Transport.IsStored(descriptor.ObjectId) && node.Transport.CompletionBytes == 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.RecoveryCalls, Is.Zero);
+            Assert.That(node.Verifier.Calls, Is.EqualTo(1));
+            Assert.That(peer.ChargedBytes, Is.Zero);
+            Assert.That(link.Penalties, Is.Empty);
+        }
     }
 
     private static void Serve(LeanTestNode node, LeanPeer peer, FakeLink link, LeanDescriptor descriptor, byte[] body)

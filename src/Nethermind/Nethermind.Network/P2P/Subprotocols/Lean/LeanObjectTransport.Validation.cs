@@ -253,7 +253,7 @@ public sealed partial class LeanObjectTransport
                 lock (_gate)
                 {
                     Interlocked.Increment(ref _stats.LocalFailures);
-                    if (assembly.CompletionSource is { Closed: false })
+                    if (assembly.CompletionSource is { Closed: false } source && source.Link.HasTransactionRecovery)
                         _tombstones.Add(descriptor.ObjectId, _clock.GetTimestamp() + (long)(LeanLimits.SoftTombstone.TotalSeconds * _clock.TimestampFrequency));
                 }
                 LeanMetrics.Record(descriptor.Kind, LeanEvent.LocalFailure);
@@ -312,7 +312,11 @@ public sealed partial class LeanObjectTransport
             if (claims != Verdict.Valid) return (claims, claimsError);
             // An unresolved wrapper is retained only within this bounded recovery and is never admitted or announced.
             recovered = await RecoverTransactionsAsync(assembly, missing, cancellation).ConfigureAwait(false);
-            if (assembly.CompletionSource is not { Closed: false }) return (Verdict.Refused, "source closed during envelope recovery");
+            lock (_gate)
+            {
+                if (assembly.CompletionSource is not { Closed: false }) return (Verdict.Refused, "source closed during envelope recovery");
+                if (!assembly.CompletionSource.Link.HasTransactionRecovery) return (Verdict.Refused, "ETH recovery link unavailable");
+            }
             if (recovered.Count != missing.Count) return (Verdict.LocalFailure, $"{missing.Count - recovered.Count} hash entries unresolved");
         }
         return await VerifyWithBudgetAsync(assembly,
@@ -363,12 +367,17 @@ public sealed partial class LeanObjectTransport
         CancellationToken cancellation)
     {
         Dictionary<ValueHash256, Transaction> recovered = [];
-        if (assembly.CurrentSource is not { Closed: false } source) return recovered;
+        LeanPeer? source;
+        lock (_gate)
+            source = assembly.CurrentSource is { Closed: false } current && current.Link.HasTransactionRecovery ? current : null;
+        if (source is null) return recovered;
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         timeout.CancelAfter(LeanLimits.TransactionRecovery);
         const int batchSize = 16;
         for (int start = 0; start < missing.Count && !timeout.IsCancellationRequested; start += batchSize)
         {
+            lock (_gate)
+                if (source.Closed || !source.Link.HasTransactionRecovery) break;
             ValueHash256[] batch = missing.GetRange(start, Math.Min(batchSize, missing.Count - start)).ToArray();
             Transaction[] transactions;
             try
@@ -402,7 +411,7 @@ public sealed partial class LeanObjectTransport
     {
         lock (_gate)
         {
-            if (bytes < 0 || assembly.Dropped || assembly.CompletionSource != source
+            if (bytes < 0 || assembly.Dropped || source.Closed || !source.Link.HasTransactionRecovery || assembly.CompletionSource != source
                 || !CanReserveObjectBytes(bytes, assembly.Waiters.Count != 0)
                 || bytes > LeanLimits.MaxPeerBytes - source.ChargedBytes - 4 * LeanProtocol.MaxMessageBytes) return false;
             _completionBytes += bytes;
