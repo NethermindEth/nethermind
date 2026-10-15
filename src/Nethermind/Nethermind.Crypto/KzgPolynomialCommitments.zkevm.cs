@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Crypto;
@@ -24,9 +25,22 @@ public static partial class KzgPolynomialCommitments
         return true;
     }
 
+    /// <remarks>
+    /// A commitment and a proof both at infinity, the commitment to the zero polynomial and its proof, are decided
+    /// without the accelerator's pairings: the check e(C - [y]G1, G2) == e(π, [s - z]G2) then holds iff [y]G1 is
+    /// the identity, that is iff y is zero, at any canonical z (EIP-4844 <c>verify_kzg_proof</c>). The opening of an
+    /// empty blob takes this shape.
+    /// </remarks>
     public static partial bool VerifyProof(
         ReadOnlySpan<byte> commitment,
         ReadOnlySpan<byte> z,
         ReadOnlySpan<byte> y,
-        ReadOnlySpan<byte> proof) => Accelerators.KzgPointEval(commitment, z, y, proof);
+        ReadOnlySpan<byte> proof) =>
+        IsCompressedInfinity(commitment) && IsCompressedInfinity(proof)
+            ? y.Length == 32 && !y.ContainsAnyExcept((byte)0) && z.Length == 32 && new UInt256(z, isBigEndian: true) < BlsModulus
+            : Accelerators.KzgPointEval(commitment, z, y, proof);
+
+    /// <summary>Whether <paramref name="point"/> is the G1 point at infinity in its only valid compressed encoding.</summary>
+    private static bool IsCompressedInfinity(ReadOnlySpan<byte> point) =>
+        point.Length == 48 && point[0] == 0xc0 && !point[1..].ContainsAnyExcept((byte)0);
 }
