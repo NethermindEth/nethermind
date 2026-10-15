@@ -534,6 +534,44 @@ public class McpLogPagingTests
         }
     }
 
+    [Test]
+    public async Task Reorganisation_after_the_cursor_lookup_fails_instead_of_resuming_on_the_new_fork()
+    {
+        ILogIndexStorage index = Substitute.For<ILogIndexStorage>();
+        index.MinBlockNumber.Returns((int?)null);
+        index.MaxBlockNumber.Returns((int?)null);
+        await using McpTestNode node = await McpTestNode.Create(
+            c =>
+            {
+                c.MaxLogBlockRange = MaxLogBlockRange;
+                c.MaxLogs = MaxLogs;
+            },
+            b => b.AddSingleton(index));
+        SeededLogs seeded = await SeedLogs(node, [3]);
+        await using McpClient client = await node.CreateClient();
+        (string, object?)[] query = [("fromBlock", Hex(seeded.Last)), ("toBlock", Hex(seeded.Last)), ("topics", Json(new object?[] { PagingTopic.ToString() })), ("limit", 2)];
+        JsonElement first = McpAssert.Success(await McpToolCalls.Call(client, "get_logs", query));
+        Assert.That(first.GetProperty("truncated").GetBoolean(), Is.True, "precondition: the cursor resumes inside the block");
+
+        // The chain reorganises while the resumed page plans its blocks (a topic-filtered plan reads the index state), before the
+        // scan anchor is captured. The empty sibling has none of the logs the cursor's offset counts.
+        Block? sibling = null;
+        index.Enabled.Returns(_ =>
+        {
+            sibling ??= node.Reorganise(seeded.Last);
+            return true;
+        });
+
+        JsonElement error = McpAssert.Error(await McpToolCalls.Call(client, "get_logs",
+            [.. query, ("cursor", first.GetProperty("nextCursor").GetString())]), McpAssert.InvalidInput);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sibling, Is.Not.Null, "precondition: the chain must reorganise while the page is planned");
+            Assert.That(error.GetProperty("message").GetString(), Does.Contain($"block {seeded.Last} changed"));
+        }
+    }
+
     private async Task<string> FirstCursor()
     {
         JsonElement page = McpAssert.Success(await McpToolCalls.Call(_client, "get_logs",

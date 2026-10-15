@@ -136,12 +136,7 @@ internal sealed partial class McpEthTools
             ulong? clampedFrom = null;
             if (resume is { } position)
             {
-                if (!position.IsAt(blockFinder.FindHeader(position.Block, BlockTreeLookupOptions.RequireCanonical)?.Hash))
-                {
-                    return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput,
-                        $"The chain reorganised since the previous page (block {position.Block} changed); restart the query without 'cursor'."));
-                }
-
+                // The cursor's block hash is checked once the scan anchor is captured, below.
                 (start, startLogIndex, end) = (position.Block, position.LogIndex, position.ToBlock);
             }
             else
@@ -188,6 +183,15 @@ internal sealed partial class McpEthTools
 
             (ulong scanTo, bool indexed) = PlanLogPage(start, end, selective);
             ScanAnchor anchor = CaptureAnchor(scanTo < end ? scanTo + 1 : scanTo);
+
+            // Checked after capturing the anchor, which is at or above the cursor's block: a reorganisation before the capture
+            // fails here, and one after it fails the anchor check once the page is read.
+            if (resume is { } resumed && !resumed.IsAt(CanonicalHash(resumed.Block)))
+            {
+                return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput,
+                    $"The chain reorganised since the previous page (block {resumed.Block} changed); restart the query without 'cursor'."));
+            }
+
             LogFilter logFilter = CreateLogFilter(addresses, topicFilter);
             if (!indexed && FindMissingReceipts(start, scanTo, logFilter, token) is { } missingReceipts)
             {
