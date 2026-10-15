@@ -441,9 +441,8 @@ namespace Nethermind.Blockchain.Receipts
                         }
 
                         _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: recoverSender);
-                        // Without sender recovery, a block whose transactions carry no senders (decoded from the
-                        // database) leaves each creation's contract address unset: cached, every later read would
-                        // be served that, so only fully recovered receipts are cached.
+                        // Without sender recovery, creations in a block decoded from the database (no tx senders) get
+                        // no contract address; caching that would serve it to full reads.
                         if (recoverSender) _receiptsCache.Set(blockHash, receipts);
                     }
 
