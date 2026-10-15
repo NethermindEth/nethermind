@@ -10,7 +10,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
 using Google.Protobuf;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.IO;
 using Nethermind.Eez.Attester;
@@ -26,6 +28,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 using Block = Nethermind.Core.Block;
+using PostBatch = Nethermind.Eez.Execution.Settlement.PostBatch;
 
 namespace Nethermind.Eez.Test.RollupX;
 
@@ -40,6 +43,11 @@ public class RollupXRecordedExecutionTests(string recording)
     private Validated[] _expected = null!;
     private Begin _anchor = null!;
     private OperationsPayload _operations = null!;
+    private EezSpecProvider _specs = null!;
+    private EezChainRules _rules = null!;
+    private BlockWitness _terminal = null!;
+    private NativeStream _stream = null!;
+    private SettlementInput _settlement = null!;
 
     internal RollupXRecordedExecutionTests(string recording, string selectedDirectory) : this(recording) => _selectedDirectory = selectedDirectory;
 
@@ -56,6 +64,8 @@ public class RollupXRecordedExecutionTests(string recording)
         using MemoryStream genesisStream = new(JsonSerializer.SerializeToUtf8Bytes(genesis.RootElement));
         ChainSpec chainSpec = new GethGenesisLoader(new EthereumJsonSerializer()).Load(genesisStream);
         EezSpecProvider specs = new(new ChainSpecBasedSpecProvider(chainSpec), rules);
+        _specs = specs;
+        _rules = rules;
         Assert.That(rules.IsRollupX, Is.True, "precondition: execution uses the recorded RollupX chain profile");
 
         List<EezStatelessBlock> blocks = [];
@@ -87,6 +97,7 @@ public class RollupXRecordedExecutionTests(string recording)
                 if (request.Block is not null)
                 {
                     BlockWitness block = request.Block.Data;
+                    _terminal = block;
                     blocks.Add(new EezStatelessBlock(block.Rlp.ToByteArray(), WindowAssembler.ToWitness(block.Witness)));
                 }
                 if (request.Finalize is not null)
@@ -106,6 +117,8 @@ public class RollupXRecordedExecutionTests(string recording)
             byte[][] blobs = settlement!.Blobs.Select(static blob => blob.ToByteArray()).ToArray();
             NativeStream stream = NativeStream.Decode(BlobStream.Unpack(blobs), _anchor.RollupId);
             _operations = OperationsPayload.Decode(stream.Operations);
+            _stream = stream;
+            _settlement = settlement;
         }
         finally
         {
@@ -143,6 +156,41 @@ public class RollupXRecordedExecutionTests(string recording)
     public void Verify_TruncatedExecution_RejectsOperations() =>
         Assert.That(() => RollupXOperationsCheck.Verify(_operations, _executed[..^1]),
             Throws.TypeOf<EezSettlementException>(), "a valid prefix does not cover the published operation count");
+
+    internal RollupXObservationClaim RecordedLookup()
+    {
+        Assert.That(_stream.Messages, Has.Length.EqualTo(4), "the original lookup has one call and one result");
+        Assert.That(_stream.Messages[0], Is.TypeOf<StreamMessage.Initiate>());
+        StreamMessage.Initiate initiation = (StreamMessage.Initiate)_stream.Messages[0];
+        Assert.That(initiation.ChainId, Is.Zero, "the lookup originates on L1");
+        Assert.That(initiation.TxData.IsEmpty, Is.True);
+        StreamMessage.Call call = (StreamMessage.Call)_stream.Messages[1];
+        StreamMessage.Return result = (StreamMessage.Return)_stream.Messages[2];
+        Assert.That(call.ToChain, Is.EqualTo(_anchor.RollupId));
+        Assert.That(_stream.Messages[3], Is.TypeOf<StreamMessage.Finish>());
+        PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(_settlement.AbiCalldata.Span);
+        int immediate = checked((int)batch.ImmediateEntryCount);
+        RollupUpdate root = batch.Entries[immediate - 1].RollupUpdates.Single();
+        Assert.That(root.RollupId, Is.EqualTo(_anchor.RollupId));
+        return new RollupXObservationClaim(new Hash256(root.NewRoot.Bytes), call.From, initiation.ChainId,
+            call.To, call.Data.ToArray(), call.Value, ObservationMode.Lookup, new ObservationOutcome(result.Success, result.ReturnData.ToArray()));
+    }
+
+    internal void ReplayObservations(IReadOnlyList<RollupXObservationClaim> claims, EezStatelessBlockResult? validated = null,
+        CancellationToken cancellationToken = default)
+    {
+        EezStatelessBlock input = new(_terminal.Rlp.ToByteArray(), WindowAssembler.ToWitness(_terminal.Witness));
+        try
+        {
+            new RollupXObservationReplay(_specs, _rules, LimboLogs.Instance).Verify(input, validated ?? _executed[^1], claims, cancellationToken);
+        }
+        finally
+        {
+            input.Witness.Dispose();
+        }
+    }
+
+    internal EezStatelessBlockResult TerminalResult => _executed[^1];
 
     private string InputDirectory() => SelectDirectory(_selectedDirectory ?? Environment.GetEnvironmentVariable("EEZ_ROLLUPX_EXECUTION_VECTOR_DIR"),
         Environment.GetEnvironmentVariable("EEZ_REQUIRE_UPSTREAM_VECTORS") == "true");
@@ -311,5 +359,86 @@ public class RollupXExecutionDataTests
         using MemoryStream output = new();
         using (GZipStream gzip = new(output, CompressionMode.Compress, leaveOpen: true)) gzip.Write(data);
         return output.ToArray();
+    }
+}
+
+public class RollupXRecordedObservationTests
+{
+    private RollupXRecordedExecutionTests _recording = null!;
+    private RollupXObservationClaim _claim = null!;
+
+    [OneTimeSetUp]
+    public void LoadIndependentLookup()
+    {
+        _recording = new RollupXRecordedExecutionTests("baseline-lookup");
+        _recording.ExecuteRecordedWindow();
+        _claim = _recording.RecordedLookup();
+    }
+
+    [Test]
+    public void Replay_OriginalLookupAtPublishedPin_MatchesFullRevertData() =>
+        Assert.That(() => _recording.ReplayObservations([_claim]), Throws.Nothing,
+            "the real witnessed EVM must reproduce the original claim and preserve the validated block result");
+
+    [Test]
+    public void Replay_RepeatedLookupAtSamePin_RestoresSyntheticStateBetweenCalls() =>
+        Assert.That(() => _recording.ReplayObservations([_claim, _claim]), Throws.Nothing);
+
+    [Test]
+    public void Replay_ChangedSecondOutcomeAtSamePin_Rejects() =>
+        Assert.That(() => _recording.ReplayObservations([_claim, _claim with { Expected = _claim.Expected with { Output = [.. _claim.Expected.Output, 0] } }]),
+            Throws.TypeOf<EezSettlementException>(), "every same-pin claim must execute and compare its own result");
+
+    [Test]
+    public void Replay_UnvalidatedSecondPin_Rejects() =>
+        Assert.That(() => _recording.ReplayObservations([_claim, _claim with { Pin = Keccak.Zero }]),
+            Throws.TypeOf<EezSettlementException>(), "each claim supplies its own independently validated pin");
+
+    [Test]
+    public void Replay_ChangedValidatedPreStateRoot_Rejects()
+    {
+        BlockHeader parent = _recording.TerminalResult.Parent.Clone();
+        parent.StateRoot = Keccak.Zero;
+        Assert.That(() => _recording.ReplayObservations([], _recording.TerminalResult with { Parent = parent }),
+            Throws.TypeOf<EezSettlementException>(), "canonical replay must reproduce the independently validated parent state root");
+    }
+
+    [Test]
+    public void Replay_NoObservations_PreservesCanonicalExecution() =>
+        Assert.That(() => _recording.ReplayObservations([]), Throws.Nothing);
+
+    [Test]
+    public void Replay_ChangedOutcome_Rejects([Values] bool changeStatus)
+    {
+        ObservationOutcome expected = changeStatus
+            ? _claim.Expected with { Success = !_claim.Expected.Success }
+            : _claim.Expected with { Output = [.. _claim.Expected.Output, 0] };
+        Assert.That(() => _recording.ReplayObservations([_claim with { Expected = expected }]),
+            Throws.TypeOf<EezSettlementException>(), "claimed success and full revert bytes require independent execution");
+    }
+
+    [Test]
+    public void Replay_UnvalidatedPin_Rejects() =>
+        Assert.That(() => _recording.ReplayObservations([_claim with { Pin = Keccak.Zero }]), Throws.TypeOf<EezSettlementException>());
+
+    [Test]
+    public void Replay_ChangedPrefixRoot_Rejects()
+    {
+        EezStatelessBlockResult original = _recording.TerminalResult;
+        EezTransactionCheckpoint[] checkpoints = original.Checkpoints.Select(static checkpoint => checkpoint with { StateRoot = Keccak.Zero }).ToArray();
+        Assert.That(() => _recording.ReplayObservations([_claim], original with { Checkpoints = checkpoints }),
+            Throws.TypeOf<EezSettlementException>(), "a pin is insufficient without the validated prefix state");
+    }
+
+    [Test]
+    public void Replay_NonObservationMode_Rejects() =>
+        Assert.That(() => _recording.ReplayObservations([_claim with { Mode = ObservationMode.Proxy }]), Throws.TypeOf<EezSettlementException>());
+
+    [Test]
+    public void Replay_Cancelled_StopsBeforeExecution()
+    {
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+        Assert.That(() => _recording.ReplayObservations([_claim], cancellationToken: cancellation.Token), Throws.TypeOf<OperationCanceledException>());
     }
 }

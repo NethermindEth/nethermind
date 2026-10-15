@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -283,6 +284,58 @@ public class RollupXObservationCallTests
             ReadOnlyMemory<byte>.Empty, UInt256.Zero, ObservationMode.Static), Throws.TypeOf<InvalidOperationException>(),
             "a failed restore prevents a successful observation");
         AssertRestored();
+    }
+
+    [TestCase((int)ObservationMode.Lookup, true)]
+    [TestCase((int)ObservationMode.Static, false)]
+    public void VerifyClaim_StorageWrite_UsesClaimMode(int mode, bool success)
+    {
+        Deploy([0x60, 42, 0x5f, 0x55, 0x00]);
+        DeployManager([0x73, .. TestItem.AddressA.Bytes, 0x5f, 0x52, 0x60, 32, 0x5f, 0xf3]);
+        RollupXObservationClaim claim = new(Keccak.Zero, TestItem.AddressC, 0, TestItem.AddressB,
+            [], UInt256.Zero, (ObservationMode)mode, new ObservationOutcome(success, []));
+
+        Assert.That(() => _calls.VerifyClaim(claim, TestItem.AddressE, default), Throws.Nothing,
+            "complete claim verification must distinguish static failure from successful mutable execution");
+        Assert.That(() => _calls.VerifyClaim(claim with { Expected = new ObservationOutcome(!success, []) }, TestItem.AddressE, default),
+            Throws.TypeOf<EezSettlementException>(), "a claimed status cannot override the actual EVM mode");
+        AssertRestored();
+    }
+
+    [TestCase(0, false)]
+    [TestCase(31, false)]
+    [TestCase(33, false)]
+    [TestCase(32, true)]
+    public void VerifyClaim_NoncanonicalProxyResponse_Rejects(byte size, bool padding)
+    {
+        Deploy([0x00]);
+        DeployManager([0x60, padding ? (byte)1 : (byte)0, 0x5f, 0x53, 0x60, size, 0x5f, 0xf3]);
+        RollupXObservationClaim claim = new(Keccak.Zero, TestItem.AddressC, 0, TestItem.AddressB,
+            [], UInt256.Zero, ObservationMode.Lookup, new ObservationOutcome(true, []));
+
+        Assert.That(() => _calls.VerifyClaim(claim, TestItem.AddressE, default), Throws.TypeOf<EezSettlementException>(),
+            "the proxy view must return exactly one canonical ABI address word");
+        AssertRestored();
+    }
+
+    [Test]
+    public void VerifyClaim_RevertingProxyResponse_Rejects()
+    {
+        Deploy([0x00]);
+        DeployManager([0x73, .. TestItem.AddressA.Bytes, 0x5f, 0x52, 0x60, 32, 0x5f, 0xfd]);
+        RollupXObservationClaim claim = new(Keccak.Zero, TestItem.AddressC, 0, TestItem.AddressB,
+            [], UInt256.Zero, ObservationMode.Lookup, new ObservationOutcome(true, []));
+
+        Assert.That(() => _calls.VerifyClaim(claim, TestItem.AddressE, default), Throws.TypeOf<EezSettlementException>());
+        AssertRestored();
+    }
+
+    private void DeployManager(byte[] code)
+    {
+        _state.CreateAccount(TestItem.AddressE, 0);
+        _state.InsertCode(TestItem.AddressE, code, Osaka.Instance);
+        _state.Commit(Osaka.Instance);
+        _state.CommitTree(0);
     }
 
     private ObservationOutcome Execute(byte[] input, ObservationMode mode) =>

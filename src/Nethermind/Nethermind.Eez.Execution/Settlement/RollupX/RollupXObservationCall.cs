@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
@@ -22,6 +24,27 @@ internal sealed class RollupXObservationCall(
 {
     internal const ulong TargetGasLimit = 30_000_000;
     internal const ulong ProxyGasLimit = 1_000_000;
+
+    private static readonly Hash256 ProxySelector = Keccak.Compute("computeCrossChainProxyAddress(address,uint64)");
+
+    public void VerifyClaim(RollupXObservationClaim claim, Address manager, CancellationToken cancellationToken)
+    {
+        if (claim.Mode is not (ObservationMode.Lookup or ObservationMode.Static))
+            throw new EezSettlementException("Unknown FIFO observation mode.");
+        byte[] proxyData = new byte[4 + 64];
+        ProxySelector.Bytes[..4].CopyTo(proxyData);
+        AbiWord.Write(proxyData.AsSpan(4, 32), claim.SourceAddress);
+        BinaryPrimitives.WriteUInt64BigEndian(proxyData.AsSpan(60, 8), claim.SourceRollupId);
+        ObservationOutcome proxy = ExecuteAtTransactionBoundary(Address.Zero, manager, proxyData,
+            UInt256.Zero, ObservationMode.Proxy, cancellationToken);
+        if (!proxy.Success || proxy.Output.Length != 32 || proxy.Output.AsSpan(0, 12).IndexOfAnyExcept((byte)0) >= 0)
+            throw new EezSettlementException("Observed proxy address is not a canonical ABI address.");
+        Address caller = new(proxy.Output.AsSpan(12));
+        ObservationOutcome outcome = ExecuteAtTransactionBoundary(caller, claim.Target, claim.Data,
+            claim.Value, claim.Mode, cancellationToken);
+        if (outcome.Success != claim.Expected.Success || !outcome.Output.AsSpan().SequenceEqual(claim.Expected.Output))
+            throw new EezSettlementException("Observation result differs from its FIFO claim.");
+    }
 
     public ObservationOutcome ExecuteAtTransactionBoundary(Address caller, Address target, ReadOnlyMemory<byte> data,
         in UInt256 value, ObservationMode mode, CancellationToken cancellationToken = default)

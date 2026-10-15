@@ -12,6 +12,7 @@ using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -82,9 +83,14 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, EezChainRul
     public StatelessBlockProcessingEnv CreateEnvironment(Witness witness,
         BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null,
         Func<IBlockProcessor.IBlockTransactionsExecutor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor>? transactionsExecutorDecorator = null) =>
+        CreateEnvironment(witness, _transactionProcessorFactory, transactionProcessed, transactionsExecutorDecorator);
+
+    internal StatelessBlockProcessingEnv CreateEnvironment(Witness witness, ITransactionProcessorFactory processorFactory,
+        BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed,
+        Func<IBlockProcessor.IBlockTransactionsExecutor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor>? transactionsExecutorDecorator) =>
         new(witness, specProvider, Always.Valid, logManager)
         {
-            TransactionProcessorFactory = _transactionProcessorFactory,
+            TransactionProcessorFactory = processorFactory,
             TxValidator = CreateTxValidator(),
             BlockValidatorFactory = (txValidator, headerValidator, unclesValidator) => new EezBlockValidator(txValidator,
                 rules.IsRollupX ? new RollupXHeaderValidator(headerValidator, rules) : headerValidator, unclesValidator, specProvider, logManager),
@@ -129,7 +135,7 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, EezChainRul
         }
     }
 
-    private void AssignSenders(Block block)
+    internal void AssignSenders(Block block)
     {
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         foreach (Transaction tx in block.Transactions)
