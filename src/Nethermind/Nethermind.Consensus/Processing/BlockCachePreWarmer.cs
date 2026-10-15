@@ -221,6 +221,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 warmCalldataAddresses: true, handColdChainsToDiscovery: true);
             if (footprints is not null)
             {
+                footprints.Diag.Progress = this; // BENCH ONLY
                 blockState.Footprints = footprints;
                 Volatile.Write(ref _footprints, footprints);
             }
@@ -324,6 +325,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         Interlocked.Increment(ref _discoveryHandOffs);
+        blockState.Footprints?.Diag.Discovered(txIndex); // BENCH ONLY
         Block block = blockState.Block;
         IReleaseSpec spec = blockState.Spec;
         StrongBox<int> cells = blockState.HandOffCells;
@@ -1407,7 +1409,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
-            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex)
+            {
+                blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.SkippedStarted); // BENCH ONLY
+                return;
+            }
 
             // Non-null guaranteed: GroupTransactionsBySender and WarmupQueue.TryClaimLate both skip null-sender txs
             Address senderAddress = tx.SenderAddress!;
@@ -1432,9 +1438,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             TransactionResult result;
             try
             {
-                result = (blockState.Footprints is not null || blockState.Recording is not null) && recorder is not null && BlockFootprints.IsRecordable(tx)
-                    ? WarmupWithFootprint(scope, tx, txIndex, blockState, recorder, tracer, cancellationToken)
+                bool recorded = (blockState.Footprints is not null || blockState.Recording is not null) && recorder is not null && BlockFootprints.IsRecordable(tx);
+                result = recorded
+                    ? WarmupWithFootprint(scope, tx, txIndex, blockState, recorder!, tracer, cancellationToken)
                     : scope.TransactionProcessor.Warmup(tx, tracer);
+                if (!recorded) blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Plain); // BENCH ONLY
             }
             finally
             {
@@ -1446,13 +1454,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
             // Ignore, regular tx processing exceptions
+            blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Error); // BENCH ONLY
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // The pass ended mid-transaction; the caller disposes the scope without running anything else on it.
+            blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Cancelled); // BENCH ONLY
         }
         catch (Exception ex)
         {
+            blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Error); // BENCH ONLY
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
         }
     }
@@ -1471,6 +1482,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         Address sender = tx.SenderAddress!;
         if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
         recorder.Start(blockState.PreWarmer, txIndex, cancellationToken);
+        blockState.Footprints?.Diag.WarmStarted(txIndex); // BENCH ONLY
         try
         {
             result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
@@ -1479,11 +1491,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             {
                 if (blockState.Footprints is { } footprints) footprints.Store(txIndex, footprint);
                 else blockState.Recording!.Record(footprint, blockState.Block.Header, blockState.Spec);
+                blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Stored); // BENCH ONLY
+            }
+            else
+            {
+                // BENCH ONLY
+                blockState.Footprints?.Diag.WarmEnded(txIndex, result ? HandoffDiag.WarmState.NoFootprint : HandoffDiag.WarmState.Failed,
+                    result ? recorder.DiagReason : (byte)result.Error);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             recorder.Discard();
+            blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Cut); // BENCH ONLY
             return TransactionResult.Ok;
         }
         finally
@@ -1566,8 +1586,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         if (footprints.Get(position) is not { } invalidated || env.Recorder is not { } recorder || footprints.ReadsUntrackedSlot(invalidated))
         {
             Blockchain.Metrics.PrewarmRefreshesSkipped++;
+            // BENCH ONLY
+            footprints.Diag.RefreshEnded(position, footprints.Get(position) is null || env.Recorder is null
+                ? HandoffDiag.RefreshState.SkippedNoFootprint : HandoffDiag.RefreshState.SkippedUntracked);
             return;
         }
+
+        footprints.Diag.RefreshStarted(position, invalidated); // BENCH ONLY
 
         Transaction tx = invalidated.Transaction;
         BlockHeader header = blockState.Block.Header;
@@ -1597,6 +1622,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (!moved)
             {
                 Blockchain.Metrics.PrewarmRefreshesSkipped++;
+                footprints.Diag.RefreshEnded(position, HandoffDiag.RefreshState.SkippedNotMoved); // BENCH ONLY
                 return;
             }
 
@@ -1615,10 +1641,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             {
                 footprints.Store(position, footprint, seededAt);
                 Blockchain.Metrics.PrewarmRefreshesStored++;
+                footprints.Diag.RefreshEnded(position, HandoffDiag.RefreshState.Stored); // BENCH ONLY
             }
             else
             {
                 Blockchain.Metrics.PrewarmRefreshesFailed++;
+                footprints.Diag.RefreshEnded(position, HandoffDiag.RefreshState.Failed); // BENCH ONLY
             }
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
@@ -1626,12 +1654,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             // Block processing reached the transaction.
             if (running) recorder.Discard();
             Blockchain.Metrics.PrewarmRefreshesCancelled++;
+            footprints.Diag.RefreshEnded(position, HandoffDiag.RefreshState.Cancelled); // BENCH ONLY
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // A run that fails leaves the block's other refreshes to go, as a warm run does.
             if (running) recorder.Discard();
             Blockchain.Metrics.PrewarmRefreshesFailed++;
+            footprints.Diag.RefreshEnded(position, HandoffDiag.RefreshState.Error); // BENCH ONLY
             if (ex is not (EvmException or OverflowException)) blockState.PreWarmer._logger.DebugError($"Error refreshing the pre-warm run of tx[{position}] {tx.Hash}", ex);
         }
         finally

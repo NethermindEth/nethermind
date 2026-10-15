@@ -53,6 +53,19 @@ internal sealed class BlockFootprints(Block block)
     private int _writesVersion;
     private int _visit;
 
+    /// <summary>BENCH ONLY: per-position states for <see cref="HandoffDiag"/>.</summary>
+    internal readonly HandoffDiag.Positions Diag = new(block.Transactions.Length);
+
+    /// <summary>BENCH ONLY: whether the position waits for a refresh; read without the lock.</summary>
+    internal bool DiagIsPending(int position) =>
+        (uint)(position >> 6) < (uint)_invalidated.Length && (Volatile.Read(ref _invalidated[position >> 6]) & (1UL << (position & 63))) != 0;
+
+    /// <summary>BENCH ONLY: the positions waiting for a refresh; read without the lock.</summary>
+    internal int DiagPendingCount => Volatile.Read(ref _invalidatedCount);
+
+    /// <summary>BENCH ONLY: the slots no longer tracked.</summary>
+    internal int DiagUntracked => Volatile.Read(ref _untrackedCount);
+
     // Written by block processing, applied by the refresh worker, so block processing never takes the lock.
     private readonly ConcurrentQueue<(int Position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes)> _reported = new();
     private readonly SemaphoreSlim _changed = new(0);
@@ -222,6 +235,7 @@ internal sealed class BlockFootprints(Block block)
     public void QueueExecuted(int position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes)
     {
         _reported.Enqueue((position, writes));
+        Diag.Queue(); // BENCH ONLY
         if (!WerePredicted(position, writes)) _changed.Release();
     }
 
@@ -259,6 +273,7 @@ internal sealed class BlockFootprints(Block block)
     {
         while (_reported.TryDequeue(out (int Position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes) executed))
         {
+            Diag.Dequeue(); // BENCH ONLY
             ApplyExecuted(executed.Position, executed.Writes);
         }
     }
@@ -298,6 +313,7 @@ internal sealed class BlockFootprints(Block block)
                 if (slot.Untracked) continue;
                 outdated |= ValueBefore(in slot.Writers, position) is { } value && value != reads[i].Value && (seeded is null || !Reads(seeded, reads[i].Cell));
                 if (slot.Readers.Count < MaxIndexedPerSlot) slot.Readers.Add(new Entry(position, i));
+                else Diag.ReadNotIndexed(position); // BENCH ONLY
             }
 
             if (outdated) invalidated |= Invalidate(position);
@@ -383,6 +399,7 @@ internal sealed class BlockFootprints(Block block)
         if ((word & bit) != 0) return false;
         word |= bit;
         _invalidatedCount++;
+        Diag.Invalidated(position); // BENCH ONLY
         return true;
     }
 
@@ -391,6 +408,7 @@ internal sealed class BlockFootprints(Block block)
         ulong dropped = _invalidated[word] & mask;
         _invalidated[word] &= ~dropped;
         _invalidatedCount -= BitOperations.PopCount(dropped);
+        Diag.DroppedUnrefreshed(word, dropped); // BENCH ONLY
     }
 
     private UInt256? ValueBefore(in Entries writers, int position)

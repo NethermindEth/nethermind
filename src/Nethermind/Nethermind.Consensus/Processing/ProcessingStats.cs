@@ -303,6 +303,7 @@ namespace Nethermind.Consensus.Processing
                 // Snapshot per-tx timing (rents a pooled list for ThreadPool use, null when disabled).
                 // The list is disposed (returning its array to the pool) in BlockDataPolicy.Return.
                 blockData.PerTxTicks = PerTxTimingCollector.Snapshot();
+                blockData.Handoff = HandoffDiag.TakeRecords(); // BENCH ONLY
             }
 
             CaptureReportData(blockData);
@@ -797,9 +798,11 @@ namespace Nethermind.Consensus.Processing
                             {
                                 writer.WriteString("to", tx.To.ToString());
                             }
+                            HandoffDiag.WriteTransaction(writer, data.Handoff, txs, i, block.Header.GasBeneficiary); // BENCH ONLY
                             writer.WriteEndObject();
                         }
                         writer.WriteEndArray();
+                        HandoffDiag.WriteBlock(writer, data.Handoff, txs); // BENCH ONLY
                     }
 
                     writer.WriteEndObject();
@@ -861,6 +864,7 @@ namespace Nethermind.Consensus.Processing
                 data.Block = null;
                 data.BaseBlock = null;
                 data.PerTxTicks = null;
+                data.Handoff = null; // BENCH ONLY
                 data.BlockCount = 0;
                 data.FirstBlockNumber = 0;
                 data.GasUsed = 0;
@@ -964,6 +968,8 @@ namespace Nethermind.Consensus.Processing
             public long DeltaBloomsTime;
             public long DeltaReceiptsRootTime;
             public ArrayPoolList<long>? PerTxTicks;
+            // BENCH ONLY
+            internal HandoffDiag.BlockRecords? Handoff;
         }
     }
 }

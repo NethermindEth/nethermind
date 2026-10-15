@@ -64,8 +64,15 @@ internal sealed class MempoolFootprints(BlockHeader head)
             Transaction tx = transactions[i];
             // A recorded run's transaction was recordable, and the block's has its hash, so its content and sender.
             if (tx.Hash is not { } hash || !_entries.TryGetValue(hash, out Entry entry)) continue;
-            if (ForBlock(in entry, tx, header, spec, coinbase) is not { } footprint) continue;
+            if (ForBlock(in entry, tx, header, spec, coinbase) is not { } footprint)
+            {
+                // BENCH ONLY
+                footprints.Diag.MempoolSeed(i, !RanOnBlockContext(in entry, header, spec) ? (byte)2 : DependsOnCoinbase(entry.Footprint, coinbase) ? (byte)3 : (byte)4);
+                continue;
+            }
+
             footprints.Store(i, footprint);
+            footprints.Diag.MempoolSeed(i, 1); // BENCH ONLY
             (seeded ??= []).Add(hash);
         }
 

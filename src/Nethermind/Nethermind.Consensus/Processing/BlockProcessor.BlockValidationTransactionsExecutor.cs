@@ -91,6 +91,7 @@ public partial class BlockProcessor
             if (_enableTxTimingMetrics)
             {
                 PerTxTimingCollector.Prepare(block.Transactions.Length);
+                HandoffDiag.Prepare(block); // BENCH ONLY
             }
         }
 

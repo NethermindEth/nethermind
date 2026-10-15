@@ -31,6 +31,8 @@ public class PrewarmerTxAdapter(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PrewarmerTxAdapter>();
     private BlockExecutionContext _blockExecutionContext;
+    // BENCH ONLY: why TryReplay did not take the transaction, for HandoffDiag.
+    private HandoffDiag.Outcome _diagOutcome;
 
     internal (int Replayed, int Rejected, int Missing) Tally { get; private set; }
 
@@ -40,11 +42,17 @@ public class PrewarmerTxAdapter(
         if (!prewarmerState.IsPrewarmer)
         {
             preWarmer.OnBeforeTxExecution();
+            HandoffDiag.Arrive(transaction); // BENCH ONLY
             TransactionFootprint? footprint = preWarmer.FindFootprint(transaction, _blockExecutionContext.Header, out bool eligible);
             if (eligible && TryReplay(footprint, transaction, txTracer, out TransactionResult result))
             {
+                HandoffDiag.Taken(footprint!); // BENCH ONLY
                 return result;
             }
+
+            // BENCH ONLY
+            HandoffDiag.NotTaken(eligible ? _diagOutcome : preWarmer.Footprints is null ? HandoffDiag.Outcome.NoSession : HandoffDiag.Outcome.Ineligible,
+                footprint, preWarmer.Footprints, worldState);
 
             // What the transaction writes goes to the block's footprints, so those that read it are refreshed on those values.
             if (prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites) return ExecuteReportingWrites(transaction, txTracer, committed);
@@ -57,6 +65,7 @@ public class PrewarmerTxAdapter(
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void Undo(Snapshot snapshot, Transaction tx, Exception ex)
     {
+        _diagOutcome = HandoffDiag.Outcome.Undone; // BENCH ONLY
         worldState.Restore(snapshot);
         Blockchain.Metrics.PrewarmHandoffFailures++;
         if (_logger.IsDebug) _logger.Debug($"Executing transaction {tx.Hash}, its pre-warm footprint failed to apply: {ex}");
@@ -72,7 +81,7 @@ public class PrewarmerTxAdapter(
         finally
         {
             // Reported also when there are none: the writes its footprint predicted were not made.
-            preWarmer.ReportExecutedWrites(committed.End());
+            preWarmer.ReportExecutedWrites(HandoffDiag.Executed(committed.End())); // BENCH ONLY: HandoffDiag.Executed passes them through
         }
     }
 
@@ -88,21 +97,31 @@ public class PrewarmerTxAdapter(
         result = default;
         if (footprint is null)
         {
+            _diagOutcome = HandoffDiag.Outcome.Missing; // BENCH ONLY
             Tally = Tally with { Missing = Tally.Missing + 1 };
             Blockchain.Metrics.PrewarmHandoffsMissing++;
             return false;
         }
 
         // Any tracer beyond the receipt would miss the execution that does not happen.
-        if (txTracer is not BlockReceiptsTracer { IsTracingOnlyReceipts: true }) return false;
+        if (txTracer is not BlockReceiptsTracer { IsTracingOnlyReceipts: true })
+        {
+            _diagOutcome = HandoffDiag.Outcome.GateTracer; // BENCH ONLY
+            return false;
+        }
 
         BlockHeader header = _blockExecutionContext.Header;
         IReleaseSpec spec = _blockExecutionContext.Spec;
         // The pre-execution checks a warm run skips: the gas left in the block, and a sender with code (EIP-3607).
-        if (tx.GasLimit > header.GasLimit - header.GasUsed || worldState.IsInvalidContractSender(spec, tx.SenderAddress!)) return false;
+        if (tx.GasLimit > header.GasLimit - header.GasUsed || worldState.IsInvalidContractSender(spec, tx.SenderAddress!))
+        {
+            _diagOutcome = tx.GasLimit > header.GasLimit - header.GasUsed ? HandoffDiag.Outcome.GateGas : HandoffDiag.Outcome.Gate3607; // BENCH ONLY
+            return false;
+        }
 
         if (!footprint.Matches(worldState))
         {
+            _diagOutcome = HandoffDiag.Outcome.Rejected; // BENCH ONLY
             Tally = Tally with { Rejected = Tally.Rejected + 1 };
             Blockchain.Metrics.PrewarmHandoffsRejected++;
             return false;
