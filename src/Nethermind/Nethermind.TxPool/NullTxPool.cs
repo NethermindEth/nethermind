@@ -56,6 +56,8 @@ namespace Nethermind.TxPool
 
         public void ForgetRejectedBlobTransaction(Hash256 hash) { }
 
+        public bool ForgetInvalidBlobProofs(Hash256 hash) => false;
+
         public bool RemoveTransaction(Hash256? hash) => false;
 
         public bool EvictTransaction(Transaction tx) => false;

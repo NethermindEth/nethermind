@@ -32,10 +32,10 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
         [ShanghaiTimestamp] = WithSepoliaParameters(new Shanghai()),
         [CancunTimestamp] = WithSepoliaParameters(new Cancun()),
         [PragueTimestamp] = WithSepoliaParameters(new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
-        [OsakaTimestamp] = WithSepoliaParameters(new Osaka()),
-        [BPO1Timestamp] = WithSepoliaParameters(new BPO1()),
-        [BPO2Timestamp] = WithSepoliaParameters(new BPO2()),
-        [AmsterdamTimestamp] = WithSepoliaParameters(new Amsterdam()),
+        [OsakaTimestamp] = WithSepoliaParameters(new Osaka { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
+        [BPO1Timestamp] = WithSepoliaParameters(new BPO1 { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
+        [BPO2Timestamp] = WithSepoliaParameters(new BPO2 { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
+        [AmsterdamTimestamp] = WithSepoliaParameters(new Amsterdam { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
     })
     { }
 
@@ -51,5 +51,5 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public string SealEngine => SealEngineType.Clique;
 
-    public static SepoliaSpecProvider Instance { get; } = new();
+    public static SepoliaSpecProvider Instance => field ??= new();
 }
