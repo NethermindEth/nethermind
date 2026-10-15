@@ -4,6 +4,7 @@
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 
@@ -15,7 +16,7 @@ public sealed class Validator
     private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;
     private readonly IReadOnlyList<ValueHash256>? _trustedAccumulators;
     private readonly IReadOnlyList<ValueHash256>? _trustedHistoricalRoots;
-    private readonly SlotTime? _slotTime;
+    private readonly SlotSchedule? _slots;
 
     public Validator(
         ISpecProvider specProvider,
@@ -27,12 +28,7 @@ public sealed class Validator
         _specProvider = specProvider;
         if (specProvider.BeaconChainGenesisTimestamp.HasValue)
         {
-            ulong secondsPerSlot = blocksConfig?.SecondsPerSlot ?? 12;
-            _slotTime = new SlotTime(
-                specProvider.BeaconChainGenesisTimestamp.Value * 1000,
-                new Timestamper(),
-                TimeSpan.FromSeconds(secondsPerSlot),
-                TimeSpan.Zero);
+            _slots = specProvider.GetSlotSchedule(blocksConfig?.SecondsPerSlot ?? 12);
         }
         _trustedAccumulators = trustedAccumulators;
         _trustedHistoricalRoots = trustedHistoricalRoots;
@@ -58,16 +54,16 @@ public sealed class Validator
                 break;
 
             case AccumulatorType.HistoricalRoots:
-                if (_slotTime is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalRoots verification.");
-                long slot = (long)_slotTime.GetSlot(context.StartingBlockTimestamp!.Value);
+                if (_slots is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalRoots verification.");
+                long slot = GetSlot(context.StartingBlockTimestamp!.Value);
                 ValueHash256? trustedRoot = GetHistoricalRoot(slot) ?? throw new EraVerificationException("Historical root not found.");
                 if (!trustedRoot.Equals(context.HistoricalRoot))
                     throw new EraVerificationException("Computed historical root does not match trusted historical root.");
                 break;
 
             case AccumulatorType.HistoricalSummaries:
-                if (_slotTime is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalSummaries verification.");
-                long summarySlot = (long)_slotTime.GetSlot(context.StartingBlockTimestamp!.Value);
+                if (_slots is null) throw new EraVerificationException("Beacon chain genesis timestamp is not available for HistoricalSummaries verification.");
+                long summarySlot = GetSlot(context.StartingBlockTimestamp!.Value);
                 HistoricalSummary? trustedSummary = await GetHistoricalSummary(summarySlot, cancellation) ?? throw new EraVerificationException("Historical summary not found.");
                 if (!trustedSummary.Value.BlockSummaryRoot.Equals(context.HistoricalSummary.BlockSummaryRoot))
                     throw new EraVerificationException("Computed block summary root does not match trusted historical block summary root.");
@@ -76,6 +72,11 @@ public sealed class Validator
                 break;
         }
     }
+
+    private long GetSlot(ulong timestamp) =>
+        _slots!.TryGetSlot(timestamp, out ulong slot)
+            ? (long)slot
+            : throw new EraVerificationException($"Block timestamp {timestamp} is before the beacon chain genesis.");
 
     private bool TrustedAccumulatorsProvided() => _trustedAccumulators is { Count: > 0 };
 

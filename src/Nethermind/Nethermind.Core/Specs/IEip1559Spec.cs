@@ -22,6 +22,16 @@ namespace Nethermind.Core.Specs
         public UInt256 BaseFeeMaxChangeDenominator { get; }
         public ulong ElasticityMultiplier { get; }
         public IBaseFeeCalculator BaseFeeCalculator { get; }
+
+        /// <summary>
+        /// EIP-8198: Quick Slots. Lowers the maximum per-block base fee change to
+        /// <see cref="Eip8198Constants.BaseFeeMaxChangeNumerator"/> / <see cref="Eip8198Constants.BaseFeeMaxChangeDenominator"/>.
+        /// </summary>
+        /// <remarks>
+        /// Declared here rather than on <see cref="IReleaseSpec"/> because <see cref="IBaseFeeCalculator"/> only sees this interface.
+        /// The rest of the EIP (slot duration, blob schedule) is consensus-layer timing or chainspec <c>blobSchedule</c> data.
+        /// </remarks>
+        bool IsEip8198Enabled { get; }
     }
 
     public sealed class OverridableEip1559Spec(IEip1559Spec spec) : IEip1559Spec
@@ -34,5 +44,6 @@ namespace Nethermind.Core.Specs
         public UInt256 BaseFeeMaxChangeDenominator { get; init; } = spec.BaseFeeMaxChangeDenominator;
         public ulong ElasticityMultiplier { get; init; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; init; } = spec.BaseFeeCalculator;
+        public bool IsEip8198Enabled { get; init; } = spec.IsEip8198Enabled;
     }
 }

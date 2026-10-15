@@ -101,6 +101,7 @@ public class OptimismPayloadPreparationServiceTests
             blocksConfig: Substitute.For<IBlocksConfig>()
         );
         OptimismPayloadPreparationService service = new(
+            specProvider: specProvider,
             blockProducer: blockProducer,
             txPool: Substitute.For<ITxPool>(),
             blockImprovementContextFactory: new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(10)),

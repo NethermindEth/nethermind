@@ -192,6 +192,22 @@ public class PayloadPreparationServiceTests
     private static void Retrieve(PayloadPreparationService service, string payloadId) =>
         service.GetPayload(payloadId).AsTask().GetAwaiter().GetResult();
 
+    [TestCase(999UL, 12, TestName = "GetTimePerSlot_BeforeEip8198_IsTheConfiguredLength")]
+    [TestCase(1_000UL, 10, TestName = "GetTimePerSlot_FromEip8198_IsTenSeconds")]
+    public void GetTimePerSlot_FollowsThePayloadSlot(ulong payloadTimestamp, int expectedSeconds)
+    {
+        using PayloadPreparationService sut = new(
+            Substitute.For<IBlockProducer>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IBlockImprovementContextFactory>(),
+            Substitute.For<ITimerFactory>(),
+            LimboLogs.Instance,
+            TimeSpan.FromSeconds(12),
+            slots: new SlotSchedule(12, eip8198Timestamp: 1_000));
+
+        Assert.That(sut.GetTimePerSlot(payloadTimestamp), Is.EqualTo(TimeSpan.FromSeconds(expectedSeconds)));
+    }
+
     private static TestPayloadPreparationService CreateService(IBlockImprovementContextFactory factory)
     {
         IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
