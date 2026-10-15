@@ -9,7 +9,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
@@ -22,15 +21,13 @@ public sealed class FlatStorageTree(
     SnapshotBundle bundle,
     IFlatDbConfig config,
     Hash256 storageRoot,
-    Address address,
-    ILogManager logManager) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
+    Address address) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
     private readonly Address _address = address;
     private readonly IFlatDbConfig _config = config;
     private readonly ITrieWarmer _trieCacheWarmer = trieCacheWarmer;
     private readonly FlatWorldStateScope _scope = scope;
     private readonly SnapshotBundle _bundle = bundle;
-    private readonly ILogManager _logManager = logManager;
     private readonly Hash256 _storageRoot = storageRoot;
     private Hash256? _addressHash;
 
@@ -38,7 +35,8 @@ public sealed class FlatStorageTree(
     private LoggedTrie? _trie;
     // The root a trie created from now on starts at.
     private Hash256 _rootBeforeTrie = storageRoot;
-    private StorageTree? _warmupTree;
+    // The root warm-ups walk from, resolved by the first one on a warmer thread.
+    private StrongBox<TrieRoot>? _preBlockRoot;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -54,13 +52,13 @@ public sealed class FlatStorageTree(
         return new LoggedTrie(_bundle, log, AddressHash, LogBulkSet.ResolveRoot(log, AddressHash, _rootBeforeTrie.ValueHash256));
     }
 
-    private StorageTree WarmupTree => Volatile.Read(ref _warmupTree) ?? CreateWarmupTree();
+    private TrieRoot PreBlockRoot => (Volatile.Read(ref _preBlockRoot) ?? ResolvePreBlockRoot()).Value;
 
-    private StorageTree CreateWarmupTree()
+    private StrongBox<TrieRoot> ResolvePreBlockRoot()
     {
-        StorageTree warmup = new(new StorageTrieStoreWarmerAdapter(_bundle, AddressHash), _logManager);
-        warmup.SetRootHash(_storageRoot, false);
-        return Interlocked.CompareExchange(ref _warmupTree, warmup, null) ?? warmup;
+        StrongBox<TrieRoot> resolved = new(LogBulkSet.ResolveRoot(_bundle.TrieNodeLog!, AddressHash, _storageRoot.ValueHash256));
+        Volatile.Write(ref _preBlockRoot, resolved);
+        return resolved;
     }
 
     public Hash256 RootHash => _trie?.RootHash ?? _rootBeforeTrie;
@@ -110,7 +108,7 @@ public sealed class FlatStorageTree(
     {
         try
         {
-            if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
+            if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer || _scope.Trieless)
             {
                 return false;
             }
@@ -127,7 +125,7 @@ public sealed class FlatStorageTree(
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
-                WarmupTree.WarmUpPath(key.BytesAsSpan);
+                _bundle.WarmUp(AddressHash, PreBlockRoot, key);
                 return true;
             }
             finally

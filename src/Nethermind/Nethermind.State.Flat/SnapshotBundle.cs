@@ -215,47 +215,6 @@ public sealed class SnapshotBundle : IDisposable
         return node;
     }
 
-    public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
-    {
-        // The warmer never reads the recyclable _snapshots; it warms nodes from persistence into the
-        // _transientResource. Pin the transient per read (lease + ABA re-check) while the bundle is live,
-        // else fall back to a persistence-only read (the bundle is being torn down).
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null)
-        {
-            return TryFindStateNodeInPersistence(path, hash, out TrieNode? node) ? node : CreateWarmerUnknownNode(hash);
-        }
-
-        try
-        {
-            return WarmUpStateNode(transientResource, path, hash);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    private TrieNode WarmUpStateNode(TransientResource transientResource, in TreePath path, Hash256 hash)
-    {
-        if (transientResource.TryGetStateNode(path, hash, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return node;
-        }
-
-        return TryFindStateNodeInPersistence(path, hash, out node)
-            ? transientResource.GetOrAddStateNode(path, node)
-            : transientResource.GetOrAddStateNode(path, CreateWarmerUnknownNode(hash));
-    }
-
-    private static TrieNode CreateWarmerUnknownNode(Hash256 hash)
-    {
-        TrieNode node = new(NodeType.Unknown, hash);
-        node.MarkWarmerOwned();
-        return node;
-    }
-
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
     // retired resource that was already re-rented by another bundle, so the acquire cannot be trusted on
     // its own: the identity re-check catches a resource swapped out by CollectAndApplySnapshot, and the
@@ -285,18 +244,6 @@ public sealed class SnapshotBundle : IDisposable
 
             spinWait.SpinOnce();
         }
-    }
-
-    private bool TryFindStateNodeInPersistence(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        if (_trieNodeCache.TryGet(null, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
-        HashedKey<TreePath> key = new(path);
-        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
     }
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
@@ -348,54 +295,6 @@ public sealed class SnapshotBundle : IDisposable
         return node;
     }
 
-
-    public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
-    {
-        // Persistence-only external find, same reasoning as FindStateNodeOrUnknownForTrieWarmer.
-        // Pin the transient per read (lease + ABA re-check) while the bundle is live, else fall back
-        // to a persistence-only read (the bundle is being torn down).
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null)
-        {
-            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node)
-                ? node
-                : CreateWarmerUnknownNode(hash);
-        }
-
-        try
-        {
-            return WarmUpStorageNode(transientResource, address, path, hash);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    private TrieNode WarmUpStorageNode(TransientResource transientResource, Hash256 address, in TreePath path, Hash256 hash)
-    {
-        if (transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return node;
-        }
-
-        return TryFindStorageNodeInPersistence(address, path, hash, out node)
-            ? transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, node)
-            : transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, CreateWarmerUnknownNode(hash));
-    }
-
-    private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        if (_trieNodeCache.TryGet(address, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
-        HashedKey<(Hash256, TreePath)> key = new((address, path));
-        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
-    }
 
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed. So we skip the
@@ -487,14 +386,10 @@ public sealed class SnapshotBundle : IDisposable
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     internal bool TryLoadTrieNodeRecord(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
     {
-        WarmedNodes warmed = _transientResource.WarmedNodes;
-        if (warmed.TryGet(address, path, hash, out record)) return true;
+        GuardDispose();
 
-        bool inserted = false;
-        PersistedNodeInsert insert = new(warmed, address, in path, in hash, ref record, ref inserted);
-        if (address is null) TryLoadStateRlp(path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
-        else TryLoadStorageRlp(address, path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
-        if (inserted) return true;
+        WarmedNodes warmed = _transientResource.WarmedNodes;
+        if (warmed.TryGet(address, path, hash, out record) || TryInsertPersistedRecord(warmed, address, path, hash, out record)) return true;
 
         if (!TryFindInMemoryRecord(_snapshots, address, path, hash, out record)
             && !TryFindInMemoryRecord(_readOnlySnapshotBundle.InMemorySnapshots, address, path, hash, out record)) return false;
@@ -507,6 +402,40 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         return true;
+    }
+
+    /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node log does not hold, for this block's bulk sets.</summary>
+    /// <remarks>
+    /// Reads only the warmed nodes and persistence, never this bundle's changes or snapshots, which the owner recycles while a
+    /// warm-up runs. The transient resource holding the warmed nodes is leased for the walk, so retiring it waits for the walk to
+    /// end. Does nothing once the bundle is being torn down.
+    /// </remarks>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="root">The trie's root before the block, as <see cref="LogBulkSet.ResolveRoot"/> returns it.</param>
+    internal void WarmUp(Hash256? address, TrieRoot root, in ValueHash256 key)
+    {
+        TransientResource? transientResource = TryLeaseTransientResource();
+        if (transientResource is null) return;
+
+        try
+        {
+            LogBulkSet.WarmUp(_trieNodeLog!, new WarmUpRecordSource(this, transientResource, address), address, root, key);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
+    }
+
+    /// <summary>Reads the node at <paramref name="path"/> from persistence into <paramref name="warmed"/>, if it hashes to <paramref name="hash"/>.</summary>
+    private bool TryInsertPersistedRecord(WarmedNodes warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
+    {
+        record = default;
+        bool inserted = false;
+        PersistedNodeInsert insert = new(warmed, address, in path, in hash, ref record, ref inserted);
+        if (address is null) _readOnlySnapshotBundle.TryLoadStateRlp(path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
+        else _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
+        return inserted;
     }
 
     private static bool TryFindInMemoryRecord(SnapshotPooledList snapshots, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
@@ -522,6 +451,14 @@ public sealed class SnapshotBundle : IDisposable
 
         record = default;
         return false;
+    }
+
+    /// <summary>The node source of a warm-up: the nodes already warmed, then the verified persisted node, which it warms.</summary>
+    private sealed class WarmUpRecordSource(SnapshotBundle bundle, TransientResource transientResource, Hash256? address) : INodeRecordSource
+    {
+        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
+            transientResource.WarmedNodes.TryGet(address, path, hash, out record)
+            || bundle.TryInsertPersistedRecord(transientResource.WarmedNodes, address, path, hash, out record);
     }
 
     /// <summary>Inserts the persisted RLP handed to it into the warmed nodes, if it is the requested node.</summary>

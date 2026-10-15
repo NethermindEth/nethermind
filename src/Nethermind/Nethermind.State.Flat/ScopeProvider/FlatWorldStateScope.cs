@@ -33,8 +33,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // Taken before the block's first trie write and handed to its snapshot at commit, so every node the block writes stays readable.
     private TrieNodeLogRetain? _logRetain;
 
-    private PatriciaTree? _warmupStateTree;
     private readonly Hash256 _initialStateRoot;
+    // The state root warm-ups walk from; default in a trie-less scope.
+    private readonly TrieRoot _initialTrieRoot;
     // Null in a trie-less scope.
     private readonly LoggedTrie? _stateTrie;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
@@ -94,7 +95,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             TrieNodeLog log = snapshotBundle.TrieNodeLog!;
             _logRetain = log.RetainActive();
-            _stateTrie = new LoggedTrie(snapshotBundle, log, null, LogBulkSet.ResolveRoot(log, null, _initialStateRoot.ValueHash256));
+            _initialTrieRoot = LogBulkSet.ResolveRoot(log, null, _initialStateRoot.ValueHash256);
+            _stateTrie = new LoggedTrie(snapshotBundle, log, null, _initialTrieRoot);
         }
     }
 
@@ -267,8 +269,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             _snapshotBundle,
                             _configuration,
                             storageRoot,
-                            address,
-                            _logManager);
+                            address);
 
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
                         {
@@ -374,27 +375,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // push that is rejected anyway; read-only scopes run on the no-op warmer.
     internal bool WarmsTries => _warmsTries;
 
-    private PatriciaTree CreateWarmupStateTree()
-    {
-        PatriciaTree tree = new(new StateTrieStoreWarmerAdapter(_snapshotBundle), _logManager)
-        {
-            RootHash = _initialStateRoot
-        };
-        return Interlocked.CompareExchange(ref _warmupStateTree, tree, null) ?? tree;
-    }
-
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
         try
         {
-            if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
+            if (_hintSequenceId != sequenceId || _pausePrewarmer || _trieless) return false;
             if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return false;
 
             try
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
-                (Volatile.Read(ref _warmupStateTree) ?? CreateWarmupStateTree()).WarmUpPath(address.ToAccountPath.Bytes);
+                _snapshotBundle.WarmUp(null, _initialTrieRoot, address.ToAccountPath);
 
                 return true;
             }
@@ -445,8 +437,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     scope._snapshotBundle,
                     scope._configuration,
                     storageRoot,
-                    key.Value,
-                    scope._logManager);
+                    key.Value);
         }, this);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -477,8 +468,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _snapshotBundle,
             _configuration,
             storageRoot,
-            address,
-            _logManager);
+            address);
 
         return storage;
     }

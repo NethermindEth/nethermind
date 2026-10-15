@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -106,6 +107,39 @@ public static class FlatTestHelpers
     public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, TrieNodeLog log, Action<SnapshotContent> populate) =>
         new(SnapshotList(MakeSnapshot(pool, log, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
             recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+}
+
+/// <summary>
+/// A persistence reader to create with <c>Substitute.For</c> where the code under test reads trie node RLP through the span
+/// reads: Castle DynamicProxy (NSubstitute's backing) throws <c>InvalidProgramException</c> when proxying them over a
+/// ref-struct argument, so they forward to the substitutable array reads instead.
+/// </summary>
+public abstract class SubstitutablePersistenceReader : IPersistence.IPersistenceReader
+{
+    public abstract Account? GetAccount(Address address);
+    public abstract bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
+    public abstract StateId CurrentState { get; }
+    public abstract byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
+    public abstract byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
+    public abstract byte[]? GetAccountRaw(in ValueHash256 addrHash);
+    public abstract bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value);
+    public abstract IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
+    public abstract IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
+    public abstract bool IsPreimageMode { get; }
+    public abstract void Dispose();
+
+    bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+        Pass(TryLoadStateRlp(path, flags), action, arg);
+
+    bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+        Pass(TryLoadStorageRlp(address, path, flags), action, arg);
+
+    private static bool Pass<TArg>(byte[]? rlp, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        if (rlp is null) return false;
+        action(rlp, arg);
+        return true;
+    }
 }
 
 /// <summary>

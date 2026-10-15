@@ -215,7 +215,7 @@ public class FlatWorldStateScopeProviderTests
                     .AddKeyedSingleton<IDb>(DbNames.Code, new TestMemDb())
                     .AddSingleton<IBlockTree>(blockTree ?? Substitute.For<IBlockTree>())
                     .AddSingleton<ITrieWarmer, NoopTrieWarmer>()
-                    .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
+                    .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<SubstitutablePersistenceReader>())
                     .AddSingleton<IFlatDbManager>(_ =>
                     {
                         IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
