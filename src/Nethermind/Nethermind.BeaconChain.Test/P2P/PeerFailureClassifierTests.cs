@@ -16,6 +16,10 @@ public class PeerFailureClassifierTests
     public void A_closed_session_is_classified_by_its_type() =>
         Assert.That(PeerFailureClassifier.Classify(new PeerSessionClosedException("disconnected")), Is.EqualTo(PeerFailureReason.SessionClosed));
 
+    [Test]
+    public void An_aggregate_without_inner_exceptions_is_a_plain_request_failure() =>
+        Assert.That(PeerFailureClassifier.Classify(new AggregateException()), Is.EqualTo(PeerFailureReason.RequestFailed));
+
     public enum Reply { None, PartialBlocks, PartialSidecars }
 
     [Test]

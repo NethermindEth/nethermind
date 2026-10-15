@@ -10,7 +10,7 @@ internal static class PeerFailureClassifier
 {
     public static PeerFailureReason Classify(Exception e)
     {
-        if (e is AggregateException aggregate) e = aggregate.Flatten().InnerExceptions[0];
+        if (e is AggregateException aggregate && aggregate.Flatten().InnerExceptions is { Count: > 0 } inner) e = inner[0];
         Exception cause = e is PartialBlocksException or PartialSidecarsException ? e.InnerException ?? e : e;
         if (cause is PeerSessionClosedException or Nethermind.Libp2p.Core.Exceptions.ChannelClosedException)
         {
