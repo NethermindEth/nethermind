@@ -360,8 +360,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 modified = true;
                 diffAccount.Nonce = poststateAccount.Nonce;
             }
-            ValueHash256 postCodeHash = _worldState.AccountExists(addr) ? poststateAccountStruct.CodeHash : default;
-            if (postCodeHash != (prestateAccount.CodeHash ?? Keccak.OfAnEmptyString.ValueHash256))
+            // As in Geth, a missing account and empty code both compare as the zero hash, the prestate's absent hash.
+            ValueHash256 postCodeHash = _worldState.AccountExists(addr) && poststateAccountStruct.CodeHash != Keccak.OfAnEmptyString.ValueHash256
+                ? poststateAccountStruct.CodeHash
+                : default;
+            if (postCodeHash != (prestateAccount.CodeHash ?? default))
             {
                 modified = true;
                 diffAccount.CodeHash = postCodeHash;
@@ -370,7 +373,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             {
                 modified = true;
                 diffAccount.Code = poststateAccount.Code;
-                diffAccount.IncludeEmptyCode = poststateAccount.Code.IsEmpty;
             }
 
             if (!_disableStorage && prestateAccount.Storage is not null)

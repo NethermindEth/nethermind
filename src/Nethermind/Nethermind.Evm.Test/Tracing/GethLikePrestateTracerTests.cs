@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -197,13 +198,44 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             Assert.That(pre.TryGetProperty("codeHash", out JsonElement preHash), Is.EqualTo(before.Length > 0));
             if (before.Length > 0)
                 Assert.That(preHash.GetString(), Is.EqualTo(Keccak.Compute(beforeCode).ToString()));
-            Assert.That(post.TryGetProperty("codeHash", out JsonElement postHash), Is.EqualTo(before != after));
-            if (before != after)
-                Assert.That(postHash.GetString(), Is.EqualTo((after is null ? Hash256.Zero : Keccak.Compute(Bytes.FromHexString(after))).ToString()));
-            bool codeChanged = !disableCode && before != (after ?? "");
-            Assert.That(post.TryGetProperty("code", out JsonElement postCode), Is.EqualTo(codeChanged));
-            if (codeChanged)
+            // Geth compares hashes with missing and empty code both as zero, and omits empty code.
+            bool changed = before != (after ?? "");
+            Assert.That(post.TryGetProperty("codeHash", out JsonElement postHash), Is.EqualTo(changed));
+            if (changed)
+                Assert.That(postHash.GetString(), Is.EqualTo((string.IsNullOrEmpty(after) ? Hash256.Zero : Keccak.Compute(Bytes.FromHexString(after))).ToString()));
+            bool codeShown = changed && !disableCode && !string.IsNullOrEmpty(after);
+            Assert.That(post.TryGetProperty("code", out JsonElement postCode), Is.EqualTo(codeShown));
+            if (codeShown)
                 Assert.That(postCode.GetString(), Is.EqualTo("0x" + after));
+        }
+    }
+
+    [Test]
+    public void Diff_reports_code_hash_only_when_code_changes()
+    {
+        Address codeless = TestItem.AddressB;
+        Address contract = TestItem.AddressC;
+        Address createdEmpty = TestItem.AddressD;
+        byte[] code = [(byte)Instruction.STOP];
+        TestState.CreateAccount(codeless, 1);
+        TestState.CreateAccount(contract, 0);
+        TestState.InsertCode(contract, code, Spec);
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero, codeless, contract, createdEmpty);
+        TestState.CreateAccount(createdEmpty, 0);
+        TestState.DeleteAccount(contract);
+        tracer.MarkAsSuccess(contract, default, [], []);
+
+        JsonElement result = JsonSerializer.SerializeToElement(tracer.BuildResult().CustomTracerResult!.Value, SerializerOptions);
+        JsonElement pre = result.GetProperty("pre");
+        JsonElement post = result.GetProperty("post");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pre.EnumerateObject().Select(p => p.Name), Is.EquivalentTo(new[] { contract.ToString() }));
+            Assert.That(pre.GetProperty(contract.ToString()).GetProperty("codeHash").GetString(), Is.EqualTo(Keccak.Compute(code).ToString()));
+            Assert.That(post.EnumerateObject().Select(p => p.Name), Is.EquivalentTo(new[] { contract.ToString() }));
+            JsonElement deleted = post.GetProperty(contract.ToString());
+            Assert.That(deleted.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "codeHash" }));
+            Assert.That(deleted.GetProperty("codeHash").GetString(), Is.EqualTo(Hash256.Zero.ToString()));
         }
     }
 
@@ -604,12 +636,6 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630fa3cc",
               "nonce": 1
-            },
-            "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
-              "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
-            },
-            "0x76e68a8696537e4141926f3e528733af9e237d69": {
-              "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
             }
           }
         }
@@ -656,9 +682,6 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630f2e9c",
               "nonce": 1
-            },
-            "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
-              "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
             }
           }
         }

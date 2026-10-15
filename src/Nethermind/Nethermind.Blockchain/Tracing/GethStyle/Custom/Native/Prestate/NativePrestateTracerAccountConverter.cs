@@ -31,7 +31,7 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
                 TypeInfoJsonSerializer.Serialize(writer, value.Nonce, options);
             }
 
-            if (!value.Code.IsEmpty || value.IncludeEmptyCode)
+            if (!value.Code.IsEmpty)
             {
                 writer.WritePropertyName("code"u8);
                 ByteArrayConverter.Convert(writer, value.Code.Span, skipLeadingZeros: false);

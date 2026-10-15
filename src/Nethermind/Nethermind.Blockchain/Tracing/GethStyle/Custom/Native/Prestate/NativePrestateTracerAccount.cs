@@ -28,10 +28,8 @@ public class NativePrestateTracerAccount
     /// <summary>The account code, or <see langword="default"/> when it has none.</summary>
     public ReadOnlyMemory<byte> Code { get; set; }
 
-    internal bool IncludeEmptyCode { get; set; }
-
     /// <summary>
-    /// Gets or sets the code hash. Null omits the field; poststate may contain the empty-code hash or zero for a deleted account.
+    /// Gets or sets the code hash. Null omits the field; poststate holds zero when the code was removed or the account deleted.
     /// </summary>
     public ValueHash256? CodeHash { get; set; }
 

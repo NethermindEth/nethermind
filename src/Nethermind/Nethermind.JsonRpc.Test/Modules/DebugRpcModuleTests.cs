@@ -1227,8 +1227,7 @@ public partial class DebugRpcModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result["result"]?["pre"]?[address], Is.Null, response);
-                Assert.That(result["result"]?["post"]?[address],
-                    Is.EqualTo(new JObject { ["codeHash"] = Hash256.Zero.ToString() }).Using(JToken.EqualityComparer), response);
+                Assert.That(result["result"]?["post"]?[address], Is.Null, response);
             }
         }
         else
