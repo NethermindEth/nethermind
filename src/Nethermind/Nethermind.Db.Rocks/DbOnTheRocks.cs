@@ -2279,7 +2279,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = CreateIterator(readOptions, cf);
-        return new RocksdbSortedView(iterator, readOptions);
+        return new RocksdbSortedView(iterator, readOptions, this, firstKey, lastKey);
     }
 
     public bool TryGetCeiling(

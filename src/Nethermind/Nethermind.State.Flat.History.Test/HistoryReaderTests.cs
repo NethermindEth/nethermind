@@ -6,8 +6,12 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -125,23 +129,29 @@ public class HistoryReaderTests
         Assert.That(available, Is.False, "the scope-entry gate reports unavailable rather than throwing, so the caller can fall through to its own unavailable-state handling");
     }
 
-    [TestCase(false, 9ul)]
-    [TestCase(true, 5ul)]
-    public void A_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, ulong expectedNonce)
+    [TestCase(false, 9ul, false)]
+    [TestCase(false, 9ul, true)]
+    [TestCase(true, 5ul, false)]
+    [TestCase(true, 5ul, true)]
+    public void A_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, ulong expectedNonce, bool scoped)
     {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using ColumnsDb<FlatHistoryColumns>? rocks = scoped ? CreateRocksHistory(directory.Path) : null;
+        IColumnsDb<FlatHistoryColumns> history = rocks is null ? _historyColumns : rocks;
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(history, config);
         HistoryColumnsWriter.SetPersistedAccount(_db, Address, new Account(9, 900));
 
         HookedFlatColumns hooked = new(_db, FlatDbColumns.Account, () =>
         {
-            HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 20, new Account(5, 500));
+            HistoryColumnsWriter.RecordAccountV3(history, Address, 20, new Account(5, 500));
             if (publishCapture) availability.MarkCapturePublished();
         });
 
-        HistoryReader reader = new(hooked, _historyColumns, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(hooked, history, availability, rowFormat, LimboLogs.Instance);
 
-        bool found = reader.TryGetAccount(10, Address, out AccountStruct account);
+        using HistoryReader.ReadScope? scope = scoped ? reader.CreateReadScope() : null;
+        bool found = reader.TryGetAccount(10, Address, out AccountStruct account, scope);
 
         using (Assert.EnterMultipleScope())
         {
@@ -150,28 +160,42 @@ public class HistoryReaderTests
         }
     }
 
-    [TestCase(false, false)]
-    [TestCase(true, true)]
-    public void A_storage_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, bool expectedFound)
+    [TestCase(false, false, false)]
+    [TestCase(false, false, true)]
+    [TestCase(true, true, false)]
+    [TestCase(true, true, true)]
+    public void A_storage_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, bool expectedFound, bool scoped)
     {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using ColumnsDb<FlatHistoryColumns>? rocks = scoped ? CreateRocksHistory(directory.Path) : null;
+        IColumnsDb<FlatHistoryColumns> history = rocks is null ? _historyColumns : rocks;
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(history, config);
 
         HookedFlatColumns hooked = new(_db, FlatDbColumns.Storage, () =>
         {
-            HistoryColumnsWriter.RecordStorageV3(_historyColumns, Address, Slot, 20, [0x55]);
+            HistoryColumnsWriter.RecordStorageV3(history, Address, Slot, 20, [0x55]);
             if (publishCapture) availability.MarkCapturePublished();
         });
 
-        HistoryReader reader = new(hooked, _historyColumns, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(hooked, history, availability, rowFormat, LimboLogs.Instance);
 
-        bool found = reader.TryGetStorage(10, Address, Slot, out UInt256 value);
+        using HistoryReader.ReadScope? scope = scoped ? reader.CreateReadScope() : null;
+        bool found = reader.TryGetStorage(10, Address, Slot, out UInt256 value, clearsCache: null, scope);
 
         Assert.That(found, Is.EqualTo(expectedFound));
         if (expectedFound)
         {
             Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x55 }));
         }
+    }
+
+    private static ColumnsDb<FlatHistoryColumns> CreateRocksHistory(string path)
+    {
+        DbConfig config = new();
+        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false);
+        return new ColumnsDb<FlatHistoryColumns>(path, new DbSettings("FlatHistory", "history"), config, factory,
+            LimboLogs.Instance, Enum.GetValues<FlatHistoryColumns>());
     }
 
     private sealed class HookedFlatColumns(IColumnsDb<FlatDbColumns> inner, FlatDbColumns hookedColumn, Action onFirstRead)

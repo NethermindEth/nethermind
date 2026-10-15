@@ -1215,6 +1215,18 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void ResetBounds_WhenNewRangeCrossesPrefixBuckets_RequiresANewView()
+        {
+            using DbOnTheRocks db = CreateFreshDb("Code");
+            byte[] lower = new byte[32];
+            byte[] upper = new byte[32];
+            upper[8] = 1;
+            using IRebindableSortedView view = (IRebindableSortedView)((ISortedKeyValueStore)db).GetViewBetween(lower, upper);
+            upper[0] = 1;
+            Assert.That(view.TryResetBounds(lower, upper), Is.False);
+        }
+
+        [Test]
         public void GetViewBetween_on_a_prefix_extractor_database_returns_a_range_that_stays_inside_one_prefix()
         {
             using DbOnTheRocks db = CreateFreshDb("Code");
@@ -1802,6 +1814,31 @@ namespace Nethermind.Db.Test
             Assert.That(view.SeekTo([6]), Is.False, "the only key at or after 6 is the excluded upper bound itself");
             Assert.That(view.SeekTo([0]), Is.True, "a target below the lower bound is clamped to it");
             Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 1 }), "0 sits outside the view, so the seek lands on the lower bound");
+        }
+
+        [Test]
+        public void ResetBounds_WhenReused_PreservesSnapshotAndBounds([Values] bool snapshot)
+        {
+            foreach (byte key in new byte[] { 1, 2, 3, 4, 5 }) _db[[key]] = [key];
+            using IKeyValueStoreSnapshot? captured = snapshot ? ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot() : null;
+            ISortedKeyValueStore store = captured is null ? (ISortedKeyValueStore)_db : (ISortedKeyValueStore)captured;
+            using IRebindableSortedView view = (IRebindableSortedView)store.GetViewBetween([0, 0], [9, 9]);
+            Assert.That(view.MoveNext(), Is.True);
+            _db[[6]] = [6];
+
+            Assert.That(view.TryResetBounds([3], [5]), Is.True);
+            Assert.That(view.MoveNext(), Is.True);
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 3 }));
+            Assert.That(view.MoveNext(), Is.True);
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 4 }));
+            Assert.That(view.MoveNext(), Is.False);
+
+            Assert.That(view.TryResetBounds([5], [7]), Is.True);
+            Assert.That(view.MoveNext(), Is.True);
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 5 }));
+            Assert.That(view.MoveNext(), Is.False);
+            Assert.That(view.TryResetBounds([0, 0, 0], [8]), Is.False);
+            Assert.That(view.TryResetBounds([0], [8, 0, 0]), Is.False);
         }
 
         [Test]

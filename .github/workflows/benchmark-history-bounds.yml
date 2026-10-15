@@ -1,0 +1,89 @@
+name: Verify history iterator reuse
+on:
+  push:
+    branches: [perf/history-bounded-iterator-reuse]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: history-bounds-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: candidate
+      - uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/rocksdb-bindings
+          ref: eb9ec80901072cac4d9b04cf6a3f4d6f761365ef
+          lfs: true
+          path: bindings
+      - uses: actions/checkout@v7
+        with:
+          ref: 906de8da8fe5249d59441cc2d79ffaf247d18800
+          path: baseline
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: candidate/global.json
+      - name: Record sources and machine
+        shell: bash
+        run: |
+          mkdir results
+          git -C baseline rev-parse HEAD > results/baseline-sha.txt
+          git -C candidate rev-parse HEAD > results/candidate-sha.txt
+          git -C bindings rev-parse HEAD > results/bindings-sha.txt
+          dotnet --info > results/dotnet.txt
+          lscpu > results/cpu.txt
+          echo "RocksDbBindingsProject=$GITHUB_WORKSPACE/bindings/src/Nethermind.RocksDbBindings/Nethermind.RocksDbBindings.csproj" >> "$GITHUB_ENV"
+      - name: Run database and history tests with the binding PR
+        working-directory: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release -p:RocksDbBindingsProject="$RocksDbBindingsProject" -- --report-trx --results-directory "$GITHUB_WORKSPACE/results/db-tests"
+          dotnet test --project src/Nethermind/Nethermind.State.Flat.History.Test/Nethermind.State.Flat.History.Test.csproj -c Release -p:RocksDbBindingsProject="$RocksDbBindingsProject" -- --report-trx --results-directory "$GITHUB_WORKSPACE/results/history-tests"
+      - name: Prepare the same harness for unchanged master
+        shell: bash
+        run: |
+          mkdir -p baseline/benchmarks/history-bounds
+          cp candidate/benchmarks/history-bounds/* baseline/benchmarks/history-bounds/
+          mkdir -p "$RUNNER_TEMP/history-bounds"
+      - name: Measure master and candidate in ABBA order
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/history-bounds
+        run: |
+          set -euo pipefail
+          for arm in baseline candidate candidate baseline; do
+            round=$(( ${round:-0} + 1 ))
+            output="$GITHUB_WORKSPACE/results/${round}-${arm}"
+            properties=()
+            if [[ "$arm" == candidate ]]; then
+              export BoundsReuse=true
+              properties+=(-p:BoundsReuse=true -p:RocksDbBindingsProject="$RocksDbBindingsProject")
+            else
+              unset BoundsReuse
+            fi
+            (
+              cd "$arm"
+              dotnet run --project benchmarks/history-bounds -c Release "${properties[@]}" -- --filter '*' --exporters json markdown --artifacts "$output" --join
+            )
+          done
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          find results -name '*github.md' -print -exec cat {} \; >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: history-bounds-${{ matrix.os }}
+          path: results
