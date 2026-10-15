@@ -38,7 +38,7 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
 {
     private static readonly IReleaseSpec[] Forks = [Osaka.Instance, Shanghai.Instance];
 
-    /// <summary>The shapes of the cold tail in one block: §5.1.1 of the design.</summary>
+    /// <summary>The shapes of the cold tail in one block.</summary>
     private Block ColdTailBlock() => BuildBlock(
         BatchClaim(TestItem.PrivateKeyA, 0, 6, 2_100_000),
         BatchClaim(TestItem.PrivateKeyA, 1, 6, 2_100_000),
@@ -194,7 +194,10 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
         else Assert.That(Handoff(block).Tally.Rejected, Is.GreaterThanOrEqualTo(Spec.IsEip6780Enabled ? 0 : 1));
     }
 
-    /// <summary>§5.1.3: randomized blocks of the shapes above, from one seeded generator; a failure names its block's seed.</summary>
+    /// <summary>
+    /// Randomized blocks of the shapes above, from one seeded generator; a failure names its block's seed, which replays the
+    /// block and its pacing decisions.
+    /// </summary>
     [Test]
     public void Randomized_blocks_end_in_the_state_and_receipts_of_executing_them()
     {
@@ -206,6 +209,7 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
             Random rng = new(blockSeed);
             RandomPacing = rng.Next(2) == 0;
             Block block = RandomColdTailBlock(rng);
+            SeedPacing(rng.Next());
             try
             {
                 Run executed = Process(block, adapter: null);
@@ -261,6 +265,8 @@ public class PrewarmerReadAheadWithoutSenderCodeCheckTests() : PrewarmerReadAhea
 public abstract class PrewarmerReadAheadTestBase(IReleaseSpec spec) : PrewarmerHandoffTestBase(spec)
 {
     private static readonly TimeSpan PaceTimeout = TimeSpan.FromSeconds(10);
+    private readonly Lock _pacingLock = new();
+    private Random _pacing = new();
     private BlockCachePreWarmer? _paced;
     private int _paceTimeouts;
 
@@ -268,6 +274,12 @@ public abstract class PrewarmerReadAheadTestBase(IReleaseSpec spec) : PrewarmerH
     protected bool RandomPacing { get; set; }
 
     protected int PaceTimeouts => Volatile.Read(ref _paceTimeouts);
+
+    /// <summary>Seeds the random pacing, so a failure replays its pacing decisions from the seed.</summary>
+    protected void SeedPacing(int seed)
+    {
+        lock (_pacingLock) _pacing = new Random(seed);
+    }
 
     protected override void ConfigureBlocks(BlocksConfig config)
     {
@@ -286,7 +298,9 @@ public abstract class PrewarmerReadAheadTestBase(IReleaseSpec spec) : PrewarmerH
         if (ProcessingScope is null) return;
         if (RandomPacing)
         {
-            if (Random.Shared.Next(4) == 0) Thread.Sleep(1);
+            bool sleep;
+            lock (_pacingLock) sleep = _pacing.Next(4) == 0;
+            if (sleep) Thread.Sleep(1);
             return;
         }
 
