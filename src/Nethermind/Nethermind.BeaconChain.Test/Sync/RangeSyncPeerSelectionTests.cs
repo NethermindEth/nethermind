@@ -382,7 +382,7 @@ public class RangeSyncPeerSelectionTests
     [TestCase(1, false)]
     [TestCase(2, true)]
     [CancelAfter(30_000)]
-    public async Task A_tip_needing_two_peers_word_is_abandoned_for_finalized_only_on_it_and_charged_to_the_last_if_the_chain_links_through_it(int liars, bool fellBack, CancellationToken token)
+    public async Task A_tip_needing_two_peers_word_is_abandoned_for_finalized_only_on_it_and_charged_to_each_of_them_if_the_chain_links_through_it(int liars, bool fellBack, CancellationToken token)
     {
         const ulong tipSlot = AnchorSlot + 4;
         const ulong targetSlot = AnchorSlot + 6;
@@ -409,7 +409,7 @@ public class RangeSyncPeerSelectionTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(rejected, Is.EqualTo(fellBack));
         Assert.That(yielded, Is.EqualTo(fellBack ? chainBlocks : chainBlocks.Where(static b => b.Slot > tipSlot)), "a re-download from finalized happens only on two peers' word");
-        Assert.That(peers.Select(static p => p.Reports.Count), Is.EqualTo(fellBack ? new[] { 0, 1 } : new[] { 0 }), "the peer whose word abandoned a tip the chain links through is charged");
+        Assert.That(peers.Select(static p => p.Reports.Count), Is.EqualTo(fellBack ? new[] { 1, 1 } : new[] { 0 }), "every peer whose word abandoned a tip the chain links through is charged, not only the last");
     }
 
     [TestCase(2UL, true, TestName = "Range sync behind the wall slot whose peers all report its own head refreshes their status instead of waiting")]
