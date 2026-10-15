@@ -1637,9 +1637,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             // Committed, so the run's EIP-2200 originals are the values it starts from, as in block processing.
             state.Commit(blockState.Spec, NullStateTracer.Instance, commitRoots: false);
 
-            recorder.Start(blockState.PreWarmer, position, token);
+            // A refresh also finds the slots the run only moves by a delta, so the next change to them leaves it as it is.
+            recorder.Start(blockState.PreWarmer, position, token, deltas: true);
             running = true;
-            TransactionResult result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
+            TransactionResult result = scope.TransactionProcessor.Process(tx, recorder.Tracer,
                 ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
             if (result && recorder.Finish(tx, in result, refreshed: true) is { } footprint)
             {
@@ -1690,7 +1691,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             foreach (ref readonly StateEffect effect in footprint.Effects)
             {
-                if (effect.Kind != EffectKind.SetStorage) Add(effect.Address);
+                if (effect.Kind is not (EffectKind.SetStorage or EffectKind.AddStorage)) Add(effect.Address);
             }
         }
 

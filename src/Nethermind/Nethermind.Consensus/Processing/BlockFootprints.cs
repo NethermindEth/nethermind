@@ -394,7 +394,7 @@ internal sealed class BlockFootprints(Block block)
             {
                 ref Slot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, reads[i].Cell, out _);
                 if (slot.Untracked) continue;
-                outdated |= ValueBefore(in slot.Writers, position) is { } value && value != reads[i].Value && (seeded is null || !Reads(seeded, reads[i].Cell));
+                outdated |= ValueBefore(in slot.Writers, position) is { } value && !reads[i].IsMetBy(in value) && (seeded is null || !Reads(seeded, reads[i].Cell));
                 if (slot.Readers.Count < MaxIndexedPerSlot) slot.Readers.Add(new Entry(position, i));
             }
 
@@ -632,7 +632,7 @@ internal sealed class BlockFootprints(Block block)
                 {
                     foreach (ref readonly StateEffect effect in footprint.Effects)
                     {
-                        if (effect.Kind != EffectKind.SetStorage && effect.Address == address) effect.Replay(state, spec);
+                        if (effect.Kind is not (EffectKind.SetStorage or EffectKind.AddStorage) && effect.Address == address) effect.Replay(state, spec);
                     }
                 }
             }
@@ -687,7 +687,7 @@ internal sealed class BlockFootprints(Block block)
         for (int i = 0; i < slot.Readers.Count; i++)
         {
             Entry reader = slot.Readers[i];
-            if (reader.Position > position && (ValueBefore(in slot.Writers, reader.Position) is not { } value || value != ReadValue(reader)))
+            if (reader.Position > position && (ValueBefore(in slot.Writers, reader.Position) is not { } value || !ReadOf(reader).IsMetBy(in value)))
             {
                 invalidated |= Invalidate(reader.Position);
             }
@@ -719,10 +719,32 @@ internal sealed class BlockFootprints(Block block)
         return at == 0 ? null : WrittenValue(writers[at - 1]);
     }
 
-    private UInt256 WrittenValue(Entry writer) => _indexed[writer.Position].WrittenValue(writer.Index);
+    // A delta is moved from what the writes before it leave, or from the value its run started from when none does.
+    private UInt256 WrittenValue(Entry writer)
+    {
+        if (_indexed[writer.Position].Footprint is not { } footprint) return _indexed[writer.Position].WrittenValue(writer.Index);
+        ref readonly StateEffect effect = ref footprint.Effects[writer.Index];
+        if (effect.Kind != EffectKind.AddStorage) return effect.Value;
+        ref Slot slot = ref CollectionsMarshal.GetValueRefOrNullRef(_slots, effect.Cell);
+        UInt256 before = !Unsafe.IsNullRef(ref slot) && !slot.Untracked && ValueBefore(in slot.Writers, writer.Position) is { } value
+            ? value
+            : StartValue(footprint, in effect.Cell);
+        UInt256.Add(in before, in effect.Value, out UInt256 moved);
+        return moved;
+    }
+
+    private static UInt256 StartValue(TransactionFootprint footprint, in StorageCell cell)
+    {
+        foreach (ref readonly SlotPrecondition read in footprint.Slots)
+        {
+            if (read.Cell.Equals(cell)) return read.Value;
+        }
+
+        return default;
+    }
 
     // A reader's position always has its footprint indexed: executed positions keep no readers.
-    private UInt256 ReadValue(Entry reader) => _indexed[reader.Position].Footprint!.Slots[reader.Index].Value;
+    private ref readonly SlotPrecondition ReadOf(Entry reader) => ref _indexed[reader.Position].Footprint!.Slots[reader.Index];
 
     private static bool Reads(TransactionFootprint footprint, in StorageCell cell)
     {
@@ -918,7 +940,7 @@ internal sealed class BlockFootprints(Block block)
                 while (++_index < effects.Length)
                 {
                     ref readonly StateEffect effect = ref effects[_index];
-                    if (effect.Kind != EffectKind.SetStorage) continue;
+                    if (effect.Kind is not (EffectKind.SetStorage or EffectKind.AddStorage)) continue;
                     Current = (effect.Cell, _index);
                     return true;
                 }

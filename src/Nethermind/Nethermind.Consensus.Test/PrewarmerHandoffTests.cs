@@ -107,6 +107,54 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
     }
 
     [Test]
+    public void A_refreshed_increment_holds_for_any_nonzero_count_and_moves_the_count_by_one()
+    {
+        Block block = BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Counter),
+            Call(TestItem.PrivateKeyB, 0, Counter),
+            Call(TestItem.PrivateKeyD, 0, Counter));
+        RunPreWarmCaches(PreWarmer, block);
+        TransactionFootprint footprint = PreWarmer.Footprints!.Get(2)!;
+        StorageCell count = new(Counter, 0);
+        SlotPrecondition read = footprint.Slots.ToArray().Single(slot => slot.Cell.Equals(count));
+        StateEffect write = footprint.Effects.ToArray().Single(effect => effect.Cell.Equals(count) && effect.Kind is EffectKind.SetStorage or EffectKind.AddStorage);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprint.Refreshed, Is.True);
+            Assert.That(read.IsDelta, Is.True);
+            Assert.That(read.IsMetBy(0x4e4d), Is.True);
+            // Storing to a slot that was zero costs more.
+            Assert.That(read.IsMetBy(UInt256.Zero), Is.False);
+            Assert.That((write.Kind, write.Value), Is.EqualTo((EffectKind.AddStorage, UInt256.One)));
+        }
+
+        Assert.That(Process(block, ProductionAdapter).Tally.Replayed, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void A_refreshed_run_that_copies_a_slot_elsewhere_still_requires_its_value()
+    {
+        // The first call stores the even balance of C to slot 0; the second copies slot 0 to slot 1.
+        Block block = BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Copier),
+            Call(TestItem.PrivateKeyB, 0, Copier, data: [1]),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei));
+        RunPreWarmCaches(PreWarmer, block);
+        TransactionFootprint? footprint = PreWarmer.Footprints!.Get(1);
+        Assert.That(footprint, Is.Not.Null);
+        SlotPrecondition read = footprint!.Slots.ToArray().Single(slot => slot.Cell.Equals(new StorageCell(Copier, 0)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Process(block, ProductionAdapter).Tally.Replayed, Is.EqualTo(3));
+            Assert.That(footprint.Refreshed, Is.True);
+            Assert.That(read.IsDelta, Is.False);
+            Assert.That(footprint.Effects.ToArray().Any(effect => effect.Kind == EffectKind.AddStorage), Is.False);
+        }
+    }
+
+    [Test]
     public void A_heavy_senders_transactions_warmed_apart_replay()
     {
         (int replayed, _, _) = Handoff(BuildBlock(
@@ -696,7 +744,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei));
         Run? run = null;
         Task processing = Task.Run(() => run = ProcessWhileWarming(block, (footprints, index) =>
-            index > 0 || (footprints.WarmPassEnded && !footprints.HasWork && footprints.Get(1) is not null)));
+            index > 0 || (footprints.WarmPassEnded && !footprints.HasWork && footprints.Get(1) is { Refreshed: true })));
 
         Assert.That(processing.Wait(TimeSpan.FromSeconds(30)), Is.True, "the session did not end");
         Assert.That(run!.Tally.Rejected, Is.Zero);

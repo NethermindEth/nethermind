@@ -56,10 +56,17 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     public OutcomeTracer Outcome { get; } = new();
 
+    private StorageDeltaTracer? _deltaTracer;
+    private bool _tracingDeltas;
+
+    /// <summary>The tracer the run executes with: <see cref="Outcome"/>, or one that also finds storage deltas.</summary>
+    public OutcomeTracer Tracer => _tracingDeltas ? _deltaTracer! : Outcome;
+
     /// <summary>The machine the env runs transactions on; without it a run is taken to read every block context field.</summary>
     public VirtualMachine<EthereumGasPolicy>? Machine { get; set; }
 
-    public void Start(IBlockProcessingProgress progress, int txIndex, CancellationToken token)
+    /// <param name="deltas">Whether to find the slots the run only moves by a delta, which tracing every instruction costs.</param>
+    public void Start(IBlockProcessingProgress progress, int txIndex, CancellationToken token, bool deltas = false)
     {
         _accountIndex.Clear();
         _accountCount = 0;
@@ -90,7 +97,9 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         if (_merges.Length > RetainedCapacity) _merges = new BalanceMerge[32];
         if (_lastWrites.Length > RetainedCapacity) _lastWrites = new int[64];
         if (_frames.Length > RetainedCapacity) _frames = new (Snapshot, int)[16];
-        Outcome.Reset(progress, txIndex, token);
+        _tracingDeltas = deltas;
+        if (deltas) _deltaTracer ??= new StorageDeltaTracer();
+        Tracer.Reset(progress, txIndex, token);
 
         // As in block processing: empty transient storage, and originals (EIP-2200) taken at the transaction's start.
         State.ResetTransient();
@@ -119,7 +128,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     public TransactionFootprint? Finish(Transaction tx, in TransactionResult result, bool refreshed = false)
     {
         _active = false;
-        if (_opaque || !result || !Outcome.HasResult) return null;
+        OutcomeTracer outcome = Tracer;
+        if (_opaque || !result || !outcome.HasResult) return null;
 
         // The run skipped the nonce check; only the transaction's own nonce makes it valid.
         if (!_accountIndex.TryGetValue(tx.SenderAddress!, out int senderIndex)) return null;
@@ -155,7 +165,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
             if (_slots[i].Read) slots[j++] = _slots[i];
         }
 
-        FootprintReceipt receipt = new(Outcome.Success, Outcome.Recipient!, Outcome.Gas, Outcome.Logs, Outcome.Error);
+        if (_tracingDeltas) ApplyDeltas(slots, effects);
+        FootprintReceipt receipt = new(outcome.Success, outcome.Recipient!, outcome.Gas, outcome.Logs, outcome.Error);
         return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value)
         {
             Refreshed = refreshed,
@@ -259,6 +270,57 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         }
 
         return effects[..kept].ToArray();
+    }
+
+    /// <summary>
+    /// Turns each slot the run only moved by a delta into a range of start values it holds for, and its write into the
+    /// delta, so a transaction before it that changes the slot within the range no longer invalidates the footprint.
+    /// </summary>
+    private void ApplyDeltas(SlotPrecondition[] slots, StateEffect[] effects)
+    {
+        StorageDeltaTracer tracer = _deltaTracer!;
+        for (int i = 0; i < slots.Length; i++)
+        {
+            ref SlotPrecondition slot = ref slots[i];
+            if (!tracer.TryGetDelta(in slot.Cell, in slot.Value, out SlotDelta delta) || ResetsStorage(effects, slot.Cell.Address)) continue;
+            UInt256 moved = (UInt256)(delta.Delta & ((System.Numerics.BigInteger.One << 256) - 1));
+            int write = -1;
+            for (int e = 0; e < effects.Length; e++)
+            {
+                if (effects[e].Kind == EffectKind.SetStorage && effects[e].Cell.Equals(in slot.Cell)) write = e;
+            }
+
+            if (write >= 0)
+            {
+                UInt256.Subtract(in effects[write].Value, in slot.Value, out UInt256 written);
+                if (written != moved) continue;
+                effects[write].Kind = EffectKind.AddStorage;
+                effects[write].Value = moved;
+            }
+            else if (!moved.IsZero)
+            {
+                continue;
+            }
+
+            slot.IsDelta = true;
+            slot.Lo = delta.Lo;
+            slot.Hi = delta.Hi;
+            slot.Excluded = delta.Excluded;
+        }
+    }
+
+    private static bool ResetsStorage(StateEffect[] effects, Address address)
+    {
+        foreach (ref readonly StateEffect effect in effects.AsSpan())
+        {
+            if (effect.Address == address && effect.Kind is EffectKind.ClearStorage or EffectKind.MarkStorageDestroyed
+                    or EffectKind.DeleteAccount or EffectKind.CreateAccount or EffectKind.CreateAccountIfNotExists)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Creating, deleting or clearing the account is the only way its storage changes other than by writes.
@@ -718,7 +780,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         public bool Merged;
     }
 
-    internal sealed class OutcomeTracer : TxTracer, ITxTracer
+    internal class OutcomeTracer : TxTracer, ITxTracer
     {
         private IBlockProcessingProgress? _progress;
         private int _txIndex;
@@ -738,7 +800,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         public LogEntry[] Logs { get; private set; } = [];
         public string? Error { get; private set; }
 
-        public void Reset(IBlockProcessingProgress? progress = null, int txIndex = 0, CancellationToken token = default)
+        public virtual void Reset(IBlockProcessingProgress? progress = null, int txIndex = 0, CancellationToken token = default)
         {
             _progress = progress;
             _txIndex = txIndex;

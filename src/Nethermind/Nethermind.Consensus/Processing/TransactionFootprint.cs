@@ -75,7 +75,7 @@ internal sealed class TransactionFootprint(
         foreach (ref readonly SlotPrecondition slot in slots.AsSpan())
         {
             state.Get(in slot.Cell, out UInt256 value);
-            if (value != slot.Value) return false;
+            if (!slot.IsMetBy(in value)) return false;
         }
 
         return true;
@@ -86,7 +86,7 @@ internal sealed class TransactionFootprint(
         int count = 0;
         foreach (ref readonly StateEffect effect in effects.AsSpan())
         {
-            if (effect.Kind == EffectKind.SetStorage) count++;
+            if (effect.Kind is EffectKind.SetStorage or EffectKind.AddStorage) count++;
         }
 
         return count;
@@ -161,11 +161,33 @@ internal struct SlotPrecondition
     public UInt256 Value;
     public bool Read;
     public bool Written;
+    // A slot the run only moved by a delta: any start value in [Lo, Hi] other than the excluded ones runs it the same.
+    public bool IsDelta;
+    public UInt256 Lo;
+    public UInt256 Hi;
+    public UInt256[]? Excluded;
+
+    public readonly bool IsMetBy(in UInt256 value)
+    {
+        if (!IsDelta) return value == Value;
+        if (value < Lo || value > Hi) return false;
+        if (Excluded is { } excluded)
+        {
+            foreach (UInt256 other in excluded)
+            {
+                if (other == value) return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 internal enum EffectKind : byte
 {
     SetStorage,
+    // Moves the slot by the value, wrapping: the run's write relative to the slot's value when it started.
+    AddStorage,
     ClearStorage,
     MarkStorageDestroyed,
     AddToBalance,
@@ -216,6 +238,9 @@ internal struct StateEffect
             case EffectKind.SetStorage:
                 state.Set(in Cell, in Value);
                 break;
+            case EffectKind.AddStorage:
+                AddStorage(state);
+                break;
             case EffectKind.ClearStorage:
                 state.ClearStorage(Address);
                 break;
@@ -256,6 +281,14 @@ internal struct StateEffect
                 AdoptCode(state, spec);
                 break;
         }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly void AddStorage(IWorldState state)
+    {
+        state.Get(in Cell, out UInt256 current);
+        UInt256.Add(in current, in Value, out UInt256 moved);
+        state.Set(in Cell, in moved);
     }
 
     // Apart, so the memory of the code is not a temporary the frame clears for every effect replayed.
