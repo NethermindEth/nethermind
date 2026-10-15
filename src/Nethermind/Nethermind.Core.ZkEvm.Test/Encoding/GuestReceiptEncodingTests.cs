@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -11,10 +12,7 @@ namespace Nethermind.Core.ZkEvm.Test.Encoding;
 /// <summary>
 /// Covers the guest's one-pass encoding of receipts for the receipts root, which the host suite cannot reach.
 /// </summary>
-/// <remarks>
-/// A typed receipt takes the one-pass encoding only unwrapped, so its wrapped encoding, which the generic encoder
-/// writes, must hold the same bytes after the type. The logs, data and gas reach every prefix width.
-/// </remarks>
+/// <remarks>The logs, data and gas reach every prefix width.</remarks>
 public class GuestReceiptEncodingTests
 {
     private static readonly ReceiptMessageDecoder Decoder = new();
@@ -31,23 +29,20 @@ public class GuestReceiptEncodingTests
         for (int i = 0; i < 40; i++)
         {
             TxReceipt receipt = CreateReceipt(random, type);
-            byte[] onePass = Decoder.EncodeNew(receipt, trie);
-            Assert.That(onePass, Has.Length.EqualTo(Decoder.GetLength(receipt, trie)));
-
-            if (type == TxType.Legacy)
-            {
-                TxReceipt decoded = Decoder.Decode(onePass, trie)!;
-                Assert.That(decoded.StatusCode, Is.EqualTo(receipt.StatusCode));
-                Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
-                Assert.That(Decoder.EncodeNew(decoded, trie), Is.EqualTo(onePass));
-            }
-            else
-            {
-                byte[] wrapped = Decoder.EncodeNew(receipt, trie & ~RlpBehaviors.SkipTypedWrapping);
-                RlpReader reader = new(wrapped);
-                Assert.That(onePass, Is.EqualTo(reader.DecodeByteArray()));
-            }
+            Assert.That(Decoder.EncodeNew(receipt, trie), Is.EqualTo(EncodeGeneric(receipt, trie)));
         }
+    }
+
+    /// <remarks>
+    /// The one-pass encoding takes only an <see cref="RlpWriter"/>, so a byte-buffer writer gets the generic encoding,
+    /// which measures neither through the one-pass length nor into a buffer sized by it.
+    /// </remarks>
+    private static byte[] EncodeGeneric(TxReceipt receipt, RlpBehaviors behaviors)
+    {
+        IByteBuffer buffer = Unpooled.Buffer();
+        ByteBufferRlpWriter writer = new(buffer);
+        Decoder.Encode(ref writer, receipt, behaviors);
+        return buffer.ReadAllBytesAsArray();
     }
 
     private static TxReceipt CreateReceipt(Random random, TxType type)
