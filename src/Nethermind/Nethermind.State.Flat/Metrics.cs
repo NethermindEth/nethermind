@@ -30,11 +30,10 @@ public static class Metrics
     private static long _trieNodeLogFallbackReads;
     internal static void IncrementTrieNodeLogFallbackReads() => Interlocked.Increment(ref _trieNodeLogFallbackReads);
 
-    [CounterMetric]
-    [Description("Time spent publishing the trie nodes bulk sets wrote into the snapshot bundle (ticks)")]
-    public static long TrieNodePublishTime => Volatile.Read(ref _trieNodePublishTime);
-    private static long _trieNodePublishTime;
-    internal static void AddTrieNodePublishTime(long ticks) => Interlocked.Add(ref _trieNodePublishTime, ticks);
+    [DetailedMetric]
+    [Description("Time to publish the trie nodes a bulk set wrote into the snapshot bundle (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
+    public static IMetricObserver TrieNodePublishTime { get; set; } = new NoopMetricObserver();
 
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]

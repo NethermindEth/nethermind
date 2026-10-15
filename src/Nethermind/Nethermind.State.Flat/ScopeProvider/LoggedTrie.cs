@@ -45,7 +45,7 @@ internal sealed class LoggedTrie(SnapshotBundle bundle, TrieNodeLog log, Hash256
         else bundle.PublishLoggedStorageNodes(bundle.GetStorageNodeDestination(addressHash), _written);
 
         _written.Clear();
-        Metrics.AddTrieNodePublishTime(Stopwatch.GetElapsedTime(start).Ticks);
+        Metrics.TrieNodePublishTime.Observe(Stopwatch.GetTimestamp() - start);
     }
 
     /// <summary>Empties the trie and drops the unpublished nodes, as when the storage is cleared.</summary>

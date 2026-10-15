@@ -34,7 +34,7 @@ public sealed class FlatStorageTree(
     private readonly Hash256 _storageRoot = storageRoot;
     private Hash256? _addressHash;
 
-    // Created on the owner thread by the first write or verified read; null in a trie-less scope.
+    // Created on the owner thread by the first write batch or verified read; null in a trie-less scope.
     private LoggedTrie? _trie;
     // The root a trie created from now on starts at.
     private Hash256 _rootBeforeTrie = storageRoot;
@@ -165,11 +165,12 @@ public sealed class FlatStorageTree(
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         _scope.Trieless
             ? new FlatOverlayStorageWriteBatch(this)
-            : new LoggedStorageWriteBatch(this, estimatedEntries, onRootUpdated);
+            : new LoggedStorageWriteBatch(this, Trie, estimatedEntries, onRootUpdated);
 
     // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
     private sealed class LoggedStorageWriteBatch(
         FlatStorageTree storageTree,
+        LoggedTrie trie,
         int estimatedEntries,
         Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
     {
@@ -197,7 +198,7 @@ public sealed class FlatStorageTree(
         public void Dispose()
         {
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = _entries.ToRef();
-            if (entries.Count > 0) storageTree.Trie.BulkSet(entries, canParallelize: true);
+            if (entries.Count > 0) trie.BulkSet(entries, canParallelize: true);
             // Deferred, the scope commit publishes the nodes after the block is reported valid.
             if (!storageTree._config.DeferStorageTrieCommit) storageTree.CommitTree();
             if (entries.Count > 0 || _hasSelfDestruct) onRootUpdated(storageTree._address, storageTree.RootHash);

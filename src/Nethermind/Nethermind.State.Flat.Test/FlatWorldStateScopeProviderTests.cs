@@ -992,10 +992,13 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void Committed_roots_and_published_nodes_match_patricia_tree([Values(0, 20)] int blocksBetweenCommits, [Values] bool deferStorageTrieCommit)
+    public void Committed_roots_and_published_nodes_match_patricia_tree(
+        [Values(0, 20)] int blocksBetweenCommits,
+        [Values] bool deferStorageTrieCommit,
+        // 512 crosses the bulk set's parallel threshold.
+        [Values(48, 512)] int slotsPerContract)
     {
         const int contractCount = 8;
-        const int slotsPerContract = 48;
         using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit });
         FlatWorldStateScope scope = ctx.Scope;
         Account baseAccount = new(1, 1);
@@ -1057,6 +1060,51 @@ public class FlatWorldStateScopeProviderTests
 
         Assert.That(CollectNodes(new StateTrieStoreAdapter(ctx.SnapshotBundle), scope.RootHash),
             Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash)));
+    }
+
+    [Test]
+    public void TryLoadTrieNodeRecord_reads_warmed_then_verified_persisted_then_in_memory_snapshot_nodes([Values] bool storage)
+    {
+        ResourcePool pool = new(new FlatDbConfig());
+        TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        Hash256? address = storage ? TestItem.KeccakA : null;
+        TreePath persistedPath = TreePath.FromHexString("12");
+        TreePath readOnlySnapshotPath = TreePath.FromHexString("34");
+        TreePath ownSnapshotPath = TreePath.FromHexString("56");
+        byte[] persistedRlp = FlatTestHelpers.LeafRlp(0x01);
+        byte[] readOnlySnapshotRlp = FlatTestHelpers.LeafRlp(0x02);
+        byte[] ownSnapshotRlp = FlatTestHelpers.LeafRlp(0x03);
+
+        Snapshot SnapshotWithNode(TreePath path, byte[] rlp) => FlatTestHelpers.MakeSnapshot(pool, log, content =>
+        {
+            if (address is null) content.SetStateNodeRlp(log, path, rlp);
+            else content.SetStorageNodeRlp(log, address, path, rlp);
+        });
+
+        SinglePersistedNodeReader reader = new(persistedPath, persistedRlp);
+        using SnapshotBundle bundle = new(
+            new ReadOnlySnapshotBundle(FlatTestHelpers.SnapshotList(SnapshotWithNode(readOnlySnapshotPath, readOnlySnapshotRlp)), reader, false, PersistedSnapshotStack.Empty()),
+            Substitute.For<ITrieNodeCache>(),
+            log,
+            pool,
+            ResourcePool.Usage.MainBlockProcessing,
+            FlatTestHelpers.SnapshotList(SnapshotWithNode(ownSnapshotPath, ownSnapshotRlp)));
+        long fallbackReadsBefore = Metrics.TrieNodeLogFallbackReads;
+
+        byte[]? Load(TreePath path, byte[] rlp) =>
+            bundle.TryLoadTrieNodeRecord(address, path, ValueKeccak.Compute(rlp), out NodeRecordRef record) ? record.Rlp.ToArray() : null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Load(persistedPath, persistedRlp), Is.EqualTo(persistedRlp), "persisted");
+            Assert.That(Load(persistedPath, persistedRlp), Is.EqualTo(persistedRlp), "warmed");
+            Assert.That(reader.Loads, Is.EqualTo(1), "warmed node read again from persistence");
+            Assert.That(Load(persistedPath, ownSnapshotRlp), Is.Null, "persisted RLP of another hash");
+            Assert.That(Load(readOnlySnapshotPath, readOnlySnapshotRlp), Is.EqualTo(readOnlySnapshotRlp), "read-only bundle snapshot");
+            Assert.That(Load(ownSnapshotPath, ownSnapshotRlp), Is.EqualTo(ownSnapshotRlp), "own snapshot");
+            Assert.That(Load(ownSnapshotPath, readOnlySnapshotRlp), Is.Null, "snapshot node of another hash");
+            Assert.That(Metrics.TrieNodeLogFallbackReads - fallbackReadsBefore, Is.EqualTo(2), "fallback reads");
+        }
     }
 
     /// <summary>The hash-referenced nodes of the state trie at <paramref name="root"/> and its storage tries, by address hash, path and RLP.</summary>
@@ -2013,6 +2061,30 @@ public class FlatWorldStateScopeProviderTests
         public void OnEnterScope() { }
 
         public void OnExitScope() { }
+    }
+
+    /// <summary>Holds one trie node, at <paramref name="path"/> of the state trie and of every storage trie.</summary>
+    private sealed class SinglePersistedNodeReader(TreePath path, byte[] rlp) : IPersistence.IPersistenceReader
+    {
+        public int Loads { get; private set; }
+
+        public byte[]? TryLoadStateRlp(in TreePath nodePath, ReadFlags flags)
+        {
+            Loads++;
+            return nodePath == path ? rlp : null;
+        }
+
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath nodePath, ReadFlags flags) => TryLoadStateRlp(nodePath, flags);
+
+        public Account? GetAccount(Address address) => null;
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
+        public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
+        public void Dispose() { }
     }
 
     private sealed class BlockingPersistenceReader : IPersistence.IPersistenceReader
