@@ -1514,7 +1514,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     {
         if (blockState.Footprints is not { } footprints || blockState.Token.IsCancellationRequested || !blockState.TryClaimRefreshing()) return;
         CancellationToken token = blockState.Token;
-        // One handle for every worker, so joining it joins them all.
+        // One handle for every worker, so joining it joins them all. Each worker holds a runner of the pass's worker group
+        // until the session ends, waiting or not.
         blockState.SetRefreshing(ParallelUnbalancedWork.BackgroundFor(0, _refreshWorkers, _refreshOptions, _ => RefreshInvalidated(blockState, footprints, token)));
     }
 
@@ -1539,7 +1540,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     {
                         do
                         {
-                            Refresh(env, blockState, footprints, position, take, token);
+                            try
+                            {
+                                Refresh(env, blockState, footprints, position, take, token);
+                            }
+                            finally
+                            {
+                                footprints.EndRefresh(position);
+                            }
+
                             if (token.IsCancellationRequested) return;
                             footprints.ApplyExecuted();
                         }
@@ -1551,12 +1560,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     }
                 }
 
-                int processing = MainThreadTxIndex;
                 // Checked only when the worker wakes: block processing moving on signals nothing, so after the last report
-                // the worker waits for the session to end, holding no env.
-                if (processing >= footprints.Count - 1) return;
-                // A pass waited on before block processing ends with what it has refreshed.
-                if (processing < 0 && !footprints.WaitsForBlockProcessing && footprints.WarmPassEnded && !footprints.HasWork) return;
+                // the worker waits for the session to end, holding no env. A pass waited on before block processing ends
+                // with what it has refreshed.
+                if (footprints.TryEnd(MainThreadTxIndex)) return;
                 footprints.WaitForWork(token);
             }
         }

@@ -210,9 +210,9 @@ public class PrewarmerHandoffTests(IReleaseSpec spec, int refreshWorkers) : Prew
             // The later deployments read the factory's nonce, which the first one increments.
             Assert.That(replayed, Is.EqualTo(1));
             // Their creations clear the storage the first one wrote, so their runs read it as cleared whatever the seed.
-            // Side by side, one refresh is stored while another runs, and the check of the other's seeds counts that as a
-            // change: the refreshes repeat a few times, short of the block's refreshes.
-            Assert.That(PreWarmer.Footprints!.RefreshesRun, Is.LessThanOrEqualTo(RefreshWorkers == 1 ? 4 : BlockFootprints.MaxRefreshesPerBlock - 1));
+            // Side by side, a refresh may be stored while another runs; that is no change of what the other was seeded
+            // with, so it adds at most a refresh or two.
+            Assert.That(PreWarmer.Footprints!.RefreshesRun, Is.LessThanOrEqualTo(RefreshWorkers == 1 ? 4 : 6));
         }
     }
 
@@ -697,10 +697,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         List<(BlockFootprints Footprints, (int RefreshesRun, int WritesVersion) Ended)> blocks = [];
         for (int i = 0; i < 3; i++)
         {
-            // A heavy sender's calls are warmed apart on the parent state, so every one after the first read the counter
-            // at another value than the one before leaves: a refresh for every worker to be held in.
-            Block block = BuildBlock(Parent, 30_000_000 - (ulong)i,
-                [.. Enumerable.Range(0, workers + 2).Select(static nonce => Call(TestItem.PrivateKeyA, (ulong)nonce, Counter, gasLimit: 2_000_000))]);
+            Block block = IndependentRefreshes(30_000_000 - (ulong)i);
             gate.Arm(holds: workers);
             using (worldState.BeginScope(Parent))
             {
@@ -735,6 +732,33 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         // Nothing changed a block's footprints once its session had ended, while the blocks after it were warmed.
         Assert.That(blocks.Select(static block => (block.Footprints.RefreshesRun, block.Footprints.WritesVersion)), Is.EqualTo(blocks.Select(static block => block.Ended)));
     }
+
+    [Test]
+    public void A_chain_of_calls_each_reading_what_the_one_before_writes_is_refreshed_about_as_often_side_by_side([Values(1, 2, 4)] int workers)
+    {
+        List<int> refreshes = [];
+        for (int i = 0; i < 5; i++)
+        {
+            UseRefreshWorkers(workers);
+            // A heavy sender's counter calls are warmed apart on the parent state, so refreshing each invalidates the next.
+            Handoff(BuildBlock(Parent, 30_000_000,
+                [.. Enumerable.Range(0, 24).Select(static nonce => Call(TestItem.PrivateKeyA, (ulong)nonce, Counter, gasLimit: 1_000_000))]));
+            refreshes.Add(PreWarmer.Footprints!.RefreshesRun);
+        }
+
+        refreshes.Sort();
+        TestContext.Out.WriteLine($"refreshes {string.Join(' ', refreshes)}");
+        // A refresh for each call after the first, and a few for warm runs stored while the chain is refreshed. A worker
+        // refreshing a call on what the one before it is about to change would have to refresh it again.
+        Assert.That(refreshes[2], Is.LessThanOrEqualTo(30));
+    }
+
+    // Each sender's two calls are warmed apart on the parent state, so its second reads the slot its first writes at
+    // another value: four refreshes, no one of which waits for another.
+    private Block IndependentRefreshes(ulong gasLimit) => BuildBlock(Parent, gasLimit,
+        [.. Senders.Select(static sender => Call(sender, 0, Transient, gasLimit: 2_500_000)), .. Senders.Select(static sender => Call(sender, 1, Transient, gasLimit: 2_500_000))]);
+
+    private static readonly PrivateKey[] Senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD];
 
     /// <summary>A prewarmer whose refreshes seed their slots through <paramref name="gate"/>.</summary>
     private BlockCachePreWarmer HoldingPreWarmer(SeedGate gate, int workers)
@@ -1201,6 +1225,127 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             Assert.That(passEnded - leftNone, Is.EqualTo(workers));
             Assert.That(footprints.PendingWakes - passEnded, Is.EqualTo(workers));
         }
+    }
+
+    [Test]
+    public void Three_workers_all_end_a_waited_pass_although_their_wakes_went_to_ones_that_waited_again()
+    {
+        // Position 0 writes the first slot; each later one reads the slot the one before writes and writes its own. The
+        // first was warmed on its slot at the parent value: invalidated.
+        (BlockFootprints f, Transaction[] txs) = Footprints(6, refreshWorkers: 3);
+        f.Store(0, Footprint(txs[0], writes: [(Chained(0), 1)]));
+        f.Store(1, Footprint(txs[1], reads: [(Chained(0), UInt256.Zero)], writes: [(Chained(1), 1)]));
+        for (int k = 2; k < 6; k++) f.Store(k, Footprint(txs[k], reads: [(Chained(k - 1), 1)], writes: [(Chained(k), 1)]));
+        // Workers A, B and C wait; the wake of the invalidation was taken.
+        while (f.PendingWakes > 0) f.WaitForWork(CancellationToken.None);
+        // MainThreadTxIndex + 1, and MainThreadTxIndex, while block processing has not started.
+        const int after = 0;
+        const int processing = -1;
+
+        f.EndWarmPass();
+        f.StopWaitingForBlockProcessing();
+        // A, B and C wake: A takes the refresh, B and C find nothing to take.
+        f.WaitForWork(CancellationToken.None);
+        Assert.That(f.TryTakeInvalidated(after, out int position, out int take), Is.True);
+        for (int idle = 0; idle < 2; idle++)
+        {
+            f.WaitForWork(CancellationToken.None);
+            Assert.That(f.TryTakeInvalidated(after, out _, out _), Is.False);
+        }
+
+        for (int round = 0; round < 4; round++)
+        {
+            // A stores a refresh that invalidates the next position, which wakes one worker. B and C, past their take, see
+            // work left and wait again, each taking a wake; then A takes the position itself.
+            StoreChainedRefresh(f, txs, position, take);
+            Assert.That(f.TryEnd(processing), Is.False);
+            f.WaitForWork(CancellationToken.None);
+            Assert.That(f.TryEnd(processing), Is.False);
+            if (round == 3) Assert.That(f.PendingWakes, Is.Zero, "C waits with no wake left");
+            else f.WaitForWork(CancellationToken.None);
+            f.ApplyExecuted();
+            Assert.That(f.TryTakeInvalidated(after, out position, out take), Is.True);
+            Assert.That(f.TryTakeInvalidated(after, out _, out _), Is.False);
+            if (round < 3) Assert.That(f.TryTakeInvalidated(after, out _, out _), Is.False);
+        }
+
+        // B ends; A's last refresh invalidates nothing, and A ends too.
+        Assert.That(f.TryEnd(processing), Is.True);
+        StoreChainedRefresh(f, txs, position, take);
+        f.ApplyExecuted();
+        Assert.That(f.TryTakeInvalidated(after, out _, out _), Is.False);
+        Assert.That(f.TryEnd(processing), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(f.PendingWakes, Is.GreaterThanOrEqualTo(1), "nothing wakes C");
+            using CancellationTokenSource limit = new(TimeSpan.FromSeconds(1));
+            Assert.That(() => f.WaitForWork(limit.Token), Throws.Nothing, "C stays asleep");
+            Assert.That(f.TryEnd(processing), Is.True, "C, woken, does not end");
+        }
+    }
+
+    [Test]
+    public void A_position_whose_seed_a_refresh_in_flight_or_waiting_is_about_to_change_is_taken_after_it()
+    {
+        // A chain 1 -> 2 -> 3, each reading the slot the one before writes, and position 5 reading what 4 writes.
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(6, refreshWorkers: 2);
+        StorageCell apart = new(TestItem.AddressD, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(Chained(0), 1)]));
+        footprints.Store(1, Footprint(txs[1], reads: [(Chained(0), UInt256.Zero)], writes: [(Chained(1), 1)]));
+        footprints.Store(2, Footprint(txs[2], reads: [(Chained(1), UInt256.Zero)], writes: [(Chained(2), 1)]));
+        footprints.Store(3, Footprint(txs[3], reads: [(Chained(2), UInt256.Zero)]));
+        footprints.Store(4, Footprint(txs[4], writes: [(apart, 1)]));
+        footprints.Store(5, Footprint(txs[5], reads: [(apart, UInt256.Zero)]));
+
+        List<int> taken = [];
+        void Take() => taken.Add(footprints.TryTakeInvalidated(-1, out int position, out _) ? position : -1);
+        Take();
+        // 2 reads what the refresh of 1 is about to write, and 3 what 2, invalidated, writes: 5 is taken past them.
+        Take();
+        Take();
+        footprints.EndRefresh(1);
+        Take();
+        Take();
+        footprints.EndRefresh(2);
+        Take();
+
+        Assert.That(taken, Is.EqualTo(new[] { 1, 5, -1, 2, -1, 3 }));
+    }
+
+    [Test]
+    public void A_refreshed_run_keeps_the_exception_for_a_seeded_slot_while_other_slots_change([Values] bool writesIt)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(3);
+        StorageCell seeded = new(TestItem.AddressC, 0x4e4d);
+        StorageCell unrelated = new(TestItem.AddressC, 2 * 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(seeded, 0x4e4d)]));
+        footprints.Store(1, Footprint(txs[1], writes: [(unrelated, 0x4e4d)]));
+        TransactionFootprint invalidated = Footprint(txs[2], reads: [(seeded, UInt256.Zero)]);
+        footprints.Store(2, invalidated);
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out int take), Is.True);
+        int seededAt = footprints.WritesVersion;
+
+        // Another position's write of a slot the run did not read changes while the refresh runs.
+        footprints.Store(1, Footprint(txs[1], writes: [(unrelated, 2 * 0x4e4d)]));
+        // The run read the seeded slot as cleared, as a creation leaves it, and may write it too.
+        footprints.Store(2, Footprint(txs[2], reads: [(seeded, UInt256.Zero)], writes: writesIt ? [(seeded, 1)] : null), seededAt, take, invalidated);
+
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.False);
+    }
+
+    private static StorageCell Chained(int position) => new(TestItem.AddressC, (UInt256)(0x4e4d + position));
+
+    // A refresh of a chain's position: it reads the slot before it at the value now left there, writes its own slot at the
+    // next value, then ends.
+    private static void StoreChainedRefresh(BlockFootprints footprints, Transaction[] txs, int position, int take)
+    {
+        TransactionFootprint invalidated = footprints.Get(position)!;
+        int seededAt = footprints.WritesVersion;
+        UInt256 seed = footprints.ValueBefore(Chained(position - 1), position) ?? UInt256.Zero;
+        Assert.That(footprints.TryCountRefresh(), Is.True);
+        footprints.Store(position, Footprint(txs[position], reads: [(Chained(position - 1), seed)], writes: [(Chained(position), seed + 1)]), seededAt, take, invalidated);
+        footprints.EndRefresh(position);
     }
 
     private static (BlockFootprints Footprints, Transaction[] Transactions) Footprints(int count, int refreshWorkers = 1)
