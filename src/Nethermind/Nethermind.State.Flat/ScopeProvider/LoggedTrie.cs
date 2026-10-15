@@ -35,6 +35,13 @@ internal sealed class LoggedTrie(SnapshotBundle bundle, TrieNodeLog log, Hash256
     public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize) =>
         SetRoot(LogBulkSet.BulkSet(log, this, addressHash, Root, entries, _written, canParallelize));
 
+    /// <summary>Adopts a completed private update, including its unpublished records.</summary>
+    internal void Adopt(in TrieRoot root, WrittenNodes written)
+    {
+        _written.AddRange(written.AsSpan());
+        SetRoot(root);
+    }
+
     /// <summary>Moves the written nodes into the bundle as their pointers in the log.</summary>
     public void Publish()
     {

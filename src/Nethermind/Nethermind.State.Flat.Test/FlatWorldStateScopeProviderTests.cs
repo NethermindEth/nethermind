@@ -902,6 +902,311 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void EarlyStorageApply_ReconcilesFinalWrites([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly, DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, 2);
+            storage.Set(2, 10);
+            storage.Set(3, 30);
+        }
+        scope.Commit(1);
+        FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
+        Hash256 preBlockRoot = tree.RootHash;
+        UInt256[] expected = new UInt256[40];
+        expected[3] = clearAtBlockEnd ? UInt256.Zero : (UInt256)30;
+
+        if (applyEarly)
+        {
+            ApplyEarlyHints(tree, () =>
+            {
+                for (int slot = 0; slot < expected.Length; slot++) tree.HintSet((UInt256)slot, (UInt256)(slot + 1));
+                tree.HintSet(1, 1000);
+                tree.HintSet(2, 0);
+            });
+            Assert.That(tree.RootHash, Is.EqualTo(preBlockRoot), "private updates must not change the owner root");
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, expected.Length);
+            if (clearAtBlockEnd) storage.Clear();
+            for (int slot = 0; slot < expected.Length; slot++)
+            {
+                if (slot == 3) continue;
+                expected[slot] = slot == 1 ? 2000 : slot == 2 ? 0 : (UInt256)(slot + 1);
+                storage.Set((UInt256)slot, expected[slot]);
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.EarlyApplyCounts.Reused, Is.EqualTo(applyEarly && !clearAtBlockEnd ? expected.Length - 2 : 0));
+            Assert.That(scope.EarlyApplyCounts.Restored, Is.EqualTo(applyEarly && !clearAtBlockEnd ? 1 : 0));
+            Assert.That(scope.EarlyApplyCounts.Abandoned, Is.Zero);
+        }
+        scope.Commit(2);
+        AssertStorageRoot(ctx, expected);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void EarlyStorageApply_AdoptsAllMatchingWritesAndPublishesNodes()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
+        FlatStorageTree tree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
+        ApplyEarlyHints(tree, () => tree.HintSet(1, 123));
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = ctx.Scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, 1);
+            storage.Set(1, 123);
+        }
+        Assert.That(ctx.Scope.EarlyApplyCounts.Reused, Is.EqualTo(1));
+        ctx.Scope.Commit(1);
+        AssertStorageRoot(ctx, [0, 123]);
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out ulong _), Is.True,
+            "adoption must publish the private WrittenNodes even when the final batch hashes nothing");
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void EarlyStorageApply_UnfinishedPassOutlivesCommitOrDispose([Values] bool disposeScope, [Values] bool persistedRoot)
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        Address address = TestItem.AddressA;
+        Account account = Build.An.Account.WithBalance(1).TestObject;
+        Hash256? stateRoot = null;
+        Dictionary<(Hash256? Storage, TreePath Path), byte[]> persistedNodes = [];
+        if (persistedRoot)
+        {
+            RawTrieStore store = new(new TestMemDb());
+            StorageTree storage = new(store.GetTrieStore(address.ToAccountPath.ToHash256()), LimboLogs.Instance);
+            storage.Set(1, ((UInt256)10).ToMinimalBigEndian());
+            storage.Commit();
+            account = account.WithChangedStorageRoot(storage.RootHash);
+            StateTree state = new(store.GetTrieStore(null), LimboLogs.Instance);
+            state.Set(address, account);
+            state.Commit();
+            stateRoot = state.RootHash;
+            persistedNodes = CollectNodes(store.GetTrieStore(null), stateRoot).Rlps;
+        }
+
+        using TestContext ctx = new(config: new FlatDbConfig { TrieCacheMemoryBudget = 0 }, stateRoot: stateRoot);
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+        int backgroundLoads = 0;
+        ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(c => persistedNodes.GetValueOrDefault((null, c.ArgAt<TreePath>(0))));
+        ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(c =>
+            {
+                if (Thread.CurrentThread.Name == "Storage early apply") Interlocked.Increment(ref backgroundLoads);
+                return persistedNodes.GetValueOrDefault((c.ArgAt<Hash256>(0), c.ArgAt<TreePath>(1)));
+            });
+        FlatWorldStateScope scope = ctx.Scope;
+        if (!persistedRoot)
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, 1);
+                storage.Set(1, 10);
+            }
+            scope.Commit(1);
+            // The root predates the worker's active generation, so retaining only its new writes is insufficient.
+            for (int i = 0; i < 10; i++) ctx.TrieNodeLog.Reserve(64 * 1024, out _, out _);
+        }
+
+        FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
+        using ManualResetEventSlim started = new();
+        using ManualResetEventSlim resume = new();
+        using ManualResetEventSlim completed = new();
+        tree.OnEarlyPassDrained = () => { started.Set(); resume.Wait(); };
+        tree.OnEarlyPassCompleted = completed.Set;
+        try
+        {
+            tree.HintSet(1, 20);
+            Assert.That(started.Wait(5000), Is.True);
+            Task owner = Task.Run(() =>
+            {
+                if (!disposeScope)
+                {
+                    using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+                    {
+                        using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, 1);
+                        storage.Set(1, 30);
+                    }
+                    Assert.That(scope.EarlyApplyCounts.Abandoned, Is.EqualTo(1));
+                    // The commit target retires the transient synchronously; a worker transient lease would block here.
+                    scope.Commit(2);
+                    AssertStorageRoot(ctx, [0, 30]);
+                }
+                scope.Dispose();
+                ctx.LastCommittedSnapshot?.Dispose();
+                ctx.LastCommittedSnapshot = null;
+            });
+            Assert.That(owner.Wait(5000), Is.True, "commit/dispose must not wait for an unfinished pass");
+            ctx.PersistenceReader.DidNotReceive().Dispose();
+            for (int i = 0; i < 10; i++) ctx.TrieNodeLog.Reserve(64 * 1024, out _, out _);
+        }
+        finally
+        {
+            resume.Set();
+            Assert.That(completed.Wait(5000), Is.True);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.EarlyApplyCounts.Applied, Is.EqualTo(1), "the detached pass must finish after bundle teardown");
+            ctx.PersistenceReader.Received(1).Dispose();
+            Assert.That(backgroundLoads, persistedRoot ? Is.Positive : Is.Zero);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void EarlyStorageApply_FailedPassIsNotAdopted([Values] bool raceNextHint)
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
+        FlatStorageTree tree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
+        using ManualResetEventSlim started = new();
+        using ManualResetEventSlim resume = new();
+        using ManualResetEventSlim completed = new();
+        tree.OnEarlyPassDrained = () =>
+        {
+            started.Set();
+            resume.Wait();
+            throw new InvalidOperationException("failed early pass");
+        };
+        tree.OnEarlyPassCompleted = completed.Set;
+        try
+        {
+            tree.HintSet(1, 123);
+            Assert.That(started.Wait(5000), Is.True);
+            if (raceNextHint)
+            {
+                tree.OnEarlyHintAccepted = () =>
+                {
+                    resume.Set();
+                    Assert.That(completed.Wait(5000), Is.True);
+                };
+                // The pass fails after the second hint checks its state, but before it captures the context.
+                Assert.DoesNotThrow(() => tree.HintSet(2, 999));
+            }
+        }
+        finally
+        {
+            resume.Set();
+            Assert.That(completed.Wait(5000), Is.True);
+            tree.OnEarlyHintAccepted = null;
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = ctx.Scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, 1);
+            storage.Set(1, 321);
+        }
+        Assert.That(ctx.Scope.EarlyApplyCounts, Is.EqualTo((0, 0, 0, 0)));
+        ctx.Scope.Commit(1);
+        AssertStorageRoot(ctx, [0, 321]);
+        ctx.Scope.Dispose();
+        ctx.PersistenceReader.Received(1).Dispose();
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void EarlyStorageApply_WithoutFinalStorageBatchDoesNotPublish()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
+        FlatStorageTree tree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
+        ApplyEarlyHints(tree, () => tree.HintSet(1, 123));
+
+        ctx.Scope.Commit(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Scope.Get(address)!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out ulong _), Is.False);
+        }
+        ctx.Scope.Dispose();
+        ctx.PersistenceReader.Received(1).Dispose();
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void EarlyStorageApply_EligibilityAndBackToBackSuppression()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext enabled = new();
+        using TestContext disabled = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = false });
+        using TestContext verifying = new(config: new FlatDbConfig { VerifyWithTrie = true });
+        using TestContext historical = new(historical: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enabled.Scope.AppliesStorageWritesEarly, Is.True);
+            Assert.That(disabled.Scope.AppliesStorageWritesEarly, Is.False);
+            Assert.That(verifying.Scope.AppliesStorageWritesEarly, Is.False);
+            Assert.That(historical.Scope.AppliesStorageWritesEarly, Is.False);
+        }
+        IdleStorageApplier.MinIdleGap = TimeSpan.FromHours(1);
+        enabled.Scope.Commit(1);
+        Assert.That(enabled.Scope.AppliesStorageWritesEarly, Is.False);
+        using TestContext next = new();
+        Assert.That(next.Scope.AppliesStorageWritesEarly, Is.False);
+    }
+
+    private static void ApplyEarlyHints(FlatStorageTree tree, Action hint)
+    {
+        using ManualResetEventSlim started = new();
+        using ManualResetEventSlim resume = new();
+        using ManualResetEventSlim completed = new();
+        tree.OnEarlyPassDrained = () => { started.Set(); resume.Wait(); };
+        tree.OnEarlyPassCompleted = () => { if (tree.EarlyWritesDrained) completed.Set(); };
+        try
+        {
+            hint();
+            Assert.That(started.Wait(5000), Is.True);
+        }
+        finally
+        {
+            resume.Set();
+            Assert.That(completed.Wait(5000), Is.True);
+            tree.OnEarlyPassDrained = null;
+            tree.OnEarlyPassCompleted = null;
+        }
+    }
+
+    private static void AssertStorageRoot(TestContext context, UInt256[] values)
+    {
+        StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot < values.Length; slot++)
+        {
+            if (!values[slot].IsZero) expected.Set((UInt256)slot, values[slot].ToMinimalBigEndian());
+        }
+        expected.UpdateRootHash();
+        Assert.That(context.Scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(expected.RootHash));
+    }
+
+    private static IDisposable SetMinIdleGap(TimeSpan gap)
+    {
+        TimeSpan previous = IdleStorageApplier.MinIdleGap;
+        IdleStorageApplier.MinIdleGap = gap;
+        return new Reactive.AnonymousDisposable(() => IdleStorageApplier.MinIdleGap = previous);
+    }
+
+    [Test]
     public void DeferredStorageTrieCommit_CommitsTheSameStorageNodes([Values(1, 3)] int contractCount, [Values] bool clearInSecondBatch)
     {
         (HashSet<string> nodesInBatch, Hash256[] rootsInBatch) = CommitStorageSlots(deferStorageTrieCommit: false, contractCount, clearInSecondBatch);
