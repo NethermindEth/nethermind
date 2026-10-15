@@ -83,3 +83,22 @@ python3 -O scripts/lean-net-bench/test_metrics.py
 ```
 
 CPU counters are raw process deltas between each node's actual `snapshot_before_ns` and `snapshot_after_ns`; `cpu_ms_total` remains authoritative for those recorded windows. The idle-adjusted value is only an estimate. `idle_snapshot_ns` and warmup-completed counts at idle/start expose late sampling and unfinished warmup; the fixed settling delay alone proves neither; historical diagnostic captures made before the warmup barrier can contain warmup traffic in the measured window. CPU comparisons are eligible only when every node has all warmup objects complete at idle/start, both snapshots begin within 10 ms of their scheduled times, the idle interval lasts at least 1.9 s, and no measured origin/completion precedes the start snapshot. Otherwise the adjusted estimate is null and CPU comparisons must be omitted. Raw counters, timing metadata and reasons remain available; these checks do not establish host isolation or a process-memory bound.
+
+### Report views and comparison scope
+
+`report.py` produces mobile PNGs and SVGs with a scope note inside each figure, plus an HTML failure and resource table. The `matched-rtt` panel includes only 50/200 ms pairs with identical remaining workload and link arguments; unmatched attempts remain in the all-runs table. The link panel compares bindings within each configuration. It cannot isolate relay overhead without a matching healthy-pair workload, and none of these views measures control-message or head-of-line latency. The broadcast panel is explicitly broadcast plus retrieval fallback: measured accepted shards exclude warmup but do not identify the winning completion path.
+
+The resource panel shows 16-transaction load cases. Idle-adjusted CPU requires complete runs and explicitly eligible snapshots; the denominator is scheduled objects and CPU is summed across nodes. RSS is the maximum node process lifetime peak, including setup. The wire ratio is summed all-node interface transmit bytes divided by canonical body bytes times validated receiver deliveries. ETH recovery, control, retransmissions and idle settling remain in its numerator; it is not pure framing overhead. Complete eligible counter windows are required. Missing values stay blank, while the HTML table retains raw CPU/TX and failures.
+
+Figures use medians and observed min–max ranges; these ranges are not confidence intervals. The native capture README's existing timing table reports means, separately labelled. Native plots include the host/worker count and trivial-STARK caveat; they are not transport measurements or slot-capacity guarantees. `report-source.json` records the rendering script SHA256 separately from the immutable measured-source identities in `results.json`. A later reporting-only revision does not change the V7 measurement source. Keep measured observations separate from any proposed specification thresholds.
+
+To combine the final matrix and its matched long-RTT supplement, pass both files to the same report invocation; their measured source/archive/DLL identities must agree:
+
+```sh
+python3 scripts/lean-net-bench/report.py "$lean_capture/results.jsonl" \
+  "$lean_capture/long-rtt-results.jsonl" \
+  --native-dir scripts/lean-net-bench/results/2026-10-14/native \
+  --out "$lean_capture/report"
+```
+
+The rendering regression in `test_metrics.py` runs when `matplotlib` is installed; it covers complete, partial and error rows without services or native proving.

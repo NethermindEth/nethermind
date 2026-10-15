@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Deterministic reporting checks; no network namespaces, services or native proofs."""
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import unittest
 import tempfile
@@ -256,6 +258,102 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(report.measured_values(rows, 'goodput_tx_per_s_per_receiver'), [4])
         self.assertTrue(report.incomplete(rows[0]))
         self.assertFalse(report.incomplete({'missing': 0}))
+
+    @staticmethod
+    def report_row(label="load-rlpx-tx16-r8-rep1", binding="rlpx", rtt=50):
+        arguments = dict(binding=binding, topology="pair", kind=1, transactions_per_object=16,
+                         proof_bytes=293448, objects=48, warmup=2, burst=8, interval_ms=1000,
+                         origins="0", verify_ms=0, rate_mbit=100, loss=0, broadcast=False,
+                         tiered=False, cpus=None, sysctl=[], rtt_ms=rtt)
+        return dict(arguments, label=label, missing=0, body_bytes=300000,
+                    validated_receiver_deliveries=48, expected_receiver_deliveries=48,
+                    goodput_tx_per_s_per_receiver=100, goodput_mbit_per_s_per_receiver=15,
+                    actual_offered_objects_per_s=8, actual_offered_tx_per_s=128,
+                    released_objects=48, latency_ms={"p95": 250}, cpu_comparison_eligible=True,
+                    cpu_net_ms_per_object=3, cpu_ms_total=150, peak_rss_mb_max=500,
+                    wire_bytes=28800000, wire_counter_window={"comparison_eligible": True},
+                    redials=0, peers_lost_at_end=0,
+                    provenance={"source_revision": "RENDER-REGRESSION-NOT-A-MEASUREMENT",
+                                "source_archive_sha256": "fixture", "test_dll_sha256": "fixture",
+                                "arguments": arguments})
+
+    def test_rtt_comparison_requires_identical_workload_and_keeps_failed_attempts(self):
+        low = self.report_row()
+        high = self.report_row("rtt200-rlpx-tx16-r8-rep1", rtt=200)
+        high["error"] = "timeout"
+        self.assertEqual(report.matched_rtt_rows([low, high]), [low, high])
+        for field, value in (("proof_bytes", 300000), ("objects", 49), ("loss", 1),
+                             ("warmup", 1), ("origins", "0,1"), ("binding", "ethp2p")):
+            with self.subTest(field=field):
+                changed = dict(high, **{field: value})
+                self.assertEqual(report.matched_rtt_rows([low, changed]), [])
+        unknown = dict(high)
+        unknown.pop("warmup")
+        unknown["provenance"] = {}
+        self.assertEqual(report.matched_rtt_rows([low, unknown]), [])
+
+    def test_resource_comparisons_require_complete_explicitly_eligible_windows(self):
+        row = self.report_row()
+        self.assertEqual(report.comparison_cpu(row), 3)
+        self.assertEqual(report.wire_ratio(row), 2)
+        self.assertEqual(report.wire_ratio(dict(row, validated_receiver_deliveries=96)), 1)
+        for eligible in (False, None, 1):
+            with self.subTest(eligible=eligible):
+                self.assertIsNone(report.comparison_cpu(dict(row, cpu_comparison_eligible=eligible)))
+                self.assertIsNone(report.wire_ratio(dict(row, wire_counter_window={"comparison_eligible": eligible})))
+        for changed in (dict(row, error="cleanup failed"), dict(row, missing=1)):
+            self.assertIsNone(report.comparison_cpu(changed))
+            self.assertIsNone(report.wire_ratio(changed))
+            self.assertIsNone(report.complete_p95(changed))
+            self.assertEqual(report.delivery_percent(changed), 100)
+        self.assertIsNone(report.wire_ratio(dict(row, body_bytes=None)))
+        self.assertIsNone(report.wire_ratio(dict(row, validated_receiver_deliveries=0)))
+        self.assertEqual(report.wire_ratio(dict(row, wire_bytes=0)), 0)
+
+    def test_report_renders_partial_errors_and_scoped_comparisons(self):
+        try:
+            import matplotlib
+        except ImportError:
+            self.skipTest("matplotlib required for rendering regression")
+        rows = []
+        for binding in ("rlpx", "ethp2p"):
+            for rtt in (50, 200):
+                prefix = "load" if rtt == 50 else "rtt200"
+                rows.append(self.report_row(f"{prefix}-{binding}-tx16-r8-rep1", binding, rtt))
+            for topology, rate, loss in (("pair", 10, 0), ("pair", 100, 1), ("chain4", 100, 0)):
+                row = self.report_row(f"link-{binding}-{topology}-{rate}-{loss}-rep1", binding)
+                row.update(topology=topology, rate_mbit=rate, loss=loss)
+                rows.append(row)
+            row = self.report_row(f"size-{binding}-8388608-rep1", binding)
+            row["proof_bytes"] = 8388608
+            rows.append(row)
+        rows[3].update(error="decoder failed <fixture>", missing=24, validated_receiver_deliveries=24)
+        for loss in (0, 1):
+            row = self.report_row(f"broadcast-ethp2p-l{loss}-rep1", "ethp2p")
+            row.update(loss=loss, broadcast=True, kind=2, broadcast_shards_accepted_measured=5,
+                       broadcast_shards_accepted_total_including_warmup=7)
+            rows.append(row)
+        rows.append({"label": "load-rlpx-tx1-r64-rep1", "binding": "rlpx", "transactions_per_object": 1,
+                     "offered_objects_per_s": 64, "error": "no result <fixture>", "provenance": rows[0]["provenance"]})
+        with tempfile.TemporaryDirectory() as directory:
+            raw = Path(directory, "fixture.jsonl")
+            raw.write_text("".join(json.dumps(row) + "\n" for row in rows))
+            out = Path(directory, "report")
+            with patch("sys.argv", ["report.py", str(raw), "--out", str(out)]):
+                report.main()
+            self.assertEqual(json.loads((out / "results.json").read_text()), rows)
+            self.assertEqual(json.loads((out / "report-source.json").read_text())["report_script_sha256"],
+                             hashlib.sha256((HERE / "report.py").read_bytes()).hexdigest())
+            document = (out / "index.html").read_text()
+            self.assertIn("decoder failed &lt;fixture&gt;", document)
+            self.assertIn("no result &lt;fixture&gt;", document)
+            self.assertIn("TX/useful ratio", document)
+            for name in ("matched-rtt", "link-topology", "broadcast-fallback", "resource-wire", "large-objects", "goodput-tx1"):
+                self.assertTrue((out / f"{name}.png").stat().st_size > 1000)
+                svg = (out / f"{name}.svg").read_text()
+                self.assertIn("Controlled verifier", svg)
+            self.assertIn("not which path won", (out / "broadcast-fallback.svg").read_text())
+            self.assertIn("No control/HOL", (out / "matched-rtt.svg").read_text())
 
 if __name__ == '__main__':
     unittest.main()
