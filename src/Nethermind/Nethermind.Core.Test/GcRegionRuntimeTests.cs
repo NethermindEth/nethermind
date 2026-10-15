@@ -31,7 +31,7 @@ public class GcRegionRuntimeTests
         }
     }
 
-    [TestCase(0L, 90L, TestName = "No collection recorded yet")]
+    [TestCase(0L, 90L, TestName = "No high memory load threshold")]
     [TestCase(3_865_470_566L, 0L, TestName = "No high memory percent")]
     [TestCase(3_865_470_566L, null, TestName = "High memory percent not reported")]
     public void Unknown_total_is_zero(long highMemoryLoadThresholdBytes, long? highMemoryPercent)
