@@ -177,7 +177,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 FloodPublish = false,
                 // The sum of DeferredGossipValidation's bounds, which reserve every message they defer, so the router dispatches each of them.
                 MaxPendingValidationMessages = PendingValidationMessagesBackstop(config),
-                MaxPendingValidationBytes = PendingValidationBytesBackstop(config),
+                MaxPendingValidationBytes = PendingValidationBytesBackstop(config, spec),
                 // gossipsub v1.2 IDONTWANT: announce each accepted or published message of at least 1 KiB to the v1.2 mesh peers, and keep a
                 // peer's announcement for three heartbeats.
                 IdontwantMessageThreshold = 1024,
@@ -194,9 +194,10 @@ public sealed class BeaconP2P : IAsyncDisposable
     internal static int PendingValidationMessagesBackstop(IBeaconChainConfig config) =>
         checked(2 * (2 * config.GossipMaxPendingValidations + BeaconSyncOrchestrator.VoteQueueCapacity));
 
-    /// <summary>The router's own bound on bytes awaiting a verdict: the node's bound and a full vote queue of the largest votes, twice over.</summary>
-    internal static int PendingValidationBytesBackstop(IBeaconChainConfig config) =>
-        checked(2 * (2 * config.GossipMaxPendingValidationBytes + BeaconSyncOrchestrator.VoteQueueCapacity * DeferredGossipValidation.MaxVoteMessageBytes));
+    /// <summary>The router's own bound on bytes awaiting a verdict: the node's bound, a full vote queue of the largest votes and a full set of parked Gloas sidecars, which hold no reservation, twice over.</summary>
+    internal static int PendingValidationBytesBackstop(IBeaconChainConfig config, BeaconChainSpec spec) =>
+        checked(2 * (2 * config.GossipMaxPendingValidationBytes + BeaconSyncOrchestrator.VoteQueueCapacity * DeferredGossipValidation.MaxVoteMessageBytes
+            + DataColumnSidecarPool.MaxPendingGloasSidecars * (int)DataColumnSidecarGloasSize.ComputeMax(spec)));
 
     /// <summary>The most message ids in one IDONTWANT control entry.</summary>
     internal const int IdontwantIdsPerControl = 10;
