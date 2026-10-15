@@ -122,8 +122,10 @@ public class BeaconChainPluginTests
         using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { GossipMaxPendingValidations = 7, GossipMaxPendingValidationBytes = 1000 }).Build();
         await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
         PubsubSettings settings = p2p.PubsubSettingsForTest;
+        // Twice: the node's bound for messages and for columns, the vote queue of the largest votes, and a full set of parked Gloas sidecars.
+        int parkedSidecarBytes = DataColumnSidecarPool.MaxPendingGloasSidecars * (int)DataColumnSidecarGloasSize.ComputeMax(container.Resolve<BeaconChainSpec>());
 
-        Assert.That((settings.MaxPendingValidationMessages, settings.MaxPendingValidationBytes), Is.EqualTo((2 * (7 + 1024), 2 * (1000 + 1024 * 32 * 1024))));
+        Assert.That((settings.MaxPendingValidationMessages, settings.MaxPendingValidationBytes), Is.EqualTo((2 * (2 * 7 + 1024), 2 * (2 * 1000 + 1024 * 32 * 1024 + parkedSidecarBytes))));
     }
 
     [Test]
