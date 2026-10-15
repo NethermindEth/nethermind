@@ -100,6 +100,23 @@ public sealed class InclusionListV1
         return decoded;
     }
 
+    internal static void ApplyToBlock(BlockToProduce block, PayloadAttributes? attributes)
+    {
+        if (attributes?.InclusionLists is { } lists)
+        {
+            CommitteeInclusionList[] decoded = Decode(lists);
+            block.InclusionLists = decoded;
+            block.InclusionListTransactions = CommitteeInclusionList.Flatten(decoded);
+        }
+        else
+        {
+            block.InclusionListTransactions = attributes?.InclusionListTransactions is { } transactions
+                ? TxsDecoder.DecodeTxs(transactions, skipErrors: true).Transactions : null;
+            block.InclusionLists = null;
+        }
+        block.InclusionListProofInput = null;
+    }
+
     /// <summary>Copies the lists, so later changes to the caller's buffers cannot alter a retained input.</summary>
     public static InclusionListV1[] Snapshot(IReadOnlyList<InclusionListV1> lists)
     {

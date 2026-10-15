@@ -3,9 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Transactions;
 
@@ -24,19 +22,5 @@ public interface IInclusionListTxSource : ITxSource
 
     /// <summary>Attaches inclusion-list obligations to the produced block.</summary>
     void ApplyInclusionList(BlockToProduce block, PayloadAttributes? attributes)
-    {
-        if (attributes?.InclusionLists is { } lists)
-        {
-            CommitteeInclusionList[] decoded = InclusionListV1.Decode(lists);
-            block.InclusionLists = decoded;
-            block.InclusionListTransactions = CommitteeInclusionList.Flatten(decoded);
-        }
-        else
-        {
-            block.InclusionListTransactions = attributes?.InclusionListTransactions is { } il
-                ? TxsDecoder.DecodeTxs(il, skipErrors: true).Transactions : null;
-            block.InclusionLists = null;
-        }
-        block.InclusionListProofInput = null;
-    }
+        => InclusionListV1.ApplyToBlock(block, attributes);
 }

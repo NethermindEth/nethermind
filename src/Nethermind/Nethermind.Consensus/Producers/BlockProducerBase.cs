@@ -249,18 +249,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         protected virtual void ApplyInclusionList(BlockToProduce block, PayloadAttributes? attributes)
-        {
-            if (attributes?.InclusionLists is { } lists)
-            {
-                CommitteeInclusionList[] decoded = InclusionListV1.Decode(lists);
-                block.InclusionLists = decoded;
-                block.InclusionListTransactions = CommitteeInclusionList.Flatten(decoded);
-                return;
-            }
-            block.InclusionListTransactions = attributes?.InclusionListTransactions is { } il
-                ? Nethermind.Serialization.Rlp.TxsDecoder.DecodeTxs(il, skipErrors: true).Transactions : null;
-            block.InclusionLists = null;
-        }
+            => InclusionListV1.ApplyToBlock(block, attributes);
 
         private ProcessingOptions GetProcessingOptions()
         {
