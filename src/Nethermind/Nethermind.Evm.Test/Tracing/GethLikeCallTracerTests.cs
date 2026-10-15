@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -104,7 +105,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
 
     [Test]
-    public void Action_gas_matches_instruction_gas([Values] GasCheckpointCase scenario)
+    public void Action_gas_is_spent_at_exceptional_halt([Values] GasCheckpointCase scenario)
     {
         byte[] childCode = scenario switch
         {
@@ -140,28 +141,187 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
             Assert.That(JsonSerializer.Serialize(actual.CustomTracerResult?.Value, SerializerOptions),
                 Is.EqualTo(JsonSerializer.Serialize(expected.CustomTracerResult?.Value, SerializerOptions)));
-            Assert.That(checkpoints.GasMatches, Is.True);
+            Assert.That(checkpoints.HaltsLeftNoGas, Is.True);
             Assert.That(checkpoints.Errors, Is.EqualTo(scenario == GasCheckpointCase.Revert ? 0 : 1));
         }
     }
 
+    /// <summary>Forces the traced dispatch and checks that every action error is preceded by a report of no gas left.</summary>
     private sealed class GasCheckpointTracer : TxTracer
     {
-        private ulong _instructionGas;
-        private ulong _actionGas;
+        private ulong _actionGas = ulong.MaxValue;
         public override bool IsTracingInstructions => true;
         public override bool IsTracingActions => true;
-        public bool GasMatches { get; private set; } = true;
+        public bool HaltsLeftNoGas { get; private set; } = true;
         public int Errors { get; private set; }
-        public override void ReportOperationRemainingGas(ulong gas) => _instructionGas = gas;
-        public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) => _instructionGas = gasAvailable;
         public override void ReportActionRemainingGas(ulong gas) => _actionGas = gas;
 
         public override void ReportActionError(EvmExceptionType evmExceptionType)
         {
-            GasMatches &= _instructionGas == _actionGas;
+            HaltsLeftNoGas &= _actionGas == 0;
+            _actionGas = ulong.MaxValue;
             Errors++;
         }
+    }
+
+    public enum ChildOutcome { StackUnderflow, InvalidInstruction, InvalidJumpDestination, StackOverflow, StaticCallViolation, PrecompileFailure, OutOfGas, Revert }
+
+    public enum FailedCreate { StackUnderflow, InvalidInstruction, DepositOutOfGas, InvalidDeposit, Revert }
+
+    public enum TraceDispatch { Untraced, Cancelable, Traced }
+
+    private const ulong ChildGas = 10000;
+    private const ulong RevertGas = 6; // PUSH1 0, PUSH1 0, REVERT
+
+    [Test(Description = "Like geth, a call frame that halts on anything but REVERT reports all its gas as used; the transaction's gasUsed is unchanged")]
+    public void Failed_child_frame_reports_gas_used([Values] ChildOutcome outcome, [Values(1, 2)] int depth, [Values] TraceDispatch dispatch)
+    {
+        Address child = outcome == ChildOutcome.PrecompileFailure ? new Address("0x0000000000000000000000000000000000000009") : TestItem.AddressC;
+        // The 1025th push overflows the 1024-item stack.
+        byte[] pushes = new byte[1025];
+        pushes.AsSpan().Fill((byte)Instruction.PUSH0);
+        byte[] childCode = outcome switch
+        {
+            ChildOutcome.StackUnderflow => [(byte)Instruction.ADD],
+            ChildOutcome.InvalidInstruction => [(byte)Instruction.INVALID],
+            ChildOutcome.InvalidJumpDestination => Prepare.EvmCode.PushData(0).Op(Instruction.JUMP).Done,
+            ChildOutcome.StackOverflow => pushes,
+            ChildOutcome.StaticCallViolation => Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done,
+            ChildOutcome.OutOfGas => Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done,
+            ChildOutcome.Revert => Prepare.EvmCode.Revert(0, 0).Done,
+            _ => [] // blake2f rejects an input that is not 213 bytes long
+        };
+        if (childCode.Length != 0)
+        {
+            TestState.CreateAccount(child, 0);
+            TestState.InsertCode(child, childCode, Spec);
+        }
+
+        Prepare callChild = outcome == ChildOutcome.StaticCallViolation
+            ? Prepare.EvmCode.StaticCall(child, (long)ChildGas)
+            : Prepare.EvmCode.Call(child, (long)ChildGas);
+        byte[] code = callChild.Op(Instruction.POP).STOP().Done;
+        if (depth == 2)
+        {
+            TestState.CreateAccount(TestItem.AddressD, 0);
+            TestState.InsertCode(TestItem.AddressD, code, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressD, 50000).Op(Instruction.POP).STOP().Done;
+        }
+
+        using GethLikeTxTrace trace = TraceFailedFrame(code, dispatch, out ulong spentGas);
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame frame = depth == 1 ? root.Calls.AssertSingle() : root.Calls.AssertSingle().Calls.AssertSingle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.To, Is.EqualTo(child), "to");
+            Assert.That(frame.Gas, Is.EqualTo(ChildGas), "gas");
+            Assert.That(frame.GasUsed, Is.EqualTo(outcome == ChildOutcome.Revert ? RevertGas : ChildGas), "gasUsed");
+            Assert.That(frame.Error, Is.Not.Null, "error");
+            if (outcome == ChildOutcome.Revert)
+            {
+                Assert.That(frame.Error, Is.EqualTo("execution reverted"), "revert error");
+            }
+
+            if (depth == 2)
+            {
+                Assert.That(root.Calls[0].Error, Is.Null, "the middle frame survives its child's failure");
+            }
+
+            Assert.That(root.GasUsed, Is.EqualTo(spentGas), "the root reports the transaction's gasUsed");
+            Assert.That(root.GasUsed, Is.EqualTo(ExpectedTopLevelGasUsed(outcome, depth)), "transaction gasUsed");
+        }
+    }
+
+    [Test(Description = "Like geth, a CREATE frame that halts or fails its code deposit reports all its gas as used")]
+    public void Failed_create_frame_reports_gas_used([Values] FailedCreate outcome, [Values] TraceDispatch dispatch)
+    {
+        byte[] initCode = outcome switch
+        {
+            FailedCreate.StackUnderflow => [(byte)Instruction.ADD],
+            FailedCreate.InvalidInstruction => [(byte)Instruction.INVALID],
+            FailedCreate.DepositOutOfGas => Prepare.EvmCode.ForInitOf(new byte[1024]).Done,
+            FailedCreate.InvalidDeposit => Prepare.EvmCode.ForInitOf([0xEF]).Done,
+            _ => Prepare.EvmCode.Revert(0, 0).Done
+        };
+        byte[] code = Prepare.EvmCode.Create(initCode, 0).Op(Instruction.POP).STOP().Done;
+
+        using GethLikeTxTrace trace = TraceFailedFrame(code, dispatch, out ulong spentGas);
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame frame = root.Calls.AssertSingle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Type, Is.EqualTo(Instruction.CREATE), "type");
+            Assert.That(frame.GasUsed, Is.EqualTo(outcome == FailedCreate.Revert ? RevertGas : frame.Gas), "gasUsed");
+            Assert.That(frame.Error, Is.Not.Null, "error");
+            if (outcome == FailedCreate.Revert)
+            {
+                Assert.That(frame.Error, Is.EqualTo("execution reverted"), "revert error");
+            }
+
+            Assert.That(root.GasUsed, Is.EqualTo(spentGas), "the root reports the transaction's gasUsed");
+            Assert.That(root.GasUsed, Is.EqualTo(ExpectedTopLevelGasUsed(outcome)), "transaction gasUsed");
+        }
+    }
+
+    /// <summary>The transaction's gasUsed, as reported before failed frames' gas was fixed: the fix changes no gas.</summary>
+    private static ulong ExpectedTopLevelGasUsed(ChildOutcome outcome, int depth) => outcome switch
+    {
+        ChildOutcome.Revert => 23629UL,
+        ChildOutcome.PrecompileFailure => 31123UL, // a precompile is always warm
+        ChildOutcome.StaticCallViolation => 33620UL, // STATICCALL takes no value
+        _ => 33623UL
+    } + (depth == 2 ? 123UL : 0UL); // the middle frame's call
+
+    /// <summary>The transaction's gasUsed, as reported before failed frames' gas was fixed: the fix changes no gas.</summary>
+    private static ulong ExpectedTopLevelGasUsed(FailedCreate outcome) => outcome switch
+    {
+        FailedCreate.Revert => 53031UL,
+        FailedCreate.DepositOutOfGas => 99276UL,
+        FailedCreate.InvalidDeposit => 99269UL,
+        _ => 99268UL
+    };
+
+    /// <summary>Traces <paramref name="code"/> with the callTracer through the chosen dispatch, and measures the gas
+    /// the transaction spends with no tracer observing it.</summary>
+    private GethLikeTxTrace TraceFailedFrame(byte[] code, TraceDispatch dispatch, out ulong spentGas)
+    {
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+
+        GasSpentTracer receipt = new();
+        _processor.CallAndRestore(tx, block.Header, receipt);
+        spentGas = receipt.SpentGas;
+
+        NativeCallTracer native = new(tx, CancunSpec, GetGethTraceOptions(null));
+        // Disposing a wrapper disposes the callTracer too, so the result is built first.
+        using ITxTracer tracer = dispatch switch
+        {
+            TraceDispatch.Untraced => native,
+            TraceDispatch.Cancelable => new CancellationTxTracer(native),
+            _ => new CompositeTxTracer(native, new InstructionObserver())
+        };
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        return native.BuildResult();
+    }
+
+    /// <summary>Observes nothing but instructions, which moves execution to the traced dispatch.</summary>
+    private sealed class InstructionObserver : TxTracer
+    {
+        public override bool IsTracingInstructions => true;
+    }
+
+    /// <summary>Records the gas the transaction spends, which the receipt carries, without tracing any action.</summary>
+    private sealed class GasSpentTracer : TxTracer
+    {
+        public ulong SpentGas { get; private set; }
+        public override bool IsTracingReceipt => true;
+
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
+            SpentGas = gasSpent.SpentGas;
+
+        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) =>
+            SpentGas = gasSpent.SpentGas;
     }
 
     [Test]

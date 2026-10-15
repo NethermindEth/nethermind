@@ -402,10 +402,7 @@ public partial class VirtualMachine<TGasPolicy>(
                     }
                     else
                     {
-                        // The frame halts without running, so its gas is untouched. Report it to keep
-                        // the contract that ReportActionError is preceded by this frame's gas — otherwise
-                        // a tracer would attribute the caller's gas to it.
-                        if (IsTracingActions) _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(in _currentState.Gas));
+                        // The frame halts without running; HandleException reports it with no gas left.
                         callResult = new(EvmExceptionType.InvalidCode);
                     }
 
@@ -818,6 +815,8 @@ public partial class VirtualMachine<TGasPolicy>(
 
             if (IsTracingActions)
             {
+                // The deposit failure consumed the gas the frame returned, so it ends with none left.
+                _txTracer.ReportActionRemainingGas(0);
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
@@ -1100,9 +1099,11 @@ public partial class VirtualMachine<TGasPolicy>(
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
 
-        // Report the error for action-level tracing if enabled.
+        // Report the error for action-level tracing if enabled. An exceptional halt consumes all the
+        // frame's gas, as in HandleFailure, so none is left whatever the frame held when it halted.
         if (IsTracingActions)
         {
+            txTracer.ReportActionRemainingGas(0);
             txTracer.ReportActionError(callResult.ExceptionType);
         }
 
@@ -1802,7 +1803,6 @@ public partial class VirtualMachine<TGasPolicy>(
     private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
         if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, exceptionType);
-        if (IsTracingActions) _txTracer.ReportActionRemainingGas(gasAvailable);
 
         return exceptionType switch
         {
