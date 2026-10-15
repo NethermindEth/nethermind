@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 using Nethermind.Core;
@@ -9,7 +10,9 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History;
 
-BenchmarkSwitcher.FromAssembly(typeof(HistoryBoundsBenchmarks).Assembly).Run(args);
+ManualConfig config = ManualConfig.Create(DefaultConfig.Instance);
+config.BuildTimeout = TimeSpan.FromMinutes(10);
+BenchmarkSwitcher.FromAssembly(typeof(HistoryBoundsBenchmarks).Assembly).Run(args, config);
 
 [MemoryDiagnoser]
 [SimpleJob(RuntimeMoniker.Net10_0, launchCount: 1, warmupCount: 3, iterationCount: 8)]
