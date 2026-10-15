@@ -331,7 +331,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     /// Gnosis, Chiado). Per EIP-3675 the child is post-merge when its parent is post-merge (zero difficulty) or when
     /// the parent reached the terminal total difficulty, which covers a child of the terminal PoW block itself.
     /// This mirrors the transition rule in <c>PoSSwitcher.GetBlockConsensusInfo</c>, which Facade cannot reference;
-    /// keep the two aligned, including the fallback when the total difficulty is null or zero.
+    /// keep the two aligned. An unknown (null) total difficulty falls back to the earlier rules, and a stored zero
+    /// cannot reach a nonzero terminal total difficulty, so neither case needs a guard here.
     /// </remarks>
     private static bool IsChildPostMerge(ISpecProvider specProvider, BlockHeader parent, ulong childNumber) =>
         parent.Difficulty.IsZero
