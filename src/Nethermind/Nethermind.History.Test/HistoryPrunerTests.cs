@@ -147,7 +147,7 @@ public class HistoryPrunerTests
 
     private const ulong BalOnlyHead = 500_000;
 
-    // Head 500_000: the 14299-epoch default keeps 457_568 blocks, a one-epoch retention keeps 32.
+    // Head 500_000: the 14299-epoch chain floor keeps 457_568 blocks, a one-epoch retention keeps 32.
     [TestCase(null, PruningMode.Hybrid, true, 42_432UL)]
     [TestCase(1u, PruningMode.Hybrid, true, 499_968UL)]
     [TestCase(uint.MaxValue, PruningMode.Hybrid, true, 0UL)] // keeps them all
@@ -231,6 +231,15 @@ public class HistoryPrunerTests
         balStore.Received(1).DeleteRange(1, 42_432);
     }
 
+    [TestCase(HistoryRetentionConstants.HistoryPruneEpochs, 42_432UL)]
+    [TestCase(15_000UL, 20_000UL)]
+    public void Default_bal_retention_is_the_chain_floor(ulong minBalRetentionEpochs, ulong expectedCutoff)
+    {
+        HistoryPruner pruner = CreateBalOnlyPruner(new TestMemDb(), Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), Substitute.For<IBlockAccessListStore>(), minBalRetentionEpochs: minBalRetentionEpochs);
+
+        Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(expectedCutoff));
+    }
+
     private static HistoryPruner CreateBalOnlyPruner(
         TestMemDb metadataDb,
         IBlockTree blockTree,
@@ -239,10 +248,13 @@ public class HistoryPrunerTests
         uint? balRetentionEpochs = null,
         PruningMode stateMode = PruningMode.Hybrid,
         bool chainHasAccessLists = true,
-        IBackgroundTaskScheduler scheduler = null)
+        IBackgroundTaskScheduler scheduler = null,
+        ulong minBalRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs)
     {
         blockTree.SyncPivot.Returns((BalOnlyHead, Keccak.Zero));
         blockTree.Head.Returns(Build.A.Block.WithNumber(BalOnlyHead).TestObject);
+        // Lowered to an explicit retention so short windows pass the floor check.
+        minBalRetentionEpochs = ulong.Min(minBalRetentionEpochs, balRetentionEpochs ?? ulong.MaxValue);
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
         dbProvider.BlocksDb.Returns(new TestMemDb());
@@ -252,7 +264,7 @@ public class HistoryPrunerTests
             blockTree,
             receiptStorage,
             balStore,
-            new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = chainHasAccessLists }),
+            new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = chainHasAccessLists, MinBalRetentionEpochs = minBalRetentionEpochs }),
             Substitute.For<IChainLevelInfoRepository>(),
             Substitute.For<IHeaderStore>(),
             dbProvider,

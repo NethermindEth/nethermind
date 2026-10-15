@@ -141,7 +141,7 @@ public class HistoryPruner : IHistoryPruner
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
-        _balRetentionEpochs = historyConfig.BalRetentionEpochs ?? ulong.Max(HistoryRetentionConstants.HistoryPruneEpochs, _minBalRetentionEpochs);
+        _balRetentionEpochs = historyConfig.BalRetentionEpochs ?? _minBalRetentionEpochs;
         _ancientReceiptsBarrier = syncConfig.AncientReceiptsBarrierCalc;
         _fastSync = syncConfig.FastSync;
         _syncConfig = syncConfig;
@@ -503,8 +503,9 @@ public class HistoryPruner : IHistoryPruner
 
     /// <summary>Prunes block access lists outside the retention window on a node that keeps its blocks and receipts.</summary>
     /// <remarks>
-    /// EIP-7928 requires BALs only for the weak subjectivity period, so they are pruned even with history pruning
-    /// disabled. Kept apart from the full pass, which would also move the block boundary and sweep the transaction index.
+    /// EIP-7928 requires BALs only for a bounded window (the chain's minBalRetentionEpochs, <c>HISTORY_PRUNE_EPOCHS</c>
+    /// per ethereum/EIPs#12347), so they are pruned even with history pruning disabled. Kept apart from the full pass,
+    /// which would also move the block boundary and sweep the transaction index.
     /// </remarks>
     private void TryPruneBlockAccessListsOnly(CancellationToken cancellationToken)
     {
