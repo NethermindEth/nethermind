@@ -3,12 +3,30 @@
 
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test.Spec;
 
 public class GloasScheduleTests
 {
+    private static readonly ISpecProvider[] ExecutionNetworks =
+        [MainnetSpecProvider.Instance, HoodiSpecProvider.Instance, SepoliaSpecProvider.Instance, GnosisSpecProvider.Instance, ChiadoSpecProvider.Instance];
+
+    [Test]
+    public void Shipped_consensus_and_execution_schedules_agree([ValueSource(nameof(ExecutionNetworks))] ISpecProvider execution)
+    {
+        BeaconChainSpec spec = BeaconChainSpec.ForChainId(execution.ChainId);
+        Assert.That(() => BeaconChainModule.ValidateGloasSchedule(spec, execution), Throws.Nothing);
+        if (spec.GloasForkEpoch == Presets.FarFutureEpoch) return;
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(spec.ForkAtEpoch(spec.GloasForkEpoch - 1), Is.EqualTo(BeaconFork.Fulu));
+        Assert.That(spec.ForkAtEpoch(spec.GloasForkEpoch), Is.EqualTo(BeaconFork.Gloas));
+        Assert.That(spec.VersionForEpoch(spec.GloasForkEpoch), Is.EqualTo(spec.GloasForkVersion));
+        Assert.That(spec.VersionForEpoch(spec.GloasForkEpoch - 1), Is.Not.EqualTo(spec.GloasForkVersion));
+    }
+
     [Test]
     public void Gloas_requires_the_same_execution_activation([Values(-1, 0, 1)] int offset)
     {

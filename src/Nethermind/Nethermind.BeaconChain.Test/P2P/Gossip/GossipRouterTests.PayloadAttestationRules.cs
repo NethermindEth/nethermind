@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Snappier;
@@ -181,40 +182,48 @@ public partial class GossipRouterTests
 
     /// <summary>gloas/p2p-interface.md IGNOREs a repeat only after the first valid message: a forgery that failed its verify must not hide the genuine vote.</summary>
     [Test]
-    public void Payload_attestation_after_failed_verifies_is_raised_until_one_verifies([Values(0, 1, 2)] int forgeriesFirst)
+    public void Payload_attestation_after_failed_verifies_preserves_other_peers_budget([Range(0, 3)] int forgeriesFirst, [Values] bool anotherPeer)
     {
         (GossipRouter router, _) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000, holdBlock: true);
+        PeerId attacker = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+        PeerId sender = anotherPeer ? new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId : attacker;
         List<byte> raised = [];
         router.PayloadAttestationMessageReceived += (vote, _) => raised.Add(vote.Signature.Bytes[0]);
         PayloadAttestationMessage genuine = PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 100);
 
         for (byte forged = 1; forged <= forgeriesFirst; forged++)
-            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: forged));
-        Handle(router, genuine);
-        router.MarkPayloadAttestationVerified(genuine);
-        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 101));
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: forged), attacker);
+        Handle(router, genuine, sender);
+        bool admitted = anotherPeer || forgeriesFirst < GossipRouter.PayloadAttestationVerifyAttempts;
+        if (admitted)
+            router.MarkPayloadAttestationVerified(genuine);
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 101), attacker);
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 102), sender);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(raised, Is.EqualTo(Enumerable.Range(1, forgeriesFirst).Select(static i => (byte)i).Append((byte)100)), "the genuine vote is raised after the forgeries");
-        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1), "a vote after the verified one is dropped");
+        IEnumerable<byte> expected = Enumerable.Range(1, forgeriesFirst).Select(static i => (byte)i);
+        Assert.That(raised, Is.EqualTo(admitted ? expected.Append((byte)100) : expected), "only the delivering peer's failed attempts consume its budget");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(admitted ? 2 : 3), "verification suppresses subsequent votes from every peer");
     }
 
     [Test]
-    public void Released_payload_attestation_gives_back_its_attempt_and_message_id()
+    public void Released_payload_attestation_gives_back_its_attempt_and_message_id([Values] bool knownPeer)
     {
         (GossipRouter router, _) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000, holdBlock: true);
         int received = 0;
+        PeerId? source = knownPeer ? new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId : null;
+        GossipVerdict pending = new(static _ => true, null);
         router.PayloadAttestationMessageReceived += (_, _) => received++;
         PayloadAttestationMessage refused = PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 1);
-        Handle(router, refused);
+        router.Handle(GossipTopics.PayloadAttestationMessage, true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(refused)), pending, source);
         for (byte seed = 2; seed <= GossipRouter.PayloadAttestationVerifyAttempts; seed++)
-            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: seed));
+            Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: seed), source);
         int beforeRelease = received;
-        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 200));
+        Handle(router, PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: 200), source);
         long droppedBeforeRelease = router.GetDropCount(GossipDropReason.Duplicate);
 
-        router.ReleasePayloadAttestation(refused);
-        Handle(router, refused);
+        pending.Complete(MessageValidity.Throttled);
+        Handle(router, refused, source);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((beforeRelease, droppedBeforeRelease), Is.EqualTo((GossipRouter.PayloadAttestationVerifyAttempts, 1L)), "fixture: the attempts were spent");
@@ -550,8 +559,8 @@ public partial class GossipRouterTests
         Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
     }
 
-    private static MessageValidity Handle(GossipRouter router, PayloadAttestationMessage vote) =>
-        router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(vote)));
+    private static MessageValidity Handle(GossipRouter router, PayloadAttestationMessage vote, PeerId? source = null) =>
+        router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true, Snappy.CompressToArray(PayloadAttestationMessage.Encode(vote)), GossipVerdict.None, source);
 
     private static PayloadAttestationMessage PtcVote(Hash256 blockRoot, ulong slot, ulong validator = PtcValidator, byte signatureSeed = 0) => new()
     {

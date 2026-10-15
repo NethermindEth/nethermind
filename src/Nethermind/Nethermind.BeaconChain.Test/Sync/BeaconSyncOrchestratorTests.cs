@@ -309,7 +309,7 @@ public partial class BeaconSyncOrchestratorTests
 
     [Test]
     [CancelAfter(30_000)]
-    public async Task RangeSync_restarts_from_the_imported_tip_and_blames_only_the_invalid_blocks_supplier([Values] bool gloas, [Values] bool activeRound, [Values] RangeRejection rejection, CancellationToken token)
+    public async Task RangeSync_restarts_from_the_imported_tip_and_blames_only_the_invalid_blocks_supplier([Values] bool gloas, [Values] bool activeRound, [Values] RangeRejection rejection, [Values] bool localAdmission, CancellationToken token)
     {
         ulong target = activeRound ? WallSlot : 103;
         ulong[] slots = [.. Enumerable.Range(101, (int)(target - AnchorSlot)).Select(static slot => (ulong)slot)];
@@ -355,9 +355,10 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.Add(anchorRoot);
         Hash256 firstRoot = first.ComputeMessageRoot();
         Hash256 forgedRoot = forged.ComputeMessageRoot();
+        HashSet<Hash256> refused = localAdmission ? harness.Importer.AdmissionRefused : harness.Importer.Forged;
         if (rejection == RangeRejection.AtImport)
         {
-            harness.Importer.Forged.Add(forgedRoot);
+            refused.Add(forgedRoot);
         }
         else if (rejection == RangeRejection.FutureOnRetry)
         {
@@ -375,7 +376,7 @@ public partial class BeaconSyncOrchestratorTests
         if (rejection != RangeRejection.AtImport)
         {
             harness.Importer.Unavailable.Remove(firstRoot);
-            harness.Importer.Forged.Add(forgedRoot);
+            refused.Add(forgedRoot);
             await harness.Orchestrator.ProcessSlotAsync(target, token);
         }
 
@@ -390,7 +391,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(honest.Reports, Is.Empty);
         Assert.That(harness.Importer.Known, Does.Not.Contain(forgedRoot));
         Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(target));
-        Assert.That(supplier.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+        Assert.That(supplier.Reports, localAdmission ? Is.Empty : Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
         if (rejection == RangeRejection.AtImport)
         {
             Assert.That(harness.Importer.Imports.Any(i => i.Root == second.ComputeMessageRoot()), Is.False, "the rejected block's queued child is dropped unseen");

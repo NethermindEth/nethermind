@@ -567,7 +567,7 @@ public sealed class BeaconDiscovery(
         IContainer discv5Services = new ContainerBuilder()
             .AddModule(new Discv5KademliaModule(currentNode, CreateBootNodes()))
             .AddSingleton<ILogManager>(logManager)
-            .AddSingleton<DiscoveryConnectionsPool, IDiscoveryConfig, NetworkListenerState>((discoveryConfig, listenerState) => new(_logger, discoveryConfig, listenerState))
+            .AddSingleton<DiscoveryConnectionsPool, IDiscoveryConfig, NetworkListenerState>((discoveryConfig, listenerState) => new(new ILogger(new BindRetryLogger(_logger)), discoveryConfig, listenerState))
             .AddSingleton<IDiscoveryConfig>(new DiscoveryConfig())
             .AddSingleton<ITimestamper>(timestamper)
             .AddSingleton<ICryptoRandom>(cryptoRandom, takeOwnership: true)
@@ -578,7 +578,7 @@ public sealed class BeaconDiscovery(
             .AddSingleton<IForkInfo>(PermissiveForkInfo.Instance)
             // The same resolver the local ENR was built from, so the adapter advertises that one address.
             .AddSingleton(ipResolver)
-            .AddSingleton(new NetworkListenerState(new NetworkConfig { LocalIp = IPAddress.Any.ToString() }, ipResolver, logManager))
+            .AddSingleton(new NetworkListenerState(new NetworkConfig { LocalIp = IPAddress.Any.ToString() }, new DiscoveryListenerResolver(), logManager))
             .Build();
 
         _localEnr = localEnr;
@@ -653,6 +653,32 @@ public sealed class BeaconDiscovery(
         byte[] value = new byte[sizeof(ulong)];
         BinaryPrimitives.WriteUInt64BigEndian(value, sequence);
         store.PutMetadata(EnrSequenceMetadataKey, value);
+    }
+
+    private sealed class DiscoveryListenerResolver : IIPResolver
+    {
+        // The CL listener binds IPv4 independently of the EL listener's configured address.
+        public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Any));
+    }
+
+    internal sealed class BindRetryLogger(ILogger logger) : InterfaceLogger
+    {
+        public bool IsInfo => logger.IsInfo;
+        public bool IsWarn => logger.IsWarn;
+        public bool IsDebug => logger.IsDebug;
+        public bool IsTrace => logger.IsTrace;
+        public bool IsError => logger.IsError;
+        public void Info(string text) => logger.Info(text);
+        public void Warn(string text) => logger.Warn(text);
+        public void Debug(string text) => logger.Debug(text);
+        public void Trace(string text) => logger.Trace(text);
+        public void Error(string text, Exception? ex = null)
+        {
+            // The orchestrator reports port conflicts once per retry without a stack trace.
+            if (ex is PortInUseException && text.StartsWith("Error when establishing discovery connection on port ", StringComparison.Ordinal)) return;
+            logger.Error(text, ex);
+        }
     }
 
     private sealed class NodeKeyWrapper(PrivateKey key) : IProtectedPrivateKey

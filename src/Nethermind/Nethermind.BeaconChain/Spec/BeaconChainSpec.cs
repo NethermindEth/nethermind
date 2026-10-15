@@ -70,12 +70,7 @@ public partial record BeaconChainSpec
     public required ulong MaxBlobsPerBlockElectra { get; init; }
     /// <summary>
     /// The Gloas activation epoch, or <see cref="Presets.FarFutureEpoch"/> when this network has none
-    /// scheduled yet. <see cref="Presets.FarFutureEpoch"/> is the spec's own placeholder for "TBD"
-    /// (<c>specs/gloas/fork.md</c> config table: <c>GLOAS_FORK_EPOCH = Epoch(2**64 - 1) TBD</c>), so a
-    /// network with no confirmed date carries it honestly instead of a guessed epoch. As of 2026-09-20
-    /// only <see cref="Sepolia"/> has a confirmed Gloas epoch (353024, 2026-10-06); <see cref="Mainnet"/>
-    /// and <see cref="Hoodi"/> both leave this at the far-future sentinel and add no matching entry to
-    /// <see cref="Forks"/>.
+    /// scheduled yet. Unscheduled forks have no matching entry in <see cref="Forks"/>.
     /// </summary>
     public required ulong GloasForkEpoch { get; init; }
     /// <summary>The Gloas <c>fork_version</c>, meaningless while <see cref="GloasForkEpoch"/> is unscheduled.</summary>
@@ -94,7 +89,12 @@ public partial record BeaconChainSpec
     /// processing state as another, and silently lose every peer at the boundary. The shipped specs
     /// are held consistent by a test rather than by construction.
     /// </remarks>
-    public byte[] VersionForEpoch(ulong epoch) => Forks.Last(f => f.Epoch <= epoch).Version;
+    public byte[] VersionForEpoch(ulong epoch)
+    {
+        for (int i = Forks.Length - 1; i >= 0; i--)
+            if (Forks[i].Epoch <= epoch) return Forks[i].Version;
+        throw new InvalidOperationException($"No fork is scheduled at epoch {epoch}.");
+    }
     /// <summary><c>GENESIS_FORK_VERSION</c>: the phase0 entry of <see cref="Forks"/>, which deposit and BLS-to-execution-change domains use.</summary>
     public byte[] GenesisForkVersion => Forks[0].Version;
     /// <summary><c>CAPELLA_FORK_VERSION</c>: the Capella entry of <see cref="Forks"/>, which EIP-7044 fixes as the voluntary-exit domain.</summary>
@@ -187,6 +187,7 @@ public partial record BeaconChainSpec
             new(Bytes.FromHexString("0x50000910"), 0), // deneb
             new(Bytes.FromHexString("0x60000910"), 2048), // electra
             new(Bytes.FromHexString("0x70000910"), 50688), // fulu
+            new(Bytes.FromHexString("0x80000910"), 132352), // gloas
         ],
         BlobSchedule =
         [
@@ -196,8 +197,8 @@ public partial record BeaconChainSpec
         ElectraForkEpoch = 2048,
         FuluForkEpoch = 50688,
         MaxBlobsPerBlockElectra = 9,
-        GloasForkEpoch = Presets.FarFutureEpoch, // not yet scheduled on Hoodi as of 2026-09-19 (only Sepolia has a confirmed date)
-        GloasForkVersion = Bytes.FromHexString("0x07000000"),
+        GloasForkEpoch = 132352,
+        GloasForkVersion = Bytes.FromHexString("0x80000910"),
     };
 
     /// <summary>
@@ -305,10 +306,11 @@ public partial record BeaconChainSpec
         }
 
         byte[] gloasVersion = version is null ? GloasForkVersion : ParseForkVersion(version);
-        ForkScheduleEntry[] earlier = [.. Forks.Take(scheduled ? Forks.Length - 1 : Forks.Length)];
-        if (earlier.Any(f => f.Version.AsSpan().SequenceEqual(gloasVersion)))
+        ForkScheduleEntry[] earlier = Forks[..(scheduled ? Forks.Length - 1 : Forks.Length)];
+        foreach (ForkScheduleEntry fork in earlier)
         {
-            throw new InvalidConfigurationException($"BeaconChain.GloasForkVersion {gloasVersion.ToHexString(withZeroX: true)} repeats an earlier fork version of this network.", ExitCodes.ConflictingConfigurations);
+            if (fork.Version.AsSpan().SequenceEqual(gloasVersion))
+                throw new InvalidConfigurationException($"BeaconChain.GloasForkVersion {gloasVersion.ToHexString(withZeroX: true)} repeats an earlier fork version of this network.", ExitCodes.ConflictingConfigurations);
         }
 
         ulong gloasEpoch = epoch ?? GloasForkEpoch;

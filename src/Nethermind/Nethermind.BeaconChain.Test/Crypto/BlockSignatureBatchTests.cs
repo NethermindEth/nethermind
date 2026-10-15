@@ -35,6 +35,27 @@ public class BlockSignatureBatchTests
     private static BlsSignature SignedBy(int keyIndex, Hash256 message) => Sign(DeriveKey(keyIndex), message);
 
     [Test]
+    public void All_signature_verification_overloads_enforce_G2_membership([Values] bool offSubgroup)
+    {
+        BlsSignature signature = SignedBy(3, Message);
+        if (offSubgroup) signature = OffSubgroupKeys.WithG2Torsion(signature);
+        Bls.P2 point = new(new long[Bls.P2.Sz]);
+        Assert.That(point.TryDecode(signature.Bytes, out _), Is.True);
+        BlsSigner.Signature decoded = new(point);
+        BlsSigner.AggregatedPublicKey aggregate = new();
+        aggregate.Aggregate(PublicKey(3));
+
+        bool encodedAccepted = BlsSigner.Verify(PublicKey(3), signature.Bytes, Message.Bytes);
+        bool decodedAccepted = BlsSigner.Verify(PublicKey(3), decoded, Message.Bytes);
+        bool aggregateAccepted = BlsSigner.VerifyAggregate(aggregate, decoded, Message.Bytes);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(encodedAccepted, Is.EqualTo(!offSubgroup));
+        Assert.That(decodedAccepted, Is.EqualTo(!offSubgroup));
+        Assert.That(aggregateAccepted, Is.EqualTo(!offSubgroup));
+    }
+
+    [Test]
     public void Signature_outside_G2_is_rejected([Values] bool deferred)
     {
         G1Affine publicKey = PublicKey(3);
@@ -45,14 +66,14 @@ public class BlockSignatureBatchTests
         Assert.That(point.TryDecode(signature.Bytes, out _), Is.True);
         Assert.That(point.OnCurve(), Is.True);
         Assert.That(point.ToAffine().InGroup(), Is.False);
-        bool pairingOnly = BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), Message.Bytes);
-        TestContext.Out.WriteLine($"S + T pairing-only verification: {pairingOnly}");
+        bool decodedAccepted = BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), Message.Bytes);
 
         BlockSignatureBatch batch = new();
         bool accepted = BlockSignatureBatch.Verify(publicKey, signature, Message, deferred ? batch.Defer("outside G2") : null);
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(accepted, Is.False, $"S + T pairing-only verification: {pairingOnly}");
+        Assert.That(decodedAccepted, Is.False);
+        Assert.That(accepted, Is.False);
         Assert.That(batch.Count, Is.Zero);
     }
 
@@ -65,7 +86,7 @@ public class BlockSignatureBatchTests
         BlsSignature validSignature = SignedBy(3, Message);
         IReadOnlyCollection<byte[]> torsion = OffSubgroupKeys.G2TorsionOfOrder(prime);
         Assert.That(torsion, Has.Count.EqualTo(points), "fixture: the whole torsion of that order");
-        int pairingAccepted = 0;
+        int decodedAccepted = 0;
         int serialAccepted = 0;
         int deferredAccepted = 0;
         BlockSignatureBatch batch = new();
@@ -78,13 +99,13 @@ public class BlockSignatureBatchTests
             point.Add(t);
             Assert.That(point.ToAffine().InGroup(), Is.False);
             BlsSignature signature = new(point.Compress());
-            if (BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), Message.Bytes)) pairingAccepted++;
+            if (BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), Message.Bytes)) decodedAccepted++;
             if (BlockSignatureBatch.Verify(publicKey, signature, Message, null)) serialAccepted++;
             if (BlockSignatureBatch.Verify(publicKey, signature, Message, batch.Defer("outside G2"))) deferredAccepted++;
         }
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(pairingAccepted, Is.Zero, "the pairing alone");
+        Assert.That(decodedAccepted, Is.Zero);
         Assert.That(serialAccepted, Is.Zero);
         Assert.That(deferredAccepted, Is.Zero);
         Assert.That(batch.Count, Is.Zero);

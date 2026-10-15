@@ -93,8 +93,7 @@ public sealed class BlockSignatureBatch
             return false;
 
         if (!BlsSignatureSet.TryCreate(publicKey, point.ToAffine(), signingRoot.Bytes, out BlsSignatureSet? set))
-            // IETF BLS draft v4, CoreVerify (section 2.7): the serial fallback must also reject signatures outside G2.
-            return point.ToAffine().InGroup() && BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), signingRoot.Bytes);
+            return BlsSigner.Verify(publicKey, new BlsSigner.Signature(point), signingRoot.Bytes);
 
         _sets.Add(set);
         _failures.Add(failure);

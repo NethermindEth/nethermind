@@ -42,21 +42,19 @@ public class ShutterP2P : IShutterP2P
     private readonly ServiceProvider _serviceProvider;
     private readonly TimeSpan DisconnectionLogTimeout;
     private readonly TimeSpan DisconnectionLogInterval;
-    private readonly TimeSpan _staticPeerCheckInterval;
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
 
     public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IIPResolver ipResolver)
-        : this(shutterConfig, logManager, fileSystem, keyStoreConfig, ipResolver, StaticPeerKeeper.CheckInterval, configureGossip: null)
+        : this(shutterConfig, logManager, fileSystem, keyStoreConfig, ipResolver, configureGossip: null)
     {
     }
 
     internal ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IIPResolver ipResolver,
-        TimeSpan staticPeerCheckInterval, Action<PubsubSettings>? configureGossip)
+        Action<PubsubSettings>? configureGossip)
     {
         _logger = logManager.GetClassLogger<ShutterP2P>();
-        _staticPeerCheckInterval = staticPeerCheckInterval;
         _cfg = shutterConfig;
         _ipResolver = ipResolver;
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
@@ -123,13 +121,10 @@ public class ShutterP2P : IShutterP2P
         await _router.StartAsync(_peer, cancellationToken);
         _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(listenAddress)], cancellationToken);
 
-        Multiaddress[] bootnodes = [.. bootnodeP2PAddresses];
-        foreach (Multiaddress address in bootnodes)
+        foreach (Multiaddress address in bootnodeP2PAddresses)
         {
             _peerStore.Discover([address]);
         }
-
-        _ = StaticPeerKeeper.RunAsync(_peer, _router, bootnodes, _staticPeerCheckInterval, _logger, cancellationToken);
 
         if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {listenAddress}");
 
