@@ -893,7 +893,9 @@ public class DebugRpcModule(
                 jsonRpcConfig,
                 specProvider,
                 new GethStyleSimulateBlockTracerFactory(options: WithBufferedLimit(options)),
-                _secondsPerSlot
+                _secondsPerSlot,
+                // These are calls, not a simulation, so a lone blob fee cap is rejected as it is without overrides.
+                readLoneBlobFeeCapAsAbsent: false
             ).Execute(simulatePayload, concreteBlockParameter);
 
         if (simulationResult.ErrorCode != 0)

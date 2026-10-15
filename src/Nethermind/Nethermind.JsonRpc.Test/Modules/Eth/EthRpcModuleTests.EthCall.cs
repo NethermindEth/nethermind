@@ -148,6 +148,25 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task A_lone_blob_fee_cap_is_rejected_in_a_call_and_ignored_in_a_simulation([Values("eth_call", "eth_simulateV1")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), maxFeePerBlobGas = "0x0" };
+
+        string response = method == "eth_call"
+            ? await ctx.Test.TestEthRpc(method, call, "latest")
+            : await ctx.Test.TestEthRpc(method, new { blockStateCalls = new[] { new { calls = new[] { call } } } });
+
+        // A blob fee cap only describes a blob transaction, which carries at least one versioned hash; eth_simulateV1
+        // keeps accepting a lone cap, as its spec fixtures expect.
+        JToken? error = JToken.Parse(response)["error"];
+        if (method == "eth_call")
+            Assert.That(error?["message"]?.Value<string>(), Does.Contain(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction), response);
+        else
+            Assert.That(error, Is.Null, response);
+    }
+
+    [Test]
     public async Task Eth_simulateV1_rejects_dynamic_fees_before_london([Values] bool validation, [Values] bool dynamicFees)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Berlin.Instance));
