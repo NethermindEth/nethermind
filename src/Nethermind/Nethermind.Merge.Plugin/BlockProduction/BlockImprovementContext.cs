@@ -22,7 +22,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     private readonly FeesTracer _feesTracer = new();
     private volatile BlockProductionSnapshot _best;
 
-    public BlockImprovementContext(Block currentBestBlock,
+    public BlockImprovementContext(Block? currentBestBlock,
         IBlockProducer blockProducer,
         TimeSpan timeout,
         BlockHeader parentHeader,

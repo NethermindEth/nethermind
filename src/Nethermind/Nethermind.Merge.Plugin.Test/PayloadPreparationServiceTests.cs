@@ -238,7 +238,7 @@ public class PayloadPreparationServiceTests
         public void Improve(string payloadId, SharedCancellationTokenSource cts, DateTimeOffset? startDateTime = null) =>
             ImproveBlock(payloadId, ParentHeader, Attributes, Build.A.Block.TestObject, startDateTime ?? DateTimeOffset.UtcNow, UInt256.Zero, cts);
 
-        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block? currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             int improvement = Interlocked.Increment(ref _improvements);
             BeforeImprove?.Invoke(improvement);
@@ -268,7 +268,7 @@ public class PayloadPreparationServiceTests
             }
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        public IBlockImprovementContext StartBlockImprovementContext(Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             MockBlockImprovementContext context;
             lock (_contexts)

@@ -26,7 +26,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private CancellationTokenSource? _linkedCancellation;
     private volatile BlockProductionSnapshot _best;
 
-    public BoostBlockImprovementContext(Block currentBestBlock,
+    public BoostBlockImprovementContext(Block? currentBestBlock,
         IBlockProducer blockProducer,
         TimeSpan timeout,
         BlockHeader parentHeader,

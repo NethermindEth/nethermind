@@ -26,6 +26,7 @@ using Nethermind.Blockchain;
 using Nethermind.Crypto;
 using System.Threading;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core.Threading;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism.Test;
@@ -126,5 +127,45 @@ public class OptimismPayloadPreparationServiceTests
             Assert.That(parameters, Is.EqualTo(testCase.ExpectedEIP1559Parameters));
             Assert.That(currentBestBlock.Header.Hash, Is.EqualTo(currentBestBlock.Header.CalculateHash()));
         }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Null_empty_block_is_carried_through_improvement(bool noTxPool)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block improved = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+
+        // The empty build is rejected (e.g. over the block access list item limit) and returns null.
+        IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
+        blockProducer.BuildBlock(Arg.Any<BlockHeader?>(), Arg.Any<IBlockTracer?>(), Arg.Any<PayloadAttributes?>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
+            .Returns(ci => Task.FromResult<Block?>(ci.ArgAt<IBlockProducer.Flags>(3) == IBlockProducer.Flags.PrepareEmptyBlock ? null : improved));
+
+        CapturingBlockImprovementContextFactory factory = new(new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(10)));
+        OptimismPayloadPreparationService service = new(
+            blockProducer: blockProducer,
+            txPool: Substitute.For<ITxPool>(),
+            blockImprovementContextFactory: factory,
+            blocksConfig: new BlocksConfig { SecondsPerSlot = 1 },
+            timerFactory: Substitute.For<ITimerFactory>(),
+            logManager: TestLogManager.Instance);
+
+        OptimismPayloadAttributes attributes = new() { NoTxPool = noTxPool, PrevRandao = Hash256.Zero, SuggestedFeeRecipient = TestItem.AddressA };
+        string payloadId = service.StartPreparingPayload(parent, attributes);
+        if (factory.Created is not null) await factory.Created.ImprovementTask;
+
+        IBlockProductionContext? context = await service.GetPayload(payloadId, skipCancel: true);
+
+        Assert.That(context, Is.Not.Null);
+        Assert.That(context!.CurrentBestBlock, noTxPool ? Is.Null : Is.SameAs(improved));
+    }
+
+    private sealed class CapturingBlockImprovementContextFactory(IBlockImprovementContextFactory inner) : IBlockImprovementContextFactory
+    {
+        public IBlockImprovementContext? Created { get; private set; }
+
+        public IBlockImprovementContext StartBlockImprovementContext(Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
+            DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
+            Created = inner.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
     }
 }
