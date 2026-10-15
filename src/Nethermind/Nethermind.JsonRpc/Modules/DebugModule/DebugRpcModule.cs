@@ -894,6 +894,8 @@ public class DebugRpcModule(
                 specProvider,
                 new GethStyleSimulateBlockTracerFactory(options: WithBufferedLimit(options)),
                 _secondsPerSlot,
+                // These are calls, not a simulation, so a lone blob fee cap is rejected as it is without overrides.
+                readLoneBlobFeeCapAsAbsent: false,
                 // A bundle call runs as eth_call does: the block gas limit does not bound it, which FillOmittedGas relies on.
                 callSemantics: true
             ).Execute(simulatePayload, concreteBlockParameter);

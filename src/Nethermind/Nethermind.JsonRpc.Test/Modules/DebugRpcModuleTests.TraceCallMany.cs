@@ -229,6 +229,22 @@ public partial class DebugRpcModuleTests
         Assert.That(result.Data.First().First(), Is.Not.Null);
     }
 
+    // A bundle with overrides runs through the simulate executor, which must still reject a lone blob fee cap: only the
+    // simulate endpoints read one as absent.
+    [Test]
+    public async Task Debug_traceCallMany_rejects_a_lone_blob_fee_cap([Values] bool blockOverride)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), gas = "0x5208", maxFeePerBlobGas = "0x0" };
+        object bundle = blockOverride
+            ? new { transactions = new[] { call }, blockOverride = new { } }
+            : new { transactions = new[] { call } };
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { bundle }, "latest");
+
+        Assert.That(response, Does.Contain(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction));
+    }
+
     [Test]
     public async Task Debug_traceCallMany_with_invalid_simulation_override_returns_original_error_message()
     {
