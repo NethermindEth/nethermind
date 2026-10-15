@@ -35,7 +35,7 @@ public sealed partial class TrieNodeLog
     private readonly int _generationBytes;
     private Generation _active;
     private ulong _oldestLive = 1;
-    private long _liveBytes;
+    private long _inPlaceBytes;
 
     /// <summary>Creates an empty log with generation 1 active.</summary>
     /// <param name="compressedMaxMemory">The memory budget in bytes for compacted generations; it also sizes the storage root index.</param>
@@ -43,6 +43,7 @@ public sealed partial class TrieNodeLog
     public TrieNodeLog(ulong compressedMaxMemory, int generationBytes)
     {
         _generationBytes = generationBytes;
+        _compressedMaxMemory = compressedMaxMemory;
         _storageRoots = new ulong[BitOperations.RoundUpToPowerOf2(Math.Max(compressedMaxMemory / MemoryPerStorageRootSlot, StateRootSlots))];
         _active = StartGeneration(1, generationBytes);
         UpdateMetrics();
@@ -82,9 +83,22 @@ public sealed partial class TrieNodeLog
     {
         ulong id = pointer >> OffsetBits;
         Generation? generation = Volatile.Read(ref _generations[id & GenerationSlotMask]);
-        byte[]? data = generation?.Id == id ? Volatile.Read(ref generation.Data) : null;
-        record = data is null ? default : new NodeRecordRef(data, (int)(uint)pointer);
-        return data is not null;
+        if (generation?.Id != id)
+        {
+            record = default;
+            return false;
+        }
+
+        byte[]? data = Volatile.Read(ref generation.Data);
+        if (data is not null)
+        {
+            record = new NodeRecordRef(data, (int)(uint)pointer);
+            return true;
+        }
+
+        CompressedGeneration? compressed = Volatile.Read(ref generation.Compressed);
+        record = default;
+        return compressed?.TryFind(pointer, out record) == true;
     }
 
     /// <summary>The record at <paramref name="pointer"/>.</summary>
@@ -121,7 +135,9 @@ public sealed partial class TrieNodeLog
 
         int length = NodeRecord.Length(BitOperations.PopCount(hashMask), rlp.Length);
         ulong pointer = Reserve(AlignedLength(length), out byte[] buffer, out int offset);
-        NodeRecord.WriteFromRlp(rlp, kind, hashMask, hash, NodeRecord.NodeKey(address, path), buffer.AsSpan(offset, length));
+        ulong nodeKey = NodeRecord.NodeKey(address, path);
+        NodeRecord.WriteFromRlp(rlp, kind, hashMask, hash, nodeKey, buffer.AsSpan(offset, length));
+        FindBloom(pointer)?.Insert(nodeKey);
         return pointer;
     }
 
@@ -134,7 +150,8 @@ public sealed partial class TrieNodeLog
             if (_active.Id != fullGeneration) return;
 
             ulong id = fullGeneration + 1;
-            if (_generations[id & GenerationSlotMask] is { Data: not null }) ThrowTooManyRetained();
+            EvictCompressed(id >= MaxGenerations ? id + 1 - MaxGenerations : 0);
+            if (_generations[id & GenerationSlotMask] is { } reused && (reused.Data is not null || reused.Compressed is not null)) ThrowTooManyRetained();
 
             Volatile.Write(ref _active, StartGeneration(id, Math.Max(_generationBytes, length)));
             DropOldGenerations();
@@ -145,7 +162,7 @@ public sealed partial class TrieNodeLog
     {
         Generation generation = new(id, length);
         Volatile.Write(ref _generations[id & GenerationSlotMask], generation);
-        _liveBytes += length;
+        _inPlaceBytes += length;
         return generation;
     }
 
@@ -153,24 +170,19 @@ public sealed partial class TrieNodeLog
     {
         while (_oldestLive + LiveGenerations <= _active.Id && _retains[_oldestLive & GenerationSlotMask] == 0)
         {
-            DropOldest();
+            _oldestLive++;
         }
 
+        Reclaim();
         UpdateMetrics();
-    }
-
-    private void DropOldest()
-    {
-        Generation generation = _generations[_oldestLive & GenerationSlotMask]!;
-        _liveBytes -= generation.Data!.Length;
-        Volatile.Write(ref generation.Data, null);
-        _oldestLive++;
     }
 
     private void UpdateMetrics()
     {
-        Metrics.TrieNodeLogMemory = _liveBytes;
-        Metrics.TrieNodeLogGenerations = (long)(_active.Id - _oldestLive + 1);
+        Metrics.TrieNodeLogMemory = _inPlaceBytes;
+        Metrics.TrieNodeLogGenerations = (long)(_active.Id - _oldestAllocated + 1);
+        Metrics.TrieNodeLogCompressedMemory = (long)_compressedMemory;
+        Metrics.TrieNodeLogCompressedGenerations = (long)(_oldestAllocated - _oldestCompressed);
     }
 
     [DoesNotReturn, StackTraceHidden]
@@ -186,6 +198,8 @@ public sealed partial class TrieNodeLog
     {
         public readonly ulong Id = id;
         public byte[]? Data = new byte[length];
+        public SplitBlockBloom? Bloom = new(length / BloomBytesPerKey);
+        public CompressedGeneration? Compressed;
         public long Used;
     }
 }

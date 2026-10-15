@@ -129,12 +129,14 @@ internal static partial class LogBulkSet
 
             Span<ValueHash256> hashes = _arena.Hashes.AsSpan(0, hashedCount);
             KeccakBatch.Hash(buffer, messages.AsSpan(0, hashedCount), hashes);
+            SplitBlockBloom? bloom = _log.FindBloom(basePointer);
             for (int i = 0; i < hashedCount; i++)
             {
                 hashes[i].Bytes.CopyTo(buffer.AsSpan(recordStarts[i] + NodeRecord.HashOffset));
                 ulong pointer = basePointer + (ulong)(recordStarts[i] - baseOffset);
                 Link(hashed[i], top, ChildRef.ForHash(hashes[i], pointer), ref topReference);
                 _written.Add(_arena.Nodes[hashed[i]].Path, pointer);
+                bloom?.Insert(BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(recordStarts[i] + NodeRecord.NodeKeyOffset)));
             }
         }
 

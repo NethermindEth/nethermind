@@ -60,6 +60,14 @@ namespace Nethermind.Trie
         [Description("Number of trie node log generations readable in place.")]
         public static long TrieNodeLogGenerations { get; set; }
 
+        [GaugeMetric]
+        [Description("Bytes of the records and tables kept by compacted trie node log generations.")]
+        public static long TrieNodeLogCompressedMemory { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of compacted trie node log generations held.")]
+        public static long TrieNodeLogCompressedGenerations { get; set; }
+
         [CounterMetric]
         [Description("Number of trie root lookups resolved by the trie node log.")]
         public static long TrieNodeLogRootHits => _trieNodeLogRootHits.Sum;
