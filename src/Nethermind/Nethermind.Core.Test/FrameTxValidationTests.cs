@@ -534,27 +534,35 @@ public class FrameTxValidationTests
     }
 
     [Test]
-    public void TryCalculateGasBudget_Eip8288_ChargesRecursiveStarkGasPerDeclaredDependencyInIntrinsicGas()
+    public void TryCalculateGasBudget_Eip8288_ChargesDeclaredDependenciesInIntrinsicAndCalldataFloor(
+        [Values] bool floorEnabled, [Values] bool floorBinds, [Values(0, 1, 3)] int declarations)
     {
         IReleaseSpec disabled = ReleaseSpecSubstitute.Create();
         IReleaseSpec enabled = ReleaseSpecSubstitute.Create();
+        disabled.IsEip7623Enabled.Returns(floorEnabled);
+        enabled.IsEip7623Enabled.Returns(floorEnabled);
         enabled.IsEip8288Enabled.Returns(true);
         byte[] repeatedSchemes = [Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme];
-        Transaction tx = CreateValidFrameTx(t => t.Frames = [.. t.Frames!, DepFrame(repeatedSchemes)]);
+        Transaction tx = CreateValidFrameTx(t =>
+        {
+            t.Frames = [SelfVerifyFrame(), Frame(data: floorBinds ? new byte[100_000] : [])];
+            if (declarations > 0) t.Frames = [.. t.Frames, DepFrame(repeatedSchemes[..declarations])];
+        });
 
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, disabled, out ulong baseIntrinsic, out ulong baseFloor, out ulong baseMax), Is.True);
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, disabled, out ulong baseExecution, out ulong baseState), Is.True);
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, enabled, out ulong intrinsic, out ulong floor, out ulong max), Is.True);
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, enabled, out ulong execution, out ulong state), Is.True);
 
-        const ulong recursiveStarkGas = 3 * Eip8288Constants.LeanStarkVerificationGas;
+        ulong recursiveStarkGas = (ulong)declarations * Eip8288Constants.LeanStarkVerificationGas;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(intrinsic, Is.EqualTo(baseIntrinsic + recursiveStarkGas));
-            Assert.That(floor, Is.EqualTo(baseFloor));
+            Assert.That(floor, Is.EqualTo(baseFloor + (floorEnabled ? recursiveStarkGas : 0)));
             Assert.That(max, Is.EqualTo(baseMax + recursiveStarkGas));
             Assert.That(execution, Is.EqualTo(baseExecution + recursiveStarkGas));
             Assert.That(state, Is.EqualTo(baseState));
+            if (floorEnabled && floorBinds) Assert.That(max, Is.EqualTo(floor));
         }
     }
 
