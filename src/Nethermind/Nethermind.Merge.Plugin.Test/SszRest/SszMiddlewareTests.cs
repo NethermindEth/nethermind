@@ -718,7 +718,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Capabilities_advertises_witness_endpoint()
+    public async Task Capabilities_advertises_every_fork_scoped_endpoint()
     {
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/capabilities");
         await _middleware.InvokeAsync(ctx);
@@ -727,7 +727,7 @@ public class SszMiddlewareTests
         using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
         string[] endpoints = response.RootElement.GetProperty("fork_scoped_endpoints").EnumerateArray()
             .Select(static endpoint => endpoint.GetString()!).ToArray();
-        Assert.That(endpoints, Is.EqualTo(new[] { "payloads", "forkchoice", "bodies", "payloads/witness" }));
+        Assert.That(endpoints, Is.EquivalentTo(new[] { "payloads", "forkchoice", "bodies", "payloads/witness", "inclusion_list" }));
     }
 
     [Test]

@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -37,10 +38,11 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
     private static byte[] BuildBody()
     {
         string supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered, SszRestJsonContext.Default.IReadOnlyListString);
+        string forkScopedEndpointsJson = JsonSerializer.Serialize(ForkScopedEndpointNames(), SszRestJsonContext.Default.IReadOnlyListString);
 
         return Encoding.UTF8.GetBytes(
             $"{{\"supported_forks\":{supportedForksJson}," +
-            $"\"fork_scoped_endpoints\":[\"{SszRestPaths.Payloads}\",\"{SszRestPaths.Forkchoice}\",\"{SszRestPaths.PayloadBodiesByRange}\",\"{SszRestPaths.PayloadWithWitness}\"]," +
+            $"\"fork_scoped_endpoints\":{forkScopedEndpointsJson}," +
             $"\"independently_versioned\":{{\"{SszRestPaths.Blobs}\":[\"v1\",\"v2\",\"v3\",\"v4\"]}}," +
             $"\"unscoped_endpoints\":[\"{SszRestPaths.Capabilities}\",\"{SszRestPaths.ClientVersion}\"]," +
             $"\"limits\":{{" +
@@ -48,4 +50,12 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
             $"\"blobs.max_versioned_hashes\":{SszRestLimits.MaxBlobsRequest}," +
             $"\"payload.max_bytes\":{SszMiddleware.MaxBodySize}}}}}");
     }
+
+    // The spec advertises POST bodies/hash and GET bodies together as one "bodies" family.
+    private static string[] ForkScopedEndpointNames() =>
+    [
+        .. SszRestPaths.ForkScopedEndpoints
+            .Select(static endpoint => endpoint.Resource is SszRestPaths.PayloadBodiesByHash ? SszRestPaths.PayloadBodiesByRange : endpoint.Resource)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+    ];
 }
