@@ -143,11 +143,13 @@ public class BeaconApiHeadSnapshotTests
         };
 
         HttpResponseMessage[] forks = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => host.Client.GetAsync("/eth/v1/beacon/states/head/fork", token)));
+        int takesByForkReads = takes;
         using JsonDocument fork = await BeaconApiTestHost.ReadJsonAsync(forks[0]);
         using HttpResponseMessage checkpoints = await host.Client.GetAsync("/eth/v1/beacon/states/head/finality_checkpoints", token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(forks.Select(r => r.StatusCode), Is.All.EqualTo(HttpStatusCode.OK), "a fork read never waits for the import thread");
+        Assert.That(takesByForkReads, Is.Zero, "a fork read never asks the import thread for the state");
         JsonElement data = fork.RootElement.GetProperty("data");
         Assert.That((data.GetProperty("previous_version").GetString(), data.GetProperty("current_version").GetString(), data.GetProperty("epoch").GetString()),
             Is.EqualTo(("0x05000000", "0x06000000", "411392")), "the mainnet Fulu head's fork");
