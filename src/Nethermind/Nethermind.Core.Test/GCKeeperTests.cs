@@ -589,16 +589,21 @@ public class GCKeeperTests
         }
     }
 
-    [Test]
-    public async Task Decision_is_logged_when_it_changes_not_after_every_payload()
+    private static ILogManager CreateInfoLogManager(List<string> infos)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsInfo.Returns(true);
-        List<string> infos = [];
         logger.When(static l => l.Info(Arg.Any<string>())).Do(call => infos.Add(call.Arg<string>()));
+        return new OneLoggerLogManager(new ILogger(logger));
+    }
+
+    [Test]
+    public async Task Decision_is_logged_when_it_changes_not_after_every_payload()
+    {
+        List<string> infos = [];
         IGCStrategy strategy = CreatePressureStrategy(interval: 5, loadPercent: 70, unconditional: 15);
         RegionRuntime runtime = new() { TotalAvailableMemoryBytes = 100 };
-        using GCKeeper keeper = new(strategy, new OneLoggerLogManager(new ILogger(logger)), runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+        using GCKeeper keeper = new(strategy, CreateInfoLogManager(infos), runtime, static _ => { }, static (_, _) => Task.FromResult(true));
 
         // No pressure up to 40: skips at 5-14, safety net at 15, skips at 20-29, safety net at 30; pressure from 41 on.
         List<int> decommits = await RunPayloads(keeper, strategy, runtime, 50, static i => i > 40 ? 90 : 10);
@@ -612,6 +617,37 @@ public class GCKeeperTests
                 "GC decommit deferred", "GC decommit", "GC decommit deferred", "GC decommit", "GC decommit deferred", "GC decommit"
             }));
             Assert.That(infos[^1], Does.Contain("at or above 70%"));
+        }
+    }
+
+    [Test]
+    public async Task Decommit_cancelled_in_its_idle_wait_is_not_logged_as_a_release()
+    {
+        List<string> infos = [];
+        IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = 90, TotalAvailableMemoryBytes = 100 };
+        bool cancelIdleWait = true;
+        using GCKeeper keeper = new(strategy, CreateInfoLogManager(infos), runtime, static _ => { }, (_, _) => Task.FromResult(!cancelIdleWait));
+
+        // A new payload cancels the idle wait of a decommit already decided under pressure.
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Is.Empty);
+            Assert.That(infos, Is.Empty, "nothing was released");
+        }
+
+        // The retry, under the same decision, releases memory and only then logs it, once.
+        cancelIdleWait = false;
+        await keeper.ScheduleGCInternal(throttle: false);
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Is.EqualTo(new[] { Decommit, Decommit }));
+            Assert.That(infos, Has.Count.EqualTo(1), string.Join(Environment.NewLine, infos));
+            Assert.That(infos[0], Does.StartWith("GC decommit: memory load 90% of").And.Contain("releasing memory"));
         }
     }
 
