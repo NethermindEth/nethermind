@@ -797,6 +797,48 @@ public class LeanBroadcastTests
     }
 
     [Test]
+    public async Task Broadcast_coding_and_proof_retention_preserve_waited_import_capacity([Values] bool proofCopy)
+    {
+        using BroadcastNode origin = new(), receiver = new();
+        (LeanBroadcastManifest manifest, LeanDescriptor descriptor) = await Package(origin, 922, proofBytes: 1000);
+        byte[] body = origin.Node.Transport.HeldBody(descriptor.ObjectId)!;
+        long bytes = proofCopy ? 1000 : 6L * LeanReedSolomon.DataShards * manifest.ShardBytes + 4L * LeanBroadcastManifest.MaxPreambleBytes;
+        Assert.That(receiver.Node.Transport.AdmitBroadcast(descriptor, 0), Is.EqualTo(LeanBroadcastAdmission.Started));
+        long before = receiver.Node.Transport.IncompleteBytes;
+        long pressureBytes = LeanLimits.MaxIncompleteBytes - (long)LeanLimits.MaxObjectBytes - LeanProtocol.MaxCreditBytes
+            - before - bytes + 1;
+        using (CompositeDisposable pressure = [])
+        {
+            for (int i = 0; pressureBytes > 0; i++)
+            {
+                long part = Math.Min(pressureBytes, LeanLimits.MaxPeerBytes);
+                Assert.That(receiver.Node.Transport.TryReserveNodeBytes(new FakeLink($"broadcast-pressure:{i}").NodeKey, part,
+                    out IDisposable? lease), Is.True);
+                pressure.Add(lease!);
+                pressureBytes -= part;
+            }
+            if (proofCopy)
+            {
+                Assert.That(receiver.Node.Transport.AcceptBroadcastBody(descriptor, body, Stopwatch.GetTimestamp()), Is.Null);
+                Assert.That(receiver.Node.Transport.HasBroadcastSidecar(descriptor.BlockHash), Is.False);
+            }
+            else Assert.That(receiver.Node.Transport.AdmitBroadcast(descriptor, bytes), Is.EqualTo(LeanBroadcastAdmission.Busy));
+        }
+
+        Assert.That(receiver.Node.Transport.IncompleteBytes, Is.EqualTo(before), "local refusal retains no coded state or proof copy");
+        if (proofCopy)
+        {
+            Assert.That(receiver.Node.Transport.AcceptBroadcastBody(descriptor, body, Stopwatch.GetTimestamp()), Is.Null);
+            Assert.That(receiver.Node.Transport.HasBroadcastSidecar(descriptor.BlockHash), Is.True);
+        }
+        else
+        {
+            Assert.That(receiver.Node.Transport.AdmitBroadcast(descriptor, bytes), Is.EqualTo(LeanBroadcastAdmission.Started));
+            receiver.Node.Transport.ReleaseBroadcast(bytes);
+        }
+    }
+
+    [Test]
     public async Task Unknown_ordinary_header_refuses_broadcast_before_any_coded_state()
     {
         using BroadcastNode origin = new(), receiver = new();
