@@ -293,6 +293,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected void Handle(TransactionsMessage msg)
         {
+            // EIP-4844: blob transactions are only announced, never broadcast.
+            if (ContainsBlobTransaction(msg.Transactions.AsSpan()))
+            {
+                ReturnUnsubmittedTransactions(msg.Transactions.AsSpan());
+                msg.Transactions.Dispose();
+                Disconnect(DisconnectReason.InvalidTxOrUncle, "blob transaction in a Transactions broadcast");
+                return;
+            }
+
             // Items the pre-decode size guard skips never reach PrepareAndSubmitTransaction,
             // so report them here to charge them against the flood controller.
             for (int i = 0; i < msg.SkippedCount; i++)
@@ -301,6 +310,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             TryScheduleTransactions(msg, _handleSlow);
+        }
+
+        private static bool ContainsBlobTransaction(ReadOnlySpan<Transaction> transactions)
+        {
+            foreach (Transaction tx in transactions)
+            {
+                if (tx.CarriesBlobs) return true;
+            }
+
+            return false;
         }
 
         private protected void HandlePooledTransactions(TransactionsMessage msg)
@@ -410,6 +429,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 if (isTrace) Log(tx, AcceptTxResult.FramePeerValidationBudgetSpent);
                 ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
                 return;
+            }
+
+            // A blob tx hash does not cover the sidecar: if a copy with a bad sidecar was rejected first, judge this
+            // copy on its own, as the sparse path does. Done before the only submission, since a rejected owned tx
+            // has its sidecar buffers returned to the pool.
+            if (tx.SupportsBlobs && tx.Hash is { } hash)
+            {
+                _txPool.ForgetInvalidBlobProofs(hash);
             }
 
             bool canRecycle = false;

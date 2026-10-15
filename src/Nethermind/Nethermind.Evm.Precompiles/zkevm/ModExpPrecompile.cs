@@ -11,6 +11,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class ModExpPrecompile
 {
+    public static Address Address => field ??= Address.FromNumber(5);
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (!TryPrepareInput(

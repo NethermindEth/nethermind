@@ -135,7 +135,7 @@ namespace Ethereum.Test.Base
                 IsPostMerge = test.CurrentRandom is not null,
                 MixHash = test.CurrentRandom,
                 WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
-                ParentBeaconBlockRoot = test.CurrentBeaconRoot,
+                ParentBeaconBlockRoot = test.CurrentBeaconRoot ?? (spec.IsBeaconBlockRootAvailable ? Keccak.Zero : null),
                 ExcessBlobGas = spec.IsEip4844Enabled ? test.CurrentExcessBlobGas ?? 0ul : null,
                 SlotNumber = test.CurrentSlotNumber ?? (test.Fork.IsEip7843Enabled ? 0ul : null),
                 BlobGasUsed = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(test.Transaction) : null,

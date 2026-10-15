@@ -4489,6 +4489,32 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void registry_should_forget_invalid_blob_proofs_verdict_before_submitting_full_blob_tx()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+
+        using SparseBlobPoolPeerRegistry registry = new(_transactionPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
+        _transactionPool.ForgetInvalidBlobProofs(tx.Hash!).Returns(true);
+        _transactionPool.SubmitTx(tx, TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+
+        registry.AddPeer(peer);
+        AcceptTxResult? result = registry.RecordTransaction(peer, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        Received.InOrder(() =>
+        {
+            _transactionPool.ForgetInvalidBlobProofs(tx.Hash!);
+            _transactionPool.SubmitTx(tx, TxHandlingOptions.None);
+        });
+        _transactionPool.Received(1).SubmitTx(tx, TxHandlingOptions.None);
+    }
+
+    [Test]
     public void registry_should_reject_null_early_cell()
     {
         Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out _);
