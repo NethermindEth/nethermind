@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
@@ -50,8 +51,16 @@ public partial class EngineModuleTests
 
         public WitnessRendezvous Rendezvous { get; set; } = new();
 
-        public NewPayloadWithWitnessHandler Build() =>
-            new(new Lazy<IEngineRpcModule>(() => EngineModule), Rendezvous);
+        public NewPayloadWithWitnessHandler Build() => CreateHandler(() => EngineModule, Rendezvous);
+
+        /// <summary>Builds a handler over an empty block tree, so it has only the witness the rendezvous captures.</summary>
+        public static NewPayloadWithWitnessHandler CreateHandler(Func<IEngineRpcModule> engineModule, WitnessRendezvous rendezvous) =>
+            new(
+                new Lazy<IEngineRpcModule>(engineModule),
+                rendezvous,
+                Substitute.For<IBlockFinder>(),
+                [],
+                new Lazy<IWitnessGeneratingBlockProcessingEnvFactory>(() => Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>()));
 
         public static IEngineRpcModule SucceedingEngineModule(PayloadStatusV1 status)
         {
@@ -96,7 +105,7 @@ public partial class EngineModuleTests
             .Returns(status);
         module.ClearReceivedCalls();
 
-        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(() => module), new WitnessRendezvous());
+        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(() => module, new WitnessRendezvous());
 
         using ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await HandleWitnessPayloadAsync(handler, version, []);
@@ -124,7 +133,7 @@ public partial class EngineModuleTests
             .Returns(status);
         module.ClearReceivedCalls();
 
-        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(() => module), new WitnessRendezvous());
+        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(() => module, new WitnessRendezvous());
 
         using ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await HandleWitnessPayloadAsync(handler, version, null);
@@ -314,18 +323,17 @@ public partial class EngineModuleTests
         return module;
     }
 
-    [TestCase(true, TestName = "Handler_returns_witness_from_rendezvous_on_valid_status")]
-    [TestCase(false, TestName = "Handler_valid_status_with_null_witness_yields_null_witness")]
-    public async Task Handler_returns_rendezvous_witness_on_valid_status(bool withWitness)
+    [Test]
+    public async Task Handler_returns_witness_from_rendezvous_on_valid_status()
     {
-        using Witness? expectedWitness = withWitness ? MakeStubWitness() : null;
+        using Witness expectedWitness = MakeStubWitness();
         WitnessRendezvous rendezvous = new();
 
-        NewPayloadWithWitnessHandler handler = new(
-            new Lazy<IEngineRpcModule>(() => PublishingEngineModule(
+        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(
+            () => PublishingEngineModule(
                 rendezvous,
                 expectedWitness,
-                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA })),
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
             rendezvous);
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
@@ -333,10 +341,27 @@ public partial class EngineModuleTests
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        if (withWitness)
-            Assert.That(result.Data.ExecutionWitness, Is.SameAs(expectedWitness));
-        else
-            Assert.That(result.Data.ExecutionWitness, Is.Null);
+        Assert.That(result.Data.ExecutionWitness, Is.SameAs(expectedWitness));
+    }
+
+    [Test]
+    public async Task Handler_fails_when_VALID_block_has_no_captured_witness_and_is_not_in_the_block_tree()
+    {
+        WitnessRendezvous rendezvous = new();
+
+        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(
+            () => PublishingEngineModule(
+                rendezvous,
+                null,
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
+            rendezvous);
+
+        ResultWrapper<NewPayloadWithWitnessV1Result> result =
+            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
+            "a VALID response must carry a witness, so the handler fails when it cannot generate one");
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
     private static IEnumerable<TestCaseData> NonValidOutcomes()
@@ -357,7 +382,7 @@ public partial class EngineModuleTests
     {
         WitnessRendezvous rendezvous = new();
 
-        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(moduleFactory), rendezvous);
+        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(moduleFactory, rendezvous);
 
         await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
@@ -370,9 +395,9 @@ public partial class EngineModuleTests
     {
         WitnessRendezvous rendezvous = new();
 
-        NewPayloadWithWitnessHandler handler = new(
-            new Lazy<IEngineRpcModule>(() => WitnessHandlerBuilder.SucceedingEngineModule(
-                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA })),
+        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(
+            () => WitnessHandlerBuilder.SucceedingEngineModule(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
             rendezvous);
 
         ExecutionPayloadV4 payload = new()
@@ -489,6 +514,43 @@ public partial class EngineModuleTests
         Assert.That(w2, Is.Not.Null);
         Assert.That(w1, Is.Not.SameAs(w2),
             "each block produces its own Witness instance; shared reference indicates a tracking bug");
+    }
+
+    [Test]
+    public async Task E2E_already_known_payload_returns_the_same_witness()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        Transaction tx = Build.A.Transaction
+            .WithValue(UInt256.One)
+            .WithTo(TestItem.AddressB)
+            .WithMaxFeePerGas(20.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithType(TxType.EIP1559)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+        chain.AddTransactions(tx);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, 1);
+
+        using ResultWrapper<NewPayloadWithWitnessV1Result> first =
+            await rpc.engine_newPayloadWithWitnessV5(payload, [], TestItem.KeccakE, requests ?? []);
+        using ResultWrapper<NewPayloadWithWitnessV1Result> repeated =
+            await rpc.engine_newPayloadWithWitnessV5(payload, [], TestItem.KeccakE, requests ?? []);
+
+        Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(repeated.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Witness? captured = first.Data.ExecutionWitness;
+        Witness? generated = repeated.Data.ExecutionWitness;
+        Assert.That(captured, Is.Not.Null);
+        Assert.That(generated, Is.Not.Null,
+            "newPayload skips a known block, so the handler must re-execute it to return the witness");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generated!.State.ToArray(), Is.EqualTo(captured!.State.ToArray()));
+            Assert.That(generated.Codes.ToArray(), Is.EqualTo(captured.Codes.ToArray()));
+            Assert.That(generated.Headers.ToArray(), Is.EqualTo(captured.Headers.ToArray()));
+        }
     }
 
     [Test]

@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,6 +22,9 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
     WitnessRendezvous rendezvous,
+    IBlockFinder blockFinder,
+    IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
+    Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessEnvFactory,
     ILogManager? logManager = null) :
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>,
@@ -97,11 +103,41 @@ public sealed class NewPayloadWithWitnessHandler(
         Witness? witness = null;
 
         if (payloadStatus.Status == PayloadStatus.Valid)
-            witness = capturedWitness;
+        {
+            // newPayload skips execution for a block it already knows, so nothing is captured, but a VALID
+            // response must still carry the witness.
+            witness = capturedWitness ?? GenerateWitness(blockHash, methodName);
+            if (witness is null)
+            {
+                return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
+                    $"{methodName}: cannot generate a witness for VALID block {blockHash}: the block or its parent is missing",
+                    ErrorCodes.InternalError);
+            }
+        }
         else
             capturedWitness?.Dispose();
 
         return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(
             NewPayloadWithWitnessV1Result.FromPayloadStatus(payloadStatus, witness));
+    }
+
+    /// <summary>Rebuilds the witness of an already-processed block by re-executing it on its parent state.</summary>
+    /// <returns><c>null</c> when the block or its parent is not in the block tree.</returns>
+    private Witness? GenerateWitness(Hash256 blockHash, string methodName)
+    {
+        Block? block = blockFinder.FindBlock(blockHash);
+        BlockHeader? parent = block is null ? null : blockFinder.FindHeader(block.ParentHash!);
+        if (block is null || parent is null) return null;
+
+        if (_logger.IsDebug) _logger.Debug($"{methodName}: no witness captured for {blockHash}; re-executing the block to generate it.");
+
+        // The collector bypasses the processing pipeline, so run its preprocessing (sender recovery) here.
+        for (int i = 0; i < preprocessorSteps.Count; i++)
+        {
+            preprocessorSteps[i].RecoverData(block);
+        }
+
+        using IWitnessGeneratingBlockProcessingEnvScope scope = witnessEnvFactory.Value.CreateScope();
+        return scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
     }
 }
