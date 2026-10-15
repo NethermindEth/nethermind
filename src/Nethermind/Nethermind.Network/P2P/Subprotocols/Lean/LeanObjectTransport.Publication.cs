@@ -68,7 +68,7 @@ public sealed partial class LeanObjectTransport
             }
         }
         LeanDescriptor descriptor = LeanDescriptor.Create(kind, LocalProfile, context, body);
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (_disposed || !_store.TryAdd(new(descriptor, (byte[])body.Clone(), envelopes))) return false;
@@ -185,10 +185,25 @@ public sealed partial class LeanObjectTransport
             else if (_store.TryLookup(selector, out LeanObjectStore.Entry entry)) local = LeanBodies.ParseBlockProof(entry.Body).ToArray();
         }
         if (local is not null && IsValidBlockProof(block, local)) return new((byte[])local.Clone(), commitment.BlockDepsHash);
+        using (BroadcastProofCandidate? broadcast = TakeBroadcastSidecar(hash.ValueHash256))
+        {
+            if (broadcast is not null && IsValidBlockProof(block, broadcast.Proof)) return new(broadcast.Proof, commitment.BlockDepsHash);
+        }
         if (!IsEnabled) return null;
         HashSet<LeanPeer> asked = [];
         while (!cancellationToken.IsCancellationRequested)
         {
+            using (BroadcastProofCandidate? broadcast = TakeBroadcastSidecar(hash.ValueHash256))
+            {
+                if (broadcast is not null && IsValidBlockProof(block, broadcast.Proof)) return new(broadcast.Proof, commitment.BlockDepsHash);
+            }
+            TimeSpan deferral;
+            lock (_gate) deferral = BroadcastDeferral(hash.ValueHash256, _clock.GetTimestamp());
+            if (deferral > TimeSpan.Zero)
+            {
+                await Task.WhenAny(_hintSignal.Task, Task.Delay(deferral, cancellationToken)).ConfigureAwait(false);
+                continue;
+            }
             LeanPeer[] candidates;
             Task signal;
             lock (_gate)
@@ -215,7 +230,7 @@ public sealed partial class LeanObjectTransport
                 {
                     if (verdict == Verdict.Invalid)
                     {
-                        Outbox outbox = new();
+                        Outbox outbox = new(_clock);
                         lock (_gate) Violation(peer, "Block proof differs from its header or dependency statement", outbox);
                         outbox.Flush();
                     }

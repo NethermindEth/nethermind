@@ -159,4 +159,29 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "true", Description = "When filtering discovery nodes by recent IP, bucket discovery node IPs by subnet (e.g., IPv4 /24, IPv6 /64) so multiple discovery node IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
     bool FilterDiscoveryNodesBySameSubnet { get; set; }
+
+    [ConfigItem(Description = $"The EIP-8437 proof-object bindings this node supports: `Rlpx` (the `lean/1` capability), `Ethp2p` (the ethp2p QUIC profile), or both. It must include `{nameof(LeanCommonBinding)}`. Bindings stay inactive until EIP-8288 activates; `Ethp2p` needs libmsquic.", DefaultValue = "Rlpx")]
+    LeanBinding LeanBindings { get; set; }
+
+    [ConfigItem(Description = "The network's common EIP-8437 binding, which every participating node supports: `Rlpx` or `Ethp2p`. It is a deployment parameter of the network, not a per-node choice; change it only at a coordinated transition. When it is `Ethp2p`, the node stops if that binding cannot start.", DefaultValue = "Rlpx")]
+    LeanBinding LeanCommonBinding { get; set; }
+
+    [ConfigItem(Description = $"The UDP port of the ethp2p binding, advertised in the ENR as `leanq`. Used only when `{nameof(LeanBindings)}` includes `Ethp2p`.", DefaultValue = "30304", IsPortOption = true)]
+    int LeanEthp2pPort { get; set; }
+
+    [ConfigItem(Description = $"A comma-separated list of signed ENRs (`enr:...`) to dial over the ethp2p binding. Each must advertise `leanq`; its `secp256k1` key must match the peer's TLS identity. Each keeps a reserved slot within `{nameof(MaxActivePeers)}`, and inbound connections from other peers are limited per subnet as bucketed by `{nameof(FilterPeersBySameSubnet)}`. Used only when `{nameof(LeanBindings)}` includes `Ethp2p`.", DefaultValue = "null")]
+    string? LeanEthp2pStaticPeers { get; set; }
+}
+
+/// <summary>EIP-8437 proof-object transport bindings.</summary>
+[System.Flags]
+public enum LeanBinding
+{
+    None = 0,
+
+    /// <summary>The <c>lean/1</c> RLPx capability.</summary>
+    Rlpx = 1,
+
+    /// <summary>The ethp2p QUIC application profile.</summary>
+    Ethp2p = 2
 }

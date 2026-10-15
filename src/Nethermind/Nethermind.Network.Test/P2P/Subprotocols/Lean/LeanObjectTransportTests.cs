@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Lean;
+using Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Lean.LeanTestObjects;
 
@@ -78,7 +79,7 @@ public class LeanObjectTransportTests
     }
 
     [Test]
-    public async Task Maximum_proof_validates_with_owned_input_and_charged_decoder_copy()
+    public async Task Maximum_proof_validates_with_owned_input_and_charged_decoder_copy([Values] bool controlReserve)
     {
         using LeanTestNode node = new();
         Transaction transaction = FrameTransaction(90);
@@ -87,7 +88,8 @@ public class LeanObjectTransportTests
         LeanDescriptor descriptor = Describe(body);
         FakeLink link = Link("maximum");
         LeanPeer peer = node.Connect(link);
-        Assert.That(node.Transport.TryReserveNodeBytes(link.NodeKey, 512 * 1024, out IDisposable? credit), Is.True);
+        int fixedBytes = LeanEthp2pProtocol.ConnectionReceiveWindow + (controlReserve ? LeanEthp2pProtocol.ControlReceiveBytes : 0);
+        Assert.That(node.Transport.TryReserveNodeBytes(link.NodeKey, fixedBytes, out IDisposable? credit), Is.True);
         using (credit)
         using (ManualResetEventSlim gate = new())
         {
@@ -100,7 +102,7 @@ public class LeanObjectTransportTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(node.Transport.IncompleteBytes + node.Transport.CompletionBytes,
-                        Is.EqualTo(body.Length + Eip8288Constants.MaxAggregateProofBytes + 512 * 1024 + descriptor.ChunkCount * 24L + 1024));
+                        Is.EqualTo(body.Length + Eip8288Constants.MaxAggregateProofBytes + fixedBytes + descriptor.ChunkCount * 24L + 1024));
                     Assert.That(peer.ChargedBytes, Is.LessThanOrEqualTo(LeanLimits.MaxPeerBytes));
                     Assert.That(link.Penalties, Is.Empty);
                 }
@@ -108,7 +110,7 @@ public class LeanObjectTransportTests
             finally { gate.Set(); }
             await Until(() => node.Transport.IsStored(descriptor.ObjectId));
             await Until(() => node.Transport.CompletionBytes == 0);
-            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(512 * 1024));
+            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(fixedBytes));
         }
         Assert.That(node.Transport.IncompleteBytes, Is.Zero);
     }

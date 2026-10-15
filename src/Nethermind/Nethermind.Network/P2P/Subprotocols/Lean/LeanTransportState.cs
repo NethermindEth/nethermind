@@ -194,12 +194,13 @@ internal sealed class LeanPeer(ILeanLink link, LeanStatusMessage status, LeanNod
     public Dictionary<ulong, LeanServing> Serving { get; } = [];
 
     public LeanBoundedSet Known { get; } = new(LeanLimits.MaxKnownPerPeer);
+    public long RoundTrip { get; set; }
 
     /// <summary>Wanted objects this peer announced while the assembly limits were reached, oldest first.</summary>
     public List<(LeanDescriptor Descriptor, long Announced)> Deferred { get; } = [];
 
     /// <summary>Control messages awaiting sending, queued under the transport lock so request IDs leave in order.</summary>
-    public ConcurrentQueue<LeanMessage> Outgoing { get; } = new();
+    public ConcurrentQueue<(LeanMessage Message, LeanOutgoingRequest? Request)> Outgoing { get; } = new();
 
     /// <summary>1 while one thread sends <see cref="Outgoing"/>.</summary>
     public int Sending;
@@ -222,6 +223,8 @@ internal abstract class LeanOutgoingRequest(ulong id, long now)
 
     /// <summary>Cancel was sent: the request keeps its slot until a terminal response or expiry, and its payloads are discarded.</summary>
     public bool Cancelled { get; set; }
+    public long Sent = -1;
+    public bool Streamed { get; set; }
 }
 
 internal sealed class LeanObjectsRequest(ulong id, long now, LeanSelector[] selectors) : LeanOutgoingRequest(id, now)

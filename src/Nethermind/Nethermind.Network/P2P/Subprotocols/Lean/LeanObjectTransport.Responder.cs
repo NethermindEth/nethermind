@@ -19,7 +19,7 @@ public sealed partial class LeanObjectTransport
 
     internal void OnGetObjects(LeanPeer peer, GetObjectsMessage message)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         bool accepted;
         lock (_gate) accepted = !peer.Closed && CheckIncomingId(peer, message.RequestId, outbox);
         if (!accepted) { outbox.Flush(); return; }
@@ -68,7 +68,7 @@ public sealed partial class LeanObjectTransport
     internal void OnGetChunks(LeanPeer peer, GetChunksMessage message)
     {
         bool enabled = IsEnabled;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         LeanServing? serving = null;
         LeanObjectStore.Entry? entry = null;
         lock (_gate)
@@ -146,7 +146,7 @@ public sealed partial class LeanObjectTransport
             stopped = true;
         }
 
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Serving.TryGetValue(serving.Id, out LeanServing? current) && current == serving) peer.Serving.Remove(serving.Id);

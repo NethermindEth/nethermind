@@ -122,7 +122,7 @@ public sealed partial class LeanObjectTransport
         }
         finally
         {
-            Outbox outbox = new();
+            Outbox outbox = new(_clock);
             CancellationTokenSource? processing;
             lock (_gate)
             {
@@ -187,7 +187,7 @@ public sealed partial class LeanObjectTransport
         string? integrityError = CheckIntegrity(descriptor, body, ref entries, out int verificationBytes);
         if (integrityError is not null)
         {
-            Outbox outbox = new();
+            Outbox outbox = new(_clock);
             lock (_gate)
             {
                 if (assembly.CurrentSource is { } source)
@@ -285,7 +285,7 @@ public sealed partial class LeanObjectTransport
     /// <summary>Tombstones an invalid object and penalizes every peer that announced or supplied it.</summary>
     private void Reject(LeanAssembly assembly, string reason)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             _tombstones.Add(assembly.Descriptor.ObjectId);
@@ -397,7 +397,7 @@ public sealed partial class LeanObjectTransport
                 ValueHash256 hash = (transaction.Hash ?? transaction.CalculateHash()).ValueHash256;
                 if (Array.IndexOf(batch, hash) < 0)
                 {
-                    Outbox outbox = new();
+                    Outbox outbox = new(_clock);
                     lock (_gate) Violation(source, "ETH recovery returned an unrequested envelope", outbox);
                     outbox.Flush();
                     return recovered;
@@ -432,7 +432,7 @@ public sealed partial class LeanObjectTransport
     {
         TaskCompletionSource<LeanFetchedBody?> waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
         LeanAssembly? assembly;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             long now = _clock.GetTimestamp();
@@ -464,7 +464,7 @@ public sealed partial class LeanObjectTransport
 
     private void ReleaseWaiter(LeanAssembly assembly, TaskCompletionSource<LeanFetchedBody?> waiter)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             assembly.Waiters.Remove(waiter);

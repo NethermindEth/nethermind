@@ -29,6 +29,8 @@ RUN cd /publish && \
   mkdir logs && \
   mkdir nethermind_db
 
+# The chiseled image has no package manager and no libmsquic, so the optional EIP-8437 ethp2p binding
+# (Network.LeanBindings=Ethp2p) is unavailable in it; use Dockerfile for that binding.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.12-resolute-chiseled@sha256:65121360bba4839ade70bea222d6ea6485eab090bbe6e8290cb04c0c7d913a39
 
 ARG COMMIT_HASH=unknown

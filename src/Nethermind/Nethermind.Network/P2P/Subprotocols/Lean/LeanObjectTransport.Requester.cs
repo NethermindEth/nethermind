@@ -15,7 +15,7 @@ public sealed partial class LeanObjectTransport
     internal void OnAnnounce(LeanPeer peer, AnnounceObjectsMessage message)
     {
         bool enabled = IsEnabled;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed) return;
@@ -147,6 +147,12 @@ public sealed partial class LeanObjectTransport
                 if ((assembly.Waiters.Count > 0) != waited || assembly.Dropped || assembly.Queued || assembly.IsComplete
                     || assembly.Sources.Count == 0) continue;
                 if (!waited && assembly.RetrievalBytes == 0 && BufferedBytes > LeanLimits.MaxIncompleteBytes - LeanProtocol.MaxCreditBytes) continue;
+                TimeSpan deferral = BroadcastDeferral(BroadcastKey(assembly.Descriptor), now);
+                if (deferral > TimeSpan.Zero)
+                {
+                    WakeAfter(deferral, now);
+                    continue;
+                }
                 ScheduleAssembly(assembly, outbox, now);
             }
         }
@@ -198,7 +204,7 @@ public sealed partial class LeanObjectTransport
             LeanChunksRequest request = new(++source.LastIssued, now, assembly, [.. indices]);
             foreach (int index in request.Indices) assembly.InFlight[index] = source;
             Issue(source, request);
-            outbox.Send(source, new GetChunksMessage(request.Id, assembly.Descriptor.ObjectId, request.Indices));
+            outbox.Send(source, new GetChunksMessage(request.Id, assembly.Descriptor.ObjectId, request.Indices), request);
         }
     }
 
@@ -214,7 +220,7 @@ public sealed partial class LeanObjectTransport
 
     internal void OnChunk(LeanPeer peer, in LeanChunkView chunk)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed) return;
@@ -252,6 +258,7 @@ public sealed partial class LeanObjectTransport
         // A valid first response for a requested index advances the request, even when another peer already supplied the
         // chunk; only a newly verified missing chunk advances the assembly.
         long now = _clock.GetTimestamp();
+        if (!request.Progressed && Volatile.Read(ref request.Sent) is >= 0 and var sent) SampleRoundTrip(peer, now - sent);
         request.LastProgress = now;
         request.Progressed = true;
         peer.Stalls = 0;
@@ -275,7 +282,7 @@ public sealed partial class LeanObjectTransport
 
     internal void OnComplete(LeanPeer peer, CompleteMessage message)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed) return;
@@ -315,7 +322,7 @@ public sealed partial class LeanObjectTransport
 
     internal void OnObjects(LeanPeer peer, ObjectsMessage message)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed) return;
@@ -353,7 +360,7 @@ public sealed partial class LeanObjectTransport
     internal async Task<LeanObjectResult[]?> RequestObjectsAsync(LeanPeer peer, LeanSelector[] selectors, CancellationToken cancellationToken)
     {
         LeanObjectsRequest request;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             long now = _clock.GetTimestamp();
@@ -383,7 +390,7 @@ public sealed partial class LeanObjectTransport
     /// <summary>Sends Cancel and marks the request; it keeps its slot until a terminal response or its local expiry.</summary>
     private void Cancel(LeanPeer peer, LeanOutgoingRequest request)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed || !peer.Live.TryGetValue(request.Id, out LeanOutgoingRequest? live) || live != request) return;
@@ -402,13 +409,15 @@ public sealed partial class LeanObjectTransport
 
     private void Tick()
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         long now;
         lock (_gate)
         {
             if (_disposed) return;
             now = _clock.GetTimestamp();
             ExpireRequests(now, outbox);
+            _nextTick = now + (long)(LeanLimits.Tick.TotalSeconds * _clock.TimestampFrequency);
+            UpdateRoundTrip();
             ExpireAssemblies(now, outbox);
             // TryComplete can remove an assembly that nobody waits for, so iterate a snapshot.
             foreach (LeanAssembly assembly in (LeanAssembly[])[.. _assemblies.Values])

@@ -109,7 +109,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
             if (_logger.IsDebug) _logger.Debug($"lean/1 disabled for {link.Description}: incompatible Status");
             return null;
         }
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         LeanPeer peer;
         lock (_gate)
         {
@@ -128,7 +128,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
 
     internal void Remove(LeanPeer peer)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             RemoveCore(peer);
@@ -156,7 +156,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         foreach (LeanAssembly assembly in _assemblies.Values)
         {
             assembly.Sources.Remove(peer);
-            if (assembly.CurrentSource == peer && !assembly.Queued) RestartSource(assembly, peer, new Outbox());
+            if (assembly.CurrentSource == peer && !assembly.Queued) RestartSource(assembly, peer, new Outbox(_clock));
         }
         PruneNode(peer.Node);
     }
@@ -275,6 +275,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         {
             if (_disposed) return;
             _disposed = true;
+            DisposeBroadcastSidecars();
             foreach (LeanPeer peer in _peers.ToArray()) RemoveCore(peer);
             foreach (LeanAssembly assembly in _assemblies.Values)
             {
@@ -296,15 +297,15 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
     /// Messages join their peer's queue under the lock, in the order their request IDs were assigned, and leave it in that
     /// order: a thread that numbered a request may still be sending when another numbers the next one.
     /// </remarks>
-    private sealed class Outbox
+    private sealed class Outbox(TimeProvider clock)
     {
         private List<LeanPeer>? _recipients;
         private List<(LeanPeer Peer, string Reason)>? _penalties;
         private List<CancellationTokenSource>? _cancellations;
 
-        public void Send(LeanPeer peer, LeanMessage message)
+        public void Send(LeanPeer peer, LeanMessage message, LeanOutgoingRequest? request = null)
         {
-            peer.Outgoing.Enqueue(message);
+            peer.Outgoing.Enqueue((message, request));
             if (!(_recipients ??= []).Contains(peer)) _recipients.Add(peer);
         }
 
@@ -322,20 +323,24 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
                     catch (ObjectDisposedException) { }
                 }
             if (_recipients is not null)
-                foreach (LeanPeer peer in _recipients) Drain(peer);
+                foreach (LeanPeer peer in _recipients) Drain(peer, clock);
             if (_penalties is not null)
                 foreach ((LeanPeer peer, string reason) in _penalties) peer.Link.Penalize(reason);
         }
 
         /// <summary>Sends the peer's queued messages unless another thread is already sending them, which then sends these too.</summary>
-        private static void Drain(LeanPeer peer)
+        private static void Drain(LeanPeer peer, TimeProvider clock)
         {
             while (!peer.Outgoing.IsEmpty && Interlocked.CompareExchange(ref peer.Sending, 1, 0) == 0)
             {
                 try
                 {
-                    while (peer.Outgoing.TryDequeue(out LeanMessage? message))
-                        if (!peer.Closed) peer.Link.Send(message);
+                    while (peer.Outgoing.TryDequeue(out (LeanMessage Message, LeanOutgoingRequest? Request) item))
+                    {
+                        if (peer.Closed) continue;
+                        if (item.Request is { } request) Volatile.Write(ref request.Sent, clock.GetTimestamp());
+                        peer.Link.Send(item.Message);
+                    }
                 }
                 finally
                 {

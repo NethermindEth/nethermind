@@ -42,6 +42,9 @@ public class NetworkModule(IConfigProvider configProvider) : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+        INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
+        if ((networkConfig.LeanBindings & LeanBinding.Rlpx) != 0) builder.AddLast<IP2PCapabilityResolver, LeanP2PCapabilityResolver>();
+        builder.AddModule(new LeanEthp2pModule(networkConfig));
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
             .AddSingleton<SyncedTxGossipPolicy>()
@@ -79,7 +82,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IProtocolsManager, ProtocolsManager>()
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
-            .AddLast<IP2PCapabilityResolver, LeanP2PCapabilityResolver>()
             .AddSingleton<Subprotocols.Lean.LeanEthTransactions>()
             .AddSingleton<Subprotocols.Lean.LeanObjectTransport>()
             .Bind<Consensus.ProofAggregation.IBlockProofSidecarSource, Subprotocols.Lean.LeanObjectTransport>()
