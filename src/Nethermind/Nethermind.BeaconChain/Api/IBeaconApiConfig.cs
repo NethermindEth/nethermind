@@ -21,13 +21,13 @@ public interface IBeaconApiConfig : IConfig
     [ConfigItem(Description = "The port the Beacon API listens on.", DefaultValue = "5052")]
     int Port { get; set; }
 
-    [ConfigItem(Description = "The maximum concurrent Beacon API state requests in each of two independent pools: /eth/v2/debug/beacon/states downloads and /eth/v1/beacon/states queries other than the fixed-prefix routes (fork, finality_checkpoints, randao, root) and head's small lists. Each pool refuses excess requests with 503 without queuing; per-client limits return 429.", DefaultValue = "2")]
+    [ConfigItem(Description = "The maximum concurrent Beacon API state requests in each of two independent pools: downloads (/eth/v2/debug/beacon/states and the registry-sized /eth/v1/beacon/states routes validators, validator_balances, validator_identities, committees and sync_committees) and other /eth/v1/beacon/states queries, which exclude root, fork and head's small lists. Each pool refuses excess requests with 503 without queuing; per-client limits return 429.", DefaultValue = "2")]
     int MaxConcurrentStateRequests { get; set; }
 
-    [ConfigItem(Description = "The maximum number of /eth/v2/debug/beacon/states downloads per minute from one client address (an IPv6 client is counted by its /64 prefix). Requests beyond it are refused with 429. `0` disables the limit.", DefaultValue = "30")]
+    [ConfigItem(Description = "The maximum number of downloads (as counted by `MaxConcurrentStateRequests`) per minute from one client address (an IPv6 client is counted by its /64 prefix). Requests beyond it are refused with 429. `0` disables the limit.", DefaultValue = "30")]
     int StateDownloadsPerMinutePerClient { get; set; }
 
-    [ConfigItem(Description = "The maximum number of /eth/v1/beacon/states queries that read the whole state (as counted by `MaxConcurrentStateRequests`) per minute from one client address (an IPv6 client is counted by its /64 prefix). Requests beyond it are refused with 429. `0` disables the limit.", DefaultValue = "60")]
+    [ConfigItem(Description = "The maximum number of /eth/v1/beacon/states queries other than downloads, root, fork and head's small lists (as counted by `MaxConcurrentStateRequests`) per minute from one client address (an IPv6 client is counted by its /64 prefix). Requests beyond it are refused with 429. `0` disables the limit.", DefaultValue = "60")]
     int StateQueriesPerMinutePerClient { get; set; }
 
     [ConfigItem(Description = "The maximum number of state requests (as counted by `MaxConcurrentStateRequests`) one client address may have in flight at once; an IPv6 client is counted by its /64 prefix, and loopback is limited like any other address. Raise it for tooling or a proxy that fronts several clients from one address. Requests beyond it are refused with 429. Must be at least 1.", DefaultValue = "1")]

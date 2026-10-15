@@ -104,10 +104,22 @@ internal sealed class StateRequestLimiter : IDisposable
     {
         PathString path = c.Request.Path;
         bool download = path.StartsWithSegments(DebugStatesPrefix);
-        if (!download && (!path.StartsWithSegments(StatesPrefix, out PathString stateRoute) || LoadsNoState(stateRoute)))
+        if (!download)
         {
-            await next(c);
-            return;
+            if (!path.StartsWithSegments(StatesPrefix, out PathString stateRoute))
+            {
+                await next(c);
+                return;
+            }
+
+            StateRouteKind kind = Classify(stateRoute);
+            if (kind == StateRouteKind.Exempt)
+            {
+                await next(c);
+                return;
+            }
+
+            download = kind == StateRouteKind.Download;
         }
 
         // Taken first, so a request refused as busy never spends the client's download budget.
@@ -232,26 +244,39 @@ internal sealed class StateRequestLimiter : IDisposable
         public override void SetLength(long value) => throw new NotSupportedException();
     }
 
-    /// <summary>Whether a route under <c>/eth/v1/beacon/states</c> reads no state beyond a fixed prefix, the block header or the already-materialized head state, so it holds no state-sized memory.</summary>
-    /// <remarks><c>fork</c>, <c>finality_checkpoints</c> and <c>randao</c> read the persisted state's fixed-offset prefix; <c>root</c> reads the block's <c>state_root</c>; the small lists of <c>head</c> come from the head clone.</remarks>
-    private static bool LoadsNoState(PathString stateRoute)
+    private enum StateRouteKind { Exempt, Query, Download }
+
+    /// <summary>Which limiter pool a route under <c>/eth/v1/beacon/states</c> belongs to.</summary>
+    /// <remarks>
+    /// <c>root</c> reads the block's <c>state_root</c>, <c>fork</c> a 176-byte prefix, and the small lists of <c>head</c> come from the head clone, so they hold no state-sized memory and are exempt.
+    /// <c>finality_checkpoints</c> and <c>randao</c> read a persisted prefix of about 2.7 MB on mainnet, so they stay in the query pool.
+    /// The registry-sized routes materialize every validator, so they share the download pool and its per-minute cap, and a slow reader of one never holds a query permit.
+    /// </remarks>
+    private static StateRouteKind Classify(PathString stateRoute)
     {
         ReadOnlySpan<char> route = stateRoute.Value.AsSpan().TrimEnd('/');
         int leaf = route.LastIndexOf('/');
-        if (leaf <= 0 || route[..leaf].LastIndexOf('/') != 0) return false;
+        if (leaf <= 0 || route[..leaf].LastIndexOf('/') != 0) return StateRouteKind.Query;
 
         ReadOnlySpan<char> name = route[(leaf + 1)..];
         if (name.Equals("root", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("fork", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("finality_checkpoints", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("randao", StringComparison.OrdinalIgnoreCase))
-            return true;
+            || name.Equals("fork", StringComparison.OrdinalIgnoreCase))
+            return StateRouteKind.Exempt;
 
-        return route[1..leaf].Equals("head", StringComparison.Ordinal)
+        if (route[1..leaf].Equals("head", StringComparison.Ordinal)
             && (name.Equals("pending_deposits", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("pending_partial_withdrawals", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("pending_consolidations", StringComparison.OrdinalIgnoreCase)
-                || name.Equals("proposer_lookahead", StringComparison.OrdinalIgnoreCase));
+                || name.Equals("proposer_lookahead", StringComparison.OrdinalIgnoreCase)))
+            return StateRouteKind.Exempt;
+
+        return name.Equals("validators", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("validator_balances", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("validator_identities", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("committees", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("sync_committees", StringComparison.OrdinalIgnoreCase)
+            ? StateRouteKind.Download
+            : StateRouteKind.Query;
     }
 
     /// <summary>One partition per IPv4 address and per IPv6 /64, so a client cannot mint fresh budgets by rotating the addresses of one IPv6 subnet.</summary>

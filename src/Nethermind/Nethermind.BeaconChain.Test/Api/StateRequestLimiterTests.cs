@@ -58,7 +58,7 @@ public class StateRequestLimiterTests
         bool reached = false;
         try
         {
-            await limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/head/validators", "192.0.2.7"), _ =>
+            await limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/0x01/pending_consolidations", "192.0.2.7"), _ =>
             {
                 reached = true;
                 return Task.CompletedTask;
@@ -405,8 +405,18 @@ public class StateRequestLimiterTests
     [TestCase("/eth/v1/beacon/states/head/root", true)]
     [TestCase("/eth/v1/beacon/states/0x01/ROOT/", true)]
     [TestCase("/eth/v1/beacon/states/head/fork", true)]
-    [TestCase("/eth/v1/beacon/states/0x01/finality_checkpoints", true)]
-    [TestCase("/eth/v1/beacon/states/finalized/randao", true)]
+    [TestCase("/eth/v1/beacon/states/head/finality_checkpoints", false)]
+    [TestCase("/eth/v1/beacon/states/0x01/finality_checkpoints", false)]
+    [TestCase("/eth/v1/beacon/states/finalized/randao", false)]
+    [TestCase("/eth/v1/beacon/states/head/randao", false)]
+    [TestCase("/eth/v1/beacon/states/head/proposer_lookahead", true)]
+    [TestCase("/eth/v1/beacon/states/head/pending_deposits", true)]
+    [TestCase("/eth/v1/beacon/states/head/pending_partial_withdrawals", true)]
+    [TestCase("/eth/v1/beacon/states/0x01/proposer_lookahead", false)]
+    [TestCase("/eth/v1/beacon/states/head/committees", false)]
+    [TestCase("/eth/v1/beacon/states/head/sync_committees", false)]
+    [TestCase("/eth/v1/beacon/states/head/validator_identities", false)]
+    [TestCase("/eth/v1/beacon/states/0x01/validators", false)]
     [TestCase("/eth/v1/beacon/states/head/pending_consolidations", true)]
     [TestCase("/eth/v1/beacon/states/0x01/pending_consolidations", false)]
     [TestCase("/eth/v1/beacon/states/head/validators", false)]
@@ -419,7 +429,7 @@ public class StateRequestLimiterTests
         using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0 });
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task held = limiter.InvokeAsync(StateRequest(Download, "192.0.2.7"), _ => release.Task);
-        Task query = limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/head/validators", "192.0.2.7"), _ => release.Task);
+        Task query = limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/0x01/pending_consolidations", "192.0.2.7"), _ => release.Task);
 
         bool reached = false;
         DefaultHttpContext probe = StateRequest(path, "192.0.2.8");
@@ -440,7 +450,7 @@ public class StateRequestLimiterTests
     [Test]
     public async Task Two_clients_holding_the_validator_list_do_not_make_the_prefix_routes_busy()
     {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateQueriesPerMinutePerClient = 0 });
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateQueriesPerMinutePerClient = 0, StateDownloadsPerMinutePerClient = 0 });
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task first = limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/head/validators", "192.0.2.7"), _ => release.Task);
         Task second = limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/head/validators", "192.0.2.8"), _ => release.Task);
@@ -451,11 +461,14 @@ public class StateRequestLimiterTests
         await limiter.InvokeAsync(fork, _ => Task.CompletedTask);
         DefaultHttpContext finality = StateRequest("/eth/v1/beacon/states/head/finality_checkpoints", "192.0.2.9");
         await limiter.InvokeAsync(finality, _ => Task.CompletedTask);
+        DefaultHttpContext query = StateRequest("/eth/v1/beacon/states/0x01/pending_consolidations", "192.0.2.9");
+        await limiter.InvokeAsync(query, _ => Task.CompletedTask);
         release.SetResult();
         await Task.WhenAll(first, second);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(third.Response.StatusCode, Is.EqualTo(StatusCodes.Status503ServiceUnavailable), "the registry-sized route still shares the bounded pool");
+        Assert.That(query.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK), "readers of the registry hold download permits, never query permits");
         Assert.That(fork.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(finality.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
     }
@@ -464,7 +477,7 @@ public class StateRequestLimiterTests
     public async Task A_client_is_refused_state_queries_beyond_its_per_minute_budget_while_other_clients_are_served()
     {
         using StateRequestLimiter limiter = new(new BeaconApiConfig { StateQueriesPerMinutePerClient = 2 });
-        const string Path = "/eth/v1/beacon/states/head/validators";
+        const string Path = "/eth/v1/beacon/states/head/finality_checkpoints";
         int[] statuses = new int[3];
         for (int i = 0; i < statuses.Length; i++)
         {
@@ -479,6 +492,20 @@ public class StateRequestLimiterTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(statuses, Is.EqualTo(new[] { StatusCodes.Status200OK, StatusCodes.Status200OK, StatusCodes.Status429TooManyRequests }));
         Assert.That(other.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+    }
+
+    [Test]
+    public async Task Registry_sized_routes_spend_the_download_budget_not_the_query_budget()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 1, StateQueriesPerMinutePerClient = 0 });
+        DefaultHttpContext first = StateRequest("/eth/v1/beacon/states/head/validators", "192.0.2.7");
+        await limiter.InvokeAsync(first, _ => Task.CompletedTask);
+        DefaultHttpContext second = StateRequest("/eth/v1/beacon/states/finalized/validator_balances", "192.0.2.7");
+        await limiter.InvokeAsync(second, _ => Task.CompletedTask);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(first.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(second.Response.StatusCode, Is.EqualTo(StatusCodes.Status429TooManyRequests));
     }
 
     private sealed class PacedStream(TimeSpan perChunk, int bytesPerChunk = StateRequestLimiter.WriteChunkBytes) : Stream
