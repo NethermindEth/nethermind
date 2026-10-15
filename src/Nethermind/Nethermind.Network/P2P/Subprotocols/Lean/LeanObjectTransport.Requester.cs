@@ -177,8 +177,9 @@ public sealed partial class LeanObjectTransport
                     + (long)Eip8288Constants.MaxLeanSigDepsPerWrapper * Eip8288Constants.LeanSphincsWitnessBytes)
                 : 0;
             long reserved = bodyBytes + workingBytes;
-            // Keep room for transport frames and their decode scratch so reserved bodies can still make progress.
-            if (reserved > LeanLimits.MaxIncompleteBytes - BufferedBytes - LeanProtocol.MaxCreditBytes
+            long importHeadroom = assembly.Waiters.Count == 0 ? (long)LeanLimits.MaxObjectBytes : 0;
+            // Gossip leaves room for a waited block proof as well as ingress frames and decode scratch.
+            if (reserved > LeanLimits.MaxIncompleteBytes - BufferedBytes - LeanProtocol.MaxCreditBytes - importHeadroom
                 || reserved > LeanLimits.MaxPeerBytes - source.ChargedBytes - 4 * LeanProtocol.MaxMessageBytes) return;
             assembly.RetrievalBytes = reserved;
             _incompleteBytes += reserved;
