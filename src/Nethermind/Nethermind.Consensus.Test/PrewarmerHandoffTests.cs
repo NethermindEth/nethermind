@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -753,6 +754,86 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Assert.That(refreshes[2], Is.LessThanOrEqualTo(30));
     }
 
+    [Test]
+    public void Refresh_workers_all_start_while_the_pass_coordinating_them_is_still_busy()
+    {
+        SeedGate gate = new();
+        using BlockCachePreWarmer preWarmer = HoldingPreWarmer(gate, workers: 2);
+        // Two refreshes no one of which waits for another, and a transfer whose warm run is held, which keeps the pass
+        // from ending and its coordinator from joining the refresh workers.
+        Block block = BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Transient, gasLimit: 2_500_000),
+            Call(TestItem.PrivateKeyB, 0, Transient, gasLimit: 2_500_000),
+            Call(TestItem.PrivateKeyA, 1, Transient, gasLimit: 2_500_000),
+            Call(TestItem.PrivateKeyB, 1, Transient, gasLimit: 2_500_000),
+            Transfer(TestItem.PrivateKeyC, 0, TestItem.AddressD, 1.Wei));
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        gate.Arm(holds: 2, warmOf: TestItem.AddressC);
+        using (worldState.BeginScope(Parent))
+        {
+            using PrewarmingSession session = (PrewarmingSession)preWarmer.PreWarmCaches(block, Parent, Spec)!;
+            try
+            {
+                Assert.That(SpinWait.SpinUntil(() => gate.WarmHeld, WaitLimit), Is.True, "the transfer's warm run was not held");
+                Assert.That(SpinWait.SpinUntil(() => gate.Held == 2, WaitLimit), Is.True, "both refresh workers did not start in the background");
+            }
+            finally
+            {
+                gate.Open();
+            }
+
+            session.WaitForCompletion();
+        }
+    }
+
+    [Test]
+    public void A_refresh_checks_the_seeds_of_the_footprint_it_took_although_another_run_is_stored_as_it_starts()
+    {
+        StrongBox<int> armed = new();
+        BlockFootprints? footprints = null;
+        StorageCell counted = new(Counter, 0);
+        StorageCell other = new(TestItem.AddressC, 0x4e4d);
+        Block block = BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Counter),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyD, 0, Counter));
+        // Stored once, as the refresh builds its scope: another run of the third call, which also read the counter.
+        TransactionFootprint stored = Footprint(block.Transactions[2], reads: [(counted, 1), (other, 7)]);
+        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = new(
+            new OuterDecoratedEnvs(ProcessingScope.Resolve<PrewarmerEnvFactory>(), caches,
+                beforeScope: () => { if (Interlocked.Exchange(ref armed.Value, 0) == 1) footprints!.Store(2, stored); }),
+            minPoolSize: 4,
+            concurrency: 3,
+            parallelExecutionBatchRead: true,
+            ProcessingScope.Resolve<NodeStorageCache>(),
+            caches,
+            LimboLogs.Instance,
+            handoff: true);
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            using PrewarmingSession session = (PrewarmingSession)preWarmer.PreWarmCaches(block, Parent, Spec)!;
+            BlockFootprints blockFootprints = preWarmer.Footprints!;
+            footprints = blockFootprints;
+            Assert.That(SpinWait.SpinUntil(() => blockFootprints.WarmPassEnded && !blockFootprints.HasWork
+                && blockFootprints.Get(2) is { Refreshed: true } refreshed && ReadOf(refreshed, counted) == (UInt256)1, WaitLimit),
+                Is.True, "the third call was not refreshed");
+
+            // The third call's footprint comes to read only a slot the transfer writes: the refresh seeds that one, and its
+            // run reads the counter at its parent value, which the first call's write leaves otherwise.
+            blockFootprints.Store(1, Footprint(block.Transactions[1], writes: [(other, 7)]));
+            Volatile.Write(ref armed.Value, 1);
+            blockFootprints.Store(2, Footprint(block.Transactions[2], reads: [(other, UInt256.Zero)]));
+
+            // The counter was not among the slots the footprint the refresh took read: read at another value than the first
+            // call leaves, the run is invalidated and refreshed on the counter.
+            Assert.That(SpinWait.SpinUntil(() => !blockFootprints.HasWork && blockFootprints.Get(2) is { Refreshed: true } last
+                && ReadOf(last, counted) == (UInt256)1, WaitLimit), Is.True, "the refreshed run kept the counter at its parent value");
+            session.WaitForCompletion();
+        }
+    }
+
     // Each sender's two calls are warmed apart on the parent state, so its second reads the slot its first writes at
     // another value: four refreshes, no one of which waits for another.
     private Block IndependentRefreshes(ulong gasLimit) => BuildBlock(Parent, gasLimit,
@@ -1334,6 +1415,80 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.False);
     }
 
+    [Test]
+    public void Takes_keep_no_more_wakes_than_there_are_other_workers([Values(2, 4)] int workers)
+    {
+        const int readers = 11;
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(readers + 1, refreshWorkers: workers);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        for (int i = 1; i <= readers; i++) footprints.Store(i, Footprint(txs[i], reads: [(cell, UInt256.Zero)]));
+        while (footprints.PendingWakes > 0) footprints.WaitForWork(CancellationToken.None);
+
+        int most = 0;
+        while (footprints.TryTakeInvalidated(-1, out _, out _)) most = Math.Max(most, footprints.PendingWakes);
+
+        Assert.That(most, Is.EqualTo(workers - 1));
+    }
+
+    [Test]
+    public void A_warm_run_stored_after_a_refresh_of_its_position_still_replaces_it()
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        TransactionFootprint invalidated = Footprint(txs[1], reads: [(cell, UInt256.Zero)]);
+        footprints.Store(1, invalidated);
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out int take), Is.True);
+        footprints.Store(1, Footprint(txs[1], reads: [(cell, 0x4e4d)]), footprints.WritesVersion, take, invalidated);
+
+        // As a warm run that ends after a refresh of its transaction, such as one refilling the caches after a mempool run.
+        TransactionFootprint warm = Footprint(txs[1], reads: [(cell, 0x4e4d)]);
+        bool stored = footprints.Store(1, warm);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored, Is.True);
+            Assert.That(footprints.Get(1), Is.SameAs(warm));
+        }
+    }
+
+    [Test]
+    public void Two_runs_of_a_position_stored_at_once_leave_block_processing_the_footprint_the_index_holds()
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        TransactionFootprint[] runs = [Footprint(txs[0], writes: [(cell, 1)]), Footprint(txs[0], writes: [(cell, 2)])];
+        using Barrier together = new(2);
+        Stopwatch elapsed = Stopwatch.StartNew();
+        bool stop = false;
+        int rounds = 0;
+        int mismatches = 0;
+
+        void Store(int run)
+        {
+            while (true)
+            {
+                together.SignalAndWait();
+                if (Volatile.Read(ref stop)) return;
+                footprints.Store(0, runs[run]);
+                together.SignalAndWait();
+                if (run != 0) continue;
+                // The write the index holds for the position is the one of the footprint block processing finds.
+                UInt256 written = ReferenceEquals(footprints.Get(0), runs[0]) ? 1u : 2u;
+                if (footprints.ValueBefore(cell, 1) != written) mismatches++;
+                if (++rounds == 20_000 || elapsed.Elapsed > TimeSpan.FromSeconds(5)) Volatile.Write(ref stop, true);
+            }
+        }
+
+        Task first = Task.Factory.StartNew(() => Store(0), TaskCreationOptions.LongRunning);
+        Task second = Task.Factory.StartNew(() => Store(1), TaskCreationOptions.LongRunning);
+        Assert.That(Task.WaitAll([first, second], TimeSpan.FromSeconds(30)), Is.True);
+
+        TestContext.Out.WriteLine($"{rounds} rounds");
+        Assert.That(mismatches, Is.Zero);
+    }
+
     private static StorageCell Chained(int position) => new(TestItem.AddressC, (UInt256)(0x4e4d + position));
 
     // A refresh of a chain's position: it reads the slot before it at the value now left there, writes its own slot at the
@@ -1653,14 +1808,15 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     /// <summary>Envs whose scopes expose their world state through one more decorator than the recorder.</summary>
-    private sealed class OuterDecoratedEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches, Func<IWorldState, IWorldState>? decorate = null)
-        : IPooledObjectPolicy<IPrewarmerEnv>
+    /// <param name="beforeScope">Called as a scope is built at a block, before it is.</param>
+    private sealed class OuterDecoratedEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches, Func<IWorldState, IWorldState>? decorate = null,
+        Action? beforeScope = null) : IPooledObjectPolicy<IPrewarmerEnv>
     {
-        public IPrewarmerEnv Create() => new Env(factory.Create(caches), decorate ?? (static state => new Forwarding(state)));
+        public IPrewarmerEnv Create() => new Env(factory.Create(caches), decorate ?? (static state => new Forwarding(state)), beforeScope);
 
         public bool Return(IPrewarmerEnv obj) => true;
 
-        private sealed class Env(IPrewarmerEnv inner, Func<IWorldState, IWorldState> decorate) : IPrewarmerEnv
+        private sealed class Env(IPrewarmerEnv inner, Func<IWorldState, IWorldState> decorate, Action? beforeScope) : IPrewarmerEnv
         {
             public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
 
@@ -1674,6 +1830,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
+                beforeScope?.Invoke();
                 scope = inner.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built, decorate) : null;
                 return scope is not null;
             }
@@ -1704,7 +1861,10 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
     private static readonly TimeSpan WaitLimit = TimeSpan.FromSeconds(10);
 
-    /// <summary>A scope's world state that has the refreshes seeding a slot through it wait at the gate.</summary>
+    /// <summary>
+    /// A scope's world state that has the refreshes seeding a slot through it wait at the gate, and the warm run of the
+    /// sender it holds: only a refresh sets a slot through it, and only a warm run asks whether its sender exists.
+    /// </summary>
     private sealed class HeldSeeds(IWorldState state, SeedGate gate) : WorldStateDecorator(state)
     {
         public override void Set(in StorageCell storageCell, in UInt256 newValue)
@@ -1712,9 +1872,18 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             gate.Hold();
             base.Set(in storageCell, in newValue);
         }
+
+        public override bool AccountExists(Address address)
+        {
+            gate.HoldWarm(address);
+            return base.AccountExists(address);
+        }
     }
 
-    /// <summary>Holds the first seeds of the refreshes after it is armed, until they are let go one by one or all at once.</summary>
+    /// <summary>
+    /// Holds the first seeds of the refreshes after it is armed, until they are let go one by one or all at once, and the
+    /// warm run of one sender until all is let go.
+    /// </summary>
     private sealed class SeedGate
     {
         private readonly object _gate = new();
@@ -1723,6 +1892,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         private int _held;
         private int _released;
         private bool _open;
+        private Address? _warmOf;
+        private bool _warmHeld;
 
         public int Held
         {
@@ -1732,7 +1903,15 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             }
         }
 
-        public void Arm(int holds)
+        public bool WarmHeld
+        {
+            get
+            {
+                lock (_gate) return _warmHeld;
+            }
+        }
+
+        public void Arm(int holds, Address? warmOf = null)
         {
             lock (_gate)
             {
@@ -1740,6 +1919,19 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                 _seeds = 0;
                 _released = 0;
                 _open = false;
+                _warmOf = warmOf;
+            }
+        }
+
+        public void HoldWarm(Address sender)
+        {
+            lock (_gate)
+            {
+                if (_open || !sender.Equals(_warmOf)) return;
+                _warmHeld = true;
+                // Bounded, so a test that fails leaves no worker held for good.
+                while (!_open && Monitor.Wait(_gate, WaitLimit)) { }
+                _warmHeld = false;
             }
         }
 
