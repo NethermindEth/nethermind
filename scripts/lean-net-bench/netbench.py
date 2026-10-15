@@ -192,6 +192,95 @@ def origination_metrics(records, interval_ms, transactions_per_object, kind):
     }
 
 
+def receiver_metrics(results, nodes, edges, indices, origin):
+    """Count observed receiver delivery even when a failed origin left no timestamp."""
+    far, by_hops = [], {}
+    deliveries = completed = unknown_objects = unknown_deliveries = 0
+    indices = list(indices)
+    for index in indices:
+        source = origin(index)
+        started = results.get(source, {}).get("originated", {}).get(str(index))
+        received = [(node, result.get("completed", {}).get(str(index)))
+                    for node, result in results.items() if node != source]
+        received = [(node, when) for node, when in received if when is not None]
+        deliveries += len(received)
+        complete = len(received) == nodes - 1
+        completed += complete
+        if started is None:
+            unknown_objects += bool(received)
+            unknown_deliveries += len(received)
+            continue
+        dist = distances(nodes, edges, source)
+        latency = [(node, (when - started) / 1e6) for node, when in received]
+        for node, value in latency:
+            by_hops.setdefault(dist[node], []).append(value)
+        if complete and latency:
+            far.append(max(value for _, value in latency))
+    return {
+        "validated_receiver_deliveries": deliveries,
+        "expected_receiver_deliveries": len(indices) * (nodes - 1),
+        "completed": completed, "missing": len(indices) - completed,
+        "latency_sampled_objects": len(far),
+        "latency_unknown_objects": unknown_objects,
+        "latency_unknown_receiver_deliveries": unknown_deliveries,
+        "latency_ms": {"p50": percentile(far, .5), "p95": percentile(far, .95), "p99": percentile(far, .99),
+                       "max": max(far) if far else None, "mean": statistics.mean(far) if far else None},
+        "latency_by_hops_p50_ms": {str(h): percentile(values, .5) for h, values in sorted(by_hops.items())},
+    }
+
+
+def goodput_window(results, offered_seconds, controller_seconds):
+    if not results:
+        return None
+    observed = []
+    for result in results.values():
+        timestamps = [result["finished_ns"]]
+        for field in ("originated", "completed"):
+            timestamps.extend(result.get(field, {}).values())
+        observed.append((max(timestamps) - result["measured_ns"]) / 1e9)
+    return max(offered_seconds, controller_seconds, *observed, 1e-9)
+
+
+def prepare_measurement(run_dir, nodes, enabled, sample, clock=time.time_ns):
+    """Finish baseline reads before publishing the timestamp that releases measured work."""
+    before, window = None, None
+    if enabled:
+        started = clock()
+        before = {node: sample(node) for node in range(nodes)}
+        window = {"before_started_unix_ns": started, "before_finished_unix_ns": clock(),
+                  "scope": "post-warmup baseline before measurement scheduling through controller stop"}
+    measured = clock() + 4_000_000_000
+    temporary = os.path.join(run_dir, "measure.tmp")
+    with open(temporary, "w") as stream:
+        stream.write(str(measured))
+    os.rename(temporary, os.path.join(run_dir, "measure"))
+    return measured, before, window
+
+
+def capture_wire_end(window, nodes, sample, complete, clock=time.time_ns):
+    if window is None:
+        return None
+    window["comparison_eligible"] = complete
+    window["partial_scope"] = not complete
+    window["after_started_unix_ns"] = clock()
+    values = {node: sample(node) for node in range(nodes)}
+    window["after_finished_unix_ns"] = clock()
+    return values
+
+
+def finish_processes(processes, timeout, complete):
+    """Let surviving nodes reach their own deadline and retain partial results after a peer exits."""
+    grace = 60 if complete else timeout + 30
+    for process, log in processes:
+        try:
+            process.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
+        log.close()
+    return grace
+
+
 def cpu_snapshot_quality(results, warmup, expected_nodes):
     """Conservative eligibility for CPU comparisons; raw measured deltas remain available."""
     issues = []
@@ -242,7 +331,11 @@ def wait_warmup(run_dir, nodes, processes, timeout):
 
 
 def retain_process_failures(summary, exit_codes):
-    """Retain child exit status even when a node wrote measurements before failing during cleanup."""
+    """Retain controller aborts and child failures even when partial measurements were written."""
+    completion = summary.get("completion_wait", {})
+    if completion.get("all_nodes_done") is False:
+        message = "completion wait aborted: " + completion.get("abort_reason", "not all nodes done")
+        summary["error"] = f"{summary['error']}; {message}" if summary.get("error") else message
     summary["node_exit_codes"] = {str(node): code for node, code in exit_codes.items()}
     failed = [f"node {node}: {code if code is not None else 'did not exit'}" for node, code in exit_codes.items() if code != 0]
     if failed:
@@ -264,6 +357,7 @@ def run(args):
     revision = git_revision.stdout.strip() if git_revision.returncode == 0 else os.environ.get("LEAN_NET_SOURCE_REVISION", "unknown")
     dirty = subprocess.run(["git", "-C", repo, "status", "--porcelain"], capture_output=True, text=True).stdout.strip() if git_revision.returncode == 0 else None
     provenance = {"source_revision": revision, "source_dirty": bool(dirty) if dirty is not None else None,
+                  "binary_build_source_revision": os.environ.get("LEAN_NET_BINARY_SOURCE_REVISION", revision),
                   "source_archive_sha256": os.environ.get("LEAN_NET_SOURCE_ARCHIVE_SHA256"), "test_dll_sha256": binary_hash,
                   "os": platform.platform(), "python": platform.python_version(),
                   "dotnet": subprocess.check_output([args.dotnet, "--version"], text=True).strip(),
@@ -342,25 +436,21 @@ def run(args):
             summary["error"] = summary["warmup_barrier"]["error"]
             return summary
         # Every warmup has completed. Allow two seconds of idle calibration plus two seconds to publish and schedule it.
-        measured_ns = time.time_ns() + 4_000_000_000
+        measured_ns, before, wire_window = prepare_measurement(run_dir, n, args.netns, counters)
+        if wire_window is not None:
+            summary["wire_counter_window"] = wire_window
         summary["warmup_barrier"]["measured_start_unix_ns"] = measured_ns
         summary["warmup_barrier"]["scheduled_settle_s"] = 4
-        with open(os.path.join(run_dir, "measure.tmp"), "w") as stream:
-            stream.write(str(measured_ns))
-        os.rename(os.path.join(run_dir, "measure.tmp"), os.path.join(run_dir, "measure"))
         time.sleep(max(0.0, (measured_ns - 20_000_000 - time.time_ns()) / 1e9))
-        before = {i: counters(i) for i in range(n)} if args.netns else None
         cpu_before, wall_before = host_cpu(), time.time()
-        wait_files("done", args.timeout + 30)
-        after = {i: counters(i) for i in range(n)} if args.netns else None
+        all_done = wait_files("done", args.timeout + 30)
+        summary["completion_wait"] = {"all_nodes_done": all_done,
+                                      "abort_reason": None if all_done else "node exited" if any(p.poll() is not None for p, _ in processes) else "deadline"}
+        after = capture_wire_end(wire_window, n, counters, all_done)
+        summary["measurement_stopped_unix_ns"] = time.time_ns()
         cpu_after, wall_after = host_cpu(), time.time()
         open(os.path.join(run_dir, "stop"), "w").close()
-        for p, log in processes:
-            try:
-                p.wait(timeout=60)
-            except subprocess.TimeoutExpired:
-                p.kill()
-            log.close()
+        summary["completion_wait"]["exit_grace_s"] = finish_processes(processes, args.timeout, all_done)
     finally:
         for p, log in processes:
             if p.poll() is None:
@@ -387,58 +477,30 @@ def run(args):
     def origin(index):
         return index % n if args.origins == "all" else int(args.origins)
 
-    far, by_hops, missing = [], {}, 0
     body_bytes = next((r.get("body_bytes") for r in results.values() if r.get("body_bytes") is not None), None)
-    deliveries = 0
-    useful_bytes = 0
-    origin_records = []
     measured_indices = range(args.warmup, args.warmup + args.objects)
+    summary.update(receiver_metrics(results, n, edges, measured_indices, origin))
+    deliveries = summary["validated_receiver_deliveries"]
+    useful_bytes = deliveries * body_bytes if body_bytes is not None else None
+    origin_records = []
     for index in measured_indices:
-        o = origin(index)
-        t0 = results.get(o, {}).get("originated", {}).get(str(index))
-        if t0 is None:
-            missing += 1
-            continue
-        scheduled = results[o]["measured_ns"] + ((index - args.warmup) // args.burst) * args.interval_ms * 1_000_000
-        origin_records.append((t0, scheduled))
-        dist = distances(n, edges, o)
-        worst = None
-        complete = True
-        for i in range(n):
-            if i == o:
-                continue
-            t = results.get(i, {}).get("completed", {}).get(str(index))
-            if t is None:
-                complete = False
-                continue
-            deliveries += 1
-            if body_bytes is not None:
-                useful_bytes += body_bytes
-            latency = (t - t0) / 1e6
-            by_hops.setdefault(dist[i], []).append(latency)
-            worst = latency if worst is None else max(worst, latency)
-        if complete and worst is not None:
-            far.append(worst)
-        else:
-            missing += 1
+        source = results.get(origin(index), {})
+        actual = source.get("originated", {}).get(str(index))
+        if actual is not None:
+            scheduled = source["measured_ns"] + ((index - args.warmup) // args.burst) * args.interval_ms * 1_000_000
+            origin_records.append((actual, scheduled))
     # Include the whole offered-load window and any drain time. Never divide only by successful-transfer latency.
     offered_window_s = math.ceil(args.objects / args.burst) * args.interval_ms / 1000
-    observed_window_s = max((r["finished_ns"] - r["measured_ns"]) / 1e9 for r in results.values())
-    window_s = max(offered_window_s, observed_window_s, 1e-9)
+    controller_window_s = max(0.0, (summary["measurement_stopped_unix_ns"] - measured_ns) / 1e9)
+    window_s = goodput_window(results, offered_window_s, controller_window_s)
+    summary["controller_observed_window_s"] = controller_window_s
     summary.update(origination_metrics(origin_records, args.interval_ms, args.transactions_per_object, args.kind))
     summary["body_bytes"] = body_bytes
-    summary["validated_receiver_deliveries"] = deliveries
-    summary["expected_receiver_deliveries"] = args.objects * (n - 1)
     summary["goodput_window_s"] = window_s
     summary["offered_objects_per_s"] = args.burst * 1000 / args.interval_ms
     summary["goodput_objects_per_s_per_receiver"] = deliveries / (n - 1) / window_s
     summary["goodput_tx_per_s_per_receiver"] = summary["goodput_objects_per_s_per_receiver"] * args.transactions_per_object if args.kind == 1 else None
     summary["goodput_mbit_per_s_per_receiver"] = useful_bytes * 8 / (n - 1) / window_s / 1e6 if body_bytes is not None else None
-    summary["completed"] = len(far)
-    summary["missing"] = missing
-    summary["latency_ms"] = {"p50": percentile(far, 0.5), "p95": percentile(far, 0.95), "p99": percentile(far, 0.99),
-                             "max": max(far) if far else None, "mean": statistics.mean(far) if far else None}
-    summary["latency_by_hops_p50_ms"] = {str(h): percentile(v, 0.5) for h, v in sorted(by_hops.items())}
     cpu = sum(r["cpu_user_ms"] + r["cpu_sys_ms"] for r in results.values())
     summary["cpu_ms_total"] = cpu
     summary["cpu_ms_per_object"] = cpu / args.objects

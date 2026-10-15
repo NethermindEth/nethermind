@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 import tempfile
+import subprocess
 from unittest.mock import Mock, patch
 
 HERE = Path(__file__).resolve().parent
@@ -67,11 +68,111 @@ class MetricsTests(unittest.TestCase):
         self.assertIn("node 1: did not exit", row["error"])
         self.assertTrue(report.incomplete(row))
 
+    def test_controller_deadline_remains_failure_even_if_survivors_finish_during_grace(self):
+        row = {"missing": 0, "completion_wait": {"all_nodes_done": False, "abort_reason": "deadline"}}
+        controller.retain_process_failures(row, {0: 0, 1: 0})
+        self.assertIn("completion wait aborted: deadline", row["error"])
+        self.assertTrue(report.incomplete(row))
+
     def test_successful_processes_do_not_invent_failure(self):
         row = {"missing": 0}
         controller.retain_process_failures(row, {0: 0, 1: 0})
         self.assertNotIn("error", row)
         self.assertFalse(report.incomplete(row))
+
+    def test_missing_origin_retains_receiver_delivery_without_inventing_latency(self):
+        results = {1: {"completed": {"0": 5_000_000_000}, "body_bytes": 100}}
+        row = controller.receiver_metrics(results, 2, [(0, 1)], range(1), lambda _: 0)
+        self.assertEqual(row["validated_receiver_deliveries"], 1)
+        self.assertEqual(row["completed"], 1)
+        self.assertEqual(row["missing"], 0)
+        self.assertEqual(row["latency_unknown_objects"], 1)
+        self.assertEqual(row["latency_unknown_receiver_deliveries"], 1)
+        self.assertEqual(row["latency_sampled_objects"], 0)
+        self.assertIsNone(row["latency_ms"]["p50"])
+        controller.retain_process_failures(row, {0: 1, 1: 0})
+        self.assertTrue(report.incomplete(row))
+        self.assertEqual(row["validated_receiver_deliveries"], 1)
+
+    def test_partial_receivers_are_counted_but_not_all_receiver_latency_samples(self):
+        results = {0: {"originated": {"0": 1_000_000_000}},
+                   1: {"completed": {"0": 2_000_000_000}}}
+        row = controller.receiver_metrics(results, 3, [(0, 1), (1, 2)], range(1), lambda _: 0)
+        self.assertEqual(row["validated_receiver_deliveries"], 1)
+        self.assertEqual(row["expected_receiver_deliveries"], 2)
+        self.assertEqual(row["completed"], 0)
+        self.assertEqual(row["missing"], 1)
+        self.assertEqual(row["latency_by_hops_p50_ms"], {"1": 1000})
+        self.assertEqual(row["latency_sampled_objects"], 0)
+        self.assertEqual(row["latency_unknown_receiver_deliveries"], 0)
+
+    def test_all_receivers_sample_slowest_latency_and_keep_unknown_objects_separate(self):
+        results = {0: {"originated": {"0": 1_000_000_000}},
+                   1: {"completed": {"0": 2_000_000_000, "1": 5_000_000_000}},
+                   2: {"completed": {"0": 3_000_000_000, "1": 6_000_000_000}}}
+        row = controller.receiver_metrics(results, 3, [(0, 1), (1, 2)], range(2), lambda _: 0)
+        self.assertEqual(row["validated_receiver_deliveries"], 4)
+        self.assertEqual(row["completed"], 2)
+        self.assertEqual(row["missing"], 0)
+        self.assertEqual(row["latency_sampled_objects"], 1)
+        self.assertEqual(row["latency_unknown_objects"], 1)
+        self.assertEqual(row["latency_ms"]["p95"], 2000)
+
+    def test_goodput_window_retains_attempt_and_late_delivery_time(self):
+        result = {"measured_ns": 1_000_000_000, "finished_ns": 3_000_000_000,
+                  "completed": {"0": 10_000_000_000}}
+        self.assertEqual(controller.goodput_window({1: result}, 6, 4), 9)
+        self.assertEqual(controller.goodput_window({1: result}, 6, 12), 12)
+        self.assertEqual(controller.goodput_window({1: result}, 20, 4), 20)
+        self.assertIsNone(controller.goodput_window({}, 6, 4))
+
+    def test_wire_baseline_finishes_before_release_file_even_with_slow_serial_reads(self):
+        now = [0]
+        with tempfile.TemporaryDirectory() as directory:
+            def sample(node):
+                self.assertFalse(Path(directory, "measure").exists(), "nodes must still be waiting for release")
+                now[0] += 50_000_000
+                return {"tx_bytes": node + 10}
+            measured, values, window = controller.prepare_measurement(directory, 4, True, sample, lambda: now[0])
+            self.assertEqual(int(Path(directory, "measure").read_text()), measured)
+        self.assertEqual(values, {node: {"tx_bytes": node + 10} for node in range(4)})
+        self.assertEqual(window["before_started_unix_ns"], 0)
+        self.assertEqual(window["before_finished_unix_ns"], 200_000_000)
+        self.assertLess(window["before_finished_unix_ns"], measured)
+
+    def test_aborted_wire_capture_retains_counters_but_is_not_comparable(self):
+        for complete in (True, False):
+            with self.subTest(complete=complete):
+                window = {"before_started_unix_ns": 1, "before_finished_unix_ns": 2}
+                times = iter([100, 200])
+                after = controller.capture_wire_end(window, 2, lambda node: {"tx_bytes": node + 100}, complete, lambda: next(times))
+                self.assertEqual(after, {0: {"tx_bytes": 100}, 1: {"tx_bytes": 101}})
+                self.assertEqual(window["comparison_eligible"], complete)
+                self.assertEqual(window["partial_scope"], not complete)
+                self.assertEqual(window["after_started_unix_ns"], 100)
+                self.assertEqual(window["after_finished_unix_ns"], 200)
+
+    def test_failed_peer_allows_survivor_deadline_to_retain_partial_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            process, log = Mock(), Mock()
+            partial = Path(directory, "result.1.json")
+            def finish(timeout):
+                if timeout < 90:
+                    raise subprocess.TimeoutExpired("node", timeout)
+                partial.write_text('{"completed":{"0":123}}')
+            process.wait.side_effect = finish
+            self.assertEqual(controller.finish_processes([(process, log)], 90, False), 120)
+            self.assertTrue(partial.exists())
+            process.kill.assert_not_called()
+            log.close.assert_called_once()
+
+    def test_stalled_survivor_is_still_bounded_and_reaped(self):
+        process, log = Mock(), Mock()
+        process.wait.side_effect = [subprocess.TimeoutExpired("node", 120), 1]
+        self.assertEqual(controller.finish_processes([(process, log)], 90, False), 120)
+        process.kill.assert_called_once()
+        self.assertEqual(process.wait.call_args_list[1].kwargs["timeout"], 10)
+        log.close.assert_called_once()
 
     def test_cpu_comparison_requires_timely_clean_snapshots(self):
         row = {"idle_snapshot_ns": 1_000_000_000, "snapshot_before_ns": 3_000_000_000,
