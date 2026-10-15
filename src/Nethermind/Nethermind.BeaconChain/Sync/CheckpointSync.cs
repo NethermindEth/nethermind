@@ -91,6 +91,16 @@ public class CheckpointSync(
         : spec.CheckpointSyncUrl
             ?? throw new InvalidOperationException($"No checkpoint sync URL is configured and chain id {spec.ChainId} has no default; set Beacon.CheckpointSyncUrl explicitly.");
 
+    /// <summary>The configured checkpoint sync URL reduced to scheme and host for logs, or a placeholder when none is configured or it is not an absolute URI; never throws.</summary>
+    internal string CheckpointSyncUrlForLog
+    {
+        get
+        {
+            string? url = !string.IsNullOrWhiteSpace(config.CheckpointSyncUrl) ? config.CheckpointSyncUrl : spec.CheckpointSyncUrl;
+            return Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ? uri.GetComponents(UriComponents.SchemeAndServer, UriFormat.SafeUnescaped) : "<not a valid absolute URL>";
+        }
+    }
+
     public async Task<CheckpointAnchor> RunAsync(CancellationToken cancellationToken)
     {
         Checkpoint? weakSubjectivityCheckpoint = ParseWeakSubjectivityCheckpoint(config.WeakSubjectivityCheckpoint);
@@ -166,7 +176,7 @@ public class CheckpointSync(
 
     private async Task<(byte[] Buffer, int Length)> DownloadStateAsync(CancellationToken cancellationToken)
     {
-        if (_logger.IsInfo) _logger.Info($"Downloading finalized beacon state from {new Uri(EffectiveCheckpointSyncUrl).GetComponents(UriComponents.SchemeAndServer, UriFormat.SafeUnescaped)}");
+        if (_logger.IsInfo) _logger.Info($"Downloading finalized beacon state from {CheckpointSyncUrlForLog}");
         Stopwatch stopwatch = Stopwatch.StartNew();
 
         using HttpResponseMessage response = await GetOctetStreamAsync("/eth/v2/debug/beacon/states/finalized", cancellationToken);

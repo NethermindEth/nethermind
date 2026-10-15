@@ -153,6 +153,19 @@ public class CheckpointSyncTests
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
+    [TestCase("https://user:secret@beacon.example:5052/path?token=1", "https://beacon.example:5052", TestName = "Credentials and path never reach the log")]
+    [TestCase("beacon.example/relative", "<not a valid absolute URL>", TestName = "A relative URL does not throw")]
+    [TestCase(null, "https://mainnet.checkpoint.sigp.io", TestName = "No configured URL shows the chain default")]
+    [TestCase(null, "<not a valid absolute URL>", true, TestName = "No configured URL and no default does not throw")]
+    public void The_logged_checkpoint_sync_url_never_throws_and_never_shows_credentials(string? configured, string expected, bool noDefault = false)
+    {
+        BeaconChainSpec spec = noDefault ? BeaconChainSpec.Mainnet with { CheckpointSyncUrl = null } : BeaconChainSpec.Mainnet;
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = configured }, spec,
+            new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), LimboLogs.Instance);
+
+        Assert.That(sync.CheckpointSyncUrlForLog, Is.EqualTo(expected));
+    }
+
     [Test]
     public async Task A_checkpoint_with_a_version_outside_its_fork_is_refused_without_blaming_the_database([Values] bool unknownVersion)
     {
