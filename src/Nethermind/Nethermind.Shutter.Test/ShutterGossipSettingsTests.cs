@@ -80,7 +80,7 @@ public class ShutterGossipSettingsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(settings.TopicScoreParams["decryptionKeys"].TopicWeight, Is.Zero);
-            Assert.That(discovery.Topics, Has.All.Matches<string>(topic => settings.TopicScoreParams[topic].TopicWeight == 0));
+            Assert.That(discovery.Topics, Has.All.Matches<string>(topic => topic is not null && settings.TopicScoreParams[topic].TopicWeight == 0));
             Assert.That(settings.BehaviorPenaltyWeight, Is.Zero);
             Assert.That(settings.IPColocationFactorWeight, Is.Zero);
         }

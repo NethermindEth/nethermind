@@ -346,11 +346,6 @@
   },
   {
     "pname": "Microsoft.Extensions.Configuration",
-    "version": "10.0.13",
-    "hash": "sha256-Abrl7BvkEKPGnB94Ehl+dRsBe/0o/j07MD6KLUdxGqE="
-  },
-  {
-    "pname": "Microsoft.Extensions.Configuration",
     "version": "3.1.0",
     "hash": "sha256-KI1WXvnF/Xe9cKTdDjzm0vd5h9bmM+3KinuWlsF/X+c="
   },
@@ -376,11 +371,6 @@
   },
   {
     "pname": "Microsoft.Extensions.Configuration.Binder",
-    "version": "10.0.13",
-    "hash": "sha256-Hh4TDdq7omxU1DOVBMP2WKd/N2kwUZITGEPJbBzRSdY="
-  },
-  {
-    "pname": "Microsoft.Extensions.Configuration.Binder",
     "version": "3.1.0",
     "hash": "sha256-/B7WjPZPvRM+CPgfaCQunSi2mpclH4orrFxHGLs8Uo4="
   },
@@ -393,6 +383,11 @@
     "pname": "Microsoft.Extensions.DependencyInjection",
     "version": "10.0.13",
     "hash": "sha256-iQsWb83BNHtt652J0ljhJvn4X0/QV9A4zzYf9gSmwzg="
+  },
+  {
+    "pname": "Microsoft.Extensions.DependencyInjection.Abstractions",
+    "version": "10.0.11",
+    "hash": "sha256-5PZeQgWmVo8K+7GgKEVAd6xcn+3XVNVzT4cg/DBtjqY="
   },
   {
     "pname": "Microsoft.Extensions.DependencyInjection.Abstractions",
@@ -496,11 +491,6 @@
   },
   {
     "pname": "Microsoft.Extensions.Logging",
-    "version": "10.0.13",
-    "hash": "sha256-q8IVivjMCdtveXC/p+NIoAHLIGktkH2sYtcseF0rz10="
-  },
-  {
-    "pname": "Microsoft.Extensions.Logging",
     "version": "3.1.0",
     "hash": "sha256-BDrsqgiLYAphIOlnEuXy6iLoED/ykFO53merHCSGfrQ="
   },
@@ -523,16 +513,6 @@
     "pname": "Microsoft.Extensions.Logging.Abstractions",
     "version": "10.0.13",
     "hash": "sha256-jAn0MoqAFxa4mXcH+1ZwE9sZOTW0755piXyD3JxWyLE="
-  },
-  {
-    "pname": "Microsoft.Extensions.Logging.Configuration",
-    "version": "10.0.13",
-    "hash": "sha256-43B3T8U2o/q6gJRkCVRH7KgCwZziX4zSLZVDhvwOh2I="
-  },
-  {
-    "pname": "Microsoft.Extensions.Logging.Console",
-    "version": "10.0.13",
-    "hash": "sha256-kygE4SIqT09QxLKbsRmIm3FJ4dr4hCc/i45zvP7AvJc="
   },
   {
     "pname": "Microsoft.Extensions.ObjectPool",
@@ -563,16 +543,6 @@
     "pname": "Microsoft.Extensions.Options",
     "version": "8.0.2",
     "hash": "sha256-AjcldddddtN/9aH9pg7ClEZycWtFHLi9IPe1GGhNQys="
-  },
-  {
-    "pname": "Microsoft.Extensions.Options",
-    "version": "9.0.0",
-    "hash": "sha256-DT5euAQY/ItB5LPI8WIp6Dnd0lSvBRP35vFkOXC68ck="
-  },
-  {
-    "pname": "Microsoft.Extensions.Options.ConfigurationExtensions",
-    "version": "10.0.13",
-    "hash": "sha256-9eTA1TEMdzFJPoJzysRz7GHROgyj70zG5I78iuzwNxk="
   },
   {
     "pname": "Microsoft.Extensions.Options.ConfigurationExtensions",

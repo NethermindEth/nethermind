@@ -34,7 +34,7 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// </remarks>
 public sealed class GloasCustodySamplingAvailability(INodeColumnCustodySource custodySource, DataColumnSidecarPool pool, SlotClock clock, BeaconChainSpec spec)
 {
-    private readonly ConditionalWeakTable<DataColumnSidecarGloas, SszKzgCommitment[]> _verified = new();
+    private readonly ConditionalWeakTable<DataColumnSidecarGloas, SszKzgCommitment[]> _verified = [];
 
     /// <summary>Whether the blob data of <paramref name="bid"/>, committed by the block at <paramref name="blockRoot"/>, is available to this node.</summary>
     /// <param name="blockRoot">The <c>beacon_block_root</c> the envelope names.</param>

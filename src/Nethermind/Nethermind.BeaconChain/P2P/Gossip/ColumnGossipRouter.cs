@@ -132,7 +132,7 @@ public sealed class ColumnGossipRouter(
     ProposerLookaheadHolder? proposerLookahead = null,
     FailedBlockRoots? failedBlocks = null)
 {
-    private readonly ConditionalWeakTable<DataColumnSidecar, PeerId> _sources = new();
+    private readonly ConditionalWeakTable<DataColumnSidecar, PeerId> _sources = [];
 
     private const int SeenCacheSize = 4096;
     internal const int GloasBlockCacheSize = 64;

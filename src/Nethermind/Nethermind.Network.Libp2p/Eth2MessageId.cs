@@ -52,7 +52,7 @@ public static class Eth2MessageId
     private static ReadOnlySpan<byte> MessageDomainValidSnappy => [0x01, 0x00, 0x00, 0x00];
     private static ReadOnlySpan<byte> MessageDomainInvalidSnappy => [0x00, 0x00, 0x00, 0x00];
 
-    private static readonly ConditionalWeakTable<ByteString, ConcurrentDictionary<string, byte[]>> MessageIds = new();
+    private static readonly ConditionalWeakTable<ByteString, ConcurrentDictionary<string, byte[]>> MessageIds = [];
 
     /// <summary>Computes an id once per immutable payload and topic, including when pubsub clones the message.</summary>
     public static byte[] Compute(string topic, ByteString data) =>
