@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.Intrinsics.X86;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -48,7 +47,8 @@ public partial class TrieStoreScopeProvider(
     private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
     private readonly ILogManager _logManager = logManager;
     protected StateTree? _backingStateTree;
-    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
+    // Used as is: the stateless witness' store serves code as executable memory, which the EVM runs without a copy.
+    private readonly IWorldStateScopeProvider.ICodeDb _codeDb = codeDb as IWorldStateScopeProvider.ICodeDb ?? new KeyValueWithBatchingBackedCodeDb(codeDb, codeDbIsPersistent);
 
     protected StateTree BackingStateTree =>
         _backingStateTree ?? throw new InvalidOperationException("A state tree is only available within a world-state scope.");
@@ -326,7 +326,6 @@ public partial class TrieStoreScopeProvider(
         ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
-        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
         private Action<Address, Hash256>? _markDirty;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;

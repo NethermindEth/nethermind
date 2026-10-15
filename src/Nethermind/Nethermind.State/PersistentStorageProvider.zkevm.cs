@@ -13,8 +13,13 @@ internal sealed partial class PersistentStorageProvider
 {
     public void SetBackendScope(IWorldStateScopeProvider.IScope? scope) => _currentScope = scope;
 
-    private partial bool HasCapturedOriginals => _originalValues.Count != 0;
+    private partial bool HasCapturedOriginals
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _originalValues.Count != 0;
+    }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private partial void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
     {
         OptimizedDictionary<StorageCell, UInt256> originals = _originalValues;
