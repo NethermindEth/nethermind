@@ -25,7 +25,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
     private volatile BlockProductionSnapshot _best;
-    private readonly Lock _lock = new();
+    private int _disposed;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
@@ -59,7 +59,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         _stateReader.TryGetAccount(parentHeader, feeRecipient, out AccountStruct account);
         UInt256 balanceBefore = account.Balance;
         Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
-        if (block is not null && TrySetBest(block))
+        if (block is not null && TrySetBest(new(block, _feesTracer.Fees), _best))
         {
             _stateReader.TryGetAccount(parentHeader, feeRecipient, out account);
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = ExecutionPayload.Create(block), Profit = account.Balance - balanceBefore }, cancellationToken);
@@ -69,24 +69,25 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     }
 
     // A build that ignored cancellation can finish after the payload was handed out; it must not replace it.
-    private bool TrySetBest(Block block)
+    private bool TrySetBest(BlockProductionSnapshot best, BlockProductionSnapshot expected) =>
+        !Disposed && Interlocked.CompareExchange(ref _best, best, expected) == expected;
+
+    // Swaps in an equal snapshot so a TrySetBest that passed the Disposed check before it was set fails its CAS.
+    private void PinBest()
     {
-        lock (_lock)
-        {
-            if (Disposed) return false;
-            _best = new(block, _feesTracer.Fees);
-            return true;
-        }
+        BlockProductionSnapshot best;
+        do best = _best;
+        while (Interlocked.CompareExchange(ref _best, new(best.CurrentBestBlock, best.BlockFees), best) != best);
     }
 
     public Task<Block?> ImprovementTask { get; }
     public BlockProductionSnapshot Best => _best;
-    public bool Disposed { get; private set; }
+    public bool Disposed => Volatile.Read(ref _disposed) != 0;
     public DateTimeOffset StartDateTime { get; }
 
     public void Dispose()
     {
-        lock (_lock) Disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 0) PinBest();
         CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
         CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }

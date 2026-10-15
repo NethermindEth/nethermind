@@ -49,11 +49,11 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public BlockProductionSnapshot Best => _best;
 
-    public bool Disposed { get; private set; }
+    public bool Disposed => Volatile.Read(ref _disposed) != 0;
     public DateTimeOffset StartDateTime { get; }
 
     private volatile BlockProductionSnapshot _best;
-    private readonly Lock _lock = new();
+    private int _disposed;
 
     private readonly SharedCancellationTokenSource _improvementCancellation;
     private readonly CancellationToken _improvementToken;
@@ -108,9 +108,21 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public void Dispose()
     {
-        lock (_lock) Disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 0) PinBest();
         CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
     }
+
+    // Swaps in an equal snapshot so a TrySetBest that passed the Disposed check before it was set fails its CAS.
+    private void PinBest()
+    {
+        BlockProductionSnapshot best;
+        do best = _best;
+        while (Interlocked.CompareExchange(ref _best, new(best.CurrentBestBlock, best.BlockFees), best) != best);
+    }
+
+    // A build that ignored cancellation can finish after the payload was handed out; it must not replace it.
+    private bool TrySetBest(BlockProductionSnapshot best, BlockProductionSnapshot expected) =>
+        !Disposed && Interlocked.CompareExchange(ref _best, best, expected) == expected;
 
     private async Task<Block?> ImproveBlock()
     {
@@ -180,11 +192,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, IBlockProducer.Flags.None, _linkedCancellation?.Token ?? default);
         if (result is not null)
         {
-            // A build that ignored cancellation can finish after the payload was handed out; it must not replace it.
-            lock (_lock)
-            {
-                if (!Disposed) _best = new(result, UInt256.Zero);
-            }
+            TrySetBest(new(result, UInt256.Zero), _best);
         }
     }
 }
