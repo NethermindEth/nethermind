@@ -162,8 +162,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         base.StartOperation(pc, opcode, gas, env);
 
-        // As in geth, an operation error ends only the failing operation: its frame unwinds, while a caller that
-        // survives it keeps running and keeps touching state, so every operation is captured on its own.
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
 
