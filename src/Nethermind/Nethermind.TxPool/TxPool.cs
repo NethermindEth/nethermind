@@ -1841,6 +1841,10 @@ namespace Nethermind.TxPool
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
                     }
+                    else if (accepted == AcceptTxResult.InvalidBlobProofs && tx.Hash is not null)
+                    {
+                        _hashCache.SetInvalidBlobProofs(tx.Hash);
+                    }
 
                     Metrics.PendingTransactionsDiscarded++;
                     PooledBlobBuffers.Return(tx);
@@ -3087,6 +3091,8 @@ namespace Nethermind.TxPool
         public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash);
 
         public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.DeleteFromCurrentBlock(hash);
+
+        public bool ForgetInvalidBlobProofs(Hash256 hash) => _hashCache.TryDeleteInvalidBlobProofs(hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
