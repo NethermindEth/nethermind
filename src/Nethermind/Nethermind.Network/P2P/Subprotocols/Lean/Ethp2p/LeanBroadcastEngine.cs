@@ -626,7 +626,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
     /// <summary>Plans sends to one participant while its connection has a free CHUNK stream.</summary>
     private void Dispatch(Session session, Participant participant, Outgoing outgoing)
     {
-        if (session.Failed || session.Have == 0 || participant.Completed || participant.Out is null) return;
+        if (session.Failed || session.Have == 0 || participant.Completed || participant.OutFinished || participant.Out is null || participant.Peer.IsClosed) return;
         int inFlight = _inFlight.GetValueOrDefault(participant.Peer);
         while (inFlight < MaxShardsInFlightPerPeer)
         {
@@ -678,13 +678,19 @@ internal sealed class LeanBroadcastEngine : IDisposable
             if (_logger.IsDebug) _logger.Debug($"lean/1 shard write failed: {exception.Message}");
         }
         Outgoing outgoing = new();
+        ILeanBroadcastSession? failedStream = null;
         lock (_gate)
         {
             session.ActiveSends--;
             participant.InFlight &= ~(1u << index);
             SetInFlight(participant.Peer, _inFlight.GetValueOrDefault(participant.Peer) - 1);
             if (sent) participant.Inventory |= 1u << index;
-            else session.Sent[index]--;
+            else
+            {
+                session.Sent[index]--;
+                if (!participant.OutFinished) failedStream = participant.Out;
+                participant.OutFinished = true;
+            }
             if (session.Failed || _disposed) Fail(session);
             else
             {
@@ -693,6 +699,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
                 DispatchTo(participant.Peer, outgoing);
             }
         }
+        failedStream?.Close();
         outgoing.Run(this);
     }
 
