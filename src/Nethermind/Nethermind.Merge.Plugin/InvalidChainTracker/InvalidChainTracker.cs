@@ -29,20 +29,33 @@ public class InvalidChainTracker(
     private readonly IBlockCacheService _blockCacheService = blockCacheService;
     private readonly ILogger _logger = logManager.GetClassLogger<InvalidChainTracker>();
     private readonly LruCache<ValueHash256, Node> _tree = new(1024, nameof(InvalidChainTracker));
+    private readonly LruCache<ValueHash256, Hash256> _validatedBlocks = new(1024, "validated chain blocks");
 
     // CompositeDisposable only available on System.Reactive. So this will do for now.
     private readonly List<Action> _disposables = [];
 
-    public void SetupBlockchainProcessorInterceptor(IBlockProcessingQueue processingQueue)
+    public void SetupBlockchainProcessorInterceptor(IBlockProcessingQueue processingQueue, IBranchProcessor branchProcessor)
     {
         processingQueue.InvalidBlock += OnBlockchainProcessorInvalidBlock;
+        branchProcessor.BlockProcessed += OnBlockProcessed;
         _disposables.Add(() =>
         {
             processingQueue.InvalidBlock -= OnBlockchainProcessorInvalidBlock;
+            branchProcessor.BlockProcessed -= OnBlockProcessed;
         });
     }
 
     private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockProcessingQueue.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
+
+    private void OnBlockProcessed(object? sender, BlockProcessedEventArgs args)
+    {
+        if (args.WasValidated)
+        {
+            Hash256 hash = args.Block.Hash!;
+            // A valid prefix survives a later block's failure, which prevents the branch's WasProcessed markers.
+            _validatedBlocks.Set(hash, _poSSwitcher.IsPostMerge(args.Block.Header) ? hash : Keccak.Zero);
+        }
+    }
 
     public void SetChildParent(Hash256 child, Hash256 parent)
     {
@@ -108,7 +121,8 @@ public class InvalidChainTracker(
     /// <remarks>
     /// The engine API's <c>latestValidHash</c> names an ancestor that is fully validated, zero for a pre-merge one,
     /// and is null when no such ancestor can be determined. It is therefore the parent only when this node executed
-    /// it, the parent's own last valid hash when the parent is itself tracked as invalid, and unknown for a parent
+    /// it (including a valid prefix of a failed branch), the parent's own last valid hash when the parent is itself
+    /// tracked as invalid, and unknown for a parent
     /// that is only inserted, cached or unresolved: a block rejected before execution can have an unexecuted parent,
     /// and a consensus client may mark the hash it is given valid without executing it.
     /// </remarks>
@@ -149,6 +163,8 @@ public class InvalidChainTracker(
                 if (parentNode.IsInvalid) return parentNode.LastValidHash;
             }
         }
+
+        if (_validatedBlocks.TryGet(parent, out Hash256 validatedHash)) return validatedHash;
 
         BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
         if (parentHeader is null)

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -251,6 +252,79 @@ public class InvalidChainTrackerTest
         _tracker.OnInvalidBlock(invalidBlock, parent);
 
         AssertInvalid(invalidBlock, lastValid);
+    }
+
+    [Test]
+    public void processed_parent_is_only_known_when_validated_before_disposal([Values] bool wasValidated, [Values] bool disposed)
+    {
+        IBranchProcessor branchProcessor = SetupProcessingInterceptor();
+        if (disposed) _tracker.Dispose();
+        Block parent = Build.A.Block.TestObject;
+
+        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = wasValidated });
+        _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
+
+        bool invalid = _tracker.IsOnKnownInvalidChain(TestItem.KeccakA, out Hash256? lastValidHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(invalid, Is.True);
+            Assert.That(lastValidHash, Is.EqualTo(wasValidated && !disposed ? parent.Hash : null));
+        }
+    }
+
+    [Test]
+    public void validated_pow_parent_is_reported_as_zero_without_a_stored_header()
+    {
+        IBranchProcessor branchProcessor = SetupProcessingInterceptor(NoPoS.Instance);
+        Block parent = Build.A.Block.TestObject;
+
+        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
+        _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
+
+        AssertInvalid(TestItem.KeccakA, Keccak.Zero);
+    }
+
+    [Test]
+    public void tracked_invalid_parent_takes_precedence_over_its_processing_event()
+    {
+        IBranchProcessor branchProcessor = SetupProcessingInterceptor();
+        Block ancestor = Build.A.Block.TestObject;
+        Block parent = Build.A.Block.WithParent(ancestor).TestObject;
+        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(ancestor, []) { WasValidated = true });
+        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
+
+        _tracker.OnInvalidBlock(parent.Hash!, ancestor.Hash);
+        _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
+
+        AssertInvalid(TestItem.KeccakA, ancestor.Hash);
+    }
+
+    [Test]
+    public void processing_evidence_is_bounded()
+    {
+        IBranchProcessor branchProcessor = SetupProcessingInterceptor();
+        Block parent = Build.A.Block.WithNumber(0).TestObject;
+        Hash256 firstHash = parent.Hash!;
+        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
+        for (int i = 1; i <= 1024; i++)
+        {
+            parent = Build.A.Block.WithNumber(i).TestObject;
+            branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
+        }
+
+        _tracker.OnInvalidBlock(TestItem.KeccakA, firstHash);
+        _tracker.OnInvalidBlock(TestItem.KeccakB, parent.Hash);
+
+        AssertInvalidWithUnknownLastValidHash(TestItem.KeccakA);
+        AssertInvalid(TestItem.KeccakB, parent.Hash);
+    }
+
+    private IBranchProcessor SetupProcessingInterceptor(IPoSSwitcher? poSSwitcher = null)
+    {
+        IBranchProcessor branchProcessor = Substitute.For<IBranchProcessor>();
+        _tracker = new(poSSwitcher ?? AlwaysPoS.Instance, Substitute.For<IBlockTree>(), new BlockCacheService(), new TestLogManager());
+        _tracker.SetupBlockchainProcessorInterceptor(Substitute.For<IBlockProcessingQueue>(), branchProcessor);
+        return branchProcessor;
     }
 
     [Test]
