@@ -174,8 +174,10 @@ public sealed class BlockImporter : IBlockImporter
         _canonicalIndexTopSlot = Math.Max(anchorBlock.Slot, store.GetCanonicalIndexTopSlot() ?? 0);
     }
 
-    internal ForkedBeaconState? CloneStateForApi(Hash256 root) => IsGloasBlock(root)
-        ? _states.GetGloasBlockState(root) is { } gloas ? new ForkedBeaconState.OfGloas(gloas.Clone()) : null
+    /// <summary>The post-state of <paramref name="root"/> for the Beacon API to read off the import worker, or <c>null</c> when it is not held.</summary>
+    /// <remarks>A Gloas state is retained frozen (<see cref="PostStateCache.RetainGloas"/>) and is shared as is; a held Fulu state may be the lineage the next import advances in place, so it is cloned.</remarks>
+    internal ForkedBeaconState? GetStateForApi(Hash256 root) => IsGloasBlock(root)
+        ? _states.GetGloasBlockState(root) is { } gloas ? new ForkedBeaconState.OfGloas(gloas) : null
         : _states.GetHeldBlockState(root) is { } fulu ? new ForkedBeaconState.OfFulu(fulu.Clone()) : null;
 
     /// <inheritdoc/>

@@ -56,6 +56,18 @@ public class GloasBlockImporterTests
     }
 
     [Test]
+    public void Api_state_of_a_gloas_block_is_its_frozen_retained_state_not_a_copy()
+    {
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+
+        ForkedBeaconState? served = importer.GetStateForApi(first.Root);
+
+        Assert.That((served as ForkedBeaconState.OfGloas)?.State, Is.SameAs(states.GetGloasBlockState(first.Root)), "a head change must not copy the full state on the import worker");
+    }
+
+    [Test]
     public void A_late_envelope_regenerates_its_evicted_block_state()
     {
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
@@ -696,8 +708,8 @@ public class GloasBlockImporterTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(importer.ImportEnvelope(epochStart.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "an epoch's first block");
         Assert.That(importer.ImportEnvelope(lastBeforeSkip.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the checkpoint block of the epoch whose first slot was skipped");
-        Assert.That(importer.CloneStateForApi(middle.Root), Is.Null, "a block that is no checkpoint ages out");
-        Assert.That(importer.CloneStateForApi(lastOfEpoch!.Root), Is.Null, "the parent of the next epoch's first block is no checkpoint and ages out");
+        Assert.That(importer.GetStateForApi(middle.Root), Is.Null, "a block that is no checkpoint ages out");
+        Assert.That(importer.GetStateForApi(lastOfEpoch!.Root), Is.Null, "the parent of the next epoch's first block is no checkpoint and ages out");
     }
 
     public enum EvictedParent

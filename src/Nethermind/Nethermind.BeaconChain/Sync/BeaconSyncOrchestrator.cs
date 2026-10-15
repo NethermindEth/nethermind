@@ -2650,7 +2650,7 @@ public sealed class BeaconSyncOrchestrator(
             HeadSnapshot? previousSnapshot = headSnapshots.Current;
             ForkedBeaconState? apiState = headSnapshots.CaptureState
                 ? previousSnapshot?.Status.HeadRoot == head.HeadRoot && previousSnapshot.FullHeadRoot == fullHeadRoot && previousSnapshot.State is not null
-                    ? previousSnapshot.State : (importer as BlockImporter)?.CloneStateForApi(head.HeadRoot)
+                    ? previousSnapshot.State : (importer as BlockImporter)?.GetStateForApi(head.HeadRoot)
                 : null;
             headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync) { State = apiState };
         }
