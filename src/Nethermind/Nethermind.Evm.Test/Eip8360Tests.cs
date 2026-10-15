@@ -591,6 +591,34 @@ public class Eip8360Tests : VirtualMachineTestsBase
         }
     }
 
+    [Test(Description = "A frame that cannot pay its balance-change charges on entry halts, so the callTracer reports all its gas as used")]
+    public void Call_tracer_reports_a_frame_halted_on_entry_as_using_all_its_gas()
+    {
+        byte[] init = Prepare.EvmCode.ForInitOf(ReturnWord(Prepare.EvmCode.PushData(42))).Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        // The value call passes only the stipend, short of the ACCOUNT_WRITE the TCREATE account's first balance change costs.
+        InstallCode(Factory, Prepare.EvmCode
+            .TCreate(init, Salt, 0).Op(Instruction.POP)
+            .CallWithValue(tcreated, 0, 4).Op(Instruction.POP)
+            .STOP()
+            .Done, 100);
+        (Block block, Transaction tx) = BuildFactoryCall();
+        using NativeCallTracer tracer = new(tx, EnabledSpec, GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer });
+
+        ExecuteFactoryCall(block, tx, tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame call = ((NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!).Calls[1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Type, Is.EqualTo(Instruction.CALL), "type");
+            Assert.That(call.To, Is.EqualTo(tcreated), "to");
+            Assert.That(call.Gas, Is.EqualTo(GasCostOf.CallStipend), "gas");
+            Assert.That(call.GasUsed, Is.EqualTo(call.Gas), "gasUsed");
+            Assert.That(call.Error, Is.EqualTo("out of gas"), "error");
+        }
+    }
+
     [Test]
     public void Prestate_tracer_shows_the_wipe_and_no_transient_storage([Values(0, 5)] int endowment, [Values] bool diffMode)
     {
