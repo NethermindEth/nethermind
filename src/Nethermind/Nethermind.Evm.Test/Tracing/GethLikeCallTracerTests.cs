@@ -973,6 +973,22 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test(Description = "A top-level CREATE whose code deposit fails reports no gas left before its error")]
+    public void Top_level_create_deposit_failure_reports_no_gas_left([Values] bool invalidCode)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(invalidCode ? new byte[] { 0xEF } : new byte[1024]).Done;
+        (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
+        GasCheckpointTracer checkpoints = new();
+
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), checkpoints);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checkpoints.Errors, Is.EqualTo(1), "action errors");
+            Assert.That(checkpoints.HaltsLeftNoGas, Is.True, "every action error follows a report of no gas left");
+        }
+    }
+
     [Test]
     public void Test_CallTrace_MarkAsFailed_WithoutEvmError_NoCrash()
     {

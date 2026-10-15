@@ -1385,9 +1385,11 @@ public partial class VirtualMachine<TGasPolicy>(
             // If available gas is insufficient to cover the code deposit cost...
             if (!hasEnoughGasForCodeDeposit)
             {
-                // When the spec mandates charging for top-level creation, report an out-of-gas error.
+                // When the spec mandates charging for top-level creation, report an out-of-gas error,
+                // which consumes all the frame's gas.
                 if (spec.ChargeForTopLevelCreate)
                 {
+                    _txTracer.ReportActionRemainingGas(0);
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 // Otherwise, report a successful action end with the remaining gas.
@@ -1399,6 +1401,7 @@ public partial class VirtualMachine<TGasPolicy>(
             // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
             else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
             {
+                _txTracer.ReportActionRemainingGas(0);
                 _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
             // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
