@@ -40,9 +40,9 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
 
         return Encoding.UTF8.GetBytes(
             $"{{\"supported_forks\":{supportedForksJson}," +
-            $"\"fork_scoped_endpoints\":[\"payloads\",\"forkchoice\",\"bodies\",\"payloads/witness\"]," +
-            $"\"independently_versioned\":{{\"blobs\":[\"v1\",\"v2\",\"v3\",\"v4\"]}}," +
-            $"\"unscoped_endpoints\":[\"capabilities\",\"identity\"]," +
+            $"\"fork_scoped_endpoints\":[\"{SszRestPaths.Payloads}\",\"{SszRestPaths.Forkchoice}\",\"{SszRestPaths.PayloadBodiesByRange}\",\"{SszRestPaths.PayloadWithWitness}\"]," +
+            $"\"independently_versioned\":{{\"{SszRestPaths.Blobs}\":[\"v1\",\"v2\",\"v3\",\"v4\"]}}," +
+            $"\"unscoped_endpoints\":[\"{SszRestPaths.Capabilities}\",\"{SszRestPaths.ClientVersion}\"]," +
             $"\"limits\":{{" +
             $"\"bodies.max_count\":{SszRestLimits.MaxBodiesRequest}," +
             $"\"blobs.max_versioned_hashes\":{SszRestLimits.MaxBlobsRequest}," +
