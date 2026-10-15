@@ -104,5 +104,82 @@ class VectorSelectionTests(unittest.TestCase):
                     self.invoke(Path(temporary), self.names, data=payload)
 
 
+class ProfileResolutionTests(unittest.TestCase):
+    profiles = (("rollup0", "eez-association/eez-rollup0"), ("rollupx", "eez-association/eez-rollupX"))
+    def resolve(self, profile, revision="", merge_base=None, core_entries=None):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        head = "a" * 40
+        core = "b" * 40
+        repository = dict(self.profiles)[profile]
+        calls = []
+
+        def metadata(path, selected=upstream.REPOSITORY):
+            self.assertEqual(selected, repository)
+            calls.append(path)
+            if path == "commits/main": return {"sha": head}
+            if path.startswith("compare/"): return {"merge_base_commit": {"sha": merge_base}}
+            if path == "git/trees/" + (revision or head):
+                entries = [{"path": "eez-core-protocol", "mode": "160000", "sha": core}]
+                return {"tree": entries if core_entries is None else core_entries}
+            raise AssertionError("unexpected source lookup: " + path)
+
+        args = SimpleNamespace(profile=profile, revision=revision, output=root / "manifest.json")
+        with patch.dict(upstream.os.environ, {"GITHUB_OUTPUT": str(root / "outputs")}), \
+                patch.object(upstream, "api", side_effect=metadata):
+            upstream.resolve(args)
+        return json.loads(args.output.read_text()), calls
+
+    def test_each_profile_freezes_its_own_main_and_core_once(self):
+        for profile, repository in self.profiles:
+            with self.subTest(profile=profile):
+                manifest, calls = self.resolve(profile)
+                self.assertEqual(manifest["repository"], repository)
+                self.assertEqual(manifest["profile"], profile)
+                self.assertEqual(manifest["revision"], "a" * 40)
+                self.assertEqual(manifest["core_revision"], "b" * 40)
+                self.assertEqual(calls, ["commits/main", "git/trees/" + "a" * 40])
+
+    def test_replay_must_be_an_ancestor_in_the_selected_repository(self):
+        replay = "c" * 40
+        for profile, repository in self.profiles:
+            with self.subTest(profile=profile):
+                manifest, _ = self.resolve(profile, replay, merge_base=replay)
+                self.assertEqual(manifest["revision"], replay)
+                self.assertEqual(manifest["main_at_resolution"], "a" * 40)
+                with self.assertRaisesRegex(ValueError, "public upstream main history"):
+                    self.resolve(profile, replay, merge_base="d" * 40)
+
+    def test_missing_or_duplicate_core_cannot_freeze_a_profile(self):
+        core = {"path": "eez-core-protocol", "mode": "160000", "sha": "b" * 40}
+        for entries in ([], [core, core]):
+            with self.subTest(entries=entries), self.assertRaisesRegex(ValueError, "unique Core gitlink"):
+                self.resolve("rollupx", core_entries=entries)
+
+    def test_unknown_profile_or_repository_never_sends_a_request(self):
+        with patch.object(upstream.subprocess, "check_output") as request:
+            with self.assertRaisesRegex(ValueError, "unsupported upstream profile"):
+                upstream.resolve(SimpleNamespace(profile="other"))
+            with self.assertRaisesRegex(ValueError, "unsupported upstream repository"):
+                upstream.api("commits/main", "other/repository")
+            request.assert_not_called()
+
+    def test_api_sends_requests_to_each_literal_repository(self):
+        for _, repository in self.profiles:
+            with self.subTest(repository=repository), patch.object(upstream.subprocess, "check_output", return_value=b"{}") as request:
+                self.assertEqual(upstream.api("commits/main", repository), {})
+                request.assert_called_once_with(["gh", "api", "repos/" + repository + "/commits/main"], timeout=60)
+        with patch.object(upstream.subprocess, "check_output", return_value=b"{}") as request:
+            upstream.api("commits/main")
+            request.assert_called_once_with(["gh", "api", "repos/eez-association/eez-rollup0/commits/main"], timeout=60)
+
+    def test_rollup0_loader_cannot_read_rollupx_as_rollup0_vectors(self):
+        with patch.object(upstream, "resolve") as resolve:
+            with self.assertRaisesRegex(ValueError, "Rollup0 profile"):
+                upstream.vectors(SimpleNamespace(profile="rollupx"))
+            resolve.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

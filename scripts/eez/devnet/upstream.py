@@ -10,11 +10,14 @@ import subprocess
 import zipfile
 
 REPOSITORY = "eez-association/eez-rollup0"
+PROFILES = {"rollup0": REPOSITORY, "rollupx": "eez-association/eez-rollupX"}
 BINARIES = ("eez-composer", "eez-follower", "eez-proof-signer", "eez-genesis-state-root", "eez-genesis-block-hash")
 
 
-def api(path):
-    value = subprocess.check_output(["gh", "api", "repos/" + REPOSITORY + "/" + path], timeout=60)
+def api(path, repository=REPOSITORY):
+    if repository not in PROFILES.values():
+        raise ValueError("unsupported upstream repository")
+    value = subprocess.check_output(["gh", "api", "repos/" + repository + "/" + path], timeout=60)
     if len(value) > 8 * 1024 * 1024:
         raise ValueError("upstream metadata exceeds the limit")
     return json.loads(value)
@@ -27,17 +30,26 @@ def sha(value):
 
 
 def resolve(args):
-    head = sha(api("commits/main")["sha"])
+    profile = getattr(args, "profile", "rollup0")
+    repository = PROFILES.get(profile)
+    if repository is None:
+        raise ValueError("unsupported upstream profile")
+
+    def metadata(path):
+        return api(path) if repository == REPOSITORY else api(path, repository)
+
+    head = sha(metadata("commits/main")["sha"])
     source = sha(args.revision) if args.revision else head
     if source != head:
-        comparison = api("compare/" + source + "..." + head)
+        comparison = metadata("compare/" + source + "..." + head)
         if comparison["merge_base_commit"]["sha"] != source:
             raise ValueError("replay revision must belong to public upstream main history")
-    entries = api("git/trees/" + source)["tree"]
+    entries = metadata("git/trees/" + source)["tree"]
     core = [entry for entry in entries if entry["path"] == "eez-core-protocol" and entry["mode"] == "160000"]
     if len(core) != 1:
         raise ValueError("missing unique Core gitlink")
-    manifest = {"repository": REPOSITORY, "revision": source, "core_revision": sha(core[0]["sha"]), "main_at_resolution": head}
+    manifest = {"repository": repository, "profile": profile, "revision": source,
+        "core_revision": sha(core[0]["sha"]), "main_at_resolution": head}
     args.output.write_text(json.dumps(manifest, indent=2) + "\n")
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
         output.write("revision=" + source + "\n")
@@ -147,6 +159,8 @@ def validate_vectors(document):
 def vectors(args):
     names = ("rollup0-transcripts.json", "rollup0-limits-transcripts.json")
     prefix = "crates/eez-control-rpc/conformance/"
+    if getattr(args, "profile", "rollup0") != "rollup0":
+        raise ValueError("this vector loader requires the Rollup0 profile")
     args.directory.mkdir(parents=True, exist_ok=False)
     resolve(args)
     manifest = json.loads(args.output.read_text())
@@ -193,6 +207,7 @@ def main():
     modes = parser.add_subparsers(dest="mode", required=True)
     resolver = modes.add_parser("resolve")
     resolver.add_argument("--revision", default="")
+    resolver.add_argument("--profile", choices=PROFILES, default="rollup0")
     resolver.add_argument("--output", type=Path, required=True)
     downloader = modes.add_parser("runtime")
     downloader.add_argument("--manifest", type=Path, required=True)
