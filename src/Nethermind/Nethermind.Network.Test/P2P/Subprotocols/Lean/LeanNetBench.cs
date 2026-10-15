@@ -14,7 +14,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Test.Builders;
@@ -467,8 +466,8 @@ public class LeanNetBenchNode
             switch (kind)
             {
                 case LeanProtocol.KindWrapper:
-                {
-                    Transaction[] transactions = [.. Enumerable.Range(0, transactionsPerObject).Select(i =>
+                    {
+                        Transaction[] transactions = [.. Enumerable.Range(0, transactionsPerObject).Select(i =>
                     {
                         int seed = checked(index * transactionsPerObject + i + 1);
                         Transaction transaction = FrameTransaction(seed);
@@ -478,21 +477,21 @@ public class LeanNetBenchNode
                         transaction.Hash = new Hash256(ValueKeccak.Compute(Envelope(transaction)));
                         return transaction;
                     })];
-                    byte[] body = Wrapper(proofBytes, true, transactions);
-                    return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = Describe(body), Transactions = transactions };
-                }
+                        byte[] body = Wrapper(proofBytes, true, transactions);
+                        return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = Describe(body), Transactions = transactions };
+                    }
                 case LeanProtocol.KindBlockProof:
-                {
-                    byte[] proof = new byte[proofBytes];
-                    new Random(1000 + index).NextBytes(proof);
-                    Transaction transaction = FrameTransaction(index + 1);
-                    Hash256 depsHash = new(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction)));
-                    BlockHeader header = LeanTransportTests.ProofHeader(proof, depsHash, (ulong)index + 1);
-                    byte[] body = LeanRlp.EncodeList(LeanRlp.EncodeBytes(proof));
-                    LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
-                        LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256), body);
-                    return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = descriptor, Header = header, Proof = proof, Transactions = [transaction] };
-                }
+                    {
+                        byte[] proof = new byte[proofBytes];
+                        new Random(1000 + index).NextBytes(proof);
+                        Transaction transaction = FrameTransaction(index + 1);
+                        Hash256 depsHash = new(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction)));
+                        BlockHeader header = LeanTransportTests.ProofHeader(proof, depsHash, (ulong)index + 1);
+                        byte[] body = LeanRlp.EncodeList(LeanRlp.EncodeBytes(proof));
+                        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+                            LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256), body);
+                        return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = descriptor, Header = header, Proof = proof, Transactions = [transaction] };
+                    }
                 default:
                     throw new ArgumentException($"kind {kind}");
             }
