@@ -65,7 +65,7 @@ public interface IMergeConfig : IConfig
     public int CollectionsPerDecommit { get; set; }
 
     [ConfigItem(Description = """
-            The memory load, in percent of the memory available to the process (physical memory or the container limit), at or above which a due decommit (see `CollectionsPerDecommit`) runs. The load is the one the runtime recorded at its last collection. Below it, the decommit waits for `CollectionsPerUnconditionalDecommit`.
+            The memory load, in percent of physical memory or of the container's memory limit, at or above which a due decommit (see `CollectionsPerDecommit`) runs. The load is the one the runtime recorded at its last collection. Below it, the decommit waits for `CollectionsPerUnconditionalDecommit`.
 
             Allowed values:
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime;
 
 namespace Nethermind.Core.Memory;
@@ -16,9 +17,26 @@ internal interface IGcRegionRuntime
     GcMemoryLoad GetMemoryLoad();
 }
 
-/// <param name="MemoryLoadBytes">The memory in use, machine-wide or within the container limit.</param>
-/// <param name="TotalAvailableMemoryBytes">The memory available to the process: physical memory or the container limit.</param>
-internal readonly record struct GcMemoryLoad(long MemoryLoadBytes, long TotalAvailableMemoryBytes);
+/// <param name="MemoryLoadBytes">The memory in use, machine-wide or within the container's memory limit.</param>
+/// <param name="TotalMemoryBytes">The memory that load is a share of: physical memory or the container's memory limit; 0 when unknown.</param>
+internal readonly record struct GcMemoryLoad(long MemoryLoadBytes, long TotalMemoryBytes)
+{
+    /// <summary>Pairs the load the runtime recorded at its last collection with the memory it is a share of.</summary>
+    /// <param name="memoryLoadBytes"><see cref="GCMemoryInfo.MemoryLoadBytes"/>.</param>
+    /// <param name="highMemoryLoadThresholdBytes"><see cref="GCMemoryInfo.HighMemoryLoadThresholdBytes"/>.</param>
+    /// <param name="gcConfiguration"><see cref="System.GC.GetConfigurationVariables"/>.</param>
+    /// <remarks>
+    /// Not <see cref="GCMemoryInfo.TotalAvailableMemoryBytes"/>: that is the GC heap hard limit once one is set, and in a container
+    /// with a memory limit the runtime sets one by default at 75% of that limit. The memory load and the high memory load threshold
+    /// are both percentages of physical memory or the container limit, the threshold of the <c>GCHighMemPercent</c> the runtime applies
+    /// (dotnet/runtime v10.0.13, gc.cpp: GCHeap::GetMemoryInfo and gc_heap::compute_memory_settings).
+    /// </remarks>
+    internal static GcMemoryLoad FromRecorded(long memoryLoadBytes, long highMemoryLoadThresholdBytes, IReadOnlyDictionary<string, object> gcConfiguration)
+    {
+        long highMemoryPercent = gcConfiguration.TryGetValue("GCHighMemPercent", out object? value) && value is long percent ? percent : 0;
+        return new(memoryLoadBytes, highMemoryPercent > 0 && highMemoryLoadThresholdBytes > 0 ? highMemoryLoadThresholdBytes * 100 / highMemoryPercent : 0);
+    }
+}
 
 internal sealed class GcRegionRuntime : IGcRegionRuntime
 {
@@ -37,6 +55,6 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
     public GcMemoryLoad GetMemoryLoad()
     {
         GCMemoryInfo info = System.GC.GetGCMemoryInfo();
-        return new(info.MemoryLoadBytes, info.TotalAvailableMemoryBytes);
+        return GcMemoryLoad.FromRecorded(info.MemoryLoadBytes, info.HighMemoryLoadThresholdBytes, System.GC.GetConfigurationVariables());
     }
 }

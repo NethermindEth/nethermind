@@ -360,8 +360,8 @@ public class GCKeeper : IDisposable
         GcMemoryLoad load = _runtime.GetMemoryLoad();
         int unconditional = _gcStrategy.CollectionsPerUnconditionalDecommit;
         DecommitDecision decision =
-            load.TotalAvailableMemoryBytes <= 0 ? DecommitDecision.LoadUnknown
-            : load.MemoryLoadBytes * 100 >= load.TotalAvailableMemoryBytes * loadPercent ? DecommitDecision.Pressure
+            load.TotalMemoryBytes <= 0 ? DecommitDecision.LoadUnknown
+            : load.MemoryLoadBytes * 100 >= load.TotalMemoryBytes * loadPercent ? DecommitDecision.Pressure
             : unconditional >= 0 && payloadsSinceDecommit >= unconditional ? DecommitDecision.SafetyNet
             : DecommitDecision.Skip;
 
@@ -380,8 +380,8 @@ public class GCKeeper : IDisposable
 
     private static string DescribeDecommitDecision(DecommitDecision decision, GcMemoryLoad load, int loadPercent, int unconditional, long payloads)
     {
-        string memory = load.TotalAvailableMemoryBytes > 0
-            ? $"memory load {load.MemoryLoadBytes * 100.0 / load.TotalAvailableMemoryBytes:F0}% of {load.TotalAvailableMemoryBytes / (1024.0 * 1024 * 1024):F1} GiB"
+        string memory = load.TotalMemoryBytes > 0
+            ? $"memory load {load.MemoryLoadBytes * 100.0 / load.TotalMemoryBytes:F0}% of {load.TotalMemoryBytes / (1024.0 * 1024 * 1024):F1} GiB"
             : "memory load unknown";
         return decision switch
         {

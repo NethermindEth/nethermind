@@ -472,7 +472,7 @@ public class GCKeeperTests
     public async Task Due_decommit_runs_only_under_memory_pressure([Values(30, 69, 70, 95)] long memoryLoadPercent)
     {
         IGCStrategy strategy = CreatePressureStrategy(interval: 25, loadPercent: 70, unconditional: 300);
-        RegionRuntime runtime = new() { MemoryLoadBytes = memoryLoadPercent, TotalAvailableMemoryBytes = 100 };
+        RegionRuntime runtime = new() { MemoryLoadBytes = memoryLoadPercent, TotalMemoryBytes = 100 };
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
 
         List<int> decommits = await RunPayloads(keeper, strategy, runtime, 100);
@@ -489,7 +489,7 @@ public class GCKeeperTests
     public async Task Skipped_decommit_stays_due_and_runs_once_pressure_appears()
     {
         IGCStrategy strategy = CreatePressureStrategy(interval: 25, loadPercent: 70, unconditional: 300);
-        RegionRuntime runtime = new() { TotalAvailableMemoryBytes = 100 };
+        RegionRuntime runtime = new() { TotalMemoryBytes = 100 };
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
 
         // Pressure only at payload 41: the decommit due since 25 runs there, and the next is due 25 payloads later.
@@ -502,7 +502,7 @@ public class GCKeeperTests
     public async Task Safety_net_decommits_without_pressure([Values(-1, 20, 3)] int unconditional)
     {
         IGCStrategy strategy = CreatePressureStrategy(interval: 5, loadPercent: 70, unconditional: unconditional);
-        RegionRuntime runtime = new() { MemoryLoadBytes = 10, TotalAvailableMemoryBytes = 100 };
+        RegionRuntime runtime = new() { MemoryLoadBytes = 10, TotalMemoryBytes = 100 };
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
 
         List<int> decommits = await RunPayloads(keeper, strategy, runtime, 60);
@@ -520,7 +520,7 @@ public class GCKeeperTests
     public async Task Disabled_decommit_never_runs_nor_reads_memory()
     {
         IGCStrategy strategy = CreatePressureStrategy(interval: -1, loadPercent: 70, unconditional: 1);
-        RegionRuntime runtime = new() { MemoryLoadBytes = 100, TotalAvailableMemoryBytes = 100 };
+        RegionRuntime runtime = new() { MemoryLoadBytes = 100, TotalMemoryBytes = 100 };
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
 
         List<int> decommits = await RunPayloads(keeper, strategy, runtime, 50);
@@ -536,7 +536,7 @@ public class GCKeeperTests
     public async Task Without_threshold_or_known_memory_a_due_decommit_runs([Values] bool unknownMemory)
     {
         IGCStrategy strategy = CreatePressureStrategy(interval: 25, loadPercent: unknownMemory ? 70 : 0, unconditional: -1);
-        RegionRuntime runtime = new() { MemoryLoadBytes = 0, TotalAvailableMemoryBytes = unknownMemory ? 0 : 100 };
+        RegionRuntime runtime = new() { MemoryLoadBytes = 0, TotalMemoryBytes = unknownMemory ? 0 : 100 };
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
 
         List<int> decommits = await RunPayloads(keeper, strategy, runtime, 50);
@@ -552,7 +552,7 @@ public class GCKeeperTests
     public async Task Recommit_follows_only_a_decommit_that_runs([Values] bool pressure)
     {
         IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
-        RegionRuntime runtime = new() { MemoryLoadBytes = pressure ? 90 : 10, TotalAvailableMemoryBytes = 100 };
+        RegionRuntime runtime = new() { MemoryLoadBytes = pressure ? 90 : 10, TotalMemoryBytes = 100 };
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
 
         await keeper.ScheduleGCInternal(throttle: false);
@@ -570,7 +570,7 @@ public class GCKeeperTests
     {
         IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
         strategy.PostBlockDelayMs.Returns(1500);
-        RegionRuntime runtime = new() { MemoryLoadBytes = 10, TotalAvailableMemoryBytes = 100 };
+        RegionRuntime runtime = new() { MemoryLoadBytes = 10, TotalMemoryBytes = 100 };
         List<int> delays = [];
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, (milliseconds, _) =>
         {
@@ -602,7 +602,7 @@ public class GCKeeperTests
     {
         List<string> infos = [];
         IGCStrategy strategy = CreatePressureStrategy(interval: 5, loadPercent: 70, unconditional: 15);
-        RegionRuntime runtime = new() { TotalAvailableMemoryBytes = 100 };
+        RegionRuntime runtime = new() { TotalMemoryBytes = 100 };
         using GCKeeper keeper = new(strategy, CreateInfoLogManager(infos), runtime, static _ => { }, static (_, _) => Task.FromResult(true));
 
         // No pressure up to 40: skips at 5-14, safety net at 15, skips at 20-29, safety net at 30; pressure from 41 on.
@@ -625,7 +625,7 @@ public class GCKeeperTests
     {
         List<string> infos = [];
         IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
-        RegionRuntime runtime = new() { MemoryLoadBytes = 90, TotalAvailableMemoryBytes = 100 };
+        RegionRuntime runtime = new() { MemoryLoadBytes = 90, TotalMemoryBytes = 100 };
         bool cancelIdleWait = true;
         using GCKeeper keeper = new(strategy, CreateInfoLogManager(infos), runtime, static _ => { }, (_, _) => Task.FromResult(!cancelIdleWait));
 
@@ -846,12 +846,12 @@ public class GCKeeperTests
             if (EndFailure is not null) throw EndFailure;
         }
         public long MemoryLoadBytes { get; set; }
-        public long TotalAvailableMemoryBytes { get; set; } = 100;
+        public long TotalMemoryBytes { get; set; } = 100;
         public int MemoryReads { get; private set; }
         public GcMemoryLoad GetMemoryLoad()
         {
             MemoryReads++;
-            return new(MemoryLoadBytes, TotalAvailableMemoryBytes);
+            return new(MemoryLoadBytes, TotalMemoryBytes);
         }
     }
 
