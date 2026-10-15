@@ -32,6 +32,7 @@ public sealed record HeadSnapshot(StatusMessageV2 Status, Hash256? FullHeadRoot,
 }
 
 /// <summary>The post-state of one head for the Beacon API, taken once by the first reader that asks for it and shared by every later one.</summary>
+/// <remarks>A take that ends with no state or a fault is not kept, so the next reader takes it again.</remarks>
 internal sealed class DeferredHeadState
 {
     private readonly Func<Task<ForkedBeaconState?>>? _take;
@@ -47,12 +48,12 @@ internal sealed class DeferredHeadState
     /// <summary>The state if a take has ended with it, otherwise <c>null</c>.</summary>
     public ForkedBeaconState? Taken => Volatile.Read(ref _taken) is { IsCompletedSuccessfully: true } taken ? taken.Result : null;
 
-    /// <summary>Starts the take unless it has already started.</summary>
+    /// <summary>Starts the take unless one is running or has ended with the state.</summary>
     public Task<ForkedBeaconState?> TakeAsync()
     {
         lock (_lock)
         {
-            if (_take is not null && _taken is null)
+            if (_take is not null && (_taken is null || _taken is { IsCompleted: true } ended && (!ended.IsCompletedSuccessfully || ended.Result is null)))
             {
                 _taken = _take();
             }

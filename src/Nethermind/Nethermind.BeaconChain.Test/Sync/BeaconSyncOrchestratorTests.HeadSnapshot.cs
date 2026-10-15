@@ -88,4 +88,31 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(second, Is.Not.Null.And.SameAs(first), "every read of one head shares one copy");
         Assert.That(published.State, Is.SameAs(first));
     }
+
+    [Test]
+    public async Task A_head_state_copy_that_finds_no_state_is_taken_again_by_the_next_reader([Values] bool throws)
+    {
+        HeadSnapshotHolder snapshots = new() { CaptureState = true };
+        Harness harness = CreateHarness(headSnapshots: snapshots);
+        int copies = 0;
+        harness.Orchestrator.ApiStateReader = _ => Interlocked.Increment(ref copies) switch
+        {
+            1 when throws => throw new InvalidOperationException("state evicted"),
+            1 => null,
+            _ => new ForkedBeaconState.OfFulu(new BeaconStateFulu()),
+        };
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot + 1, finalizedEpoch: 3);
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        DeferredHeadState deferred = snapshots.Current!.DeferredState!;
+
+        ForkedBeaconState? missed = await deferred.TakeAsync();
+        ForkedBeaconState? retried = await deferred.TakeAsync();
+        ForkedBeaconState? kept = await deferred.TakeAsync();
+
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(missed, Is.Null);
+        Assert.That(retried, Is.Not.Null, "a copy that found no state must not pin the head's API state to null");
+        Assert.That(kept, Is.SameAs(retried));
+        Assert.That(copies, Is.EqualTo(2));
+    }
 }
