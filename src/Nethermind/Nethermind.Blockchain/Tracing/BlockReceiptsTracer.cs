@@ -15,7 +15,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter
+public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter, ITxDiscardAwareTracer
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
@@ -402,6 +402,17 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
 
         // Restore receipt gas from remaining receipts (post-refund)
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
+    }
+
+    /// <summary>
+    /// Drops the last traced transaction: its receipt, its block gas and its receipt index, and whatever the wrapped
+    /// block tracer recorded for it when that tracer is an <see cref="ITxDiscardAwareTracer"/>.
+    /// </summary>
+    /// <remarks>For a block producer that leaves an executed transaction out of the block.</remarks>
+    public void DiscardLastTx()
+    {
+        Restore(_txReceipts.Count - 1);
+        if (_otherTracer is ITxDiscardAwareTracer discardAware) discardAware.DiscardLastTx();
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>

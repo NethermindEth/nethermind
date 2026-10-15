@@ -161,7 +161,7 @@ public partial class EthRpcModuleTests
         // keeps accepting a lone cap, as its spec fixtures expect.
         JToken? error = JToken.Parse(response)["error"];
         if (method == "eth_call")
-            Assert.That(error?["message"]?.Value<string>(), Does.Contain(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction), response);
+            Assert.That(error?["message"]?.Value<string>(), Does.Contain(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes), response);
         else
             Assert.That(error, Is.Null, response);
     }
