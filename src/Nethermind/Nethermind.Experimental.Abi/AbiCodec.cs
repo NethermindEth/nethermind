@@ -5,7 +5,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Experimental.Abi;
 
-public class AbiException : Exception;
+public class AbiException(Exception? innerException = null) : Exception(null, innerException);
 
 public static class AbiCodec
 {
@@ -26,13 +26,20 @@ public static class AbiCodec
 
     public static T Decode<T>(AbiSignature<T> signature, ReadOnlySpan<byte> source)
     {
-        BinarySpanReader r = new(source);
+        try
+        {
+            BinarySpanReader r = new(source);
 
-        ReadOnlySpan<byte> id = r.ReadBytes(AbiSignature.MethodIdLength);
-        if (!Bytes.AreEqual(id, signature.MethodId())) throw new AbiException();
+            ReadOnlySpan<byte> id = r.ReadBytes(AbiSignature.MethodIdLength);
+            if (!Bytes.AreEqual(id, signature.MethodId())) throw new AbiException();
 
-        T arg = signature.Abi.Read(ref r);
+            T arg = signature.Abi.Read(ref r);
 
-        return arg;
+            return arg;
+        }
+        catch (Exception e) when (e is not AbiException)
+        {
+            throw new AbiException(e);
+        }
     }
 }
