@@ -99,6 +99,7 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || Validate1559(header, parent, spec, ref error))
                    && ValidateBlobGasFields(header, spec, ref error)
                    && (orphaned || ValidateExcessBlobGas(header, parent, spec, ref error))
+                   && ValidateParentBeaconBlockRoot(header, spec, ref error)
                    && ValidateRequestsHash(header, spec, ref error)
                    && ValidateBlockAccessListHash(header, spec, ref error)
                    && ValidateSlotNumber(header, spec, ref error)
@@ -107,6 +108,26 @@ namespace Nethermind.Consensus.Validators
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
             Validate<OnFlag>(header, null, false, out error, validateHash: true);
+
+        protected virtual bool ValidateParentBeaconBlockRoot(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsBeaconBlockRootAvailable)
+            {
+                if (header.ParentBeaconBlockRoot is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("ParentBeaconBlockRoot field is not set.");
+                    error = BlockErrorMessages.MissingParentBeaconBlockRoot;
+                    return false;
+                }
+            }
+            else if (header.ParentBeaconBlockRoot is not null)
+            {
+                if (_logger.IsWarn) _logger.Warn("ParentBeaconBlockRoot field should not have value.");
+                error = BlockErrorMessages.ParentBeaconBlockRootNotEnabled;
+                return false;
+            }
+            return true;
+        }
 
         protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {

@@ -465,6 +465,33 @@ public class Eip8360Tests : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(true, TestName = "PAY draining a TCREATE account refills state gas")]
+    [TestCase(false, TestName = "PAY crediting a TCREATE account charges state gas")]
+    public void Pay_follows_the_eip_tables(bool fromTransientCreate)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(EnabledSpec) { IsEip5920Enabled = true };
+        byte[] init = fromTransientCreate ? Eip5920Tests.Pay(Prepare.EvmCode, Sink, 5).STOP().Done : EmptyInit;
+        Address tcreated = TCreateAddress(Factory, init);
+        Prepare factory = Prepare.EvmCode.TCreate(init, Salt, (UInt256)(fromTransientCreate ? 5 : 0)).Op(Instruction.POP);
+        if (!fromTransientCreate)
+        {
+            Eip5920Tests.Pay(factory, tcreated, 4).Op(Instruction.POP);
+        }
+
+        InstallCode(Factory, factory.STOP().Done, 100);
+
+        TestAllTracerWithOutput tracer = Run(spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(fromTransientCreate ? 0UL : (ulong)GasCostOf.NewAccountState), "state gas");
+            Assert.That(tracer.Refund, Is.EqualTo(fromTransientCreate ? (long)Eip8038Constants.AccountWrite : 0L), "ACCOUNT_WRITE refund");
+            Assert.That(TestState.GetBalance(Sink), Is.EqualTo((UInt256)(fromTransientCreate ? 6 : 1)));
+            AssertFinalized(tcreated, (UInt256)(fromTransientCreate ? 0 : 4));
+        }
+    }
+
     [Test]
     public void Balance_tables_apply_without_instruction_tracing([Values] bool traced)
     {

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Zkvm.Abstractions;
 
@@ -59,7 +58,7 @@ public static unsafe partial class EvmInstructions
         Sp1MulModOperands operands;
         operands.Multiplier = b;
         operands.Modulus = m;
-        Sp1Uint256MulMod((ulong*)&product, (ulong*)&operands);
+        Accelerators.UInt256MulMod((ulong*)&product, (ulong*)&operands);
         result = product;
     }
 
@@ -68,10 +67,6 @@ public static unsafe partial class EvmInstructions
         public UInt256 Multiplier;
         public UInt256 Modulus;
     }
-
-    /// <summary>SP1's <c>x = x * y mod m</c>, with <c>m</c> the 32 bytes after <c>y</c>.</summary>
-    [DllImport("__Internal", EntryPoint = "zkvm_uint256_mulmod", ExactSpelling = true), SuppressGCTransition]
-    private static extern void Sp1Uint256MulMod(ulong* x, ulong* y);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)

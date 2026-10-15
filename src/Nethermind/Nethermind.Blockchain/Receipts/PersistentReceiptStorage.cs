@@ -25,6 +25,12 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
     {
+        /// <summary>
+        /// Key of the lowest-inserted-receipt-block pointer kept in <see cref="ReceiptsColumns.Default"/>. That column
+        /// also holds pre-migration receipts keyed by transaction hash, so the legacy lookup must never decode it.
+        /// </summary>
+        public static readonly Hash256 LowestInsertedReceiptBlockKey = Keccak.Zero;
+
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
         private readonly bool _eip7668EverEnabled;
@@ -381,6 +387,9 @@ namespace Nethermind.Blockchain.Receipts
         // Find receipt stored with old - obsolete format.
         private TxReceipt FindReceiptObsolete(Hash256 hash)
         {
+            // The legacy column shares its keyspace with these metadata entries; neither key is a transaction hash.
+            if (hash == LowestInsertedReceiptBlockKey || hash == MigrationBlockNumberKey) return null;
+
             Span<byte> receiptData = _defaultColumn.GetSpan(hash);
             try
             {
