@@ -396,6 +396,8 @@ public class HashesOnlyBlockReaderTests
             Build.A.Transaction.WithNonce(0).WithType(TxType.Legacy).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
             Build.A.Transaction.WithNonce(0).WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
         await chain.AddBlock();
+        // The reader reads the block store directly, so the deferred body writes must have landed first.
+        chain.Container.Resolve<IDeferredBlockDataWriter>().Drain();
         HashesOnlyBlockReader reader = chain.Container.Resolve<HashesOnlyBlockReader>();
         BlockForRpcFactory factory = new();
 
