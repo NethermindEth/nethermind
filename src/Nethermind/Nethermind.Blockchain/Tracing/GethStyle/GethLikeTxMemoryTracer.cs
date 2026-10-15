@@ -46,6 +46,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         _resultSize += GethLikeTxTraceConverter.EstimateEntrySize(entry, storageCount);
     }
 
+    /// <inheritdoc/>
     public override void ReportOperationError(EvmExceptionType error)
     {
         if (CurrentTraceEntry?.Opcode == "INVALID")

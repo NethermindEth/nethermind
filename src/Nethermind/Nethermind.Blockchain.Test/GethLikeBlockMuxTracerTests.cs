@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -13,14 +14,14 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Blockchain.Test;
 
 public class GethLikeBlockMuxTracerTests
 {
-    [TestCase(0)]
-    [TestCase(2)]
-    public void Rejects_child_trace_count_mismatch(int count)
+    [Test]
+    public void Rejects_child_trace_count_mismatch([Values(0, 2)] int count)
     {
         CountingResource resource = new();
         Child child = new(count, resource);
@@ -31,9 +32,8 @@ public class GethLikeBlockMuxTracerTests
         Assert.That(resource.Disposals, Is.EqualTo(count));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Releases_traces_before_child_disposal_without_disposing_borrowed_collection(bool buildResult)
+    [Test]
+    public void Releases_traces_before_child_disposal_without_disposing_borrowed_collection([Values] bool buildResult)
     {
         CountingResource resource = new();
         Child child = new(1, resource);
@@ -71,6 +71,47 @@ public class GethLikeBlockMuxTracerTests
         }
     }
 
+    [Test]
+    public void Initialization_failure_survives_result_cleanup_failure([Values] bool constructorFailure, [Values] bool argumentFailure, [Values] bool existingDiagnostic)
+    {
+        Exception original = argumentFailure ? new ArgumentException("original failure") : new InvalidDataException("original failure");
+        object diagnostic = new();
+        if (existingDiagnostic) original.Data["MuxCleanupException"] = diagnostic;
+        CountingResource resource = new();
+        ITxTracer started = Substitute.For<ITxTracer>();
+        Child failingResult = new(0, resource) { FailResult = true, StartResult = started };
+        Child other = new(1, resource);
+        Child failingStart = new(0, resource) { StartFailure = original };
+        GethLikeBlockMuxTracer? mux = null;
+        Exception? actual = Assert.Catch(() =>
+        {
+            mux = new GethLikeBlockMuxTracer(GethTraceOptions.Default with
+            {
+                TracerConfig = JsonSerializer.Deserialize<JsonElement>("{\"first\":{},\"second\":{},\"last\":{}}")
+            }, options => options.Tracer switch
+            {
+                "first" => failingResult,
+                "second" => other,
+                _ => constructorFailure ? throw original : failingStart
+            });
+            mux.StartNewTxTrace(Build.A.Transaction.TestObject);
+        });
+        mux?.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, !constructorFailure && argumentFailure ? Is.TypeOf<InvalidDataException>() : Is.SameAs(original));
+            if (!constructorFailure && argumentFailure) Assert.That(actual!.InnerException, Is.SameAs(original));
+            Assert.That(actual!.Message, Is.EqualTo(original.Message));
+            Assert.That(original.Data["MuxCleanupException"], existingDiagnostic ? Is.SameAs(diagnostic) : Is.TypeOf<InvalidOperationException>());
+            Assert.That(resource.Disposals, Is.EqualTo(1));
+            Assert.That(failingResult.Disposals, Is.EqualTo(1));
+            Assert.That(other.Disposals, Is.EqualTo(1));
+            Assert.That(failingStart.Disposals, Is.EqualTo(constructorFailure ? 0 : 1));
+            Assert.That(other.Results.Disposals, Is.Zero);
+        }
+        started.Received(constructorFailure ? 0 : 1).Dispose();
+    }
+
     private static GethLikeBlockMuxTracer Create(Child child) => new(GethTraceOptions.Default with
     {
         TracerConfig = JsonSerializer.Deserialize<JsonElement>("{\"child\":{}}")
@@ -102,10 +143,12 @@ public class GethLikeBlockMuxTracerTests
 
         public BorrowedResults Results { get; }
         public bool FailResult { get; init; }
+        public Exception? StartFailure { get; init; }
+        public ITxTracer StartResult { get; init; } = NullTxTracer.Instance;
         public int Disposals { get; private set; }
         public bool IsTracingRewards => false;
         public void StartNewBlockTrace(Block block) { }
-        public ITxTracer StartNewTxTrace(Transaction? tx) => NullTxTracer.Instance;
+        public ITxTracer StartNewTxTrace(Transaction? tx) => StartFailure is null ? StartResult : throw StartFailure;
         public void EndTxTrace() { }
         public void EndBlockTrace() { }
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }

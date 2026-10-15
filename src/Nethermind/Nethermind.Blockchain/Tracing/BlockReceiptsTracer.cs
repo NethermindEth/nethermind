@@ -313,6 +313,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) =>
         _currentTxTracer.ReportActionEnd(gas, output);
 
+    /// <inheritdoc/>
     public void ReportActionErrorDetails(string error) => _currentTxTracer.ReportActionErrorDetails(error);
 
     public void ReportActionError(EvmExceptionType exceptionType) =>

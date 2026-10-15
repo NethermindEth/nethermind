@@ -21,6 +21,7 @@ namespace Nethermind.Consensus.Tracing;
 internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, IDisposable
 {
     internal const string TracerName = "muxTracer";
+    private const string CleanupExceptionKey = "MuxCleanupException";
 
     private readonly Hash256? _txHash;
     private readonly CompositeBlockTracer _composite = new();
@@ -44,9 +45,9 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
                 _composite.Add(child);
             }
         }
-        catch
+        catch (Exception exception)
         {
-            Dispose();
+            DisposeAfterFailure(this, exception);
             throw;
         }
     }
@@ -104,8 +105,8 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
         }
         catch (Exception exception)
         {
-            foreach (ITxTracer tracer in started) tracer.Dispose();
-            Dispose();
+            foreach (ITxTracer tracer in started) DisposeAfterFailure(tracer, exception);
+            DisposeAfterFailure(this, exception);
             if (exception is ArgumentException or JsonException or FileNotFoundException)
                 throw new InvalidDataException(exception.Message, exception);
             throw;
@@ -178,6 +179,19 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
             }
         }
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private static void DisposeAfterFailure(IDisposable disposable, Exception original)
+    {
+        try
+        {
+            disposable.Dispose();
+        }
+        catch (Exception cleanupFailure)
+        {
+            // Keep cleanup evidence without replacing the error that caused initialization to fail.
+            original.Data[CleanupExceptionKey] ??= cleanupFailure;
+        }
     }
 
     /// <inheritdoc/>

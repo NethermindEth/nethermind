@@ -137,15 +137,15 @@ public static partial class EvmInstructions
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        if (traceError) TraceCopyMemoryError(vm, in destOffset, in size);
+        if (traceError) TraceCopyMemoryError(vm, in destOffset, in size, TGasPolicy.GetRemainingGas(in gas));
         return EvmExceptionType.OutOfGas;
     AccessViolation:
-        if (traceError) TraceCopyMemoryError(vm, in destOffset, in size);
+        if (traceError) TraceCopyMemoryError(vm, in destOffset, in size, TGasPolicy.GetRemainingGas(in gas));
         return EvmExceptionType.AccessViolation;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void TraceCopyMemoryError<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in UInt256 offset, in UInt256 length)
+    private static void TraceCopyMemoryError<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in UInt256 offset, in UInt256 length, ulong remainingGas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Geth sizes memory before dynamic gas and return-data bounds checks.
@@ -153,6 +153,15 @@ public static partial class EvmInstructions
             vm.TraceActionErrorDetails("gas uint64 overflow");
         else if (size > 0x1FFFFFFFE0UL)
             vm.TraceActionErrorDetails("out of gas: gas uint64 overflow");
+        else if (size > EvmPooledMemory.MaxMemorySize)
+        {
+            // Price beyond the host allocation limit without expanding memory; RPC gas can exceed block limits.
+            ulong words = (size + 31) / 32;
+            ulong oldWords = vm.VmState.Memory.Size / 32;
+            ulong expansion = words * GasCostOf.Memory + words * words / 512
+                - oldWords * GasCostOf.Memory - oldWords * oldWords / 512;
+            if (expansion > remainingGas) vm.TraceActionErrorDetails("out of gas");
+        }
     }
 
     /// <summary>

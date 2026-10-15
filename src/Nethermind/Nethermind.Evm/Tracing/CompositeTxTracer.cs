@@ -466,6 +466,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
+    /// <inheritdoc/>
     public void ReportActionErrorDetails(string error)
     {
         for (int index = 0; index < _txTracers.Count; index++)
