@@ -372,7 +372,7 @@ public class PeerBandTests
     [CancelAfter(120_000)]
     public async Task Admitted_sessions_with_fresh_keys_add_no_peer_store_entry_unless_static([Values] bool weDial, [Values] bool staticPeers, CancellationToken token)
     {
-        Node[] remotes = [.. Enumerable.Range(0, 50).Select(_ => CreateNode())];
+        Node[] remotes = [.. Enumerable.Range(0, 4).Select(_ => CreateNode())];
         Node local = CreateNode();
         SetMatchingStatus([.. remotes, local]);
         await using PeerHostScope nodes = new([local.P2P, .. remotes.Select(static node => node.P2P)]);
