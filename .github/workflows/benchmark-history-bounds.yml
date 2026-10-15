@@ -42,14 +42,17 @@ jobs:
           git -C bindings rev-parse HEAD > results/bindings-sha.txt
           dotnet --info > results/dotnet.txt
           lscpu > results/cpu.txt
+          echo "SOURCE_DATE_EPOCH=$(git -C baseline log -1 --format=%ct)" >> "$GITHUB_ENV"
           echo "RocksDbBindingsProject=$GITHUB_WORKSPACE/bindings/src/Nethermind.RocksDbBindings/Nethermind.RocksDbBindings.csproj" >> "$GITHUB_ENV"
       - name: Run database and history tests with the binding PR
         working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
-          dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release -p:RocksDbBindingsProject="$RocksDbBindingsProject" -- --report-trx --results-directory "$GITHUB_WORKSPACE/results/db-tests"
-          dotnet test --project src/Nethermind/Nethermind.State.Flat.History.Test/Nethermind.State.Flat.History.Test.csproj -c Release -p:RocksDbBindingsProject="$RocksDbBindingsProject" -- --report-trx --results-directory "$GITHUB_WORKSPACE/results/history-tests"
+          for project in Nethermind.Db.Test Nethermind.State.Flat.History.Test; do
+            dotnet build "src/Nethermind/$project/$project.csproj" -c Release -p:RocksDbBindingsProject="$RocksDbBindingsProject"
+            dotnet "src/Nethermind/artifacts/bin/$project/release/$project.dll" | tee "$GITHUB_WORKSPACE/results/$project.log"
+          done
       - name: Prepare the same harness for unchanged master
         shell: bash
         run: |
