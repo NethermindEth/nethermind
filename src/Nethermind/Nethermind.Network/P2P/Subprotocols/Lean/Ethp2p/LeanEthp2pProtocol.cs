@@ -55,10 +55,12 @@ public static class LeanEthp2pProtocol
     /// <summary>Inbound unidirectional streams per connection: both control streams, one per live response, and broadcast.</summary>
     public const int MaxInboundStreams = 2 + LeanProtocol.MaxRequestsPerPeer + MaxBroadcastStreams;
 
-    /// <summary>Per-stream QUIC receive credit, in bytes; reads replenish it as bounded application buffers drain.</summary>
+    /// <summary>Per-stream receive ceiling; the smaller shared connection window currently limits aggregate credit.</summary>
     public const int StreamReceiveWindow = 2 * 1024 * 1024;
 
     /// <summary>Connection QUIC receive credit, reserved from the authenticated node's shared transport budget.</summary>
+    /// <remarks>Leaves room for maximum-proof reassembly and decoding within the 18 MiB node budget. The fixed window limits
+    /// high-RTT throughput (about 5 MiB/s at 100 ms); increasing it requires rebalancing that shared budget.</remarks>
     public const int ConnectionReceiveWindow = 512 * 1024;
 
     /// <summary>Encodes <c>U8(message_id) || U32(payload_length) || payload</c>.</summary>
