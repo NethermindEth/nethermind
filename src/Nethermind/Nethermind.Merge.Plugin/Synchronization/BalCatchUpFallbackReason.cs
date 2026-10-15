@@ -9,6 +9,9 @@ public enum BalCatchUpFallbackReason
     /// <summary>No list matching the header's commitment was attached.</summary>
     NoBlockAccessList,
 
+    /// <summary>The list holds more items than the block's gas limit allows.</summary>
+    ItemLimitExceeded,
+
     /// <summary>The block has transactions but its receipts are not stored.</summary>
     NoReceipts,
 

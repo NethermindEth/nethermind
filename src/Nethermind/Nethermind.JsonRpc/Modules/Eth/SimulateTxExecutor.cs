@@ -24,7 +24,8 @@ public class SimulateTxExecutor<TTrace>(
     ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
     ulong? secondsPerSlot = null,
-    bool readLoneBlobFeeCapAsAbsent = true)
+    bool readLoneBlobFeeCapAsAbsent = true,
+    bool callSemantics = false)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
@@ -72,6 +73,8 @@ public class SimulateTxExecutor<TTrace>(
                         calls[i] = new TransactionWithSourceDetails
                         {
                             HadGasLimitInRequest = hadGasLimitInRequest,
+                            // The block checks the gas as requested, before the conversion clamped it to the RPC gas cap.
+                            GasLimitToFitBlock = !callSemantics && hadGasLimitInRequest ? asLegacy!.Gas : null,
                             HadNonceInRequest = hadNonceInRequest,
                             Transaction = tx
                         };
