@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Linq;
@@ -218,6 +219,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
             List<Multiaddress> resolved = [];
             foreach (Multiaddress addr in addrs)
             {
+                int count = resolved.Count;
                 try
                 {
                     await foreach (Multiaddress address in resolver.Resolve(addr))
@@ -230,6 +232,13 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                     _resolutionLogger?.LogDebug(e, "Failed to resolve {Address}", addr);
                     failures.Add((addr, e));
                 }
+
+                // A failed address query answers no addresses, so these are the only causes left for a name that resolved to none.
+                List<SocketException> queryFailures = lookup.TakeAddressFailures();
+                if (resolved.Count == count)
+                {
+                    failures.AddRange(queryFailures.Select(e => (addr, (Exception)e)));
+                }
             }
 
             return resolved;
@@ -241,6 +250,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
     private sealed class CountedDnsLookup(IDnsLookup inner, int maxQueries, TimeSpan deadline) : IDnsLookup, IDisposable
     {
         private readonly CancellationTokenSource _deadline = new(deadline);
+        private readonly ConcurrentQueue<SocketException> _addressFailures = new();
         private int _queries;
 
         public Task<IEnumerable<string>> QueryTxtAsync(string name) => Count() ? Bounded(inner.QueryTxtAsync(name), name) : Refuse<string>(name);
@@ -250,6 +260,18 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         public Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => Count() ? OrNone(Bounded(inner.QueryAaaaAsync(name), name)) : Refuse<IPAddress>(name);
 
         public void Dispose() => _deadline.Dispose();
+
+        /// <summary>The address queries that failed since the last call, which answered no addresses instead.</summary>
+        public List<SocketException> TakeAddressFailures()
+        {
+            List<SocketException> failures = [];
+            while (_addressFailures.TryDequeue(out SocketException? failure))
+            {
+                failures.Add(failure);
+            }
+
+            return failures;
+        }
 
         // The library's resolver takes no token, so the deadline stops the wait; the query itself is only observed.
         private async Task<IEnumerable<T>> Bounded<T>(Task<IEnumerable<T>> query, string name)
@@ -266,14 +288,15 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
             }
         }
 
-        private static async Task<IEnumerable<IPAddress>> OrNone(Task<IEnumerable<IPAddress>> query)
+        private async Task<IEnumerable<IPAddress>> OrNone(Task<IEnumerable<IPAddress>> query)
         {
             try
             {
                 return await query;
             }
-            catch (SocketException)
+            catch (SocketException e)
             {
+                _addressFailures.Enqueue(e);
                 return [];
             }
         }
