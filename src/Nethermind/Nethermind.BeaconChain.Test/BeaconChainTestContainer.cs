@@ -56,17 +56,20 @@ internal static class BeaconChainTestContainer
             .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)));
         ISpecProvider specProvider = Substitute.For<ISpecProvider>(); // registered by NethermindModule in production
         specProvider.ChainId.Returns(chainId);
-        BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
-        if (config?.GloasForkEpoch is { } epoch && epoch >= spec.FuluForkEpoch)
-            spec = spec with { GloasForkEpoch = epoch };
-        if (spec.GloasForkEpoch != Presets.FarFutureEpoch)
+        // Resolved on first use so an unsupported chain id fails where production fails: resolving BeaconChainSpec.
+        Lazy<ulong> gloasActivation = new(() =>
         {
-            ulong activation = spec.GenesisTime + spec.GloasForkEpoch * spec.SlotsPerEpoch * spec.SecondsPerSlot;
-            IReleaseSpec before = Substitute.For<IReleaseSpec>();
-            IReleaseSpec after = Substitute.For<IReleaseSpec>();
-            after.BlockLevelAccessListsEnabled.Returns(true);
-            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call => call.Arg<ForkActivation>().Timestamp >= activation ? after : before);
-        }
+            BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
+            if (config?.GloasForkEpoch is { } epoch && epoch >= spec.FuluForkEpoch)
+                spec = spec with { GloasForkEpoch = epoch };
+            return spec.GloasForkEpoch == Presets.FarFutureEpoch
+                ? ulong.MaxValue
+                : spec.GenesisTime + spec.GloasForkEpoch * spec.SlotsPerEpoch * spec.SecondsPerSlot;
+        });
+        IReleaseSpec beforeGloas = Substitute.For<IReleaseSpec>();
+        IReleaseSpec afterGloas = Substitute.For<IReleaseSpec>();
+        afterGloas.BlockLevelAccessListsEnabled.Returns(true);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call => call.Arg<ForkActivation>().Timestamp >= gloasActivation.Value ? afterGloas : beforeGloas);
         return new ContainerBuilder()
             .AddModule(new BeaconChainModule())
             .AddSingleton<IBeaconApiConfig>(new BeaconApiConfig())
