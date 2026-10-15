@@ -30,6 +30,37 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
     public Hash256 BulkSet(Hash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries) =>
         NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), log, bundle.WarmedNodes, addressHash, root.ValueHash256, entries);
 
+    /// <summary>Applies speculative updates without changing this store's pending output.</summary>
+    public void Update(NativeBulkSetState prepared, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    {
+        TransientResource transient = bundle.TryLeaseTransientResource() ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
+        try
+        {
+            NativePatriciaBulkSet.Update(this, prepared, log, transient.WarmedNodes, entries);
+        }
+        finally
+        {
+            transient.ReleaseLease();
+        }
+    }
+
+    /// <summary>Applies final corrections and hashes the prepared trie into this store's pending output.</summary>
+    public Hash256 Finish(NativeBulkSetState prepared, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    {
+        if (!bundle.TryLeaseReadOnlyBundle()) throw new ObjectDisposedException(nameof(SnapshotBundle));
+        TransientResource? transient = null;
+        try
+        {
+            transient = bundle.TryLeaseTransientResource() ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
+            return NativePatriciaBulkSet.Finish(this, prepared, _pending ??= NativePendingNodes.Rent(entries.Length), log, transient.WarmedNodes, entries);
+        }
+        finally
+        {
+            transient?.ReleaseLease();
+            bundle.ReleaseReadOnlyBundleLease();
+        }
+    }
+
     /// <inheritdoc/>
     /// <remarks>
     /// Skips the bundle's changes and its in-memory snapshots: each pins, through <see cref="Snapshot.LogPin"/> or the

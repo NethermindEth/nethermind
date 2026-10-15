@@ -17,7 +17,7 @@ mod warmed;
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-pub use bulk_set::{bulk_set, EMPTY_TREE_HASH};
+pub use bulk_set::{bulk_set, BulkSetState, EMPTY_TREE_HASH};
 pub use log::TrieNodeLog;
 pub use metrics::Metrics;
 pub use node::TreePath;
@@ -219,6 +219,167 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
     }
 }
 
+/// Creates an owned unhashed trie, to release with [`nm_patricia_bulk_state_free`]. Returns null for a null root or
+/// a panic. The root and optional address are copied; no node store or log is retained.
+///
+/// # Safety
+/// `root` must point to 32 readable bytes, and `address` must be null or point to 32 readable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_bulk_state_new(
+    root: *const [u8; 32],
+    address: *const [u8; 32],
+) -> *mut BulkSetState {
+    if root.is_null() {
+        return std::ptr::null_mut();
+    }
+    catch_unwind(AssertUnwindSafe(|| {
+        Box::into_raw(Box::new(BulkSetState::new(
+            *root,
+            address.as_ref().copied(),
+        )))
+    }))
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// Applies entries to `state` without hashing or publishing nodes. Input buffers and callbacks are used only during
+/// this call. Entries are reordered and must have unique keys. Returns 0 on success, -1 on panic, or an [`Error::code`].
+/// Failure invalidates the state, which must then be freed.
+///
+/// # Safety
+/// `state` must come from [`nm_patricia_bulk_state_new`], not be freed, and be exclusively accessed during this call.
+/// `log` must come from [`nm_patricia_log_new`], be the same log for every call on this state, and not be freed
+/// during the call. The caller must retain the base
+/// trie's nonpersisted nodes in the log between calls. `warmed` must be null or come from [`nm_patricia_warmed_new`]
+/// and not be reset or freed during this call. Nonempty `entries` and `values` must be valid for their lengths;
+/// `fetch` and `context` must be valid for the call.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_bulk_state_update(
+    state: *mut BulkSetState,
+    entries: *mut Entry,
+    entry_count: i32,
+    values: *const u8,
+    values_length: i32,
+    log: *const TrieNodeLog,
+    warmed: *const WarmedNodes,
+    fetch: FetchFn,
+    context: *mut c_void,
+) -> i32 {
+    let Some(state) = state.as_mut() else {
+        return Error::InvalidArgument.code();
+    };
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let log = log.as_ref().ok_or(Error::InvalidArgument)?;
+        let (entries, values) = bulk_state_inputs(entries, entry_count, values, values_length)?;
+        state.update(
+            &CallbackStore { fetch, context },
+            log,
+            warmed.as_ref(),
+            entries,
+            values,
+        )
+    }));
+    bulk_state_status(state, result)
+}
+
+/// Applies final corrections, then hashes the complete trie into `pending`, indexes its root in `log`, and writes
+/// its hash to `root_out`. The state is invalidated on success or failure, but its allocation still must be freed.
+/// Zero correction entries still finish the prepared trie. Returns 0, -1 on panic, or an [`Error::code`].
+///
+/// # Safety
+/// The state, buffers, log, warmed nodes, and callback have the same requirements as
+/// [`nm_patricia_bulk_state_update`]. `pending` must come from [`nm_patricia_pending_rent`] and remain alive for the
+/// call. `root_out` must point to 32 writable bytes. Neither `state` nor `pending` may be used concurrently with this
+/// call. Nodes written before a failure must not be published.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_bulk_state_finish(
+    state: *mut BulkSetState,
+    entries: *mut Entry,
+    entry_count: i32,
+    values: *const u8,
+    values_length: i32,
+    pending: *const PendingNodes,
+    log: *const TrieNodeLog,
+    warmed: *const WarmedNodes,
+    fetch: FetchFn,
+    context: *mut c_void,
+    root_out: *mut u8,
+) -> i32 {
+    let Some(state) = state.as_mut() else {
+        return Error::InvalidArgument.code();
+    };
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let log = log.as_ref().ok_or(Error::InvalidArgument)?;
+        let pending = pending.as_ref().ok_or(Error::InvalidArgument)?;
+        if root_out.is_null() {
+            return Err(Error::InvalidArgument);
+        }
+        let (entries, values) = bulk_state_inputs(entries, entry_count, values, values_length)?;
+        let root = state.finish(
+            &CallbackStore { fetch, context },
+            pending,
+            log,
+            warmed.as_ref(),
+            entries,
+            values,
+        )?;
+        std::ptr::copy_nonoverlapping(root.as_ptr(), root_out, root.len());
+        Ok(())
+    }));
+    bulk_state_status(state, result)
+}
+
+/// Releases an owned trie, whether prepared, finished, or invalidated. No log or node store is needed.
+///
+/// # Safety
+/// `state` must come from [`nm_patricia_bulk_state_new`], not have been freed, and not be in use.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_bulk_state_free(state: *mut BulkSetState) {
+    drop(Box::from_raw(state));
+}
+
+unsafe fn bulk_state_inputs<'a>(
+    entries: *mut Entry,
+    entry_count: i32,
+    values: *const u8,
+    values_length: i32,
+) -> Result<(&'a mut [Entry], &'a [u8]), Error> {
+    if entry_count < 0
+        || values_length < 0
+        || (entry_count > 0 && entries.is_null())
+        || (values_length > 0 && values.is_null())
+    {
+        return Err(Error::InvalidArgument);
+    }
+    let entries = if entry_count == 0 {
+        &mut []
+    } else {
+        std::slice::from_raw_parts_mut(entries, entry_count as usize)
+    };
+    let values = if values_length == 0 {
+        &[]
+    } else {
+        std::slice::from_raw_parts(values, values_length as usize)
+    };
+    Ok((entries, values))
+}
+
+fn bulk_state_status(
+    state: &mut BulkSetState,
+    result: std::thread::Result<Result<(), Error>>,
+) -> i32 {
+    match result {
+        Ok(Ok(())) => 0,
+        Ok(Err(error)) => {
+            state.invalidate();
+            error.code()
+        }
+        Err(_) => {
+            state.invalidate();
+            -1
+        }
+    }
+}
+
 /// Creates a [`TrieNodeLog`] whose compacted generations take about `compressed_max_memory` bytes, to free with
 /// [`nm_patricia_log_free`].
 #[no_mangle]
@@ -404,4 +565,253 @@ pub unsafe extern "C" fn nm_patricia_pending_view(
 #[no_mangle]
 pub unsafe extern "C" fn nm_patricia_metrics(metrics: *mut Metrics) {
     *metrics = metrics::read();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ptr::{null, null_mut};
+
+    unsafe extern "C" fn missing_node(
+        _: *mut c_void,
+        _: *const TreePath,
+        _: *const [u8; 32],
+        _: ReceiveFn,
+        _: *mut c_void,
+    ) -> i32 {
+        0
+    }
+
+    unsafe extern "C" fn failing_node(
+        _: *mut c_void,
+        _: *const TreePath,
+        _: *const [u8; 32],
+        _: ReceiveFn,
+        _: *mut c_void,
+    ) -> i32 {
+        -1
+    }
+
+    #[test]
+    fn bulk_state_ffi_retains_owned_inputs_and_finishes_without_corrections() {
+        let log = TrieNodeLog::minimal();
+        let pending = pending::rent(2);
+        let address = [7; 32];
+        let mut input_address = address;
+        let mut entries = [
+            Entry {
+                key: [1; 32],
+                offset: 0,
+                length: 1,
+            },
+            Entry {
+                key: [2; 32],
+                offset: 1,
+                length: 1,
+            },
+        ];
+        let mut values = [3, 4];
+        let state = unsafe { nm_patricia_bulk_state_new(&EMPTY_TREE_HASH, &input_address) };
+        assert!(!state.is_null());
+        // SAFETY: Every native owner stays alive through its calls, and the state is exclusively accessed and freed once.
+        unsafe {
+            assert_eq!(
+                nm_patricia_bulk_state_update(
+                    state,
+                    entries.as_mut_ptr(),
+                    entries.len() as i32,
+                    values.as_ptr(),
+                    values.len() as i32,
+                    &*log,
+                    null(),
+                    missing_node,
+                    null_mut(),
+                ),
+                0
+            );
+            assert_eq!(pending.count(), 0);
+            entries.fill(Entry {
+                key: [0; 32],
+                offset: 0,
+                length: 0,
+            });
+            values.fill(0);
+            input_address.fill(0);
+            let mut root = [0; 32];
+            assert_eq!(
+                nm_patricia_bulk_state_finish(
+                    state,
+                    null_mut(),
+                    0,
+                    null(),
+                    0,
+                    &*pending,
+                    &*log,
+                    null(),
+                    missing_node,
+                    null_mut(),
+                    root.as_mut_ptr(),
+                ),
+                0
+            );
+            assert_ne!(log.pin().root(Some(&address), &root), 0);
+            let mut expected_entries = [
+                Entry {
+                    key: [1; 32],
+                    offset: 0,
+                    length: 1,
+                },
+                Entry {
+                    key: [2; 32],
+                    offset: 1,
+                    length: 1,
+                },
+            ];
+            let expected = bulk_set(
+                &CallbackStore {
+                    fetch: missing_node,
+                    context: null_mut(),
+                },
+                &PendingNodes::default(),
+                None,
+                None,
+                None,
+                &EMPTY_TREE_HASH,
+                &mut expected_entries,
+                &[3, 4],
+            )
+            .unwrap();
+            assert_eq!(root, expected);
+            assert_eq!(
+                nm_patricia_bulk_state_update(
+                    state,
+                    null_mut(),
+                    0,
+                    null(),
+                    0,
+                    &*log,
+                    null(),
+                    missing_node,
+                    null_mut(),
+                ),
+                Error::InvalidArgument.code()
+            );
+            nm_patricia_bulk_state_free(state);
+        }
+        pending::give_back(pending);
+    }
+
+    #[test]
+    fn bulk_state_ffi_invalidates_on_bad_arguments_and_callback_errors() {
+        let log = TrieNodeLog::minimal();
+        let mut entry = Entry {
+            key: [0; 32],
+            offset: 0,
+            length: 1,
+        };
+        let value = 1;
+        // SAFETY: Non-null pointers refer to the live locals or native states, each accessed serially and freed once.
+        unsafe {
+            assert!(nm_patricia_bulk_state_new(null(), null()).is_null());
+            for (entries, count, values, length) in [
+                (null_mut(), 1, &value as *const u8, 1),
+                (&mut entry as *mut Entry, -1, &value as *const u8, 1),
+                (&mut entry as *mut Entry, 1, null(), 1),
+                (&mut entry as *mut Entry, 1, &value as *const u8, -1),
+            ] {
+                let state = nm_patricia_bulk_state_new(&EMPTY_TREE_HASH, null());
+                assert_eq!(
+                    nm_patricia_bulk_state_update(
+                        state,
+                        entries,
+                        count,
+                        values,
+                        length,
+                        &*log,
+                        null(),
+                        missing_node,
+                        null_mut(),
+                    ),
+                    Error::InvalidArgument.code()
+                );
+                assert_eq!(
+                    nm_patricia_bulk_state_update(
+                        state,
+                        null_mut(),
+                        0,
+                        null(),
+                        0,
+                        &*log,
+                        null(),
+                        missing_node,
+                        null_mut(),
+                    ),
+                    Error::InvalidArgument.code()
+                );
+                nm_patricia_bulk_state_free(state);
+            }
+            let state = nm_patricia_bulk_state_new(&[1; 32], null());
+            assert_eq!(
+                nm_patricia_bulk_state_update(
+                    state,
+                    &mut entry,
+                    1,
+                    &value,
+                    1,
+                    &*log,
+                    null(),
+                    failing_node,
+                    null_mut(),
+                ),
+                Error::Callback.code()
+            );
+            assert_eq!(
+                nm_patricia_bulk_state_update(
+                    state,
+                    null_mut(),
+                    0,
+                    null(),
+                    0,
+                    &*log,
+                    null(),
+                    missing_node,
+                    null_mut(),
+                ),
+                Error::InvalidArgument.code()
+            );
+            nm_patricia_bulk_state_free(state);
+            let state = nm_patricia_bulk_state_new(&EMPTY_TREE_HASH, null());
+            assert_eq!(
+                nm_patricia_bulk_state_finish(
+                    state,
+                    null_mut(),
+                    0,
+                    null(),
+                    0,
+                    null(),
+                    &*log,
+                    null(),
+                    missing_node,
+                    null_mut(),
+                    null_mut(),
+                ),
+                Error::InvalidArgument.code()
+            );
+            assert_eq!(
+                nm_patricia_bulk_state_update(
+                    state,
+                    null_mut(),
+                    0,
+                    null(),
+                    0,
+                    &*log,
+                    null(),
+                    missing_node,
+                    null_mut(),
+                ),
+                Error::InvalidArgument.code()
+            );
+            nm_patricia_bulk_state_free(state);
+        }
+    }
 }

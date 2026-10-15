@@ -64,14 +64,7 @@ pub fn bulk_set<S: NodeStore>(
     entries: &mut [Entry],
     values: &[u8],
 ) -> Result<[u8; 32], Error> {
-    let invalid_value = |entry: &Entry| {
-        entry.offset < 0
-            || entry.length < 0
-            || entry.offset as usize + entry.length as usize > values.len()
-    };
-    if entries.iter().any(invalid_value) {
-        return Err(Error::InvalidArgument);
-    }
+    validate_entries(entries, values)?;
 
     match log {
         Some(log) => bulk_set_in(store, pending, log, warmed, address, root, entries, values),
@@ -96,7 +89,8 @@ fn bulk_set_in<S: NodeStore>(
     let mut root_path = TreePath::default();
     let context = Context {
         store,
-        pending,
+        pending: Some(pending),
+        allow_parallel: true,
         // Nodes written during this bulk set are never read back, so with none before it the lookups always miss.
         read_pending: pending.count() > 0,
         log: &session,
@@ -127,9 +121,138 @@ fn bulk_set_in<S: NodeStore>(
     }
 }
 
+fn validate_entries(entries: &[Entry], values: &[u8]) -> Result<(), Error> {
+    if entries.iter().any(|entry| {
+        entry.offset < 0
+            || entry.length < 0
+            || entry.offset as usize + entry.length as usize > values.len()
+    }) {
+        return Err(Error::InvalidArgument);
+    }
+    Ok(())
+}
+
+/// An owned trie whose changed nodes remain unhashed until [`BulkSetState::finish`]. A failed update or finish
+/// invalidates it; finishing consumes its contents, but the caller still owns the allocation.
+///
+/// Retained hash references contain numeric log pointers only. Each call resolves them under a fresh session, so the
+/// caller must preserve the base trie's nodes through its normal generation retention or node store.
+pub struct BulkSetState {
+    address: Option<[u8; 32]>,
+    root: Option<ChildRef>,
+}
+
+impl BulkSetState {
+    pub fn new(root: [u8; 32], address: Option<[u8; 32]>) -> Self {
+        Self {
+            address,
+            root: Some(match root {
+                EMPTY_TREE_HASH => ChildRef::Empty,
+                hash => ChildRef::Hash { hash, pointer: 0 },
+            }),
+        }
+    }
+
+    /// Applies another batch without hashing, logging, or writing encoded nodes. Entries are reordered and must have
+    /// unique keys. No input, callback, or borrowed node data is retained after return.
+    pub fn update<S: NodeStore>(
+        &mut self,
+        store: &S,
+        log: &TrieNodeLog,
+        warmed: Option<&WarmedNodes>,
+        entries: &mut [Entry],
+        values: &[u8],
+    ) -> Result<(), Error> {
+        let root = self.root.take().ok_or(Error::InvalidArgument)?;
+        validate_entries(entries, values)?;
+        let session = log.pin();
+        let context = Context {
+            store,
+            pending: None,
+            allow_parallel: false,
+            read_pending: false,
+            log: &session,
+            warmed,
+            address: self.address.as_ref(),
+            node_reads: NodeReads::default(),
+            values,
+        };
+        self.root = Some(Self::update_root(root, &context, entries)?);
+        Ok(())
+    }
+
+    /// Applies final corrections, then hashes the complete trie into `pending` and indexes its root in `log`.
+    /// The state is invalidated even when there are no corrections or the operation fails.
+    #[allow(clippy::too_many_arguments)]
+    pub fn finish<S: NodeStore>(
+        &mut self,
+        store: &S,
+        pending: &PendingNodes,
+        log: &TrieNodeLog,
+        warmed: Option<&WarmedNodes>,
+        entries: &mut [Entry],
+        values: &[u8],
+    ) -> Result<[u8; 32], Error> {
+        let root = self.root.take().ok_or(Error::InvalidArgument)?;
+        validate_entries(entries, values)?;
+        let session = log.pin();
+        let context = Context {
+            store,
+            pending: Some(pending),
+            allow_parallel: false,
+            read_pending: pending.count() > 0,
+            log: &session,
+            warmed,
+            address: self.address.as_ref(),
+            node_reads: NodeReads::default(),
+            values,
+        };
+        match Self::update_root(root, &context, entries)? {
+            ChildRef::Empty => Ok(EMPTY_TREE_HASH),
+            ChildRef::Hash { hash, .. } => Ok(hash),
+            ChildRef::Pending(node) => {
+                let ChildRef::Hash { hash, pointer } =
+                    context.commit_tree(*node, TreePath::default(), true)
+                else {
+                    unreachable!("root is always hashed")
+                };
+                session.set_root(self.address.as_ref(), &hash, pointer);
+                Ok(hash)
+            }
+            ChildRef::Inline(_) => unreachable!("root is never inline"),
+        }
+    }
+
+    fn update_root<S: NodeStore>(
+        mut root: ChildRef,
+        context: &Context<'_, S>,
+        entries: &mut [Entry],
+    ) -> Result<ChildRef, Error> {
+        if let ChildRef::Hash { hash, pointer } = &mut root {
+            if *pointer == 0 {
+                *pointer = context.log.root(context.address, hash);
+            }
+        }
+        if entries.is_empty() {
+            return Ok(root);
+        }
+        let mut path = TreePath::default();
+        context.update_child(&mut path, &mut root, None, false, |path, node| {
+            let mut sort_buffer = entries.to_vec();
+            context.update(entries, &mut sort_buffer, path, node)
+        })?;
+        Ok(root)
+    }
+
+    pub(crate) fn invalidate(&mut self) {
+        self.root = None;
+    }
+}
+
 struct Context<'a, S> {
     store: &'a S,
-    pending: &'a PendingNodes,
+    pending: Option<&'a PendingNodes>,
+    allow_parallel: bool,
     read_pending: bool,
     log: &'a LogSession<'a>,
     warmed: Option<&'a WarmedNodes>,
@@ -170,11 +293,21 @@ enum Frame {
     Branch {
         children: Box<[ChildRef; 16]>,
         child_nibble: u8,
+        pending_child: bool,
     },
     Extension {
         key: Nibbles,
         child: ChildRef,
+        pending_child: bool,
     },
+}
+
+struct ClearFrames<'a>(&'a mut Vec<Frame>);
+
+impl Drop for ClearFrames<'_> {
+    fn drop(&mut self) {
+        self.0.clear();
+    }
 }
 
 /// A node being committed, which becomes child `slot` of the pending node at index `parent`.
@@ -249,7 +382,8 @@ impl<S: NodeStore> Context<'_, S> {
             let mask = bucket_sort16(entries, sort_buffer, depth, &mut indexes);
             (sort_buffer, entries, mask)
         };
-        let parallel = entries.len() >= PARALLEL_THRESHOLD && mask == FULL_BRANCH;
+        let parallel =
+            self.allow_parallel && entries.len() >= PARALLEL_THRESHOLD && mask == FULL_BRANCH;
         let mut buckets = split_buckets(mask, &indexes, entries, sort_buffer);
 
         for (child_nibble, remainder) in remainders.iter_mut().enumerate() {
@@ -359,7 +493,8 @@ impl<S: NodeStore> Context<'_, S> {
         node: Option<Source>,
     ) -> Result<Updated, Error> {
         TRAVERSE_STACK.with_borrow_mut(|stack| {
-            stack.clear();
+            let cleanup = ClearFrames(stack);
+            let stack = &mut *cleanup.0;
             let value = self.value(entry);
             let mut node = node;
             let mut result = loop {
@@ -419,16 +554,19 @@ impl<S: NodeStore> Context<'_, S> {
                             }
                         }
                     }
-                    Source::Decoded(Node::Branch { children }) => {
+                    Source::Decoded(Node::Branch { mut children }) => {
                         let child_nibble = nibble(&entry.key, depth);
                         path.push(child_nibble);
-                        node = self.load(path, &children[child_nibble as usize])?;
+                        let child = &mut children[child_nibble as usize];
+                        let pending_child = matches!(child, ChildRef::Pending(_));
+                        node = self.take_source(path, child)?;
                         stack.push(Frame::Branch {
                             children,
                             child_nibble,
+                            pending_child,
                         });
                     }
-                    Source::Decoded(Node::Extension { key, child }) => {
+                    Source::Decoded(Node::Extension { key, mut child }) => {
                         let matched = matched_length(key.as_slice(), &entry.key, depth);
                         if matched < key.len() {
                             break match value {
@@ -447,8 +585,13 @@ impl<S: NodeStore> Context<'_, S> {
                             };
                         }
                         path.push_all(key.as_slice());
-                        node = self.load(path, &child)?;
-                        stack.push(Frame::Extension { key, child });
+                        let pending_child = matches!(child, ChildRef::Pending(_));
+                        node = self.take_source(path, &mut child)?;
+                        stack.push(Frame::Extension {
+                            key,
+                            child,
+                            pending_child,
+                        });
                     }
                 }
             };
@@ -488,12 +631,18 @@ impl<S: NodeStore> Context<'_, S> {
                         }
                     }
                     Frame::Branch {
-                        children,
+                        mut children,
                         child_nibble,
+                        pending_child,
                     } => {
                         path.truncate(path.depth() - 1);
                         match result {
-                            Updated::Unchanged(_) => {
+                            Updated::Unchanged(source) => {
+                                if pending_child {
+                                    children[child_nibble as usize] = ChildRef::Pending(Box::new(
+                                        self.into_node(source.expect("pending child is present"))?,
+                                    ));
+                                }
                                 Updated::Unchanged(Some(Source::Decoded(Node::Branch { children })))
                             }
                             Updated::Changed(node) => Updated::Changed(self.replace_child(
@@ -504,10 +653,19 @@ impl<S: NodeStore> Context<'_, S> {
                             )?),
                         }
                     }
-                    Frame::Extension { key, child } => {
+                    Frame::Extension {
+                        key,
+                        mut child,
+                        pending_child,
+                    } => {
                         path.truncate(path.depth() - key.len());
                         match result {
-                            Updated::Unchanged(_) => {
+                            Updated::Unchanged(source) => {
+                                if pending_child {
+                                    child = ChildRef::Pending(Box::new(
+                                        self.into_node(source.expect("pending child is present"))?,
+                                    ));
+                                }
                                 Updated::Unchanged(Some(Source::Decoded(Node::Extension {
                                     key,
                                     child,
@@ -577,9 +735,10 @@ impl<S: NodeStore> Context<'_, S> {
         update: impl FnOnce(&mut TreePath, Option<Source>) -> Result<Updated, Error>,
     ) -> Result<bool, Error> {
         let is_remainder = remainder.is_some();
+        let was_pending = matches!(reference, ChildRef::Pending(_));
         let node = match remainder {
             Some(source) => Some(source),
-            None => self.load(path, reference)?,
+            None => self.take_source(path, reference)?,
         };
         let (node, changed) = match update(path, node)? {
             Updated::Changed(Some(node)) => (node, true),
@@ -587,8 +746,10 @@ impl<S: NodeStore> Context<'_, S> {
                 *reference = ChildRef::Empty;
                 return Ok(true);
             }
-            // A remainder is in no node yet, so it is copied out to be one.
-            Updated::Unchanged(Some(source)) if is_remainder => (self.into_node(source)?, false),
+            // A remainder has no reference yet; a consumed pending child must retain changes from earlier passes.
+            Updated::Unchanged(Some(source)) if is_remainder || was_pending => {
+                (self.into_node(source)?, false)
+            }
             Updated::Unchanged(_) => return Ok(false),
         };
         *reference = match commit {
@@ -723,6 +884,18 @@ impl<S: NodeStore> Context<'_, S> {
         Ok(children)
     }
 
+    /// Takes an owned pending node, or loads a resolved reference without consuming it.
+    fn take_source(&self, path: &TreePath, child: &mut ChildRef) -> Result<Option<Source>, Error> {
+        if matches!(child, ChildRef::Pending(_)) {
+            let ChildRef::Pending(node) = std::mem::take(child) else {
+                unreachable!("checked pending")
+            };
+            Ok(Some(Source::Decoded(*node)))
+        } else {
+            self.load(path, child)
+        }
+    }
+
     /// Returns the node `child` refers to. A node referenced by hash is read in place from the log when its pointer is
     /// valid, and otherwise from the pending nodes, in place from the warmed nodes, or from the store, without adding
     /// it to the log.
@@ -742,6 +915,7 @@ impl<S: NodeStore> Context<'_, S> {
                 let pending = match self.read_pending {
                     true => BUFFER.with_borrow_mut(|buffer| {
                         self.pending
+                            .expect("pending reads require a destination")
                             .copy_to(path, hash, buffer)
                             .then(|| decode_rlp(buffer))
                             .transpose()
@@ -890,15 +1064,18 @@ impl<S: NodeStore> Context<'_, S> {
                     }
                     start = end;
                 }
-                self.pending.write(hashed.len(), |position| {
-                    let (index, rlp_start, rlp_end) = hashed[position];
-                    (
-                        &nodes[index as usize].path,
-                        &hashes[position],
-                        &buffer[rlp_start..rlp_end],
-                        pointers[position],
-                    )
-                });
+                self.pending.expect("commit requires a destination").write(
+                    hashed.len(),
+                    |position| {
+                        let (index, rlp_start, rlp_end) = hashed[position];
+                        (
+                            &nodes[index as usize].path,
+                            &hashes[position],
+                            &buffer[rlp_start..rlp_end],
+                            pointers[position],
+                        )
+                    },
+                );
             });
 
             nodes.clear();
@@ -1222,8 +1399,22 @@ mod tests {
         root: [u8; 32],
         items: &[Item],
     ) -> Result<[u8; 32], Error> {
+        let (mut entries, values) = pack(items);
+        bulk_set(
+            &EmptyStore,
+            pending,
+            log,
+            warmed,
+            None,
+            &root,
+            &mut entries,
+            &values,
+        )
+    }
+
+    fn pack(items: &[Item]) -> (Vec<Entry>, Vec<u8>) {
         let mut values = Vec::new();
-        let mut entries: Vec<Entry> = items
+        let entries = items
             .iter()
             .map(|(key, value)| {
                 let entry = Entry {
@@ -1235,16 +1426,230 @@ mod tests {
                 entry
             })
             .collect();
-        bulk_set(
-            &EmptyStore,
-            pending,
-            log,
-            warmed,
-            None,
-            &root,
-            &mut entries,
-            &values,
-        )
+        (entries, values)
+    }
+
+    fn prepare(state: &mut BulkSetState, log: &TrieNodeLog, items: &[Item]) -> Result<(), Error> {
+        let (mut entries, values) = pack(items);
+        state.update(&EmptyStore, log, None, &mut entries, &values)
+    }
+
+    fn finish(
+        state: &mut BulkSetState,
+        pending: &PendingNodes,
+        log: &TrieNodeLog,
+        items: &[Item],
+    ) -> Result<[u8; 32], Error> {
+        let (mut entries, values) = pack(items);
+        state.finish(&EmptyStore, pending, log, None, &mut entries, &values)
+    }
+
+    fn assert_unhashed(reference: &ChildRef) {
+        match reference {
+            ChildRef::Empty => {}
+            ChildRef::Pending(node) => match &**node {
+                Node::Leaf { .. } => {}
+                Node::Extension { child, .. } => assert_unhashed(child),
+                Node::Branch { children } => {
+                    for child in children.iter() {
+                        assert_unhashed(child);
+                    }
+                }
+            },
+            _ => panic!("new nodes must stay pending until finish"),
+        }
+    }
+
+    #[test]
+    fn prepared_updates_remain_unhashed_and_preserve_unchanged_pending_children() {
+        let items = generate_items(1000, 0x8765_4321);
+        let expected = root_of(&items);
+        let log = TrieNodeLog::new(256 << 20);
+        let pending = PendingNodes::default();
+        let mut state = BulkSetState::new(EMPTY_TREE_HASH, None);
+        let mut start = 0;
+        for size in [1, 7, 300, items.len() - 308] {
+            prepare(&mut state, &log, &items[start..start + size]).unwrap();
+            start += size;
+            assert_unhashed(state.root.as_ref().unwrap());
+            assert_eq!(pending.count(), 0);
+            assert_eq!(log.pin().root(None, &expected), 0);
+        }
+        // Cover unchanged multi-entry children and the single-entry walk through pending branches and extensions.
+        prepare(&mut state, &log, &items).unwrap();
+        for item in &items {
+            prepare(&mut state, &log, std::slice::from_ref(item)).unwrap();
+        }
+        prepare(&mut state, &log, &[]).unwrap();
+        assert_unhashed(state.root.as_ref().unwrap());
+        assert_eq!(finish(&mut state, &pending, &log, &[]), Ok(expected));
+        assert_eq!(
+            keccak(&written_at(&pending, &TreePath::default())),
+            expected
+        );
+        assert!(state.root.is_none());
+        assert_eq!(prepare(&mut state, &log, &[]), Err(Error::InvalidArgument));
+        assert_eq!(
+            finish(&mut state, &pending, &log, &[]),
+            Err(Error::InvalidArgument)
+        );
+    }
+
+    #[test]
+    fn prepared_updates_reconcile_logged_roots_and_delete_back_to_empty() {
+        let items = generate_items(300, 0x1122_3344);
+        let log = TrieNodeLog::new(256 << 20);
+        let pending = PendingNodes::default();
+        let base = apply(&pending, Some(&log), EMPTY_TREE_HASH, &items).unwrap();
+        pending.clear();
+        let mut state = BulkSetState::new(base, None);
+        prepare(&mut state, &log, &[]).unwrap();
+        assert!(matches!(state.root, Some(ChildRef::Hash { pointer, .. }) if pointer != 0));
+        let changes: Vec<Item> = items[..150]
+            .iter()
+            .map(|(key, value)| (*key, [value.as_slice(), &[7]].concat()))
+            .collect();
+        prepare(&mut state, &log, &changes).unwrap();
+        prepare(&mut state, &log, &changes).unwrap();
+        let deletes: Vec<Item> = items[150..250]
+            .iter()
+            .map(|(key, _)| (*key, vec![]))
+            .collect();
+        for item in &deletes {
+            prepare(&mut state, &log, std::slice::from_ref(item)).unwrap();
+        }
+        // Final corrections restore hints omitted by execution and keep deletion of other slots.
+        let mut expected = items[..50].to_vec();
+        expected.extend_from_slice(&changes[50..]);
+        expected.extend_from_slice(&items[250..]);
+        let changed = finish(&mut state, &pending, &log, &items[..50]).unwrap();
+        assert_eq!(changed, root_of(&expected));
+        let mut deleting = BulkSetState::new(changed, None);
+        let deletes: Vec<Item> = expected.iter().map(|(key, _)| (*key, vec![])).collect();
+        for item in &deletes {
+            prepare(&mut deleting, &log, std::slice::from_ref(item)).unwrap();
+        }
+        assert_eq!(
+            finish(&mut deleting, &pending, &log, &[]),
+            Ok(EMPTY_TREE_HASH)
+        );
+    }
+
+    #[test]
+    fn prepared_updates_handle_pending_extension_splits_and_collapse() {
+        let key = |first, last| {
+            let mut key = [0xcd; 32];
+            key[0] = first;
+            key[31] = last;
+            key
+        };
+        let items = vec![(key(0xcd, 0), vec![1]), (key(0xcd, 1), vec![2])];
+        for value_length in [1, 40] {
+            let log = TrieNodeLog::minimal();
+            let pending = PendingNodes::default();
+            let mut state = BulkSetState::new(EMPTY_TREE_HASH, None);
+            prepare(&mut state, &log, &items).unwrap();
+            let split = (key(0xcd, 5), vec![3; value_length]);
+            prepare(&mut state, &log, std::slice::from_ref(&split)).unwrap();
+            prepare(&mut state, &log, std::slice::from_ref(&split)).unwrap();
+            prepare(
+                &mut state,
+                &log,
+                &[(items[0].0, vec![]), (items[1].0, vec![])],
+            )
+            .unwrap();
+            let diverged = (key(0x11, 0), vec![4; value_length]);
+            prepare(&mut state, &log, std::slice::from_ref(&diverged)).unwrap();
+            prepare(&mut state, &log, &[(split.0, vec![])]).unwrap();
+            assert_eq!(
+                finish(&mut state, &pending, &log, &[]),
+                Ok(root_of(&[diverged]))
+            );
+        }
+    }
+
+    #[test]
+    fn prepared_updates_invalidate_on_errors_and_discard_without_output() {
+        let log = TrieNodeLog::minimal();
+        let pending = PendingNodes::default();
+        let items = generate_items(20, 0x5566_7788);
+        let mut state = BulkSetState::new(EMPTY_TREE_HASH, None);
+        prepare(&mut state, &log, &items).unwrap();
+        drop(state);
+        assert_eq!(pending.count(), 0);
+        assert_eq!(log.pin().root(None, &root_of(&items)), 0);
+        let mut state = BulkSetState::new(EMPTY_TREE_HASH, None);
+        assert_eq!(
+            prepare(&mut state, &log, &[items[0].clone(), items[0].clone()]),
+            Err(Error::DuplicateKey)
+        );
+        assert!(state.root.is_none());
+        for (offset, length) in [(-1, 0), (0, -1), (1, 1)] {
+            let mut state = BulkSetState::new(EMPTY_TREE_HASH, None);
+            let mut entries = [Entry {
+                key: [0; 32],
+                offset,
+                length,
+            }];
+            assert_eq!(
+                state.update(&EmptyStore, &log, None, &mut entries, &[]),
+                Err(Error::InvalidArgument)
+            );
+            assert!(state.root.is_none());
+        }
+        let mut missing = BulkSetState::new([1; 32], None);
+        assert_eq!(
+            prepare(&mut missing, &log, &items[..1]),
+            Err(Error::MissingNode)
+        );
+        assert!(missing.root.is_none());
+        assert!(TRAVERSE_STACK.with_borrow(|stack| stack.is_empty()));
+        let mut empty = BulkSetState::new(EMPTY_TREE_HASH, None);
+        assert_eq!(finish(&mut empty, &pending, &log, &[]), Ok(EMPTY_TREE_HASH));
+    }
+
+    #[test]
+    fn failed_single_entry_walk_releases_thread_local_frames() {
+        struct FailingStore(Vec<u8>);
+        impl NodeStore for FailingStore {
+            fn fetch_rlp<R>(
+                &self,
+                path: &TreePath,
+                _: &[u8; 32],
+                receive: impl FnOnce(&[u8]) -> R,
+            ) -> Result<Option<R>, Error> {
+                if path.depth() < 2 {
+                    Ok(Some(receive(&self.0)))
+                } else {
+                    Err(Error::Callback)
+                }
+            }
+        }
+        let mut rlp = Vec::new();
+        encode(
+            &Node::Extension {
+                key: Nibbles::from_slice(&[0]),
+                child: ChildRef::Hash {
+                    hash: [1; 32],
+                    pointer: 0,
+                },
+            },
+            &mut rlp,
+        );
+        let store = FailingStore(rlp);
+        let log = TrieNodeLog::minimal();
+        let mut state = BulkSetState::new([1; 32], None);
+        let mut entries = [Entry {
+            key: [0; 32],
+            offset: 0,
+            length: 1,
+        }];
+        assert_eq!(
+            state.update(&store, &log, None, &mut entries, &[1]),
+            Err(Error::Callback)
+        );
+        assert!(state.root.is_none());
+        assert!(TRAVERSE_STACK.with_borrow(|stack| stack.is_empty()));
     }
 
     /// Checks every written node's hash and returns the RLP written at `path`.

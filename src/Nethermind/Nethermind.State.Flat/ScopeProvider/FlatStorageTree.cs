@@ -12,6 +12,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -47,6 +48,7 @@ public sealed class FlatStorageTree(
     private ConcurrentQueue<(UInt256 Slot, UInt256 Value)>? _earlyWrites;
     // Owned by whoever holds _earlyState.
     private StorageTree? _earlyTree;
+    private NativeBulkSetState? _earlyNative;
     private Dictionary<UInt256, UInt256>? _earlyApplied;
     private int _earlyState;
     private int _earlyQueued;
@@ -124,7 +126,7 @@ public sealed class FlatStorageTree(
         if (!_scope.AppliesStorageWritesEarly || Volatile.Read(ref _earlyState) == EarlyClaimed) return;
 
         // Capture the pre-block root while the owning thread can still read the mutable bundle.
-        _ = GetTrees();
+        if (!UsesNativeBulkSet) _ = GetTrees();
         ConcurrentQueue<(UInt256 Slot, UInt256 Value)> writes = Volatile.Read(ref _earlyWrites) ?? CreateEarlyWrites();
         writes.Enqueue((index, value));
         // A set flag means a pass that has yet to clear it will see this write.
@@ -171,29 +173,39 @@ public sealed class FlatStorageTree(
             if (entries.Count == 0) return;
 
             OnEarlyPassDrained?.Invoke();
-            StorageTree tree = _earlyTree ??= CreateEarlyTree();
-            // No thread-pool work: it would run at normal priority.
-            tree.BulkSet(entries, PatriciaTree.Flags.DoNotParallelize);
-            tree.UpdateRootHash(canBeParallel: false);
+            if (UsesNativeBulkSet)
+            {
+                NativeBulkSetState prepared = _earlyNative ??= NativeBulkSetState.Create(_storageRoot.ValueHash256, AddressHash);
+                NativeStore.Update(prepared, entries.AsSpan());
+            }
+            else
+            {
+                StorageTree tree = _earlyTree ??= CreateEarlyTree();
+                // No thread-pool work: it would run at normal priority.
+                tree.BulkSet(entries, PatriciaTree.Flags.DoNotParallelize);
+                tree.UpdateRootHash(canBeParallel: false);
+            }
             _scope.CountEarlyApplied(entries.Count);
         }
         catch
         {
             // A partly applied tree must never be adopted.
-            _earlyTree = null;
-            _earlyApplied = null;
             Volatile.Write(ref _earlyState, EarlyClaimed);
             throw;
         }
         finally
         {
             if (leased) _bundle.ReleaseReadOnlyBundleLease();
-            Interlocked.CompareExchange(ref _earlyState, EarlyIdle, EarlyApplying);
+            // The claimant never touches resources while a pass owns them; an abandoned worker releases its own state.
+            if (Interlocked.CompareExchange(ref _earlyState, EarlyIdle, EarlyApplying) != EarlyApplying) ReleaseEarlyState();
         }
     }
 
     /// <summary>Whether every queued write has been applied to the early tree. For tests.</summary>
     internal bool EarlyWritesDrained => Volatile.Read(ref _earlyWrites) is not { IsEmpty: false } && Volatile.Read(ref _earlyState) != EarlyApplying && Volatile.Read(ref _earlyQueued) == 0;
+
+    /// <summary>The completed or active native preparation, whose lifetime tests observe.</summary>
+    internal NativeBulkSetState? EarlyNativeState => Volatile.Read(ref _earlyNative);
 
     /// <summary>Called once a pass has taken its writes. For tests.</summary>
     internal Action? OnEarlyPassDrained;
@@ -207,22 +219,44 @@ public sealed class FlatStorageTree(
         return tree;
     }
 
-    private Dictionary<UInt256, UInt256>? AdoptEarlyTree(StorageTree tree)
+    private bool ClaimEarlyState()
     {
-        if (Volatile.Read(ref _earlyWrites) is null) return null;
+        if (Volatile.Read(ref _earlyWrites) is null) return false;
 
         int previous = Interlocked.Exchange(ref _earlyState, EarlyClaimed);
         if (previous == EarlyApplying)
         {
             // Mid-pass: waiting could take a scheduler tick, so the batch writes every slot instead.
             _scope.CountEarlyAbandoned();
-            return null;
         }
+        return previous == EarlyIdle;
+    }
 
-        if (previous != EarlyIdle || _earlyTree is not { } earlyTree || _earlyApplied is not { Count: > 0 } applied) return null;
-
-        tree.RootRef = earlyTree.RootRef;
+    private Dictionary<UInt256, UInt256>? AdoptEarlyTree(StorageTree tree)
+    {
+        if (!ClaimEarlyState()) return null;
+        Dictionary<UInt256, UInt256>? applied = null;
+        if (_earlyTree is { } earlyTree && _earlyApplied is { Count: > 0 })
+        {
+            tree.RootRef = earlyTree.RootRef;
+            applied = _earlyApplied;
+        }
+        _earlyTree = null;
+        _earlyApplied = null;
         return applied;
+    }
+
+    internal void DiscardEarlyWrites()
+    {
+        if (Interlocked.Exchange(ref _earlyState, EarlyClaimed) == EarlyIdle) ReleaseEarlyState();
+    }
+
+    private void ReleaseEarlyState()
+    {
+        _earlyNative?.Dispose();
+        _earlyNative = null;
+        _earlyTree = null;
+        _earlyApplied = null;
     }
 
     private void WarmUpSlot(UInt256 index)
@@ -284,6 +318,7 @@ public sealed class FlatStorageTree(
 
     internal void ClearStorage()
     {
+        DiscardEarlyWrites();
         _bundle.ClearStorage(_address, AddressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         if (UsesNativeBulkSet)
@@ -317,7 +352,19 @@ public sealed class FlatStorageTree(
         // A trie-less (history-backed) scope can't maintain the storage trie (its persistence reader throws on
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
-        if (UsesNativeBulkSet) return new NativeStorageWriteBatch(this, estimatedEntries, onRootUpdated);
+        if (UsesNativeBulkSet)
+        {
+            NativeBulkSetState? prepared = null;
+            Dictionary<UInt256, UInt256>? applied = null;
+            if (ClaimEarlyState())
+            {
+                prepared = _earlyNative;
+                applied = prepared is null ? null : _earlyApplied;
+                _earlyNative = null;
+                _earlyApplied = null;
+            }
+            return new NativeStorageWriteBatch(this, estimatedEntries, onRootUpdated, prepared, applied);
+        }
 
         StorageTree tree = GetTrees().Tree;
         Dictionary<UInt256, UInt256>? earlyApplied = AdoptEarlyTree(tree);
@@ -404,35 +451,69 @@ public sealed class FlatStorageTree(
     private sealed class NativeStorageWriteBatch(
         FlatStorageTree storageTree,
         int estimatedEntries,
-        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
+        Action<Address, Hash256> onRootUpdated,
+        NativeBulkSetState? prepared,
+        Dictionary<UInt256, UInt256>? earlyApplied) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         private readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _entries = new(estimatedEntries);
+        private NativeBulkSetState? _prepared = prepared;
+        private Dictionary<UInt256, UInt256>? _earlyApplied = earlyApplied;
         private bool _hasSelfDestruct;
+        private bool _hasWrites;
+        private int _reused;
+
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            _hasWrites = true;
+            storageTree.Set(index, value);
+            if (_earlyApplied is not null && _earlyApplied.Remove(index, out UInt256 applied) && applied == value)
+            {
+                _reused++;
+                return;
+            }
+            AddEntry(index, value);
+        }
 
         [SkipLocalsInit]
-        public void Set(in UInt256 index, in UInt256 value)
+        private void AddEntry(in UInt256 index, in UInt256 value)
         {
             Unsafe.SkipInit(out EvmWord word);
             bool isZero = value.IsZero;
             ValueHash256 key = default;
             StorageTree.ComputeKeyWithLookup(index, ref key);
             _entries.Add(StorageTree.CreateBulkSetEntry(key, isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word), isZero));
-            storageTree.Set(index, value);
         }
 
         public void Clear()
         {
-            if (_entries.Count > 0) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            if (_hasWrites) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            _prepared?.Dispose();
+            _prepared = null;
+            _earlyApplied = null;
             _hasSelfDestruct = true;
             storageTree.ClearStorage();
         }
 
         public void Dispose()
         {
+            using NativeBulkSetState? prepared = _prepared;
+            _prepared = null;
             using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = _entries;
-            if (entries.Count > 0) storageTree._nativeRoot = storageTree.NativeStore.BulkSet(storageTree._nativeRoot, entries.AsSpan());
+            int restored = 0;
+            if (_earlyApplied is { Count: > 0 } leftovers)
+            {
+                foreach (UInt256 slot in leftovers.Keys)
+                {
+                    storageTree.Get(slot, out UInt256 value);
+                    AddEntry(slot, value);
+                    restored++;
+                }
+            }
+            storageTree._scope.CountEarlyReconciled(_reused, restored);
+            if (prepared is not null) storageTree._nativeRoot = storageTree.NativeStore.Finish(prepared, entries.AsSpan());
+            else if (entries.Count > 0) storageTree._nativeRoot = storageTree.NativeStore.BulkSet(storageTree._nativeRoot, entries.AsSpan());
             if (!storageTree._config.DeferStorageTrieCommit) storageTree._nativeStore?.Publish();
-            if (entries.Count > 0 || _hasSelfDestruct) onRootUpdated(storageTree._address, storageTree._nativeRoot);
+            if (prepared is not null || entries.Count > 0 || _hasSelfDestruct) onRootUpdated(storageTree._address, storageTree._nativeRoot);
         }
     }
 

@@ -200,7 +200,7 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null, IPersistence.IPersistenceReader? persistenceReader = null)
         {
             config ??= new FlatDbConfig();
 
@@ -213,7 +213,7 @@ public class FlatWorldStateScopeProviderTests
                     .AddKeyedSingleton<IDb>(DbNames.Code, new TestMemDb())
                     .AddSingleton<IBlockTree>(blockTree ?? Substitute.For<IBlockTree>())
                     .AddSingleton<ITrieWarmer, NoopTrieWarmer>()
-                    .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
+                    .AddSingleton<IPersistence.IPersistenceReader>(_ => persistenceReader ?? Substitute.For<IPersistence.IPersistenceReader>())
                     .AddSingleton<IFlatDbManager>(_ =>
                     {
                         IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
@@ -902,11 +902,14 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void EarlyStorageApply_BlockEndBatchReachesTheSameRoot([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
+    public void EarlyStorageApply_BlockEndBatchReachesTheSameRoot([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit, [Values] bool useNativeBulkSet)
     {
         const int slotCount = 40;
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly, DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatDbConfig config = CreateConfig(useNativeBulkSet);
+        config.ApplyStorageWritesOnIdleThread = applyEarly;
+        config.DeferStorageTrieCommit = deferStorageTrieCommit;
+        using TestContext ctx = new(config: config);
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -917,6 +920,7 @@ public class FlatWorldStateScopeProviderTests
         storageTree.HintSet(1, 1000);
         storageTree.HintSet(2, 0);
         Assert.That(() => storageTree.EarlyWritesDrained, Is.True.After(5000, 10));
+        NativeBulkSetState? prepared = storageTree.EarlyNativeState;
 
         UInt256[] expected = new UInt256[slotCount];
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
@@ -931,6 +935,7 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
+        if (prepared is not null) Assert.That(prepared.IsClosed, Is.True);
         (int applied, int reused, int restored, int abandoned) = scope.EarlyApplyCounts;
         if (applyEarly)
         {
@@ -948,20 +953,31 @@ public class FlatWorldStateScopeProviderTests
         }
         scope.Commit(1);
 
-        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        using TestMemDb expectedDb = new();
+        StorageTree expectedTree = new(new RawScopedTrieStore(expectedDb), LimboLogs.Instance);
         for (int slot = 0; slot < slotCount; slot++)
         {
             if (!expected[slot].IsZero) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
         }
         expectedTree.UpdateRootHash();
-        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+        expectedTree.Commit();
+        HashSet<string> expectedNodes = [];
+        foreach (KeyValuePair<byte[], byte[]> node in expectedDb.GetAll()) expectedNodes.Add(node.Value.ToHexString());
+        HashSet<string> actualNodes = [];
+        Snapshot snapshot = ctx.LastCommittedSnapshot!;
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode> node in snapshot.StorageNodes) actualNodes.Add(snapshot.GetRlp(node.Value).ToHexString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+            Assert.That(actualNodes, Is.EquivalentTo(expectedNodes));
+        }
     }
 
     [Test]
-    public void EarlyStorageApply_IsOnByDefaultButNotWithVerifyWithTrie()
+    public void EarlyStorageApply_IsOnByDefaultButNotWithVerifyWithTrie([Values] bool useNativeBulkSet)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using (TestContext ctx = new())
+        using (TestContext ctx = new(config: CreateConfig(useNativeBulkSet)))
         {
             Assert.That(ctx.Scope.AppliesStorageWritesEarly, Is.True);
         }
@@ -971,11 +987,11 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void EarlyStorageApply_InitializesMutableTrieBeforeQueueing()
+    public void EarlyStorageApply_InitializesMutableTrieBeforeQueueing([Values] bool useNativeBulkSet)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
         ITrieNodeCache nodeCache = Substitute.For<ITrieNodeCache>();
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true },
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet),
             trieWarmer: Substitute.For<ITrieWarmer>(), trieNodeCache: nodeCache);
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
@@ -1002,6 +1018,7 @@ public class FlatWorldStateScopeProviderTests
                 return false;
             });
         FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
+        nodeCache.ClearReceivedCalls();
 
         storageTree.HintSet(1, 2);
         Assert.That(() => storageTree.EarlyWritesDrained, Is.True.After(5000, 10));
@@ -1010,14 +1027,15 @@ public class FlatWorldStateScopeProviderTests
         {
             Assert.That(backgroundRootLookup, Is.False);
             Assert.That(scope.EarlyApplyCounts.Applied, Is.EqualTo(1));
+            if (useNativeBulkSet) nodeCache.DidNotReceive().TryGet(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), out Arg.Any<TrieNode?>());
         }
     }
 
     [Test]
-    public void EarlyStorageApply_SkipsBlocksProcessedBackToBack()
+    public void EarlyStorageApply_SkipsBlocksProcessedBackToBack([Values] bool useNativeBulkSet)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         FlatWorldStateScope scope = ctx.Scope;
         Assert.That(scope.AppliesStorageWritesEarly, Is.True);
 
@@ -1025,15 +1043,15 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         Assert.That(scope.AppliesStorageWritesEarly, Is.False);
-        using TestContext next = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        using TestContext next = new(config: CreateConfig(useNativeBulkSet));
         Assert.That(next.Scope.AppliesStorageWritesEarly, Is.False);
     }
 
     [Test]
-    public void EarlyStorageApply_WakesTheParkedThread()
+    public void EarlyStorageApply_WakesTheParkedThread([Values] bool useNativeBulkSet)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -1047,11 +1065,11 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void EarlyStorageApply_AbandonedPassLeavesTheBlockTreeAlone()
+    public void EarlyStorageApply_AbandonedPassLeavesTheBlockTreeAlone([Values] bool useNativeBulkSet)
     {
         const int slotCount = 16;
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -1071,7 +1089,7 @@ public class FlatWorldStateScopeProviderTests
         storageTree.OnEarlyPassDrained = () =>
         {
             stalled.Set();
-            resume.Wait();
+            if (!resume.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("The abandoned early pass was not resumed");
         };
 
         try
@@ -1084,12 +1102,11 @@ public class FlatWorldStateScopeProviderTests
             {
                 using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
                 storageBatch.Set(3, expected[3] = 2000);
-
-                resume.Set();
-                Assert.That(() => scope.EarlyApplyCounts.Applied, Is.EqualTo(1).After(5000, 10));
             }
 
             Assert.That(scope.EarlyApplyCounts.Abandoned, Is.EqualTo(1));
+            resume.Set();
+            Assert.That(() => scope.EarlyApplyCounts.Applied, Is.EqualTo(1).After(5000, 10));
         }
         finally
         {
@@ -1102,6 +1119,243 @@ public class FlatWorldStateScopeProviderTests
         for (int slot = 0; slot < slotCount; slot++) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
         expectedTree.UpdateRootHash();
         Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
+    public void EarlyStorageApply_NativeUnclaimedStateIsReleasedFromBothDictionaries([Values] bool dispose)
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        FlatDbConfig config = CreateConfig(true);
+        ITrieWarmer warmer = Substitute.For<ITrieWarmer>();
+        warmer.IsActive.Returns(true);
+        FlatStorageTree? hinted = null;
+        warmer.PushSlotJobMpmc(Arg.Any<ITrieWarmer.IStorageWarmer>(), Arg.Any<UInt256>(), Arg.Any<int>()).Returns(call =>
+        {
+            hinted = (FlatStorageTree)call[0];
+            return false;
+        });
+        using TestContext ctx = new(config: config, trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(Arg.Any<Address>()).Returns(Build.An.Account.WithBalance(1).TestObject);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storageBatch.Set(1, 1);
+        }
+        scope.Commit(1);
+        Hash256 committedRoot = scope.Get(TestItem.AddressA)!.StorageRoot;
+
+        scope.HintWarmSlot(TestItem.AddressA, 1);
+        Assert.That(hinted, Is.Not.Null);
+        FlatStorageTree hintedTree = hinted!;
+        hintedTree.HintSet(1, 2);
+        FlatStorageTree normal = (FlatStorageTree)scope.CreateStorageTree(TestItem.AddressB);
+        normal.HintSet(1, 3);
+        Assert.That(() => hintedTree.EarlyWritesDrained && normal.EarlyWritesDrained, Is.True.After(5000, 10));
+        NativeBulkSetState hintedState = hintedTree.EarlyNativeState!;
+        NativeBulkSetState normalState = normal.EarlyNativeState!;
+        Assert.That(hintedState, Is.Not.Null);
+        Assert.That(normalState, Is.Not.Null);
+
+        if (dispose) scope.Dispose();
+        else scope.Commit(2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hintedState.IsClosed, Is.True);
+            Assert.That(normalState.IsClosed, Is.True);
+            Assert.That(hintedTree.EarlyNativeState, Is.Null);
+            Assert.That(normal.EarlyNativeState, Is.Null);
+            if (!dispose) Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(committedRoot));
+        }
+    }
+
+    [Test]
+    public void EarlyStorageApply_NativeActiveAndQueuedStateIsAbandonedByCleanup([Values] bool dispose)
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new(config: CreateConfig(true));
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(Arg.Any<Address>()).Returns(Build.An.Account.WithBalance(1).TestObject);
+        FlatStorageTree active = (FlatStorageTree)scope.CreateStorageTree(TestItem.AddressA);
+        active.HintSet(1, 1);
+        Assert.That(() => active.EarlyWritesDrained, Is.True.After(5000, 10));
+        NativeBulkSetState prepared = active.EarlyNativeState!;
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        active.OnEarlyPassDrained = () =>
+        {
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("The blocked native early pass was not released");
+        };
+        try
+        {
+            active.HintSet(1, 2);
+            Assert.That(entered.Wait(5000), Is.True);
+            FlatStorageTree queued = (FlatStorageTree)scope.CreateStorageTree(TestItem.AddressB);
+            queued.HintSet(1, 3);
+            if (dispose) scope.Dispose();
+            else scope.Commit(1);
+            Assert.That(prepared.IsClosed, Is.False, "the active pass still owns its handle");
+            Assert.That(queued.EarlyNativeState, Is.Null);
+            release.Set();
+            Assert.That(() => prepared.IsClosed, Is.True.After(5000, 10));
+            Assert.That(() => scope.EarlyApplier.IsParked, Is.True.After(5000, 10));
+            Assert.That(queued.EarlyNativeState, Is.Null, "stale queued work must not start preparing");
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [Test]
+    public void EarlyStorageApply_NativeFailedPassIsReleasedAndNotAdopted()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new(config: CreateConfig(true));
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(Build.An.Account.WithBalance(1).TestObject);
+        FlatStorageTree storage = (FlatStorageTree)scope.CreateStorageTree(TestItem.AddressA);
+        storage.HintSet(1, 1);
+        Assert.That(() => storage.EarlyWritesDrained, Is.True.After(5000, 10));
+        NativeBulkSetState prepared = storage.EarlyNativeState!;
+        storage.OnEarlyPassDrained = () => throw new InvalidOperationException("Injected early-pass failure");
+        storage.HintSet(1, 2);
+        Assert.That(() => prepared.IsClosed, Is.True.After(5000, 10));
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storageBatch.Set(1, 3);
+        }
+        Assert.That(scope.EarlyApplyCounts.Reused, Is.Zero);
+        scope.Commit(1);
+        StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        expected.Set(1, new byte[] { 3 });
+        expected.UpdateRootHash();
+        Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void EarlyStorageApply_NativeRepeatedPassesSurviveWarmedResetAndFinishWithoutCorrections()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        FlatDbConfig config = CreateConfig(true);
+        NativeStorageReader reader = CreateNativeStorageReader();
+        using TestContext ctx = new(config: config, persistenceReader: reader);
+        FlatWorldStateScope scope = ctx.Scope;
+        FlatStorageTree storage = (FlatStorageTree)scope.CreateStorageTree(TestItem.AddressA);
+        for (int slot = 0; slot < 32; slot++)
+        {
+            scope.IncrementOutstandingWarmups();
+            Assert.That(storage.WarmUpStorageTrie((UInt256)slot, scope.HintSequenceId), Is.True);
+        }
+        for (int slot = 0; slot < 16; slot++) storage.HintSet((UInt256)slot, (UInt256)(slot + 100));
+        Assert.That(() => storage.EarlyWritesDrained, Is.True.After(5000, 10));
+        NativeBulkSetState prepared = storage.EarlyNativeState!;
+        ctx.SnapshotBundle.WarmedNodes.Reset();
+        for (int slot = 16; slot < 32; slot++) storage.HintSet((UInt256)slot, (UInt256)(slot + 100));
+        Assert.That(() => storage.EarlyWritesDrained, Is.True.After(5000, 10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.EarlyNativeState, Is.SameAs(prepared));
+            Assert.That(storage.HasUncommittedNodes, Is.False);
+            Assert.That(storage.RootHash, Is.EqualTo(reader.Root));
+        }
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 32);
+            for (int slot = 0; slot < 32; slot++) storageBatch.Set((UInt256)slot, (UInt256)(slot + 100));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prepared.IsClosed, Is.True);
+            Assert.That(scope.EarlyApplyCounts.Reused, Is.EqualTo(32));
+            Assert.That(scope.EarlyApplyCounts.Restored, Is.Zero);
+            Assert.That(storage.HasUncommittedNodes, Is.True);
+        }
+        scope.Commit(1);
+        StorageTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot < 32; slot++) expected.Set((UInt256)slot, ((UInt256)(slot + 100)).ToMinimalBigEndian());
+        expected.UpdateRootHash();
+        Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void EarlyStorageApply_NativeCallLeasesTheWarmedResourceUntilItReturns()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        FlatDbConfig config = CreateConfig(true);
+        NativeStorageReader reader = CreateNativeStorageReader();
+        using TestContext ctx = new(config: config, persistenceReader: reader);
+        FlatWorldStateScope scope = ctx.Scope;
+        FlatStorageTree storage = (FlatStorageTree)scope.CreateStorageTree(TestItem.AddressA);
+        TransientResource original = ctx.SnapshotBundle.TryLeaseTransientResource()!;
+        original.ReleaseLease();
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        reader.OnRead = () =>
+        {
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("The blocked native early pass was not released");
+        };
+        try
+        {
+            storage.HintSet(1, 100);
+            Assert.That(entered.Wait(5000), Is.True);
+            NativeBulkSetState prepared = storage.EarlyNativeState!;
+            scope.Dispose();
+            TransientResource rented = ctx.ResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+            try
+            {
+                Assert.That(rented, Is.Not.SameAs(original), "the native call must prevent reset/recycling of its warmed arena");
+            }
+            finally
+            {
+                rented.ReleaseLease();
+            }
+            Assert.That(prepared.IsClosed, Is.False);
+            release.Set();
+            Assert.That(() => prepared.IsClosed, Is.True.After(5000, 10));
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    private static NativeStorageReader CreateNativeStorageReader()
+    {
+        PatriciaTree.BulkSetEntry[] entries = new PatriciaTree.BulkSetEntry[32];
+        for (int slot = 0; slot < entries.Length; slot++)
+        {
+            ValueHash256 key = default;
+            StorageTree.ComputeKeyWithLookup((UInt256)slot, ref key);
+            entries[slot] = new PatriciaTree.BulkSetEntry(key, [(byte)(slot + 1)]);
+        }
+        Dictionary<TreePath, byte[]> nodes = [];
+        using NativePendingNodes pending = NativePendingNodes.Rent(entries.Length);
+        Hash256 root = NativePatriciaBulkSet.BulkSet(new DictionaryNodeStore(nodes), pending, null, null, null, Keccak.EmptyTreeHash.ValueHash256, entries);
+        for (int shard = 0; shard < pending.ShardCount; shard++)
+        {
+            NativePendingNodesView view = pending.GetView(shard);
+            for (int i = 0; i < view.Count; i++) nodes[view[i].Path] = view.GetRlp(view[i]).ToArray();
+        }
+        return new NativeStorageReader(root, nodes);
+    }
+
+    private sealed class NativeStorageReader(Hash256 root, Dictionary<TreePath, byte[]> nodes) : NoopPersistenceReader, IPersistence.IPersistenceReader
+    {
+        public Hash256 Root => root;
+        public Action? OnRead;
+
+        Account? IPersistence.IPersistenceReader.GetAccount(Address address) => new(1, 1, root, Keccak.OfAnEmptyString);
+
+        byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
+        {
+            OnRead?.Invoke();
+            return nodes.GetValueOrDefault(path);
+        }
     }
 
     private static FlatDbConfig CreateConfig(bool useNativeBulkSet)
