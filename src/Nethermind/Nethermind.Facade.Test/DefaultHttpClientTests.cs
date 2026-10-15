@@ -18,18 +18,18 @@ public class DefaultHttpClientTests
     private const int RetryDelayMilliseconds = 1;
 
     [Test]
-    public void Should_propagate_cancellation_when_token_is_cancelled_before_the_request([Values(1, 2, 3)] int retries)
+    public async Task Should_propagate_cancellation_when_token_is_cancelled_before_the_request([Values(1, 2, 3)] int retries)
     {
         using CancellationTokenSource cancellation = new();
         cancellation.Cancel();
         using StubHandler handler = new(_ => Task.FromCanceled<HttpResponseMessage>(cancellation.Token));
         using DefaultHttpClient client = CreateClient(handler, retries);
 
-        Assert.CatchAsync<OperationCanceledException>(async () => await client.GetAsync<object>(Endpoint, cancellation.Token));
+        await Assert.CatchAsync<OperationCanceledException>(async () => await client.GetAsync<object>(Endpoint, cancellation.Token));
     }
 
     [Test]
-    public void Should_propagate_cancellation_when_the_request_is_cancelled_in_flight([Values(1, 2, 3)] int retries)
+    public async Task Should_propagate_cancellation_when_the_request_is_cancelled_in_flight([Values(1, 2, 3)] int retries)
     {
         using CancellationTokenSource cancellation = new();
         using StubHandler handler = new(_ =>
@@ -39,7 +39,7 @@ public class DefaultHttpClientTests
         });
         using DefaultHttpClient client = CreateClient(handler, retries);
 
-        Assert.CatchAsync<OperationCanceledException>(async () => await client.GetAsync<object>(Endpoint, cancellation.Token));
+        await Assert.CatchAsync<OperationCanceledException>(async () => await client.GetAsync<object>(Endpoint, cancellation.Token));
         Assert.That(handler.CallCount, Is.EqualTo(1));
     }
 

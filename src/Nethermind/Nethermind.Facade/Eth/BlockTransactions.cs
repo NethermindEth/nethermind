@@ -31,6 +31,8 @@ public sealed class BlockTransactions
 {
     private static readonly BlockTransactions EmptyInstance = new([], []);
 
+    private readonly Hash256[]? _hashes;
+    private readonly ValueHash256[]? _flatHashes;
     private readonly TransactionForRpc[]? _full;
     private readonly Transaction[]? _source;
     private readonly ulong _chainId;
@@ -41,9 +43,11 @@ public sealed class BlockTransactions
 
     private BlockTransactions(Hash256[]? hashes, TransactionForRpc[]? full)
     {
-        Hashes = hashes;
+        _hashes = hashes;
         _full = full;
     }
+
+    private BlockTransactions(ValueHash256[] flatHashes) => _flatHashes = flatHashes;
 
     private BlockTransactions(Block block, ulong chainId)
     {
@@ -56,7 +60,8 @@ public sealed class BlockTransactions
     }
 
     /// <summary>The transaction hashes, or <see langword="null"/> for a block carrying full transactions.</summary>
-    public Hash256[]? Hashes { get; }
+    /// <remarks>For hashes created with <see cref="FromHashes"/>, each access builds a new array.</remarks>
+    public Hash256[]? Hashes => _hashes ?? (_flatHashes is null ? null : MaterializeHashes());
 
     /// <summary>The full transactions, or <see langword="null"/> for a block carrying hashes.</summary>
     /// <remarks>For a view over a block, each access builds a new array of new objects, so a change to one is not kept.</remarks>
@@ -80,6 +85,15 @@ public sealed class BlockTransactions
         return new BlockTransactions(block, chainId);
     }
 
+    /// <summary>Wraps transaction hashes without an object per hash; the array is written as is and must not change.</summary>
+    /// <returns>One shared instance for an empty array.</returns>
+    public static BlockTransactions FromHashes(ValueHash256[] hashes) => hashes.Length == 0 ? EmptyInstance : new(hashes);
+
+    /// <summary>The hashes of <see cref="FromHashes"/>, empty for any other form.</summary>
+    internal ReadOnlySpan<ValueHash256> FlatHashes => _flatHashes;
+
+    internal bool HasFlatHashes => _flatHashes is not null;
+
     /// <summary>Whether this is a view over a block's transactions rather than an array.</summary>
     internal bool IsView => _source is not null;
 
@@ -97,6 +111,17 @@ public sealed class BlockTransactions
 
         reuse.Populate(transaction, context);
         return reuse;
+    }
+
+    private Hash256[] MaterializeHashes()
+    {
+        Hash256[] hashes = new Hash256[_flatHashes!.Length];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = new Hash256(in _flatHashes[i]);
+        }
+
+        return hashes;
     }
 
     private TransactionForRpc[] Materialize()
@@ -159,6 +184,15 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
                 if (writer.CurrentDepth >= maxDepth) GeneratedJsonWriters.ThrowMaxDepthExceeded(maxDepth);
                 if (transaction is null) writer.WriteNullValue();
                 else writer.WriteAsRuntimeType(transaction, _generated, options);
+            }
+        }
+        else if (value.HasFlatHashes && TypeInfoJsonSerializer.GetTypeInfo<Hash256>(options).Converter.GetType() == typeof(Hash256Converter))
+        {
+            // The bytes Hash256Converter writes, without a Hash256 per element.
+            foreach (ValueHash256 hash in value.FlatHashes)
+            {
+                if (writer.CurrentDepth >= maxDepth) GeneratedJsonWriters.ThrowMaxDepthExceeded(maxDepth);
+                HexWriter.WriteFixed32HexRawValue(writer, hash.Bytes);
             }
         }
         else

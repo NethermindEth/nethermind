@@ -150,6 +150,7 @@ public class HeaderValidatorTests
             .WithSlotNumber(7)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithEmptyRequestsHash()
             .WithBlockAccessList(emptyBal)
             .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
@@ -182,6 +183,7 @@ public class HeaderValidatorTests
             .WithNumber(6)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithEmptyRequestsHash()
             .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
             .TestObject;
@@ -215,14 +217,14 @@ public class HeaderValidatorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_orphaned_header_bloom_length_matches_eip7668([Values] bool eip7668, [Values] bool zeroLengthBloom)
+    public void When_orphaned_header_bloom_length_matches_eip7668([Values] bool eip7668, [Values] bool zeroLengthBloom, [Values(0ul, 1ul)] ulong number)
     {
         bool expectedResult = eip7668 == zeroLengthBloom;
         IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
         _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec),
             new OneLoggerLogManager(new(_testLogger)));
         BlockHeader header = Build.A.BlockHeader
-            .WithNumber(1)
+            .WithNumber(number)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(Keccak.Zero)
@@ -248,32 +250,37 @@ public class HeaderValidatorTests
         const ulong firstCancun = MainnetSpecProvider.CancunBlockTimestamp;
         const ulong firstPrague = MainnetSpecProvider.PragueBlockTimestamp;
         Hash256 requestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+        Hash256 beaconRoot = Keccak.Zero;
 
-        yield return new TestCaseData(firstCancun, 0ul, null, null, BlockErrorMessages.MissingExcessBlobGas)
+        yield return new TestCaseData(firstCancun, 0ul, null, null, beaconRoot, BlockErrorMessages.MissingExcessBlobGas)
             .SetName("Cancun_null_excess_blob_gas_is_rejected");
-        yield return new TestCaseData(firstCancun, null, 0ul, null, BlockErrorMessages.MissingBlobGasUsed)
+        yield return new TestCaseData(firstCancun, null, 0ul, null, beaconRoot, BlockErrorMessages.MissingBlobGasUsed)
             .SetName("Cancun_null_blob_gas_used_is_rejected");
-        yield return new TestCaseData(lastPreCancun, null, 0ul, null, BlockErrorMessages.NotAllowedExcessBlobGas)
+        yield return new TestCaseData(lastPreCancun, null, 0ul, null, null, BlockErrorMessages.NotAllowedExcessBlobGas)
             .SetName("Pre_Cancun_excess_blob_gas_is_rejected");
-        yield return new TestCaseData(lastPreCancun, 0ul, null, null, BlockErrorMessages.NotAllowedBlobGasUsed)
+        yield return new TestCaseData(lastPreCancun, 0ul, null, null, null, BlockErrorMessages.NotAllowedBlobGasUsed)
             .SetName("Pre_Cancun_blob_gas_used_is_rejected");
-        yield return new TestCaseData(lastPreCancun, null, null, requestsHash, BlockErrorMessages.RequestsNotEnabled)
+        yield return new TestCaseData(lastPreCancun, null, null, requestsHash, null, BlockErrorMessages.RequestsNotEnabled)
             .SetName("Pre_Prague_requests_hash_is_rejected");
-        yield return new TestCaseData(firstCancun, 0ul, 0ul, null, null)
+        yield return new TestCaseData(firstCancun, 0ul, 0ul, null, null, BlockErrorMessages.MissingParentBeaconBlockRoot)
+            .SetName("Cancun_null_parent_beacon_block_root_is_rejected");
+        yield return new TestCaseData(lastPreCancun, null, null, null, beaconRoot, BlockErrorMessages.ParentBeaconBlockRootNotEnabled)
+            .SetName("Pre_Cancun_parent_beacon_block_root_is_rejected");
+        yield return new TestCaseData(firstCancun, 0ul, 0ul, null, beaconRoot, null)
             .SetName("First_Cancun_header_is_accepted");
-        yield return new TestCaseData(lastPreCancun, null, null, null, null)
+        yield return new TestCaseData(lastPreCancun, null, null, null, null, null)
             .SetName("Last_pre_Cancun_header_is_accepted");
         // Values no parent could produce: the ExcessBlobGas comparison must still be skipped when orphaned.
-        yield return new TestCaseData(firstCancun, 131072ul, 393216ul, null, null)
+        yield return new TestCaseData(firstCancun, 131072ul, 393216ul, null, beaconRoot, null)
             .SetName("Cancun_header_with_arbitrary_blob_gas_values_is_accepted");
-        yield return new TestCaseData(firstPrague, 0ul, 0ul, requestsHash, null)
+        yield return new TestCaseData(firstPrague, 0ul, 0ul, requestsHash, beaconRoot, null)
             .SetName("Prague_header_is_accepted");
     }
 
     [MaxTime(Timeout.MaxTestTime)]
     [TestCaseSource(nameof(OrphanedBlobGasFieldCases))]
     public void When_orphaned_header_blob_gas_presence_matches_fork(
-        ulong timestamp, ulong? blobGasUsed, ulong? excessBlobGas, Hash256? requestsHash, string? expectedError)
+        ulong timestamp, ulong? blobGasUsed, ulong? excessBlobGas, Hash256? requestsHash, Hash256? parentBeaconBlockRoot, string? expectedError)
     {
         _validator = new HeaderValidator(_blockTree, Always.Valid, MainnetSpecProvider.Instance,
             new OneLoggerLogManager(new(_testLogger)));
@@ -284,6 +291,7 @@ public class HeaderValidatorTests
             .WithBlobGasUsed(blobGasUsed)
             .WithExcessBlobGas(excessBlobGas)
             .WithRequestsHash(requestsHash)
+            .WithParentBeaconBlockRoot(parentBeaconBlockRoot)
             .TestObject;
         header.Hash = header.CalculateHash();
 

@@ -9,6 +9,7 @@ using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
@@ -17,6 +18,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -29,6 +31,8 @@ using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -68,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _specProvider = Substitute.For<ISpecProvider>();
             _filterStore = new FilterStore(new TimerFactory());
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
-            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager);
+            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager, MainnetSpecProvider.Instance);
             _syncConfig = new SyncConfig();
             _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             _ethSyncingInfo = new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
@@ -777,6 +781,27 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void LogsSubscription_logIndex_follows_the_published_block_spec([Values] bool eip8116Enabled)
+        {
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
+            Block block = Build.A.Block.WithNumber(55555).TestObject;
+            _receiptStorage.Get(block).Returns(
+            [
+                Build.A.Receipt.WithBlockNumber(block.Number).WithIndex(0).WithLogs(logEntry).TestObject,
+                Build.A.Receipt.WithBlockNumber(block.Number).WithIndex(1).WithLogs(logEntry, logEntry).TestObject
+            ]);
+            TestSpecProvider specProvider = new(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
+            using ReceiptCanonicalityMonitor monitor = new(_receiptStorage, _blockTree, _logManager, specProvider);
+            using LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, monitor, _filterStore, _blockTree, _logManager);
+
+            List<JsonRpcResult> results = CollectResults(logsSubscription, 3,
+                () => _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), new BlockReplacementEventArgs(block)));
+
+            string[] logIndexes = [.. results.Select(static r => JToken.Parse(RpcTest.SerializeResponse(r.Response))["params"]!["result"]!["logIndex"]!.Value<string>()!)];
+            Assert.That(logIndexes, Is.EqualTo(eip8116Enabled ? new[] { "0x0", "0x0", "0x1" } : new[] { "0x0", "0x1", "0x2" }));
+        }
+
+        [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_address_mismatches()
         {
             ulong blockNumber = 55555;
@@ -1476,9 +1501,54 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures));
         }
 
+        [TestCase(false, TestName = "AddSubscription_OnAnOpenClient_KeepsTheSubscription")]
+        [TestCase(true, TestName = "AddSubscription_AfterTheClientClosed_DisposesTheSubscription")]
+        public void AddSubscription_ClientClosedBeforehand_DecidesWhetherTheSubscriptionIsKept(bool clientClosed)
+        {
+            // 1. The client is already closed (its Closed event fired before this subscription existed), or still open.
+            // 2. An eth_subscribe that was still running registers its subscription; nothing raises Closed again.
+            // 3. On a closed client the subscription must be disposed and unregistered at once, or it leaks.
+            TrackingSubscription? subscription = null;
+            ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
+            factory
+                .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+                .Returns(ci => subscription = new TrackingSubscription((IJsonRpcDuplexClient)ci[0]));
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton<ISubscriptionFactory>(factory)
+                .Build();
+            ISubscriptionManager manager = container.Resolve<ISubscriptionManager>();
+
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.Id.Returns("late-subscriber");
+            client.IsClosed.Returns(clientClosed);
+
+            string subscriptionId = manager.AddSubscription(client, "test");
+
+            Assert.That(subscription!.Disposed, Is.EqualTo(clientClosed),
+                "a subscription registered after its client closed is disposed at once; an open client's is kept");
+
+            bool removed = manager.RemoveSubscription(client, subscriptionId);
+            Assert.That(removed, Is.EqualTo(!clientClosed),
+                "only an open client's subscription is still registered");
+        }
+
         private sealed class NoopSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : Subscription(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
             public override string Type => "test";
+        }
+
+        private sealed class TrackingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : Subscription(jsonRpcDuplexClient, MaxQueuedBlocks)
+        {
+            public bool Disposed { get; private set; }
+
+            public override string Type => "test";
+
+            public override void Dispose()
+            {
+                Disposed = true;
+                base.Dispose();
+            }
         }
     }
 }
