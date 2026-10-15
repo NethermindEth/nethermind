@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -13,31 +12,24 @@ namespace Nethermind.Serialization.Rlp;
 /// <remarks>
 /// The guest encodes every receipt of a block for its receipts root. The generic encoder measures the logs again for
 /// each receipt it writes and hands every field to the writer on its own, so the guest measures them once and writes the
-/// receipt into a buffer with fixed-size copies, which it hands the writer whole. Each write returns the reference past
-/// the bytes it wrote, which stays in a register where a position held by reference would not.
+/// receipt straight into the writer's buffer. Each write returns the reference past the bytes it wrote, which stays in a
+/// register where a position held by reference would not.
 /// </remarks>
 public sealed partial class ReceiptMessageDecoder
 {
-    private const int StackBufferLength = 1024;
-
     partial void GetLengthInOnePass(TxReceipt item, RlpBehaviors rlpBehaviors, ref int length)
     {
         if (IsOnePass(item, rlpBehaviors))
             length = GetOnePassLength(item, rlpBehaviors, out _, out _);
     }
 
-    [SkipLocalsInit]
     partial void EncodeInOnePass<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors, ref bool encoded)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        if (!IsOnePass(item, rlpBehaviors)) return;
+        if (typeof(TWriter) != typeof(RlpWriter) || !IsOnePass(item, rlpBehaviors)) return;
 
         int length = GetOnePassLength(item, rlpBehaviors, out int contentLength, out int logsLength);
-        byte[]? rented = null;
-        Span<byte> buffer = length <= StackBufferLength
-            ? stackalloc byte[StackBufferLength]
-            : rented = ArrayPool<byte>.Shared.Rent(length);
-        ref byte destination = ref MemoryMarshal.GetReference(buffer);
+        ref byte destination = ref MemoryMarshal.GetReference(Unsafe.As<TWriter, RlpWriter>(ref writer).Reserve(length));
 
         if (item.TxType != TxType.Legacy) destination = ref WriteByte(ref destination, (byte)item.TxType);
         destination = ref WriteSequencePrefix(ref destination, contentLength);
@@ -48,8 +40,6 @@ public sealed partial class ReceiptMessageDecoder
         foreach (LogEntry log in item.Logs!)
             destination = ref WriteLog(ref destination, log);
 
-        writer.Write(buffer[..length]);
-        if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
         encoded = true;
     }
 
@@ -87,8 +77,7 @@ public sealed partial class ReceiptMessageDecoder
         else
         {
             destination = ref WriteByte(ref destination, 0x80 + Address.Size);
-            Unsafe.CopyBlockUnaligned(ref destination, ref MemoryMarshal.GetReference(address.Bytes), Address.Size);
-            destination = ref Unsafe.Add(ref destination, Address.Size);
+            destination = ref WriteBytes(ref destination, address.Bytes);
         }
 
         Hash256[] topics = log.Topics;
@@ -96,8 +85,7 @@ public sealed partial class ReceiptMessageDecoder
         foreach (Hash256 topic in topics)
         {
             destination = ref WriteByte(ref destination, 0x80 + Hash256.Size);
-            Unsafe.CopyBlockUnaligned(ref destination, ref MemoryMarshal.GetReference(topic.Bytes), Hash256.Size);
-            destination = ref Unsafe.Add(ref destination, Hash256.Size);
+            destination = ref WriteBytes(ref destination, topic.Bytes);
         }
 
         return ref WriteByteString(ref destination, log.Data);
@@ -112,8 +100,7 @@ public sealed partial class ReceiptMessageDecoder
         destination = 0xb9;
         Unsafe.Add(ref destination, 1) = 1;
         Unsafe.Add(ref destination, 2) = 0;
-        Unsafe.CopyBlockUnaligned(ref Unsafe.Add(ref destination, 3), ref MemoryMarshal.GetReference(bloom.Bytes), Bloom.ByteLength);
-        return ref Unsafe.Add(ref destination, 3 + Bloom.ByteLength);
+        return ref WriteBytes(ref Unsafe.Add(ref destination, 3), bloom.Bytes);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -151,8 +138,7 @@ public sealed partial class ReceiptMessageDecoder
             destination = ref WriteBigEndian(ref destination, (ulong)length, lengthOfLength);
         }
 
-        Unsafe.CopyBlockUnaligned(ref destination, ref MemoryMarshal.GetArrayDataReference(data), (uint)length);
-        return ref Unsafe.Add(ref destination, length);
+        return ref WriteBytes(ref destination, data);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -171,6 +157,14 @@ public sealed partial class ReceiptMessageDecoder
         for (int i = length - 1; i >= 0; i--)
             destination = ref WriteByte(ref destination, (byte)(value >> (8 * i)));
         return ref destination;
+    }
+
+    /// <remarks>Through memmove, which moves whole words where a fixed-size copy to an unaligned destination may move bytes.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ref byte WriteBytes(ref byte destination, ReadOnlySpan<byte> source)
+    {
+        source.CopyTo(MemoryMarshal.CreateSpan(ref destination, source.Length));
+        return ref Unsafe.Add(ref destination, source.Length);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
