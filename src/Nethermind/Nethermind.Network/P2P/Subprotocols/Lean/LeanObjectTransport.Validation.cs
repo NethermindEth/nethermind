@@ -16,10 +16,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean;
 public sealed partial class LeanObjectTransport
 {
     private const int MaxBusyRetries = 50;
+    // Each worker has at most one ETH recovery batch outstanding; never exceed the ETH per-peer cap.
+    private const int MaxRecoveringValidations = LeanProtocol.MaxRequestsPerPeer;
 
     /// <summary>The outcome of validating a completed object.</summary>
-    /// <remarks><see cref="Refused"/> is an object within EIP-8288's limits that the local verifier cannot check: EIP-8437
-    /// requires refusing it locally without treating it as invalid, so it is neither penalized nor tombstoned.</remarks>
+    /// <remarks><see cref="Refused"/> is a local inability to finish validation, including an unsupported proof or a closed
+    /// source. It does not establish invalidity, so it is neither penalized nor tombstoned.</remarks>
     private enum Verdict { Valid, Invalid, LocalFailure, Refused }
 
     /// <summary>Hands the owned reassembly buffer to the bounded validation queue without a completion copy.</summary>
@@ -52,7 +54,7 @@ public sealed partial class LeanObjectTransport
         }
         _pendingValidations++;
         _validation.Enqueue(assembly);
-        if (_validationWorkers < LeanProtocol.MaxRequestsPerPeer)
+        if (_validationWorkers < MaxRecoveringValidations)
         {
             _validationWorkers++;
             _ = Task.Run(ValidateQueueAsync);
@@ -245,13 +247,14 @@ public sealed partial class LeanObjectTransport
             case Verdict.Refused:
                 Interlocked.Increment(ref _stats.LocalFailures);
                 LeanMetrics.Record(descriptor.Kind, LeanEvent.LocalFailure);
-                if (_logger.IsDebug) _logger.Debug($"lean/1 refused {descriptor} beyond local verifier capacity: {error}");
+                if (_logger.IsDebug) _logger.Debug($"lean/1 refused {descriptor}: {error}");
                 break;
             default:
                 lock (_gate)
                 {
                     Interlocked.Increment(ref _stats.LocalFailures);
-                    _tombstones.Add(descriptor.ObjectId, _clock.GetTimestamp() + (long)(LeanLimits.SoftTombstone.TotalSeconds * _clock.TimestampFrequency));
+                    if (assembly.CompletionSource is { Closed: false })
+                        _tombstones.Add(descriptor.ObjectId, _clock.GetTimestamp() + (long)(LeanLimits.SoftTombstone.TotalSeconds * _clock.TimestampFrequency));
                 }
                 LeanMetrics.Record(descriptor.Kind, LeanEvent.LocalFailure);
                 if (_logger.IsDebug) _logger.Debug($"lean/1 could not admit {descriptor}: {error}");
@@ -309,6 +312,7 @@ public sealed partial class LeanObjectTransport
             if (claims != Verdict.Valid) return (claims, claimsError);
             // An unresolved wrapper is retained only within this bounded recovery and is never admitted or announced.
             recovered = await RecoverTransactionsAsync(assembly, missing, cancellation).ConfigureAwait(false);
+            if (assembly.CompletionSource is not { Closed: false }) return (Verdict.Refused, "source closed during envelope recovery");
             if (recovered.Count != missing.Count) return (Verdict.LocalFailure, $"{missing.Count - recovered.Count} hash entries unresolved");
         }
         return await VerifyWithBudgetAsync(assembly,
@@ -323,8 +327,8 @@ public sealed partial class LeanObjectTransport
         try
         {
             cancellation.ThrowIfCancellationRequested();
-            if (assembly.CompletionSource is not { Closed: false }
-                || assembly.VerificationBytes > assembly.RetrievalBytes - (long)assembly.Descriptor.ByteLength)
+            if (assembly.CompletionSource is not { Closed: false }) return (Verdict.Refused, "source closed before verification");
+            if (assembly.VerificationBytes > assembly.RetrievalBytes - (long)assembly.Descriptor.ByteLength)
                 return (Verdict.Refused, "no decoder working-space budget");
             return await AcceptWithRetryAsync(accept, cancellation).ConfigureAwait(false);
         }
@@ -366,8 +370,16 @@ public sealed partial class LeanObjectTransport
         for (int start = 0; start < missing.Count && !timeout.IsCancellationRequested; start += batchSize)
         {
             ValueHash256[] batch = missing.GetRange(start, Math.Min(batchSize, missing.Count - start)).ToArray();
-            Transaction[] transactions = await source.Link.RecoverTransactionsAsync(batch,
-                bytes => ReserveRecovery(assembly, source, bytes), timeout.Token).ConfigureAwait(false);
+            Transaction[] transactions;
+            try
+            {
+                transactions = await source.Link.RecoverTransactionsAsync(batch,
+                    bytes => ReserveRecovery(assembly, source, bytes), timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellation.IsCancellationRequested)
+            {
+                break;
+            }
             foreach (Transaction transaction in transactions)
             {
                 ValueHash256 hash = (transaction.Hash ?? transaction.CalculateHash()).ValueHash256;
@@ -382,6 +394,7 @@ public sealed partial class LeanObjectTransport
                     lock (_gate) if (!assembly.Dropped) assembly.Updated = _clock.GetTimestamp();
             }
         }
+        cancellation.ThrowIfCancellationRequested();
         return recovered;
     }
 
