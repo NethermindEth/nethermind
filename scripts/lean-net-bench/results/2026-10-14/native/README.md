@@ -2,6 +2,8 @@
 
 Real proof measurements for fork `cf1e92f87a7aec052b680f73e56145e866218583`, guest key `00f24bbdf44a31139c975223b77510cd93a905664da3c4a52b5eba4e9b07de9e`, adapter checkpoint `04da763081`. No Lean tuning. [Source and reproduction](../../../native-cost/README.md), [full provenance](provenance.json), [raw summary](summary.json).
 
+[View graph (PNG)](native-aggregation.png) · [SVG](native-aggregation.svg). The graph shows medians and observed ranges; the table below shows means.
+
 Apple M2 Max, 32 GiB RAM, one prover worker. Three fresh-process samples per small case, one exploratory SPH64 sample. Managed builds/tests overlapped part of capture; this was not an exclusively reserved timing host.
 
 | Case | Samples | Mean aggregate seconds | Mean root verify ms | Root bytes | Maximum observed process RSS GiB |
