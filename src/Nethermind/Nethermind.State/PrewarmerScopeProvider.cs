@@ -559,7 +559,7 @@ public class PrewarmerScopeProvider(
             baseStorageTree.HintSet(in index, in value);
         }
 
-        // Inlined into Get, so a miss makes no call: the JIT does not inline a method this size on its own.
+        // Keeps the miss path inlined into Get: without the attribute the JIT inlines only the bypass call.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
         {
