@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -46,12 +47,12 @@ public class Eip8288BlockProductionTests
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new(first), new(second)],
+            Transactions = [.. new[] { first, second }.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => new WrapperTransaction(tx))],
             Deps = Eip8288Dependencies.Canonicalize([firstDependency, secondDependency]),
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1], [1]]
         }).Bytes;
-        Assert.That((await service.AcceptAsync(wrapper)).IsSuccess, Is.True);
+        Assert.That((await AcceptWrapper(service, wrapper, first, second)).IsSuccess, Is.True);
         Assert.That(service.BuildWrapper().IsSuccess, Is.True);
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
         Block? built = await chain.BlockProducer.BuildBlock();
@@ -255,7 +256,7 @@ public class Eip8288BlockProductionTests
         Block? first = await chain.BlockProducer.BuildBlock();
         Assert.That(first, Is.Not.Null);
         Assert.That(first!.Transactions, Has.Length.EqualTo(1));
-        first.StarkProof[0] ^= 0xff;
+        first.StarkProof![0] ^= 0xff;
         Block? second = await chain.BlockProducer.BuildBlock();
         Assert.That(second, Is.Not.Null);
         Assert.That(second!.Transactions, Has.Length.EqualTo(1));
@@ -468,7 +469,7 @@ public class Eip8288BlockProductionTests
         FrameDependency b = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending-b"), default);
         Transaction first = CreateTransaction(chain, a, [UInt256.Zero]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
-        Assert.That((await service.AcceptAsync(EncodeWrapper(a, first))).IsSuccess, Is.True);
+        Assert.That((await AcceptWrapper(service, EncodeWrapper(a, first), first)).IsSuccess, Is.True);
         Flood();
         Assert.That(proofs.Covers(first), Is.True);
         Transaction replacement = CreateTransaction(chain, b, [UInt256.Zero]);
@@ -476,7 +477,7 @@ public class Eip8288BlockProductionTests
         replacement.DecodedMaxFeePerGas = 200.GWei;
         FrameTxTestFrames.SignSecp256k1(replacement, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         replacement.Hash = replacement.CalculateHash();
-        Assert.That((await service.AcceptAsync(EncodeWrapper(b, replacement))).IsSuccess, Is.True);
+        Assert.That((await AcceptWrapper(service, EncodeWrapper(b, replacement), replacement)).IsSuccess, Is.True);
         Flood();
         Assert.That(chain.TxPool.TryGetPendingTransaction(first.Hash!.ValueHash256, out _), Is.False);
         Assert.That(proofs.Covers(first), Is.False);
@@ -490,7 +491,7 @@ public class Eip8288BlockProductionTests
         Transaction otherOwner = CreateTransaction(chain, unrelated, [UInt256.Zero]);
         proofs.AddVerified([unrelated], [[1]], null);
         proofs.PinPending(otherOwner);
-        Assert.That((await service.AcceptAsync(EncodeWrapper(c, shuttingDown))).IsSuccess, Is.True);
+        Assert.That((await AcceptWrapper(service, EncodeWrapper(c, shuttingDown), shuttingDown)).IsSuccess, Is.True);
         await ((IAsyncDisposable)chain.TxPool).DisposeAsync();
         Flood();
         Assert.That(proofs.Covers(shuttingDown), Is.False);
@@ -602,7 +603,7 @@ public class Eip8288BlockProductionTests
         Transaction first = CreateTransaction(chain, dependency, [1, 7]);
         Transaction independent = CreateTransaction(chain, dependency, [9]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
-        Assert.That((await service.AcceptAsync(EncodeWrapper(dependency, first, independent))).IsSuccess, Is.True);
+        Assert.That((await AcceptWrapper(service, EncodeWrapper(dependency, first, independent), first, independent)).IsSuccess, Is.True);
         Assert.That(service.BuildWrapper().IsSuccess, Is.True);
         Block block = await ProduceAndImport(chain, slot: 1);
         Assert.That(block.Transactions, Has.Length.EqualTo(2));
@@ -614,7 +615,7 @@ public class Eip8288BlockProductionTests
                 Assert.That(KeyedNonceManager.CurrentNonceSeq(chain.MainWorldState, TestItem.PrivateKeyB.Address, key), Is.EqualTo(1));
         }
         Transaction replay = CreateTransaction(chain, dependency, [1]);
-        Result<Hash256[]> result = await service.AcceptAsync(EncodeWrapper(dependency, replay));
+        Result<Hash256[]> result = await AcceptWrapper(service, EncodeWrapper(dependency, replay), replay);
         Assert.That(result.IsSuccess, Is.False);
     }
 
@@ -643,7 +644,7 @@ public class Eip8288BlockProductionTests
             new(FrameMode.Sender, FrameFlags.None, TestItem.AddressD, executionGasLimit: 100_000, stateGasLimit: GasCostOf.SSetState, UInt256.Zero, default),
             FrameTxTestFrames.PostTx(10_000));
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
-        Result<Hash256[]> accepted = await service.AcceptAsync(EncodeWrapper(dependency, transaction));
+        Result<Hash256[]> accepted = await AcceptWrapper(service, EncodeWrapper(dependency, transaction), transaction);
         Assert.That(accepted.IsSuccess, Is.EqualTo(matchingRoot));
         Assert.That(verifier.VerificationCalls, Is.EqualTo(matchingRoot ? 1 : 0));
         if (matchingRoot) Assert.That(service.BuildWrapper().IsSuccess, Is.True);
@@ -679,7 +680,7 @@ public class Eip8288BlockProductionTests
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
         Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero], [new(source, 0, root)]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
-        Result<Hash256[]> accepted = await service.AcceptAsync(EncodeWrapper(dependency, transaction));
+        Result<Hash256[]> accepted = await AcceptWrapper(service, EncodeWrapper(dependency, transaction), transaction);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accepted.IsSuccess, Is.False);
@@ -728,9 +729,12 @@ public class Eip8288BlockProductionTests
         return transaction;
     }
 
+    private static async Task<Result<Hash256[]>> AcceptWrapper(ProofWrapperService service, byte[] wrapper, params Transaction[] transactions)
+        => (await service.AcceptDetailedAsync(wrapper, transactions.ToDictionary(static tx => tx.Hash!.ValueHash256))).Result;
+
     private static byte[] EncodeWrapper(FrameDependency dependency, params Transaction[] transactions) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
     {
-        Transactions = Array.ConvertAll(transactions, static transaction => new WrapperTransaction(transaction)),
+        Transactions = [.. transactions.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => new WrapperTransaction(tx))],
         Deps = [dependency],
         Mode = MempoolWrapper.ModeDirect,
         Proofs = [[1]]

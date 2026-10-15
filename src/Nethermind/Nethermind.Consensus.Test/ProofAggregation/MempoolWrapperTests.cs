@@ -48,6 +48,38 @@ public class MempoolWrapperTests
     }
 
     [Test]
+    public void Resolved_host_entry_serializes_only_its_hash()
+    {
+        Transaction transaction = Build.A.Transaction.WithData(new byte[4096]).TestObject;
+        transaction.Hash = Keccak.Compute("resolved");
+        MempoolWrapper wrapper = new()
+        {
+            Transactions = [new WrapperTransaction(transaction)],
+            Mode = MempoolWrapper.ModeDirect,
+            Deps = [Sphincs("a")],
+            Proofs = [[1]]
+        };
+        byte[] encoded = MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes;
+        MempoolWrapper decoded = Decode(new Rlp(encoded));
+        Assert.That(encoded.Length, Is.LessThan(256));
+        Assert.That(decoded.Transactions[0].Hash, Is.EqualTo(transaction.Hash));
+        Assert.That(decoded.Transactions[0].IsHashOnly, Is.True);
+    }
+
+    [Test]
+    public void Encoder_rejects_large_direct_witness_totals_before_allocating_output()
+    {
+        MempoolWrapper wrapper = new()
+        {
+            Transactions = [new WrapperTransaction(Keccak.Compute("tx"))],
+            Mode = MempoolWrapper.ModeDirect,
+            Deps = [Sphincs("a"), Stark("b")],
+            Proofs = [new byte[5 * 1024 * 1024], new byte[5 * 1024 * 1024]]
+        };
+        Assert.Throws<RlpException>(() => MempoolWrapperDecoder.Instance.GetLength(wrapper, RlpBehaviors.None));
+    }
+
+    [Test]
     public void Recursive_wrapper_round_trips()
     {
         List<FrameDependency> deps = [Sphincs("a")];
@@ -181,7 +213,7 @@ public class MempoolWrapperTests
     [Test]
     public void Unknown_transaction_hash_is_rejected()
     {
-        MempoolWrapper wrapper = new() { Transactions = [new WrapperTransaction(Keccak.Compute("missing"))], Mode = MempoolWrapper.ModeDirect, Deps = [], Proofs = [] };
+        MempoolWrapper wrapper = new() { Transactions = [new WrapperTransaction(Keccak.Compute("missing"))], Mode = MempoolWrapper.ModeDirect, Deps = [Sphincs("unknown")], Proofs = [[1]] };
         Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.UnknownTransaction));
     }
@@ -227,7 +259,7 @@ public class MempoolWrapperTests
             Deps = [Sphincs("a")],
             RecursiveStark = new RecursiveStark([7], new Hash256(Eip8288Dependencies.ComputeDepsHash([Sphincs("a")])))
         };
-        // RLP([[[1, hash]], 1, [[dependency_bytes96], stark_proof]]): tagged entries, a list of triples, and only the proof.
+        // EIP-8288: the transaction list contains hashes only; the recursive statement is derived from deps.
         Rlp expected = Rlp.Encode(
             Rlp.Encode(new[] { HashEntry(hash) }),
             Rlp.Encode(1UL),
@@ -236,7 +268,8 @@ public class MempoolWrapperTests
         Assert.That(MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes, Is.EqualTo(expected.Bytes));
     }
 
-    [TestCase("untagged")]
+    [TestCase("tagged-hash")]
+    [TestCase("full-envelope")]
     [TestCase("unknown-tag")]
     [TestCase("short-hash")]
     [TestCase("unsorted")]
@@ -248,9 +281,10 @@ public class MempoolWrapperTests
         Hash256[] hashes = [.. ByHash(Keccak.Compute("a"), Keccak.Compute("b")).Select(static entry => entry.Hash!)];
         Rlp[] entries = scenario switch
         {
-            "untagged" => [Rlp.Encode(hashes[0])],
+            "tagged-hash" => [Rlp.Encode(Rlp.Encode(1UL), Rlp.Encode(hashes[0]))],
+            "full-envelope" => [Rlp.Encode(Rlp.Encode(0UL), Rlp.Encode(new byte[] { (byte)TxType.FrameTx, 0xc0 }))],
             "unknown-tag" => [Rlp.Encode(Rlp.Encode(2UL), Rlp.Encode(hashes[0]))],
-            "short-hash" => [Rlp.Encode(Rlp.Encode(1UL), Rlp.Encode(new byte[31]))],
+            "short-hash" => [Rlp.Encode(new byte[31])],
             "unsorted" => [HashEntry(hashes[1]), HashEntry(hashes[0])],
             "duplicate" => [HashEntry(hashes[0]), HashEntry(hashes[0])],
             "empty" => [],
@@ -265,7 +299,7 @@ public class MempoolWrapperTests
     private static WrapperTransaction[] ByHash(params Hash256[] hashes) =>
         [.. hashes.OrderBy(static hash => hash.ToString()).Select(static hash => new WrapperTransaction(hash))];
 
-    private static Rlp HashEntry(Hash256 hash) => Rlp.Encode(Rlp.Encode(1UL), Rlp.Encode(hash));
+    private static Rlp HashEntry(Hash256 hash) => Rlp.Encode(hash);
 
     private static MempoolWrapper Decode(Rlp encoded)
     {
@@ -406,13 +440,11 @@ public class MempoolWrapperTests
         }
     }
 
-    // EIPs#12473: a wrapper of transactions without dependency verification frames has empty deps and uses mode 0 with an
-    // empty proofs list; mode 1 with empty deps is invalid.
-    [TestCase(MempoolWrapper.ModeDirect, 0, null)]
-    [TestCase(MempoolWrapper.ModeDirect, 1, MempoolWrapperValidator.ProofCountMismatch)]
+    [TestCase(MempoolWrapper.ModeDirect, 0, MempoolWrapperValidator.EmptyAggregate)]
+    [TestCase(MempoolWrapper.ModeDirect, 1, MempoolWrapperValidator.EmptyAggregate)]
     [TestCase(MempoolWrapper.ModeRecursive, 0, MempoolWrapperValidator.EmptyAggregate)]
     [TestCase(MempoolWrapper.ModeRecursive, 1, MempoolWrapperValidator.EmptyAggregate)]
-    public void Empty_deps_wrapper_is_valid_only_in_mode_0(byte mode, int proofBytes, string? expected)
+    public void Empty_dependency_wrappers_are_rejected_in_both_modes(byte mode, int proofBytes, string? expected)
     {
         Hash256 hash = Keccak.Compute("no-dependency-frame");
         Transaction transaction = new() { Type = TxType.FrameTx, Frames = [] };
@@ -436,8 +468,6 @@ public class MempoolWrapperTests
         }
     }
 
-    // EIPs#12473: a dependency verification frame still requires a triple, so it cannot yield an empty union; and empty deps
-    // must not omit a dependency a transaction declares.
     [TestCase(MempoolWrapper.ModeDirect, true, MempoolWrapperValidator.MalformedDependencyFrame)]
     [TestCase(MempoolWrapper.ModeRecursive, true, MempoolWrapperValidator.MalformedDependencyFrame)]
     [TestCase(MempoolWrapper.ModeDirect, false, MempoolWrapperValidator.DepsMismatch)]

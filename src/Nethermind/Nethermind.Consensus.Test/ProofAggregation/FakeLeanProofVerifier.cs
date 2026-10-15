@@ -13,6 +13,8 @@ internal sealed class FakeLeanProofVerifier(bool result) : ILeanProofVerifier
 {
     public void EnsureAvailable() { }
 
+    public byte[] ProofOutput { get; set; } = [1];
+
     public int LargestRecursiveInput { get; private set; }
     public int ProofCalls { get; private set; }
     public int VerificationCalls { get; private set; }
@@ -33,6 +35,6 @@ internal sealed class FakeLeanProofVerifier(bool result) : ILeanProofVerifier
         LargestRecursiveInput = Math.Max(LargestRecursiveInput, input.RecursiveProofs.Count);
         ProofCalls++;
         OnProving?.Invoke();
-        return [1];
+        return (byte[])ProofOutput.Clone();
     }
 }

@@ -56,7 +56,8 @@ public class NativeBlockValidationTests
         byte[] proof = oldEnvelope
             ? [(byte)'N', (byte)'L', (byte)'R', (byte)'3', 0, 0, 0, 0, 0, 0, 0, 0]
             : NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput());
-        block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
+        block.StarkProof = proof;
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), new Hash256(depsHash));
 
         bool result = CreateValidator().ValidateSuggestedBlock(block, parent, out string? error);
 
@@ -83,7 +84,8 @@ public class NativeBlockValidationTests
         ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
         byte[] proof = NativeLeanProofVerifierTests.MixedProof();
         if (tamper) proof[^1] ^= 0xFF;
-        block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
+        block.StarkProof = proof;
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), new Hash256(depsHash));
         return (block, parent);
     }
 

@@ -35,10 +35,14 @@ public static class LeanBodies
         }
         transactions.End();
         ulong mode = wrapper.ReadUInt64();
+        if (mode > 1) throw new RlpException("Unknown wrapper mode");
         LeanRlpReader content = wrapper.ReadList();
         wrapper.End();
         LeanRlpReader dependencies = content.ReadList();
-        int dependencyCount = dependencies.CountRemaining(Eip8288Constants.MaxProofDependencies);
+        int dependencyLimit = mode == 0
+            ? Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper
+            : Eip8288Constants.MaxDepsPerAggregate;
+        int dependencyCount = dependencies.CountRemaining(dependencyLimit);
         if (dependencyCount == 0) throw new RlpException("Wrapper dependencies are empty");
         ReadOnlySpan<byte> previous = default;
         for (int i = 0; i < dependencyCount; i++)
@@ -52,7 +56,7 @@ public static class LeanBodies
         if (mode == 0)
         {
             LeanRlpReader proofs = content.ReadList();
-            if (proofs.CountRemaining(Eip8288Constants.MaxProofDependencies) != dependencyCount) throw new RlpException("Witness count mismatch");
+            if (proofs.CountRemaining(dependencyLimit) != dependencyCount) throw new RlpException("Witness count mismatch");
             while (proofs.HasMore) verificationBytes += proofs.ReadBytes().Length;
         }
         else if (mode == 1)

@@ -144,8 +144,10 @@ public partial class EngineRpcModule : IEngineRpcModule
     protected async Task<ResultWrapper<ForkchoiceUpdatedV2Result>> ForkchoiceUpdatedWithInclusionList(
         ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
-        // Out of fork the attributes are rejected below with -38005, so don't retain the list at all.
-        if (payloadAttributes?.CombinedInclusionListTransactions is { } ilTxs
+        // Preserve forkchoice error ordering while refusing to retain rejected attributes.
+        if (payloadAttributes is not null
+            && payloadAttributes.Validate(_specProvider, version, out _) == PayloadAttributesValidationResult.Success
+            && payloadAttributes.CombinedInclusionListTransactions is { } ilTxs
             && _specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)) is { IsEip7805Enabled: true } spec)
         {
             // An oversized IL is a no-op, not a protocol error. Set only registers the list: decoding and
