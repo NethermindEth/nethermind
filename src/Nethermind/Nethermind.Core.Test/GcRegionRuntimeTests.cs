@@ -56,7 +56,7 @@ public class GcRegionRuntimeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(load.TotalMemoryBytes, Is.EqualTo(expected).Within(0.1).Percent);
+            Assert.That(load.TotalMemoryBytes, Is.EqualTo(expected).Within(expected / 1000), "within 0.1%");
             Assert.That(load.MemoryLoadBytes, Is.InRange(0L, load.TotalMemoryBytes));
         }
     }
