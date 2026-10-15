@@ -155,7 +155,8 @@ public class WitnessGeneratingWorldState(
             }
 
             // Index 0 is the account trie; the rest are storage tries. Each trie is walked independently, and a large
-            // one also fans out across its own branches.
+            // one also fans out across its own branches; the scope makes those nested walks share one worker budget.
+            using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount);
             ParallelUnbalancedWork.For(0, storageWalks.Count + 1, ParallelUnbalancedWork.DefaultOptions, i =>
             {
                 if (i == 0)
@@ -187,7 +188,11 @@ public class WitnessGeneratingWorldState(
     {
         public ConcurrentDictionary<Hash256AsKey, byte[]> Nodes { get; } = new();
 
-        public void Add(in TreePath path, TrieNode node) => Nodes.TryAdd(node.Keccak!, node.FullRlp.ToArray());
+        // Storage tries often share subtrees, so look up first rather than copy a node that is already held.
+        public void Add(in TreePath path, TrieNode node)
+        {
+            if (!Nodes.ContainsKey(node.Keccak!)) Nodes.TryAdd(node.Keccak!, node.FullRlp.ToArray());
+        }
     }
 
     public override bool TryGetAccount(Address address, out AccountStruct account)
