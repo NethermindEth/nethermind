@@ -34,7 +34,7 @@ permissions:
 jobs:
   publish-docker:
     name: Publish to Docker Hub
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     permissions:
       contents: read
       id-token: write
