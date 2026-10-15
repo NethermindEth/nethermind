@@ -300,6 +300,8 @@ public class BlockchainBridgeTests
             OverrideInput.FeeRecipient => new() { FeeRecipient = Address.Zero },
             OverrideInput.BaseFeePerGas => new() { BaseFeePerGas = UInt256.Zero },
             OverrideInput.BlobBaseFee => new() { BlobBaseFee = UInt256.Zero },
+            OverrideInput.BeaconRoot => new() { BeaconRoot = TestItem.KeccakA },
+            OverrideInput.Withdrawals => new() { Withdrawals = [new Withdrawal()] },
             _ => new(),
         };
         Dictionary<Address, AccountOverride>? stateOverride = input == OverrideInput.State
@@ -323,9 +325,10 @@ public class BlockchainBridgeTests
                 break;
         }
 
-        bool hasOverrides = input is not (OverrideInput.None or OverrideInput.Empty);
-        shared.Received(hasOverrides ? 0 : 1).TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>());
-        exclusive.Received(hasOverrides ? 1 : 0).TryBuildAndOverride(
+        // The shared DTO also carries fields used only for debug_traceCall's unsupported-field validation.
+        bool hasAppliedOverrides = input is not (OverrideInput.None or OverrideInput.Empty or OverrideInput.BeaconRoot or OverrideInput.Withdrawals);
+        shared.Received(hasAppliedOverrides ? 0 : 1).TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>());
+        exclusive.Received(hasAppliedOverrides ? 1 : 0).TryBuildAndOverride(
             Arg.Any<BlockHeader?>(), stateOverride, blockOverride, out Arg.Any<Scope<BlockchainBridge.BlockProcessingComponents>?>());
     }
 
@@ -1512,5 +1515,5 @@ public class BlockchainBridgeTests
     }
 
     public enum OverrideCall { Call, EstimateGas, EstimateFrameGas }
-    public enum OverrideInput { None, Empty, Number, PrevRandao, Time, GasLimit, FeeRecipient, BaseFeePerGas, BlobBaseFee, State, BlobFeeArgument }
+    public enum OverrideInput { None, Empty, Number, PrevRandao, Time, GasLimit, FeeRecipient, BaseFeePerGas, BlobBaseFee, BeaconRoot, Withdrawals, State, BlobFeeArgument }
 }
