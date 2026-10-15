@@ -1348,7 +1348,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     private async Task<bool> ExchangeStatusAndRecordAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, string? enr, CancellationToken token, DialRecord? dial)
     {
-        ManagedPeer peer = new(this, _p2p, address, peerId, session, info.Direction, info.AgentVersion, enr) { Dial = dial };
+        ManagedPeer peer = new(this, _p2p, address, peerId, session, info.Direction, info.AgentVersion, enr) { Dial = dial, Identify = info.Identify };
         if (!await UpdateStatusAsync(peer, token))
         {
             return false;
@@ -1361,7 +1361,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             Metrics.BeaconChainPeerCount = _peers.Count;
         }
 
-        if (info.UnrecordedIdentify is { } identify)
+        // The peer store never removes an entry: any key can open a session here, so only peers this node chose to dial are recorded.
+        if (info.Identify is { } identify && (info.Direction == PeerDirection.Outbound || IsStaticPeer(peerId)))
         {
             _p2p.RecordIdentify(session, identify);
         }
@@ -1433,7 +1434,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                     }
 
                     attempt = CancellationTokenSource.CreateLinkedTokenSource(closed);
-                    dialing = DialGossipAsync(peer.Session, remotePeerId, attempt.Token);
+                    dialing = DialGossipAsync(peer, remotePeerId, attempt.Token);
                     dialedAt = Stopwatch.GetTimestamp();
                     wait = redialDelay;
                     redialDelay = NextGossipRedialDelay(redialDelay);
@@ -1458,11 +1459,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     internal static TimeSpan NextGossipRedialDelay(TimeSpan delay) => delay * 2 < MaxGossipRedialDelay ? delay * 2 : MaxGossipRedialDelay;
 
     // The newest gossipsub version the peer listed, in the order the pubsub router picks one when it connects itself.
-    private async Task DialGossipAsync(ISession session, PeerId remotePeerId, CancellationToken token)
+    private async Task DialGossipAsync(ManagedPeer peer, PeerId remotePeerId, CancellationToken token)
     {
+        ISession session = peer.Session;
         try
         {
-            IReadOnlyList<string> protocols = _p2p.SupportedProtocolsOf(remotePeerId);
+            IReadOnlyList<string> protocols = peer.Identify?.Protocols ?? [];
             if (protocols.Contains(PubsubRouter.GossipsubProtocolVersionV13))
             {
                 await session.DialAsync<GossipsubProtocolV13>(token);
@@ -2122,6 +2124,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         public ISession Session { get; } = session;
         /// <summary>The outbound dial that admitted this peer; <c>null</c> for a session the remote opened.</summary>
         public DialRecord? Dial { get; init; }
+        /// <summary>The session's verified identify answer, which a session the remote opened keeps only here.</summary>
+        public IdentifyAgentVersionProbe.Answer? Identify { get; init; }
         public StatusMessageV2? Status => _status;
         /// <summary>Whether the libp2p layer has dropped <see cref="Session"/>; every further request to it fails.</summary>
         public bool IsSessionClosed => p2p.SessionClosedToken(Session).IsCancellationRequested;

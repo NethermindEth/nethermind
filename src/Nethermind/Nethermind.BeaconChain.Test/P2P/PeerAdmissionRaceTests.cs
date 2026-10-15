@@ -10,6 +10,7 @@ using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Network.Libp2p;
 using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
@@ -202,6 +203,8 @@ public class PeerAdmissionRaceTests
         Node remote = Create();
         await using PeerHostScope hosts = new(local.P2P, remote.P2P);
         await hosts.StartAsync(token, local.P2P, remote.P2P);
+        // The router picks its gossipsub version from the peer store, which only admission fills.
+        remote.P2P.PeerInfoForTest(local.P2P.LocalPeerId!).SupportedProtocols = [PubsubRouter.GossipsubProtocolVersionV13];
         remote.P2P.Discover([LoopbackAddress(local.P2P)]);
         await WaitUntilAsync(() => remote.P2P.RoutingStateForTest!.ConnectedPeers.Contains(local.P2P.LocalPeerId!), "fixture: the router never connected to the peer", token);
         Assert.That(remote.P2P.TryGetEstablishedSession(local.P2P.LocalPeerId!, out ISession? session), Is.True, "fixture: the router's session is established");

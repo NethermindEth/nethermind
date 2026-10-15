@@ -55,7 +55,7 @@ public class IdentifyTests
 
         ISession session = await PeerSessionNodes.DialAsync(client, server, token);
         BeaconP2P.SessionInfo info = await client.GetSessionInfoAsync(session, token);
-        string[] advertised = client.PeerInfoForTest(server.LocalPeerId!).SupportedProtocols ?? [];
+        string[] advertised = info.Identify?.Protocols ?? [];
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(advertised.Count(static id => id == IdentifyProtocolId), Is.EqualTo(1), "identify is listed once even though the agent probe shares its id");
@@ -147,15 +147,8 @@ public class IdentifyTests
         Assert.That(oneAnswer, Is.Positive, "fixture: an identify answer reads the advertised protocols");
         Assert.That(info.AgentVersion, Is.EqualTo(ServerAgent));
         Assert.That(answers.Reads - oneAnswer, Is.EqualTo(oneAnswer), "the session asked for identify once");
-        if (nodeDials)
-        {
-            Assert.That(client.PeerInfoForTest(server.Peer.Identity.PeerId).SupportedProtocols, Does.Contain(IdentifyProtocolId), "a dialed peer's answer is recorded in the peer store");
-        }
-        else
-        {
-            Assert.That(info.UnrecordedIdentify?.Protocols, Does.Contain(IdentifyProtocolId), "the answer waits in the session information");
-            Assert.That(client.IsInPeerStoreForTest(server.Peer.Identity.PeerId), Is.False, "a session the remote opened is recorded only when admitted");
-        }
+        Assert.That(info.Identify?.Protocols, Does.Contain(IdentifyProtocolId), "the answer is kept in the session information");
+        Assert.That(client.IsInPeerStoreForTest(server.Peer.Identity.PeerId), Is.False, "the peer store never forgets an entry, so a session is recorded there only once admitted");
     }
 
     [TestCase(Answer.Valid, PeerRecordsVerificationPolicy.RequireCorrect, true)]
@@ -228,7 +221,7 @@ public class IdentifyTests
     }
 
     [Test]
-    public void A_shared_host_stores_a_bounded_protocol_list_however_many_ids_an_answer_lists()
+    public void A_bounded_protocol_list_is_kept_however_many_ids_an_answer_lists([Values] bool beaconProbe)
     {
         Identity remote = new(privateKey: null, KeyType.Secp256K1);
         // About what an 8 KiB answer of one-character ids holds, after one id over the length bound.
@@ -236,11 +229,19 @@ public class IdentifyTests
         message.Protocols.AddRange(Enumerable.Range(0, 2_700).Select(static i => ((char)('a' + i % 26)).ToString()));
         PeerStore peerStore = new();
 
-        BoundedIdentifyProtocol.Apply(message, SessionWith(remote), new IdentifyProtocolSettings(), peerStore);
+        string[] stored;
+        if (beaconProbe)
+        {
+            stored = IdentifyAgentVersionProbe.Verify(message, SessionWith(remote), new IdentifyProtocolSettings()).Protocols;
+        }
+        else
+        {
+            BoundedIdentifyProtocol.Apply(message, SessionWith(remote), new IdentifyProtocolSettings(), peerStore);
+            stored = peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols ?? [];
+        }
 
-        string[] stored = peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols ?? [];
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(stored, Has.Length.EqualTo(BoundedIdentifyProtocol.MaxStoredProtocols), "the peer store never forgets an entry, so one entry stays small");
+        Assert.That(stored, Has.Length.EqualTo(BoundedIdentifyProtocol.MaxStoredProtocols), "an answer is kept for as long as its peer, so one answer stays small");
         Assert.That(stored[0], Is.EqualTo("a"), "an id over the length bound is dropped, not truncated into another id");
     }
 

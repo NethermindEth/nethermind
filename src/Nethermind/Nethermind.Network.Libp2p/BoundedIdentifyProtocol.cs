@@ -91,8 +91,9 @@ public sealed class BoundedIdentifyProtocol(IProtocolStackSettings stack, PeerSt
         return message.HasAgentVersion ? message.AgentVersion : null;
     }
 
-    // The library's peer store never removes an entry, so what one entry holds is bounded instead.
-    private static string[] StoredProtocols(IEnumerable<string> protocols)
+    /// <summary>The first <see cref="MaxStoredProtocols"/> of <paramref name="protocols"/> no longer than <see cref="MaxStoredProtocolIdBytes"/> bytes each.</summary>
+    /// <remarks>The library's peer store never removes an entry, so what one entry holds is bounded instead.</remarks>
+    public static string[] StoredProtocols(IEnumerable<string> protocols)
     {
         List<string> stored = [];
         foreach (string protocol in protocols)

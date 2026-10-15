@@ -73,9 +73,8 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>The per-session facts <see cref="PeerManager"/> cannot read off an <see cref="ISession"/>.
     /// <paramref name="AgentVersion"/> is <c>null</c> only when the peer's identify answer carries none
     /// (see <see cref="IdentifyAgentVersionProbe"/>), never as a stand-in for "not wired".</summary>
-    /// <param name="UnrecordedIdentify">The identify answer of a session the remote opened, which reaches the peer store only through
-    /// <see cref="RecordIdentify"/> at admission; <c>null</c> for a session this node dialed, whose answer is recorded at once.</param>
-    public readonly record struct SessionInfo(PeerDirection Direction, string? AgentVersion, IdentifyAgentVersionProbe.Answer? UnrecordedIdentify = null);
+    /// <param name="Identify">The session's verified identify answer, which reaches the peer store only through <see cref="RecordIdentify"/>.</param>
+    public readonly record struct SessionInfo(PeerDirection Direction, string? AgentVersion, IdentifyAgentVersionProbe.Answer? Identify = null);
 
     /// <summary>Raised once a session is fully established (identify done) in either direction. This is
     /// the only way a session the remote side opened, which no local dial will ever return, reaches the
@@ -397,8 +396,8 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>Whether the pubsub router holds a gossip channel with <paramref name="peerId"/>, opened by either side.</summary>
     internal bool HasGossipChannel(PeerId peerId) => _router is IRoutingStateContainer router && router.ConnectedPeers.Contains(peerId);
 
-    /// <summary>Records the identify answer of an admitted <paramref name="session"/> in the peer store.</summary>
-    /// <remarks>The library's peer store never removes an entry, so writing one before admission would let refused sessions grow it without bound.</remarks>
+    /// <summary>Records the identify answer of <paramref name="session"/> in the peer store.</summary>
+    /// <remarks>The library's peer store never removes an entry, so only admitted sessions from a bounded set of peers may be recorded.</remarks>
     internal void RecordIdentify(ISession session, IdentifyAgentVersionProbe.Answer answer)
     {
         if (RemotePeerIdOf(session) is { } peerId)
@@ -406,10 +405,6 @@ public sealed class BeaconP2P : IAsyncDisposable
             IdentifyAgentVersionProbe.Record(_serviceProvider.GetRequiredService<PeerStore>(), peerId, answer);
         }
     }
-
-    /// <summary>The protocols <paramref name="peerId"/> listed in its identify answer; empty when none is recorded.</summary>
-    internal IReadOnlyList<string> SupportedProtocolsOf(PeerId peerId) =>
-        _serviceProvider.GetRequiredService<PeerStore>().GetPeerInfo(peerId)?.SupportedProtocols ?? [];
 
     /// <summary>Internal so a test can see which peers the started router holds a gossip connection to.</summary>
     internal IRoutingStateContainer? RoutingStateForTest => _router;
@@ -916,13 +911,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 throw;
             }
 
-            // A session the remote opened is recorded only once admitted (see RecordIdentify).
-            if (isDialer && _peerStore is not null && RemotePeerIdOf(session) is { } remotePeerId)
-            {
-                IdentifyAgentVersionProbe.Record(_peerStore, remotePeerId, answer);
-            }
-
-            slot?.TrySetResult(new SessionInfo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound, answer.AgentVersion, isDialer ? null : answer));
+            slot?.TrySetResult(new SessionInfo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound, answer.AgentVersion, answer));
         }
     }
 

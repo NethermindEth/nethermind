@@ -367,6 +367,32 @@ public class PeerBandTests
         Assert.That(manager.PeerCount, Is.EqualTo(1), "no admission path may exceed MaxPeerCount");
     }
 
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Admitted_sessions_the_remote_opened_with_fresh_keys_add_no_peer_store_entry_unless_static([Values] bool staticPeers, CancellationToken token)
+    {
+        Node[] remotes = [.. Enumerable.Range(0, 4).Select(_ => CreateNode())];
+        Node local = CreateNode();
+        SetMatchingStatus([.. remotes, local]);
+        await using PeerHostScope nodes = new([local.P2P, .. remotes.Select(static node => node.P2P)]);
+        await nodes.StartAsync(token, [.. remotes.Select(static node => node.P2P), local.P2P]);
+        if (staticPeers) local.Config.StaticPeers = string.Join(',', remotes.Select(static node => LoopbackAddress(node.P2P)));
+        PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+
+        foreach (Node remote in remotes)
+        {
+            PeerId remoteId = remote.P2P.LocalPeerId!;
+            await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
+            await WaitUntilAsync(() => manager.PeerCount == 1 && local.P2P.HasGossipChannel(remoteId), token, "the admitted peer got no gossip channel from its identify answer");
+            Assert.That(local.P2P.TryGetEstablishedSession(remoteId, out ISession? session), Is.True);
+            await session!.DisconnectAsync();
+            await WaitUntilAsync(() => manager.PeerCount == 0, token, "the closed session was not removed");
+
+            Assert.That(local.P2P.IsInPeerStoreForTest(remoteId), Is.EqualTo(staticPeers),
+                "the peer store never forgets an entry, so only a bounded set of peers, never any key that completes a handshake, may add one");
+        }
+    }
+
     [TestCase(false, TestName = "Maintenance_round_trims_the_worst_peer_once_over_the_high_watermark")]
     [TestCase(true, TestName = "A_static_peer_that_connected_to_us_first_is_still_exempt_from_trimming")]
     [CancelAfter(60_000)]
@@ -569,6 +595,7 @@ public class PeerBandTests
 
         await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
         Assert.That(peerManager.PeerCount, Is.EqualTo(0));
+        Assert.That(local.P2P.IsInPeerStoreForTest(remote.P2P.LocalPeerId!), Is.False, "the peer store never forgets an entry, so a peer refused at admission must not add one");
         if (!outbound)
         {
             return;

@@ -7,6 +7,7 @@ using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Libp2p.Protocols;
+using Nethermind.Network.Libp2p;
 using IdentifyMessage = Nethermind.Libp2p.Protocols.Identify.Dto.Identify;
 
 namespace Nethermind.BeaconChain.P2P;
@@ -92,7 +93,7 @@ public sealed class IdentifyAgentVersionProbe(IdentifyProtocol identify, Identif
         }
 
         // Pubsub peer exchange hands out the stored record, so an unverified one is never stored.
-        return new Answer(message.HasAgentVersion ? message.AgentVersion : null, [.. message.Protocols], verified ? message.SignedPeerRecord : null, seq);
+        return new Answer(message.HasAgentVersion ? message.AgentVersion : null, BoundedIdentifyProtocol.StoredProtocols(message.Protocols), verified ? message.SignedPeerRecord : null, seq);
     }
 
     /// <summary>Records a verified identify answer of <paramref name="peerId"/> in the peer store.</summary>
