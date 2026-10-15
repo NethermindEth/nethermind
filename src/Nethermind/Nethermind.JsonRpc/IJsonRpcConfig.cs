@@ -123,7 +123,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "Data/jsonrpc.filter")]
     string CallsFilterFilePath { get; set; }
 
-    [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
+    [ConfigItem(Description = "The max length of an HTTP request body or a WebSocket message, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
     [ConfigItem(

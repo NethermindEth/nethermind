@@ -150,7 +150,8 @@ public class WebSocketExtensionsTests
             new EthereumJsonSerializer(),
             null,
             30.MB,
-            1);
+            1,
+            null);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
