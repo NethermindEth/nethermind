@@ -465,6 +465,14 @@ public class Eth68ProtocolHandler(ISession session,
         return base.HandleSlow(request, cancellationToken);
     }
 
+    /// <remarks>
+    /// Unlike <see cref="ValidateSizeAndType"/>, a matching announcement is not taken: it still describes this hash
+    /// correctly, and the bounded cache evicts it.
+    /// </remarks>
+    private protected override bool MatchesAnnouncedShape(in ValueHash256 hash, TxType type, int size) =>
+        !TryGetTxShape(in hash, out (int Size, TxType Type) txShape)
+        || txShape.Size == size && txShape.Type == type;
+
     private bool ValidateSizeAndType(Transaction? tx)
         => tx is not null
         && !IsSparseBlobTransaction(tx)
