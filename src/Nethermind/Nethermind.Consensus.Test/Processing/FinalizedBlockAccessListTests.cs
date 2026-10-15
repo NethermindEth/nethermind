@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -137,6 +138,44 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         block.DisposeAccountChanges();
     }
 
+    [Test]
+    public void Reconstructed_receipts_reach_subscribers_with_senders_and_contract_addresses()
+    {
+        using TestEnvironment env = new(useFlatDb);
+        Transaction tx = Build.A.Transaction.WithTo(null).WithNonce(3).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        LogEntry log = new(TestItem.AddressC, [1, 2], [TestItem.KeccakA]);
+        TxReceipt[] downloaded = [new TxReceipt { StatusCode = 1, GasUsedTotal = 60000, Logs = [log] }];
+        Block block = env.CreateBlock(transaction: tx,
+            receiptsRoot: ReceiptsRootCalculator.Instance.GetReceiptsRoot(downloaded, Amsterdam.Instance, null));
+        env.Beacon.GetFinalizedHash().Returns(block.Hash);
+        env.ReceiptConfig.StoreReceipts = true;
+
+        // As in forward sync: bodies arrive without senders and receipts are stored before queued processing recovers them.
+        tx.SenderAddress = null;
+        env.Recovery.TryRecover(block, downloaded, forceRecoverSender: false);
+        env.Receipts.Insert(block, downloaded, ensureCanonical: false);
+        tx.SenderAddress = TestItem.AddressA;
+
+        TxReceipt[]? published = null;
+        env.Branch.BlockProcessed += (_, e) => published = e.TxReceipts;
+        env.Branch.Process(env.Genesis.Header, [block], ProcessingOptions.StoreReceipts, NullBlockTracer.Instance);
+        TxReceipt stored = env.Receipts.Get(block)[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.Recording.Calls, Is.Zero);
+            Assert.That(published, Has.Length.EqualTo(1));
+            TxReceipt receipt = published![0];
+            Assert.That(receipt.Sender, Is.EqualTo(TestItem.AddressA));
+            Assert.That(receipt.ContractAddress, Is.EqualTo(ContractAddress.From(TestItem.AddressA, 3)));
+            Assert.That(receipt.TxHash, Is.EqualTo(tx.Hash));
+            Assert.That(receipt.BlockHash, Is.EqualTo(block.Hash));
+            Assert.That(receipt.GasUsed, Is.EqualTo(60000UL));
+            Assert.That(receipt.Bloom, Is.EqualTo(new Bloom([log])));
+            Assert.That(stored.Sender, Is.EqualTo(TestItem.AddressA), "what later readers of the receipt store see");
+        }
+        block.DisposeAccountChanges();
+    }
+
     [TestCase(false, true)]
     [TestCase(true, false)]
     public void Disabled_configuration_or_chain_without_access_lists_keeps_normal_execution(bool enabled, bool accessListChain)
@@ -229,6 +268,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         public IBlockTree Tree { get; }
         public IWorldState State { get; }
         public IReceiptStorage Receipts { get; }
+        public IReceiptsRecovery Recovery => _container.Resolve<IReceiptsRecovery>();
         public IBlockProcessor Processor { get; }
         public IBranchProcessor Branch { get; }
         public RecordingProcessor Recording { get; }
@@ -266,7 +306,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             Tree.SuggestBlock(Genesis, BlockTreeSuggestOptions.None);
         }
 
-        public Block CreateBlock(bool matchingRoot = true, bool matchingList = true, bool insert = true, bool withTransaction = false, Block? parent = null, UInt256? balance = null, Hash256? receiptsRoot = null)
+        public Block CreateBlock(bool matchingRoot = true, bool matchingList = true, bool insert = true, bool withTransaction = false, Block? parent = null, UInt256? balance = null, Hash256? receiptsRoot = null, Transaction? transaction = null)
         {
             parent ??= Genesis;
             UInt256 finalBalance = balance ?? 25;
@@ -284,6 +324,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             BlockBuilder builder = Build.A.Block.WithParent(parent).WithDifficulty(0).WithStateRoot(matchingRoot ? root : TestItem.KeccakC)
                 .WithBlockAccessListHash(matchingList ? Keccak.Compute(encoded) : TestItem.KeccakD);
             if (withTransaction) builder.WithTransactions(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject);
+            if (transaction is not null) builder.WithTransactions(transaction);
             if (receiptsRoot is not null) builder.WithReceiptsRoot(receiptsRoot);
             Block block = builder.TestObject;
             block.Header.IsPostMerge = true;
