@@ -503,6 +503,11 @@ public sealed class ColumnGossipRouter(
             return ForwardIfHeld(sidecar, blockRoot, slot, proposerIndex);
         }
 
+        if (IsRetryBudgetSpent(sidecar, blockRoot))
+        {
+            return Drop(ColumnGossipDropReason.RetryBudgetSpent, MessageValidity.Ignored);
+        }
+
         // [REJECT] verify_data_column_sidecar_kzg_proofs: a native KZG cell-proof batch, run inline on the pubsub read loop.
         if (VerifyKzgProofs(sidecar, blockRoot) is { } kzgFailure)
         {
@@ -642,10 +647,8 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.ProposerNotVerifiable, MessageValidity.Ignored);
         }
 
-        // A retried copy is charged to the retry budget only when its KZG batch would run; one past the budget waits for the next retry.
-        if (_retrying && !_parkedRetries.TryTake(slotClock.CurrentSlot))
+        if (IsRetryBudgetSpent(sidecar, blockRoot))
         {
-            ParkUnverifiable(sidecar, blockRoot);
             return Drop(ColumnGossipDropReason.RetryBudgetSpent, MessageValidity.Ignored);
         }
 
@@ -937,6 +940,20 @@ public sealed class ColumnGossipRouter(
         {
             _retrying = retrying;
         }
+    }
+
+    /// <summary>Charges a retried queued sidecar to <see cref="ParkedRetriesPerSlot"/> just before its KZG batch, and queues it again once the budget is spent.</summary>
+    /// <returns>Whether the budget is spent, so the sidecar runs no KZG batch now.</returns>
+    /// <remarks>A copy that is queued again without KZG work costs nothing, so it cannot spend the turn of a copy that verifies.</remarks>
+    private bool IsRetryBudgetSpent(DataColumnSidecar sidecar, Hash256 blockRoot)
+    {
+        if (!_retrying || _parkedRetries.TryTake(slotClock.CurrentSlot))
+        {
+            return false;
+        }
+
+        ParkUnverifiable(sidecar, blockRoot);
+        return true;
     }
 
     /// <summary>Adds a sidecar whose KZG proofs passed to the pool and raises <see cref="DataColumnSidecarReceived"/>, unless a copy for its block root and index already did.</summary>

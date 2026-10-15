@@ -611,19 +611,27 @@ public class ColumnGossipRouterFuluHeaderTests
     }
 
     [Test]
-    public void Forged_copies_queued_by_many_peers_run_at_most_the_retry_budget_of_KZG_batches()
+    public void Forged_copies_queued_by_many_peers_run_at_most_the_retry_budget_of_KZG_batches([Values] bool importedBeforeRetry)
     {
         const int forgingPeers = 8;
         int columns = ColumnGossipRouter.ParkedRetriesPerSlot / (forgingPeers * ColumnGossipRouter.KzgBatchesPerColumn) + 1;
         ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(OtherRoot, 0) };
-        (ColumnGossipRouter router, _, _) = Create(null, subnets: AllSubnets, lookaheads: lookaheads,
-            forkChoice: new ForkChoiceSnapshotHolder { Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true) });
+        ForkChoiceSnapshotHolder forkChoice = new() { Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true) };
+        (ColumnGossipRouter router, _, BeaconChainStore store) = Create(null, subnets: AllSubnets, lookaheads: lookaheads, forkChoice: forkChoice);
         PeerId[] peers = [.. Enumerable.Range(0, forgingPeers).Select(static _ => new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId)];
         for (ulong column = 0; column < (ulong)columns; column++)
         {
             DataColumnSidecar honest = Signed(BuildValidSidecar(column, CurrentSlot), signer: 0);
             for (int copy = 0; copy < forgingPeers * ColumnGossipRouter.KzgBatchesPerColumn; copy++)
                 router.Handle(column, gloasTopic: false, Message(Altered(honest, copy)), source: peers[copy % forgingPeers]);
+        }
+
+        // Every column shares one header, so importing its block moves every queued copy onto the imported-header path.
+        if (importedBeforeRetry)
+        {
+            DataColumnSidecar imported = Signed(BuildValidSidecar(0, CurrentSlot), signer: 0);
+            StoreAsImported(store, imported);
+            forkChoice.Current = forkChoice.Current! with { Nodes = [.. forkChoice.Current.Nodes, Node(CurrentSlot, SszRoots.HashTreeRoot(imported.SignedBlockHeader!.Message!), ParentRoot)] };
         }
 
         lookaheads.Current = Lookahead(ParentRoot, 0);
