@@ -100,6 +100,11 @@ public sealed partial class KeccakHash
         {
             fixed (byte* data = input)
             {
+                if (StrictAlignmentFlag.IsActive && ((nuint)data & 7) == 0)
+                {
+                    return ComputeHash256(AlignedDown(data), (nuint)(uint)input.Length);
+                }
+
                 return ComputeHash256(data, (nuint)(uint)input.Length);
             }
         }
@@ -214,6 +219,7 @@ public sealed partial class KeccakHash
             // Native rather than a managed array, which the guest's allocator zeroes word by word. Left uninitialized: only
             // the states of a node's whole leading blocks are written, and ComputeHash256OfEdited reads no other.
             ulong* states = (ulong*)NativeMemory.Alloc((nuint)count, RetainedLanes * sizeof(ulong));
+            Debug.Assert(((nuint)states & 7) == 0);
             ref byte[] firstNode = ref MemoryMarshal.GetArrayDataReference(nodes);
             ref ValueHash256 firstHash = ref MemoryMarshal.GetReference(hashes);
             for (nint i = 0; i < count; i++)
@@ -251,63 +257,80 @@ public sealed partial class KeccakHash
     [SkipLocalsInit]
     internal static unsafe ValueHash256 ComputeHash256OfEdited(ReadOnlySpan<byte> input, byte[]? previous, nint tag)
     {
-        // With the equal-length check below, this alone guarantees the keyed node's states were written, not left
-        // uninitialized. The caller gates on it, so release builds skip it.
-        Debug.Assert(IsResumable(input.Length));
         byte[][]? nodes = WitnessNodes.Nodes;
         nuint index = (nuint)(tag - 1);
+        // An equal resumable length guarantees the keyed node's states were written, not left uninitialized.
         if (nodes is null || index >= (nuint)WitnessNodes.Count || !ReferenceEquals(nodes[index], previous)
-            || previous!.Length != input.Length)
+            || previous!.Length != input.Length || !IsResumable(input.Length))
         {
             return ValueKeccak.Compute(input);
         }
 
         nuint length = (nuint)input.Length;
-        nuint retainedLength = Math.Min(length / HASH_DATA_AREA, RetainedBlocks) * HASH_DATA_AREA;
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         fixed (byte* data = input, original = previous)
         {
-            nuint offset = 0;
-            // One state past the one the matching blocks leave.
-            nuint next = index * RetainedLanes;
-            while (offset < retainedLength && BlockEquals(data + offset, original + offset))
-            {
-                offset += HASH_DATA_AREA;
-                next += STATE_LANES;
-            }
-
-            if (offset == 0)
+            bool absorbed = StrictAlignmentFlag.IsActive && ((nuint)data & 7) == 0
+                ? TryAbsorbEdited(ref lane, AlignedDown(data), AlignedDown(original), index, length)
+                : TryAbsorbEdited(ref lane, data, original, index, length);
+            if (!absorbed)
             {
                 return ValueKeccak.Compute(input);
-            }
-
-            ref ulong retained = ref WitnessNodes.States[next - STATE_LANES];
-            if (length != Hash532InputLength)
-            {
-                AbsorbRestFrom(ref lane, ref retained, data + offset, length - offset);
-            }
-            else if (offset == RetainedBlocks * HASH_DATA_AREA)
-            {
-                AbsorbFullBranchTailFrom(ref lane, ref retained, data + offset);
-            }
-            else
-            {
-                AbsorbBlockFrom(ref lane, ref retained, data + offset);
-                Accelerators.KeccakF(ref lane);
-                for (offset += HASH_DATA_AREA; offset < RetainedBlocks * HASH_DATA_AREA; offset += HASH_DATA_AREA)
-                {
-                    AbsorbBlock(ref lane, data + offset, intoZeroState: false);
-                    Accelerators.KeccakF(ref lane);
-                }
-
-                AbsorbPaddedTail(ref lane, data + offset, FullBranchTailLength);
             }
         }
 
         Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
         Accelerators.KeccakF(ref lane);
         return Unsafe.As<ulong, ValueHash256>(ref lane);
+    }
+
+    /// <summary>Absorbs all of the <paramref name="length"/>-byte node <paramref name="data"/> but its pad byte into
+    /// <paramref name="lane"/>, from the state <see cref="ComputeHash256OfWitnessNodes"/> kept for the leading rate blocks
+    /// it shares with <paramref name="original"/>.</summary>
+    /// <returns>Whether any leading block is shared; if none is, <paramref name="lane"/> is left as it was.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool TryAbsorbEdited(ref ulong lane, byte* data, byte* original, nuint index, nuint length)
+    {
+        nuint retainedLength = Math.Min(length / HASH_DATA_AREA, RetainedBlocks) * HASH_DATA_AREA;
+        nuint offset = 0;
+        // One state past the one the matching blocks leave.
+        nuint next = index * RetainedLanes;
+        while (offset < retainedLength && BlockEquals(data + offset, original + offset))
+        {
+            offset += HASH_DATA_AREA;
+            next += STATE_LANES;
+        }
+
+        if (offset == 0)
+        {
+            return false;
+        }
+
+        ulong* states = StrictAlignmentFlag.IsActive ? AlignedDown(WitnessNodes.States) : WitnessNodes.States;
+        ref ulong retained = ref states[next - STATE_LANES];
+        if (length != Hash532InputLength)
+        {
+            AbsorbRestFrom(ref lane, ref retained, data + offset, length - offset);
+        }
+        else if (offset == RetainedBlocks * HASH_DATA_AREA)
+        {
+            AbsorbFullBranchTailFrom(ref lane, ref retained, data + offset);
+        }
+        else
+        {
+            AbsorbBlockFrom(ref lane, ref retained, data + offset);
+            Accelerators.KeccakF(ref lane);
+            for (offset += HASH_DATA_AREA; offset < RetainedBlocks * HASH_DATA_AREA; offset += HASH_DATA_AREA)
+            {
+                AbsorbBlock(ref lane, data + offset, intoZeroState: false);
+                Accelerators.KeccakF(ref lane);
+            }
+
+            AbsorbPaddedTail(ref lane, data + offset, FullBranchTailLength);
+        }
+
+        return true;
     }
 
     /// <summary>Hashes a full branch, leaving the state after each of its leading rate blocks in <paramref name="retained"/>.</summary>
@@ -317,15 +340,16 @@ public sealed partial class KeccakHash
     {
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
-        ref ulong second = ref Unsafe.Add(ref retained, STATE_LANES);
-        ref ulong third = ref Unsafe.Add(ref retained, 2 * STATE_LANES);
+        ref ulong first = ref StrictAlignmentFlag.IsActive ? ref *AlignedDown((ulong*)Unsafe.AsPointer(ref retained)) : ref retained;
+        ref ulong second = ref Unsafe.Add(ref first, STATE_LANES);
+        ref ulong third = ref Unsafe.Add(ref first, 2 * STATE_LANES);
 
         fixed (byte* data = node)
         {
-            ZeroCapacity(ref retained);
-            AbsorbBlock(ref retained, data, intoZeroState: true);
-            Accelerators.KeccakF(ref retained);
-            AbsorbBlockFrom(ref second, ref retained, data + HASH_DATA_AREA);
+            ZeroCapacity(ref first);
+            AbsorbBlock(ref first, data, intoZeroState: true);
+            Accelerators.KeccakF(ref first);
+            AbsorbBlockFrom(ref second, ref first, data + HASH_DATA_AREA);
             Accelerators.KeccakF(ref second);
             AbsorbBlockFrom(ref third, ref second, data + 2 * HASH_DATA_AREA);
             Accelerators.KeccakF(ref third);
@@ -409,7 +433,7 @@ public sealed partial class KeccakHash
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe bool LaneEquals(byte* a, byte* b, nuint index) =>
-        Unsafe.ReadUnaligned<ulong>(a + index * sizeof(ulong)) == Unsafe.ReadUnaligned<ulong>(b + index * sizeof(ulong));
+        ReadLane(a, index) == ReadLane(b, index);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ZeroCapacity(ref ulong lane)
@@ -490,7 +514,7 @@ public sealed partial class KeccakHash
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbLaneFrom(ref ulong lane, ref ulong source, byte* data, nuint index) =>
-        Unsafe.Add(ref lane, index) = Unsafe.Add(ref source, index) ^ Unsafe.ReadUnaligned<ulong>(data + index * sizeof(ulong));
+        Unsafe.Add(ref lane, index) = Unsafe.Add(ref source, index) ^ ReadLane(data, index);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CopyCapacity(ref ulong lane, ref ulong source)
@@ -535,7 +559,7 @@ public sealed partial class KeccakHash
     /// of at least eight bytes followed by that pad byte.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ulong ShortMessageLane(byte* data, nuint length, nuint index) =>
-        index < length >> 3 ? Unsafe.ReadUnaligned<ulong>(data + index * sizeof(ulong))
+        index < length >> 3 ? ReadLane(data, index)
         : PaddedLastWord(data + length, length & 7);
 
     /// <summary>Zeroes all twenty-five lanes of a state.</summary>
@@ -693,9 +717,22 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbLane(ref ulong lane, byte* data, nuint index, bool intoZeroState)
     {
-        ulong word = Unsafe.ReadUnaligned<ulong>(data + index * sizeof(ulong));
+        ulong word = ReadLane(data, index);
         Unsafe.Add(ref lane, index) = intoZeroState ? word : Unsafe.Add(ref lane, index) ^ word;
     }
+
+    /// <summary>Lane <paramref name="index"/> of <paramref name="data"/>, which need not be aligned.</summary>
+    /// <remarks>A plain load rather than an unaligned read: every guest target executes either as one wide load, but where
+    /// the JIT tests alignment (<see cref="StrictAlignmentFlag"/>) it drops the test for a plain load whose address it can
+    /// prove aligned, and keeps it for an unaligned read always.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe ulong ReadLane(byte* data, nuint index) =>
+        *(ulong*)(data + index * sizeof(ulong));
+
+    /// <summary><paramref name="pointer"/> rounded down to an 8-byte boundary: itself, for a pointer already on one.</summary>
+    /// <remarks>The JIT sees through the rounding (dotnet-riscv perf-67) and proves every lane access off the result aligned.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe T* AlignedDown<T>(T* pointer) where T : unmanaged => (T*)((nuint)pointer & ~(nuint)7);
 
     /// <summary>The message's last <paramref name="partial"/> bytes followed by the 0x01 pad byte, as a lane.</summary>
     /// <param name="end">The end of the message, which must be at least eight bytes long.</param>
