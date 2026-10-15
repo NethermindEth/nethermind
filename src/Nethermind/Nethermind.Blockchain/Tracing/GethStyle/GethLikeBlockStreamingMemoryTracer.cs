@@ -28,6 +28,7 @@ public sealed class GethLikeBlockStreamingMemoryTracer(
 
     protected override GethLikeTxDirectStreamingTracer OnStart(Transaction? tx)
     {
+        options.ResolveTimeout();
         if (_reusableTxTracer is null)
         {
             _reusableTxTracer = new GethLikeTxDirectStreamingTracer(tx, options, writer, pipeWriter, cancellationToken, destroyRefund: destroyRefund);
