@@ -33,6 +33,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = [];
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
+    private readonly HashSet<AddressAsKey> _deletedAccounts;
     // EIP-8360: storage opcodes of these accounts act on transient storage, so they read no state.
     private HashSet<AddressAsKey>? _transientCreates;
     private List<AddressAsKey>? _nonexistentAccounts;
@@ -76,6 +77,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         if (_diffMode)
         {
             _poststate = [];
+            _deletedAccounts = [];
             _createdAccounts = [];
         }
 
@@ -224,6 +226,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     address = stack.PeekAddress(0);
                     LookupAccount(address);
+                    if (_diffMode && _op == Instruction.SELFDESTRUCT)
+                        _deletedAccounts.Add(_executingAccount!);
                 }
                 break;
             // EIP-8298: SETCODEFROM reads the source account's code.
@@ -334,11 +338,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
         {
-            // An account that existed before the transaction and is gone after it was self-destructed: as in geth,
-            // it stays whole in pre and is left out of post. Reading the end state covers EIP-6780 and reverts.
-            if (!_worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct) && !IsEmpty(prestateAccount))
+            // If an account was deleted then don't show it in the postState trace
+            if (_deletedAccounts.Contains(addr))
                 continue;
 
+            _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
             NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
