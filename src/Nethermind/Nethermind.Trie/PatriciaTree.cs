@@ -372,37 +372,6 @@ namespace Nethermind.Trie
             }
         }
 
-        [SkipLocalsInit]
-        [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey)
-        {
-            byte[]? array = null;
-            try
-            {
-                int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
-                        ? stackalloc byte[MaxKeyStackAlloc]
-                        : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
-                    [..nibblesCount]; // Slice to exact size;
-
-                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-
-                TreePath emptyPath = TreePath.Empty;
-                TrieNode? root = RootRef;
-
-                DoWarmUpPath(nibbles, ref emptyPath, root);
-            }
-            catch (TrieException e)
-            {
-                EnhanceException(rawKey, RootHash, e);
-                throw;
-            }
-            finally
-            {
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
-            }
-        }
-
         [DebuggerStepThrough]
         public byte[]? GetNodeByPath(byte[] nibbles, Hash256? rootHash = null)
         {
@@ -963,65 +932,6 @@ namespace Nethermind.Trie
             finally
             {
                 if (TracksPath) path.TruncateMut(originalPathLength);
-            }
-        }
-
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node)
-        {
-            int originalPathLength = path.Length;
-
-            try
-            {
-                while (true)
-                {
-                    if (node is null)
-                    {
-                        // If node read, then missing node. If value read.... what is it suppose to be then?
-                        return;
-                    }
-
-                    // Call FindCachedOrUnknown on some path.
-                    if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
-                    // Best effort: a path-keyed store may hold another version of the node, which just ends the warm-up.
-                    if (!node.TryResolveNode(TrieStore, ref path)) return;
-
-                    if (node.IsLeaf || node.IsExtension)
-                    {
-                        int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
-                        if (commonPrefixLength == node.Key!.Length)
-                        {
-                            if (node.IsLeaf)
-                            {
-                                // Done
-                                return;
-                            }
-
-                            // Continue traversal to the child of the extension
-                            path.AppendMut(node.Key);
-                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
-                            remainingKey = remainingKey[node!.Key.Length..];
-                            node = extensionChild;
-
-                            continue;
-                        }
-
-                        // No node match
-                        return;
-                    }
-
-                    int nextNib = remainingKey[0];
-
-                    path.AppendMut(nextNib);
-                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);
-
-                    // Continue loop with child as current node
-                    node = child;
-                    remainingKey = remainingKey[1..];
-                }
-            }
-            finally
-            {
-                path.TruncateMut(originalPathLength);
             }
         }
 
