@@ -1297,7 +1297,7 @@ public class PersistenceManagerTests
         // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
-        TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv, log);
 
         // Add accounts

@@ -75,7 +75,7 @@ public class WriteBatchBenchmark
             SnapshotBundle bundle = new(
                 readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget commitTarget = new();
-            FlatWorldStateScope scope = new(
+            using FlatWorldStateScope scope = new(
                 currentStateId: _currentStateId,
                 snapshotBundle: bundle,
                 codeDb: new NullCodeDb(),
@@ -122,7 +122,7 @@ public class WriteBatchBenchmark
 
             scope.Commit(blockNumber: block + 1);
 
-            FlatSnapshot snapshot = commitTarget.LastSnapshot
+            using FlatSnapshot snapshot = commitTarget.LastSnapshot
                 ?? throw new InvalidOperationException(
                     $"Block {block + 1}: Commit produced no snapshot");
             snapshot.TryAcquire();
@@ -138,6 +138,14 @@ public class WriteBatchBenchmark
         {
             _addresses[i] = DeriveAddress(totalAccountCount + i + 1);
         });
+    }
+
+    [GlobalCleanup]
+    public void GlobalCleanup()
+    {
+        IterationCleanup();
+        foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
+        _trieNodeLog.Dispose();
     }
 
     [IterationSetup]

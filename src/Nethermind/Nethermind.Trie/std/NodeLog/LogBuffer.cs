@@ -2,34 +2,90 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Nethermind.Trie.NodeLog;
 
-internal static class LogBuffer
+/// <summary>Native record storage, retired only after the log's readers have released their leases.</summary>
+internal sealed unsafe class LogBuffer : MemoryManager<byte>
 {
-    private const int HugePageBytes = 2 * 1024 * 1024;
+    private const nuint HugePageBytes = 2 * 1024 * 1024;
     private const int MadvHugePage = 14;
 
+    private nint _address;
+    private readonly nuint _allocatedBytes;
+
     [DllImport("libc", EntryPoint = "madvise")]
-    private static extern unsafe int Madvise(void* address, nuint length, int advice);
+    private static extern int Madvise(void* address, nuint length, int advice);
 
-    public static unsafe byte[] Allocate(int length)
+    private LogBuffer(int length)
     {
-        if (!OperatingSystem.IsLinux() || length < HugePageBytes) return new byte[length];
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        Length = length;
+        bool useHugePages = OperatingSystem.IsLinux() && (nuint)length >= HugePageBytes;
+        nuint alignment = useHugePages ? HugePageBytes : 64;
+        _allocatedBytes = ((nuint)Math.Max(length, 1) + alignment - 1) & ~(alignment - 1);
+        void* data = NativeMemory.AlignedAlloc(_allocatedBytes, alignment);
+        if (data == null) throw new OutOfMemoryException();
 
-        // Permanent pinning keeps the advised mapping valid across compacting collections.
-        byte[] buffer = GC.AllocateUninitializedArray<byte>(length, pinned: true);
-        fixed (byte* data = buffer)
+        bool pressureAdded = false;
+        try
         {
-            // Only full pages owned by the array are advised, excluding its header and neighbouring objects.
-            nuint pageMask = (nuint)Environment.SystemPageSize - 1;
-            nuint start = ((nuint)data + pageMask) & ~pageMask;
-            nuint end = ((nuint)data + (nuint)length) & ~pageMask;
-            Madvise((void*)start, end - start, MadvHugePage);
+            GC.AddMemoryPressure((long)_allocatedBytes);
+            pressureAdded = true;
+            if (useHugePages) Madvise(data, _allocatedBytes, MadvHugePage);
+            new Span<byte>(data, length).Clear();
+            _address = (nint)data;
         }
+        catch
+        {
+            NativeMemory.AlignedFree(data);
+            if (pressureAdded) GC.RemoveMemoryPressure((long)_allocatedBytes);
+            throw;
+        }
+    }
 
-        buffer.AsSpan().Clear();
-        return buffer;
+    public int Length { get; }
+
+    internal bool IsDisposed => Volatile.Read(ref _address) == 0;
+
+    public static LogBuffer Allocate(int length) => new(length);
+
+    // Native spans do not root their owner: the enclosing operation lease or generation retain must outlive their use.
+    public override Span<byte> GetSpan()
+    {
+        nint address = Volatile.Read(ref _address);
+        ObjectDisposedException.ThrowIf(address == 0, this);
+        return new Span<byte>((void*)address, Length);
+    }
+
+    public Span<byte> AsSpan() => GetSpan();
+    public Span<byte> AsSpan(int start) => GetSpan()[start..];
+    public Span<byte> AsSpan(int start, int length) => GetSpan().Slice(start, length);
+
+    public override MemoryHandle Pin(int elementIndex = 0)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)elementIndex, (uint)Length);
+        return new MemoryHandle((byte*)UnsafeAddress() + elementIndex);
+    }
+
+    private nint UnsafeAddress()
+    {
+        nint address = Volatile.Read(ref _address);
+        ObjectDisposedException.ThrowIf(address == 0, this);
+        return address;
+    }
+
+    public override void Unpin() { }
+
+    protected override void Dispose(bool disposing)
+    {
+        nint address = Interlocked.Exchange(ref _address, 0);
+        if (address == 0) return;
+
+        NativeMemory.AlignedFree((void*)address);
+        GC.RemoveMemoryPressure((long)_allocatedBytes);
     }
 }

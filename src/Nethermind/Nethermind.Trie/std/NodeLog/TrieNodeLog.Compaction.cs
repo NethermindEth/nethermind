@@ -30,7 +30,8 @@ public sealed partial class TrieNodeLog
     private bool _compacting;
 
     /// <summary>The bloom filter of the node keys written to the generation of <paramref name="pointer"/>, or null once it is compacted.</summary>
-    internal SplitBlockBloom? FindBloom(ulong pointer)
+    /// <remarks>The caller must hold an operation lease or generation retain for the entire use of the filter.</remarks>
+    internal BloomFilter? FindBloom(ulong pointer)
     {
         ulong id = pointer >> OffsetBits;
         Generation? generation = Volatile.Read(ref _generations[id & GenerationSlotMask]);
@@ -42,45 +43,76 @@ public sealed partial class TrieNodeLog
     private void Reclaim()
     {
         EvictCompressed(0);
-        if (_compacting || !IsCompactable) return;
+        if (_disposed || _compactionFailure is not null || _compacting || !IsCompactable) return;
 
         _compacting = true;
-        ThreadPool.UnsafeQueueUserWorkItem(static log => log.CompactDropped(), this, preferLocal: false);
+        try
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(static log => log.CompactDropped(), this, preferLocal: false);
+        }
+        catch
+        {
+            _compacting = false;
+            throw;
+        }
     }
 
     private void CompactDropped()
     {
-        while (true)
+        try
         {
-            Generation generation;
-            ulong newest;
-            lock (_lock)
+            while (true)
             {
-                if (!IsCompactable)
+                Generation generation;
+                ulong newest;
+                lock (_lock)
                 {
-                    _compacting = false;
-                    return;
+                    if (_disposed || !IsCompactable) return;
+                    generation = _generations[_oldestAllocated & GenerationSlotMask]!;
+                    newest = _active.Id;
                 }
 
-                generation = _generations[_oldestAllocated & GenerationSlotMask]!;
-                newest = _active.Id;
+                CompressedGeneration? compressed = Compress(generation, newest);
+                try
+                {
+                    lock (_lock)
+                    {
+                        if (_disposed) return;
+                        if (compressed is not null)
+                        {
+                            _compressedMemory += (ulong)compressed.Memory;
+                            Volatile.Write(ref generation.Compressed, compressed);
+                            compressed = null;
+                        }
+
+                        _inPlaceBytes -= generation.Data!.Length;
+                        Retire(generation.Data);
+                        Volatile.Write(ref generation.Data, null);
+                        Retire(generation.Bloom);
+                        Volatile.Write(ref generation.Bloom, null);
+                        _oldestAllocated++;
+                        EvictCompressed(0);
+                        UpdateMetrics();
+                    }
+                }
+                finally
+                {
+                    compressed?.Dispose();
+                }
             }
-
-            CompressedGeneration? compressed = Compress(generation, newest);
+        }
+        catch (Exception exception)
+        {
+            // Report background failure on the next foreground operation, without losing native owners.
+            Volatile.Write(ref _compactionFailure, exception);
+        }
+        finally
+        {
             lock (_lock)
             {
-                if (compressed is not null)
-                {
-                    _compressedMemory += (ulong)compressed.Memory;
-                    Volatile.Write(ref generation.Compressed, compressed);
-                }
-
-                _inPlaceBytes -= generation.Data!.Length;
-                Volatile.Write(ref generation.Data, null);
-                Volatile.Write(ref generation.Bloom, null);
-                _oldestAllocated++;
-                EvictCompressed(0);
-                UpdateMetrics();
+                _compacting = false;
+                if (_disposed) TryCompleteDispose();
+                else Reclaim();
             }
         }
     }
@@ -88,7 +120,7 @@ public sealed partial class TrieNodeLog
     /// <returns>What compaction keeps of <paramref name="generation"/>, or null when it keeps nothing.</returns>
     private CompressedGeneration? Compress(Generation generation, ulong newest)
     {
-        byte[] data = generation.Data!;
+        LogBuffer data = generation.Data!;
         // Reservations that did not fit leave Used past the end.
         long end = Math.Min(Volatile.Read(ref generation.Used), data.Length);
         using ArrayPoolList<int> kept = new(InitialKeptCapacity);
@@ -119,9 +151,10 @@ public sealed partial class TrieNodeLog
 
     private bool IsWrittenAfter(ulong id, ulong newest, ulong nodeKey)
     {
+        // Only this compactor retires blooms; later generations keep theirs until this pass finishes.
         for (ulong later = id + 1; later <= newest; later++)
         {
-            if (_generations[later & GenerationSlotMask]!.Bloom!.Contains(nodeKey)) return true;
+            if (_generations[later & GenerationSlotMask]!.Bloom!.MightContain(nodeKey)) return true;
         }
 
         return false;
@@ -137,6 +170,7 @@ public sealed partial class TrieNodeLog
             if (compressed is not null && _compressedMemory <= _compressedMaxMemory && _oldestCompressed >= before) return;
 
             _compressedMemory -= (ulong)(compressed?.Memory ?? 0);
+            Retire(compressed);
             Volatile.Write(ref generation.Compressed, null);
             _oldestCompressed++;
         }

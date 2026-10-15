@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using System;
 using System.IO;
 using Nethermind.Core;
@@ -37,6 +38,7 @@ public class PersistedSnapshotRepositoryTests
     [TearDown]
     public void TearDown()
     {
+        _log.Dispose();
         if (Directory.Exists(_testDir))
             Directory.Delete(_testDir, recursive: true);
     }
@@ -170,12 +172,12 @@ public class PersistedSnapshotRepositoryTests
         TrieNodeLogRetain logRetain1 = _log.RetainActive();
         SnapshotContent content1 = new();
         content1.SetStateNodeRlp(_log, path, rlp1);
-        Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain1 };
+        using Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain1 };
 
         TrieNodeLogRetain logRetain2 = _log.RetainActive();
         SnapshotContent content2 = new();
         content2.SetStateNodeRlp(_log, path, rlp2);
-        Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain2 };
+        using Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain2 };
 
         tier.ConvertToPersistedBase(snap1).Dispose();
         tier.ConvertToPersistedBase(snap2).Dispose();
@@ -240,7 +242,7 @@ public class PersistedSnapshotRepositoryTests
         content.SelfDestructedStorageAddresses[selfDestructAddr] = false;
         content.SetStateNodeRlp(_log, statePath, stateRlp);
         content.SetStorageNodeRlp(_log, storageTrieAddr, storagePath, storageRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
 
         tier.ConvertToPersistedBase(snap).Dispose();
 
@@ -329,8 +331,8 @@ public class PersistedSnapshotRepositoryTests
         if (withTrieNode)
             content.SetStateNodeRlp(_log, new TreePath(Keccak.Compute("p"), 4), FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
 
-        using PersistedSnapshot persisted = tier.ConvertToPersistedBase(
-            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain });
+        using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using PersistedSnapshot persisted = tier.ConvertToPersistedBase(snapshot);
 
         if (withTrieNode)
         {
@@ -362,8 +364,8 @@ public class PersistedSnapshotRepositoryTests
             content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).TestObject;
             if (withTrieNode)
                 content.SetStateNodeRlp(_log, new TreePath(Keccak.Compute("p"), 4), FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
-            tier1.ConvertToPersistedBase(
-                new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain }).Dispose();
+            using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+            tier1.ConvertToPersistedBase(snapshot).Dispose();
         }
 
         using FlatTestContainer tier2 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
@@ -629,8 +631,8 @@ public class PersistedSnapshotRepositoryTests
         SnapshotContent content = new();
         Nethermind.Trie.TreePath path = new(Keccak.Compute("bp"), 4);
         content.SetStateNodeRlp(_log, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
-        using PersistedSnapshot p = tier.ConvertToPersistedBase(
-            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain });
+        using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using PersistedSnapshot p = tier.ConvertToPersistedBase(snapshot);
 
         Assert.DoesNotThrow(() => p.AdviseWillNeedBlobRange());
         Assert.DoesNotThrow(() => p.AdviseDontNeedBlobRange());

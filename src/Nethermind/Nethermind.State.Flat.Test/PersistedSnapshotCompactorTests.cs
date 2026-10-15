@@ -15,7 +15,6 @@ using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
@@ -48,8 +47,12 @@ public class PersistedSnapshotCompactorTests
     public void TearDown()
     {
         _memArena.Dispose();
+        _log.Dispose();
         try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
     }
+
+    [OneTimeTearDown]
+    public void OneTimeTearDown() => CaseLog.Dispose();
 
     [TestCase(false)]
     [TestCase(true)]
@@ -104,7 +107,8 @@ public class PersistedSnapshotCompactorTests
             // and the slot merge sees N inputs with N unique slot keys.
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
             c.Storages[(TestItem.AddressA, (UInt256)i)] = (UInt256)((byte)i) << 248;
-            tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+            using (Snapshot snapshot = new(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() })
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = next;
         }
 
@@ -177,8 +181,10 @@ public class PersistedSnapshotCompactorTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("s1"));
         StateId s2 = new(2, Keccak.Compute("s2"));
-        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain }).Dispose();
-        tier.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+        using (Snapshot snapshot = new(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain })
+            tier.ConvertToPersistedBase(snapshot).Dispose();
+        using (Snapshot snapshot = new(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() })
+            tier.ConvertToPersistedBase(snapshot).Dispose();
 
         compactor.DoCompactSnapshot(s2);
 
@@ -231,7 +237,8 @@ public class PersistedSnapshotCompactorTests
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
             c.SetStateNodeRlp(_log, new TreePath(Keccak.Compute($"path{i}"), 4), FlatTestHelpers.LeafRlp((byte)(0xC1), (byte)i));
-            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain }).Dispose();
+            using (Snapshot snapshot = new(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain })
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = states[i];
         }
 
@@ -539,8 +546,9 @@ public class PersistedSnapshotCompactorTests
         for (int i = 0; i < contents.Length; i++)
         {
             states[i + 1] = new StateId((ulong)(i + 1), Keccak.Compute($"{i + 1}"));
+            using TrieNodeLogRetain logRetain = CaseLog.RetainActive();
             tier.ConvertToPersistedBase(
-                new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = CaseLog.RetainActive() }).Dispose();
+                new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain }).Dispose();
         }
 
         compactor.DoCompactSnapshot(states[contents.Length]);
@@ -605,7 +613,8 @@ public class PersistedSnapshotCompactorTests
         {
             SnapshotContent content = new();
             content.Accounts[TestItem.Addresses[block - 1]] = Build.An.Account.WithBalance((ulong)block * 100).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+            using Snapshot snapshot = new(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+            tier.ConvertToPersistedBase(snapshot).Dispose();
         }
 
         compactor.DoCompactSnapshot(states[8]);
@@ -688,7 +697,8 @@ public class PersistedSnapshotCompactorTests
     {
         SnapshotContent content = new();
         content.Accounts[TestItem.Addresses[block - 1]] = Build.An.Account.WithBalance((ulong)block * 100).TestObject;
-        tier.ConvertToPersistedBase(new Snapshot(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+        using Snapshot snapshot = new(states[block - 1], states[block], content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        tier.ConvertToPersistedBase(snapshot).Dispose();
     }
 
     /// <summary>
@@ -742,7 +752,8 @@ public class PersistedSnapshotCompactorTests
             {
                 c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
             }
-            tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain }).Dispose();
+            using (Snapshot snapshot = new(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain })
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = next;
         }
 
@@ -807,8 +818,10 @@ public class PersistedSnapshotCompactorTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("p1"));
         StateId s2 = new(2, Keccak.Compute("p2"));
-        tier.ConvertToPersistedBase(new Snapshot(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
-        tier.ConvertToPersistedBase(new Snapshot(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+        using (Snapshot snapshot = new(s0, s1, c0, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() })
+            tier.ConvertToPersistedBase(snapshot).Dispose();
+        using (Snapshot snapshot = new(s1, s2, c1, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() })
+            tier.ConvertToPersistedBase(snapshot).Dispose();
 
         compactor.DoCompactSnapshot(s2);
 
@@ -867,7 +880,8 @@ public class PersistedSnapshotCompactorTests
             StateId next = new((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+            using (Snapshot snapshot = new(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() })
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = next;
             if (i == 45) tip = next;
         }
@@ -932,7 +946,8 @@ public class PersistedSnapshotCompactorTests
             tip = new((ulong)i, Keccak.Compute($"p{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+            using (Snapshot snapshot = new(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() })
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = tip;
         }
 
@@ -965,7 +980,8 @@ public class PersistedSnapshotCompactorTests
             SnapshotContent c = new();
             TreePath path = new(Keccak.Compute($"node{i}"), 4);
             c.SetStateNodeRlp(_log, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, (byte)i));
-            tier.ConvertToPersistedBase(new Snapshot(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain }).Dispose();
+            using (Snapshot snapshot = new(prev, tip, c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain })
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = tip;
         }
 
@@ -1002,7 +1018,8 @@ public class PersistedSnapshotCompactorTests
             states[i] = new StateId((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+            using (Snapshot snapshot = new(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() })
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = states[i];
         }
 
@@ -1050,7 +1067,8 @@ public class PersistedSnapshotCompactorTests
             states[i] = new StateId((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+            using (Snapshot snapshot = new(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() })
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = states[i];
         }
 
@@ -1095,7 +1113,8 @@ public class PersistedSnapshotCompactorTests
             states[i] = new StateId((ulong)i, Keccak.Compute($"s{i}"));
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
-            tier.ConvertToPersistedBase(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+            using (Snapshot snapshot = new(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() })
+                tier.ConvertToPersistedBase(snapshot).Dispose();
             prev = states[i];
         }
 

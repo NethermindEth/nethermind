@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeLog;
@@ -118,7 +119,7 @@ internal static partial class LogBulkSet
 
             if (hashedCount == 0) return;
 
-            ulong basePointer = _log.Reserve(totalLength, out byte[] buffer, out int baseOffset);
+            ulong basePointer = _log.Reserve(totalLength, out LogBuffer buffer, out int baseOffset);
             for (int i = 0; i < hashedCount; i++)
             {
                 ref PendingNode node = ref _arena.Nodes[hashed[i]];
@@ -128,15 +129,15 @@ internal static partial class LogBulkSet
             }
 
             Span<ValueHash256> hashes = _arena.Hashes.AsSpan(0, hashedCount);
-            KeccakBatch.Hash(buffer, messages.AsSpan(0, hashedCount), hashes);
-            SplitBlockBloom? bloom = _log.FindBloom(basePointer);
+            KeccakBatch.Hash(buffer.AsSpan(), messages.AsSpan(0, hashedCount), hashes);
+            BloomFilter? bloom = _log.FindBloom(basePointer);
             for (int i = 0; i < hashedCount; i++)
             {
                 hashes[i].Bytes.CopyTo(buffer.AsSpan(recordStarts[i] + NodeRecord.HashOffset));
                 ulong pointer = basePointer + (ulong)(recordStarts[i] - baseOffset);
                 Link(hashed[i], top, ChildRef.ForHash(hashes[i], pointer), ref topReference);
                 _written.Add(_arena.Nodes[hashed[i]].Path, pointer);
-                bloom?.Insert(BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(recordStarts[i] + NodeRecord.NodeKeyOffset)));
+                bloom?.Add(BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(recordStarts[i] + NodeRecord.NodeKeyOffset)));
             }
         }
 

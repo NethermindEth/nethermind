@@ -38,7 +38,11 @@ public class SnapshotCompactorTests
     }
 
     [TearDown]
-    public void TearDown() => _tier.Dispose();
+    public void TearDown()
+    {
+        _tier.Dispose();
+        _log.Dispose();
+    }
 
     private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {

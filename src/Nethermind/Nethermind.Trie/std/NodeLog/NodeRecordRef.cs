@@ -10,22 +10,38 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Trie.NodeLog;
 
 /// <summary>A trie node record held in place inside a buffer of the trie node log, warmed nodes or a record cache.</summary>
-/// <remarks>Records are immutable once published, so the referenced bytes never change while the buffer is reachable, unless the record table that owns them is reset.</remarks>
-public readonly struct NodeRecordRef(byte[] buffer, int offset)
+/// <remarks>Log records borrow native storage for the lifetime of their log operation or generation retain. Managed warmed/cache records remain valid until their owning record table is reset.</remarks>
+public readonly struct NodeRecordRef
 {
-    private readonly byte[] _buffer = buffer;
-    private readonly int _offset = offset;
+    private readonly ReadOnlyMemory<byte> _buffer;
+    private readonly int _offset;
+
+    /// <summary>References a record at <paramref name="offset"/> inside a managed buffer.</summary>
+    public NodeRecordRef(byte[] buffer, int offset) : this(buffer.AsMemory(), offset) { }
+
+    internal NodeRecordRef(ReadOnlyMemory<byte> buffer, int offset)
+    {
+        _buffer = buffer;
+        _offset = offset;
+    }
 
     /// <summary>Whether this references no record.</summary>
-    public bool IsNull => _buffer is null;
+    public bool IsNull => _buffer.Equals(default);
 
     /// <summary>The whole record: header, child pointers and RLP.</summary>
-    public ReadOnlySpan<byte> Span => _buffer.AsSpan(_offset, NodeRecord.Length(_buffer.AsSpan(_offset)));
+    public ReadOnlySpan<byte> Span
+    {
+        get
+        {
+            ReadOnlySpan<byte> record = _buffer.Span[_offset..];
+            return record[..NodeRecord.Length(record)];
+        }
+    }
 
-    internal NodeRecordKind Kind => (NodeRecordKind)_buffer[_offset];
+    internal NodeRecordKind Kind => (NodeRecordKind)_buffer.Span[_offset];
 
     /// <summary>Keccak of the node's RLP.</summary>
-    public ref readonly ValueHash256 Hash => ref MemoryMarshal.AsRef<ValueHash256>(_buffer.AsSpan(_offset + NodeRecord.HashOffset, ValueHash256.MemorySize));
+    public ref readonly ValueHash256 Hash => ref MemoryMarshal.AsRef<ValueHash256>(_buffer.Span.Slice(_offset + NodeRecord.HashOffset, ValueHash256.MemorySize));
 
     /// <summary>The node's standard RLP, exactly the bytes that are hashed and persisted.</summary>
     public ReadOnlySpan<byte> Rlp => View.Rlp;

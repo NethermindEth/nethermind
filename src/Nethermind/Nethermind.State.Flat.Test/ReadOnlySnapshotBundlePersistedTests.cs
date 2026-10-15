@@ -45,6 +45,7 @@ public class ReadOnlySnapshotBundlePersistedTests
     {
         _blobs.Dispose();
         _memArena.Dispose();
+        _log.Dispose();
         try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
         try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
     }
@@ -61,7 +62,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_log, path, nodeRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -94,7 +95,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         content.SetStorageNodeRlp(_log, address, path, nodeRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -128,7 +129,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_log, storedPath, nodeRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -195,7 +196,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         if (storage) content.SetStorageNodeRlp(_log, address, persistedPath, persistedRlp);
         else content.SetStateNodeRlp(_log, persistedPath, persistedRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
         PersistedSnapshotList list = new(1) { CreatePersistedSnapshot(s0, s1, PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs)) };
 
         using ReadOnlySnapshotBundle bundle = new(

@@ -17,6 +17,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -35,6 +36,7 @@ public class FlatDbManagerTests
     private IFlatDbConfig _config = null!;
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
+    private TrieNodeLog _log = null!;
 
     private const long HistoryBarrier = 100;
     private static readonly Address HistoryAddr = new("0x0000000000000000000000000000000000000abc");
@@ -51,6 +53,7 @@ public class FlatDbManagerTests
     {
         _resourcePool = Substitute.For<IResourcePool>();
         _cts = new CancellationTokenSource();
+        _log = FlatTestHelpers.NewTestLog();
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
         _trieNodeCache = Substitute.For<ITrieNodeCache>();
@@ -79,13 +82,14 @@ public class FlatDbManagerTests
         _cts.Dispose();
         _historyDb.Dispose();
         _historyColumns.Dispose();
+        _log.Dispose();
     }
 
     private FlatDbManager CreateManager() => new(
         _resourcePool,
         _processExitSource,
         _trieNodeCache,
-        FlatTestHelpers.NewTestLog(),
+        _log,
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,

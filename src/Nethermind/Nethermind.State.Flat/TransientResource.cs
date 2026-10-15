@@ -5,10 +5,10 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie.NodeLog;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 

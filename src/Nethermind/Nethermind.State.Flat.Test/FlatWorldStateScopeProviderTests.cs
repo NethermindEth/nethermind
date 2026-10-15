@@ -1416,7 +1416,7 @@ public class FlatWorldStateScopeProviderTests
     public void TryLoadTrieNodeRecord_reads_warmed_then_verified_persisted_then_in_memory_snapshot_nodes([Values] bool storage)
     {
         ResourcePool pool = new(new FlatDbConfig());
-        TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
         Hash256? address = storage ? TestItem.KeccakA : null;
         TreePath persistedPath = TreePath.FromHexString("12");
         TreePath readOnlySnapshotPath = TreePath.FromHexString("34");
@@ -2105,10 +2105,11 @@ public class FlatWorldStateScopeProviderTests
         ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
         FlatDbConfig config = new();
         ResourcePool resourcePool = new(config);
-        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), FlatTestHelpers.NewTestLog(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), log, resourcePool, ResourcePool.Usage.MainBlockProcessing);
         await using TrieWarmer warmer = new(LimboLogs.Instance, config);
 
-        FlatWorldStateScope scope = new(
+        using FlatWorldStateScope scope = new(
             new StateId(0, TestItem.KeccakA),
             bundle,
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),

@@ -41,6 +41,9 @@ public class SnapshotBundleWarmerTests
         _log = FlatTestHelpers.NewTestLog();
     }
 
+    [TearDown]
+    public void TearDown() => _log.Dispose();
+
     private sealed class NullTrieNodeCache : ITrieNodeCache
     {
         public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
@@ -353,7 +356,7 @@ public class SnapshotBundleWarmerTests
         for (int i = 0; i < keys.Length; i++) keys[i] = ValueKeccak.Compute([(byte)i]);
         byte[] newValue = Bytes.FromHexString("0xff");
 
-        TrieNodeLog persistedLog = FlatTestHelpers.NewTestLog();
+        using TrieNodeLog persistedLog = FlatTestHelpers.NewTestLog();
         using TrieNodeLogRetain persistedRetain = persistedLog.RetainActive();
         using WrittenNodes written = new();
         TrieRoot root;

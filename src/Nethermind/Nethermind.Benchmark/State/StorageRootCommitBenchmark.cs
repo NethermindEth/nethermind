@@ -50,6 +50,7 @@ public class StorageRootCommitBenchmark
     private Address _address = null!;
 
     private FlatWorldStateScope _scope = null!;
+    private CapturingCommitTarget _commitTarget = null!;
 
     [Params(1, 8, 100, 1000)]
     public int ChangedSlots { get; set; }
@@ -75,7 +76,7 @@ public class StorageRootCommitBenchmark
         SnapshotBundle bundle = new(
             readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
-        FlatWorldStateScope scope = new(
+        using FlatWorldStateScope scope = new(
             currentStateId: initialStateId,
             snapshotBundle: bundle,
             codeDb: new NullCodeDb(),
@@ -98,11 +99,19 @@ public class StorageRootCommitBenchmark
 
         scope.Commit(blockNumber: BaseBlockNumber);
 
-        FlatSnapshot snapshot = commitTarget.LastSnapshot
+        using FlatSnapshot snapshot = commitTarget.LastSnapshot
             ?? throw new InvalidOperationException("GlobalSetup: commit produced no snapshot");
         snapshot.TryAcquire();
         _baseSnapshots.Add(snapshot);
         _baseStateId = new StateId(BaseBlockNumber, scope.RootHash);
+    }
+
+    [GlobalCleanup]
+    public void GlobalCleanup()
+    {
+        IterationCleanup();
+        foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
+        _trieNodeLog.Dispose();
     }
 
     [IterationSetup]
@@ -121,12 +130,12 @@ public class StorageRootCommitBenchmark
         NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
             readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        CapturingCommitTarget commitTarget = new();
+        _commitTarget = new CapturingCommitTarget();
         _scope = new FlatWorldStateScope(
             currentStateId: _baseStateId,
             snapshotBundle: bundle,
             codeDb: new NullCodeDb(),
-            commitTarget: commitTarget,
+            commitTarget: _commitTarget,
             configuration: _config,
             trieCacheWarmer: new NoopTrieWarmer(),
             logManager: NullLogManager.Instance);
@@ -137,6 +146,8 @@ public class StorageRootCommitBenchmark
     {
         _scope?.Dispose();
         _scope = null!;
+        _commitTarget?.LastSnapshot?.Dispose();
+        _commitTarget = null!;
     }
 
     [Benchmark]

@@ -40,6 +40,7 @@ internal static partial class LogBulkSet
     public static TrieRoot BulkSet(TrieNodeLog log, INodeRecordSource source, Hash256? address, TrieRoot root,
         in ArrayPoolListRef<BulkSetEntry> entries, WrittenNodes written, bool canParallelize)
     {
+        using TrieNodeLog.ReadLease lease = log.BeginRead();
         if (entries.Count == 0) return root;
 
         using ParallelUnbalancedWork.WorkerScope? workers = canParallelize && !RuntimeInformation.IsSingleProcessor
@@ -89,14 +90,18 @@ internal static partial class LogBulkSet
     /// <summary>Loads the nodes on the path to <paramref name="key"/> that the log does not hold from <paramref name="source"/>.</summary>
     /// <remarks>Stops silently where the path ends or the source misses.</remarks>
     /// <param name="root">Its pointer is used as given, as <see cref="ResolveRoot"/> returns it.</param>
-    public static void WarmUp(TrieNodeLog log, INodeRecordSource source, Hash256? address, TrieRoot root, in ValueHash256 key) =>
+    public static void WarmUp(TrieNodeLog log, INodeRecordSource source, Hash256? address, TrieRoot root, in ValueHash256 key)
+    {
+        using TrieNodeLog.ReadLease lease = log.BeginRead();
         Walk(log, source, address, root, key, throwOnMissing: false, out _);
+    }
 
     /// <param name="root">Its pointer is used as given, as <see cref="ResolveRoot"/> returns it.</param>
     /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the log nor the source.</exception>
     public static byte[]? TryGet(TrieNodeLog log, INodeRecordSource source, Hash256? address, TrieRoot root, in ValueHash256 key)
     {
+        using TrieNodeLog.ReadLease lease = log.BeginRead();
         Source leaf = Walk(log, source, address, root, key, throwOnMissing: true, out int depth);
         if (leaf.Kind == SourceKind.None) return null;
 

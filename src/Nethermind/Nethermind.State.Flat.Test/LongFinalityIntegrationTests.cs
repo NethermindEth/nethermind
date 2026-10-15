@@ -58,6 +58,7 @@ public class LongFinalityIntegrationTests
         _cts.Dispose();
         _helperBlobs.Dispose();
         _memArena.Dispose();
+        _log.Dispose();
         if (Directory.Exists(_testDir))
             Directory.Delete(_testDir, recursive: true);
     }
@@ -87,7 +88,7 @@ public class LongFinalityIntegrationTests
         byte[] stateRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
         byte[] storageRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
-        Snapshot snap = CreateSnapshot(s0, s1, c =>
+        using Snapshot snap = CreateSnapshot(s0, s1, c =>
         {
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(500).TestObject;
             byte[] slotVal = new byte[32]; slotVal[31] = 0xFF;
@@ -146,17 +147,19 @@ public class LongFinalityIntegrationTests
         {
             SnapshotRepository repo = tier1.Repository;
 
-            tier1.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
+            using Snapshot source1 = CreateSnapshot(s0, s1, c =>
             {
                 foreach (TreePath p in paths1) c.SetStateNodeRlp(_log, p, rlp1);
                 c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
-            })).Dispose();
+            });
+            tier1.ConvertToPersistedBase(source1).Dispose();
 
-            tier1.ConvertToPersistedBase(CreateSnapshot(s1, s2, c =>
+            using Snapshot source2 = CreateSnapshot(s1, s2, c =>
             {
                 foreach (TreePath p in paths2) c.SetStateNodeRlp(_log, p, rlp2);
                 c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
-            })).Dispose();
+            });
+            tier1.ConvertToPersistedBase(source2).Dispose();
         }
 
         // Repository.Dispose flags every loaded snapshot's arena reservation AND every
@@ -278,9 +281,10 @@ public class LongFinalityIntegrationTests
         for (int i = 1; i <= snapshotCount; i++)
         {
             StateId current = new((ulong)i, Keccak.Compute(i.ToString()));
-            tier.ConvertToPersistedBase(CreateSnapshot(prev, current, c =>
+            using Snapshot source = CreateSnapshot(prev, current, c =>
                 c.Accounts[new Address(Keccak.Compute(i.ToString()))] =
-                    Build.An.Account.WithBalance((UInt256)i).TestObject)).Dispose();
+                    Build.An.Account.WithBalance((UInt256)i).TestObject);
+            tier.ConvertToPersistedBase(source).Dispose();
             prev = current;
         }
 
@@ -299,8 +303,9 @@ public class LongFinalityIntegrationTests
         TreePath path = new(Keccak.Compute("e2e_path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
-        tier.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
-            c.SetStateNodeRlp(_log, path, nodeRlp))).Dispose();
+        using Snapshot source = CreateSnapshot(s0, s1, c =>
+            c.SetStateNodeRlp(_log, path, nodeRlp));
+        tier.ConvertToPersistedBase(source).Dispose();
 
         // Set up persistence reader at s0 — persisted snapshot fills gap s0→s1
         IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
@@ -313,7 +318,7 @@ public class LongFinalityIntegrationTests
             Substitute.For<IResourcePool>(),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
-            FlatTestHelpers.NewTestLog(),
+            _log,
             Substitute.For<ISnapshotCompactor>(),
             repo,
             persistenceManager,
@@ -343,12 +348,15 @@ public class LongFinalityIntegrationTests
         using (FlatTestContainer tier1 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier1.Repository;
-            tier1.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
-                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject)).Dispose();
-            tier1.ConvertToPersistedBase(CreateSnapshot(s1, s2, c =>
-                c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(2).TestObject)).Dispose();
-            tier1.ConvertToPersistedBase(CreateSnapshot(s2, s5, c =>
-                c.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(5).TestObject)).Dispose();
+            using Snapshot source1 = CreateSnapshot(s0, s1, c =>
+                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject);
+            tier1.ConvertToPersistedBase(source1).Dispose();
+            using Snapshot source2 = CreateSnapshot(s1, s2, c =>
+                c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(2).TestObject);
+            tier1.ConvertToPersistedBase(source2).Dispose();
+            using Snapshot source3 = CreateSnapshot(s2, s5, c =>
+                c.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(5).TestObject);
+            tier1.ConvertToPersistedBase(source3).Dispose();
         }
 
         using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
@@ -376,7 +384,7 @@ public class LongFinalityIntegrationTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        Snapshot empty = CreateSnapshot(s0, s1, _ => { });
+        using Snapshot empty = CreateSnapshot(s0, s1, _ => { });
         tier.ConvertToPersistedBase(empty).Dispose();
 
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);

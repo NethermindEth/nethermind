@@ -12,16 +12,16 @@ namespace Nethermind.Trie.NodeLog;
 /// Records are copied in log order, each 8-aligned, and indexed by an open-addressing table with linear probing, a load factor of at most 0.75
 /// and an empty pointer of 0. It is immutable once built, so lookups need no lock.
 /// </remarks>
-internal sealed class CompressedGeneration
+internal sealed class CompressedGeneration : IDisposable
 {
-    private readonly byte[] _records;
+    private readonly LogBuffer _records;
     private readonly (ulong Pointer, int Offset)[] _table;
     private readonly ulong _tableMask;
 
     /// <param name="generation">The records of the generation, in place.</param>
     /// <param name="generationId">The id of the generation, which forms the pointers of its records.</param>
     /// <param name="keptOffsets">The offsets of the records to keep, ascending.</param>
-    public CompressedGeneration(byte[] generation, ulong generationId, ReadOnlySpan<int> keptOffsets)
+    public CompressedGeneration(LogBuffer generation, ulong generationId, ReadOnlySpan<int> keptOffsets)
     {
         int length = 0;
         foreach (int offset in keptOffsets)
@@ -29,20 +29,28 @@ internal sealed class CompressedGeneration
             length += NodeRecord.AlignedLength(NodeRecord.Length(generation.AsSpan(offset)));
         }
 
-        _records = LogBuffer.Allocate(length);
         _table = new (ulong, int)[BitOperations.RoundUpToPowerOf2((uint)(keptOffsets.Length * 4 / 3 + 1))];
         _tableMask = (ulong)_table.Length - 1;
-        int copied = 0;
-        foreach (int offset in keptOffsets)
+        _records = LogBuffer.Allocate(length);
+        try
         {
-            ReadOnlySpan<byte> record = generation.AsSpan(offset, NodeRecord.Length(generation.AsSpan(offset)));
-            ulong pointer = generationId << TrieNodeLog.OffsetBits | (uint)offset;
-            ulong index = Index(pointer);
-            while (_table[index].Pointer != 0) index = (index + 1) & _tableMask;
+            int copied = 0;
+            foreach (int offset in keptOffsets)
+            {
+                ReadOnlySpan<byte> record = generation.AsSpan(offset, NodeRecord.Length(generation.AsSpan(offset)));
+                ulong pointer = generationId << TrieNodeLog.OffsetBits | (uint)offset;
+                ulong index = Index(pointer);
+                while (_table[index].Pointer != 0) index = (index + 1) & _tableMask;
 
-            _table[index] = (pointer, copied);
-            record.CopyTo(_records.AsSpan(copied));
-            copied += NodeRecord.AlignedLength(record.Length);
+                _table[index] = (pointer, copied);
+                record.CopyTo(_records.AsSpan(copied));
+                copied += NodeRecord.AlignedLength(record.Length);
+            }
+        }
+        catch
+        {
+            Dispose();
+            throw;
         }
     }
 
@@ -55,13 +63,15 @@ internal sealed class CompressedGeneration
         {
             if (_table[index].Pointer != pointer) continue;
 
-            record = new NodeRecordRef(_records, _table[index].Offset);
+            record = new NodeRecordRef(_records.Memory, _table[index].Offset);
             return true;
         }
 
         record = default;
         return false;
     }
+
+    public void Dispose() => ((IDisposable)_records).Dispose();
 
     private ulong Index(ulong pointer) => (pointer * 0x9E3779B97F4A7C15 >> 32) & _tableMask;
 }

@@ -22,8 +22,9 @@ public sealed class TrieNodeLogRetain(TrieNodeLog log, ulong generation) : IDisp
     public TrieNodeLogRetain Copy()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        TrieNodeLogRetain copy = new(Log, Generation);
         Log.Retain(Generation);
-        return new TrieNodeLogRetain(Log, Generation);
+        return copy;
     }
 
     /// <summary>Releases the generation; later calls do nothing.</summary>

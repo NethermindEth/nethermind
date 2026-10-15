@@ -7,7 +7,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Trie;
@@ -26,7 +28,7 @@ internal class TrieNodeLogTests
     [Test]
     public void Log_buffers_are_zero_filled([Values(0, 1, GenerationBytes, 2 * 1024 * 1024 - 1, 2 * 1024 * 1024, 2 * 1024 * 1024 + 1)] int length)
     {
-        byte[] buffer = LogBuffer.Allocate(length);
+        using LogBuffer buffer = LogBuffer.Allocate(length);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(buffer.Length, Is.EqualTo(length));
@@ -35,14 +37,28 @@ internal class TrieNodeLogTests
     }
 
     [Test]
-    [Platform("Linux")]
-    public void Large_generation_buffers_stay_pinned_during_compacting_collections([Values(2 * 1024 * 1024, 4 * 1024 * 1024 + 1)] int length)
+    public void Generation_blooms_have_at_least_one_key_of_capacity([Values(0, 1, 127, 128, GenerationBytes)] int generationBytes)
     {
-        TrieNodeLog log = new(0, length);
-        log.Reserve(NodeRecord.RecordAlignment, out byte[] buffer, out _);
-        IntPtr address = Marshal.UnsafeAddrOfPinnedArrayElement(buffer, 0);
-        buffer[0] = 1;
-        buffer[^1] = 2;
+        using TrieNodeLog log = new(0, generationBytes);
+        using TrieNodeLog.ReadLease lease = log.BeginRead();
+        ulong pointer = log.Reserve(0, out _, out _);
+        BloomFilter bloom = log.FindBloom(pointer)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bloom.Capacity, Is.EqualTo(Math.Max(1, generationBytes / 128)));
+            Assert.That(bloom.BitsPerKey, Is.EqualTo(14));
+            Assert.That(bloom.MightContain(0), Is.False);
+        }
+    }
+
+    [Test]
+    public void Generation_buffers_stay_at_the_same_native_address_during_compacting_collections([Values(2 * 1024 * 1024, 4 * 1024 * 1024 + 1)] int length)
+    {
+        using TrieNodeLog log = new(0, length);
+        log.Reserve(NodeRecord.RecordAlignment, out LogBuffer buffer, out _);
+        ref byte address = ref MemoryMarshal.GetReference(buffer.AsSpan());
+        buffer.AsSpan()[0] = 1;
+        buffer.AsSpan()[^1] = 2;
 
         GCLargeObjectHeapCompactionMode previous = GCSettings.LargeObjectHeapCompactionMode;
         try
@@ -57,17 +73,178 @@ internal class TrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Marshal.UnsafeAddrOfPinnedArrayElement(buffer, 0), Is.EqualTo(address));
-            Assert.That(buffer[0], Is.EqualTo(1));
-            Assert.That(buffer[^1], Is.EqualTo(2));
+            Assert.That(Unsafe.AreSame(ref address, ref MemoryMarshal.GetReference(buffer.AsSpan())), Is.True);
+            Assert.That(buffer.AsSpan()[0], Is.EqualTo(1));
+            Assert.That(buffer.AsSpan()[^1], Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Native_buffer_disposal_is_idempotent()
+    {
+        using LogBuffer buffer = LogBuffer.Allocate(1);
+        ((IDisposable)buffer).Dispose();
+        ((IDisposable)buffer).Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.IsDisposed, Is.True);
+            Assert.That(() => buffer.AsSpan().ToArray(), Throws.InstanceOf<ObjectDisposedException>());
+        }
+    }
+
+    [Test]
+    public void Reader_keeps_retired_records_and_pending_leaf_values_alive([Values] bool compressed)
+    {
+        const int generationBytes = 4096;
+        using TrieNodeLog log = new(2048, generationBytes);
+        log.Reserve(0, out LogBuffer original, out _);
+        byte[] rlp = Leaf(1, 1000);
+        ulong pointer = AppendAt(log, TestItem.KeccakA, rlp);
+        BloomFilter bloom = log.FindBloom(pointer)!;
+        ulong nodeKey = NodeRecord.NodeKey(TestItem.KeccakA, TreePath.Empty);
+        if (compressed)
+        {
+            AdvanceTo(LiveGenerations + 1);
+            Assert.That(() => original.IsDisposed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        }
+
+        NodeRecordRef record;
+        ValueRef pendingValue;
+        using (log.BeginRead())
+        {
+            Assert.That(log.TryLocate(pointer, out record), Is.True);
+            pendingValue = record.LeafValue;
+            byte[] expectedValue = pendingValue.Span.ToArray();
+            if (compressed)
+            {
+                ulong later = AppendAt(log, TestItem.KeccakB, Leaf(2, 1000));
+                AdvanceTo(GenerationOf(later) + LiveGenerations);
+                Assert.That(() => log.TryLocate(pointer, out _), Is.False.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+            }
+            else
+            {
+                AdvanceTo(LiveGenerations + 1);
+                Assert.That(() => log.TryLocate(pointer, out NodeRecordRef current) && !current.Span.Overlaps(record.Span),
+                    Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the original buffer has been replaced by compressed storage");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(original.IsDisposed, Is.False);
+                    Assert.That(log.FindBloom(pointer), Is.Null, "the compacted generation no longer exposes its bloom");
+                    Assert.That(bloom.MightContain(nodeKey), Is.True, "the reader still borrows the retired bloom");
+                }
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp));
+                Assert.That(pendingValue.Span.ToArray(), Is.EqualTo(expectedValue), "a pending bulk-set value borrows the same retired storage");
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => record.Rlp.ToArray(), Throws.InstanceOf<ObjectDisposedException>(), "the final reader deterministically freed its retired native owner");
+            Assert.That(() => pendingValue.Span.ToArray(), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(original.IsDisposed, Is.True);
+            Assert.That(() => bloom.MightContain(nodeKey), Throws.InstanceOf<ObjectDisposedException>());
+        }
+
+        void AdvanceTo(ulong generation)
+        {
+            while (GenerationOf(log.Reserve(generationBytes, out _, out _)) < generation) { }
+        }
+    }
+
+    [Test]
+    public void Shutdown_defers_free_until_readers_and_retains_finish([Values] bool readerFinishesFirst)
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        using TrieNodeLogRetain retain = log.RetainActive();
+        ulong pointer = Append(log, Leaf(1, 8));
+        NodeRecordRef record = log.GetRecord(pointer);
+        BloomFilter bloom = log.FindBloom(pointer)!;
+        ulong nodeKey = NodeRecord.NodeKey(null, TreePath.Empty);
+        log.Reserve(0, out LogBuffer buffer, out _);
+        TrieNodeLog.ReadLease reader = log.BeginRead();
+        log.Dispose();
+        log.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.IsDisposed, Is.False);
+            Assert.That(bloom.MightContain(nodeKey), Is.True);
+            Assert.That(Matches(record, Leaf(1, 8)), Is.True);
+            Assert.That(() => log.RetainActive(), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => retain.Copy(), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => log.GetRecord(pointer), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => log.Reserve(8, out _, out _), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => LogBulkSet.TryGet(log, null, null, TrieRoot.Empty, default), Throws.InstanceOf<ObjectDisposedException>());
+        }
+
+        if (readerFinishesFirst) reader.Dispose();
+        else retain.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.IsDisposed, Is.False, "the other owner still borrows native memory");
+            Assert.That(bloom.MightContain(nodeKey), Is.True);
+            Assert.That(Matches(record, Leaf(1, 8)), Is.True);
+        }
+        if (readerFinishesFirst) retain.Dispose();
+        else reader.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.IsDisposed, Is.True);
+            Assert.That(() => bloom.MightContain(nodeKey), Throws.InstanceOf<ObjectDisposedException>());
+        }
+    }
+
+    [Test]
+    public void Shutdown_releases_storage_when_queued_compaction_finishes()
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        ulong pointer = log.Reserve(GenerationBytes, out LogBuffer first, out _);
+        BloomFilter bloom = log.FindBloom(pointer)!;
+        while (GenerationOf(log.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
+        log.Dispose();
+        Assert.That(() => first.IsDisposed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        // Wait for the disposal lock to cover the rest of this generation's cleanup, too.
+        log.Dispose();
+        Assert.That(() => bloom.MightContain(0), Throws.InstanceOf<ObjectDisposedException>());
+    }
+
+    [Test]
+    public void Compaction_failure_is_reported_and_does_not_prevent_shutdown_cleanup()
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        ulong pointer = log.Reserve(GenerationBytes, out LogBuffer malformed, out _);
+        BloomFilter bloom = log.FindBloom(pointer)!;
+        malformed.AsSpan()[0] = (byte)NodeRecordKind.Leaf;
+        BinaryPrimitives.WriteUInt32LittleEndian(malformed.AsSpan(NodeRecord.RlpLengthOffset), GenerationBytes);
+        while (GenerationOf(log.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
+        Assert.That(CompactionFailed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        log.Dispose();
+        Assert.That(() => malformed.IsDisposed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        log.Dispose();
+        Assert.That(() => bloom.MightContain(0), Throws.InstanceOf<ObjectDisposedException>());
+
+        bool CompactionFailed()
+        {
+            try
+            {
+                using TrieNodeLog.ReadLease lease = log.BeginRead();
+                return false;
+            }
+            catch (TrieException exception) when (exception.Message == "Trie node log compaction failed.")
+            {
+                return true;
+            }
         }
     }
 
     [Test]
     public void Records_resolve_in_place_until_their_generation_drops()
     {
-        TrieNodeLog log = new(0, GenerationBytes);
-        TrieNodeLogRetain first = log.RetainActive();
+        using TrieNodeLog log = new(0, GenerationBytes);
+        using TrieNodeLogRetain first = log.RetainActive();
         TrieNodeLogRetain middle = null;
         TrieNodeLogRetain middleCopy = null;
         List<(ulong Pointer, byte[] Rlp)> records = [];
@@ -109,9 +286,21 @@ internal class TrieNodeLogTests
     }
 
     [Test]
+    public void Retain_copy_cannot_resurrect_a_generation_dropped_by_a_concurrent_release()
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        using TrieNodeLogRetain retain = log.RetainActive();
+        while (GenerationOf(log.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
+        retain.Dispose();
+
+        // Copy may have passed its disposed check before the releasing thread acquired the log lock.
+        Assert.That(() => log.Retain(retain.Generation), Throws.InstanceOf<ObjectDisposedException>());
+    }
+
+    [Test]
     public void Root_index_returns_the_newest_matching_root([Values] bool storage)
     {
-        TrieNodeLog log = new(0, GenerationBytes);
+        using TrieNodeLog log = new(0, GenerationBytes);
         Hash256 address = storage ? TestItem.KeccakA : null;
         TrieNodeLogRetain retain = log.RetainActive();
         ulong droppedPointer = Append(log, Leaf(-1, 8));
@@ -155,7 +344,7 @@ internal class TrieNodeLogTests
     public void Dropped_generation_keeps_last_record_per_path_not_rewritten_later([Values(0UL, 1UL << 20)] ulong compressedBudget)
     {
         const ulong scenarioGeneration = 32;
-        TrieNodeLog log = new(compressedBudget, GenerationBytes);
+        using TrieNodeLog log = new(compressedBudget, GenerationBytes);
         List<(ulong Pointer, byte[] Rlp)> unique = [];
         AppendUniqueUntil(scenarioGeneration);
         (ulong Pointer, byte[] Rlp) superseded = AppendRecord(TestItem.KeccakA, Leaf(-1, 8));
@@ -168,7 +357,7 @@ internal class TrieNodeLogTests
 
         bool keeps = compressedBudget > 0;
         // The scenario generation is the newest dropped one and generations are compacted and evicted oldest first.
-        Assert.That(() => (log.TryLocate(superseded.Pointer, out _), log.FindRoot(null, Root(-1))), Is.EqualTo((false, keeps ? kept.Pointer : 0UL)).After(CompactionTimeoutMilliseconds, PollingMilliseconds),
+        Assert.That(() => (IsLocatable(log, superseded.Pointer), log.FindRoot(null, Root(-1))), Is.EqualTo((false, keeps ? kept.Pointer : 0UL)).After(CompactionTimeoutMilliseconds, PollingMilliseconds),
             "the scenario generation is compacted, keeping its root key only within the budget");
         ulong oldestResolving = unique.Where(record => Resolves(log, record)).Min(record => GenerationOf(record.Pointer));
         using (Assert.EnterMultipleScope())
@@ -198,7 +387,7 @@ internal class TrieNodeLogTests
         const int threadCount = 16;
         const int recordsPerThread = 10_000;
         const int recordsPerRetain = 1_000;
-        TrieNodeLog log = new(1 << 20, GenerationBytes);
+        using TrieNodeLog log = new(1 << 20, GenerationBytes);
         using TrieNodeLogRetain retain = compacting ? null : log.RetainActive();
         ulong[][] pointers = new ulong[threadCount][];
         TrieNodeLogRetain[] threadRetains = new TrieNodeLogRetain[threadCount];
@@ -229,6 +418,7 @@ internal class TrieNodeLogTests
                 int seed = thread * recordsPerThread + i;
                 ulong pointer = pointers[thread][i];
                 bool retained = !compacting || i >= recordsPerThread - recordsPerRetain;
+                using TrieNodeLog.ReadLease lease = log.BeginRead();
                 bool located = log.TryLocate(pointer, out NodeRecordRef record);
                 if (located ? !Matches(record, Leaf(seed, 8)) : retained) failures.Add($"record {seed}");
                 ulong root = log.FindRoot(ConcurrentAddress(thread), Root(seed));
@@ -269,8 +459,17 @@ internal class TrieNodeLogTests
         return rlp;
     }
 
-    private static bool Resolves(TrieNodeLog log, (ulong Pointer, byte[] Rlp) record) =>
-        log.TryLocate(record.Pointer, out NodeRecordRef located) && Matches(located, record.Rlp);
+    internal static bool IsLocatable(TrieNodeLog log, ulong pointer)
+    {
+        using TrieNodeLog.ReadLease lease = log.BeginRead();
+        return log.TryLocate(pointer, out _);
+    }
+
+    private static bool Resolves(TrieNodeLog log, (ulong Pointer, byte[] Rlp) record)
+    {
+        using TrieNodeLog.ReadLease lease = log.BeginRead();
+        return log.TryLocate(record.Pointer, out NodeRecordRef located) && Matches(located, record.Rlp);
+    }
 
     private static bool Matches(NodeRecordRef record, byte[] rlp) => record.Rlp.SequenceEqual(rlp) && record.Hash == ValueKeccak.Compute(rlp);
 

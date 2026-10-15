@@ -14,6 +14,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -23,9 +24,17 @@ namespace Nethermind.State.Flat.Test;
 public class FlatWorldStateScopeHistoricalRootTests
 {
     private ResourcePool _pool = null!;
+    private TrieNodeLog _log = null!;
 
     [SetUp]
-    public void SetUp() => _pool = new ResourcePool(new FlatDbConfig { CompactSize = 2 });
+    public void SetUp()
+    {
+        _pool = new ResourcePool(new FlatDbConfig { CompactSize = 2 });
+        _log = FlatTestHelpers.NewTestLog();
+    }
+
+    [TearDown]
+    public void TearDown() => _log.Dispose();
 
     [Test]
     public void UpdateRootHash_HistoricalScope_DoesNotThrow_AndRetainsKnownRoot()
@@ -216,7 +225,7 @@ public class FlatWorldStateScopeHistoricalRootTests
         return new SnapshotBundle(
             readOnlyBundle,
             Substitute.For<ITrieNodeCache>(),
-            FlatTestHelpers.NewTestLog(),
+            _log,
             _pool,
             ResourcePool.Usage.MainBlockProcessing);
     }

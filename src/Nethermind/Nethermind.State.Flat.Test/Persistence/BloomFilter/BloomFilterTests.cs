@@ -8,7 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using Bloom = Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter;
+using Bloom = Nethermind.Core.Collections.BloomFilter;
 
 namespace Nethermind.State.Flat.Test.Persistence.BloomFilter;
 
@@ -127,12 +127,18 @@ public class BloomFilterTests
     }
 
     [Test]
-    public void AddUnsynchronized_AfterDispose_Throws()
+    public void Operations_AfterDispose_Throw()
     {
         Bloom bloom = NewBloom();
         bloom.Dispose();
 
-        Assert.That(() => bloom.AddUnsynchronized(1), Throws.TypeOf<ObjectDisposedException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => bloom.Add(1), Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(() => bloom.AddUnsynchronized(1), Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(() => bloom.MightContain(1), Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(() => bloom.Clear(), Throws.TypeOf<ObjectDisposedException>());
+        }
     }
 
     [Test]
@@ -147,8 +153,8 @@ public class BloomFilterTests
     [Test]
     public void AlwaysTrue_MightContain_AnyKey_ReturnsTrue([Values(0UL, 1UL, 0xDEADBEEFCAFEBABEUL, ulong.MaxValue)] ulong key)
     {
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
-            Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
+        using Nethermind.Core.Collections.BloomFilter bloom =
+            Nethermind.Core.Collections.BloomFilter.AlwaysTrue();
 
         Assert.That(bloom.MightContain(key), Is.True, "AlwaysTrue sentinel must match every probe");
     }

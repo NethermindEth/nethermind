@@ -43,6 +43,9 @@ public class ReadOnlyScopeLifecycleBenchmark
         for (int i = 0; i < _addresses.Length; i++) _addresses[i] = DeriveAddress(i + 1);
     }
 
+    [GlobalCleanup]
+    public void GlobalCleanup() => _trieNodeLog.Dispose();
+
     [Benchmark]
     public void CreateHintDispose()
     {

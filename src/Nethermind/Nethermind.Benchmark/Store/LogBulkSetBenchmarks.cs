@@ -80,7 +80,11 @@ public class LogBulkSetBenchmarks
     }
 
     [GlobalCleanup]
-    public void Cleanup() => _written.Dispose();
+    public void Cleanup()
+    {
+        _written.Dispose();
+        _warmLog.Dispose();
+    }
 
     /// <summary>The production flow before the trie node log: hash with the write batch, persist at the end of the block.</summary>
     [Benchmark(Baseline = true)]
@@ -100,7 +104,11 @@ public class LogBulkSetBenchmarks
 
     /// <summary>Every batch reads the preloaded trie from the node source and writes to a log created for the invocation.</summary>
     [Benchmark]
-    public void LogBulkSetColdLog() => DoLogBulkSet(new TrieNodeLog(0, ColdGenerationBytes), new TrieRoot(_preloadedRootHash.ValueHash256, 0));
+    public void LogBulkSetColdLog()
+    {
+        using TrieNodeLog log = new(0, ColdGenerationBytes);
+        DoLogBulkSet(log, new TrieRoot(_preloadedRootHash.ValueHash256, 0));
+    }
 
     /// <summary>Like <see cref="LogBulkSetColdLog"/>, but every batch finds the preloaded trie in a shared log the preload filled.</summary>
     [Benchmark]

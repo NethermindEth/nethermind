@@ -26,8 +26,8 @@ internal static class PersistedSnapshotBuilderTestExtensions
         int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
         using PooledByteBufferWriter pooled = new(estimatedSize);
         using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
-            Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
+        using Nethermind.Core.Collections.BloomFilter bloom =
+            Nethermind.Core.Collections.BloomFilter.AlwaysTrue();
         PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer>(
             snapshot, ref pooled.GetWriter(), blobWriter, bloom);
         blobWriter.Complete();
@@ -56,7 +56,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
             for (int i = 0; i < n; i++)
                 sessionArr[i] = snapshots[i].BeginWholeReadSession();
             PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, WholeReadSession, WholeReadSessionReader, NoOpPin>(
-                sessionsList.AsSpan(), ref pooled.GetWriter(), bloom: Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue());
+                sessionsList.AsSpan(), ref pooled.GetWriter(), bloom: Nethermind.Core.Collections.BloomFilter.AlwaysTrue());
         }
         finally
         {

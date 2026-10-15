@@ -32,6 +32,7 @@ public sealed partial class TrieNodeLog
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     internal ulong FindRoot(Hash256? address, in ValueHash256 root)
     {
+        using ReadLease lease = BeginRead();
         ValueHash256 addressHash = address?.ValueHash256 ?? default;
         ulong pointer = Volatile.Read(ref RootSlot(address, root));
         while (TryLocate(pointer, out NodeRecordRef rootKey))
@@ -58,11 +59,12 @@ public sealed partial class TrieNodeLog
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     internal void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer)
     {
+        using ReadLease lease = BeginRead();
         ref ulong slot = ref RootSlot(address, root);
         ulong previous = Volatile.Read(ref slot);
         while (true)
         {
-            ulong rootKey = Reserve(NodeRecord.RootKeyLength, out byte[] buffer, out int offset);
+            ulong rootKey = Reserve(NodeRecord.RootKeyLength, out LogBuffer buffer, out int offset);
             Span<byte> record = buffer.AsSpan(offset, NodeRecord.RootKeyLength);
             record[0] = (byte)NodeRecordKind.RootKey;
             address?.Bytes.CopyTo(record[RootKeyAddressOffset..]);

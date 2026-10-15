@@ -17,14 +17,14 @@ internal enum PendingKind : byte
     Branch,
 }
 
-/// <summary>A byte array slice: an entry's value or a leaf value inside a record.</summary>
-internal readonly struct ValueRef(byte[] array, int offset, int length)
+/// <summary>An entry's managed value or a leaf value borrowed for the enclosing log operation.</summary>
+internal readonly struct ValueRef(ReadOnlyMemory<byte> array, int offset, int length)
 {
-    private readonly byte[] _array = array;
+    private readonly ReadOnlyMemory<byte> _array = array;
     private readonly int _offset = offset;
     private readonly int _length = length;
 
-    public ReadOnlySpan<byte> Span => _array.AsSpan(_offset, _length);
+    public ReadOnlySpan<byte> Span => _array.Span.Slice(_offset, _length);
 }
 
 /// <summary>Key nibbles, one per byte.</summary>

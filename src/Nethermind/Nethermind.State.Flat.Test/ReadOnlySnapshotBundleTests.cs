@@ -28,7 +28,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
-using Bloom = Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter;
+using Bloom = Nethermind.Core.Collections.BloomFilter;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -163,7 +163,7 @@ public class ReadOnlySnapshotBundleTests
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
-        TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             FlatTestHelpers.MakeSnapshot(_pool, log, c => c.SetStateNodeRlp(log, path, FlatTestHelpers.LeafRlpA))),
@@ -188,7 +188,7 @@ public class ReadOnlySnapshotBundleTests
     {
         Hash256 address = TestItem.KeccakA;
         TreePath path = TreePath.FromHexString("ab");
-        TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             FlatTestHelpers.MakeSnapshot(_pool, log, c => c.SetStorageNodeRlp(log, address, path, FlatTestHelpers.LeafRlpB))),
@@ -287,7 +287,11 @@ public class ReadOnlySnapshotBundleFilterTests
     }
 
     [TearDown]
-    public void TearDown() => _tier.Dispose();
+    public void TearDown()
+    {
+        _tier.Dispose();
+        _log.Dispose();
+    }
 
     [Test]
     [NonParallelizable]

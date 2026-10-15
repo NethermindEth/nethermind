@@ -30,6 +30,7 @@ namespace Nethermind.Benchmarks.State;
 public class ReadOnlySnapshotBundleBenchmark
 {
     private ReadOnlySnapshotBundle _bundle = null!;
+    private TrieNodeLog _trieNodeLog = null!;
 
     // Hit arrays — sampled from actually written data
     private Address[] _hitAccounts = null!;
@@ -65,14 +66,14 @@ public class ReadOnlySnapshotBundleBenchmark
     {
         FlatDbConfig config = new() { CompactionOffset = 0 };
         ResourcePool resourcePool = new(config);
-        TrieNodeLog trieNodeLog = new(0, TrieNodeLog.DefaultGenerationBytes);
+        _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
         // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it, and the
         // repository itself does not use the arena managers, so the persisted tier can stay unwired.
         SnapshotCompactor compactor = new(
             config, new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
             resourcePool, new SnapshotRepository(null!, null!, NullSnapshotCatalog.Instance, config, null!, NullLogManager.Instance),
             NullLogManager.Instance);
-        List<FlatSnapshot> allSnapshots = new(SnapshotCount);
+        using SnapshotPooledList allSnapshots = new(SnapshotCount);
         StateId currentStateId = new(0, Keccak.EmptyTreeHash);
 
         int totalAccountCount = 0;
@@ -102,9 +103,9 @@ public class ReadOnlySnapshotBundleBenchmark
                 PersistedSnapshotStack.Empty());
             NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
-                readOnly, cache, trieNodeLog, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                readOnly, cache, _trieNodeLog, resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget commitTarget = new();
-            FlatWorldStateScope scope = new(
+            using FlatWorldStateScope scope = new(
                 currentStateId: currentStateId,
                 snapshotBundle: bundle,
                 codeDb: new NullCodeDb(),
@@ -156,7 +157,7 @@ public class ReadOnlySnapshotBundleBenchmark
 
             scope.Commit(blockNumber: block + 1);
 
-            FlatSnapshot snapshot = commitTarget.LastSnapshot
+            using FlatSnapshot snapshot = commitTarget.LastSnapshot
                 ?? throw new InvalidOperationException(
                     $"Block {block + 1}: Commit produced no snapshot");
             snapshot.TryAcquire();
@@ -176,7 +177,8 @@ public class ReadOnlySnapshotBundleBenchmark
             if (SortedContent)
             {
                 s.TryAcquire();
-                finalSnapshots.Add(compactor.CompactSnapshotBundle(new SnapshotPooledList(1) { s }));
+                using SnapshotPooledList sources = new(1) { s };
+                finalSnapshots.Add(compactor.CompactSnapshotBundle(sources));
             }
             else
             {
@@ -322,6 +324,13 @@ public class ReadOnlySnapshotBundleBenchmark
         if (_bundle.GetAccount(_missAccounts[0]) is not null)
             throw new InvalidOperationException(
                 "Miss account should not be found in snapshot bundle");
+    }
+
+    [GlobalCleanup]
+    public void Cleanup()
+    {
+        _bundle.Dispose();
+        _trieNodeLog.Dispose();
     }
 
     [Benchmark]

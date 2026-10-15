@@ -64,7 +64,7 @@ public class FlatReadOnlyTrieStoreTests
     {
         TreePath path = TreePath.FromHexString("12");
         Hash256 storageAddress = TestItem.KeccakA;
-        TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
 
         _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool, log, c =>
         {

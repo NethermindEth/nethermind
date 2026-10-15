@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Threading;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeLog;
@@ -17,9 +18,9 @@ namespace Nethermind.Trie.NodeLog;
 /// The newest <see cref="LiveGenerations"/> generations are readable in place; older ones are dropped, except that a generation held by a
 /// <see cref="TrieNodeLogRetain"/>, and every later generation, is never dropped.
 /// Appends are lock-free bump reservations into the active generation; rotation, retains and drops run under a lock.
-/// Readers need no lock: a reader that already holds a generation's buffer keeps it alive.
+/// Readers borrow native records within an operation lease or generation retain; retired storage is freed after readers finish.
 /// </remarks>
-public sealed partial class TrieNodeLog
+public sealed partial class TrieNodeLog : IDisposable
 {
     /// <summary>The default size of a generation in bytes.</summary>
     public const int DefaultGenerationBytes = 64 * 1024 * 1024;
@@ -54,9 +55,12 @@ public sealed partial class TrieNodeLog
     {
         lock (_lock)
         {
+            ThrowIfUnavailable();
             ulong generation = _active.Id;
+            TrieNodeLogRetain retain = new(this, generation);
+            _retainCount++;
             _retains[generation & GenerationSlotMask]++;
-            return new TrieNodeLogRetain(this, generation);
+            return retain;
         }
     }
 
@@ -64,7 +68,9 @@ public sealed partial class TrieNodeLog
     {
         lock (_lock)
         {
-            Debug.Assert(generation >= _oldestLive && generation <= _active.Id, "Only a live generation can be retained.");
+            ThrowIfUnavailable();
+            if (generation < _oldestLive || generation > _active.Id) throw new ObjectDisposedException(nameof(TrieNodeLogRetain));
+            _retainCount++;
             _retains[generation & GenerationSlotMask]++;
         }
     }
@@ -75,7 +81,9 @@ public sealed partial class TrieNodeLog
         {
             Debug.Assert(_retains[generation & GenerationSlotMask] > 0, "Only a retained generation can be released.");
             _retains[generation & GenerationSlotMask]--;
-            DropOldGenerations();
+            _retainCount--;
+            if (_disposed) TryCompleteDispose();
+            else DropOldGenerations();
         }
     }
 
@@ -89,10 +97,10 @@ public sealed partial class TrieNodeLog
             return false;
         }
 
-        byte[]? data = Volatile.Read(ref generation.Data);
+        LogBuffer? data = Volatile.Read(ref generation.Data);
         if (data is not null)
         {
-            record = new NodeRecordRef(data, (int)(uint)pointer);
+            record = new NodeRecordRef(data.Memory, (int)(uint)pointer);
             return true;
         }
 
@@ -102,20 +110,26 @@ public sealed partial class TrieNodeLog
     }
 
     /// <summary>The record at <paramref name="pointer"/>.</summary>
-    /// <remarks>The caller keeps the record's generation readable with a <see cref="TrieNodeLogRetain"/> on it or on an older generation.</remarks>
+    /// <remarks>The caller must hold a <see cref="TrieNodeLogRetain"/> on this generation or an older one for the entire use of the record, including its spans and references.</remarks>
     /// <exception cref="TrieException">The pointer does not resolve to a record.</exception>
-    public NodeRecordRef GetRecord(ulong pointer) => TryLocate(pointer, out NodeRecordRef record) ? record : ThrowNotLocatable(pointer);
+    public NodeRecordRef GetRecord(ulong pointer)
+    {
+        ThrowIfUnavailable();
+        return TryLocate(pointer, out NodeRecordRef record) ? record : ThrowNotLocatable(pointer);
+    }
 
     /// <summary>Reserves contiguous zero-filled bytes in the active generation.</summary>
+    /// <remarks>The writer holds a generation retain no newer than the reservation until all reserved records are published.</remarks>
     /// <param name="alignedTotalLength">A multiple of <see cref="NodeRecord.RecordAlignment"/>.</param>
     /// <returns>The pointer of the first reserved byte, which is at <paramref name="offset"/> in <paramref name="buffer"/>.</returns>
-    internal ulong Reserve(int alignedTotalLength, out byte[] buffer, out int offset)
+    internal ulong Reserve(int alignedTotalLength, out LogBuffer buffer, out int offset)
     {
+        ThrowIfUnavailable();
         while (true)
         {
             Generation generation = Volatile.Read(ref _active);
             long end = Interlocked.Add(ref generation.Used, alignedTotalLength);
-            byte[]? data = Volatile.Read(ref generation.Data);
+            LogBuffer? data = Volatile.Read(ref generation.Data);
             if (data is not null && end <= data.Length)
             {
                 buffer = data;
@@ -131,13 +145,14 @@ public sealed partial class TrieNodeLog
     /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
     internal ulong AppendRecordFromRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp)
     {
+        using ReadLease lease = BeginRead();
         if (!NodeRecord.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
 
         int length = NodeRecord.Length(BitOperations.PopCount(hashMask), rlp.Length);
-        ulong pointer = Reserve(NodeRecord.AlignedLength(length), out byte[] buffer, out int offset);
+        ulong pointer = Reserve(NodeRecord.AlignedLength(length), out LogBuffer buffer, out int offset);
         ulong nodeKey = NodeRecord.NodeKey(address, path);
         NodeRecord.WriteFromRlp(rlp, kind, hashMask, hash, nodeKey, buffer.AsSpan(offset, length));
-        FindBloom(pointer)?.Insert(nodeKey);
+        FindBloom(pointer)?.Add(nodeKey);
         return pointer;
     }
 
@@ -192,11 +207,26 @@ public sealed partial class TrieNodeLog
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTooManyRetained() => throw new TrieException("Too many retained trie node log generations.");
 
-    private sealed class Generation(ulong id, int length)
+    private sealed class Generation
     {
-        public readonly ulong Id = id;
-        public byte[]? Data = LogBuffer.Allocate(length);
-        public SplitBlockBloom? Bloom = new(length / BloomBytesPerKey);
+        public Generation(ulong id, int length)
+        {
+            Id = id;
+            Data = LogBuffer.Allocate(length);
+            try
+            {
+                Bloom = new BloomFilter(Math.Max(1, length / BloomBytesPerKey), 14);
+            }
+            catch
+            {
+                ((IDisposable)Data).Dispose();
+                throw;
+            }
+        }
+
+        public readonly ulong Id;
+        public BloomFilter? Bloom;
+        public LogBuffer? Data;
         public CompressedGeneration? Compressed;
         public long Used;
     }
