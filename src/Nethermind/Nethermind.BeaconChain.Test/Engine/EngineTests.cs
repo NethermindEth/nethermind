@@ -279,6 +279,7 @@ public class EngineTests
         Assert.That(converted.Timestamp, Is.EqualTo(1_800_000_000));
         AssertAdditionalPayloadFields(converted, payload.GasUsed, payload.ExtraData, payload.BaseFeePerGas, payload.Withdrawals![0]);
         Assert.That(converted.Transactions, Is.EqualTo(new[] { Bytes.FromHexString("0x04cafe") }));
+        Assert.That(converted.Transactions[0], Is.SameAs(payload.Transactions[0].Bytes));
         Assert.That(converted.BlobGasUsed, Is.EqualTo(262144ul));
         Assert.That(converted.ExcessBlobGas, Is.EqualTo(393216ul));
         Assert.That(converted.BlockAccessList, Is.EqualTo(Bytes.FromHexString("0xc0ffee")), "the access list bytes must reach the execution layer unchanged");

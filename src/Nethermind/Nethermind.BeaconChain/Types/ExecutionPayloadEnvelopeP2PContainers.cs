@@ -19,7 +19,7 @@ public partial class ExecutionPayloadEnvelopesByRangeRequest
 /// <c>LIMIT = MAX_REQUEST_PAYLOADS</c> (p2p-interface.md). Shaped like <see cref="BeaconBlocksByRootRequest"/>.
 /// </summary>
 [SszContainer(isCollectionItself: true)]
-public partial class ExecutionPayloadEnvelopeRoots
+public partial struct ExecutionPayloadEnvelopeRoots
 {
     [SszList(128)] // MAX_REQUEST_PAYLOADS
     public Hash256[]? Roots { get; set; }

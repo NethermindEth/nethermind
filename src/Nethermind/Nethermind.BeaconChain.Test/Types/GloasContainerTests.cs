@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Ssz;
+using Nethermind.Serialization.Ssz.Merkleization;
 using YamlDotNet.RepresentationModel;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
@@ -19,6 +20,23 @@ namespace Nethermind.BeaconChain.Test.Types;
 // Independent roots: ethereum/ssz-specs using spec-declared fields, not production encoders. Named-field/root cases come from original consensus-spec ssz_static fixtures. Body round-trip alone is not an independent oracle.
 public class GloasContainerTests
 {
+    [Test]
+    public void Transaction_preserves_bare_encoding_and_progressive_root([Values(0, 1, 31, 32, 33, 160, 161)] int length)
+    {
+        byte[] bytes = Filled(length, 0x42);
+        TransactionGloas transaction = new() { Bytes = bytes };
+        byte[] encoded = TransactionGloas.Encode(transaction);
+        TransactionGloas.Decode(encoded, out TransactionGloas decoded);
+        Merkle.MerkleizeProgressive(out UInt256 expectedRoot, bytes.AsSpan());
+        Merkle.MixIn(ref expectedRoot, length);
+        TransactionGloas.Merkleize(decoded, out UInt256 actualRoot);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(encoded, Is.EqualTo(bytes));
+        Assert.That(decoded.Bytes, Is.EqualTo(bytes));
+        Assert.That(actualRoot, Is.EqualTo(expectedRoot));
+    }
+
     private static IEnumerable<TestCaseData> IndependentRootCases()
     {
         yield return new TestCaseData((Action)(() => AssertRoundTripsAndMatchesRoot(new Builder
