@@ -371,7 +371,7 @@ public sealed partial class KeccakHash
     /// width on riscv64 and pays a loop and a call for the same word compares.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe bool BlockEquals(byte* a, byte* b) => ZiskFlag.IsActive
-        ? Bytes.Memcmp(a, b, HASH_DATA_AREA) == 0
+        ? Accelerators.Memcmp(a, b, HASH_DATA_AREA) == 0
         : LaneEquals(a, b, 0) && LaneEquals(a, b, 1) && LaneEquals(a, b, 2) && LaneEquals(a, b, 3)
         && LaneEquals(a, b, 4) && LaneEquals(a, b, 5) && LaneEquals(a, b, 6) && LaneEquals(a, b, 7)
         && LaneEquals(a, b, 8) && LaneEquals(a, b, 9) && LaneEquals(a, b, 10) && LaneEquals(a, b, 11)
