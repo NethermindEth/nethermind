@@ -127,7 +127,7 @@ public class BlockValidator(
         }
 
         if (block.StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes
-            || Keccak.Compute(block.StarkProof) != recursiveStark.StarkProofHash)
+            || !ValidateStarkProofMatchesCommitment(block.Header, block.Body))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             return false;
@@ -492,9 +492,21 @@ public class BlockValidator(
             return false;
         }
 
+        if (!ValidateStarkProofMatchesCommitment(header, toBeValidated))
+        {
+            error = toBeValidated.StarkProof is null
+                ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark;
+            return false;
+        }
+
         error = null;
         return true;
     }
+
+    private static bool ValidateStarkProofMatchesCommitment(BlockHeader header, BlockBody body) =>
+        header.RecursiveStark is { } commitment
+            ? body.StarkProof is { } proof && Keccak.Compute(proof) == commitment.StarkProofHash
+            : body.StarkProof is null;
 
     public bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
