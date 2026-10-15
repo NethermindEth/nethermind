@@ -558,6 +558,38 @@ public class BlockCachePreWarmerTests(bool earlyStart)
     }
 
     /// <summary>
+    /// With the early start, the fan-out over the senders and recipients is queued behind the transaction workers, so
+    /// they take the worker budget first; otherwise it starts while the block's transactions are still being grouped.
+    /// The recipient is read by nothing else before the workers start.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_QueuesTheSenderAndRecipientFanOutBehindTheTransactionWorkersOnlyWhenAsked([Values] bool transactionWorkersFirst,
+        CancellationToken testToken)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4, transactionWorkersFirst: transactionWorkersFirst);
+        Block block = BuildReactiveWarmBlock();
+        block.Header.Beneficiary = TestItem.AddressF;
+        bool held = _earlyStart && transactionWorkersFirst;
+        bool fannedOutFirst = false;
+        preWarmer.BeforeTransactionWorkers = () => fannedOutFirst = SpinWait.SpinUntil(
+            () => testToken.IsCancellationRequested || preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _),
+            held ? PendingProbe : DiscoveryTimeout);
+
+        using (preWarmer)
+        {
+            RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance).GetAwaiter().GetResult();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fannedOutFirst, Is.EqualTo(!held));
+            Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _), Is.True);
+        }
+    }
+
+    /// <summary>
     /// The system access lists are registered through an <c>as IHasAccessList</c> cast, so a decorator over
     /// <see cref="IExecutionRequestsProcessor"/> that stops implementing it would drop the hint with no error.
     /// </summary>
@@ -2872,7 +2904,8 @@ public class BlockCachePreWarmerTests(bool earlyStart)
         }
     }
 
-    private (BlockCachePreWarmer, ConcurrentBag<IPrewarmerEnv> created, ConcurrentBag<IPrewarmerEnv> disposed) CreatePreWarmer(int minPoolSize, bool parallelExecutionBatchRead = true)
+    private (BlockCachePreWarmer, ConcurrentBag<IPrewarmerEnv> created, ConcurrentBag<IPrewarmerEnv> disposed) CreatePreWarmer(int minPoolSize,
+        bool parallelExecutionBatchRead = true, bool transactionWorkersFirst = true)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
@@ -2890,7 +2923,8 @@ public class BlockCachePreWarmerTests(bool earlyStart)
             nodeStorageCache,
             preBlockCaches,
             LimboLogs.Instance,
-            earlyStart: _earlyStart);
+            earlyStart: _earlyStart,
+            transactionWorkersFirst: transactionWorkersFirst);
 
         return (preWarmer, created, disposed);
     }

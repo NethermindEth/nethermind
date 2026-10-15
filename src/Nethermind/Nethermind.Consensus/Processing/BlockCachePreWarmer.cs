@@ -63,6 +63,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private readonly bool _handoff;
     // The mempool pass's runs are taken over alongside a block's warm runs rather than ahead of them.
     private readonly bool _earlyStart;
+    // With _earlyStart, the sender and recipient fan-out is queued behind the transaction workers.
+    private readonly bool _transactionWorkersFirst;
     private BlockFootprints? _footprints;
 
     private const int MaxDiscoveryCandidates = 16;
@@ -125,7 +127,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         blocksConfig.MempoolPreWarmConcurrency,
         senderRecovery,
         handoff: envFactory.RecordsFootprints,
-        earlyStart: blocksConfig.PreWarmEarlyStart)
+        earlyStart: blocksConfig.PreWarmEarlyStart,
+        transactionWorkersFirst: blocksConfig.PreWarmTransactionWorkersFirst)
     {
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
         _blockCodeCache = blockCodeCache;
@@ -144,11 +147,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         int speculativeConcurrency = 0,
         ISenderRecoveryTracker? senderRecovery = null,
         bool handoff = false,
-        bool earlyStart = true)
+        bool earlyStart = true,
+        bool transactionWorkersFirst = true)
     {
         _senderRecovery = senderRecovery;
         _handoff = handoff;
         _earlyStart = earlyStart;
+        _transactionWorkersFirst = transactionWorkersFirst;
         _concurrencyLevel = concurrency == 0 ? Environment.ProcessorCount - 1 : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -240,6 +245,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 ? null
                 : SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
             blockState.UpFrontDiscovery = discoveryCandidates;
+            if (_earlyStart && _transactionWorkersFirst && !addressWarmer.HasBal)
+            {
+                // The sender and recipient fan-out is held until the transaction workers are queued, so they take the
+                // worker budget ahead of it; the coinbase, withdrawals and system access lists are warmed at once.
+                addressWarmer.HoldFanOut();
+                blockState.FanOutAfterWorkers = addressWarmer;
+            }
             session.Start(() =>
             {
                 if (seeded is not null)
@@ -1141,6 +1153,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
         finally
         {
+            // A fan-out held for transaction workers that never started is not held any longer.
+            addressWarmer.ReleaseFanOut();
             // Don't complete the task until address warmer is also done.
             if (addressWork is null)
             {
@@ -1765,9 +1779,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         private readonly ReadOnlyBlockAccessList? Bal = bal;
         private readonly bool WarmWithdrawals = bal is null && spec.WithdrawalsEnabled && block.Withdrawals?.Length > 0;
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
+        // Set when the sender and recipient fan-out may start; null when it is not held.
+        private ManualResetEventSlim? _fanOutReleased;
         private bool _systemAccessListsWarmed;
 
         public bool HasBal => Bal is not null;
+
+        /// <summary>Holds the sender and recipient fan-out until <see cref="ReleaseFanOut"/>; called before the warmer is queued.</summary>
+        public void HoldFanOut() => _fanOutReleased = new ManualResetEventSlim(initialState: false);
+
+        public void ReleaseFanOut() => _fanOutReleased?.Set();
 
         /// <summary>The coinbase whose account is warmed; the block's unless set.</summary>
         public Address? Beneficiary { get; set; } = block.Header.GasBeneficiary;
@@ -1778,7 +1799,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         public void Wait() => _doneEvent.Wait();
 
-        public void Dispose() => _doneEvent.Dispose();
+        public void Dispose()
+        {
+            _doneEvent.Dispose();
+            _fanOutReleased?.Dispose();
+        }
 
         void IThreadPoolWorkItem.Execute()
         {
@@ -1854,6 +1879,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     // In ranges, as WarmDiscoveredStorage does: an iteration per transaction would put one interlocked
                     // increment per transaction on the fan-out's shared index, which on a dense block is thousands of
                     // contended writes to one cache line for a few nanoseconds of work each.
+                    _fanOutReleased?.Wait(parallelOptions.CancellationToken);
                     int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
                     int rangeSize = Math.Max(16, count / (parallelOptions.MaxDegreeOfParallelism * 4));
                     WarmingState<(Block Block, int RangeSize, int Count)> baseState = new(envPool, (block, rangeSize, count), block.Header);
@@ -2059,6 +2085,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         /// </summary>
         public bool SkipsSeeded { get; set; }
 
+        /// <summary>The address warmer whose sender and recipient fan-out waits for the transaction workers to be queued.</summary>
+        public AddressWarmer? FanOutAfterWorkers { get; set; }
+
         /// <summary>For a mempool pass, where its runs' footprints go.</summary>
         public MempoolFootprints? Recording { get; set; }
 
@@ -2203,6 +2232,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             if (count == 1)
             {
+                BlockState.FanOutAfterWorkers?.ReleaseFanOut();
                 RunWorker(0);
                 return;
             }
@@ -2214,6 +2244,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             {
                 using ParallelUnbalancedWork.BackgroundWork workers = ParallelUnbalancedWork.BackgroundFor(
                     1, count, options, _runWorker, _workersCompleted);
+                // Queued behind the workers, the sender and recipient fan-out takes what of the budget they leave.
+                BlockState.FanOutAfterWorkers?.ReleaseFanOut();
                 RunWorker(0);
                 // The caller must assist late helpers before joining the initial workers: those workers can
                 // still be busy while a helper needs the caller's otherwise idle share of the budget.
