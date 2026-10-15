@@ -173,6 +173,25 @@ def percentile(values, q):
     return ordered[min(len(ordered) - 1, max(0, math.ceil(q * len(ordered)) - 1))]
 
 
+def origination_metrics(records, interval_ms, transactions_per_object, kind):
+    """Actual released objects, including scheduler lateness; records are (actual_ns, scheduled_ns)."""
+    actual = [actual for actual, _ in records]
+    late = [(actual - scheduled) / 1e6 for actual, scheduled in records]
+    first, last = (min(actual), max(actual)) if actual else (None, None)
+    span = (last - first) / 1e9 if actual else None
+    # Add one release interval so a burst at t=0 followed by one at t=1 covers two intervals.
+    window = span + interval_ms / 1000 if span is not None else None
+    rate = len(actual) / window if window else None
+    return {
+        "released_objects": len(actual), "actual_first_origin_ns": first, "actual_last_origin_ns": last,
+        "actual_origin_span_s": span, "actual_offered_window_s": window,
+        "actual_offered_objects_per_s": rate,
+        "actual_offered_tx_per_s": rate * transactions_per_object if rate is not None and kind == 1 else None,
+        "origin_schedule_lateness_ms": {"p50": percentile(late, .5), "p95": percentile(late, .95),
+                                        "max": max(late) if late else None, "min": min(late) if late else None},
+    }
+
+
 def run(args):
     n, edges = topology(args.topology)
     run_dir = os.path.abspath(os.path.join(args.out, args.label or time.strftime("run-%Y%m%d-%H%M%S")))
@@ -303,6 +322,7 @@ def run(args):
     body_bytes = next((r.get("body_bytes") for r in results.values() if r.get("body_bytes") is not None), None)
     deliveries = 0
     useful_bytes = 0
+    origin_records = []
     measured_indices = range(args.warmup, args.warmup + args.objects)
     for index in measured_indices:
         o = origin(index)
@@ -310,6 +330,8 @@ def run(args):
         if t0 is None:
             missing += 1
             continue
+        scheduled = results[o]["measured_ns"] + ((index - args.warmup) // args.burst) * args.interval_ms * 1_000_000
+        origin_records.append((t0, scheduled))
         dist = distances(n, edges, o)
         worst = None
         complete = True
@@ -334,6 +356,7 @@ def run(args):
     offered_window_s = math.ceil(args.objects / args.burst) * args.interval_ms / 1000
     observed_window_s = max((r["finished_ns"] - r["measured_ns"]) / 1e9 for r in results.values())
     window_s = max(offered_window_s, observed_window_s, 1e-9)
+    summary.update(origination_metrics(origin_records, args.interval_ms, args.transactions_per_object, args.kind))
     summary["body_bytes"] = body_bytes
     summary["validated_receiver_deliveries"] = deliveries
     summary["expected_receiver_deliveries"] = args.objects * (n - 1)
@@ -442,7 +465,11 @@ def main():
     except Exception as error:
         traceback.print_exc()
         summary = {"label": args.label, "error": str(error), "binding": args.binding,
-                   "kind": args.kind, "transactions_per_object": args.transactions_per_object}
+                   "kind": args.kind, "transactions_per_object": args.transactions_per_object,
+                   "objects": args.objects, "burst": args.burst, "interval_ms": args.interval_ms,
+                   "offered_objects_per_s": args.burst * 1000 / args.interval_ms,
+                   "proof_bytes": args.proof_bytes, "topology": args.topology, "rtt_ms": args.rtt_ms,
+                   "rate_mbit": args.rate_mbit, "loss": args.loss}
         if args.label:
             provenance = os.path.join(args.out, args.label, "provenance.json")
             if os.path.exists(provenance):

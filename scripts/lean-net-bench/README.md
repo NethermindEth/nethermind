@@ -27,3 +27,50 @@ python3 scripts/lean-net-bench/report.py /tmp/lean-results.jsonl --out /tmp/lean
 The report requires `matplotlib`. Open `index.html` locally, or view the standalone PNG/SVG files on mobile. Each capture contains node logs, timings, interface counters, source revision, binary hash and runtime details. The controller stops its processes and removes its namespaces when finished; `netbench.py teardown` removes only the configured prefix after an interrupted run. Existing devnets and sites are not used.
 
 The receive budget is not a process-memory limit: native prover workspace and benchmark fixtures must be measured separately. The cold native folding timings include recursive aggregation work, while root verification and fixture generation are reported independently. Neither the small final proof size nor a successful transport run demonstrates that the provisional 4096-dependency block limit is safe.
+
+## Matrix and interpretation
+
+The planned matrix has 38 scenarios per repetition, executed serially. With two repetitions this is 76 attempted runs; connection setup and draining add time beyond the roughly 17 minutes of scheduled release/warm-up windows. Use one immutable v4 source archive and DLL for the entire matrix. Earlier v3 large-object failures remain diagnostic evidence and must not be mixed into the v4 comparison or silently replaced.
+
+| Group | Bindings | Workload | Link | Runs per repetition |
+|---|---|---|---|---:|
+| Aggregation/load | RLPx, QUIC | 1/16/64 distinct transaction envelopes per wrapper; 1/8/32/64 objects/s for six scheduled seconds | 100 Mbit/s per node, 50 ms RTT, no injected loss | 24 |
+| Object size | RLPx, QUIC | 64 KiB, 1 MiB, 8 MiB proof payloads; six objects at one/s | 100 Mbit/s, 50 ms RTT | 6 |
+| Link/topology | RLPx, QUIC | 24 objects, bursts of four each second | Pair at 10 Mbit/s/100 ms; pair at 100 Mbit/s/50 ms/1% loss; four-node chain at 100 Mbit/s/50 ms | 6 |
+| Broadcast | QUIC | Kind-2 object, one per 12-second slot, three measured objects | 100 Mbit/s/50 ms, 0% and 1% injected loss | 2 |
+
+Use the observed native SPHINCS root sizes for the three wrapper aggregation counts. These sizes calibrate synthetic transport payloads; the transport fixtures do not carry those native proofs or run the native verifier.
+
+```sh
+# Set LEAN_BENCH_DLL to the validated v4 test assembly, then choose a new capture directory.
+export LEAN_NET_PREFIX=lnv4
+export LEAN_NET_SUBNET=10.78
+lean_capture=/tmp/lean-net-v4-capture
+mkdir "$lean_capture"
+printf '%s\n' '{"1":265232,"16":293448,"64":291464}' > "$lean_capture/proof-sizes.json"
+python3 scripts/lean-net-bench/matrix.py --plan \
+  --test-dll "$LEAN_BENCH_DLL" --out "$lean_capture/runs" \
+  --results "$lean_capture/results.jsonl" --repetitions 2 \
+  --proof-sizes "$lean_capture/proof-sizes.json"
+# After v4 smoke validation, execute the identical command with --plan removed.
+python3 scripts/lean-net-bench/report.py "$lean_capture/results.jsonl" \
+  --native-dir scripts/lean-net-bench/results/2026-10-14/native \
+  --out "$lean_capture/report"
+```
+
+Before the full matrix, both bindings must complete a maximum 8 MiB proof transfer with no receive-budget starvation, and a 16-transaction wrapper must recover its envelopes over authenticated ETH66. Check source/archive/DLL hashes, all expected receiver deliveries, peer counts and decoder-budget diagnostics. A smoke success permits measurement; it does not establish a memory upper bound. Preserve failed attempts, node logs, counter snapshots and the exact arguments alongside successes. Stop and investigate repeated resource or protocol errors before continuing high-load cases. After interruption, clean up only the task's namespace prefix and node processes; no devnet or website is needed.
+
+Transaction goodput means completed, validated wrapper envelopes per receiver, multiplied by transaction count. Completion is signalled before controlled pool admission; it is not a count of successful native verifications or block inclusions. Each transaction/dependency is distinct within the workload. Useful Mbit/s counts canonical object bodies, including proof bytes; it excludes separately recovered ETH envelopes. Interface `wire_bytes` includes the actual measured namespace traffic, including ETH recovery, protocol overhead and retransmissions, and must not be relabelled as proof payload bytes.
+
+The scheduled offered rate is the configured release schedule. The controller also records actual released objects and their first/last times. Actual origin rate divides that count by the first-to-last release span plus one configured interval, so two bursts at zero and one second cover two release intervals. Schedule-lateness p50/p95/max measures actual origin time minus its scheduled release. These are workload observations, not native capacity guarantees. Latency starts at actual origin execution and ends at validated receiver completion, so it includes origin admission/recovery/transfer work after that point but excludes scheduler lateness before the origin starts. Goodput uses the full scheduled window or later completion time, whichever is longer. Partial delivery reduces goodput; latency percentiles include only objects completed at every receiver. A high-loss run can therefore have plausible latency among its survivors while remaining incomplete. Error rows and missing curve points must be read with the failure table, not interpreted as successful capacity.
+
+Broadcast measurements exercise actual coding, QUIC delivery and a test producer's secp256k1 signature recovery. The test profile accepts every reconstructed consensus context; these results do not validate a live CL authorization/anchor integration. The pair/chain layouts are bounded transport experiments, not a public adversarial network.
+
+Recommendations should follow measured completion, bytes, latency, CPU, memory and loss together: compare the two bindings at the same workload and link; identify the offered-load range that still delivers all objects; show large-object and relay penalties separately; and retain resource failures. Native cold aggregation/verification graphs belong in their own panel with the M2 Max/one-worker scope and the trivial generic-program caveat. The data cannot establish that the provisional dependency weight of 16, the draft 4096-dependency capacity, or a one-second aggregation cadence is universally safe. No Lean fork or prover optimization is part of this experiment.
+
+Reporting-only checks run without services or native proofs:
+
+```sh
+python3 scripts/lean-net-bench/test_metrics.py
+python3 -O scripts/lean-net-bench/test_metrics.py
+```
