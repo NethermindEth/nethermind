@@ -103,4 +103,24 @@ public class UserErrors
         Assert.That(() => AbiCodec.Decode(signature, new byte[2]),
             Throws.TypeOf<AbiException>().With.InnerException.TypeOf<ArgumentOutOfRangeException>());
     }
+
+    private static IEnumerable<TestCaseData> ArrayLengthBeyondInputTestCases()
+    {
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.UInt256)),
+            "0000000000000000000000000000000000000000000000000000000000000020" +
+            "0000000000000000000000000000000000000000000000000000000000989680").SetName("uint256[] length beyond input");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.String)),
+            "0000000000000000000000000000000000000000000000000000000000000020" +
+            "0000000000000000000000000000000000000000000000000000000000989680").SetName("string[] length beyond input");
+    }
+
+    [TestCaseSource(nameof(ArrayLengthBeyondInputTestCases))]
+    public void Decode_ArrayLengthBeyondInput_ThrowsBeforeAllocating<T>(AbiSignature<T> signature, byte[] input)
+    {
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Throws<AbiException>(() => AbiCodec.Decode(signature, input));
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        Assert.That(allocated, Is.LessThan(1_000_000));
+    }
 }
