@@ -402,13 +402,22 @@ namespace Nethermind.TxPool
         private bool CanGossipTransactions => _txGossipPolicy.CanGossipTransactions;
 
         /// <summary>Filters with the gossip policy once, so every peer is handed the same span.</summary>
+        /// <remarks>A throwing policy yields an empty batch, so it cannot stop the broadcast timer.</remarks>
         private ArrayPoolListRef<Transaction> GetGossipable(IList<Transaction> txs)
         {
             ArrayPoolListRef<Transaction> gossipable = new(txs.Count);
-            for (int i = 0; i < txs.Count; i++)
+            try
             {
-                Transaction tx = txs[i];
-                if (_txGossipPolicy.ShouldGossipTransaction(tx)) gossipable.Add(tx);
+                for (int i = 0; i < txs.Count; i++)
+                {
+                    Transaction tx = txs[i];
+                    if (_txGossipPolicy.ShouldGossipTransaction(tx)) gossipable.Add(tx);
+                }
+            }
+            catch (Exception e)
+            {
+                gossipable.Clear();
+                if (_logger.IsError) _logger.Error("Failed to apply the transaction gossip policy.", e);
             }
             return gossipable;
         }

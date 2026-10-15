@@ -890,9 +890,6 @@ public class TxBroadcasterTests
     [Test]
     public void Timer_announces_each_gossipable_tx_once_to_every_peer()
     {
-        ITimer timer = Substitute.For<ITimer>();
-        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
         Transaction[] transactions = new Transaction[6];
         for (int i = 0; i < transactions.Length; i++)
         {
@@ -901,7 +898,7 @@ public class TxBroadcasterTests
         ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
         gossipPolicy.CanGossipTransactions.Returns(true);
         gossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(static call => call.Arg<Transaction>().Nonce % 2 == 0);
-        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, _headInfo, _logManager, gossipPolicy);
+        ITimer timer = CreateManuallyTimedBroadcaster(gossipPolicy);
         RecordingTxPoolPeer[] peers = [new(TestItem.PublicKeyA), new(TestItem.PublicKeyB)];
         foreach (RecordingTxPoolPeer peer in peers) _broadcaster.AddPeer(peer);
 
@@ -917,6 +914,31 @@ public class TxBroadcasterTests
                 Assert.That(peer.Sent, Is.EquivalentTo(gossipable));
             }
         }
+    }
+
+    [Test]
+    public void Timer_keeps_running_when_the_gossip_policy_throws()
+    {
+        ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
+        gossipPolicy.CanGossipTransactions.Returns(true);
+        gossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(static _ => throw new InvalidOperationException());
+        ITimer timer = CreateManuallyTimedBroadcaster(gossipPolicy);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+        _broadcaster.Broadcast(Build.A.Transaction.TestObject, isPersistent: false);
+
+        Assert.That(() => timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty), Throws.Nothing);
+        timer.Received(1).Enabled = true;
+        Assert.That(peer.Sent, Is.Empty);
+    }
+
+    private ITimer CreateManuallyTimedBroadcaster(ITxGossipPolicy gossipPolicy)
+    {
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, _headInfo, _logManager, gossipPolicy);
+        return timer;
     }
 
     [Test]
