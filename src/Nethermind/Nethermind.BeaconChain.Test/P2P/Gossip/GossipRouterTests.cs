@@ -555,6 +555,12 @@ public partial class GossipRouterTests
         }
 
         int fits = (int)(GossipRouter.UnseenBlockEnvelopeBytes / SignedExecutionPayloadEnvelope.GetLength(Unseen(0)));
+        int refusals = 1;
+        fixture.Router.ExecutionPayloadEnvelopeReceived += (_, verdict) =>
+        {
+            if (refusals-- > 0) verdict.Complete(MessageValidity.Throttled);
+        };
+        MessageValidity refused = fixture.Handle(Unseen(fits + 1));
         MessageValidity[] filling = [.. Enumerable.Range(0, fits).Select(index => fixture.Handle(Unseen(index)))];
         MessageValidity overBudget = fixture.Handle(Unseen(fits));
         MessageValidity copy = fixture.Handle(Unseen(fits));
@@ -564,11 +570,12 @@ public partial class GossipRouterTests
         MessageValidity afterExpiry = fixture.Handle(Unseen(fits, laterSlot));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(filling, Is.All.EqualTo(MessageValidity.Ignored));
+        Assert.That(refused, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(filling, Is.All.EqualTo(MessageValidity.Ignored), "an envelope its consumer refuses gives its bytes back");
         Assert.That((overBudget, copy), Is.EqualTo((MessageValidity.Throttled, MessageValidity.Throttled)), "past the budget an envelope is throttled and its id not cached");
         Assert.That(heldBlock, Is.EqualTo(MessageValidity.Ignored));
-        Assert.That(raisedWhileFull, Is.EqualTo(fits + 1), "an envelope for a held block is not held to the budget");
-        Assert.That((afterExpiry, fixture.Raised), Is.EqualTo((MessageValidity.Ignored, fits + 2)), "the budget frees once its charges expire");
+        Assert.That(raisedWhileFull, Is.EqualTo(fits + 2), "an envelope for a held block is not held to the budget");
+        Assert.That((afterExpiry, fixture.Raised), Is.EqualTo((MessageValidity.Ignored, fits + 3)), "the budget frees once its charges expire");
     }
 
     [Test]
