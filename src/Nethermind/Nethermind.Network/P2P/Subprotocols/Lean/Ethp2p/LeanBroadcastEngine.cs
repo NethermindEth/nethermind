@@ -34,11 +34,19 @@ internal interface ILeanBroadcastPeer
     /// <summary>Opens this node's SESS stream toward the peer; writes happen in the background, in order.</summary>
     ILeanBroadcastSession OpenSession(string channel, string messageId, byte[] preamble, byte[] initialUpdate);
 
-    /// <summary>Sends one shard on its own CHUNK stream after the session's SESS Open; false if it could not be written.</summary>
-    ValueTask<bool> SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard);
+    /// <summary>Sends one shard on its own CHUNK stream after the session's SESS Open.</summary>
+    ValueTask<LeanShardSendResult> SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard);
 
     /// <summary>Terminates the binding for data attributable to this peer.</summary>
     void Penalize(string reason);
+}
+
+/// <summary>Whether a shard was written, refused without fault, or could not be sent.</summary>
+internal enum LeanShardSendResult
+{
+    Failed,
+    Sent,
+    Refused
 }
 
 /// <summary>This node's outbound SESS stream of one session toward one peer.</summary>
@@ -670,11 +678,10 @@ internal sealed class LeanBroadcastEngine : IDisposable
 
     private async Task SendAsync(Session session, Participant participant, int index, byte[] shard)
     {
-        bool sent = false, failed = false;
-        try { sent = await participant.Peer.SendShardAsync(participant.Out!, index, shard).ConfigureAwait(false); }
+        LeanShardSendResult result = LeanShardSendResult.Failed;
+        try { result = await participant.Peer.SendShardAsync(participant.Out!, index, shard).ConfigureAwait(false); }
         catch (Exception exception)
         {
-            failed = true;
             if (_logger.IsDebug) _logger.Debug($"lean/1 shard write failed: {exception.Message}");
         }
         Outgoing outgoing = new();
@@ -684,11 +691,11 @@ internal sealed class LeanBroadcastEngine : IDisposable
             session.ActiveSends--;
             participant.InFlight &= ~(1u << index);
             SetInFlight(participant.Peer, _inFlight.GetValueOrDefault(participant.Peer) - 1);
-            if (sent) participant.Inventory |= 1u << index;
+            if (result == LeanShardSendResult.Sent) participant.Inventory |= 1u << index;
             else
             {
                 session.Sent[index]--;
-                if (failed || participant.Peer.IsClosed || session.Expiry <= _clock.GetUtcNow())
+                if (result != LeanShardSendResult.Refused || participant.Peer.IsClosed || session.Expiry <= _clock.GetUtcNow())
                 {
                     if (!participant.OutFinished) failedStream = participant.Out;
                     participant.OutFinished = true;
@@ -703,7 +710,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
             else
             {
                 if (session.Reconstructed) RetainCodewordCharge(session);
-                if (sent) Dispatch(session, outgoing);
+                if (result == LeanShardSendResult.Sent) Dispatch(session, outgoing);
                 DispatchTo(participant.Peer, outgoing);
             }
         }

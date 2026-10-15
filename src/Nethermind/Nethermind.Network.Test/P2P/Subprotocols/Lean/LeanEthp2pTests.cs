@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Quic;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -109,6 +110,31 @@ public class LeanEthp2pTests
             Assert.That(int.IsPow2(LeanEthp2pProtocol.StreamReceiveWindow) && int.IsPow2(LeanEthp2pProtocol.ConnectionReceiveWindow), Is.True);
         }
     }
+
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("windows")]
+    private static IEnumerable<TestCaseData> ShardFailures()
+    {
+        yield return new TestCaseData(new QuicException(QuicError.StreamAborted, LeanEthp2pProtocol.RefusedError, "refused shard"), true)
+            .SetName("Explicit shard refusal");
+        yield return new TestCaseData(new QuicException(QuicError.StreamAborted, LeanEthp2pProtocol.ReconstructedError, "other stream reset"), false)
+            .SetName("Other stream reset");
+        yield return new TestCaseData(new QuicException(QuicError.ConnectionAborted, LeanEthp2pProtocol.RefusedError, "closed connection"), false)
+            .SetName("Connection close with refusal-valued code");
+        yield return new TestCaseData(new QuicException(QuicError.ConnectionTimeout, null, "connection timeout"), false)
+            .SetName("Connection timeout");
+        yield return new TestCaseData(new OperationCanceledException("write deadline"), false).SetName("Shard write deadline");
+        yield return new TestCaseData(new ObjectDisposedException("stream"), false).SetName("Disposed shard stream");
+    }
+
+    [TestCaseSource(nameof(ShardFailures))]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("windows")]
+    public void Shard_send_distinguishes_explicit_refusal_from_transport_failures(Exception exception, bool refused) =>
+        Assert.That(LeanEthp2pConnection.ClassifyShardFailure(exception),
+            Is.EqualTo(refused ? LeanShardSendResult.Refused : LeanShardSendResult.Failed));
 
     private static IEnumerable<TestCaseData> Fragmented()
     {

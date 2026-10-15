@@ -363,9 +363,9 @@ public class LeanBroadcastTests
             return session;
         }
 
-        public async ValueTask<bool> SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard)
+        public async ValueTask<LeanShardSendResult> SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard)
         {
-            TaskCompletionSource<bool> sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<LeanShardSendResult> sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
             byte[] data = Tamper(index, shard.ToArray());
             Deliver(() =>
             {
@@ -374,7 +374,12 @@ public class LeanBroadcastTests
                 if (verdict == LeanBroadcastVerdict.Accepted) verdict = Remote.Engine.OnShard(Reverse, session.MessageId, resolved, data);
                 if (verdict == LeanBroadcastVerdict.Invalid) Reverse.Penalties.Enqueue(reason ?? $"shard {index}");
                 if (verdict == LeanBroadcastVerdict.Accepted) Delivered.Enqueue(index);
-                sent.TrySetResult(verdict != LeanBroadcastVerdict.Invalid);
+                sent.TrySetResult(verdict switch
+                {
+                    LeanBroadcastVerdict.Accepted => LeanShardSendResult.Sent,
+                    LeanBroadcastVerdict.Refused => LeanShardSendResult.Refused,
+                    _ => LeanShardSendResult.Failed
+                });
             });
             return await sent.Task;
         }
@@ -407,7 +412,7 @@ public class LeanBroadcastTests
         private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _live, _maxLive, _sent, _closed;
 
-        public bool Fail { get; init; }
+        public LeanShardSendResult Result { get; init; } = LeanShardSendResult.Sent;
         public bool ThrowOnSend { get; init; }
         public bool RefuseFirst { get; init; }
         public int Closed => Volatile.Read(ref _closed);
@@ -424,7 +429,7 @@ public class LeanBroadcastTests
         public ILeanBroadcastSession OpenSession(string channel, string messageId, byte[] preamble, byte[] initialUpdate) =>
             new HeldSession(this, channel, messageId);
 
-        public async ValueTask<bool> SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard)
+        public async ValueTask<LeanShardSendResult> SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard)
         {
             int live = Interlocked.Increment(ref _live);
             for (int max = Volatile.Read(ref _maxLive); max < live; max = Volatile.Read(ref _maxLive))
@@ -433,7 +438,7 @@ public class LeanBroadcastTests
             Interlocked.Decrement(ref _live);
             int sent = Interlocked.Increment(ref _sent);
             if (ThrowOnSend) throw new InvalidOperationException("shard stream closed");
-            return !Fail && (!RefuseFirst || sent != 1);
+            return RefuseFirst && sent == 1 ? LeanShardSendResult.Refused : Result;
         }
 
         public void Release() => _release.TrySetResult();
@@ -450,11 +455,13 @@ public class LeanBroadcastTests
         }
     }
 
-    [Test]
-    public async Task Synchronous_shard_write_failure_does_not_retry_a_refused_shard([Values] bool throws)
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    public async Task Synchronous_shard_write_failure_does_not_retry_a_refused_shard(bool refused, bool throws)
     {
         using BroadcastNode origin = new();
-        HeldPeer peer = new() { Fail = true, ThrowOnSend = throws };
+        HeldPeer peer = new() { Result = refused ? LeanShardSendResult.Refused : LeanShardSendResult.Failed, ThrowOnSend = throws };
         peer.Release();
         origin.Engine.AddPeer(peer);
         (LeanBroadcastManifest manifest, _) = await Package(origin, 917);
@@ -463,9 +470,10 @@ public class LeanBroadcastTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(peer.Sent, throws ? Is.InRange(1, LeanBroadcastEngine.MaxShardsInFlightPerPeer) : Is.EqualTo(LeanReedSolomon.TotalShards));
+            Assert.That(peer.Sent, refused ? Is.EqualTo(LeanReedSolomon.TotalShards)
+                : Is.InRange(1, LeanBroadcastEngine.MaxShardsInFlightPerPeer));
             Assert.That(peer.Live, Is.Zero);
-            Assert.That(peer.Closed, Is.EqualTo(throws ? 1 : 0));
+            Assert.That(peer.Closed, Is.EqualTo(refused ? 0 : 1));
         }
     }
 

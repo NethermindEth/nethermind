@@ -63,7 +63,9 @@ public static class LeanEthp2pProtocol
 
     /// <summary>Connection QUIC receive credit, reserved from the authenticated node's shared transport budget.</summary>
     /// <remarks>Leaves room for maximum-proof reassembly and decoding within the 18 MiB node budget. The fixed window limits
-    /// high-RTT throughput (about 5 MiB/s at 100 ms); increasing it requires rebalancing that shared budget.</remarks>
+    /// high-RTT throughput (about 5 MiB/s at 100 ms); increasing it requires rebalancing that shared budget.
+    /// Including control parsing, each connection reserves 896 KiB: 50 peers consume 43.75 MiB of the global 72 MiB,
+    /// reducing bulk capacity and potentially deferring reconnects until transfers drain.</remarks>
     public const int ConnectionReceiveWindow = 512 * 1024;
 
     /// <summary>Encodes <c>U8(message_id) || U32(payload_length) || payload</c>.</summary>
