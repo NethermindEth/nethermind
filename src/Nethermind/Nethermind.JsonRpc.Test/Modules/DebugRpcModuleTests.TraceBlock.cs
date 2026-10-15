@@ -122,6 +122,112 @@ public partial class DebugRpcModuleTests
         Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
     }
 
+    [TestCase("unknown", "debug_traceBlockByHash")]
+    [TestCase("genesis", "debug_traceBlockByHash")]
+    [TestCase("empty", "debug_traceBlockByHash")]
+    [TestCase("native", "debug_traceBlockByHash")]
+    [TestCase("config", "debug_traceBlockByHash")]
+    [TestCase("config-valid-timeout", "debug_traceBlockByHash")]
+    [TestCase("null-config", "debug_traceBlockByHash")]
+    [TestCase("null-config-valid-timeout", "debug_traceBlockByHash")]
+    [TestCase("type", "debug_traceBlockByHash")]
+    [TestCase("oversized", "debug_traceBlockByHash")]
+    [TestCase("unknown", "debug_traceTransaction")]
+    [TestCase("unknown", "debug_intermediateRoots")]
+    public async Task Debug_traceBlockByHash_semantic_timeout_phase(string scenario, string method)
+    {
+        using Context context = await Context.Create();
+        Hash256 hash = scenario switch
+        {
+            "genesis" => context.Blockchain.BlockTree.Genesis!.Hash!,
+            "empty" => (await context.Blockchain.AddBlock()).Hash!,
+            "native" or "config" or "config-valid-timeout" or "null-config" or "null-config-valid-timeout" => (await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain))).Hash!,
+            _ => TestItem.KeccakD
+        };
+        object timeout = scenario switch { "type" => 7, "oversized" => new string('x', 65), "config-valid-timeout" or "null-config-valid-timeout" => "5s", _ => "bad" };
+        bool invalidConfig = scenario is "config" or "config-valid-timeout";
+        Dictionary<string, object> options = new()
+        {
+            ["tracer"] = invalidConfig ? "prestateTracer" : NativeNoopTracer.NoopTracer,
+            ["timeout"] = timeout
+        };
+        if (invalidConfig) options["tracerConfig"] = new { diffMode = Array.Empty<int>() };
+        if (scenario is "null-config" or "null-config-valid-timeout")
+        {
+            options["tracer"] = "callTracer";
+            options["tracerConfig"] = JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":true,"onlyTopCall":null,"withLog":null}""");
+        }
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, hash, options);
+        JToken json = JToken.Parse(response);
+        if (method != "debug_traceBlockByHash" || scenario is "type" or "oversized")
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            return;
+        }
+        if (scenario is "empty" or "null-config-valid-timeout")
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(scenario == "empty" ? 0 : context.Blockchain.BlockTree.Head!.Transactions.Length), response);
+            return;
+        }
+        int expectedCode = scenario switch
+        {
+            "unknown" => ErrorCodes.ResourceNotFound,
+            "config" or "config-valid-timeout" => ErrorCodes.InvalidParams,
+            _ => ErrorCodes.InvalidInput
+        };
+        string expectedMessage = scenario switch
+        {
+            "unknown" => hash.ToString(),
+            "genesis" => "genesis is not traceable",
+            "config" or "config-valid-timeout" => "Cannot convert",
+            _ => "Cannot parse 'bad' as a duration"
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That(json["error"]?.ToString(), Does.Contain(expectedMessage), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_opcode_timeout_phase(
+        [Values("nonempty", "empty", "unmatched")] string selection,
+        [Values("bad", "valid", "type", "oversized")] string duration,
+        [Values] bool streaming)
+    {
+        using Context context = await Context.Create();
+        Block block = selection == "empty"
+            ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        Dictionary<string, object> options = new()
+        {
+            ["timeout"] = duration switch { "type" => 7, "oversized" => new string('x', 65), "valid" => "5s", _ => "bad" },
+            ["streamMode"] = streaming
+        };
+        if (selection == "unmatched") options["txHash"] = TestItem.KeccakD;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, options);
+        JToken json = JToken.Parse(response);
+        if (duration is "type" or "oversized" || duration == "bad" && selection == "nonempty")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(duration == "bad" ? ErrorCodes.InvalidInput : ErrorCodes.InvalidParams), response);
+                Assert.That(json["result"], Is.Null, response);
+                if (duration == "bad") Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot parse 'bad' as a duration"), response);
+            }
+        }
+        else
+        {
+            Assert.That(json["error"], Is.Null, response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(selection == "nonempty" ? block.Transactions.Length : 0), response);
+            for (int i = 0; i < traces.Count; i++)
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+        }
+    }
+
     [TestCase(false, "\"bad\"", "lookup")]
     [TestCase(false, "\"5s\"", "lookup")]
     [TestCase(true, "\"bad\"", "constructor")]
