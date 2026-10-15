@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -13,7 +14,9 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -53,6 +56,11 @@ public class PrewarmerReadAheadTests
     private static readonly IReleaseSpec Spec = Osaka.Instance;
     // Gas for minutes of the long loop even in Release; a block that large admits the run to discovery's rounds.
     private const ulong LoopGas = 200_000_000_000;
+    // Reverts at once, with no data.
+    private static readonly Address Reverts = new("0x00000000000000000000000000000000004e4d40");
+    private static readonly byte[] RevertsCode = [0x60, 0x00, 0x60, 0x00, 0xFD];
+    // Above the gas from which the block's up-front discovery selects a transaction.
+    private const ulong UpFrontGas = 12_000_000;
 
     private IContainer _container = null!;
     private ILifetimeScope _scope = null!;
@@ -92,6 +100,8 @@ public class PrewarmerReadAheadTests
             worldState.InsertCode(LongLoop, Keccak.Compute(LongLoopCode), LongLoopCode, Spec);
             worldState.Set(new StorageCell(LongLoop, 1), 1);
             worldState.Set(LongLoopFinished, 1);
+            worldState.CreateAccount(Reverts, 0);
+            worldState.InsertCode(Reverts, Keccak.Compute(RevertsCode), RevertsCode, Spec);
             worldState.Commit(Spec);
             worldState.CommitTree(0);
             genesisRoot = worldState.StateRoot;
@@ -117,7 +127,7 @@ public class PrewarmerReadAheadTests
         Block block = BuildBlock(walk);
         preWarmer.OnBeforeTxExecution();
 
-        preWarmer.DiscoverAndWarmStorage([(0, walk)], block, Spec, null, CancellationToken.None);
+        preWarmer.DiscoverAndWarmStorage([(0, walk)], block, Spec, null, CancellationToken.None, readAhead: true);
 
         Assert.That(_caches.StorageCache.TryGetValue(new StorageCell(ColdTailContracts.Walker, 0x4e4d + 3), out _), Is.True,
             "a transaction block processing is executing is still worth reading ahead of it");
@@ -132,7 +142,7 @@ public class PrewarmerReadAheadTests
         preWarmer.OnBeforeTxExecution();
         preWarmer.OnBeforeTxExecution();
 
-        preWarmer.DiscoverAndWarmStorage([(0, walk)], block, Spec, null, CancellationToken.None);
+        preWarmer.DiscoverAndWarmStorage([(0, walk)], block, Spec, null, CancellationToken.None, readAhead: true);
 
         Assert.That(_caches.StorageCache.TryGetValue(new StorageCell(ColdTailContracts.Walker, 0x4e4d), out _), Is.False);
     }
@@ -158,7 +168,7 @@ public class PrewarmerReadAheadTests
         Block block = BuildBlock(LoopGas, loop, Transfer(TestItem.PrivateKeyB, 0));
         using CancellationTokenSource cancellation = new();
 
-        Task discovery = Task.Run(() => preWarmer.DiscoverAndWarmStorage([(0, loop)], block, Spec, null, cancellation.Token));
+        Task discovery = Task.Run(() => preWarmer.DiscoverAndWarmStorage([(0, loop)], block, Spec, null, cancellation.Token, readAhead: true));
         try
         {
             Assert.That(SpinWait.SpinUntil(() => _caches.StateCache.TryGetValue(LongLoop, out _), Timeout), Is.True,
@@ -188,7 +198,7 @@ public class PrewarmerReadAheadTests
         Transaction claim = BatchClaim(TestItem.PrivateKeyA, 0, 8);
         Block block = BuildBlock(claim);
 
-        preWarmer.DiscoverAndWarmStorage([(0, claim)], block, Spec, null, CancellationToken.None);
+        preWarmer.DiscoverAndWarmStorage([(0, claim)], block, Spec, null, CancellationToken.None, readAhead: true);
 
         StorageCell last = ColdTailContracts.BatchSlot(ColdTailContracts.BatchCounter, 7);
         using (Assert.EnterMultipleScope())
@@ -219,7 +229,7 @@ public class PrewarmerReadAheadTests
         preWarmer.OnBeforeTxExecution();
         if (cachedCounter) _caches.StorageCache.Set(new StorageCell(ColdTailContracts.Batch, 0), ColdTailContracts.BatchCounter);
 
-        preWarmer.DiscoverAndWarmStorage([(1, second)], block, Spec, null, CancellationToken.None, footprints: seeded ? footprints : null);
+        preWarmer.DiscoverAndWarmStorage([(1, second)], block, Spec, null, CancellationToken.None, footprints: seeded ? footprints : null, readAhead: true);
 
         bool found = _caches.StorageCache.TryGetValue(ColdTailContracts.BatchSlot(moved, 5), out UInt256 value);
         bool counterCached = _caches.StorageCache.TryGetValue(new StorageCell(ColdTailContracts.Batch, 0), out UInt256 counter);
@@ -254,7 +264,7 @@ public class PrewarmerReadAheadTests
         footprints.ApplyExecuted();
         preWarmer.OnBeforeTxExecution();
 
-        preWarmer.DiscoverAndWarmStorage([(1, second)], block, Spec, null, CancellationToken.None, footprints: footprints);
+        preWarmer.DiscoverAndWarmStorage([(1, second)], block, Spec, null, CancellationToken.None, footprints: footprints, readAhead: true);
 
         Assert.That(EntriesNotAtTheParent(), Is.Empty);
     }
@@ -413,6 +423,123 @@ public class PrewarmerReadAheadTests
         }
     }
 
+    /// <summary>
+    /// A block being produced does not read ahead, the read-ahead switched on or not: its discovery runs as it does with
+    /// the read-ahead off. Here, a run that reverts with the first placeholder is not repeated with zero.
+    /// </summary>
+    [Test]
+    public void Only_a_block_that_reads_ahead_repeats_a_reverted_run_with_zero([Values] bool produced)
+    {
+        using CaptureWatchingEnvs envs = new(_scope.Resolve<PrewarmerEnvFactory>(), _caches);
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, policy: envs);
+        Block block = BuildBlock(Call(TestItem.PrivateKeyA, 0, Reverts, UpFrontGas, []), Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0));
+        if (produced) block = AsProduced(block);
+
+        bool listening;
+        using (OpenSession(preWarmer, block))
+        {
+            listening = _caches.ColdReadObserver is not null;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(listening, Is.EqualTo(!produced));
+            Assert.That(envs.Placeholders, produced ? Is.EqualTo(new[] { UInt256.One }) : Is.EqualTo(new[] { UInt256.One, UInt256.Zero }));
+        }
+    }
+
+    /// <summary>
+    /// Discovery leaves a transaction block processing has started, unless the block reads ahead: then it leaves only
+    /// one block processing has finished. The transaction's sender lands only once block processing has started it.
+    /// </summary>
+    [Test]
+    public void Only_a_block_that_reads_ahead_discovers_the_transaction_block_processing_is_executing([Values] bool produced)
+    {
+        SenderRecovery recovery = new();
+        using CaptureWatchingEnvs envs = new(_scope.Resolve<PrewarmerEnvFactory>(), _caches);
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, policy: envs, senderRecovery: recovery);
+        Transaction heavy = Call(TestItem.PrivateKeyA, 0, Reverts, UpFrontGas, []);
+        Address sender = heavy.SenderAddress!;
+        heavy.SenderAddress = null;
+        Block block = BuildBlock(heavy, Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0));
+        if (produced) block = AsProduced(block);
+
+        IWorldState worldState = _scope.Resolve<IWorldState>();
+        using (worldState.BeginScope(_parent))
+        {
+            using IDisposable session = preWarmer.PreWarmCaches(block, _parent, Spec)!;
+            preWarmer.OnBeforeTxExecution();
+            recovery.Publish(heavy, sender);
+            ((PrewarmingSession)session).WaitForCompletion();
+        }
+
+        Assert.That(envs.Placeholders, produced ? Is.Empty : Is.Not.Empty);
+    }
+
+    /// <summary>
+    /// In a block that reads ahead, a discovery run stops once block processing has finished its transaction; in any
+    /// other it runs on until the block's token is cancelled.
+    /// </summary>
+    [Test]
+    public void Only_a_block_that_reads_ahead_stops_a_run_once_block_processing_finishes_its_transaction([Values] bool produced)
+    {
+        using CaptureWatchingEnvs envs = new(_scope.Resolve<PrewarmerEnvFactory>(), _caches);
+        // Room for discovery's run beside the warm of the same loop.
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, policy: envs, concurrency: 4);
+        Transaction loop = Build.A.Transaction.WithGasLimit(LoopGas).WithTo(LongLoop).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = BuildBlock(LoopGas, loop, Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0));
+        if (produced) block = AsProduced(block);
+
+        IWorldState worldState = _scope.Resolve<IWorldState>();
+        using IDisposable consumer = worldState.BeginScope(_parent);
+        IDisposable session = preWarmer.PreWarmCaches(block, _parent, Spec)!;
+        try
+        {
+            Assert.That(envs.Captured.Wait(Timeout), Is.True, "precondition: discovery runs the loop");
+            preWarmer.OnBeforeTxExecution();
+            preWarmer.OnBeforeTxExecution();
+
+            bool stopped = envs.CaptureReturned.Wait(produced ? TimeSpan.FromSeconds(1) : Timeout);
+
+            Assert.That(stopped, Is.EqualTo(!produced), "only a block that reads ahead stops the run before its token");
+        }
+        finally
+        {
+            session.Dispose();
+        }
+    }
+
+    /// <summary>A block access list already enumerates the block's reads: no discovery runs, and nothing reads ahead.</summary>
+    [Test]
+    public void A_block_with_an_access_list_neither_reads_ahead_nor_discovers()
+    {
+        using CaptureWatchingEnvs envs = new(_scope.Resolve<PrewarmerEnvFactory>(), _caches);
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, policy: envs);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(Call(TestItem.PrivateKeyA, 0, Reverts, UpFrontGas, []), Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0))
+            .WithBlockAccessList(bal)
+            .TestObject;
+        Assert.That(preWarmer.IsBalReadWarmingEnabled(Amsterdam.Instance), Is.True, "precondition: the access list is read");
+
+        bool listening;
+        IWorldState worldState = _scope.Resolve<IWorldState>();
+        using (worldState.BeginScope(_parent))
+        {
+            using IDisposable session = preWarmer.PreWarmCaches(block, _parent, Amsterdam.Instance)!;
+            listening = _caches.ColdReadObserver is not null;
+            ((PrewarmingSession)session).WaitForCompletion();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(listening, Is.False);
+            Assert.That(envs.Placeholders, Is.Empty);
+        }
+    }
+
     [Test]
     public void The_config_defaults_start_at_the_thirty_second_cold_read()
     {
@@ -451,14 +578,16 @@ public class PrewarmerReadAheadTests
         return wrong;
     }
 
-    private BlockCachePreWarmer CreatePreWarmer(bool readAhead, int coldReads = 0, IPooledObjectPolicy<IPrewarmerEnv>? policy = null) =>
+    private BlockCachePreWarmer CreatePreWarmer(bool readAhead, int coldReads = 0, IPooledObjectPolicy<IPrewarmerEnv>? policy = null,
+        int concurrency = 2, ISenderRecoveryTracker? senderRecovery = null) =>
         new(policy ?? new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(_scope.Resolve<PrewarmerEnvFactory>(), _caches),
             minPoolSize: 4,
-            concurrency: 2,
+            concurrency: concurrency,
             parallelExecutionBatchRead: true,
             _scope.Resolve<NodeStorageCache>(),
             _caches,
             LimboLogs.Instance,
+            senderRecovery: senderRecovery,
             readAhead: readAhead,
             readAheadColdReads: coldReads);
 
@@ -466,6 +595,8 @@ public class PrewarmerReadAheadTests
 
     private static Block BuildBlock(ulong gasLimit, params Transaction[] transactions) =>
         Build.A.Block.WithNumber(1).WithGasLimit(gasLimit).WithTransactions(transactions).TestObject;
+
+    private static Block AsProduced(Block block) => new BlockToProduce(block.Header, block.Transactions, block.Uncles, block.Withdrawals);
 
     private static Transaction WalkerCall(PrivateKey sender, ulong nonce, UInt256 start, int count) =>
         Call(sender, nonce, ColdTailContracts.Walker, 1_000_000, ColdTailContracts.Words(start, (ulong)count));
@@ -528,6 +659,93 @@ public class PrewarmerReadAheadTests
             }
 
             public void Dispose() => inner.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Envs that note each discovery run, a scope built while a storage-read capture is open: its placeholder, the first
+    /// such build, and the first return of an env that made one.
+    /// </summary>
+    private sealed class CaptureWatchingEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches) : IPooledObjectPolicy<IPrewarmerEnv>, IDisposable
+    {
+        private readonly ConcurrentQueue<UInt256> _placeholders = new();
+        public readonly ManualResetEventSlim Captured = new();
+        public readonly ManualResetEventSlim CaptureReturned = new();
+
+        public UInt256[] Placeholders => [.. _placeholders];
+
+        public IPrewarmerEnv Create() => new Env(factory.Create(caches), this, caches);
+
+        public bool Return(IPrewarmerEnv obj)
+        {
+            Env env = (Env)obj;
+            if (env.Captured)
+            {
+                env.Captured = false;
+                CaptureReturned.Set();
+            }
+
+            return true;
+        }
+
+        public void Dispose()
+        {
+            Captured.Dispose();
+            CaptureReturned.Dispose();
+        }
+
+        private sealed class Env(IPrewarmerEnv inner, CaptureWatchingEnvs owner, PreBlockCaches caches) : IPrewarmerEnv
+        {
+            public bool Captured;
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
+            FootprintRecorder? IPrewarmerEnv.Recorder => inner.Recorder;
+
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
+
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
+            {
+                if (caches.CurrentStorageReadCapture is { } capture)
+                {
+                    owner._placeholders.Enqueue(capture.Placeholder);
+                    Captured = true;
+                    owner.Captured.Set();
+                }
+
+                return inner.TryBuildAtTarget(targetBlock, out scope);
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
+    }
+
+    /// <summary>A sender recovery in flight that a test drives: a published sender moves the count and wakes the waiters.</summary>
+    private sealed class SenderRecovery : ISenderRecoveryTracker, ISenderRecoveryProgress
+    {
+        private readonly object _gate = new();
+        private int _recovered;
+
+        public ISenderRecoveryProgress? GetInFlight(Transaction[] txs) => this;
+        public int Recovered => Volatile.Read(ref _recovered);
+        public bool IsCompleted => false;
+
+        public bool WaitForCompletion(int millisecondsTimeout)
+        {
+            lock (_gate)
+            {
+                Monitor.Wait(_gate, millisecondsTimeout);
+            }
+
+            return false;
+        }
+
+        public void Publish(Transaction tx, Address sender)
+        {
+            tx.SenderAddress = sender;
+            Interlocked.Increment(ref _recovered);
+            lock (_gate)
+            {
+                Monitor.PulseAll(_gate);
+            }
         }
     }
 
