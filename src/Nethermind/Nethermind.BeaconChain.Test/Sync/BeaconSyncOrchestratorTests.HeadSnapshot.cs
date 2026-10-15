@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
@@ -56,4 +58,31 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(next.Status.HeadRoot, Is.EqualTo(harness.StatusHolder.CurrentStatus.HeadRoot), "peers and the API are told the same head");
     }
 
+    [Test]
+    public async Task Head_changes_with_no_api_reader_copy_no_state_and_the_first_read_copies_it_once()
+    {
+        HeadSnapshotHolder snapshots = new() { CaptureState = true };
+        Harness harness = CreateHarness(headSnapshots: snapshots);
+        int copies = 0;
+        harness.Orchestrator.ApiStateReader = _ =>
+        {
+            Interlocked.Increment(ref copies);
+            return new ForkedBeaconState.OfFulu(new BeaconStateFulu());
+        };
+        for (int i = 0; i < 10; i++)
+        {
+            harness.Importer.Head = CreateHead(Keccak.Compute($"head {i}"), AnchorSlot + 1 + (ulong)i, finalizedEpoch: 3);
+            await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        }
+
+        int copiesWithoutReader = copies;
+        HeadSnapshot published = snapshots.Current!;
+        ForkedBeaconState? first = published.State;
+        ForkedBeaconState? second = published.State;
+
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(copiesWithoutReader, Is.Zero, "a head change must not copy the full state on the import worker when no request reads it");
+        Assert.That(copies, Is.EqualTo(1));
+        Assert.That(second, Is.Not.Null.And.SameAs(first), "every read of one head shares one copy");
+    }
 }

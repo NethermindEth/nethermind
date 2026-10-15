@@ -187,7 +187,7 @@ public sealed class BlockImporter : IBlockImporter
 
     /// <summary>The root of the live Fulu lineage state; for tests.</summary>
     internal Hash256? LineageRoot => _states.LineageRoot;
-    private bool IsGloasBlock(Hash256 blockRoot) => _runner.GetBlockSlot(blockRoot) is ulong slot && SignedBeaconBlockCodec.IsGloasSlot(slot, _spec);
+    internal bool IsGloasBlock(Hash256 blockRoot) => _runner.GetBlockSlot(blockRoot) is ulong slot && SignedBeaconBlockCodec.IsGloasSlot(slot, _spec);
     private Hash256 GetJustifiedRoot() => _runner.JustifiedCheckpoint.Root;
 
     private IEnumerable<Hash256> AncestorRoots(Hash256 blockRoot)

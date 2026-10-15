@@ -105,15 +105,23 @@ public class BeaconApiHeadSnapshotTests
         await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
         BeaconStateFulu state = BeaconApiTestHost.RichState(host.Spec, Slot);
         host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, Hash256.Zero));
+        int copies = 0;
         snapshots.Current = new HeadSnapshot(new StatusMessageV2 { HeadRoot = Head, HeadSlot = Slot, FinalizedRoot = Hash256.Zero }, null, Hash256.Zero, true)
         {
-            State = new ForkedBeaconState.OfFulu(state),
+            DeferredState = new Lazy<ForkedBeaconState?>(() =>
+            {
+                Interlocked.Increment(ref copies);
+                return new ForkedBeaconState.OfFulu(state);
+            }),
         };
 
         using HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/beacon/states/head/{endpoint}");
+        using HttpResponseMessage again = await host.Client.GetAsync($"/eth/v1/beacon/states/head/{endpoint}");
 
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((response.StatusCode, again.StatusCode), Is.EqualTo((HttpStatusCode.OK, HttpStatusCode.OK)));
         Assert.That(host.Store.TryGetState(Head, out _), Is.False);
+        Assert.That(copies, Is.EqualTo(1), "requests for one head share the one copy the first request takes");
     }
 
     [Test]

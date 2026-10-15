@@ -14,7 +14,21 @@ namespace Nethermind.BeaconChain.Sync;
 /// <param name="ExecutionInSync">Whether the execution layer confirmed the head VALID.</param>
 public sealed record HeadSnapshot(StatusMessageV2 Status, Hash256? FullHeadRoot, Hash256 JustifiedRoot, bool ExecutionInSync)
 {
-    internal ForkedBeaconState? State { get; init; }
+    private readonly Lazy<ForkedBeaconState?>? _state;
+
+    /// <summary>The head's post-state for the Beacon API; a deferred one is taken on the first read and shared by every later one.</summary>
+    internal ForkedBeaconState? State
+    {
+        get => _state?.Value;
+        init => _state = value is null ? null : new Lazy<ForkedBeaconState?>(value);
+    }
+
+    /// <summary>The head's post-state, taken only when <see cref="State"/> is first read.</summary>
+    internal Lazy<ForkedBeaconState?>? DeferredState
+    {
+        get => _state;
+        init => _state = value;
+    }
 }
 
 /// <summary>Publishes one completed get_head view to other threads (fork-choice.md).</summary>
