@@ -38,6 +38,28 @@ def measured_values(rows, key):
     return [row[key] for row in rows if row.get(key) is not None]
 
 
+def event_count(row, event):
+    events = row.get("events")
+    if not isinstance(events, dict):
+        return None
+    counts = [value for key, value in events.items() if key.endswith("/" + event)]
+    return sum(counts) if all(type(value) is int and value >= 0 for value in counts) else None
+
+
+def minimum_never_fetched(row):
+    expected, completed, started = (row.get("expected_receiver_deliveries"),
+                                    row.get("validated_receiver_deliveries"), event_count(row, "fetch_started"))
+    if not all(type(value) is int and value >= 0 for value in (expected, completed, started)) or expected < completed or started < completed:
+        return None
+    return max(0, expected - started)
+
+
+def expiry_warning(rows):
+    counts = [event_count(row, "expired") for row in rows]
+    total = sum(value for value in counts if value is not None)
+    return f"; {total} recorded expiry events" if total else ""
+
+
 def validate_campaign(rows):
     """Keep diagnostic or revised binaries out of one transport comparison."""
     fields = ("source_revision", "source_archive_sha256", "test_dll_sha256")
@@ -48,6 +70,21 @@ def validate_campaign(rows):
 
 def argument(row, key):
     return row.get(key, row.get("provenance", {}).get("arguments", {}).get(key))
+
+
+def load_window_scope(rows):
+    durations = set()
+    unknown = False
+    for row in rows:
+        objects, burst, interval = (argument(row, key) for key in ("objects", "burst", "interval_ms"))
+        if all(type(value) is int and value > 0 for value in (objects, burst, interval)):
+            durations.add(((objects + burst - 1) // burst) * interval / 1000)
+        else:
+            unknown = True
+    release = "Scheduled release: " + ", ".join(f"{duration:g} s" for duration in sorted(durations)) + "." if durations else "Scheduled release duration unavailable."
+    if durations and unknown:
+        release += " Some attempt durations unavailable."
+    return release + " Goodput includes full drain/timeout observation; not steady-state capacity."
 
 
 def matched_rtt_rows(rows):
@@ -105,7 +142,7 @@ def main():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     plt.rcParams.update({"font.size": 10, "axes.spines.top": False, "axes.spines.right": False,
-                         "figure.dpi": 150, "savefig.bbox": "tight"})
+                         "figure.dpi": 150, "savefig.bbox": "tight", "svg.fonttype": "none"})
     rows = []
     for path in args.results:
         with open(path) as stream:
@@ -113,7 +150,7 @@ def main():
     validate_campaign(rows)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "results.json").write_text(json.dumps(rows, indent=2))
+    (out / "results.json").write_text("[\n" + ",\n".join(json.dumps(row, separators=(",", ":")) for row in rows) + "\n]\n")
     (out / "report-source.json").write_text(json.dumps({
         "report_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "measurement_sources": sorted({r.get("provenance", {}).get("source_revision", "unknown") for r in rows}),
@@ -135,7 +172,9 @@ def main():
         fig.tight_layout(rect=(0, footer_inches / (height + footer_inches), 1, 1))
         fig.text(.025, .02, footer, fontsize=7, va="bottom", color="#44546a")
         fig.savefig(out / f"{name}.png")
-        fig.savefig(out / f"{name}.svg")
+        svg = out / f"{name}.svg"
+        fig.savefig(svg)
+        svg.write_text("\n".join(line.rstrip() for line in svg.read_text().splitlines()) + "\n")
         plt.close(fig)
         charts.append((name, caption))
 
@@ -147,7 +186,7 @@ def main():
         rates = sorted({offered_rate(r) for r in subset})
         warnings = []
         for binding, color in colors.items():
-            x, y, low, high, actual_x, actual_y, delivery_x, delivery_y = [], [], [], [], [], [], [], []
+            x, y, low, high, actual_x, actual_y, delivery_x, delivery_y, delivery_low, delivery_high = [], [], [], [], [], [], [], [], [], []
             for rate in rates:
                 matching = [r for r in subset if r["binding"] == binding and offered_rate(r) == rate]
                 if not matching:
@@ -164,18 +203,20 @@ def main():
                 fractions = [r["validated_receiver_deliveries"] / r["expected_receiver_deliveries"] for r in matching
                              if r.get("validated_receiver_deliveries") is not None and r.get("expected_receiver_deliveries")]
                 if fractions:
-                    delivery_x.append(scheduled); delivery_y.append(statistics.median(fractions) * 100)
+                    center = statistics.median(fractions) * 100
+                    delivery_x.append(scheduled); delivery_y.append(center)
+                    delivery_low.append(center - min(fractions) * 100); delivery_high.append(max(fractions) * 100 - center)
                 failed = sum(incomplete(r) for r in matching)
                 unknown = len(matching) - len(values)
                 if failed or unknown:
-                    warnings.append(f"{names[binding]} @ {scheduled:g} tx/s: {failed}/{len(matching)} incomplete/error, {unknown} unmeasured")
+                    warnings.append(f"{names[binding]} @ {scheduled:g} tx/s: {failed}/{len(matching)} incomplete/error, {unknown} unmeasured{expiry_warning(matching)}")
             if x:
                 ax.errorbar(x, y, yerr=[low, high], label=f"Delivered: {names[binding]}", color=color, marker="o", capsize=3)
             if actual_x:
                 ax.plot(actual_x, actual_y, color=color, marker="^", linestyle="--", linewidth=1,
-                        label=f"Actual origin: {names[binding]}")
+                        label=f"Actual origin median: {names[binding]}")
             if delivery_x:
-                delivery.plot(delivery_x, delivery_y, marker="o", color=color, label=names[binding])
+                delivery.errorbar(delivery_x, delivery_y, yerr=[delivery_low, delivery_high], marker="o", color=color, label=names[binding], capsize=3)
         if rates:
             ax.plot([0, rates[-1] * count], [0, rates[-1] * count], color="#999999", linestyle=":", label="Scheduled load")
         ax.set(title=f"{count} transaction{'s' if count != 1 else ''} per aggregate", ylabel="Transactions/s per receiver")
@@ -184,37 +225,43 @@ def main():
         if ax.get_legend_handles_labels()[0]: ax.legend(fontsize=8)
         if delivery.get_legend_handles_labels()[0]: delivery.legend(fontsize=8)
         save(fig, f"goodput-tx{count}", "Controlled verification: validated/recovered envelopes, not pool admission or native throughput. Median and min–max of measured attempts, including partial delivery. Actual origin rate uses first-to-last release span plus one configured interval. Failed/unmeasured attempts remain listed; unknown goodput is never imputed as zero.",
+             scope=f"{transport_scope} {load_window_scope(subset)}",
              warnings=warnings or ("All recorded attempts complete.",))
 
     subset = [r for r in load if r["transactions_per_object"] == 1]
     if subset:
         fig, ax = plt.subplots(figsize=(6, 4))
         for binding, color in colors.items():
-            points = []
+            points, low, high = [], [], []
             for rate in sorted({offered_rate(r) for r in subset}):
                 matching = [r for r in subset if r["binding"] == binding and offered_rate(r) == rate]
-                value = median(matching, "goodput_mbit_per_s_per_receiver")
-                if value is not None:
-                    points.append((rate, value))
+                values = measured_values(matching, "goodput_mbit_per_s_per_receiver")
+                if values:
+                    center = statistics.median(values)
+                    points.append((rate, center)); low.append(center - min(values)); high.append(max(values) - center)
             if points:
-                ax.plot(*zip(*points), marker="o", color=color, label=names[binding])
+                ax.errorbar(*zip(*points), yerr=[low, high], marker="o", color=color, label=names[binding], capsize=3)
         ax.set(title="Useful proof-object goodput", xlabel="Scheduled proof objects/s", ylabel="Useful Mbit/s per receiver")
         ax.grid(alpha=.18)
         if ax.get_legend_handles_labels()[0]: ax.legend()
-        save(fig, "goodput-bytes", "Canonical object body bytes, including proofs and transaction hashes, excluding separately recovered ETH envelopes and transport overhead. See completion/failure counts; unavailable results are not interpolated as successful capacity.", warnings=(f"{sum(incomplete(r) for r in subset)}/{len(subset)} attempts incomplete/error; measured partial delivery retained.",))
+        save(fig, "goodput-bytes", "Canonical object body bytes, including proofs and transaction hashes, excluding separately recovered ETH envelopes and transport overhead. See completion/failure counts; unavailable results are not interpolated as successful capacity.",
+             scope=f"{transport_scope} {load_window_scope(subset)}",
+             warnings=(f"{sum(incomplete(r) for r in subset)}/{len(subset)} attempts incomplete/error; measured partial delivery retained{expiry_warning(subset)}.",))
 
     sizes = [r for r in rows if r.get("label", "").startswith("size-")]
     if sizes:
         fig, axes = plt.subplots(2, 1, figsize=(6.5, 6.5), sharex=True)
         for binding, color in colors.items():
             for axis, field in ((axes[0], "goodput_mbit_per_s_per_receiver"), (axes[1], None)):
-                points = []
+                points, low, high = [], [], []
                 for size in sorted({r["proof_bytes"] for r in sizes if r.get("proof_bytes") is not None}):
                     group = [r for r in sizes if r.get("binding") == binding and r.get("proof_bytes") == size]
                     values = measured_values(group, field) if field else [r["latency_ms"]["p95"] for r in group
                         if not incomplete(r) and r.get("latency_ms", {}).get("p95") is not None]
-                    if values: points.append((size / 2**20, statistics.median(values)))
-                if points: axis.plot(*zip(*points), color=color, marker="o", label=names[binding])
+                    if values:
+                        center = statistics.median(values)
+                        points.append((size / 2**20, center)); low.append(center - min(values)); high.append(max(values) - center)
+                if points: axis.errorbar(*zip(*points), yerr=[low, high], color=color, marker="o", label=names[binding], capsize=3)
         axes[0].set(title="Large proof-object delivery", ylabel="Useful Mbit/s per receiver")
         axes[1].set(xlabel="Proof payload size", ylabel="Worst-receiver p95 (ms)", xscale="log", xticks=[.0625, 1, 8], xticklabels=["64 KiB", "1 MiB", "8 MiB"])
         for axis in axes:
@@ -258,7 +305,7 @@ def main():
                 if attempts:
                     counts.append(f"{names[binding]} {sum(incomplete(r) for r in attempts)}/{len(attempts)}")
             display_label = label.replace("\n", " ")
-            warnings.append(f"{display_label}: {', '.join(counts)} incomplete/error")
+            warnings.append(f"{display_label}: {', '.join(counts)} incomplete/error{expiry_warning([r for r in selected if category(r) == key])}")
         save(fig, name, scope, scope=f"{transport_scope} {scope}", warnings=warnings)
 
     rtt = matched_rtt_rows(rows)
@@ -268,7 +315,7 @@ def main():
                    lambda r: (offered_rate(r), argument(r, "rtt_ms")),
                    [("Useful Mbit/s\nper receiver", lambda r: r.get("goodput_mbit_per_s_per_receiver")),
                     ("Receiver deliveries (%)", delivery_percent), ("Complete-run p95 (ms)", complete_p95)],
-                   "Only matching workload/link settings at 50/200 ms. Partial goodput retained; p95 requires a complete run. No control/HOL latency measurement.")
+                   f"Only matching workload/link settings at 50/200 ms. Partial goodput retained; p95 requires a complete run. No control/HOL latency measurement. {load_window_scope(rtt)}")
 
     links = [r for r in rows if r.get("label", "").startswith("link-")]
     link_key = lambda r: (argument(r, "topology"), argument(r, "rate_mbit"), argument(r, "rtt_ms"), argument(r, "loss"))
@@ -385,13 +432,27 @@ def main():
                               f"<td>{summary_text([v / 2**20 for v in measured_values(samples, 'wire_bytes')])}</td>"
                               f"<td>{summary_text(measured_values(samples, 'redials'))}</td><td>{summary_text(measured_values(samples, 'peers_lost_at_end'))}</td></tr>")
     cpu_ineligible = sum(row.get("cpu_comparison_eligible") is not True for row in rows)
+    overload_table = []
+    for row in rows:
+        if not incomplete(row):
+            continue
+        counts = (row.get("validated_receiver_deliveries"), row.get("expected_receiver_deliveries"),
+                  event_count(row, "fetch_started"), event_count(row, "reassembled"),
+                  event_count(row, "expired"), minimum_never_fetched(row))
+        values = ["—" if value is None else html.escape(str(value)) for value in counts]
+        overload_table.append(f"<tr><td>{html.escape(row.get('label', 'unlabelled'))}</td>"
+                              f"<td>{values[0]} / {values[1]}</td><td>{values[2]}</td><td>{values[3]}</td>"
+                              f"<td>{values[4]}</td><td>{values[5]}</td></tr>")
     provenance = sorted({r.get("provenance", {}).get("source_revision", "unknown") for r in rows})
     figures = "\n".join(f'<figure><a href="{name}.svg"><img src="{name}.svg" alt="{name}" loading="lazy"></a><figcaption>{caption} <a href="{name}.png">PNG</a></figcaption></figure>' for name, caption in charts)
     document = f'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EIP-8437 transport measurements</title><style>body{{font:16px system-ui;margin:24px auto;max-width:960px;padding:0 16px;color:#17263a;background:#f8fafc}}h1{{font-size:1.8rem}}figure{{margin:24px 0;background:white;padding:16px;border-radius:12px}}img{{width:100%;max-width:650px;display:block;margin:auto}}figcaption{{font-size:.9rem;color:#44546a}}table{{border-collapse:collapse;font-size:.85rem;width:100%}}td,th{{padding:8px;border-bottom:1px solid #ccd4df;text-align:right}}td:first-child,th:first-child{{text-align:left}}.scroll{{overflow-x:auto}}code{{overflow-wrap:anywhere}}a{{color:#145da0}}</style>
 <h1>EIP-8437 transport measurements</h1><p>Production RLPx and QUIC bindings with authenticated ETH envelope recovery. Proof contents, pool admission and the verifier are controlled fixtures: completion means validated/recovered wrappers, not successful pool admission, native proving or block throughput. Broadcast-enabled kind-2 runs also allow on-demand retrieval fallback, so completion can use either path. Measured and lifetime accepted-shard counts show coded-shard usage during measurement and including warmup, respectively; they do not identify which path completed first or pure broadcast capacity. Broadcast uses a test signer and accepts the reconstructed consensus context; it does not exercise live CL anchor validation.</p>
 <p>Load scenarios: two processes, 100 Mbit/s per node, 50 ms RTT, no injected loss. Each aggregate contains distinct transactions and dependencies. Other link conditions appear in the table. Every attempted run is retained; failed runs are counted, not replaced.</p>
-{figures}{native_note}<p>CPU counters retain their actual snapshot windows. Idle-adjusted CPU is an estimate; {cpu_ineligible}/{len(rows)} runs have ineligible or missing CPU snapshots because sampling was late, warmup was unfinished, measured activity preceded sampling, or metadata is unavailable. Failed/incomplete runs are also omitted from adjusted CPU comparisons. See raw snapshot quality reasons; raw cpu_ms_total is retained.</p><h2>All runs</h2><p>p95 is shown only for complete runs. Goodput includes partial delivery, queue drain and bounded controller-observation overhead: its window is the maximum of the schedule, controller stop and last recorded node activity. Wire-counter windows also include post-warmup idle settling before common start; timestamps are retained and aborted windows are ineligible for wire comparisons. Error bars are observed ranges, not confidence intervals. Actual origin rate is released objects divided by first-to-last release span plus one configured interval; latency begins actual origination and excludes earlier scheduler lateness. Unknown measurements remain unknown, not zero. Native and transport measurements use different hosts and must not be compared as a single throughput pipeline.</p>
+{figures}{native_note}<p>CPU counters retain their actual snapshot windows. Idle-adjusted CPU is an estimate; {cpu_ineligible}/{len(rows)} runs have ineligible or missing CPU snapshots because sampling was late, warmup was unfinished, measured activity preceded sampling, or metadata is unavailable. Failed/incomplete runs are also omitted from adjusted CPU comparisons. See raw snapshot quality reasons; raw cpu_ms_total is retained.</p>
+<h2>Incomplete attempts and expiry events</h2><p>Fetch starts, reassembly and expiry events are measured counters, not unique object histories. Retries can increase starts or expiries. Minimum never fetched is a conservative lower bound: expected receiver deliveries minus fetch starts, clamped at zero, only when counts are available and consistent. Expiry events must not be subtracted from missing objects to infer an exact never-fetched count. Startup log events precede the reset measured counters and are reported separately in the capture notes. No loss or scheduling cause is inferred here.</p>
+<div class="scroll"><table><thead><tr><th>Attempt</th><th>Delivered / expected</th><th>Fetch starts</th><th>Reassembled</th><th>Expiry events</th><th>Minimum never fetched</th></tr></thead><tbody>{''.join(overload_table)}</tbody></table></div>
+<h2>All runs</h2><p>p95 is shown only for complete runs. Goodput includes partial delivery, queue drain and bounded controller-observation overhead: its window is the maximum of the schedule, controller stop and last recorded node activity. Wire-counter windows also include post-warmup idle settling before common start; timestamps are retained and aborted windows are ineligible for wire comparisons. Error bars are observed ranges, not confidence intervals. Actual origin rate is released objects divided by first-to-last release span plus one configured interval; latency begins actual origination and excludes earlier scheduler lateness. Unknown measurements remain unknown, not zero. Native and transport measurements use different hosts and must not be compared as a single throughput pipeline.</p>
 <div class="scroll"><table><thead><tr><th>Scenario</th><th>Runs</th><th>Scheduled objects/s</th><th>Actual origin objects/s</th><th>Released / scheduled objects</th><th>Useful Mbit/s</th><th>Worst-receiver p95 ms</th><th>Failed runs</th><th>Missing objects</th><th>Measured / lifetime accepted shards</th><th>Errors</th></tr></thead><tbody>{''.join(table)}</tbody></table></div>
 <h2>Resource and wire summary</h2><p>Every value is a median of available attempts; eligibility counts are per metric. Adjusted CPU is summed across nodes per scheduled object and requires a complete run plus eligible snapshots. Raw CPU milliseconds and interface TX MiB retain partial attempts. RSS is the maximum node process lifetime peak, including setup, not transfer-only memory. The TX/useful ratio divides summed all-node interface transmit bytes by canonical body bytes times validated receiver deliveries, and requires a complete eligible counter window. It includes ETH envelopes, control, retransmissions and idle settling; this is not pure framing overhead. Redials and lost peers are medians per attempt.</p>
 <div class="scroll"><table><thead><tr><th>Scenario</th><th>Adjusted CPU ms/object</th><th>CPU eligible</th><th>Raw CPU ms</th><th>Lifetime RSS MiB</th><th>TX/useful ratio</th><th>Wire eligible</th><th>Raw TX MiB</th><th>Redials</th><th>Lost peers</th></tr></thead><tbody>{''.join(resource_table)}</tbody></table></div>

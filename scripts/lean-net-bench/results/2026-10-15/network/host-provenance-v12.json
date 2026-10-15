@@ -1,0 +1,183 @@
+{
+  "dotnet": ".NET SDK:\n Version:           10.0.401\n Commit:            e34a38d2ae\n Workload version:  10.0.400-manifests.63b36e85\n MSBuild version:   18.9.11+e34a38d2a\n\nRuntime Environment:\n OS Name:     ubuntu\n OS Version:  22.04\n OS Platform: Linux\n RID:         linux-x64\n Base Path:   /root/lean-bench/dotnet/sdk/10.0.401/\n\n.NET workloads installed:\nThere are no installed workloads to display.\nConfigured to use workload sets when installing new manifests.\nNo workload sets are installed. Run \"dotnet workload restore\" to install a workload set.\n\nHost:\n  Version:      10.0.12\n  Architecture: x64\n  Commit:       95017c711e\n\n.NET SDKs installed:\n  10.0.401 [/root/lean-bench/dotnet/sdk]\n\n.NET runtimes installed:\n  Microsoft.AspNetCore.App 10.0.12 [/root/lean-bench/dotnet/shared/Microsoft.AspNetCore.App]\n  Microsoft.NETCore.App 10.0.12 [/root/lean-bench/dotnet/shared/Microsoft.NETCore.App]\n\nOther architectures found:\n  None\n\nEnvironment variables:\n  Not set\n\nglobal.json file:\n  Not found\n\nLearn more:\n  https://aka.ms/dotnet/info\n\nDownload .NET:\n  https://aka.ms/dotnet/download\n",
+  "lscpu": {
+    "lscpu": [
+      {
+        "data": "x86_64",
+        "field": "Architecture:"
+      },
+      {
+        "data": "32-bit, 64-bit",
+        "field": "CPU op-mode(s):"
+      },
+      {
+        "data": "48 bits physical, 48 bits virtual",
+        "field": "Address sizes:"
+      },
+      {
+        "data": "Little Endian",
+        "field": "Byte Order:"
+      },
+      {
+        "data": "6",
+        "field": "CPU(s):"
+      },
+      {
+        "data": "0-5",
+        "field": "On-line CPU(s) list:"
+      },
+      {
+        "data": "AuthenticAMD",
+        "field": "Vendor ID:"
+      },
+      {
+        "data": "AMD EPYC 7642 48-Core Processor",
+        "field": "Model name:"
+      },
+      {
+        "data": "23",
+        "field": "CPU family:"
+      },
+      {
+        "data": "49",
+        "field": "Model:"
+      },
+      {
+        "data": "1",
+        "field": "Thread(s) per core:"
+      },
+      {
+        "data": "6",
+        "field": "Core(s) per socket:"
+      },
+      {
+        "data": "1",
+        "field": "Socket(s):"
+      },
+      {
+        "data": "0",
+        "field": "Stepping:"
+      },
+      {
+        "data": "4600.00",
+        "field": "BogoMIPS:"
+      },
+      {
+        "data": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm rep_good nopl cpuid extd_apicid tsc_known_freq pni pclmulqdq ssse3 fma cx16 sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw perfctr_core ssbd ibrs ibpb stibp vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves clzero xsaveerptr wbnoinvd arat umip rdpid overflow_recov succor",
+        "field": "Flags:"
+      },
+      {
+        "data": "KVM",
+        "field": "Hypervisor vendor:"
+      },
+      {
+        "data": "full",
+        "field": "Virtualization type:"
+      },
+      {
+        "data": "384 KiB (6 instances)",
+        "field": "L1d cache:"
+      },
+      {
+        "data": "384 KiB (6 instances)",
+        "field": "L1i cache:"
+      },
+      {
+        "data": "3 MiB (6 instances)",
+        "field": "L2 cache:"
+      },
+      {
+        "data": "96 MiB (6 instances)",
+        "field": "L3 cache:"
+      },
+      {
+        "data": "1",
+        "field": "NUMA node(s):"
+      },
+      {
+        "data": "0-5",
+        "field": "NUMA node0 CPU(s):"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Gather data sampling:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Indirect target selection:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Itlb multihit:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability L1tf:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Mds:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Meltdown:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Mmio stale data:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Reg file data sampling:"
+      },
+      {
+        "data": "Mitigation; untrained return thunk; SMT disabled",
+        "field": "Vulnerability Retbleed:"
+      },
+      {
+        "data": "Mitigation; SMT disabled",
+        "field": "Vulnerability Spec rstack overflow:"
+      },
+      {
+        "data": "Mitigation; Speculative Store Bypass disabled via prctl and seccomp",
+        "field": "Vulnerability Spec store bypass:"
+      },
+      {
+        "data": "Mitigation; usercopy/swapgs barriers and __user pointer sanitization",
+        "field": "Vulnerability Spectre v1:"
+      },
+      {
+        "data": "Mitigation; Retpolines; IBPB conditional; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected",
+        "field": "Vulnerability Spectre v2:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Srbds:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Tsa:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Tsx async abort:"
+      },
+      {
+        "data": "Not affected",
+        "field": "Vulnerability Vmscape:"
+      }
+    ]
+  },
+  "mem_total_kib": "16372552",
+  "python": "Python 3.10.12",
+  "scope": "Post-campaign packaging-time hardware/toolchain snapshot, not a per-case resource measurement. Per-run provenance and raw process snapshots remain authoritative.",
+  "snapshot_utc": "2026-10-15T05:23:06.799398+00:00",
+  "task_limits": {
+    "DOTNET_PROCESSOR_COUNT": 2,
+    "maximum_link_mbit": 100,
+    "maximum_nodes": 4,
+    "native_proving": false,
+    "nice": 10
+  },
+  "uname": "Linux 5.15.0-198-generic x86_64"
+}

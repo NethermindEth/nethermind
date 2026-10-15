@@ -7,6 +7,7 @@ from pathlib import Path
 import unittest
 import tempfile
 import subprocess
+import xml.etree.ElementTree as ET
 from unittest.mock import Mock, patch
 
 HERE = Path(__file__).resolve().parent
@@ -310,9 +311,36 @@ class MetricsTests(unittest.TestCase):
         self.assertIsNone(report.wire_ratio(dict(row, validated_receiver_deliveries=0)))
         self.assertEqual(report.wire_ratio(dict(row, wire_bytes=0)), 0)
 
+    def test_load_window_scope_uses_configured_duration_and_retains_unknowns(self):
+        short = self.report_row()
+        long = dict(short, objects=240)
+        self.assertIn("Scheduled release: 6 s.", report.load_window_scope([short]))
+        self.assertIn("Scheduled release: 30 s.", report.load_window_scope([long]))
+        self.assertIn("Scheduled release: 6 s, 30 s.", report.load_window_scope([short, long]))
+        self.assertIn("Scheduled release: 3 s.", report.load_window_scope([dict(short, objects=5, burst=2)]))
+        self.assertIn("Scheduled release: 6 s.", report.load_window_scope([dict(short, offered_objects_per_s=999)]))
+        self.assertIn("Scheduled release: 6 s.", report.load_window_scope([{"provenance": short["provenance"]}]))
+        for unknown in ({}, dict(short, objects=True), dict(short, burst=float("nan")),
+                        dict(short, provenance={}, interval_ms=None)):
+            with self.subTest(unknown=unknown):
+                self.assertIn("duration unavailable", report.load_window_scope([unknown]))
+                self.assertIn("Some attempt durations unavailable", report.load_window_scope([short, unknown]))
+
+    def test_overload_counters_keep_expiries_and_only_bound_never_fetched(self):
+        row = dict(self.report_row(), validated_receiver_deliveries=24,
+                   events={"1/fetch_started": 27, "1/reassembled": 24, "1/expired": 3})
+        self.assertEqual(report.event_count(row, "expired"), 3)
+        self.assertEqual(report.minimum_never_fetched(row), 21)
+        self.assertEqual(report.minimum_never_fetched(dict(row, events={"1/fetch_started": 50})), 0)
+        self.assertIsNone(report.minimum_never_fetched(dict(row, events={"1/fetch_started": 23})))
+        for unknown in ({}, {"1/expired": True}, {"1/expired": -1}):
+            with self.subTest(unknown=unknown):
+                self.assertIsNone(report.event_count({} if not unknown else {"events": unknown}, "expired"))
+
     def test_report_renders_partial_errors_and_scoped_comparisons(self):
         try:
             import matplotlib
+            from matplotlib.axes import Axes
         except ImportError:
             self.skipTest("matplotlib required for rendering regression")
         rows = []
@@ -327,7 +355,12 @@ class MetricsTests(unittest.TestCase):
             row = self.report_row(f"size-{binding}-8388608-rep1", binding)
             row["proof_bytes"] = 8388608
             rows.append(row)
-        rows[3].update(error="decoder failed <fixture>", missing=24, validated_receiver_deliveries=24)
+        rows[3].update(error="decoder failed <fixture>", missing=24, validated_receiver_deliveries=24,
+                       events={"1/fetch_started": 27, "1/reassembled": 24, "1/expired": 3})
+        rows.append(dict(self.report_row("load-rlpx-tx16-r8-rep2"), missing=24,
+                         validated_receiver_deliveries=24, goodput_tx_per_s_per_receiver=50))
+        rows.append(dict(self.report_row("size-rlpx-8388608-rep2"), proof_bytes=8388608,
+                         goodput_mbit_per_s_per_receiver=30, latency_ms={"p95": 500}))
         for loss in (0, 1):
             row = self.report_row(f"broadcast-ethp2p-l{loss}-rep1", "ethp2p")
             row.update(loss=loss, broadcast=True, kind=2, broadcast_shards_accepted_measured=5,
@@ -339,8 +372,22 @@ class MetricsTests(unittest.TestCase):
             raw = Path(directory, "fixture.jsonl")
             raw.write_text("".join(json.dumps(row) + "\n" for row in rows))
             out = Path(directory, "report")
-            with patch("sys.argv", ["report.py", str(raw), "--out", str(out)]):
+            calls = []
+            draw_errorbar = Axes.errorbar
+            def record_errorbar(axis, *args, **kwargs):
+                calls.append((axis, args, kwargs))
+                return draw_errorbar(axis, *args, **kwargs)
+            with patch("sys.argv", ["report.py", str(raw), "--out", str(out)]), patch.object(Axes, "errorbar", record_errorbar):
                 report.main()
+            delivery = [kwargs["yerr"] for axis, values, kwargs in calls
+                        if axis.get_xlabel() == "Scheduled transactions/s" and kwargs.get("label") == "RLPx + ETH"]
+            self.assertIn([[25.0], [25.0]], delivery)
+            sizes = [kwargs["yerr"] for axis, values, kwargs in calls
+                     if axis.get_title() == "Large proof-object delivery" and kwargs.get("label") == "RLPx + ETH"]
+            self.assertEqual(sizes, [[[7.5], [7.5]]])
+            latencies = [kwargs["yerr"] for axis, values, kwargs in calls
+                         if axis.get_ylabel() == "Worst-receiver p95 (ms)" and kwargs.get("label") == "RLPx + ETH"]
+            self.assertEqual(latencies, [[[125.0], [125.0]]])
             self.assertEqual(json.loads((out / "results.json").read_text()), rows)
             self.assertEqual(json.loads((out / "report-source.json").read_text())["report_script_sha256"],
                              hashlib.sha256((HERE / "report.py").read_bytes()).hexdigest())
@@ -348,12 +395,23 @@ class MetricsTests(unittest.TestCase):
             self.assertIn("decoder failed &lt;fixture&gt;", document)
             self.assertIn("no result &lt;fixture&gt;", document)
             self.assertIn("TX/useful ratio", document)
+            self.assertIn("Expiry events", document)
+            self.assertIn("Minimum never fetched", document)
+            self.assertIn("<td>24 / 48</td><td>27</td><td>24</td><td>3</td><td>21</td>", document)
             for name in ("matched-rtt", "link-topology", "broadcast-fallback", "resource-wire", "large-objects", "goodput-tx1"):
                 self.assertTrue((out / f"{name}.png").stat().st_size > 1000)
                 svg = (out / f"{name}.svg").read_text()
                 self.assertIn("Controlled verifier", svg)
+                self.assertTrue(all(line == line.rstrip() for line in svg.splitlines()))
             self.assertIn("not which path won", (out / "broadcast-fallback.svg").read_text())
             self.assertIn("No control/HOL", (out / "matched-rtt.svg").read_text())
+            rendered_text = " ".join(" ".join(ET.fromstring((out / "link-topology.svg").read_text()).itertext()).split())
+            self.assertIn("recorded expiry events", rendered_text)
+            for name in ("goodput-tx16", "goodput-bytes", "matched-rtt"):
+                rendered_text = " ".join(" ".join(ET.fromstring((out / f"{name}.svg").read_text()).itertext()).split())
+                self.assertIn("Scheduled release: 6 s.", rendered_text)
+                self.assertIn("drain/timeout observation", rendered_text)
+                self.assertIn("not steady-state capacity", rendered_text)
 
 if __name__ == '__main__':
     unittest.main()
