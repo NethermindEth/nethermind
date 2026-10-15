@@ -14,6 +14,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381PairingCheckPrecompile
 {
+    public static Address Address { get; } = Address.FromNumber(0xf);
+
     [SkipLocalsInit]
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {

@@ -199,14 +199,18 @@ public sealed partial class KeccakHash
     {
         unsafe
         {
+            // Unchecked, the counts checked once: a bounds check per node loads a 32-bit length, a narrow access.
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)count, (uint)Math.Min(nodes.Length, hashes.Length));
             // Native rather than a managed array, which the guest's allocator zeroes word by word. Left uninitialized: only
             // a full branch's lanes are written, and ComputeHash256OfEdited reads no other.
             ulong* states = (ulong*)NativeMemory.Alloc((nuint)count, RetainedLanes * sizeof(ulong));
-            for (int i = 0; i < count; i++)
+            ref byte[] firstNode = ref MemoryMarshal.GetArrayDataReference(nodes);
+            ref ValueHash256 firstHash = ref MemoryMarshal.GetReference(hashes);
+            for (nint i = 0; i < count; i++)
             {
-                byte[] node = nodes[i];
-                hashes[i] = node.Length == Hash532InputLength
-                    ? ComputeHash532Retaining(node, ref states[(nuint)i * RetainedLanes])
+                byte[] node = Unsafe.Add(ref firstNode, i);
+                Unsafe.Add(ref firstHash, i) = node.Length == Hash532InputLength
+                    ? ComputeHash532Retaining(node, ref states[i * RetainedLanes])
                     : ComputeHash256(node);
             }
 
@@ -346,6 +350,13 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbBlockFrom(ref ulong lane, ref ulong source, byte* data)
     {
+        if (CanXorin(data))
+        {
+            CopyState(ref lane, ref source);
+            Xorin(ref lane, data, HASH_DATA_AREA);
+            return;
+        }
+
         AbsorbLaneFrom(ref lane, ref source, data, 0);
         AbsorbLaneFrom(ref lane, ref source, data, 1);
         AbsorbLaneFrom(ref lane, ref source, data, 2);
@@ -371,6 +382,14 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbFullBranchTailFrom(ref ulong lane, ref ulong source, byte* tail)
     {
+        if (CanXorin(tail))
+        {
+            CopyState(ref lane, ref source);
+            Xorin(ref lane, tail, FullBranchTailLength & ~7);
+            Unsafe.Add(ref lane, 15) ^= PaddedLastWord(tail + FullBranchTailLength, FullBranchTailLength & 7);
+            return;
+        }
+
         AbsorbLaneFrom(ref lane, ref source, tail, 0);
         AbsorbLaneFrom(ref lane, ref source, tail, 1);
         AbsorbLaneFrom(ref lane, ref source, tail, 2);
@@ -477,7 +496,15 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbPaddedTail(ref ulong lane, byte* tail, nuint length)
     {
-        AbsorbLanes(ref lane, tail, length >> 3, intoZeroState: false);
+        if (CanXorin(tail))
+        {
+            Xorin(ref lane, tail, length & ~(nuint)7);
+        }
+        else
+        {
+            AbsorbLanes(ref lane, tail, length >> 3, intoZeroState: false);
+        }
+
         ref ulong last = ref Unsafe.Add(ref lane, length >> 3);
         last = last ^ PaddedLastWord(tail + length, length & 7);
     }
@@ -511,6 +538,12 @@ public sealed partial class KeccakHash
             return;
         }
 
+        if (CanXorin(data))
+        {
+            Xorin(ref lane, data, HASH_DATA_AREA);
+            return;
+        }
+
         AbsorbLane(ref lane, data, 0, intoZeroState);
         AbsorbLane(ref lane, data, 1, intoZeroState);
         AbsorbLane(ref lane, data, 2, intoZeroState);
@@ -529,6 +562,26 @@ public sealed partial class KeccakHash
         AbsorbLane(ref lane, data, 15, intoZeroState);
         AbsorbLane(ref lane, data, 16, intoZeroState);
     }
+
+    /// <summary>Whether <paramref name="data"/> can be absorbed with OpenVM's XORIN instruction, which takes only 8-byte aligned operands.</summary>
+    /// <remarks>
+    /// Every state is ulong-aligned, being a stack <see cref="KeccakState"/> of ulong lanes or a <see cref="NativeMemory"/> witness state;
+    /// a caller-chosen input often is not, and is absorbed lane by lane.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool CanXorin(byte* data) => OpenVmXorinFlag.IsActive && ((nuint)data & 7) == 0;
+
+    /// <summary>XORs <paramref name="length"/> bytes of <paramref name="data"/>, a multiple of 8 up to the rate, into the state.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void Xorin(ref ulong lane, byte* data, nuint length)
+    {
+        if (length != 0)
+            Accelerators.KeccakXorin((ulong*)Unsafe.AsPointer(ref lane), data, length);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CopyState(ref ulong lane, ref ulong source) =>
+        Unsafe.As<ulong, KeccakState>(ref lane) = Unsafe.As<ulong, KeccakState>(ref source);
 
     /// <summary>Absorbs the first <paramref name="count"/> whole lanes of <paramref name="data"/>, at most sixteen.</summary>
     /// <param name="intoZeroState">Whether those state lanes are still zero, so the lanes are written rather than XORed.</param>

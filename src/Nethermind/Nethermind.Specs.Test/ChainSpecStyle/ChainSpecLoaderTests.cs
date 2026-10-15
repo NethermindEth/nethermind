@@ -178,6 +178,29 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.Parameters.Eip2565Transition, Is.Null);
     }
 
+    [Test]
+    public void Can_load_explicit_null_blob_schedule()
+    {
+        const string json = """
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1", "blobSchedule": null },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+
+        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Empty);
+    }
+
     /// <summary>Loads a chain spec whose genesis, at timestamp 0, follows <paramref name="transitionParam"/> set to <paramref name="transitionTimestamp"/>.</summary>
     private static ChainSpec LoadChainSpecWithTransition(string transitionParam, ulong transitionTimestamp)
     {
@@ -208,6 +231,33 @@ public class ChainSpecLoaderTests
         {
             Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GenesisSpec.IsEip8282Enabled, Is.EqualTo(activeAtGenesis));
             Assert.That(chainSpec.Genesis!.Header.RequestsHash, Is.EqualTo(activeAtGenesis ? ExecutionRequestExtensions.EmptyRequestsHash : null));
+        }
+    }
+
+    [Test]
+    public void Eip8116_activates_at_its_transition_timestamp()
+    {
+        const ulong transitionTimestamp = 0x10;
+        string json = $$"""
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1", "eip8116TransitionTimestamp": "0x{{transitionTimestamp:x}}" },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        ChainSpecBasedSpecProvider provider = new(new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec((1, transitionTimestamp - 1)).IsEip8116Enabled, Is.False);
+            Assert.That(provider.GetSpec((1, transitionTimestamp)).IsEip8116Enabled, Is.True);
         }
     }
 
@@ -285,8 +335,8 @@ public class ChainSpecLoaderTests
         if (underlyingType == typeof(UInt256)) return (UInt256)77777;
         if (underlyingType == typeof(Address)) return new Address("0x1111111111111111111111111111111111111111");
         if (underlyingType == typeof(Hash256)) return new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111");
-        if (type == typeof(SortedSet<BlobScheduleSettings>))
-            return new SortedSet<BlobScheduleSettings> { new() { Timestamp = 100, Target = 3, Max = 6, BaseFeeUpdateFraction = 3338477 } };
+        if (type == typeof(List<BlobScheduleSettings>))
+            return new List<BlobScheduleSettings> { new() { Timestamp = 100, Target = 3, Max = 6, BaseFeeUpdateFraction = 3338477 } };
         return null;
     }
 

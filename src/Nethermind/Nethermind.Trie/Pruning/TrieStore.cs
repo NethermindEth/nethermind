@@ -1407,7 +1407,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             FlushCommitBufferNoLock();
             PersistCache(cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch
         {
             pruneLockScope.Dispose();
             scopeLockScope.Dispose();
