@@ -53,8 +53,8 @@ public class DataColumnSidecarNetworkingTests
                 ("sidecar proposer_index does not match expected proposer", ColumnVerdict.Rejected(ColumnGossipDropReason.UnexpectedProposer)),
                 // The expected-proposer REJECT needs no BLS work, so it runs before the key cache is read.
                 ("proposer index out of range", ColumnVerdict.Rejected(ColumnGossipDropReason.UnexpectedProposer)),
-                // A parent fork choice does not hold cannot name the expected proposer; the MAY-queue IGNORE applies.
-                ("sidecar's parent has not been seen", ColumnVerdict.Ignored(ColumnGossipDropReason.ProposerNotVerifiable)),
+                // The router drops a sidecar whose parent fork choice does not hold and does not queue it, which the spec's MAY permits.
+                ("sidecar's parent has not been seen", ColumnVerdict.Ignored(ColumnGossipDropReason.UnknownBlock)),
                 // The importer records blocks it refused, which the vector's failed blocks seed.
                 ("sidecar's parent failed validation", ColumnVerdict.Rejected(ColumnGossipDropReason.FailedBlockValidation)),
             ],
