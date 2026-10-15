@@ -1,6 +1,8 @@
 import base64
 import contextlib
 import io
+import gzip
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -179,6 +181,144 @@ class ProfileResolutionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Rollup0 profile"):
                 upstream.vectors(SimpleNamespace(profile="rollupx"))
             resolve.assert_not_called()
+
+
+class RollupXExecutionSelectionTests(unittest.TestCase):
+    repository = "eez-association/eez-rollupX"
+    revision = "a" * 40
+    core = "b" * 40
+    prefix = "crates/eez-proof-signer/tests/fixtures/"
+    names = ("baseline-lookup", "baseline-static")
+
+    def invoke(self, root, available=True, merged=False, remove=None, add=None, truncated=False, fixture=None, revision="", malformed=None):
+        snapshot = Path(upstream.__file__).resolve().parents[3] / "src/Nethermind/Nethermind.Eez.Test/Fixtures/rollupx/recorded-execution"
+        reviewed = json.loads((snapshot / "provenance.json").read_text())
+        payloads = {}
+        for name in self.names:
+            identity = fixture or "updated-" + name
+            document = {"format": 2, "case": name, "fixture": identity, "events": [
+                {"direction": "client"}, {"direction": "server"}, {"direction": "client"}, {"direction": "eof"}]}
+            if malformed is not None: document.update(malformed)
+            payloads[self.prefix + "streaming-v2/" + name + ".json"] = json.dumps(document).encode()
+            payloads[self.prefix + identity + "/l2-genesis.json"] = json.dumps({"config": {"chainId": 123 if name == "baseline-lookup" else 456}}).encode()
+        if available:
+            for name in reviewed["cases"]:
+                payloads.setdefault(self.prefix + "streaming-v2/" + name, b"{}")
+            if remove: payloads.pop(self.prefix + remove)
+            if add: payloads[self.prefix + "streaming-v2/" + add] = b"{}"
+        else:
+            payloads.clear()
+        entries = []
+        blobs = {}
+        for path, data in payloads.items():
+            digest = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+            blobs[digest] = data
+            entries.append({"path": path, "type": "blob", "sha": digest})
+        calls = []
+
+        def metadata(path, repository=upstream.REPOSITORY):
+            self.assertEqual(repository, self.repository)
+            calls.append(path)
+            if path == "commits/main": return {"sha": self.revision}
+            if path.startswith("compare/"): return {"merge_base_commit": {"sha": revision}}
+            if path == "git/trees/" + (revision or self.revision):
+                return {"tree": [{"path": "eez-core-protocol", "mode": "160000", "sha": self.core}]}
+            if path == "git/trees/" + (revision or self.revision) + "?recursive=1":
+                return {"tree": entries, "truncated": truncated}
+            if path == "pulls/89": return {"merged": merged}
+            if path.startswith("git/blobs/"):
+                digest = path.removeprefix("git/blobs/")
+                data = blobs[digest]
+                return {"sha": digest, "size": len(data), "encoding": "base64", "content": base64.b64encode(data).decode()}
+            raise AssertionError("unexpected RollupX metadata request " + path)
+
+        args = SimpleNamespace(profile="rollupx", revision=revision, directory=root / "vectors", output=root / "vectors/upstream.json")
+        with patch.dict(upstream.os.environ, {"GITHUB_OUTPUT": str(root / "outputs")}), \
+                patch.object(upstream, "api", side_effect=metadata), contextlib.redirect_stdout(io.StringIO()):
+            upstream.rollupx_execution(args)
+        return args, calls, json.loads(args.output.read_text()), payloads
+
+    def test_current_main_downloads_exact_new_baselines_and_matching_genesis(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args, calls, manifest, payloads = self.invoke(Path(temporary))
+            source = manifest["execution_vectors"]
+            self.assertEqual((manifest["repository"], manifest["revision"], manifest["core_revision"]),
+                (self.repository, self.revision, self.core))
+            self.assertEqual((source["source"], source["revision"], source["core_revision"]), ("public-main", self.revision, self.core))
+            self.assertEqual(calls.count("commits/main"), 1)
+            self.assertNotIn("pulls/89", calls)
+            self.assertEqual(source["execution_baselines"], ["baseline-lookup", "baseline-static"])
+            self.assertEqual((len(source["cases"]), source["streaming_replay"]), (29, "not-implemented"))
+            for name in self.names:
+                for local, remote in ((name + ".json", "streaming-v2/" + name + ".json"),
+                        ("updated-" + name + ".genesis.json", "updated-" + name + "/l2-genesis.json")):
+                    raw = gzip.decompress((args.directory / (local + ".gz")).read_bytes())
+                    self.assertEqual(raw, payloads[self.prefix + remote])
+                    self.assertEqual(source["files"][local], {"length": len(raw), "sha256": hashlib.sha256(raw).hexdigest()})
+
+    def test_explicit_public_replay_freezes_that_revision_instead_of_new_main(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            _, calls, manifest, _ = self.invoke(Path(temporary), revision="c" * 40)
+            self.assertEqual(manifest["execution_vectors"]["revision"], "c" * 40)
+            self.assertIn("git/trees/" + "c" * 40 + "?recursive=1", calls)
+            self.assertEqual(calls.count("commits/main"), 1)
+
+    def test_before_merge_uses_only_reviewed_snapshot_with_distinct_provenance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args, calls, manifest, _ = self.invoke(Path(temporary), available=False)
+            source = manifest["execution_vectors"]
+            self.assertEqual(source["source"], "reviewed-pr-snapshot-before-merge")
+            self.assertEqual(source["revision"], "759ae5f5cbf87c16b52cedfecc05aae737e90a87")
+            self.assertEqual(source["core_revision"], "9a1f815336c20d28e5ec5cecbf195c41fbd5ab0f")
+            self.assertIn("pulls/89", calls)
+            self.assertEqual(len(source["files"]), 4)
+            self.assertEqual(source, json.loads((args.directory / "provenance.json").read_text()))
+            for name, expected in source["files"].items():
+                raw = gzip.decompress((args.directory / (name + ".gz")).read_bytes())
+                self.assertEqual((len(raw), hashlib.sha256(raw).hexdigest()), (expected["length"], expected["sha256"]))
+
+    def test_missing_merged_suite_cannot_fall_back(self):
+        with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "missing the merged vector suite"):
+            self.invoke(Path(temporary), available=False, merged=True)
+
+    def test_new_missing_or_truncated_case_inventory_cannot_be_silently_ignored(self):
+        for options in ({"add": "new-case.json"}, {"remove": "streaming-v2/rewind-boundaries.json"}, {"truncated": True}):
+            with self.subTest(options=options), tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "inventory changed|tree is incomplete"):
+                self.invoke(Path(temporary), **options)
+
+    def test_missing_matching_genesis_cannot_use_an_old_snapshot(self):
+        for name in self.names:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "missing execution input"):
+                self.invoke(Path(temporary), remove="updated-" + name + "/l2-genesis.json")
+
+    def test_fixture_cannot_escape_the_selected_directory(self):
+        with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "unsupported RollupX execution recording"):
+            self.invoke(Path(temporary), fixture="../../other")
+
+    def test_modified_reviewed_snapshot_cannot_pass(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(upstream.gzip, "open", return_value=io.BytesIO(b"changed")), \
+                self.assertRaisesRegex(ValueError, "snapshot digest mismatch"):
+            self.invoke(Path(temporary), available=False)
+
+    def test_unsupported_recording_schema_or_events_cannot_count_as_execution(self):
+        for malformed in ({"format": 3}, {"case": "another-case"}, {"events": []},
+                {"events": [{"direction": "client"}] * 4},
+                {"events": [{"direction": action} for action in ("client", "server", "eof")]},
+                {"events": [{"direction": action} for action in ("client", "server", "eof")] + [{"direction": "client"}] * 4094}):
+            with self.subTest(malformed=list(malformed)), tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "unsupported|incomplete"):
+                self.invoke(Path(temporary), malformed=malformed)
+
+    def test_git_blob_checks_identity_size_encoding_and_content(self):
+        data = b'{"input":"independent-data"}'
+        digest = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+        valid = {"sha": digest, "size": len(data), "encoding": "base64", "content": base64.b64encode(data).decode()}
+        with patch.object(upstream, "api", return_value=valid) as request:
+            self.assertEqual(upstream.rollupx_blob({"sha": digest}), data)
+            request.assert_called_once_with("git/blobs/" + digest, "eez-association/eez-rollupX")
+        for changed in ({"sha": "0" * 40}, {"size": len(data) + 1}, {"size": 9 * 1024 * 1024},
+                {"encoding": "none"}, {"content": base64.b64encode(b"x" * len(data)).decode()}):
+            with self.subTest(changed=changed), patch.object(upstream, "api", return_value=dict(valid, **changed)), self.assertRaises(ValueError):
+                upstream.rollupx_blob({"sha": digest})
 
 
 if __name__ == "__main__":

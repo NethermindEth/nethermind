@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import gzip
 import hashlib
 import json
 import os
@@ -202,6 +203,88 @@ def vectors(args):
     args.output.write_text(json.dumps(manifest, indent=2) + "\n")
 
 
+
+def rollupx_blob(entry):
+    blob = sha(entry["sha"])
+    content = api("git/blobs/" + blob, PROFILES["rollupx"])
+    if content["sha"] != blob or content["encoding"] != "base64" or not 0 < content["size"] <= 8 * 1024 * 1024:
+        raise ValueError("invalid bounded RollupX data file")
+    data = base64.b64decode("".join(content["content"].split()), validate=True)
+    actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+    if len(data) != content["size"] or actual != blob:
+        raise ValueError("RollupX data differs from the selected git blob")
+    return data
+
+
+def rollupx_execution(args):
+    args.directory.mkdir(parents=True, exist_ok=False)
+    resolve(args)
+    manifest = json.loads(args.output.read_text())
+    repository = PROFILES["rollupx"]
+    if manifest["repository"] != repository:
+        raise ValueError("RollupX execution requires the RollupX source profile")
+    snapshot = Path(__file__).resolve().parents[3] / "src/Nethermind/Nethermind.Eez.Test/Fixtures/rollupx/recorded-execution"
+    reviewed = json.loads((snapshot / "provenance.json").read_text())
+    tree = api("git/trees/" + manifest["revision"] + "?recursive=1", repository)
+    if tree.get("truncated"):
+        raise ValueError("upstream RollupX vector tree is incomplete")
+    entries = {entry["path"]: entry for entry in tree["tree"] if entry["type"] == "blob"}
+    prefix = "crates/eez-proof-signer/tests/fixtures/"
+    vector_prefix = prefix + "streaming-v2/"
+    cases = sorted(path[len(vector_prefix):] for path in entries if path.startswith(vector_prefix) and path.endswith(".json"))
+    baseline_names = ("baseline-lookup", "baseline-static")
+    if cases:
+        if cases != reviewed["cases"]:
+            raise ValueError("RollupX case inventory changed; review the execution and streaming coverage mapping")
+        source = {"repository": repository, "source": "public-main", "revision": manifest["revision"],
+            "core_revision": manifest["core_revision"], "files": {}}
+    elif api("pulls/89", repository)["merged"]:
+        raise ValueError("selected RollupX source is missing the merged vector suite")
+    else:
+        if reviewed["repository"] != repository:
+            raise ValueError("reviewed RollupX snapshot names another repository")
+        source = {key: reviewed[key] for key in ("repository", "revision", "core_revision")}
+        sha(source["revision"])
+        sha(source["core_revision"])
+        source.update(source="reviewed-pr-snapshot-before-merge", files={})
+        cases = reviewed["cases"]
+        print("PR89 data is not on public main; using the explicit reviewed snapshot " + source["revision"])
+
+    def read(name, upstream_path):
+        if source["source"] == "public-main":
+            if upstream_path not in entries:
+                raise ValueError("selected RollupX source is missing execution input " + upstream_path)
+            data = rollupx_blob(entries[upstream_path])
+        else:
+            with gzip.open(snapshot / (name + ".gz"), "rb") as compressed:
+                data = compressed.read(8 * 1024 * 1024 + 1)
+            expected = reviewed["files"][name]
+            if len(data) != expected["length"] or hashlib.sha256(data).hexdigest() != expected["sha256"]:
+                raise ValueError("reviewed RollupX snapshot digest mismatch")
+        if not 0 < len(data) <= 8 * 1024 * 1024:
+            raise ValueError("RollupX execution input exceeds its limit")
+        source["files"][name] = {"length": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+        (args.directory / (name + ".gz")).write_bytes(gzip.compress(data, mtime=0))
+        return json.loads(data)
+
+    for name in baseline_names:
+        document = read(name + ".json", vector_prefix + name + ".json")
+        fixture = document.get("fixture")
+        if document.get("format") != 2 or document.get("case") != name or not isinstance(fixture, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,127}", fixture):
+            raise ValueError("unsupported RollupX execution recording")
+        events = document.get("events", [])
+        if not 4 <= len(events) <= 4096 or not {"client", "server", "eof"} <= {event.get("direction") for event in events}:
+            raise ValueError("incomplete RollupX execution recording")
+        read(fixture + ".genesis.json", prefix + fixture + "/l2-genesis.json")
+    source["cases"] = cases
+    source["execution_baselines"] = list(baseline_names)
+    source["streaming_replay"] = "not-implemented"
+    (args.directory / "provenance.json").write_text(json.dumps(source, indent=2) + "\n")
+    manifest["execution_vectors"] = source
+    args.output.write_text(json.dumps(manifest, indent=2) + "\n")
+    print("Selected 2 recorded execution baselines; full streaming replay remains pending for " + str(len(cases)) + " cases")
+
+
 def main():
     parser = argparse.ArgumentParser()
     modes = parser.add_subparsers(dest="mode", required=True)
@@ -220,8 +303,13 @@ def main():
     vector.add_argument("--revision", default="")
     vector.add_argument("--directory", type=Path, required=True)
     vector.add_argument("--output", type=Path, required=True)
+    execution = modes.add_parser("rollupx-execution")
+    execution.set_defaults(profile="rollupx")
+    execution.add_argument("--revision", default="")
+    execution.add_argument("--directory", type=Path, required=True)
+    execution.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    {"resolve": resolve, "runtime": runtime, "record-build": record_build, "vectors": vectors}[args.mode](args)
+    {"resolve": resolve, "runtime": runtime, "record-build": record_build, "vectors": vectors, "rollupx-execution": rollupx_execution}[args.mode](args)
 
 
 if __name__ == "__main__":

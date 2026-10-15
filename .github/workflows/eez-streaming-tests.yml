@@ -14,6 +14,7 @@ on:
       - 'Directory.*'
       - 'global.json'
       - 'scripts/eez/devnet/upstream.py'
+      - 'scripts/eez/devnet/test_*.py'
       - '.github/workflows/eez-streaming-tests.yml'
   push:
     branches: [master]
@@ -29,6 +30,7 @@ on:
       - 'Directory.*'
       - 'global.json'
       - 'scripts/eez/devnet/upstream.py'
+      - 'scripts/eez/devnet/test_*.py'
       - '.github/workflows/eez-streaming-tests.yml'
   schedule:
     - cron: '43 3 * * *'
@@ -36,6 +38,10 @@ on:
     inputs:
       upstream_revision:
         description: 'Replay a public upstream main commit; empty selects current main'
+        type: string
+        default: ''
+      rollupx_revision:
+        description: 'Replay a public RollupX main commit; empty selects current main'
         type: string
         default: ''
 
@@ -47,8 +53,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  prepare:
+    name: Select upstream execution data
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Resolve current upstream vector data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REVISION: ${{ inputs.upstream_revision }}
+        run: |
+          python3 -m unittest discover -s scripts/eez/devnet -p 'test_*.py'
+          python3 scripts/eez/devnet/upstream.py vectors --revision "$UPSTREAM_REVISION" --directory "$RUNNER_TEMP/eez-vectors" --output "$RUNNER_TEMP/eez-vectors/upstream.json"
+      - name: Resolve current RollupX execution data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REVISION: ${{ inputs.rollupx_revision }}
+        run: python3 scripts/eez/devnet/upstream.py rollupx-execution --revision "$UPSTREAM_REVISION" --directory "$RUNNER_TEMP/eez-rollupx-vectors" --output "$RUNNER_TEMP/eez-rollupx-vectors/upstream.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eez-selected-vectors
+          path: |
+            ${{ runner.temp }}/eez-vectors
+            ${{ runner.temp }}/eez-rollupx-vectors
+          if-no-files-found: error
+          retention-days: 14
+
   tests:
     name: Session execution (${{ matrix.runner }})
+    needs: prepare
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     env:
@@ -59,13 +93,10 @@ jobs:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v6
-      - name: Resolve current upstream vector data
-        env:
-          GH_TOKEN: ${{ github.token }}
-          UPSTREAM_REVISION: ${{ inputs.upstream_revision }}
-        run: |
-          python3 -m unittest discover -s scripts/eez/devnet -p 'test_*.py'
-          python3 scripts/eez/devnet/upstream.py vectors --revision "$UPSTREAM_REVISION" --directory "$RUNNER_TEMP/eez-vectors" --output "$RUNNER_TEMP/eez-vectors/upstream.json"
+      - uses: actions/download-artifact@v4
+        with:
+          name: eez-selected-vectors
+          path: ${{ runner.temp }}
       - uses: actions/setup-dotnet@v5
       - name: Restore
         run: dotnet restore src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj --locked-mode
@@ -78,6 +109,7 @@ jobs:
       - name: Test
         env:
           EEZ_CONFORMANCE_VECTOR_DIR: ${{ runner.temp }}/eez-vectors
+          EEZ_ROLLUPX_EXECUTION_VECTOR_DIR: ${{ runner.temp }}/eez-rollupx-vectors
         run: |
           dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
             --hangdump --hangdump-timeout 5m --hangdump-type Mini \
@@ -87,6 +119,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: eez-vector-provenance-${{ matrix.runner }}
-          path: ${{ runner.temp }}/eez-vectors/upstream.json
+          path: |
+            ${{ runner.temp }}/eez-vectors/upstream.json
+            ${{ runner.temp }}/eez-rollupx-vectors/upstream.json
           if-no-files-found: warn
           retention-days: 14

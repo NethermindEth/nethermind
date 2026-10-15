@@ -19,5 +19,37 @@
       "length": 37012,
       "sha256": "e7a2c74b31ea2ede9605adcd7663b50a49b8f006be2cc67dfc3c295aad3a4802"
     }
-  }
+  },
+  "core_revision": "9a1f815336c20d28e5ec5cecbf195c41fbd5ab0f",
+  "cases": [
+    "baseline-lookup.json",
+    "baseline-static.json",
+    "begin-boundaries.json",
+    "block-boundaries.json",
+    "block-quota.json",
+    "byte-quota.json",
+    "cancel-session-isolation.json",
+    "competing-branches.json",
+    "concurrent-composers.json",
+    "detached-session-eviction.json",
+    "finalize-byte-quota.json",
+    "finalize-ranges.json",
+    "frame-size-limit.json",
+    "half-close-drains.json",
+    "invalid-witness-retry.json",
+    "pipelined-gap-recovery.json",
+    "posting-context-boundaries.json",
+    "resume-after-proof.json",
+    "resume-boundaries.json",
+    "resume-takeover-fencing.json",
+    "rewind-boundaries.json",
+    "settlement-abi-binding.json",
+    "settlement-blob-encoding.json",
+    "settlement-required-inputs.json",
+    "single-block-proof.json",
+    "stream-capacity.json",
+    "subrange-promoted-anchor.json",
+    "terminal-before-tip.json",
+    "witness-quota.json"
+  ]
 }
