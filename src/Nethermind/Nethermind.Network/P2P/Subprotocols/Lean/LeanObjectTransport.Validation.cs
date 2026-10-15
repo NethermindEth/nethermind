@@ -22,7 +22,7 @@ public sealed partial class LeanObjectTransport
     /// <summary>The outcome of validating a completed object.</summary>
     /// <remarks><see cref="Refused"/> is a local inability to finish validation, including an unsupported proof or a closed
     /// source. It does not establish invalidity, so it is neither penalized nor tombstoned.</remarks>
-    private enum Verdict { Valid, Invalid, LocalFailure, Refused }
+    private enum Verdict { Valid, Invalid, LocalFailure, Refused, Unresolved }
 
     /// <summary>Hands the owned reassembly buffer to the bounded validation queue without a completion copy.</summary>
     /// <remarks>Without room the assembly stays charged and is retried on the timer until it expires.</remarks>
@@ -253,7 +253,8 @@ public sealed partial class LeanObjectTransport
                 lock (_gate)
                 {
                     Interlocked.Increment(ref _stats.LocalFailures);
-                    if (assembly.CompletionSource is { Closed: false } source && source.Link.HasTransactionRecovery)
+                    if (assembly.CompletionSource is { Closed: false } source
+                        && (verdict != Verdict.Unresolved || source.Link.HasTransactionRecovery))
                         _tombstones.Add(descriptor.ObjectId, _clock.GetTimestamp() + (long)(LeanLimits.SoftTombstone.TotalSeconds * _clock.TimestampFrequency));
                 }
                 LeanMetrics.Record(descriptor.Kind, LeanEvent.LocalFailure);
@@ -315,9 +316,10 @@ public sealed partial class LeanObjectTransport
             lock (_gate)
             {
                 if (assembly.CompletionSource is not { Closed: false }) return (Verdict.Refused, "source closed during envelope recovery");
-                if (!assembly.CompletionSource.Link.HasTransactionRecovery) return (Verdict.Refused, "ETH recovery link unavailable");
+                if (recovered.Count != missing.Count && !assembly.CompletionSource.Link.HasTransactionRecovery)
+                    return (Verdict.Refused, "ETH recovery link unavailable");
             }
-            if (recovered.Count != missing.Count) return (Verdict.LocalFailure, $"{missing.Count - recovered.Count} hash entries unresolved");
+            if (recovered.Count != missing.Count) return (Verdict.Unresolved, $"{missing.Count - recovered.Count} hash entries unresolved");
         }
         return await VerifyWithBudgetAsync(assembly,
             token => _wrappers.AcceptOwnedDetailedAsync(body, recovered, token), cancellation).ConfigureAwait(false);

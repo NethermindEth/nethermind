@@ -83,6 +83,7 @@ internal sealed class FakeLink(string name = "peer") : ILeanLink
     public bool HasTransactionRecovery { get; set; } = true;
     public Func<ValueHash256[], Transaction[]>? OnRecover { get; set; }
     public Func<ValueHash256[], CancellationToken, Task<Transaction[]>>? OnRecoverAsync { get; set; }
+    public Action? OnRecoveryReserved { get; set; }
     public int RecoveryCalls => Volatile.Read(ref _recoveryCalls);
     public int RecoveryBytes => Volatile.Read(ref _recoveryBytes);
     public async Task<Transaction[]> RecoverTransactionsAsync(ValueHash256[] hashes, Func<int, bool> reserve, CancellationToken token)
@@ -94,6 +95,7 @@ internal sealed class FakeLink(string name = "peer") : ILeanLink
         int bytes = transactions.Sum(transaction => LeanTestObjects.Envelope(transaction).Length);
         if (!reserve(bytes)) return [];
         Interlocked.Add(ref _recoveryBytes, bytes);
+        OnRecoveryReserved?.Invoke();
         return transactions;
     }
 
