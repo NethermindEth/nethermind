@@ -67,7 +67,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
             SuggestedFeeRecipient = Address.Zero
         });
         await improved;
-        payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
+        payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, random: TestItem.KeccakA, slotLength: 5);
         lastPayload = payloads[^1];
         Block? b = lastPayload.TryGetBlock().Data;
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
