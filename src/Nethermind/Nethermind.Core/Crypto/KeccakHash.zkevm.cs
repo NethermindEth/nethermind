@@ -180,8 +180,8 @@ public sealed partial class KeccakHash
     /// <summary>Whether <see cref="ComputeHash256OfWitnessNodes"/> keeps the states of a node of <paramref name="length"/>
     /// bytes, so that <see cref="ComputeHash256OfEdited"/> can resume it.</summary>
     /// <remarks>A full branch always. A shorter one of at least two whole rate blocks only on ZisK, where the state copies
-    /// keeping them costs are DMA moves: lane by lane, on SP1, they cost more than the permutations they save. A branch of
-    /// a single whole block is edited too rarely to repay them anywhere.</remarks>
+    /// that keeping them takes are DMA moves; on SP1 they go lane by lane and cost more than the permutations they save. A
+    /// branch of a single whole block is edited too rarely to repay them anywhere.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool IsResumable(int length) =>
         length == Hash532InputLength || ZiskFlag.IsActive && length >= 2 * HASH_DATA_AREA;
@@ -251,6 +251,8 @@ public sealed partial class KeccakHash
     [SkipLocalsInit]
     internal static unsafe ValueHash256 ComputeHash256OfEdited(ReadOnlySpan<byte> input, byte[]? previous, nint tag)
     {
+        // With the equal-length check below, this alone guarantees the keyed node's states were written, not left
+        // uninitialized. The caller gates on it, so release builds skip it.
         Debug.Assert(IsResumable(input.Length));
         byte[][]? nodes = WitnessNodes.Nodes;
         nuint index = (nuint)(tag - 1);
