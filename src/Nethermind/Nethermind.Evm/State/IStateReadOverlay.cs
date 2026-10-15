@@ -9,9 +9,20 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.State;
 
+/// <summary>Answers slot reads ahead of the scope they are made in.</summary>
+public interface IStorageReadOverlay
+{
+    /// <summary>True supplies a known slot value, including zero after a clear. False requires an underlying read; the out value is ignored.</summary>
+    bool TryGetStorage(Address address, in UInt256 index, out UInt256 value);
+
+    /// <summary>Whether the overlay holds any slot of the account, so a read of its storage must reach the overlay
+    /// even where the underlying account has none.</summary>
+    bool HasStorage(Address address);
+}
+
 /// <summary>Answers state reads ahead of the scope they are made in: what a prefix of a block wrote, laid over the
 /// state the scope stands on, without that state being changed.</summary>
-public interface IStateReadOverlay
+public interface IStateReadOverlay : IStorageReadOverlay
 {
     /// <summary>Stands in for the storage root of an account the overlay knows holds slots but whose real root it
     /// does not have. It only ever replaces the empty root, never the reverse, so that a reader asking whether
@@ -32,13 +43,6 @@ public interface IStateReadOverlay
         return false;
     }
 
-    /// <summary>True supplies a known slot value, including zero after a clear. False requires an underlying read; the out value is ignored.</summary>
-    bool TryGetStorage(Address address, in UInt256 index, out UInt256 value);
-
-    /// <summary>Whether the overlay holds any slot of the account, so a read of its storage must reach the overlay
-    /// even where the underlying account has none.</summary>
-    bool HasStorage(Address address);
-
     /// <summary>The bytes of code the overlay itself carries, for a code hash an overlaid account points at that the
     /// code database need not hold: code a prefix deployed and replaced within one block may never have been
     /// written there. Asked only when the code database misses.</summary>
@@ -55,7 +59,7 @@ public sealed class StateReadOverlaySlot
     private IStateReadOverlay? _current;
     private IDisposable? _lease;
     private BlockReadCache? _cache;
-    private IStateReadOverlay? _parentState;
+    private IStorageReadOverlay? _parentState;
 
     /// <summary>The borrowed overlay for the current scope; null when disarmed.</summary>
     public IStateReadOverlay? Current => _current;
@@ -63,15 +67,16 @@ public sealed class StateReadOverlaySlot
     /// <summary>Reads of the state underneath the overlay, shared by every transaction armed from the same block.</summary>
     public BlockReadCache? Cache => _cache;
 
-    /// <summary>Answers part of the state underneath the overlay from memory, ahead of the scope; it is read behind
-    /// <see cref="Cache"/> and what it answers is cached like a read of the scope.</summary>
+    /// <summary>Answers slots of the state underneath the overlay from memory, ahead of the scope; it is read behind
+    /// <see cref="Cache"/> and what it answers is cached like a read of the scope. Accounts are not asked of it: the
+    /// scope reads the account anyway, as the basis for the overlay, and already returns the same value.</summary>
     /// <remarks>Because its answers land in the cache every worker of the block shares, it must be a copy of the state
     /// the scope stands on, never a change laid over it, and every <see cref="Arm"/> that passes the same
     /// <see cref="BlockReadCache"/> must pass the same parent state, or none.</remarks>
-    public IStateReadOverlay? ParentState => _parentState;
+    public IStorageReadOverlay? ParentState => _parentState;
 
     /// <summary>Takes ownership of the lease, replacing and releasing any previous one.</summary>
-    public void Arm(IStateReadOverlay overlay, IDisposable lease, BlockReadCache? cache = null, IStateReadOverlay? parentState = null)
+    public void Arm(IStateReadOverlay overlay, IDisposable lease, BlockReadCache? cache = null, IStorageReadOverlay? parentState = null)
     {
         Disarm();
         _current = overlay;

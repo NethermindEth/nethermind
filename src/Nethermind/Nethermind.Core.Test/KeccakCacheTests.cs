@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -58,6 +59,27 @@ namespace Nethermind.Core.Test
             {
                 Assert.That(KeccakCache.TryGet(input, out _), Is.False);
                 Assert.That(KeccakCache.Compute(input), Is.EqualTo(expected));
+            }
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Output_aliasing_the_input_caches_the_input([Values(20, 32, 64)] int length)
+        {
+            byte[] input = new byte[length];
+            new Random(7919 + length).NextBytes(input);
+            ValueHash256 expected = ValueKeccak.Compute(input);
+            byte[] buffer = new byte[Math.Max(length, ValueHash256.MemorySize)];
+            input.CopyTo(buffer, 0);
+            ref ValueHash256 output = ref Unsafe.As<byte, ValueHash256>(ref buffer[0]);
+
+            KeccakCache.ComputeTo(buffer.AsSpan(0, length), out output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(output, Is.EqualTo(expected));
+                Assert.That(KeccakCache.TryGet(input, out ValueHash256 cached), Is.True);
+                Assert.That(cached, Is.EqualTo(expected));
             }
         }
 

@@ -59,22 +59,16 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
             {
                 if (!cache.TryGetAccount(address, out underlying))
                 {
-                    underlying = GetParent(address);
+                    underlying = inner.Get(address);
                     cache.SetAccount(address, underlying);
                 }
             }
             else
             {
-                underlying = GetParent(address);
+                underlying = inner.Get(address);
             }
 
             return overlay is not null && overlay.TryGetAccount(address, underlying, out Account? overlaid) ? overlaid : underlying;
-        }
-
-        private Account? GetParent(Address address)
-        {
-            Account? account = inner.Get(address);
-            return slot.ParentState is { } parent && parent.TryGetAccount(address, account, out Account? overlaid) ? overlaid : account;
         }
 
         public void HintGet(Address address, Account? account) => inner.HintGet(address, account);
