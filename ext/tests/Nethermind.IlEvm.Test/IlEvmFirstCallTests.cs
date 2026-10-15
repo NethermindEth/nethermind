@@ -111,7 +111,7 @@ public class IlEvmFirstCallTests : IlEvmAdaptiveFixture
     {
         IlEvmSettings.Gate = true;
         byte[] code = Unique(LoopCode(), 0x61), other = Unique(ArithmeticCode(), 0x62);
-        List<string> lines = Startup(new IlEvmConfig { Enabled = true }, [RpcLine(code), RpcLine(other), $"{ValueKeccak.Compute(Unique(LoopCode(), 0x63))}"]);
+        List<string> lines = Startup(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true }, [RpcLine(code), RpcLine(other), $"{ValueKeccak.Compute(Unique(LoopCode(), 0x63))}"]);
         Assert.That(PrecompileLine(lines), Does.StartWith("IL-EVM precompile: 2 of 3 shipped contracts compiled").And.Contain("; 1 not in the code database, 0 declined, ")
             .And.Contain(", 2 with an ahead copy for the first calls, "));
         Assert.That((IlShippedBacklog.Compiled, IlShippedBacklog.MissingCount), Is.EqualTo((2, 1)));
@@ -142,7 +142,7 @@ public class IlEvmFirstCallTests : IlEvmAdaptiveFixture
         IlShippedBacklog.Reset();
         IlWarmUp.ResetAheadForTests();
         IlWarmUp.AheadMaxMs = 0;
-        lines = Startup(new IlEvmConfig { Enabled = true }, [RpcLine(code)]);
+        lines = Startup(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true }, [RpcLine(code)]);
         Assert.That(PrecompileLine(lines), Does.Not.Contain("ahead copy"));
         Assert.That((IlShippedBacklog.Compiled, IlWarmUp.AheadArmed, IlRuntime.ShippedByContent(new CodeInfo(code))!.Shipped!.Ahead), Is.EqualTo((1, 0, (IlEvm.IlContract?)null)));
     }
@@ -153,7 +153,7 @@ public class IlEvmFirstCallTests : IlEvmAdaptiveFixture
         // A shipped contract runs wherever its keccak is met: code an entry carries under another hash is declined.
         byte[] code = Unique(LoopCode(), 0x64), claimed = Unique(LoopCode(), 0x65);
         long failures = IlEvmSettings.FailuresByReason.GetValueOrDefault(IlShippedBacklog.MismatchedCode);
-        List<string> lines = Startup(new IlEvmConfig { Enabled = true }, [RpcLine(code, ValueKeccak.Compute(claimed).ToString())]);
+        List<string> lines = Startup(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true }, [RpcLine(code, ValueKeccak.Compute(claimed).ToString())]);
         Assert.That(PrecompileLine(lines), Does.StartWith("IL-EVM precompile: 0 of 1 shipped contracts compiled").And.Contain("; 0 not in the code database, 1 declined, "));
         Assert.That(IlEvmSettings.FailuresByReason.GetValueOrDefault(IlShippedBacklog.MismatchedCode), Is.EqualTo(failures + 1));
         Assert.That(IlEvm.IsPrecompiled(ValueKeccak.Compute(claimed)), Is.False);
@@ -171,7 +171,7 @@ public class IlEvmFirstCallTests : IlEvmAdaptiveFixture
         IlEvmPrecompileList.Entry first = IlEvmPrecompileList.LoadRpcList(out _).Entries[0];
 
         // Every scope and source, as the shipped block list: here all of the block list's code missing.
-        IlEvmConfig adaptive = new() { Enabled = true, Scope = IlEvmScope.Rpc, Prefer = IlEvmPrefer.None };
+        IlEvmConfig adaptive = new() { Enabled = true, Selection = IlEvmSelection.Adaptive, Scope = IlEvmScope.Rpc, Prefer = IlEvmPrefer.None };
         IlEvmModule.Configure(adaptive);
         string line = PrecompileLine(Startup(adaptive, list: null, head: 0));
         Assert.That(line, Does.Contain($"(list Shipped and the RPC list, {listed} entries with their code; "));
@@ -182,7 +182,7 @@ public class IlEvmFirstCallTests : IlEvmAdaptiveFixture
         IlEvm.ClearPrecompiled();
         IlShippedBacklog.Reset();
         IlWarmUp.ResetAheadForTests();
-        line = PrecompileLine(Startup(new IlEvmConfig { Enabled = true, PrecompileRpc = false }, list: null));
+        line = PrecompileLine(Startup(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, PrecompileRpc = false }, list: null));
         Assert.That(line, Does.Not.Contain("RPC list"));
         Assert.That(IlShippedBacklog.Compiled, Is.Zero);
 

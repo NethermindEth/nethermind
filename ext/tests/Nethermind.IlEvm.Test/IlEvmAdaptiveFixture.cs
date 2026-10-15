@@ -56,6 +56,9 @@ internal sealed class IlEvmSettingsScope : IDisposable
     private readonly int _manualRpcEpoch = IlRuntime.ManualRpcEpoch, _querySample = IlGate.QuerySampleEvery, _blockSample = IlGate.BlockSampleEvery;
     private readonly int _aheadMax = IlWarmUp.AheadMaxMs, _aheadOwnMask = IlWarmUp.AheadOwnMask;
     private readonly bool _aheadManual = IlWarmUp.AheadManualForTests;
+    private readonly bool _simplePromote = IlSimple.Promote, _simpleManual = IlSimple.ManualForTests;
+    private readonly int _simplePromoteMs = IlSimple.PromoteMs, _simpleThreads = IlSimple.CompileThreads, _simpleMaxProfiles = IlSimple.MaxProfiles;
+    private readonly long _simplePromoteOps = IlSimple.PromoteOps, _simpleBudget = IlSimple.BudgetBytes, _simpleRetained = IlSimple.MaxRetainedBytes;
 
     public void Dispose()
     {
@@ -114,6 +117,14 @@ internal sealed class IlEvmSettingsScope : IDisposable
         IlWarmUp.AheadMaxMs = _aheadMax;
         IlWarmUp.AheadOwnMask = _aheadOwnMask;
         IlWarmUp.AheadManualForTests = _aheadManual;
+        IlSimple.Promote = _simplePromote;
+        IlSimple.ManualForTests = _simpleManual;
+        IlSimple.PromoteMs = _simplePromoteMs;
+        IlSimple.CompileThreads = _simpleThreads;
+        IlSimple.MaxProfiles = _simpleMaxProfiles;
+        IlSimple.PromoteOps = _simplePromoteOps;
+        IlSimple.BudgetBytes = _simpleBudget;
+        IlSimple.MaxRetainedBytes = _simpleRetained;
     }
 }
 
@@ -240,6 +251,7 @@ public abstract class IlEvmAdaptiveFixture
         IlGate.BlockSampleEvery = 1;
         // A startup step a test runs attaches a scheduler whose workers the test pumps, if it pumps them at all.
         IlScheduler.ManualForTests = true;
+        IlSimple.ManualForTests = true;
     }
 
     [TearDown]

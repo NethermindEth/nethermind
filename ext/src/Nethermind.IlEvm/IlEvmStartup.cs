@@ -414,6 +414,11 @@ public static class IlEvmPrecompileList
 /// and nothing at genesis.
 /// </para>
 /// <para>
+/// Under the Simple rules the block list's first <see cref="IIlEvmConfig.ListSize"/> entries compile, whole, with no
+/// deadline and no RPC list, for the spec the Adaptive rules take, at genesis too; then the live promotion rounds start
+/// (<see cref="IlSimple"/>), which also retry the entries the code database lacked.
+/// </para>
+/// <para>
 /// Under the Adaptive rules the step also attaches the inter-block scheduler (<see cref="IlScheduler"/>) to block
 /// processing's events, before the compile, with live profiling's scorer (<see cref="IlLive"/>) on its maintenance;
 /// compiles ahead what a frame part may call (<see cref="IlWarmUp"/>); and starts the scheduler's workers once the
@@ -463,6 +468,31 @@ public sealed class IlEvmStartupStep(
             if (_logger.IsInfo)
                 _logger.Info($"IL-EVM profiling: counting frames and interpreted opcodes per contract, compiling nothing; the {top} busiest are logged at shutdown");
             return Task.CompletedTask;
+        }
+
+        // The Simple rules compile the list's first ListSize entries before blocks or calls, then start live promotion.
+        if (IlEvmSettings.Mode == IlMode.Simple)
+        {
+            processExit.Token.Register(IlSimple.Stop);
+            if (config.Prefer == IlEvmPrefer.Blocks && _logger.IsWarn)
+                _logger.Warn("IL-EVM: the Simple rules promote from the read-only queries only; Prefer=Blocks counts as None, and block processing runs the startup list alone");
+            if (IlSimple.Promote && _logger.IsInfo)
+                _logger.Info(string.Create(CultureInfo.InvariantCulture,
+                    $"IL-EVM live promotion: every {IlSimple.PromoteMs} ms, the read-only queries' codes past {IlSimple.PromoteOps} interpreted opcodes a second, on {IlSimple.CompileThreads} threads, within {IlSimple.BudgetBytes >> 20} MiB"));
+            else if (_logger.IsInfo)
+                _logger.Info($"IL-EVM live promotion: off (Prefer={config.Prefer}); only the startup list runs compiled");
+            return Task.Run(() =>
+            {
+                try
+                {
+                    if (config.Precompile)
+                        PrecompileSafely(cancellationToken);
+                }
+                finally
+                {
+                    IlSimple.Start(_logger, dbProvider?.CodeDb);
+                }
+            }, cancellationToken);
         }
 
         // The inter-block windows the Adaptive rules compile in attach before the compile, which leaves them the
@@ -600,6 +630,19 @@ public sealed class IlEvmStartupStep(
 
     private void LogSummary()
     {
+        if (IlEvmSettings.Mode == IlMode.Simple)
+        {
+            // The Simple rules keep none of the Adaptive ones' code states or profiles: their own line.
+            string simple = string.Create(CultureInfo.InvariantCulture,
+                $"IL-EVM at exit: mode Simple, prefer {IlEvmSettings.Prefer}, scope {IlEvmSettings.Scope}; " +
+                $"list {IlShippedBacklog.Compiled} compiled, {IlShippedBacklog.MissingCount} missing, {IlShippedBacklog.Declined} declined; {IlSimple.Describe()}");
+            if (_logger.IsInfo)
+                _logger.Info(simple);
+            else
+                Console.WriteLine(simple);
+            return;
+        }
+
         string common = string.Create(CultureInfo.InvariantCulture,
             $"IL-EVM at exit: mode {IlEvmSettings.Mode}, prefer {IlEvmSettings.Prefer}, scope {IlEvmSettings.Scope}; " +
             $"list {IlShippedBacklog.Compiled} compiled, {IlShippedBacklog.MissingCount} missing, {IlShippedBacklog.Declined} declined, {IlShippedBacklog.LeftoverCount} left; " +
@@ -644,11 +687,17 @@ public sealed class IlEvmStartupStep(
         List<IlEvmPrecompileList.Entry> entries = file.Entries;
         int listed = entries.Count;
         entries = IlEvmPrecompileList.WithMinOpsPerFrame(entries, config.PrecompileMinOpsPerFrame, out int belowMin);
+        bool simple = IlEvmSettings.Mode == IlMode.Simple;
+        int kept = entries.Count;
+        if (simple && config.ListSize > 0 && entries.Count > config.ListSize)
+            entries = entries[..config.ListSize];
         if (config.PrecompileLimit > 0 && entries.Count > config.PrecompileLimit)
             entries = entries[..config.PrecompileLimit];
         string source = config.PrecompileMinOpsPerFrame > 0
             ? $"list {origin}, {belowMin} of {listed} entries under {config.PrecompileMinOpsPerFrame} opcodes per frame skipped"
             : $"list {origin}";
+        if (simple)
+            source += $", the first {entries.Count} of {kept} entries (ListSize={config.ListSize})";
         // The Adaptive rules also compile the RPC list, whatever the scope or the source of live profiling, ahead of the
         // block list: a few contracts, each with its code, which calls send as state overrides and no code database holds.
         bool adaptive = IlEvmSettings.Mode == IlMode.Adaptive;
@@ -674,9 +723,11 @@ public sealed class IlEvmStartupStep(
         // the next block is the one compiled for. A node at genesis is about to sync to a head of today, and the spec
         // of the wall clock is the one the blocks after its sync run; the list compiles for it rather than not at all.
         // The Legacy and measurement rules compile as they did: a slot of 12 seconds, and nothing at genesis.
+        // The Simple rules take the spec as the Adaptive ones do.
         BlockHeader? head = blockTree.Head?.Header;
         bool atGenesis = head is null || head.Number == 0;
-        if (atGenesis && !adaptive)
+        bool slotSpec = adaptive || simple;
+        if (atGenesis && !slotSpec)
         {
             if (_logger.IsInfo)
                 _logger.Info("IL-EVM precompile: skipped, the node is at genesis");
@@ -686,7 +737,7 @@ public sealed class IlEvmStartupStep(
         ulong now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         IReleaseSpec spec = specProvider.GetSpec(atGenesis
             ? ForkActivation.TimestampOnly(now)
-            : new ForkActivation(head!.Number + 1, head.Timestamp + (adaptive ? blocksConfig.SecondsPerSlot : 12)));
+            : new ForkActivation(head!.Number + 1, head.Timestamp + (slotSpec ? blocksConfig.SecondsPerSlot : 12)));
         string target = atGenesis ? $"the spec of the wall clock, {now}, at genesis" : $"the spec of block {head!.Number + 1}";
         if (IlEvm.BodySetFor(spec) is not { } bodies)
         {
@@ -755,8 +806,16 @@ public sealed class IlEvmStartupStep(
                 shipped.Add((entries[index], contract));
         }
 
-        IlRuntime.PublishShipped(shipped);
-        IlWarmUp.ArmAhead(shipped.Select(static s => s.Contract), _logger);
+        if (simple)
+        {
+            IlSimple.PublishStartup(shipped);
+        }
+        else
+        {
+            IlRuntime.PublishShipped(shipped);
+            IlWarmUp.ArmAhead(shipped.Select(static s => s.Contract), _logger);
+        }
+
         List<IlEvmPrecompileList.Entry> leftovers = [.. left.Order().Select(i => entries[i])];
         IlShippedBacklog.Record(bodies, codeDb, leftovers, [.. missing.Order().Select(i => entries[i])], shipped.Count, failed);
         // Each entry the deadline left is a job of the windows between blocks, in list order, ahead of every other job.
@@ -948,7 +1007,10 @@ internal static class IlShippedBacklog
         lock (_lock)
             _missing.RemoveAll(e => found.Contains(e.Hash));
         Interlocked.Add(ref _compiled, compiled.Count);
-        IlRuntime.PublishShipped(compiled);
+        if (IlEvmSettings.Mode == IlMode.Simple)
+            IlSimple.PublishStartup(compiled);
+        else
+            IlRuntime.PublishShipped(compiled);
         return compiled.Count;
     }
 

@@ -24,6 +24,8 @@ namespace Nethermind.IlEvm;
 /// <summary>Which rules the production runner follows, one per process.</summary>
 public enum IlMode
 {
+    /// <summary>The startup list and what live promotion adds, every frame part of them compiled; see <see cref="IlSimple"/>.</summary>
+    Simple,
     /// <summary>The shipped list and what live profiling promotes, each frame part admitted on its own; see <see cref="IlRuntime"/>.</summary>
     Adaptive,
     /// <summary>The rules before Adaptive: run-time compiles of hot code, and the shipped contracts on every block frame.</summary>
@@ -48,11 +50,11 @@ public static class IlEvmSettings
 
     /// <summary>Which rules the production runner follows; <see cref="IlEvmModule"/> sets it from the config.</summary>
     /// <remarks>
-    /// The default, for tests and the replay harness, is <c>NETHERMIND_ILEVM_MODE</c> (Adaptive or Legacy), else
+    /// The default, for tests and the replay harness, is <c>NETHERMIND_ILEVM_MODE</c> (Simple, Adaptive or Legacy), else
     /// Adaptive; Legacy whenever <see cref="IlEvmDiagnostics"/> are on, whose counters only the Legacy path keeps.
     /// </remarks>
     public static IlMode Mode { get; set; } = IlEvmDiagnostics.Enabled ? IlMode.Legacy :
-        Enum.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_MODE"), ignoreCase: true, out IlMode mode) && mode is IlMode.Legacy ? IlMode.Legacy : IlMode.Adaptive;
+        Enum.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_MODE"), ignoreCase: true, out IlMode mode) && mode is IlMode.Legacy or IlMode.Simple ? mode : IlMode.Adaptive;
 
     /// <summary>Which frames feed live profiling, as the config set it; for the exit line and the live profile.</summary>
     public static IlEvmPrefer Prefer { get; set; } = IlEvmPrefer.Rpc;
@@ -568,11 +570,15 @@ public static unsafe partial class IlEvm
 
         /// <summary>Drops the compiled code, for a contract the interpreter runs from now on; its frames are left to the interpreter.</summary>
         /// <remarks>
-        /// An Adaptive contract also drops its tables: code states and threads' visits may hold it until they next resolve
-        /// or reuse their ways, and the memory the budget took it back for should be free by then. Its frames then hand
-        /// back on entry; one still running a chunk reads tables of its own, and a walk of a failed segment hands over.
+        /// An Adaptive contract, or one released with <paramref name="dropTables"/> as the Simple rules' evictions do, also
+        /// drops its tables: code states and threads' visits may hold it until they next resolve or reuse their ways, and
+        /// the memory the budget took it back for should be free by then. Its frames then hand back on entry; one still
+        /// running a chunk reads tables of its own, and a walk of a failed segment hands over.
         /// </remarks>
-        public void Release()
+        public void Release() => Release(dropTables: false);
+
+        /// <inheritdoc cref="Release()"/>
+        public void Release(bool dropTables)
         {
             lock (Prepared)
             {
@@ -584,7 +590,7 @@ public static unsafe partial class IlEvm
                     Prepared[chunk] = null!;
                 }
 
-                if (Profile is not null)
+                if (Profile is not null || dropTables)
                 {
                     Volatile.Write(ref EntryChunk, []);
                     EntryIndex = JumpOrdinal = JumpBases = [];
@@ -654,9 +660,14 @@ public static unsafe partial class IlEvm
             if (Volatile.Read(ref _states[chunk]) == ChunkFailed)
                 return null;
             // The Adaptive rules JIT only between blocks, whatever the knob says: never on a frame's thread.
-            if (IlEvmSettings.CompileSynchronously && IlEvmSettings.Mode != IlMode.Adaptive)
+            IlMode mode = IlEvmSettings.Mode;
+            if (IlEvmSettings.CompileSynchronously && mode is not (IlMode.Adaptive or IlMode.Simple))
                 return CompileChunk(chunk);
             HitColdChunk = true;
+            // The Simple rules compile every contract whole, off the frames' threads: a chunk not compiled failed its
+            // JIT, or a test left it cold, and its frames hand back.
+            if (mode == IlMode.Simple)
+                return null;
             // Queued already: frames wait for the JIT without writing the shared counter again.
             if (Volatile.Read(ref _states[chunk]) != ChunkCold)
                 return null;
@@ -1342,8 +1353,12 @@ public static unsafe partial class IlEvm
     public static bool IsCompiled(CodeInfo codeInfo) => CompiledOf(codeInfo) is not null;
 
     /// <summary>The Legacy rules' contract of the code's state, else what an Adaptive runner runs it on.</summary>
-    private static IlContract? CompiledOf(CodeInfo codeInfo) =>
-        IlEvmFrameRunner.CodeSlot(codeInfo) is IlCodeState state ? state.Contract ?? state.QueryRun ?? state.BlockRun : null;
+    private static IlContract? CompiledOf(CodeInfo codeInfo) => IlEvmFrameRunner.CodeSlot(codeInfo) switch
+    {
+        IlCodeState state => state.Contract ?? state.QueryRun ?? state.BlockRun,
+        IlSimpleState simple => simple.Query ?? simple.Block,
+        _ => null,
+    };
 
     /// <summary>The self-check of <paramref name="codeInfo"/>'s compiled contract: its verdict, and compiled time per opcode over the interpreter's.</summary>
     /// <summary>The self-check's verdicts so far in the process: kept compiled, put on probation, given back.</summary>

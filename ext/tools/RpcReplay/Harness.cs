@@ -127,6 +127,8 @@ public static class Harness
         {
             Enabled = true,
             Prefer = Enum.TryParse(Environment.GetEnvironmentVariable("RPCPOC_PREFER"), ignoreCase: true, out IlEvmPrefer prefer) ? prefer : IlEvmPrefer.Rpc,
+            // Simple is the config's default since it came.
+            Selection = IlEvmSelection.Adaptive,
         };
         // Set by name, so the harness also runs a plugin build from before the RPC list.
         System.Reflection.PropertyInfo rpcList = typeof(IlEvmConfig).GetProperty("PrecompileRpc");
@@ -143,6 +145,33 @@ public static class Harness
         IlEvmSettings.Enabled = false;
         Console.WriteLine($"adaptive: prefer {IlEvmSettings.Prefer}, query counting {IlRuntime.QueryCounting}, gate {IlEvmSettings.Gate}, rpc list {rpcList?.GetValue(config) ?? "none"}, " +
             $"list {IlShippedBacklog.Compiled} compiled, {IlShippedBacklog.MissingCount} not in the chain; {IlScheduler.DescribeCurrent()}");
+    }
+
+    /// <summary>
+    /// Starts the Simple rules as a node's startup does: the settings from a config, with live promotion of the queries
+    /// unless <c>RPCPOC_PREFER</c> names another source, and <c>NETHERMIND_ILEVMCONFIG_LISTSIZE</c>, <c>_PROMOTEMS</c>
+    /// and <c>_PROMOTEOPS</c> read as a node reads them; then the plugin's startup step, which compiles the startup list
+    /// from the chain's code database and starts the promotion rounds.
+    /// </summary>
+    internal static async Task StartSimple(BasicTestBlockchain chain)
+    {
+        IlEvmConfig config = new()
+        {
+            Enabled = true,
+            Prefer = Enum.TryParse(Environment.GetEnvironmentVariable("RPCPOC_PREFER"), ignoreCase: true, out IlEvmPrefer prefer) ? prefer : IlEvmPrefer.Rpc,
+        };
+        if (int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVMCONFIG_LISTSIZE"), out int listSize)) config.ListSize = listSize;
+        if (int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVMCONFIG_PROMOTEMS"), out int promoteMs)) config.PromoteMs = promoteMs;
+        if (long.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVMCONFIG_PROMOTEOPS"), out long promoteOps)) config.PromoteOps = promoteOps;
+        if (int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVMCONFIG_COMPILETHREADS"), out int threads)) config.CompileThreads = threads;
+        IlEvmModule.Configure(config);
+        IlEvmStartupStep step = new(config, chain.Container.Resolve<IDbProvider>(), chain.BlockTree, chain.Container.Resolve<ISpecProvider>(),
+            new Lazy<IMainProcessingContext>(() => chain.Container.Resolve<IMainProcessingContext>()), chain.Container.Resolve<IBlocksConfig>(),
+            new ExitSource(), new OneLineLogManager());
+        await step.Execute(CancellationToken.None);
+        IlEvmSettings.Enabled = false;
+        Console.WriteLine($"simple: prefer {IlEvmSettings.Prefer}, promote {IlSimple.Promote} every {IlSimple.PromoteMs} ms from {IlSimple.PromoteOps} ops/s, " +
+            $"list {IlShippedBacklog.Compiled} compiled, {IlShippedBacklog.MissingCount} not in the chain");
     }
 
     /// <summary>A process exit that never comes: the exit line is the harness's to print.</summary>
@@ -227,10 +256,12 @@ public static class Harness
         Console.WriteLine($"requests {n}, rounds {rounds}, threshold {threshold}, eager {eager}, gasCap {gasCap}, GC server {System.Runtime.GCSettings.IsServerGC}, cpus {Environment.ProcessorCount}");
 
         bool adaptive = IlEvmSettings.Mode == IlMode.Adaptive;
+        bool simple = IlEvmSettings.Mode == IlMode.Simple;
         IlEvmSettings.Enabled = false;
         IlEvmSettings.Threshold = threshold;
-        // The Legacy rules compile on the frame's thread when eager; the Adaptive ones only ever between blocks.
-        IlEvmSettings.CompileSynchronously = eager && !adaptive;
+        // The Legacy rules compile on the frame's thread when eager; the Adaptive ones only ever between blocks, the
+        // Simple ones in their promotion rounds.
+        IlEvmSettings.CompileSynchronously = eager && !adaptive && !simple;
 
         JsonRpcConfig rpcConfig = new() { Timeout = 600_000, GasCap = gasCap, EnabledModules = [ModuleType.Eth, ModuleType.Debug] };
         Stopwatch setup = Stopwatch.StartNew();
@@ -243,6 +274,8 @@ public static class Harness
         Console.WriteLine($"chain ready in {setup.ElapsedMilliseconds} ms, head #{chain.BlockTree.Head?.Number} baseFee {chain.BlockTree.Head?.Header.BaseFeePerGas} gasLimit {chain.BlockTree.Head?.Header.GasLimit}");
         if (adaptive)
             await StartAdaptive(chain);
+        if (simple)
+            await StartSimple(chain);
 
         IJsonRpcService service = chain.Container.Resolve<IJsonRpcService>();
         JsonRpcProcessor processor = new(service, rpcConfig, chain.Container.Resolve<IFileSystem>(), NullLogManager.Instance);
@@ -325,11 +358,39 @@ public static class Harness
             Console.WriteLine($"pass {pass} (compiler warm-up) {Us(Stopwatch.GetTimestamp() - start) / 1000:F0} ms, compiled {IlEvmSettings.CompiledContracts}, failed {IlEvmSettings.FailedContracts}");
         }
 
+        // Simple: promotion needs calls in its rounds' windows, so the corpus is replayed until two rounds in a row
+        // promote nothing, after at least two rounds, for at most 120 s.
+        if (simple)
+        {
+            Stopwatch promoting = Stopwatch.StartNew();
+            int quietRounds = 0, lastRounds = IlSimple.Rounds.Rounds, lastPromoted = IlSimple.Totals.Promoted, passes = 0;
+            while (quietRounds < 2 && promoting.Elapsed.TotalSeconds < 120)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    (long _, byte[] hash, long ops) = await Send(i);
+                    mismatches += Verify("promotion", i, hash, ops);
+                }
+
+                passes++;
+                int roundsNow = IlSimple.Rounds.Rounds, promoted = IlSimple.Totals.Promoted;
+                if (roundsNow > lastRounds)
+                {
+                    quietRounds = promoted > lastPromoted ? 0 : quietRounds + roundsNow - lastRounds;
+                    lastRounds = roundsNow;
+                    lastPromoted = promoted;
+                }
+            }
+
+            Console.WriteLine($"promotion settled after {passes} passes, {promoting.Elapsed.TotalSeconds:F1} s: {IlSimple.Describe()}");
+        }
+
         // Legacy: until the background compiler has nothing more to do. Adaptive: until the scheduler, idle with no blocks,
         // has no job left and has run no step for a while, its scorer having promoted what the warm-up counted.
         long settled = -1;
         for (int k = 0; k < 120; k++)
         {
+            if (simple) break;
             long now = adaptive
                 ? (IlScheduler.Current?.Steps ?? 0) + (IlScheduler.Current?.Pending ?? 0) * 1_000_000_007L + IlLive.Totals().Promoted * 1_000_003L
                 : IlEvmSettings.CompiledContracts + IlEvmSettings.FailedContracts;
@@ -338,9 +399,13 @@ public static class Harness
             await Task.Delay(adaptive ? 2_000 : 500);
         }
 
-        Console.WriteLine(adaptive
-            ? $"scheduler settled: {IlLive.Describe()}; {IlScheduler.DescribeCurrent()}"
-            : $"compile queue settled: compiled {IlEvmSettings.CompiledContracts}, failed {IlEvmSettings.FailedContracts}");
+        if (!simple)
+        {
+            Console.WriteLine(adaptive
+                ? $"scheduler settled: {IlLive.Describe()}; {IlScheduler.DescribeCurrent()}"
+                : $"compile queue settled: compiled {IlEvmSettings.CompiledContracts}, failed {IlEvmSettings.FailedContracts}");
+        }
+
         // The RPC list's ahead copies serve only a node's first seconds: the rounds measure the contracts' own code, once
         // the copies have gone and a pass has had the helpers tier up on calls. Read by name, so the harness also runs a
         // plugin build from before them.
@@ -572,6 +637,8 @@ public static class Harness
         }
 
         Console.WriteLine($"mismatches {mismatches}; compiled contracts {IlEvmSettings.CompiledContracts}, failed {IlEvmSettings.FailedContracts}");
+        if (simple)
+            Console.WriteLine($"simple at the end: {IlSimple.Describe()}");
         (int kept, int probation, int givenBack) = IlEvm.SelfCheckVerdicts;
         Console.WriteLine($"self-check: {kept} kept compiled, {probation} put on probation, {givenBack} given back");
         jitTrace?.Report();

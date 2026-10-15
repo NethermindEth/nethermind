@@ -22,6 +22,11 @@ namespace Nethermind.IlEvm;
 /// gate admits run on the interpreter in the check's windows, and are timed now and then on either path.
 /// </para>
 /// <para>
+/// Simple (<see cref="IlMode.Simple"/>): a part runs compiled when its code is in the compiled set for this runner and
+/// body set (<see cref="IlSimple"/>), every part of it; any other is declined, and the queries' runner counts a sample of
+/// them for live promotion.
+/// </para>
+/// <para>
 /// Legacy and the measurement modes: a frame of code that is not compiled yet is declined with a request for the
 /// interpreter's opcode count, which is what makes the code hot. A compiled run that hands back declines from the
 /// instruction where it stopped.
@@ -75,7 +80,10 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     protected override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
         scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
     {
-        if (IlEvmSettings.Mode != IlMode.Adaptive)
+        IlMode mode = IlEvmSettings.Mode;
+        if (mode == IlMode.Simple)
+            return RunSimple(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, flags);
+        if (mode != IlMode.Adaptive)
             return RunOther(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, flags);
 
         if (programCounter == 0 && vm.VmState.IsTopLevel)
@@ -152,6 +160,87 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         thread.AfterCompiled(vm, before, codeInfo, handedBack: result == Declined);
         // A part handed back mid-way is reported, so its visit counts the interpreter's rest of it too.
         return result == Declined ? DeclinedReportingOpcodes : result;
+    }
+
+    /// <summary>The Simple rules' part (<see cref="IlSimple"/>): the code state's contract for this runner runs every part of the code it is compiled for; anything else is declined.</summary>
+    /// <remarks>
+    /// A part reads the slot, its state's generation and body set, and one contract; code with nothing compiled declines
+    /// there, and the queries' runner counts one such part in <see cref="IlSimple.SampleEvery"/>, drawn at random, for live
+    /// promotion, with its opcodes. A code info whose state is of an older generation or another body set, or that has
+    /// none, resolves once, out of line.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private EvmExceptionType RunSimple(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+    {
+        // The kill switch first: the replay harness's interpreter passes turn it off.
+        if (!IlEvmSettings.Enabled)
+            return Declined;
+        object? slot = CodeState(codeInfo);
+        IlSimpleState? state = slot as IlSimpleState;
+        if (state is null || state.Generation != IlSimple.Generation || !ReferenceEquals(state.Bodies, bodies))
+        {
+            // A mark of the current generation: nothing to run, nothing to count.
+            if (ReferenceEquals(slot, IlSimple.Nothing) || (_block && ReferenceEquals(slot, IlSimple.NothingBlock)))
+            {
+                CountInterpreted();
+                return Declined;
+            }
+
+            state = IlSimple.Resolve(vm, codeInfo, bodies, slot, _block);
+            if (state is null)
+            {
+                CountInterpreted();
+                return Declined;
+            }
+        }
+
+        // The state's contracts are compiled for its body set, which is this part's.
+        IlEvm.IlContract? contract = _block ? state.Block : state.Query;
+        IlSimpleThread thread = IlSimpleThread.Current;
+        if (contract is not null)
+        {
+            if (_block)
+            {
+                thread.BlockCompiled++;
+            }
+            else
+            {
+                thread.QueryCompiled++;
+                // A promoted contract's use, sampled, which eviction ranks by.
+                if (state.Uses is { } uses && IlSimple.Draw(thread))
+                    uses.Counts.AddCompiled(thread.Stripe);
+            }
+
+            // A part handed back mid-way is the interpreter's from there, unreported.
+            return contract.Run(vm, ref stack, ref gas, ref programCounter, (flags & FrameRunFlags.Cancelable) != 0);
+        }
+
+        if (_block)
+        {
+            thread.BlockInterpreted++;
+            return Declined;
+        }
+
+        thread.QueryInterpreted++;
+        if (state.Count is { } profile && IlSimple.Draw(thread))
+        {
+            IlSimple.Sample(profile, bodies, thread);
+            return DeclinedReportingOpcodes;
+        }
+
+        return Declined;
+    }
+
+    /// <summary>Counts a part the Simple rules leave to the interpreter, for the exit line.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CountInterpreted()
+    {
+        IlSimpleThread thread = IlSimpleThread.Current;
+        if (_block)
+            thread.BlockInterpreted++;
+        else
+            thread.QueryInterpreted++;
     }
 
     /// <summary>Whether this runner samples the transaction under way on this thread for live profiling: it counts, and the transaction drew a sample (<see cref="IlThread.TopLevelEntry"/>).</summary>
@@ -387,6 +476,13 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     protected override void OnInterpreted(CodeInfo codeInfo, int opCodes)
     {
+        // A Simple part is reported only when sampled for live promotion.
+        if (IlEvmSettings.Mode == IlMode.Simple && !IlEvmDiagnostics.Enabled)
+        {
+            IlSimple.CountOps(codeInfo, opCodes);
+            return;
+        }
+
         // The diagnostics time plain frames on the Legacy path, whichever rules are set.
         if (IlEvmSettings.Mode != IlMode.Adaptive || IlEvmDiagnostics.Enabled)
         {

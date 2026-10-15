@@ -49,8 +49,8 @@ public sealed class IlEvmModule(IIlEvmConfig config) : Module
         IlEvmScope scope = Configure(config);
 
         // Block processing and everything else get the block runner; the read-only query environments get their own,
-        // so calls keep their rules - run-time compiles under Legacy, live profiling under Adaptive - whatever block
-        // processing does. With Scope=All every kind of read-only query gets it, as before the block runner existed.
+        // so calls keep their rules - run-time compiles under Legacy, live profiling under Adaptive, live promotion under
+        // Simple - whatever block processing does. With Scope=All every kind of read-only query gets it, as before the block runner existed.
         // A measurement run gets the timed runners instead, so the production ones carry nothing of the timing.
         ReadOnlyQueryKind surfaces = scope == IlEvmScope.All ? ReadOnlyQueryKind.All : config.Surfaces;
         FrameCodeRunner<EthereumGasPolicy> blockRunner = config.Stats ? IlEvmTimedFrameRunner.Block : IlEvmFrameRunner.Block;
@@ -88,6 +88,7 @@ public sealed class IlEvmModule(IIlEvmConfig config) : Module
         IlMode mode = config.Stats ? IlMode.Stats
             : config.Profile ? IlMode.Profile
             : config.Selection == IlEvmSelection.Legacy || IlEvmDiagnostics.Enabled ? IlMode.Legacy
+            : config.Selection == IlEvmSelection.Simple ? IlMode.Simple
             : IlMode.Adaptive;
         IlEvmSettings.Mode = mode;
         // Live profiling of blocks needs block processing's runner attached.
@@ -110,6 +111,12 @@ public sealed class IlEvmModule(IIlEvmConfig config) : Module
         IlEvmSettings.QueryCheck = config.Check && IlEvmSettings.SelfCheck;
         IlEvmSettings.BlockCheck = config.BlockCheck && IlEvmSettings.SelfCheck;
         IlEvmSettings.BlockDeclineAll = config.BlockDeclineAll;
+        // The Simple rules promote from the read-only queries only; Prefer=Blocks counts as None, which the startup step logs.
+        IlSimple.Promote = mode == IlMode.Simple && config.Prefer == IlEvmPrefer.Rpc;
+        IlSimple.PromoteMs = Math.Max(100, config.PromoteMs);
+        IlSimple.PromoteOps = Math.Max(1, config.PromoteOps);
+        IlSimple.CompileThreads = Math.Max(1, config.CompileThreads);
+        IlSimple.BudgetBytes = (long)Math.Max(0, config.LiveBudgetMiB) << 20;
         return scope;
     }
 }

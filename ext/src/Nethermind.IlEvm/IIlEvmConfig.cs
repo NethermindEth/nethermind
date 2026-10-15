@@ -26,6 +26,8 @@ public enum IlEvmPrecompileSource
 /// <summary>Which rules decide what runs compiled.</summary>
 public enum IlEvmSelection
 {
+    /// <summary>The startup list, and what live promotion adds from the read-only queries' own load: every frame part of a contract in the compiled set runs compiled, with no gate or check.</summary>
+    Simple,
     /// <summary>The shipped list, compiled at every startup, and what live profiling promotes between blocks; each frame part is admitted on its own.</summary>
     Adaptive,
     /// <summary>The rules before Adaptive: contracts compile at run time once hot, and block processing runs the shipped contracts on every frame. For A/B runs within one image.</summary>
@@ -66,10 +68,10 @@ public interface IIlEvmConfig : IConfig
     [ConfigItem(Description = "The read-only queries accelerated in Rpc scope: Call (eth_call, eth_estimateGas, eth_createAccessList), Simulate (eth_simulateV1), Trace (debug_*/trace_* with non-instruction tracers).", DefaultValue = "Call")]
     ReadOnlyQueryKind Surfaces { get; set; }
 
-    [ConfigItem(Description = "Adaptive: the shipped list, compiled at every startup, and what live profiling promotes between blocks run compiled, each frame part admitted on its own. Legacy: contracts compile at run time once hot, and block processing runs the shipped contracts on every frame, as before Adaptive, for A/B runs within one image.", DefaultValue = "Adaptive", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Simple: the first ListSize entries of the shipped list, compiled at startup, and what live promotion adds from the read-only queries run compiled, every frame part of them. Adaptive: the shipped list, compiled at every startup, and what live profiling promotes between blocks run compiled, each frame part admitted on its own. Legacy: contracts compile at run time once hot, and block processing runs the shipped contracts on every frame, as before Adaptive. Adaptive and Legacy are kept for A/B runs within one image.", DefaultValue = "Simple", HiddenFromDocs = true)]
     IlEvmSelection Selection { get; set; }
 
-    [ConfigItem(Description = "Adaptive only: which frames feed live profiling, which compiles between blocks the contracts the node's own load runs most: Rpc, the read-only queries; Blocks, block processing (sets Scope to All); None, neither, so only the shipped list runs compiled.", DefaultValue = "Rpc")]
+    [ConfigItem(Description = "Which frames feed live profiling, which compiles the contracts the node's own load runs most: Rpc, the read-only queries; Blocks, block processing (Adaptive only, sets Scope to All; Simple treats it as None); None, neither, so only the shipped list runs compiled.", DefaultValue = "Rpc")]
     IlEvmPrefer Prefer { get; set; }
 
     [ConfigItem(Description = "Adaptive only: runs an admitted contract's frame parts compiled only where they are expected to gain: long visits, visits warm on their thread, and visits already long on the interpreter. Off, every part of an admitted contract runs compiled.", DefaultValue = "true")]
@@ -93,14 +95,23 @@ public interface IIlEvmConfig : IConfig
     [ConfigItem(Description = "How long before the next block is expected no compile step may start, in milliseconds; must exceed the longest step. Adaptive only.", DefaultValue = "300")]
     int SlotGuardMs { get; set; }
 
-    [ConfigItem(Description = "Threads that compile between blocks. Adaptive only: the Legacy rules keep their one background compiler.", DefaultValue = "1")]
+    [ConfigItem(Description = "Threads that compile between blocks (Adaptive) or in a promotion round (Simple); the Legacy rules keep their one background compiler.", DefaultValue = "1")]
     int CompileThreads { get; set; }
 
     [ConfigItem(Description = "Threads that compile while no blocks arrive, those of CompileThreads among them; 0 means a quarter of the cores, at least 1 and at most 4. Adaptive only.", DefaultValue = "0")]
     int IdleCompileThreads { get; set; }
 
-    [ConfigItem(Description = "Adaptive only: the most IL and tables the contracts live profiling compiled may hold, per source, in MiB; MaxLiveIlBytes stays the hard cap.", DefaultValue = "128")]
+    [ConfigItem(Description = "The most IL and tables the contracts live profiling compiled may hold, in MiB (Adaptive: per source); under Simple a full budget evicts the least used promoted contract for a busier one. MaxLiveIlBytes stays the hard cap.", DefaultValue = "128")]
     int LiveBudgetMiB { get; set; }
+
+    [ConfigItem(Description = "Simple only: how many leading entries of the shipped list compile at startup; 0 compiles all of them.", DefaultValue = "300")]
+    int ListSize { get; set; }
+
+    [ConfigItem(Description = "Simple only: the time between live promotion rounds, in milliseconds.", DefaultValue = "5000")]
+    int PromoteMs { get; set; }
+
+    [ConfigItem(Description = "Simple only: the interpreted opcodes per second a contract must run in the read-only queries to be promoted to compiled code.", DefaultValue = "200000")]
+    long PromoteOps { get; set; }
 
     [ConfigItem(Description = "Adaptive only, diagnostics: block processing's runner is attached but declines every frame, which measures the hook's own cost.", DefaultValue = "false", HiddenFromDocs = true)]
     bool BlockDeclineAll { get; set; }
@@ -156,7 +167,7 @@ public class IlEvmConfig : IIlEvmConfig
     public bool Enabled { get; set; }
     public IlEvmScope Scope { get; set; } = IlEvmScope.Rpc;
     public ReadOnlyQueryKind Surfaces { get; set; } = ReadOnlyQueryKind.Call;
-    public IlEvmSelection Selection { get; set; } = IlEvmSelection.Adaptive;
+    public IlEvmSelection Selection { get; set; } = IlEvmSelection.Simple;
     public IlEvmPrefer Prefer { get; set; } = IlEvmPrefer.Rpc;
     public bool Gate { get; set; } = true;
     public IlEvmBlockThreads BlockThreads { get; set; } = IlEvmBlockThreads.Both;
@@ -168,6 +179,9 @@ public class IlEvmConfig : IIlEvmConfig
     public int CompileThreads { get; set; } = 1;
     public int IdleCompileThreads { get; set; }
     public int LiveBudgetMiB { get; set; } = 128;
+    public int ListSize { get; set; } = 300;
+    public int PromoteMs { get; set; } = 5_000;
+    public long PromoteOps { get; set; } = 200_000;
     public bool BlockDeclineAll { get; set; }
     public int Threshold { get; set; } = 32;
     public long OpcodeThreshold { get; set; } = 20_000;

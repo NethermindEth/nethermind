@@ -231,7 +231,7 @@ public class IlEvmPrecompileTests
         Run(codeInfo, new byte[96], enabled: true);
         using System.Threading.CancellationTokenSource exit = new();
         Nethermind.Core.Test.TestLogger logger = new();
-        IlEvmStartupStep step = new(new IlEvmConfig { Enabled = true, Profile = true, ProfileTop = 10 }, null!, null!, null!, null!, null!,
+        IlEvmStartupStep step = new(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, Profile = true, ProfileTop = 10 }, null!, null!, null!, null!, null!,
             new ExitSource(exit.Token), new OneLogger(logger));
         step.Execute(default).Wait();
         Assert.That(logger.LogList.Any(static l => l.StartsWith("IL-EVM profile ", StringComparison.Ordinal)), Is.False, "nothing before exit");

@@ -3,7 +3,8 @@
 # usage: abab.sh <corpus basename> <rounds> <tag> <repeats> "<ENV=V ...>" ["<ENV=V ...>" ...]
 # THRESHOLD (default 1) and EAGER (default 1) select the Legacy rules' compile mode; the corpora live in DATA
 # (/c/tmp/ilevm-rpcpoc/data). A configuration with NETHERMIND_ILEVM_MODE=Adaptive runs the Adaptive rules as a node's
-# startup does (live profiling of the calls unless RPCPOC_PREFER names another source), and ignores EAGER. The plugin is
+# startup does (live profiling of the calls unless RPCPOC_PREFER names another source), and ignores EAGER; with
+# NETHERMIND_ILEVM_MODE=Simple the Simple rules, whose promotion rounds the corpus is replayed through first. The plugin is
 # loaded from PLUGIN_DIR, this repository's build by default, rather than the copy next to the host.
 HERE=$(cd "$(dirname "$0")" && pwd)
 NMBIN=${NMBIN:-/c/tmp/frame-runner-nmbin}

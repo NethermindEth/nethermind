@@ -148,6 +148,43 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
 
     private IDb? _codeDb;
 
+    /// <summary>
+    /// The Simple rules compile the list's first ListSize entries at startup, at genesis too, publish them to the Simple
+    /// lookup, and compile no RPC list; a missing entry compiles once its code appears; Prefer=Blocks is logged as None.
+    /// </summary>
+    [Test]
+    public void Simple_startup_compiles_the_first_list_size_entries()
+    {
+        IlSimple.ResetForTests();
+        IlEvmSettings.Mode = IlMode.Simple;
+        try
+        {
+            byte[] first = Unique(LoopCode(), 0x26), second = Unique(ArithmeticCode(), 0x27), late = Unique(LoopCode(), 0x28), third = Unique(LoopCode(), 0x29);
+            string[] list = [$"{ValueKeccak.Compute(first)}", $"{ValueKeccak.Compute(late)}", $"{ValueKeccak.Compute(second)}", $"{ValueKeccak.Compute(third)}"];
+            IlEvmConfig config = new() { Enabled = true, ListSize = 3, Prefer = IlEvmPrefer.Blocks };
+            List<string> lines = Startup(config, [first, second, third], list, headNumber: 0, out _);
+            string compiled = lines.Single(static l => l.StartsWith("IL-EVM precompile:", StringComparison.Ordinal));
+            Assert.That(compiled, Does.StartWith("IL-EVM precompile: 2 of 3 shipped contracts compiled for the spec of the wall clock, "));
+            Assert.That(compiled, Does.Contain("the first 3 of 4 entries (ListSize=3)").And.Not.Contain("RPC list").And.Not.Contain("deadline"));
+            Assert.That(lines, Has.One.Contains("Prefer=Blocks counts as None"));
+            Assert.That((IlSimple.StartupCount, IlShippedBacklog.Compiled, IlShippedBacklog.MissingCount), Is.EqualTo((2, 2, 1)));
+            Assert.That(IlRuntime.ProfileCount, Is.Zero, "nothing published to the Adaptive rules");
+
+            CodeInfo codeInfo = Stamped(first);
+            Assert.That(Run(QueryVm, codeInfo, LoopInput), Is.EqualTo(Interpret(first, LoopInput)));
+            Assert.That((IlEvmFrameRunner.CodeSlot(codeInfo) as IlSimpleState)?.Query, Is.Not.Null, "compiled at startup");
+            Assert.That(IlSimple.ProfileOf(ValueKeccak.Compute(third)), Is.Null, "past ListSize");
+
+            _codeDb![ValueKeccak.Compute(late).Bytes] = late;
+            Assert.That(IlShippedBacklog.RetryMissing(), Is.EqualTo(1));
+            Assert.That(IlSimple.ProfileOf(ValueKeccak.Compute(late))?.Startup, Is.Not.Null, "a retried entry joins the Simple rules' startup set");
+        }
+        finally
+        {
+            IlSimple.ResetForTests();
+        }
+    }
+
     [Test]
     public void Always_load()
     {
@@ -155,7 +192,7 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
         string[] list = [$"{ValueKeccak.Compute(first)} score=10", $"{ValueKeccak.Compute(late)}", $"{ValueKeccak.Compute(second)} use=m"];
 
         // Scope=Rpc and Prefer=None on a node at genesis: the list compiles all the same, for the spec of the wall clock.
-        IlEvmConfig config = new() { Enabled = true, Scope = IlEvmScope.Rpc, Prefer = IlEvmPrefer.None };
+        IlEvmConfig config = new() { Enabled = true, Selection = IlEvmSelection.Adaptive, Scope = IlEvmScope.Rpc, Prefer = IlEvmPrefer.None };
         ulong before = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         List<string> lines = Startup(config, [first, second], list, headNumber: 0, out ForkActivation activation);
         ulong after = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -204,7 +241,7 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
         string[] list = [.. codes.Select(static c => ValueKeccak.Compute(c).ToString())];
 
         // No time at all: every entry is left for the windows between blocks, in list order.
-        List<string> lines = Startup(new IlEvmConfig { Enabled = true, StartupCompileSeconds = 0 }, codes[..3], list, headNumber: 5, out _);
+        List<string> lines = Startup(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, StartupCompileSeconds = 0 }, codes[..3], list, headNumber: 5, out _);
         Assert.That(lines.Single(static l => l.StartsWith("IL-EVM precompile:", StringComparison.Ordinal)),
             Does.StartWith("IL-EVM precompile: 0 of 4 shipped contracts compiled").And.Contain(", 4 past the 0 s deadline, left for the windows between blocks)"));
         Assert.That(IlShippedBacklog.Leftovers().Select(static e => e.Hash), Is.EqualTo(codes.Select(static c => ValueKeccak.Compute(c))));
@@ -236,7 +273,7 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
         // The other rules have no windows between blocks: they compile the whole list before blocks start, as before.
         IlEvm.ClearPrecompiled();
         IlEvmSettings.Mode = IlMode.Legacy;
-        lines = Startup(new IlEvmConfig { Enabled = true, StartupCompileSeconds = 0 }, codes[..3], list, headNumber: 5, out _);
+        lines = Startup(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, StartupCompileSeconds = 0 }, codes[..3], list, headNumber: 5, out _);
         string compiled = lines.Single(static l => l.StartsWith("IL-EVM precompile:", StringComparison.Ordinal));
         Assert.That(compiled, Does.StartWith("IL-EVM precompile: 3 of 4 shipped contracts compiled for the spec of block 6 (list "));
         Assert.That(compiled, Does.Not.Contain("deadline"));
@@ -260,7 +297,8 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
 
         foreach ((IlEvmConfig config, IlMode mode) in new (IlEvmConfig, IlMode)[]
         {
-            (new() { Enabled = true }, IlMode.Adaptive),
+            (new() { Enabled = true }, IlMode.Simple),
+            (new() { Enabled = true, Selection = IlEvmSelection.Adaptive }, IlMode.Adaptive),
             (new() { Enabled = true, Selection = IlEvmSelection.Legacy }, IlMode.Legacy),
             (new() { Enabled = true, Profile = true, Selection = IlEvmSelection.Legacy }, IlMode.Profile),
             (new() { Enabled = true, Stats = true, Profile = true }, IlMode.Stats),
@@ -273,7 +311,7 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
 
         // Live profiling of the queries is the default; of blocks it needs block processing's runner, so it sets Scope=All.
         IlEvmSettings.SelfCheck = true;
-        (IContainer rpc, IlEvmQueryModule? rpcQuery) = Load(new IlEvmConfig { Enabled = true, OpcodeThreshold = 0, BlockThreads = IlEvmBlockThreads.Main, Check = false });
+        (IContainer rpc, IlEvmQueryModule? rpcQuery) = Load(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, OpcodeThreshold = 0, BlockThreads = IlEvmBlockThreads.Main, Check = false });
         using (rpc)
         {
             Assert.That((IlRuntime.QueryCounting, IlEvmSettings.Prefer, IlEvmSettings.Scope, IlEvmSettings.ScopeForcedToAll), Is.EqualTo((true, IlEvmPrefer.Rpc, IlEvmScope.Rpc, false)));
@@ -284,7 +322,7 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
             Assert.That((IlEvmSettings.Gate, IlEvmSettings.QueryCheck, IlEvmSettings.BlockCheck, IlEvmSettings.BlockDeclineAll), Is.EqualTo((true, false, true, false)));
         }
 
-        (IContainer blocks, IlEvmQueryModule? blocksQuery) = Load(new IlEvmConfig { Enabled = true, Prefer = IlEvmPrefer.Blocks, Gate = false, BlockThreads = IlEvmBlockThreads.Workers, BlockDeclineAll = true });
+        (IContainer blocks, IlEvmQueryModule? blocksQuery) = Load(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, Prefer = IlEvmPrefer.Blocks, Gate = false, BlockThreads = IlEvmBlockThreads.Workers, BlockDeclineAll = true });
         using (blocks)
         {
             Assert.That((IlRuntime.QueryCounting, IlEvmSettings.Scope, IlEvmSettings.ScopeForcedToAll), Is.EqualTo((false, IlEvmScope.All, true)));
@@ -296,7 +334,7 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
             // The startup step warns of the scope it overrode.
             Nethermind.Core.Test.TestLogger logger = new();
             using CancellationTokenSource exit = new();
-            new IlEvmStartupStep(new IlEvmConfig { Enabled = true, Precompile = false }, null!, null!, null!, null!, null!, new ExitSource(exit.Token), new OneLogger(logger))
+            new IlEvmStartupStep(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, Precompile = false }, null!, null!, null!, null!, null!, new ExitSource(exit.Token), new OneLogger(logger))
                 .Execute(default).Wait();
             Assert.That(logger.LogList, Has.One.Contains("Prefer=Blocks").And.Contains("Scope is All"));
         }
@@ -304,7 +342,7 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
         // Neither source, or rules other than the Adaptive ones: nothing counts, and the scope is as configured.
         foreach (IlEvmConfig config in new IlEvmConfig[]
         {
-            new() { Enabled = true, Prefer = IlEvmPrefer.None },
+            new() { Enabled = true, Selection = IlEvmSelection.Adaptive, Prefer = IlEvmPrefer.None },
             new() { Enabled = true, Prefer = IlEvmPrefer.Blocks, Selection = IlEvmSelection.Legacy },
         })
         {
@@ -321,14 +359,14 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
     public void Exit_line_names_the_rules_the_list_and_the_code_states()
     {
         byte[] code = Unique(LoopCode(), 0x2a);
-        Startup(new IlEvmConfig { Enabled = true }, [code], [ValueKeccak.Compute(code).ToString(), Hash('f')], headNumber: 5, out _);
+        Startup(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true }, [code], [ValueKeccak.Compute(code).ToString(), Hash('f')], headNumber: 5, out _);
         Run(QueryVm, Stamped(code), LoopInput);
         IlEvmSettings.Prefer = IlEvmPrefer.Blocks;
         IlEvmSettings.Scope = IlEvmScope.All;
         Nethermind.Core.Test.TestLogger logger = new();
         using (CancellationTokenSource exit = new())
         {
-            new IlEvmStartupStep(new IlEvmConfig { Enabled = true, Precompile = false }, null!, null!, null!, null!, null!, new ExitSource(exit.Token), new OneLogger(logger))
+            new IlEvmStartupStep(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, Precompile = false }, null!, null!, null!, null!, null!, new ExitSource(exit.Token), new OneLogger(logger))
                 .Execute(default).Wait();
             exit.Cancel();
         }
@@ -350,7 +388,7 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
         logger = new Nethermind.Core.Test.TestLogger();
         using (CancellationTokenSource exit = new())
         {
-            new IlEvmStartupStep(new IlEvmConfig { Enabled = true, Precompile = false }, null!, null!, null!, null!, null!, new ExitSource(exit.Token), new OneLogger(logger))
+            new IlEvmStartupStep(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, Precompile = false }, null!, null!, null!, null!, null!, new ExitSource(exit.Token), new OneLogger(logger))
                 .Execute(default).Wait();
             exit.Cancel();
         }
@@ -365,7 +403,7 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
     public void A_list_s_calibration_sets_the_block_runner_s_gate()
     {
         byte[] code = Unique(LoopCode(), 0x2b);
-        Startup(new IlEvmConfig { Enabled = true }, [code], ["# calib fit=ok gate_block_visit_cold_ops=1024 gate_block_switch_ops=768 rho=0.4", ValueKeccak.Compute(code).ToString()], headNumber: 5, out _);
+        Startup(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true }, [code], ["# calib fit=ok gate_block_visit_cold_ops=1024 gate_block_switch_ops=768 rho=0.4", ValueKeccak.Compute(code).ToString()], headNumber: 5, out _);
         Assert.That((IlGate.Block.VisitColdOps, IlGate.Block.SwitchOps), Is.EqualTo((1024, 768)));
         Assert.That(IlLive.Blocks.Model.Rho, Is.EqualTo(0.4), "and the live model's constants");
         Assert.That(IlGate.Query.VisitColdOps, Is.EqualTo(IlGate.QueryPrior.VisitColdOps), "the queries' runner keeps the laptop thresholds");
@@ -386,7 +424,7 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
                 {
                     IlEvm.ClearPrecompiled();
                     IlShippedBacklog.Reset();
-                    IlEvmConfig config = new() { Enabled = true, Prefer = prefer, Scope = scope };
+                    IlEvmConfig config = new() { Enabled = true, Selection = IlEvmSelection.Adaptive, Prefer = prefer, Scope = scope };
                     IlEvmModule.Configure(config);
                     Assert.That((IlEvmSettings.Mode, IlEvmSettings.Prefer), Is.EqualTo((IlMode.Adaptive, prefer)));
                     Startup(config, [code], list, headNumber: head, out _);

@@ -762,7 +762,7 @@ public class IlEvmLiveTests : IlEvmAdaptiveFixture
     {
         Assume.That(IlEvmModule.Unsupported(), Is.Null);
         ContainerBuilder builder = new();
-        builder.RegisterModule(new IlEvmModule(new IlEvmConfig { Enabled = true, LiveBudgetMiB = 64 }));
+        builder.RegisterModule(new IlEvmModule(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, LiveBudgetMiB = 64 }));
         using (builder.Build())
             Assert.That(IlLive.BudgetBytes, Is.EqualTo(64L << 20));
     }

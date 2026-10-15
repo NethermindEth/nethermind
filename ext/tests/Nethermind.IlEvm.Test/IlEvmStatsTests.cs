@@ -851,7 +851,7 @@ public class IlEvmStatsTests
         {
             IlEvmSettings.SelfCheck = true;
             ContainerBuilder builder = new();
-            builder.RegisterModule(new IlEvmModule(new IlEvmConfig { Enabled = true, Scope = scope, Stats = stats }));
+            builder.RegisterModule(new IlEvmModule(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, Scope = scope, Stats = stats }));
             using IContainer container = builder.Build();
             string name = $"stats {stats}, scope {scope}";
             FrameCodeRunner<EthereumGasPolicy>? blockRunner = scope != IlEvmScope.All ? null : stats ? IlEvmTimedFrameRunner.Block : IlEvmFrameRunner.Block;
@@ -956,7 +956,7 @@ public class IlEvmStatsTests
         context.BranchProcessor.Returns(branchProcessor);
         using CancellationTokenSource exit = new();
         Nethermind.Core.Test.TestLogger logger = new();
-        IlEvmStartupStep step = new(new IlEvmConfig { Enabled = true, Stats = true, Precompile = false, ProfileTop = 5, Scope = IlEvmScope.All }, null!, null!, null!,
+        IlEvmStartupStep step = new(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, Stats = true, Precompile = false, ProfileTop = 5, Scope = IlEvmScope.All }, null!, null!, null!,
             new Lazy<IMainProcessingContext>(() => context), new BlocksConfig(), new ExitSource(exit.Token), new OneLogger(logger));
         step.Execute(default).Wait();
         Assert.That(logger.LogList, Has.One.StartsWith("IL-EVM timing: every contract's frame parts are timed").And.Contains("in block processing").And.Contains("self-check is off"));
@@ -991,7 +991,7 @@ public class IlEvmStatsTests
         {
             Nethermind.Core.Test.TestLogger quiet = new();
             using CancellationTokenSource quietExit = new();
-            new IlEvmStartupStep(new IlEvmConfig { Enabled = true, Stats = true, Precompile = false, Scope = scope }, null!, null!, null!,
+            new IlEvmStartupStep(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, Stats = true, Precompile = false, Scope = scope }, null!, null!, null!,
                 new Lazy<IMainProcessingContext>(() => context), new BlocksConfig { PreWarmHandoff = handoff }, new ExitSource(quietExit.Token), new OneLogger(quiet)).Execute(default).Wait();
             Assert.That(quiet.LogList, Has.One.StartsWith("IL-EVM timing: every contract's frame parts are timed").And.Contains(timed), $"{scope}");
             Assert.That(quiet.LogList.Any(static l => l.Contains("PreWarmHandoff", StringComparison.Ordinal)), Is.False, $"{scope}, handoff {handoff}");
@@ -1024,11 +1024,11 @@ public class IlEvmStatsTests
         List<IlEvmPrecompileList.Entry> candidates = IlEvmPrecompileList.LoadEntries(IlEvmPrecompileSource.Candidates, out _);
         IlEvmPrecompileList.WithMinOpsPerFrame(candidates, 2_000, out int light);
         Assume.That(light, Is.InRange(1, candidates.Count - 1));
-        List<string> lines = Precompile(new IlEvmConfig { Enabled = true, PrecompileList = IlEvmPrecompileSource.Candidates, PrecompileMinOpsPerFrame = 2_000 });
+        List<string> lines = Precompile(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, PrecompileList = IlEvmPrecompileSource.Candidates, PrecompileMinOpsPerFrame = 2_000 });
         Assert.That(lines, Has.Count.EqualTo(1));
         Assert.That(lines[0], Does.StartWith($"IL-EVM precompile: 0 of {candidates.Count - light} shipped contracts compiled for the spec of block 6 " +
             $"(list Candidates, {light} of {candidates.Count} entries under 2000 opcodes per frame skipped; {candidates.Count - light} not in the code database, 0 declined"));
-        Assert.That(Precompile(new IlEvmConfig { Enabled = true })[0],
+        Assert.That(Precompile(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true })[0],
             Does.StartWith("IL-EVM precompile: 0 of 300 shipped contracts compiled for the spec of block 6 (list Shipped; 300 not in the code database, 0 declined"));
 
         // A list file names code that is there: the entries under the bar are not compiled, those without counts are.
@@ -1048,7 +1048,7 @@ public class IlEvmStatsTests
         Environment.SetEnvironmentVariable("NETHERMIND_ILEVM_PRECOMPILE_LIST", list);
         try
         {
-            lines = Precompile(new IlEvmConfig { Enabled = true, PrecompileList = IlEvmPrecompileSource.Candidates, PrecompileMinOpsPerFrame = 20 });
+            lines = Precompile(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, PrecompileList = IlEvmPrecompileSource.Candidates, PrecompileMinOpsPerFrame = 20 });
             Assert.That(lines[0], Does.StartWith($"IL-EVM precompile: 2 of 2 shipped contracts compiled for the spec of block 6 (list {list}, 1 of 3 entries under 20 opcodes per frame skipped; 0 not in the code database, 0 declined"));
             Assert.That(IlEvm.PrecompiledCount, Is.EqualTo(2));
             Assert.That(IlEvm.FindPrecompiledOnly(new CodeInfo(codes[0]), IlEvm.BodySetFor(_spec)!), Is.Not.Null);
@@ -1058,13 +1058,13 @@ public class IlEvmStatsTests
             // A measurement run compiles its list at startup as well; only profiling compiles nothing.
             IlEvm.ClearPrecompiled();
             IlEvmSettings.Stats = true;
-            lines = Precompile(new IlEvmConfig { Enabled = true, Stats = true, Scope = IlEvmScope.All });
+            lines = Precompile(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, Stats = true, Scope = IlEvmScope.All });
             Assert.That(lines, Has.Count.EqualTo(1));
             Assert.That(lines[0], Does.StartWith("IL-EVM precompile: 3 of 3 shipped contracts compiled"));
             Assert.That(IlEvm.PrecompiledCount, Is.EqualTo(3));
             IlEvm.ClearPrecompiled();
             IlEvmSettings.Profile = true;
-            Assert.That(Precompile(new IlEvmConfig { Enabled = true, Stats = true, Profile = true, Scope = IlEvmScope.All }), Is.Empty);
+            Assert.That(Precompile(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true, Stats = true, Profile = true, Scope = IlEvmScope.All }), Is.Empty);
             Assert.That(IlEvm.PrecompiledCount, Is.EqualTo(0));
         }
         finally
