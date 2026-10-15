@@ -117,6 +117,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             // Build-up rounds (!commit) span the whole block: later txs may redeploy this address,
             // so the order-preserving journaled clear is required; the O(1) mark needs a commit after.
+            // Restore runs also pass !commit, since the restore must be able to undo the destroy.
             if (commit) worldState.MarkStorageDestroyed(toBeDestroyed);
             else worldState.ClearStorage(toBeDestroyed);
             worldState.DeleteAccount(toBeDestroyed);
@@ -513,7 +514,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     long destroyRefund = (long)spec.GasCosts.DestroyRefund;
                     foreach (Address toBeDestroyed in destroyList)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit, removeSelfdestructBurn, tracer, tracingLogs);
+                        // A restore run must be able to undo the destroy, so it takes the journaled clear.
+                        FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit && !restore, removeSelfdestructBurn, tracer, tracingLogs);
                         if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                     }
                 }
@@ -1564,8 +1566,10 @@ namespace Nethermind.Evm.TransactionProcessing
                     JournalSet<Address>? destroyList = substate.DestroyList;
                     if (!deferFinalization && destroyList?.Count > 0)
                     {
-                        // Same derivation as Execute: !commit = build-up round spanning the block.
-                        bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
+                        // Same derivation as Execute: !commit = build-up round spanning the block. A restore run
+                        // (eth_call, estimateGas) must be able to undo the destroy, so it takes the journaled clear too.
+                        bool commit = (opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled))
+                                      && !opts.HasFlag(ExecutionOptions.Restore);
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                         bool tracingRefunds = _tracerFlags.IsTracingRefunds;
