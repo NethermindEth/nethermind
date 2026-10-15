@@ -12,23 +12,30 @@ namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
 /// A bounded cache of EIP-8288 proof verdicts keyed by <c>(keccak256(proof), get_deps_hash(covered))</c>, so a known proof
-/// arriving with a different or unresolvable transaction list, or in another inclusion list, is not verified again.
+/// arriving with a different or unresolvable transaction list, or committed to by an inclusion list, is not verified again.
 /// </summary>
 /// <remarks>
-/// <c>covered</c> is a mode-1 wrapper's or inclusion list's dependency set, or a mode-0 witness's single dependency. Both
-/// verdicts are kept: verification is deterministic for a fixed <see cref="Eip8288Constants.AggregatedVk"/>. One cache exists per
-/// backend verifier, so independent verifiers (and tests) never share verdicts.
+/// <c>covered</c> is a mode-1 wrapper's or <c>il_proof</c>'s dependency set, or a mode-0 witness's single dependency. Both
+/// verdicts are kept: verification is deterministic for a fixed <see cref="Eip8288Constants.AggregatedVk"/>. A recursive verdict
+/// keeps its preimage <c>proof_deps</c>, so an inclusion-list commitment to a held proof is checked by lookup and subset test
+/// (EIPs#12475). One cache exists per backend verifier, so independent verifiers (and tests) never share verdicts.
 /// </remarks>
 public sealed class ProofVerdictCache
 {
     /// <summary>Verdicts retained per verifier; the oldest is evicted first.</summary>
     public const int Capacity = 4096;
 
+    /// <summary>Dependencies retained across all preimages, bounding their memory independently of the verdict count.</summary>
+    public const int MaxPreimageDependencies = 64 * 1024;
+
     private static readonly ConditionalWeakTable<ILeanProofVerifier, ProofVerdictCache> Caches = [];
 
     private readonly Lock _gate = new();
     private readonly Dictionary<(ValueHash256 Proof, ValueHash256 Dependencies), bool> _verdicts = [];
     private readonly Queue<(ValueHash256 Proof, ValueHash256 Dependencies)> _order = new();
+    private readonly Dictionary<ValueHash256, FrameDependency[]> _preimages = [];
+    private readonly Queue<ValueHash256> _preimageOrder = new();
+    private int _preimageDependencies;
 
     /// <summary>The cache shared by every caller of <paramref name="verifier"/>.</summary>
     public static ProofVerdictCache For(ILeanProofVerifier verifier) => Caches.GetValue(verifier, static _ => new());
@@ -39,10 +46,14 @@ public sealed class ProofVerdictCache
     }
 
     /// <summary>Verifies a recursive aggregate proof against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>.</summary>
-    public static bool VerifyRecursive(ILeanProofVerifier verifier, in ValueHash256 depsHash, byte[] proof)
+    /// <param name="proofDeps">The canonical dependency list hashing to <paramref name="depsHash"/>, kept with the verdict.</param>
+    public static bool VerifyRecursive(ILeanProofVerifier verifier, in ValueHash256 depsHash, byte[] proof, IReadOnlyList<FrameDependency>? proofDeps = null)
     {
         ValueHash256 deps = depsHash;
-        return For(verifier).Verify(proof, in deps, () => verifier.VerifyRecursiveStark(in deps, Eip8288Constants.AggregatedVk, proof));
+        ProofVerdictCache cache = For(verifier);
+        bool valid = cache.Verify(proof, in deps, () => verifier.VerifyRecursiveStark(in deps, Eip8288Constants.AggregatedVk, proof));
+        if (valid && proofDeps is not null) cache.RememberPreimage(in deps, proofDeps);
+        return valid;
     }
 
     /// <summary>Verifies a mode-0 direct witness for its single dependency.</summary>
@@ -57,6 +68,35 @@ public sealed class ProofVerdictCache
         if (check is null) return false;
         ValueHash256 covered = Eip8288Dependencies.ComputeDepsHash([dependency]);
         return For(verifier).Verify(witness, in covered, check);
+    }
+
+    /// <summary>The known verdict for a proof under <paramref name="depsHash"/>, if any.</summary>
+    public bool? TryGetVerdict(in ValueHash256 proofHash, in ValueHash256 depsHash)
+    {
+        lock (_gate) return _verdicts.TryGetValue((proofHash, depsHash), out bool valid) ? valid : null;
+    }
+
+    /// <summary>The known preimage <c>proof_deps</c> of <paramref name="depsHash"/>, from any verified proof.</summary>
+    public bool TryGetPreimage(in ValueHash256 depsHash, out FrameDependency[] proofDeps)
+    {
+        lock (_gate) return _preimages.TryGetValue(depsHash, out proofDeps!);
+    }
+
+    private void RememberPreimage(in ValueHash256 depsHash, IReadOnlyList<FrameDependency> proofDeps)
+    {
+        lock (_gate)
+            if (_preimages.ContainsKey(depsHash) || proofDeps.Count > MaxPreimageDependencies) return;
+        // Callers pass the list the proof verified against; a mismatched list would let a subset check pass wrongly.
+        FrameDependency[] canonical = [.. Eip8288Dependencies.Canonicalize(proofDeps)];
+        if (canonical.Length != proofDeps.Count || Eip8288Dependencies.ComputeDepsHash(canonical) != depsHash) return;
+        lock (_gate)
+        {
+            if (!_preimages.TryAdd(depsHash, canonical)) return;
+            _preimageOrder.Enqueue(depsHash);
+            _preimageDependencies += canonical.Length;
+            while (_preimageDependencies > MaxPreimageDependencies && _preimageOrder.TryDequeue(out ValueHash256 oldest))
+                if (_preimages.Remove(oldest, out FrameDependency[]? evicted)) _preimageDependencies -= evicted.Length;
+        }
     }
 
     private bool Verify(byte[] proof, in ValueHash256 dependencies, Func<bool> verify)

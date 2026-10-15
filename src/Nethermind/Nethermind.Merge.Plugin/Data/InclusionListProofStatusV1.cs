@@ -3,16 +3,21 @@
 
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>Result of <c>engine_verifyInclusionListProofV1</c>: whether a signed inclusion list's committed proof is valid.</summary>
+/// <summary>Result of <c>engine_verifyInclusionListProofV1</c>: whether a signed inclusion list's commitment is valid.</summary>
 public sealed class InclusionListProofStatusV1
 {
-    /// <summary><see cref="PayloadStatus.Valid"/> or <see cref="PayloadStatus.Invalid"/>.</summary>
+    /// <summary><see cref="PayloadStatus.Valid"/>, <see cref="PayloadStatus.Invalid"/>, or <see cref="ProofUnknownStatus"/> when the
+    /// committed proof is not held, after which the consensus layer fetches the <c>il_proof</c> and calls again.</summary>
     public required string Status { get; init; }
 
-    /// <summary>Why the proof is invalid, or <c>null</c> when it is valid.</summary>
+    /// <summary>Why the commitment is not valid, or <c>null</c> when it is.</summary>
     public string? ValidationError { get; init; }
 
     public static InclusionListProofStatusV1 Valid { get; } = new() { Status = PayloadStatus.Valid };
 
     public static InclusionListProofStatusV1 Invalid(string error) => new() { Status = PayloadStatus.Invalid, ValidationError = error };
+
+    public const string ProofUnknownStatus = "PROOF_UNKNOWN";
+
+    public static InclusionListProofStatusV1 ProofUnknown(string? reason) => new() { Status = ProofUnknownStatus, ValidationError = reason };
 }

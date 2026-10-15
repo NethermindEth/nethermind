@@ -55,6 +55,9 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         };
         FrameTxTestFrames.SignSecp256k1(frame, TestItem.PrivateKeyA, frame.SenderAddress);
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        // The list commits to a mempool wrapper proof this builder holds.
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(frame, FrameTxSigHash.ComputeValue);
+        store.AddVerified(dependencies, null, [1]);
         FakeLeanProofVerifier verifier = new(true);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, store);
@@ -64,7 +67,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             {
                 Transactions = [TxDecoder.Instance.Encode(legacy, RlpBehaviors.SkipTypedWrapping).Bytes,
                     TxDecoder.Instance.Encode(frame, RlpBehaviors.SkipTypedWrapping).Bytes],
-                StarkProof = [1]
+                RecursiveStark = new RecursiveStarkV1 { StarkProofHash = Keccak.Compute([1]), DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)) }
             }]
         };
         source.Set(attributes.CombinedInclusionListTransactions!, spec, attributes.InclusionLists);

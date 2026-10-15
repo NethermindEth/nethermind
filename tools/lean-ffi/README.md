@@ -296,34 +296,45 @@ fragments of one RLPx object.
 
 ## Proof-bearing inclusion lists
 
-A signed inclusion list commits to `recursive_stark = [stark_proof_hash, deps_hash]`, or null;
-the proof itself is a separate consensus-layer object fetched by hash. Attesters verify a
-received proof with `engine_verifyInclusionListProofV1(transactions, depsHash, starkProof)`,
-which returns `{status: VALID|INVALID, validationError}`. Its `deps` is the union over the
-entries that decode and pass EIP-8141/EIP-8288 static validity; other entries contribute none.
-The proof is valid only if `deps` is nonempty, `depsHash == get_deps_hash(deps)`, and a
-nonempty proof within `MAX_AGGREGATE_PROOF_BYTES` verifies against it. Verdicts are cached
-per backend by `(keccak256(proof), deps_hash)` in a bounded 4,096-entry cache shared with
-mempool wrapper checks.
+A signed inclusion list commits to `recursive_stark = [stark_proof_hash, deps_hash]`, or null.
+The committed proof usually is a mempool wrapper's, which other nodes already hold, and may
+cover a superset of the list's dependencies; otherwise it travels as an
+`il_proof = [stark_proof, proof_deps]`. A commitment is valid when this node holds a verified
+proof under the pair whose `proof_deps` contain the list's `deps`, the union over entries that
+decode and pass EIP-8141/EIP-8288 static validity. The bounded verdict cache, keyed by
+`(keccak256(proof), deps_hash)` and shared with mempool wrapper checks, keeps each verified
+proof's `proof_deps`, so checking a commitment to a held wrapper proof is a lookup and subset
+test with no verification.
+
+`engine_verifyInclusionListProofV1(transactions, recursiveStark, ilProof|null)` returns
+`{status, validationError}`: `VALID` when such a proof is held or the supplied matching
+`il_proof` verifies (it is then retained for building), `INVALID` when the known `proof_deps`
+omit a list dependency or the matching proof fails, and `PROOF_UNKNOWN` otherwise; an
+`il_proof` that does not match the commitment is ignored.
+`engine_getInclusionListProofV1(starkProofHash)` returns the held `il_proof`, from a validated
+mode-1 wrapper or a verified `il_proof`, or null. A proof answered `VALID` is copied into the
+bounded generated-proof cache, so it stays servable and available to builders through the slot.
 
 With both EIP-8288 and EIP-7805 active, `engine_forkchoiceUpdatedV6` accepts
 `PayloadAttributesV6.inclusionLists` and `engine_newPayloadV7` receives separate
 `InclusionListV1` entries in strictly increasing committee-position order. Each entry carries
-`committeeIndex`, `transactions`, and `starkProof`: the committed proof, or null for a null
-commitment. Earlier API versions retain their existing formats. The execution client assumes
-the consensus client supplies the lists counted by EIP-7805, including each committed list's
-proof; it does not authenticate consensus-layer signatures.
+`committeeIndex`, `transactions`, and `recursiveStark: {starkProofHash, depsHash}` or null.
+Earlier API versions retain their existing formats. The execution client assumes the consensus
+client supplies the lists counted by EIP-7805; it does not authenticate consensus-layer
+signatures.
 
 Obligations follow from signed data alone: a committed list obligates every statically valid
-entry, a null commitment only its dependency-free entries. Request bounds (positions, sizes, a
-proof above `MAX_AGGREGATE_PROOF_BYTES`) fail the call; an undecodable entry or an unusable
-proof only affects its own list. Builders fold each committed list's proof that verifies into
-the block aggregate; a proof that is missing or does not verify removes no obligation, so a
-builder without other coverage for those entries cannot satisfy the list, a liveness failure.
-`getPayload` does not echo inclusion-list proofs.
+entry, a null commitment only its dependency-free entries. Request bounds (positions, sizes, an
+incomplete commitment) fail the call; an undecodable entry or a commitment to a proof this node
+does not hold only affects its own list. Builders fold each committed proof they hold into the
+block aggregate whole and discard the dependencies their block does not need, so the block
+proof stays exact; a proof they do not hold removes no obligation, so a builder without other
+coverage for those entries cannot satisfy the list, a liveness failure. `getPayload` does not
+echo inclusion-list commitments.
 
 `eth_sendProofInclusionList` remains a local mempool submission path for a self-contained
-`[transactions, [stark_proof, deps_hash]]` package; it creates no inclusion obligation.
+`[transactions, [stark_proof, deps_hash]]` package with a proof of exactly its dependencies; it
+creates no inclusion obligation.
 `engine_getInclusionListV1` keeps its existing non-frame sampling and returns transaction
 bytes only; constructing and signing a list with its proof remains a consensus-layer
 integration requirement.
@@ -331,10 +342,12 @@ integration requirement.
 Legacy inclusion sources and producers without an inclusion source use mutually exclusive
 decoding fallbacks; the proof-aware source overrides that path with its prepared snapshot.
 
-Builder liveness needs a per-step fan-in of `IL_COMMITTEE_SIZE + 1` recursive inputs and a
-per-step discard bound of 1,344 dependencies. The pinned guest folds two recursive inputs per
-step and discards at most 256, so the managed aggregator reaches these through a binary tree,
-at the cost of extra proving rounds; a conforming activation profile must meet them in one step.
+Builder liveness needs a per-step fan-in of up to `IL_COMMITTEE_SIZE + 1` recursive inputs (the
+running wrapper aggregate plus freshly proven list proofs) and a per-step discard bound of at least
+the sum of the step's input dependency lists. The pinned guest folds two recursive inputs per step
+and discards at most 256 dependencies, so the managed aggregator reaches these through a binary
+tree, pruning each child separately, at the cost of extra proving rounds; a conforming activation
+profile must meet them in one step.
 
 The separate [frame/FOCIL PR #13590](https://github.com/NethermindEth/nethermind/pull/13590)
 adds per-includer VERIFY budgets, claimed evaluation positions and BAL replay. It overlaps

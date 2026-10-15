@@ -192,7 +192,7 @@ public class ProofInclusionListEnforcementTests
         byte[] inclusionProof = scenario is "bounded-proof" or "generic-compressed-union"
             ? LeanProofTestEnvelope.CreateMaximal(inclusionDependencies) : LeanProofTestEnvelope.Create(inclusionDependencies, 0);
         block.InclusionLists = [new CommitteeInclusionList(0, block.InclusionListTransactions!, scenario == "null-commitment" ? null
-            : generic ? inclusionProof : [1])];
+            : new InclusionListCommitment(ValueKeccak.Compute(generic ? inclusionProof : [1]), Eip8288Dependencies.ComputeDepsHash(inclusionDependencies)))];
         (ulong, ulong)? originalDimensions = block.Header.GasUsedPerDimension;
         ulong originalGasUsed = block.GasUsed;
         UInt256 balance = state.GetBalance(sender);

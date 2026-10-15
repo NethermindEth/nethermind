@@ -27,27 +27,14 @@ public static class Eip8288Constants
     /// envelope are refused locally, never treated as invalid.</remarks>
     public const int MaxProofDependencies = 256;
 
-    /// <summary>Minimum encoded size of a frame transaction beyond its dependency triples, in bytes.</summary>
-    public const int MinFrameTransactionOverheadBytes = 52;
-
-    /// <summary>Dependencies one <c>MAX_BYTES_PER_INCLUSION_LIST</c> list can hold: 84, as each takes 96 bytes of frame data
-    /// after a frame transaction's minimum 52 further bytes.</summary>
-    public const int MaxDependenciesPerInclusionList =
-        (Eip7805Constants.MaxBytesPerInclusionList - MinFrameTransactionOverheadBytes) / DependencyTripleLength;
-
-    /// <summary>EIP-8288 floor on the aggregate circuit's per-step recursive fan-in for EIP-7805 builder liveness: the
-    /// <c>IL_COMMITTEE_SIZE</c> inclusion-list proofs plus the builder's running aggregate of its mempool wrappers.</summary>
-    /// <remarks>The pinned prototype guest folds two recursive inputs per step (see <see cref="MaxProofDependencies"/>), so the
-    /// managed aggregator reaches this fan-in through a binary tree, costing extra proving rounds on the critical path. A
-    /// conforming activation profile must accept this many inputs in one step.</remarks>
+    /// <summary>EIP-8288 per-step recursive fan-in for EIP-7805 builder liveness when every inclusion list is freshly proven: the
+    /// <c>IL_COMMITTEE_SIZE</c> list proofs plus the builder's running aggregate of its mempool wrappers.</summary>
+    /// <remarks>Lists usually commit to wrapper proofs already folded into the running aggregate. The pinned prototype guest
+    /// folds two recursive inputs per step, so the managed aggregator reaches this fan-in through a binary tree, costing extra
+    /// proving rounds on the critical path. Its per-step discard bound, at most <see cref="MaxProofDependencies"/>, is also below
+    /// EIP-8288's, which is the sum of the step's input dependency lists; the managed aggregator prunes each child separately.</remarks>
     public const int MinRecursiveFanInPerStep = Eip7805Constants.InclusionListCommitteeSize + 1;
 
-    /// <summary>EIP-8288 floor on the aggregate circuit's per-step discard bound: the dependencies of
-    /// <c>IL_COMMITTEE_SIZE</c> full inclusion lists, 1,344, since a builder may legitimately exclude any of their
-    /// transactions.</summary>
-    /// <remarks>The pinned prototype guest discards at most <see cref="MaxProofDependencies"/> per step; the managed aggregator
-    /// prunes each child separately, so larger discard sets fold over several steps rather than in one.</remarks>
-    public const int MinDiscardsPerStep = Eip7805Constants.InclusionListCommitteeSize * MaxDependenciesPerInclusionList;
     public const int MaxGenericStarkProofs = 16;
     public const int MaxLeanStarkInstructions = 2048;
     public const int MaxInclusionListDependencyBytes = MaxProofDependencies * DependencyTripleLength;

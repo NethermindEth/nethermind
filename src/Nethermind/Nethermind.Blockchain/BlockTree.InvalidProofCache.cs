@@ -49,7 +49,7 @@ public partial class BlockTree
             ValueHash256 hash = block.Hash!.ValueHash256;
             _knownInvalid.Set(hash);
             if ((block.StarkProof?.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes ||
-                block.InclusionLists is { Count: > Eip7805Constants.InclusionListCommitteeSize } || HasOversizedListProof(block))
+                block.InclusionLists is { Count: > Eip7805Constants.InclusionListCommitteeSize })
             {
                 Delete(hash);
                 return;
@@ -75,28 +75,8 @@ public partial class BlockTree
             _proofBytes -= ProofBytes(node.Value);
         }
 
-        public static long ProofBytes(Block block)
-        {
-            long bytes = block.StarkProof?.Length ?? 0;
-            foreach (CommitteeInclusionList list in block.InclusionLists ?? []) bytes += list.StarkProof?.Length ?? 0;
-            return bytes;
-        }
-
-        private static bool HasOversizedListProof(Block block)
-        {
-            foreach (CommitteeInclusionList list in block.InclusionLists ?? [])
-                if ((list.StarkProof?.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes) return true;
-            return false;
-        }
-
-        private static CommitteeInclusionList[]? Copy(IReadOnlyList<CommitteeInclusionList>? lists)
-        {
-            if (lists is null) return null;
-            CommitteeInclusionList[] copy = new CommitteeInclusionList[lists.Count];
-            for (int i = 0; i < copy.Length; i++)
-                copy[i] = new(lists[i].CommitteeIndex, lists[i].Transactions, (byte[]?)lists[i].StarkProof?.Clone());
-            return copy;
-        }
+        // Inclusion lists carry only their commitments, so the body proof is the only proof buffer.
+        public static long ProofBytes(Block block) => block.StarkProof?.Length ?? 0;
 
         private static Block Snapshot(Block block)
         {
@@ -108,7 +88,7 @@ public partial class BlockTree
                 GeneratedBlockAccessList = block.GeneratedBlockAccessList,
                 ExecutionRequests = block.ExecutionRequests,
                 InclusionListTransactions = block.InclusionListTransactions,
-                InclusionLists = Copy(block.InclusionLists),
+                InclusionLists = block.InclusionLists,
                 IsInclusionListSatisfied = block.IsInclusionListSatisfied,
                 AccountChanges = block.AccountChanges,
                 EncodedSize = block.EncodedSize,

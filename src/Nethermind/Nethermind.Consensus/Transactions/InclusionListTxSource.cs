@@ -111,7 +111,7 @@ public class InclusionListTxSource(
             decodedLists = new CommitteeInclusionList[lists.Length];
             for (int i = 0; i < lists.Length; i++)
                 decodedLists[i] = new CommitteeInclusionList(lists[i].CommitteeIndex,
-                    _decoder.Value.DecodeAndRecover(lists[i].Transactions!, spec), lists[i].StarkProof);
+                    _decoder.Value.DecodeAndRecover(lists[i].Transactions!, spec), lists[i].RecursiveStark?.ToCommitment());
             transactions = CommitteeInclusionList.Flatten(decodedLists);
         }
         Transaction[] eligible = transactions;
@@ -120,20 +120,15 @@ public class InclusionListTxSource(
         {
             // Obligations follow from each list's signed commitment alone (EIPs#12475).
             eligible = InclusionListProofValidator.SelectEligible(transactions, decodedLists, spec);
-            List<RecursiveProofInput> proven = InclusionListProofValidator.ProvenInputs(decodedLists ?? [], proofVerifier, spec,
+            // Committed proofs are usually mempool wrapper proofs covering a superset of the list; the block aggregation discards
+            // whatever the block does not need, so the block proof stays exact. This build snapshot owns the proof copies.
+            List<RecursiveProofInput> proven = InclusionListProofValidator.ProvenInputs(decodedLists ?? [], proofVerifier, spec, proofStore,
                 out List<ulong> unusable);
             // A committed list still obligates its dependency-bearing entries; without its proof they need other coverage,
             // and a block that cannot cover them fails the list: a liveness failure, not an omission ground.
             if (unusable.Count > 0 && _logger.IsWarn)
-                _logger.Warn($"Inclusion lists {string.Join(", ", unusable)} commit to proofs that do not verify; their dependency-bearing transactions stay obligated.");
-            if (proven.Count > 0)
-            {
-                // This private build snapshot retains coverage independently of a full shared cache.
-                proofInput = new AggregationInput { RecursiveProofs = proven };
-                foreach (RecursiveProofInput parent in proven)
-                    proofStore?.AddVerified(parent.InnerDeps, null, MemoryMarshal.TryGetArray(parent.Proof, out ArraySegment<byte> proof)
-                        && proof.Offset == 0 && proof.Count == proof.Array!.Length ? proof.Array : parent.Proof.ToArray());
-            }
+                _logger.Warn($"Inclusion lists {string.Join(", ", unusable)} commit to proofs this node does not hold; their dependency-bearing transactions stay obligated.");
+            if (proven.Count > 0) proofInput = new AggregationInput { RecursiveProofs = proven };
         }
         Transaction[] ordered = OrderForProduction(FilterBlobs((Transaction[])eligible.Clone()));
         return new(transactions, decodedLists, System.Array.AsReadOnly(ordered), proofInput);

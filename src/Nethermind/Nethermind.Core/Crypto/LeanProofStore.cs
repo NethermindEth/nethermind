@@ -488,6 +488,44 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         return false;
     }
 
+    /// <summary>Retrieves a held recursive proof by its <c>(stark_proof_hash, deps_hash)</c> pair, with its <c>proof_deps</c>.</summary>
+    /// <remarks>EIP-8288 inclusion lists commit to such a pair, usually naming a mempool wrapper's proof whose dependencies are
+    /// a superset of the list's.</remarks>
+    public bool TryGetRecursiveProof(in ValueHash256 proofHash, in ValueHash256 depsHash, out byte[]? proof, out FrameDependency[]? dependencies)
+    {
+        lock (_lock)
+        {
+            ProofRecord? match = _recursiveByDeps.TryGetValue(depsHash, out ProofRecord? cached) && cached.RecursiveInput.ProofHash == proofHash
+                ? cached : FindRecursive(proofHash, depsHash);
+            proof = (byte[]?)match?.RecursiveProof!.Clone();
+            dependencies = match?.Dependencies;
+            return match is not null;
+        }
+    }
+
+    /// <summary>Retrieves a held recursive proof by <c>stark_proof_hash</c> alone, as <c>engine_getInclusionListProofV1</c> serves
+    /// an <c>il_proof</c>.</summary>
+    public bool TryGetRecursiveProof(in ValueHash256 proofHash, out byte[]? proof, out FrameDependency[]? dependencies)
+    {
+        lock (_lock)
+        {
+            ProofRecord? match = FindRecursive(proofHash, null);
+            proof = (byte[]?)match?.RecursiveProof!.Clone();
+            dependencies = match?.Dependencies;
+            return match is not null;
+        }
+    }
+
+    private ProofRecord? FindRecursive(in ValueHash256 proofHash, ValueHash256? depsHash)
+    {
+        foreach (ProofRecord record in _recursiveCache)
+            if (record.RecursiveInput.ProofHash == proofHash && (depsHash is null || record.DependencyHash == depsHash)) return record;
+        foreach (ProofRecord record in _identities.Values)
+            if (record.RecursiveProof is not null && record.RecursiveInput.ProofHash == proofHash
+                && (depsHash is null || record.DependencyHash == depsHash)) return record;
+        return null;
+    }
+
     /// <summary>Collects direct and recursive witnesses, discarding dependencies outside the requested set.</summary>
     public bool TryGetInput(IReadOnlyList<FrameDependency> dependencies, out AggregationInput input)
     {

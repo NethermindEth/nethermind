@@ -577,8 +577,10 @@ public class Eip8288BlockProductionTests
         Assert.That(processed.StarkProof, Is.Empty);
     }
 
+    // EIP-8288 Test Case 11: an inclusion-list proof may cover a superset of its list (a committed mempool wrapper proof); it is
+    // merged into the block proof with the surplus discarded, and block_deps_hash covers exactly dependencies(block).
     [Test]
-    public async Task Owned_inclusion_list_witnesses_produce_when_the_shared_store_is_full()
+    public async Task Owned_inclusion_list_witnesses_produce_when_the_shared_store_is_full([Values] bool superset)
     {
         CountingVerifier verifier = new();
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
@@ -602,9 +604,11 @@ public class Eip8288BlockProductionTests
         Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
         Assert.That(proofs.Covers(transaction), Is.False);
         Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
+        FrameDependency surplus = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("wrapper-surplus"), default);
+        FrameDependency[] committed = superset ? [.. Eip8288Dependencies.Canonicalize([dependency, surplus])] : [dependency];
         BlockToProduce producing = new(template!.Header, [transaction], [], template.Withdrawals)
         {
-            InclusionListProofInput = new() { RecursiveProofs = [new([dependency], Eip8288Dependencies.ComputeDepsHash([dependency]).ToByteArray())] }
+            InclusionListProofInput = new() { RecursiveProofs = [new(committed, Eip8288Dependencies.ComputeDepsHash(committed).ToByteArray())] }
         };
         int proofCallsBefore = verifier.ProofCalls;
         int verificationCallsBefore = verifier.RecursiveVerificationCalls;
@@ -616,8 +620,12 @@ public class Eip8288BlockProductionTests
             Assert.That(processed!.Transactions, Is.EqualTo((Transaction[])[transaction]));
             Assert.That(Eip8288Dependencies.ForBlock(processed, FrameTxSigHash.ComputeValue), Is.EqualTo((FrameDependency[])[dependency]));
             Assert.That(processed.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency]))));
-            Assert.That(processed.StarkProof, Is.EqualTo(producing.InclusionListProofInput!.RecursiveProofs[0].Proof.ToArray()));
-            Assert.That(verifier.ProofCalls, Is.EqualTo(proofCallsBefore), "the unchanged verified IL statement needs no new proof");
+            if (superset) Assert.That(verifier.ProofCalls, Is.GreaterThan(proofCallsBefore), "discarding the surplus needs a new proof");
+            else
+            {
+                Assert.That(processed.StarkProof, Is.EqualTo(producing.InclusionListProofInput!.RecursiveProofs[0].Proof.ToArray()));
+                Assert.That(verifier.ProofCalls, Is.EqualTo(proofCallsBefore), "the unchanged verified IL statement needs no new proof");
+            }
             Assert.That(verifier.RecursiveVerificationCalls, Is.GreaterThan(verificationCallsBefore));
             Assert.That(proofs.Covers(transaction), Is.False, "production owns the verified IL witness without evicting pending pool coverage");
         }

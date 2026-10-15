@@ -203,6 +203,7 @@ public class BaseMergePluginModule : Module
                 .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
                 .AddSingleton<IHandler<Hash256?, InclusionListBytes>, GetInclusionListTransactionsHandler>()
                 .AddSingleton<IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>, VerifyInclusionListProofHandler>()
+                .AddSingleton<IHandler<Hash256, InclusionListProofV1?>, GetInclusionListProofHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<IGCStrategy>(ctx => ctx.Resolve<IInitConfig>().DisableGcOnNewPayload

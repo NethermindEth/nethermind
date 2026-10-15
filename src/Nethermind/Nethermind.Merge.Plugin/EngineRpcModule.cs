@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
@@ -51,7 +52,8 @@ public partial class EngineRpcModule(
     IBlockProcessingQueue processingQueue,
     ILogManager logManager,
     IBlockTree blockTree,
-    IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>? verifyInclusionListProofHandler = null) : IEngineRpcModule
+    IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>? verifyInclusionListProofHandler = null,
+    IHandler<Hash256, InclusionListProofV1?>? getInclusionListProofHandler = null) : IEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>

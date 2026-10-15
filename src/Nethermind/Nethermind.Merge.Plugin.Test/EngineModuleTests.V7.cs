@@ -1079,38 +1079,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task Inclusion_list_cache_limits_syncing_proof_bytes()
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
-            new MergeConfig { TerminalTotalDifficulty = "0" });
-        EngineRpcModule rpc = (EngineRpcModule)chain.EngineRpcModule;
-        // The budget counts each list's proof length, so every list can share one buffer.
-        byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
-        InclusionListV1[] lists = Enumerable.Range(0, Eip7805Constants.InclusionListCommitteeSize)
-            .Select(i => new InclusionListV1 { CommitteeIndex = (ulong)i, Transactions = [], StarkProof = proof }).ToArray();
-        int fitting = (int)(EngineRpcModule.MaxRetainedSyncingInclusionListProofBytes
-            / ((long)Eip7805Constants.InclusionListCommitteeSize * Eip8288Constants.MaxAggregateProofBytes));
-        Hash256 accepted = Keccak.Compute("accepted-tip");
-        Hash256[] syncing = Enumerable.Range(0, fitting + 1).Select(static i => Keccak.Compute(BitConverter.GetBytes(i))).ToArray();
-
-        rpc.SetRetainedInclusionList(accepted, 1, [], accepted: true, lists);
-        foreach (Hash256 hash in syncing) rpc.SetRetainedInclusionList(hash, 1, [], accepted: false, lists);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rpc.RetainedInclusionListCount, Is.EqualTo(fitting + 1));
-            Assert.That(rpc.HasRetainedInclusionList(accepted), Is.True, "accepted entries are outside the budget");
-            Assert.That(rpc.HasRetainedInclusionList(syncing[0]), Is.False);
-            Assert.That(rpc.HasRetainedInclusionList(syncing[^1]), Is.True);
-        }
-
-        // An entry that leaves the cache returns its bytes, so the next one fits without another eviction.
-        rpc.SetInclusionListAnswer(syncing[^1], 1, true);
-        rpc.SetRetainedInclusionList(Keccak.Compute("next"), 1, [], accepted: false, lists);
-        Assert.That(rpc.HasRetainedInclusionList(syncing[1]), Is.True);
-    }
-
-    [Test]
     public async Task Inclusion_list_cache_limits_answers_without_finality()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,

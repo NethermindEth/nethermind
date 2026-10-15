@@ -30,7 +30,7 @@ public class SszCodecTests
     public void Ssz_payload_rejects_unrepresentable_proof_fields(bool inclusionProof)
     {
         ExecutionPayloadV4 payload = new();
-        if (inclusionProof) payload.InclusionLists = [new InclusionListV1 { Transactions = [], StarkProof = [1] }];
+        if (inclusionProof) payload.InclusionLists = [new InclusionListV1 { Transactions = [], RecursiveStark = new() { StarkProofHash = Keccak.Zero, DepsHash = Keccak.Zero } }];
         else payload.RecursiveStarkProof = [1];
         Assert.That(() => new SszExecutionPayloadV4(payload), Throws.TypeOf<NotSupportedException>());
     }
@@ -47,7 +47,7 @@ public class SszCodecTests
     {
         Block block = Build.A.Block.TestObject;
         byte[] proof = [1];
-        if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], proof)];
+        if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], new InclusionListCommitment(Keccak.Compute(proof).ValueHash256, default))];
         else
         {
             block.StarkProof = proof;

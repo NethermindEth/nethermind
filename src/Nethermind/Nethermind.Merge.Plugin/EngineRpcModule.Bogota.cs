@@ -21,7 +21,7 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     /// <summary>An inclusion list retained for a payload that could not yet be validated.</summary>
-    private readonly record struct RetainedInclusionList(ulong Number, byte[][] Transactions, bool Accepted, InclusionListV1[]? Lists, long ProofBytes);
+    private readonly record struct RetainedInclusionList(ulong Number, byte[][] Transactions, bool Accepted, InclusionListV1[]? Lists);
     private readonly record struct InclusionListAnswer(ulong Number, bool Satisfied);
 
     private readonly Dictionary<Hash256, InclusionListAnswer> _inclusionListAnswers = [];
@@ -33,10 +33,6 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly InclusionListInsertionOrder _inclusionListAnswerOrder = new();
     private readonly IBlockTree _inclusionListBlockTree = blockTree;
     private const int MaxRetainedSyncingInclusionLists = 64;
-    // Each entry can carry IL_COMMITTEE_SIZE maximum proofs, so the count cap alone no longer bounds memory; this keeps
-    // the worst case at what the cap allowed when an entry held one proof.
-    internal const long MaxRetainedSyncingInclusionListProofBytes = MaxRetainedSyncingInclusionLists * (long)Eip8288Constants.MaxAggregateProofBytes;
-    private long _retainedSyncingInclusionListProofBytes;
     private const int MaxInclusionListAnswers = 256;
     private ulong _finalizedInclusionListNumber;
     private Hash256? _finalizedInclusionListHash;
@@ -51,8 +47,13 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null)
         => getInclusionListTransactionsHandler.Handle(parentBlockHash);
 
-    public ResultWrapper<InclusionListProofStatusV1> engine_verifyInclusionListProofV1(byte[][] transactions, Hash256 depsHash, byte[] starkProof)
-        => verifyInclusionListProofHandler?.Handle(new VerifyInclusionListProofRequest(transactions, depsHash, starkProof))
+    public ResultWrapper<InclusionListProofV1?> engine_getInclusionListProofV1(Hash256 starkProofHash)
+        => getInclusionListProofHandler?.Handle(starkProofHash)
+            ?? ResultWrapper<InclusionListProofV1?>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
+
+    public ResultWrapper<InclusionListProofStatusV1> engine_verifyInclusionListProofV1(byte[][] transactions, RecursiveStarkV1 recursiveStark,
+        InclusionListProofV1? ilProof = null)
+        => verifyInclusionListProofHandler?.Handle(new VerifyInclusionListProofRequest(transactions, recursiveStark, ilProof))
             ?? ResultWrapper<InclusionListProofStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
 
     public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
@@ -251,14 +252,11 @@ public partial class EngineRpcModule : IEngineRpcModule
             RemoveInclusionListAnswer(blockHash);
             if (!IsAfterFinalization(blockHash, number)) return;
             RemoveRetainedInclusionList(blockHash);
-            RetainedInclusionList entry = new(number, retained, accepted, lists, ProofBytes(lists));
-            _retainedInclusionLists[blockHash] = entry;
+            _retainedInclusionLists[blockHash] = new(number, retained, accepted, lists);
             if (!accepted)
             {
                 _syncingInclusionListOrder.Add(blockHash);
-                _retainedSyncingInclusionListProofBytes += entry.ProofBytes;
-                while (_syncingInclusionListOrder.Count > MaxRetainedSyncingInclusionLists
-                    || _retainedSyncingInclusionListProofBytes > MaxRetainedSyncingInclusionListProofBytes)
+                while (_syncingInclusionListOrder.Count > MaxRetainedSyncingInclusionLists)
                     RemoveRetainedInclusionList(_syncingInclusionListOrder.Oldest);
             }
         }
@@ -324,16 +322,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     private void RemoveRetainedInclusionList(Hash256 blockHash)
     {
         if (!_retainedInclusionLists.Remove(blockHash, out RetainedInclusionList entry)) return;
-        if (entry.Accepted) return;
-        _syncingInclusionListOrder.Remove(blockHash);
-        _retainedSyncingInclusionListProofBytes -= entry.ProofBytes;
-    }
-
-    private static long ProofBytes(InclusionListV1[]? lists)
-    {
-        long bytes = 0;
-        foreach (InclusionListV1 list in lists ?? []) bytes += list.StarkProof?.Length ?? 0;
-        return bytes;
+        if (!entry.Accepted) _syncingInclusionListOrder.Remove(blockHash);
     }
 
     private void AddInclusionListAnswer(Hash256 blockHash, ulong number, bool satisfied)

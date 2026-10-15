@@ -75,21 +75,21 @@ public class ProofInclusionListPayloadTests
     [TestCase("descending-position", true)]
     [TestCase("position-out-of-range", true)]
     [TestCase("oversized-list", true)]
-    [TestCase("oversized-proof", true)]
-    // EIPs#12475: an undecodable entry or an unusable proof is scoped to its list: the entry contributes nothing and the proof
-    // is not aggregated, while obligations follow from the commitment, so it must not fail the request for every other list.
+    [TestCase("incomplete-commitment", true)]
+    // EIPs#12475: an undecodable entry or a commitment to a proof this node does not hold is scoped to its list: the entry
+    // contributes nothing and no proof is aggregated, while obligations follow from the commitment, so it must not fail the
+    // request for every other list.
     [TestCase("empty-transaction", false)]
-    [TestCase("empty-proof", false)]
-    [TestCase("proof-for-empty-dependencies", false)]
+    [TestCase("unheld-proof", false)]
+    [TestCase("commitment-for-empty-dependencies", false)]
     [TestCase("null-commitment", false)]
     public void List_shape_is_checked_at_each_entry_point(string invalidShape, bool rejected)
     {
-        byte[]? proof = invalidShape switch
+        RecursiveStarkV1? proof = invalidShape switch
         {
             "null-commitment" => null,
-            "empty-proof" => [],
-            "oversized-proof" => new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
-            _ => [1]
+            "incomplete-commitment" => new RecursiveStarkV1 { DepsHash = TestItem.KeccakB },
+            _ => new RecursiveStarkV1 { StarkProofHash = TestItem.KeccakA, DepsHash = TestItem.KeccakB }
         };
         InclusionListV1[] lists = invalidShape switch
         {
@@ -100,7 +100,7 @@ public class ProofInclusionListPayloadTests
             "missing-transaction" => [new() { Transactions = [null!] }],
             "empty-transaction" => [new() { Transactions = [[]] }],
             "oversized-list" => [new() { Transactions = [new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]] }],
-            _ => [new() { Transactions = [], StarkProof = proof }]
+            _ => [new() { Transactions = [], RecursiveStark = proof }]
         };
         string? listError = InclusionListV1.Validate(lists);
         Assert.That(listError is not null, Is.EqualTo(rejected));
@@ -128,7 +128,7 @@ public class ProofInclusionListPayloadTests
         Transaction second = Build.A.Transaction.WithNonce(2).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         InclusionListV1[] lists =
         [
-            new() { CommitteeIndex = 1, Transactions = [Encode(first), [0xc0]], StarkProof = [1] },
+            new() { CommitteeIndex = 1, Transactions = [Encode(first), [0xc0]], RecursiveStark = new() { StarkProofHash = TestItem.KeccakA, DepsHash = TestItem.KeccakB } },
             new() { CommitteeIndex = 2, Transactions = [Encode(second)] }
         ];
         Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -143,8 +143,8 @@ public class ProofInclusionListPayloadTests
             Assert.That(decoded.InclusionLists, Has.Count.EqualTo(2));
             Assert.That(decoded.InclusionLists![0].CommitteeIndex, Is.EqualTo(1));
             Assert.That(decoded.InclusionLists[0].Transactions.Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 1 }), "an undecodable entry is dropped");
-            Assert.That(decoded.InclusionLists[0].StarkProof!, Is.EqualTo(new byte[] { 1 }));
-            Assert.That(decoded.InclusionLists[1].StarkProof, Is.Null);
+            Assert.That(decoded.InclusionLists[0].Commitment, Is.EqualTo(new InclusionListCommitment(TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256)));
+            Assert.That(decoded.InclusionLists[1].Commitment, Is.Null);
             Assert.That(decoded.InclusionListTransactions!.Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 1, 2 }));
             Assert.That(decoded.WithReplacedHeader(decoded.Header.Clone()).InclusionLists, Is.SameAs(decoded.InclusionLists));
         }
@@ -154,7 +154,7 @@ public class ProofInclusionListPayloadTests
     public void Compliance_digest_binds_list_split_positions_and_commitments()
     {
         Transaction a = new() { Hash = TestItem.KeccakA }, b = new() { Hash = TestItem.KeccakB };
-        byte[] proof = [1];
+        InclusionListCommitment proof = new(TestItem.KeccakC.ValueHash256, TestItem.KeccakD.ValueHash256);
         static ValueHash256 Digest(params CommitteeInclusionList[] lists)
         {
             Block block = Build.A.Block.TestObject;
@@ -171,8 +171,9 @@ public class ProofInclusionListPayloadTests
             Assert.That(Digest(new CommitteeInclusionList(0, [a, b], proof)), Is.Not.EqualTo(original), "list split");
             Assert.That(Digest(new(5, [a], proof), new(1, [b], null)), Is.Not.EqualTo(original), "committee position");
             Assert.That(Digest(new(0, [a], null), new(1, [b], proof)), Is.Not.EqualTo(original), "which list is committed");
-            // EIPs#12475: obligations follow from the commitment alone, so the proof bytes cannot change the verdict.
-            Assert.That(Digest(new(0, [a], [2]), new(1, [b], null)), Is.EqualTo(original), "proof bytes");
+            // EIPs#12475: obligations follow from whether a list is committed, not from which proof it names.
+            Assert.That(Digest(new(0, [a], new InclusionListCommitment(TestItem.KeccakE.ValueHash256, default)), new(1, [b], null)),
+                Is.EqualTo(original), "committed proof");
         }
     }
 
@@ -181,7 +182,7 @@ public class ProofInclusionListPayloadTests
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         static InclusionListV1 List(ulong index, byte proof) =>
-            new() { CommitteeIndex = index, Transactions = [[0x01]], StarkProof = [proof] };
+            new() { CommitteeIndex = index, Transactions = [[0x01]], RecursiveStark = new() { StarkProofHash = Keccak.Compute([proof]), DepsHash = TestItem.KeccakB } };
         string original = Attributes([List(0, 1)]).GetPayloadId(parent);
         using (Assert.EnterMultipleScope())
         {

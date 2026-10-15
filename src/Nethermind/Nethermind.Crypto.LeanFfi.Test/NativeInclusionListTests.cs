@@ -59,16 +59,19 @@ public class NativeInclusionListTests
         NativeLeanProofVerifierTests.AssertBareStarkProof(proofBytes, dependencies);
         Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proofBytes), Is.True);
         if (scenario == "bad-proof") proofBytes[^1] ^= 1;
+        // The builder holds the committed proof, as from a validated mode-1 wrapper.
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddCachedRecursive(dependencies, proofBytes);
         PayloadAttributes attributes = new()
         {
             InclusionLists = [new InclusionListV1
             {
                 Transactions = InclusionListDecoder.Encode([ordinary, bad, covered]),
-                StarkProof = proofBytes
+                RecursiveStark = new RecursiveStarkV1 { StarkProofHash = Keccak.Compute(proofBytes), DepsHash = new Hash256(commitment) }
             }]
         };
         InclusionListTxSource source = new(new EthereumEcdsa(chain.SpecProvider.ChainId), chain.SpecProvider,
-            LimboLogs.Instance, NativeLeanProofVerifier.Instance);
+            LimboLogs.Instance, NativeLeanProofVerifier.Instance, store);
         source.Set(attributes.CombinedInclusionListTransactions!, spec, attributes.InclusionLists);
         BlockToProduce block = new(Build.A.BlockHeader.WithNumber(1).WithGasLimit(30_000_000).TestObject);
         source.ApplyInclusionList(block, attributes);

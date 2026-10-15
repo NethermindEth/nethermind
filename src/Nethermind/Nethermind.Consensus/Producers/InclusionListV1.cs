@@ -10,15 +10,37 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Producers;
 
+/// <summary>Engine API <c>RecursiveStarkV1</c>: an inclusion list's signed EIP-8288 <c>recursive_stark = [stark_proof_hash, deps_hash]</c>.</summary>
+public sealed class RecursiveStarkV1
+{
+    public Hash256? StarkProofHash { get; set; }
+
+    /// <summary><c>get_deps_hash(proof_deps)</c> of the committed proof, whose dependencies contain the list's.</summary>
+    public Hash256? DepsHash { get; set; }
+
+    public bool IsComplete => StarkProofHash is not null && DepsHash is not null;
+
+    public InclusionListCommitment ToCommitment() => new(StarkProofHash!.ValueHash256, DepsHash!.ValueHash256);
+}
+
+/// <summary>Engine API <c>InclusionListProofV1</c>: an EIP-8288 <c>il_proof = [stark_proof, proof_deps]</c>.</summary>
+public sealed class InclusionListProofV1
+{
+    public byte[]? StarkProof { get; set; }
+
+    /// <summary>The proof's sorted, deduplicated dependencies, each in the 96-byte encoding.</summary>
+    public byte[][]? ProofDeps { get; set; }
+}
+
 /// <summary>
-/// Engine API <c>InclusionListV1</c>: one counted EIP-7805 inclusion list as EIP-8288's <c>(transactions, stark_proof or null)</c>,
+/// Engine API <c>InclusionListV1</c>: one counted EIP-7805 inclusion list as EIP-8288's <c>[transactions, recursive_stark]</c>,
 /// with the committee position that authenticated it.
 /// </summary>
 /// <remarks>
 /// Carried by <c>engine_newPayloadV7</c> and <c>PayloadAttributesV6</c> once EIP-8288 and EIP-7805 are both active, in place of
 /// the flattened <c>inclusionListTransactions</c>, so the execution layer derives each list's obligations separately
-/// (EIPs#12475). The consensus layer counts a list with a non-null <c>recursive_stark</c> only once its proof verified through
-/// <c>engine_verifyInclusionListProofV1</c>, and must pass that proof here: <c>null</c> means the signed commitment is null.
+/// (EIPs#12475). The consensus layer counts a list with a non-null <c>recursive_stark</c> only once
+/// <c>engine_verifyInclusionListProofV1</c> answered valid, so the execution layer holds the committed proof.
 /// </remarks>
 public sealed class InclusionListV1
 {
@@ -28,17 +50,17 @@ public sealed class InclusionListV1
     /// <summary>The list's EIP-2718 transaction encodings, in order.</summary>
     public byte[][]? Transactions { get; set; }
 
-    /// <summary>The proof the list's signed <c>recursive_stark</c> commits to, or <c>null</c> for a null commitment.</summary>
+    /// <summary>The list's signed <c>recursive_stark</c>, or <c>null</c> for a null commitment.</summary>
     /// <remarks>A non-null value obligates the list's dependency-bearing transactions; with <c>null</c> only its dependency-free
     /// transactions bind.</remarks>
-    public byte[]? StarkProof { get; set; }
+    public RecursiveStarkV1? RecursiveStark { get; set; }
 
     /// <summary>Checks the per-list Engine API bounds: at most one list per committee position, each within
-    /// <c>MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST</c>, and a set proof within <c>MAX_AGGREGATE_PROOF_BYTES</c>.</summary>
+    /// <c>MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST</c>, and a commitment with both hashes when set.</summary>
     /// <remarks>
-    /// An undecodable entry or an unusable proof is left to per-list processing: the entry contributes nothing and the proof is
-    /// not aggregated, while the list's obligations still follow from its commitment (EIPs#12475), so one committee member
-    /// cannot fail the request.
+    /// An undecodable entry or a commitment to a proof this node does not hold is left to per-list processing: the entry
+    /// contributes nothing and the proof is not aggregated, while the list's obligations still follow from its commitment
+    /// (EIPs#12475), so one committee member cannot fail the request.
     /// </remarks>
     /// <returns>The violated bound, or <c>null</c>.</returns>
     public static string? Validate(InclusionListV1[]? lists)
@@ -61,8 +83,7 @@ public sealed class InclusionListV1
                 bytes += transaction.Length;
             }
             if (bytes > Eip7805Constants.MaxBytesPerInclusionList) return "Inclusion list exceeds MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST";
-            if (list.StarkProof is { Length: > Eip8288Constants.MaxAggregateProofBytes })
-                return "Inclusion-list stark_proof exceeds MAX_AGGREGATE_PROOF_BYTES";
+            if (list.RecursiveStark is { IsComplete: false }) return "Inclusion-list recursiveStark must set both hashes";
         }
         return null;
     }
@@ -90,7 +111,7 @@ public sealed class InclusionListV1
         {
             InclusionListV1 list = lists[i];
             decoded[i] = new CommitteeInclusionList(list.CommitteeIndex,
-                TxsDecoder.DecodeTxs(list.Transactions ?? [], skipErrors: true).Transactions, list.StarkProof);
+                TxsDecoder.DecodeTxs(list.Transactions ?? [], skipErrors: true).Transactions, list.RecursiveStark?.ToCommitment());
         }
         return decoded;
     }
@@ -125,7 +146,9 @@ public sealed class InclusionListV1
             {
                 CommitteeIndex = list.CommitteeIndex,
                 Transactions = transactions,
-                StarkProof = list.StarkProof?.AsSpan().ToArray()
+                RecursiveStark = list.RecursiveStark is { } commitment
+                    ? new RecursiveStarkV1 { StarkProofHash = commitment.StarkProofHash, DepsHash = commitment.DepsHash }
+                    : null
             };
         }
         return copy;
@@ -143,8 +166,9 @@ public sealed class InclusionListV1
             if (a.CommitteeIndex != b.CommitteeIndex || (a.Transactions?.Length ?? 0) != (b.Transactions?.Length ?? 0)) return false;
             for (int j = 0; compareTransactions && j < (a.Transactions?.Length ?? 0); j++)
                 if (!a.Transactions![j].AsSpan().SequenceEqual(b.Transactions![j])) return false;
-            if (a.StarkProof is null != b.StarkProof is null) return false;
-            if (a.StarkProof is { } p && !p.AsSpan().SequenceEqual(b.StarkProof)) return false;
+            if (a.RecursiveStark is null != b.RecursiveStark is null) return false;
+            if (a.RecursiveStark is { } p && (p.StarkProofHash != b.RecursiveStark!.StarkProofHash || p.DepsHash != b.RecursiveStark.DepsHash))
+                return false;
         }
         return true;
     }
@@ -165,9 +189,13 @@ public sealed class InclusionListV1
             hash.Update(word);
             foreach (byte[] transaction in list.Transactions ?? []) hash.Update(ValueKeccak.Compute(transaction).Bytes);
             word.Clear();
-            word[^1] = list.StarkProof is null ? (byte)0 : (byte)1;
+            word[^1] = list.RecursiveStark is null ? (byte)0 : (byte)1;
             hash.Update(word);
-            if (list.StarkProof is { } proof) hash.Update(ValueKeccak.Compute(proof).Bytes);
+            if (list.RecursiveStark is { } commitment)
+            {
+                hash.Update((commitment.StarkProofHash ?? Keccak.Zero).Bytes);
+                hash.Update((commitment.DepsHash ?? Keccak.Zero).Bytes);
+            }
         }
         return hash.GenerateValueHash();
     }

@@ -1553,7 +1553,7 @@ public class SszMiddlewareTests
     public async Task GetPayload_proof_extensions_preserve_the_SSZ_response_contract(bool inclusionProof)
     {
         Block block = MakeMinimalBlock();
-        if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], [1])];
+        if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], new InclusionListCommitment(default, default))];
         else
         {
             block.StarkProof = [1];

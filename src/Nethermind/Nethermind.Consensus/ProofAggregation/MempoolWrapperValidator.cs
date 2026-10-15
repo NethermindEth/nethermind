@@ -191,7 +191,7 @@ public static class MempoolWrapperValidator
         }
 
         if (recursiveStark.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxAggregateProofBytes }
-            || !ProofVerdictCache.VerifyRecursive(verifier, in depsHash, recursiveStark.StarkProof))
+            || !ProofVerdictCache.VerifyRecursive(verifier, in depsHash, recursiveStark.StarkProof, wrapper.Deps))
         {
             error = InvalidProof;
             return false;

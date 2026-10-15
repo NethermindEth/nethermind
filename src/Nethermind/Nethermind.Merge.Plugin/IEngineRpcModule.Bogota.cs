@@ -21,10 +21,17 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null);
 
     [JsonRpcMethod(
-        Description = "Verifies a signed inclusion list's committed EIP-8288 dependency proof against its deps_hash and transactions.",
+        Description = "Checks a signed inclusion list's EIP-8288 recursive_stark: VALID when a held verified proof under the commitment covers the list, INVALID when its dependencies omit one of the list's or the supplied il_proof fails, PROOF_UNKNOWN when the proof is not held.",
         IsSharable = true,
         IsImplemented = true)]
-    ResultWrapper<InclusionListProofStatusV1> engine_verifyInclusionListProofV1(byte[][] transactions, Hash256 depsHash, byte[] starkProof);
+    ResultWrapper<InclusionListProofStatusV1> engine_verifyInclusionListProofV1(byte[][] transactions, RecursiveStarkV1 recursiveStark,
+        InclusionListProofV1? ilProof = null);
+
+    [JsonRpcMethod(
+        Description = "Returns the EIP-8288 il_proof [stark_proof, proof_deps] held under a stark_proof_hash, from a validated mode-1 wrapper or a verified il_proof, or null.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<InclusionListProofV1?> engine_getInclusionListProofV1(Hash256 starkProofHash);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status (including inclusion-list compliance) and hash of the last valid block.",

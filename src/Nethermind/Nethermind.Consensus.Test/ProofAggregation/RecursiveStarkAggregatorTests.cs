@@ -325,17 +325,13 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
-    // EIPs#12475: builder liveness needs IL_COMMITTEE_SIZE + 1 recursive inputs per step and discards covering IL_COMMITTEE_SIZE
-    // full lists. The prototype guest folds two inputs per step, so the managed tree reaches the fan-in over several rounds.
+    // EIPs#12475: with every list freshly proven, builder liveness needs IL_COMMITTEE_SIZE + 1 recursive inputs per step, and
+    // discards up to the sum of their dependency lists. The prototype guest folds two inputs per step, so the managed tree
+    // reaches the fan-in over several rounds.
     [Test]
     public void Committee_fan_in_folds_every_inclusion_list_proof_and_the_running_aggregate()
     {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Eip8288Constants.MinRecursiveFanInPerStep, Is.EqualTo(17));
-            Assert.That(Eip8288Constants.MaxDependenciesPerInclusionList, Is.EqualTo(84));
-            Assert.That(Eip8288Constants.MinDiscardsPerStep, Is.EqualTo(1_344));
-        }
+        Assert.That(Eip8288Constants.MinRecursiveFanInPerStep, Is.EqualTo(17));
         List<RecursiveProofInput> recursive = [];
         List<FrameDependency> deps = [];
         for (int i = 0; i < Eip8288Constants.MinRecursiveFanInPerStep; i++)

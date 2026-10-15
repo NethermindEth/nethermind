@@ -32,6 +32,7 @@ public class InclusionListValidatorTests
         ((ForkActivation)0, new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true }));
     private static readonly TxValidator _txValidator = new(TestBlockchainIds.ChainId);
     private static readonly Transaction _validTx = BuildTx();
+    private static readonly InclusionListCommitment Committed = new(TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
 
     [TestCase(false, false)]
     [TestCase(true, false)]
@@ -47,7 +48,7 @@ public class InclusionListValidatorTests
         Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(full ? 30_000_000UL : 0)
             .WithInclusionListTransactions(dependencies ? [transaction] : []).TestObject;
         // A null commitment obligates only dependency-free entries; an empty list binds nothing whatever it commits to.
-        block.InclusionLists = [new CommitteeInclusionList(0, block.InclusionListTransactions!, dependencies ? null : [1])];
+        block.InclusionLists = [new CommitteeInclusionList(0, block.InclusionListTransactions!, dependencies ? null : Committed)];
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
         Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
@@ -241,7 +242,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([entry]).TestObject;
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
-        CommitteeInclusionList[] lists = [new(0, [entry], [1])];
+        CommitteeInclusionList[] lists = [new(0, [entry], Committed)];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(InclusionListProofValidator.SelectEligible([entry], lists, spec), Has.Length.EqualTo(1));
@@ -264,8 +265,8 @@ public class InclusionListValidatorTests
         entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
             UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
         entry.Hash = entry.CalculateHash();
-        List<CommitteeInclusionList> lists = [new(0, [entry], firstCommitted ? [2] : null)];
-        if (secondList) lists.Add(new(9, [entry], [1]));
+        List<CommitteeInclusionList> lists = [new(0, [entry], firstCommitted ? Committed : null)];
+        if (secondList) lists.Add(new(9, [entry], Committed));
         Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).TestObject;
         block.InclusionLists = lists;
         block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);
