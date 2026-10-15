@@ -610,8 +610,12 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return root is not null;
     }
 
+    /// <exception cref="ArgumentException"><paramref name="sszBytes"/> is longer than a stored state may be, so it could never be read back.</exception>
     public void PutState(Hash256 blockRoot, ReadOnlySpan<byte> sszBytes)
     {
+        if (sszBytes.Length > MaxStateBytes)
+            throw new ArgumentException($"A state of {sszBytes.Length} bytes exceeds the {MaxStateBytes}-byte limit.", nameof(sszBytes));
+
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
         IWriteBatch states = batch.GetColumnBatch(BeaconChainDbColumns.States);
         IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex);
@@ -661,7 +665,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
         uint declaredChunkCount = BinaryPrimitives.ReadUInt32BigEndian(manifest);
         ulong declaredLength = BinaryPrimitives.ReadUInt64BigEndian(manifest.AsSpan(sizeof(uint)));
-        if (declaredLength > MaxStateBytes || (declaredLength + StateChunkSize - 1) / StateChunkSize != declaredChunkCount)
+        if (declaredLength > MaxStateBytes || declaredChunkCount == 0 || (declaredLength + StateChunkSize - 1) / StateChunkSize != declaredChunkCount)
         {
             return false;
         }

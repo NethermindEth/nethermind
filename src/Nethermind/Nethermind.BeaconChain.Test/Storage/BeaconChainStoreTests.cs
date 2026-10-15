@@ -56,11 +56,13 @@ public class BeaconChainStoreTests
         Assert.That(anchorSlot, Is.EqualTo(12_345_678ul));
     }
 
+    [TestCase(0u, 0ul, TestName = "No chunks and no bytes")]
     [TestCase(0u, 100ul, TestName = "No chunks for a non-empty state")]
     [TestCase(1u, 5ul * 1024 * 1024, TestName = "Fewer chunks than the length needs")]
     [TestCase(1u, 0ul, TestName = "A chunk for an empty state")]
     [TestCase(1u, ulong.MaxValue, TestName = "A length no array can hold")]
     [TestCase(256u, 1024ul * 1024 * 1024 + 4 * 1024 * 1024, TestName = "A consistent length above the cap")]
+    [TestCase(513u, 2ul * 1024 * 1024 * 1024 + 1, TestName = "A consistent length above int.MaxValue")]
     public void A_state_manifest_that_disagrees_with_itself_is_not_a_state(uint chunkCount, ulong length)
     {
         using MemColumnsDb<BeaconChainDbColumns> db = new();
@@ -71,6 +73,17 @@ public class BeaconChainStoreTests
         db.GetColumnDb(BeaconChainDbColumns.States).Set(BlockRoot.Bytes, manifest);
 
         Assert.That(store.TryGetState(BlockRoot, out _), Is.False);
+    }
+
+    [Test]
+    public void A_state_longer_than_a_stored_state_may_be_is_refused_before_anything_is_written()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        byte[] oversized = new byte[1024 * 1024 * 1024 + 1];
+
+        Assert.That(() => store.PutState(BlockRoot, oversized), Throws.TypeOf<ArgumentException>().With.Message.Contains(oversized.Length.ToString()));
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.States).GetAll(), Is.Empty, "a state that could never be read back must leave no chunks behind");
     }
 
     [Test]
