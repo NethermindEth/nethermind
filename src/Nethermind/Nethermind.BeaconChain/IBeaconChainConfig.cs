@@ -28,10 +28,13 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "The UDP port for the beacon chain discv5 discovery.", DefaultValue = "9060")]
     int Discv5Port { get; set; }
 
+    [ConfigItem(Description = "The UDP port for beacon chain libp2p QUIC. Zero disables QUIC and its ENR advertisement.", DefaultValue = "0")]
+    int QuicPort { get; set; }
+
     [ConfigItem(Description = "Comma-separated beacon chain bootnode ENRs. When empty, the built-in bootnodes of the network selected via the execution layer's chain id are used.", DefaultValue = "null")]
     string? Bootnodes { get; set; }
 
-    [ConfigItem(Description = "Comma-separated static beacon chain peer multiaddrs to keep persistent connections to. Each multiaddr must name an /ip4 or /ip6 address, or a /dns, /dns4 or /dns6 TCP endpoint, and include the /p2p/<peer-id> component.", DefaultValue = "null")]
+    [ConfigItem(Description = "Comma-separated static beacon chain peer multiaddrs to keep persistent connections to. TCP addresses may use /ip4, /ip6, /dns, /dns4 or /dns6; when QuicPort is enabled, QUIC addresses may use /ip4 or /ip6. Every address must include /p2p/<peer-id>.", DefaultValue = "null")]
     string? StaticPeers { get; set; }
 
     [ConfigItem(Description = "The target number of beacon chain peers.", DefaultValue = "50")]

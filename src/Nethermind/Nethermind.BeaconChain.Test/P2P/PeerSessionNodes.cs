@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
@@ -41,9 +43,9 @@ internal static class PeerSessionNodes
         EarliestAvailableSlot = AnchorSlot,
     };
 
-    public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null, Lazy<IBeaconSyncPeerPool>? peerPool = null)
+    public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null, Lazy<IBeaconSyncPeerPool>? peerPool = null, int quicPort = 0)
     {
-        BeaconChainConfig config = new() { P2PPort = 0 };
+        BeaconChainConfig config = new() { P2PPort = 0, QuicPort = quicPort };
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default) { CurrentStatus = Status };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         if (privateKey is not null)
@@ -57,9 +59,9 @@ internal static class PeerSessionNodes
     }
 
     // Both sides open identify streams as the session starts, exercising multiplexer stream retention.
-    public static async Task<ISession> DialAsync(BeaconP2P from, BeaconP2P to, CancellationToken token)
+    public static async Task<ISession> DialAsync(BeaconP2P from, BeaconP2P to, CancellationToken token, bool quic = false)
     {
-        ISession session = await from.DialPeerAsync(LoopbackAddress(to), token);
+        ISession session = await from.DialPeerAsync(LoopbackAddress(to, quic), token);
         if (!await HasIdentifiedSessionAsync(from, to.LocalPeerId!, token) || !await HasIdentifiedSessionAsync(to, from.LocalPeerId!, token))
         {
             Assert.Fail("a node closed the session before its identify completed");
@@ -123,11 +125,12 @@ internal static class PeerSessionNodes
         }
     }
 
-    public static Multiaddress LoopbackAddress(BeaconP2P node) => Multiaddress.Decode(LoopbackAddressText(node));
+    public static Multiaddress LoopbackAddress(BeaconP2P node, bool quic = false) => Multiaddress.Decode(LoopbackAddressText(node, quic: quic));
 
-    public static string LoopbackAddressText(BeaconP2P node, bool withPeerId = true)
+    public static string LoopbackAddressText(BeaconP2P node, bool withPeerId = true, bool quic = false)
     {
-        string address = node.ListenAddresses.First().ToString().Replace("0.0.0.0", "127.0.0.1");
+        string address = node.ListenAddresses.First(address => address.ToString().Contains(quic ? "/quic-v1" : "/tcp/", StringComparison.Ordinal))
+            .ToString().Replace("0.0.0.0", "127.0.0.1");
         int peerIdAt = address.IndexOf("/p2p/", StringComparison.Ordinal);
         if (peerIdAt >= 0)
         {
@@ -135,6 +138,13 @@ internal static class PeerSessionNodes
         }
 
         return withPeerId ? $"{address}/p2p/{node.LocalPeerId}" : address;
+    }
+
+    public static int FreeUdpPort()
+    {
+        using Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        return ((IPEndPoint)socket.LocalEndPoint!).Port;
     }
 
     public static async Task WaitUntilAsync(Func<bool> condition, string failure, CancellationToken token, TimeSpan? within = null, int pollDelayMilliseconds = 20)

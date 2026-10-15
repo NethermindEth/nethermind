@@ -12,6 +12,7 @@ public class BeaconChainConfig : IBeaconChainConfig
     public string? WeakSubjectivityCheckpoint { get; set; }
     public int P2PPort { get; set; } = 9060;
     public int Discv5Port { get; set; } = 9060;
+    public int QuicPort { get; set; }
     public string? Bootnodes { get; set; }
     public string? StaticPeers { get; set; }
     public int TargetPeerCount { get; set; } = 50;

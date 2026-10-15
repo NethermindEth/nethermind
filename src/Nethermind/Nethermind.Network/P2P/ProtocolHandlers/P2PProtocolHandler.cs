@@ -20,6 +20,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -133,17 +134,30 @@ public class P2PProtocolHandler(
                 }
             case P2PMessageCode.Disconnect:
                 {
-                    using DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
-                    ReportIn(disconnectMessage, size);
+                    DisconnectMessage disconnectMessage;
+                    try
+                    {
+                        disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
+                    }
+                    catch (RlpException)
+                    {
+                        // Even an unreadable reason means the remote peer requests immediate closure.
+                        Close(EthDisconnectReason.Other);
+                        break;
+                    }
+                    using (disconnectMessage)
+                    {
+                        ReportIn(disconnectMessage, size);
 
-                    EthDisconnectReason disconnectReason =
-                        FastEnum.IsDefined((EthDisconnectReason)disconnectMessage.Reason)
-                            ? (EthDisconnectReason)disconnectMessage.Reason
-                            : EthDisconnectReason.Other;
+                        EthDisconnectReason disconnectReason =
+                            (uint)disconnectMessage.Reason <= byte.MaxValue && FastEnum.IsDefined((EthDisconnectReason)disconnectMessage.Reason)
+                                ? (EthDisconnectReason)disconnectMessage.Reason
+                                : EthDisconnectReason.Other;
 
-                    if (Logger.IsTrace) TraceDisconnect(disconnectMessage.Reason, disconnectReason);
+                        if (Logger.IsTrace) TraceDisconnect(disconnectMessage.Reason, disconnectReason);
 
-                    Close(disconnectReason);
+                        Close(disconnectReason);
+                    }
                     break;
                 }
             case P2PMessageCode.Ping:
@@ -203,7 +217,7 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceDisconnect(int reason, EthDisconnectReason disconnectReason)
-            => Logger.Trace(!FastEnum.IsDefined((EthDisconnectReason)reason)
+            => Logger.Trace(reason != (int)disconnectReason
                 ? $"{Session} unknown disconnect reason ({reason}) on {Session.RemotePort}"
                 : $"{Session} Received disconnect ({disconnectReason}) on {Session.RemotePort}");
 

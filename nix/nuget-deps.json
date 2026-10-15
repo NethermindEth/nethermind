@@ -705,6 +705,11 @@
     "hash": "sha256-2TDYMPFRQ57ss88dqJW+/4a/ywNI7R8i+YzXAtgjr4M="
   },
   {
+    "pname": "Nethermind.Libp2p.Protocols.Quic",
+    "version": "1.0.4",
+    "hash": "sha256-+UtF1EgmZjc5w+O4V7p1CF9z4RTs7Yw/Lusxz/jBKK4="
+  },
+  {
     "pname": "Nethermind.Libp2p.Protocols.Yamux",
     "version": "1.0.4",
     "hash": "sha256-4W3s/ZTE68HJw3OWW0WjDP/0CmGIXhJI4lHe969vb88="

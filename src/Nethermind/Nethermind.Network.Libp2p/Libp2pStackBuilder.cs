@@ -22,12 +22,20 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 
 namespace Nethermind.Network.Libp2p;
 
-/// <summary>The libp2p stack the node's libp2p hosts run on: TCP, Noise, yamux, identify, ping and optionally gossipsub.</summary>
-/// <remarks>Built from the component packages, so the node ships none of the transports the meta package adds (WebRTC, WebSockets, relay, QUIC, TLS) or their dependencies.</remarks>
+/// <summary>The libp2p stack the node's hosts run on: TCP/Noise/yamux, optional QUIC, identify, ping and optional gossipsub.</summary>
+/// <remarks>Uses component packages without the meta package's WebRTC, WebSocket and circuit-relay dependencies.</remarks>
 public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     : PeerFactoryBuilderBase<Libp2pStackBuilder, Libp2pStackPeerFactory>(serviceProvider)
 {
     private bool _pubsub;
+    private bool _quic;
+
+    /// <summary>Adds the authenticated QUIC v1 transport, with its native stream multiplexing.</summary>
+    public Libp2pStackBuilder WithQuic()
+    {
+        _quic = true;
+        return this;
+    }
 
     /// <summary>Adds gossipsub (v1.0 to v1.3) and floodsub to the protocols every session offers.</summary>
     public Libp2pStackBuilder WithPubsub()
@@ -40,6 +48,7 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(NoiseProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(YamuxProtocol))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(MultistreamProtocol))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods, typeof(QuicProtocol))]
     protected override ProtocolRef[] BuildStack(IEnumerable<ProtocolRef> additionalProtocols)
     {
         ProtocolRef tcp = Get<IpTcpProtocol>();
@@ -55,6 +64,12 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
         // A typed array is one choice of protocols; a collection expression would bind to the params array and chain them instead.
         ProtocolRef[] choices = [.. apps];
         Connect(appSelector, choices);
+        if (_quic)
+        {
+            ProtocolRef quic = Get<QuicProtocol>();
+            Connect([quic], appSelector);
+            return [tcp, quic];
+        }
         return [tcp];
     }
 }
@@ -82,7 +97,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         public async Task<IEnumerable<IPAddress>> QueryAaaaAsync(string name) => await Dns.GetHostAddressesAsync(name, AddressFamily.InterNetworkV6);
     }
 
-    /// <remarks>Dials through <see cref="ILocalPeer"/> reach the library only with resolved TCP addresses of one peer id: the library resolves
+    /// <remarks>Dials through <see cref="ILocalPeer"/> reach the library only with resolved TCP/QUIC addresses of one peer id: the library resolves
     /// names on the dialing thread with no bound on the queries, and one name that does not resolve fails the whole dial.</remarks>
     private sealed class IdentifyingPeer : LocalPeer, ILocalPeer
     {
@@ -119,14 +134,14 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
             }
         }
 
-        Task<ISession> ILocalPeer.DialAsync(Multiaddress addr, CancellationToken token) => DialTcpAsync(addr.GetPeerId(), [addr], token);
+        Task<ISession> ILocalPeer.DialAsync(Multiaddress addr, CancellationToken token) => DialResolvedAsync(addr.GetPeerId(), [addr], token);
 
         Task<ISession> ILocalPeer.DialAsync(Multiaddress[] samePeerAddrs, CancellationToken token) =>
-            DialTcpAsync(samePeerAddrs.Length == 0 ? null : samePeerAddrs[0].GetPeerId(), samePeerAddrs, token);
+            DialResolvedAsync(samePeerAddrs.Length == 0 ? null : samePeerAddrs[0].GetPeerId(), samePeerAddrs, token);
 
         Task<ISession> ILocalPeer.DialAsync(PeerId peerId, CancellationToken token) =>
             FindSession(peerId) is { } existing ? Task.FromResult<ISession>(existing)
-            : DialTcpAsync(peerId, _peerStore?.GetPeerInfo(peerId).Addrs is { } addresses ? [.. addresses] : [], token);
+            : DialResolvedAsync(peerId, _peerStore?.GetPeerInfo(peerId).Addrs is { } addresses ? [.. addresses] : [], token);
 
         private Session? FindSession(PeerId peerId)
         {
@@ -140,7 +155,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
             return null;
         }
 
-        private async Task<ISession> DialTcpAsync(PeerId? peerId, Multiaddress[] addrs, CancellationToken token)
+        private async Task<ISession> DialResolvedAsync(PeerId? peerId, Multiaddress[] addrs, CancellationToken token)
         {
             if (peerId is null)
             {
@@ -160,24 +175,24 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                 }
             }
 
-            // Only IP, TCP and this peer id: the library would resolve any other component, such as a name inside, on the dialing thread,
+            // Only resolved transport addresses and this peer id: the library would resolve other components on the dialing thread,
             // and fails the whole dial on an address of another peer id, as a dnsaddr record can name.
-            List<Multiaddress> tcp = [];
+            List<Multiaddress> dialable = [];
             foreach (Multiaddress resolved in await ResolveAsync(addrs).WaitAsync(token))
             {
-                if (resolved.Protocols is [IP4 or IP6, TCP, P2P] && resolved.GetPeerId() == peerId && !tcp.Contains(resolved))
+                if (resolved.Protocols is [IP4 or IP6, TCP, P2P] or [IP4 or IP6, UDP, QUICv1, P2P] && resolved.GetPeerId() == peerId && !dialable.Contains(resolved))
                 {
-                    tcp.Add(resolved);
-                    if (tcp.Count == MaxDialAddresses) break;
+                    dialable.Add(resolved);
+                    if (dialable.Count == MaxDialAddresses) break;
                 }
             }
 
-            if (tcp.Count == 0)
+            if (dialable.Count == 0)
             {
-                throw new Libp2pException($"No TCP address to dial {peerId}");
+                throw new Libp2pException($"No TCP or QUIC address to dial {peerId}");
             }
 
-            return await DialAsync([.. tcp], token);
+            return await DialAsync([.. dialable], token);
         }
 
         ValueTask IAsyncDisposable.DisposeAsync()
