@@ -30,7 +30,7 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// </remarks>
 public sealed class CustodySamplingAvailability(INodeColumnCustodySource custodySource, IDataColumnSource columns, SlotClock clock) : IDataAvailabilityRule
 {
-    private readonly ConditionalWeakTable<DataColumnSidecar, object> _verified = new();
+    private readonly ConditionalWeakTable<DataColumnSidecar, object> _verified = [];
 
     /// <inheritdoc/>
     public bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, BeaconChainSpec spec)
