@@ -138,7 +138,15 @@ public class IdentifyTests
         Assert.That(oneAnswer, Is.Positive, "fixture: an identify answer reads the advertised protocols");
         Assert.That(info.AgentVersion, Is.EqualTo(ServerAgent));
         Assert.That(answers.Reads - oneAnswer, Is.EqualTo(oneAnswer), "the session asked for identify once");
-        Assert.That(client.PeerInfoForTest(server.Peer.Identity.PeerId).SupportedProtocols, Does.Contain(IdentifyProtocolId), "the answer is recorded in the peer store");
+        if (nodeDials)
+        {
+            Assert.That(client.PeerInfoForTest(server.Peer.Identity.PeerId).SupportedProtocols, Does.Contain(IdentifyProtocolId), "a dialed peer's answer is recorded in the peer store");
+        }
+        else
+        {
+            Assert.That(info.UnrecordedIdentify?.Protocols, Does.Contain(IdentifyProtocolId), "the answer waits in the session information");
+            Assert.That(client.IsInPeerStoreForTest(server.Peer.Identity.PeerId), Is.False, "a session the remote opened is recorded only when admitted");
+        }
     }
 
     [TestCase(Answer.Valid, PeerRecordsVerificationPolicy.RequireCorrect, true)]
@@ -173,12 +181,12 @@ public class IdentifyTests
 
         if (!accepted)
         {
-            Assert.Throws<PeerConnectionException>(() => IdentifyAgentVersionProbe.Apply(message, session, settings, peerStore));
+            Assert.Throws<PeerConnectionException>(() => VerifyAndRecord(message, session, settings, peerStore));
             return;
         }
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(IdentifyAgentVersionProbe.Apply(message, session, settings, peerStore),
+        Assert.That(VerifyAndRecord(message, session, settings, peerStore),
             answer == Answer.NoAgentVersion ? Is.Null : Is.EqualTo(ServerAgent), "the agent string is unknown only when the answer carries none");
         Assert.That(peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols, Is.EqualTo(new[] { IdentifyProtocolId }));
         bool verified = answer is Answer.Valid or Answer.NoAgentVersion;
@@ -199,9 +207,9 @@ public class IdentifyTests
         IdentifyProtocolSettings settings = new() { PeerRecordsVerificationPolicy = PeerRecordsVerificationPolicy.RequireWithWarning };
         IdentifyMessage first = AnswerOf(remote, remote, 5, "/stored");
         IdentifyMessage later = AnswerOf(remote, signedByAnother ? new Identity(privateKey: null, KeyType.Secp256K1) : remote, seq, "/later");
-        IdentifyAgentVersionProbe.Apply(first, session, settings, peerStore);
+        VerifyAndRecord(first, session, settings, peerStore);
 
-        IdentifyAgentVersionProbe.Apply(later, session, settings, peerStore);
+        VerifyAndRecord(later, session, settings, peerStore);
 
         PeerStore.PeerInfo stored = peerStore.GetPeerInfo(remote.PeerId);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -211,13 +219,30 @@ public class IdentifyTests
     }
 
     [Test]
+    public void A_shared_host_stores_a_bounded_protocol_list_however_many_ids_an_answer_lists()
+    {
+        Identity remote = new(privateKey: null, KeyType.Secp256K1);
+        // About what an 8 KiB answer of one-character ids holds, after one id over the length bound.
+        IdentifyMessage message = AnswerOf(remote, remote, 1, new string('p', BoundedIdentifyProtocol.MaxStoredProtocolIdBytes + 1));
+        message.Protocols.AddRange(Enumerable.Range(0, 2_700).Select(static i => ((char)('a' + i % 26)).ToString()));
+        PeerStore peerStore = new();
+
+        BoundedIdentifyProtocol.Apply(message, SessionWith(remote), new IdentifyProtocolSettings(), peerStore);
+
+        string[] stored = peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols ?? [];
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(stored, Has.Length.EqualTo(BoundedIdentifyProtocol.MaxStoredProtocols), "the peer store never forgets an entry, so one entry stays small");
+        Assert.That(stored[0], Is.EqualTo("a"), "an id over the length bound is dropped, not truncated into another id");
+    }
+
+    [Test]
     public async Task An_identify_answer_is_refused_from_a_declared_length_past_the_bound(
         [Values(IdentifyAgentVersionProbe.MaxMessageSize, IdentifyAgentVersionProbe.MaxMessageSize + 1, 256 * 1024 * 1024)] int declared,
         [Values] bool sharedStack)
     {
         TimeSpan bound = TimeSpan.FromSeconds(10);
         Channel channel = new();
-        IdentifyAgentVersionProbe probe = new(null!, new IdentifyProtocolSettings(), new PeerStore());
+        IdentifyAgentVersionProbe probe = new(null!, new IdentifyProtocolSettings());
 
         Task read = (sharedStack ? new BoundedIdentifyProtocol(null!, new PeerStore()).DialAsync(channel, null!)
             : probe.DialAsync(channel, null!, null)).WaitAsync(bound);
@@ -243,7 +268,7 @@ public class IdentifyTests
         TimeSpan bound = TimeSpan.FromSeconds(10);
         byte[] body = new byte[256 * 1024];
         Channel channel = new();
-        IdentifyAgentVersionProbe probe = new(null!, new IdentifyProtocolSettings(), new PeerStore());
+        IdentifyAgentVersionProbe probe = new(null!, new IdentifyProtocolSettings());
 
         Task read = probe.DialAsync(channel, null!, null).WaitAsync(bound);
         await channel.Reverse.WriteAsync(new ReadOnlySequence<byte>(declared)).AsTask().WaitAsync(bound);
@@ -302,6 +327,13 @@ public class IdentifyTests
         }
 
         return BeaconP2P.IsNotDropped(sessionInfo, session);
+    }
+
+    private static string? VerifyAndRecord(IdentifyMessage message, Libp2p.Core.State session, IdentifyProtocolSettings settings, PeerStore peerStore)
+    {
+        IdentifyAgentVersionProbe.Answer answer = IdentifyAgentVersionProbe.Verify(message, session, settings);
+        IdentifyAgentVersionProbe.Record(peerStore, session.RemotePeerId!, answer);
+        return answer.AgentVersion;
     }
 
     private static Multiaddress AddressOf(Identity peer) => Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer.PeerId}");

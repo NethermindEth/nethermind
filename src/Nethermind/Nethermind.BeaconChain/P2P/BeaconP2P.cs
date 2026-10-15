@@ -73,7 +73,9 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>The per-session facts <see cref="PeerManager"/> cannot read off an <see cref="ISession"/>.
     /// <paramref name="AgentVersion"/> is <c>null</c> only when the peer's identify answer carries none
     /// (see <see cref="IdentifyAgentVersionProbe"/>), never as a stand-in for "not wired".</summary>
-    public readonly record struct SessionInfo(PeerDirection Direction, string? AgentVersion);
+    /// <param name="UnrecordedIdentify">The identify answer of a session the remote opened, which reaches the peer store only through
+    /// <see cref="RecordIdentify"/> at admission; <c>null</c> for a session this node dialed, whose answer is recorded at once.</param>
+    public readonly record struct SessionInfo(PeerDirection Direction, string? AgentVersion, IdentifyAgentVersionProbe.Answer? UnrecordedIdentify = null);
 
     /// <summary>Raised once a session is fully established (identify done) in either direction. This is
     /// the only way a session the remote side opened, which no local dial will ever return, reaches the
@@ -380,6 +382,8 @@ public sealed class BeaconP2P : IAsyncDisposable
     internal PubsubSettings PubsubSettingsForTest => _serviceProvider.GetRequiredService<PubsubSettings>();
     /// <summary>Internal so a test can read what a peer advertised in its identify answers.</summary>
     internal PeerStore.PeerInfo PeerInfoForTest(PeerId peerId) => _serviceProvider.GetRequiredService<PeerStore>().GetPeerInfo(peerId);
+    /// <summary>Internal so a test can check a peer has no peer-store entry, which reading one through <see cref="PeerInfoForTest"/> would add.</summary>
+    internal bool IsInPeerStoreForTest(PeerId peerId) => _serviceProvider.GetRequiredService<PeerStore>().TryGetPeerInfo(peerId, out _);
     /// <summary>Internal so a test can change the listen addresses, which makes the node push its identify to every session.</summary>
     internal LocalPeer? LocalPeerForTest => _localPeer;
     /// <summary>Internal so a test can observe a refused inbound session being torn down, not just never admitted.</summary>
@@ -390,6 +394,16 @@ public sealed class BeaconP2P : IAsyncDisposable
     internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
     /// <summary>Whether the pubsub router holds a gossip channel with <paramref name="peerId"/>, opened by either side.</summary>
     internal bool HasGossipChannel(PeerId peerId) => _router is IRoutingStateContainer router && router.ConnectedPeers.Contains(peerId);
+
+    /// <summary>Records the identify answer of an admitted <paramref name="session"/> in the peer store.</summary>
+    /// <remarks>The library's peer store never removes an entry, so writing one before admission would let refused sessions grow it without bound.</remarks>
+    internal void RecordIdentify(ISession session, IdentifyAgentVersionProbe.Answer answer)
+    {
+        if (RemotePeerIdOf(session) is { } peerId)
+        {
+            IdentifyAgentVersionProbe.Record(_serviceProvider.GetRequiredService<PeerStore>(), peerId, answer);
+        }
+    }
 
     /// <summary>The protocols <paramref name="peerId"/> listed in its identify answer; empty when none is recorded.</summary>
     internal IReadOnlyList<string> SupportedProtocolsOf(PeerId peerId) =>
@@ -878,13 +892,13 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         protected override async Task ConnectedTo(ISession session, bool isDialer)
         {
-            // One identify exchange verifies the remote identity, fills the peer store and reads the agent string.
+            // One identify exchange verifies the remote identity and reads the agent string.
             _owner._sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot);
-            string? agentVersion;
+            IdentifyAgentVersionProbe.Answer answer;
             using CancellationTokenSource cts = new(IdentifyAgentVersionProbe.ReadTimeout);
             try
             {
-                agentVersion = await session.DialAsync<IdentifyAgentVersionProbe, object?, string?>(null, cts.Token);
+                answer = await session.DialAsync<IdentifyAgentVersionProbe, object?, IdentifyAgentVersionProbe.Answer>(null, cts.Token);
             }
             catch (Exception e)
             {
@@ -900,7 +914,13 @@ public sealed class BeaconP2P : IAsyncDisposable
                 throw;
             }
 
-            slot?.TrySetResult(new SessionInfo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound, agentVersion));
+            // A session the remote opened is recorded only once admitted (see RecordIdentify).
+            if (isDialer && _peerStore is not null && RemotePeerIdOf(session) is { } remotePeerId)
+            {
+                IdentifyAgentVersionProbe.Record(_peerStore, remotePeerId, answer);
+            }
+
+            slot?.TrySetResult(new SessionInfo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound, answer.AgentVersion, isDialer ? null : answer));
         }
     }
 

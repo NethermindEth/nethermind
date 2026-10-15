@@ -1361,6 +1361,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             Metrics.BeaconChainPeerCount = _peers.Count;
         }
 
+        if (info.UnrecordedIdentify is { } identify)
+        {
+            _p2p.RecordIdentify(session, identify);
+        }
+
         Interlocked.Increment(ref Metrics.PeersConnectedCount);
         if (!RemoveWhenSessionCloses(peer))
         {

@@ -356,6 +356,8 @@ public class PeerBandTests
                             Assert.That(sessions.Opened, Is.EqualTo(1), "the knocking session reached this node");
                             Assert.That(manager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), Is.False,
                                 "never-admitted ids must not evict real peers' disconnect history");
+                            Assert.That(local.P2P.IsInPeerStoreForTest(knocking.P2P.LocalPeerId!), Is.False,
+                                "the peer store never forgets an entry, so a refused session must not add one");
                         }
                     }
                 }

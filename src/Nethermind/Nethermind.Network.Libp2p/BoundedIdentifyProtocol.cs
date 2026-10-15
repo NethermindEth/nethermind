@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
@@ -21,6 +23,8 @@ public sealed class BoundedIdentifyProtocol(IProtocolStackSettings stack, PeerSt
     private readonly IdentifyProtocol _identify = identify ?? new(stack, settings, peerStore, loggerFactory);
     internal static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(5);
     internal const int MaxMessageSize = 8 * 1024;
+    internal const int MaxStoredProtocols = 64;
+    internal const int MaxStoredProtocolIdBytes = 128;
     public string Id => ((IProtocol)_identify).Id;
 
     public async Task DialAsync(IChannel downChannel, ISessionContext context)
@@ -72,7 +76,7 @@ public sealed class BoundedIdentifyProtocol(IProtocolStackSettings stack, PeerSt
         }
 
         PeerStore.PeerInfo peerInfo = peerStore.GetPeerInfo(remotePeerId);
-        peerInfo.SupportedProtocols = [.. message.Protocols];
+        peerInfo.SupportedProtocols = StoredProtocols(message.Protocols);
         // Pubsub peer exchange hands out the stored record, so an unverified one is never stored.
         if (verified && !(peerInfo.Seq >= seq))
         {
@@ -82,5 +86,21 @@ public sealed class BoundedIdentifyProtocol(IProtocolStackSettings stack, PeerSt
         }
 
         return message.HasAgentVersion ? message.AgentVersion : null;
+    }
+
+    // The library's peer store never removes an entry, so what one entry holds is bounded instead.
+    private static string[] StoredProtocols(IEnumerable<string> protocols)
+    {
+        List<string> stored = [];
+        foreach (string protocol in protocols)
+        {
+            if (Encoding.UTF8.GetByteCount(protocol) <= MaxStoredProtocolIdBytes)
+            {
+                stored.Add(protocol);
+                if (stored.Count == MaxStoredProtocols) break;
+            }
+        }
+
+        return [.. stored];
     }
 }
