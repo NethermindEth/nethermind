@@ -88,6 +88,20 @@ class MetricsTests(unittest.TestCase):
         self.assertFalse(controller.cpu_snapshot_quality({0: row}, 3, 2)["eligible"])
         self.assertFalse(controller.cpu_snapshot_quality({0: {}}, 3, 1)["eligible"])
 
+    def test_comparison_rejects_mixed_campaigns_including_failed_rows(self):
+        provenance = {"source_revision": "source-a", "source_archive_sha256": "archive-a", "test_dll_sha256": "dll-a"}
+        valid = {"provenance": provenance, "missing": 0}
+        report.validate_campaign([valid, {"provenance": dict(provenance), "error": "timeout"}])
+        for field in provenance:
+            with self.subTest(field=field):
+                diagnostic = {"provenance": dict(provenance, **{field: "different"}), "error": "cleanup failed"}
+                with self.assertRaisesRegex(ValueError, "Mixed transport campaigns"):
+                    report.validate_campaign([valid, diagnostic])
+                report.validate_campaign([diagnostic])
+        with self.assertRaisesRegex(ValueError, "Mixed transport campaigns"):
+            report.validate_campaign([valid, {"error": "missing provenance"}])
+        report.validate_campaign([{"error": "old diagnostic without provenance"}])
+
     def test_partial_measurement_is_retained_but_not_complete(self):
         rows = [{'missing': 2, 'goodput_tx_per_s_per_receiver': 4}, {'error': 'timeout'}]
         self.assertEqual(report.measured_values(rows, 'goodput_tx_per_s_per_receiver'), [4])

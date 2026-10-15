@@ -36,6 +36,14 @@ def measured_values(rows, key):
     return [row[key] for row in rows if row.get(key) is not None]
 
 
+def validate_campaign(rows):
+    """Keep diagnostic or revised binaries out of one transport comparison."""
+    fields = ("source_revision", "source_archive_sha256", "test_dll_sha256")
+    identities = {tuple(row.get("provenance", {}).get(field) for field in fields) for row in rows}
+    if len(identities) > 1:
+        raise ValueError("Mixed transport campaigns: source revision, archive and DLL hashes must match; render diagnostics separately")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("results", nargs="+")
@@ -51,6 +59,7 @@ def main():
     for path in args.results:
         with open(path) as stream:
             rows.extend(json.loads(line) for line in stream if line.strip())
+    validate_campaign(rows)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "results.json").write_text(json.dumps(rows, indent=2))

@@ -30,7 +30,7 @@ The receive budget is not a process-memory limit: native prover workspace and be
 
 ## Matrix and interpretation
 
-The planned matrix has 38 scenarios per repetition, executed serially. With two repetitions this is 76 attempted runs; connection setup and draining add time beyond the roughly 17 minutes of scheduled release/warm-up windows. Use one immutable v4 source archive and DLL for the entire matrix. Earlier v3 large-object failures remain diagnostic evidence and must not be mixed into the v4 comparison or silently replaced.
+The planned matrix has 38 scenarios per repetition, executed serially. With two repetitions this is 76 attempted runs; connection setup and draining add time beyond the roughly 17 minutes of scheduled release/warm-up windows. Use one immutable source archive and validated DLL for the entire matrix. Name each campaign independently and record its source revision, archive SHA256 and DLL SHA256. Earlier failed builds and smoke captures remain diagnostic evidence; keep them separate from the final comparison and never silently replace them. A source or binary change starts a new campaign. The report rejects inputs with different source, archive or DLL identities, including failed runs; render diagnostic campaigns separately. Captures without those identities remain diagnostic and cannot be mixed with identified runs.
 
 | Group | Bindings | Workload | Link | Runs per repetition |
 |---|---|---|---|---:|
@@ -42,17 +42,22 @@ The planned matrix has 38 scenarios per repetition, executed serially. With two 
 Use the observed native SPHINCS root sizes for the three wrapper aggregation counts. These sizes calibrate synthetic transport payloads; the transport fixtures do not carry those native proofs or run the native verifier.
 
 ```sh
-# Set LEAN_BENCH_DLL to the validated v4 test assembly, then choose a new capture directory.
-export LEAN_NET_PREFIX=lnv4
+# Supply the validated assembly and exact frozen-source provenance.
+: "${LEAN_BENCH_DLL:?Set the validated test assembly path}"
+: "${LEAN_NET_SOURCE_REVISION:?Set the full source commit}"
+: "${LEAN_NET_SOURCE_ARCHIVE_SHA256:?Set the source archive SHA256}"
+export LEAN_NET_SOURCE_REVISION LEAN_NET_SOURCE_ARCHIVE_SHA256
+export LEAN_NET_PREFIX=lnbench
 export LEAN_NET_SUBNET=10.78
-lean_capture=/tmp/lean-net-v4-capture
+# Choose a fresh campaign name; never overwrite an earlier capture.
+lean_capture=/tmp/lean-net-campaign-01
 mkdir "$lean_capture"
 printf '%s\n' '{"1":265232,"16":293448,"64":291464}' > "$lean_capture/proof-sizes.json"
 python3 scripts/lean-net-bench/matrix.py --plan \
   --test-dll "$LEAN_BENCH_DLL" --out "$lean_capture/runs" \
   --results "$lean_capture/results.jsonl" --repetitions 2 \
   --proof-sizes "$lean_capture/proof-sizes.json"
-# After v4 smoke validation, execute the identical command with --plan removed.
+# After smoke validation of this exact assembly, execute the identical command with --plan removed.
 python3 scripts/lean-net-bench/report.py "$lean_capture/results.jsonl" \
   --native-dir scripts/lean-net-bench/results/2026-10-14/native \
   --out "$lean_capture/report"
@@ -66,7 +71,7 @@ The scheduled offered rate is the configured release schedule. The controller al
 
 Broadcast measurements exercise actual coding, QUIC delivery and a test producer's secp256k1 signature recovery. The test profile accepts every reconstructed consensus context; these results do not validate a live CL authorization/anchor integration. The pair/chain layouts are bounded transport experiments, not a public adversarial network.
 
-Recommendations should follow measured completion, bytes, latency, CPU, memory and loss together: compare the two bindings at the same workload and link; identify the offered-load range that still delivers all objects; show large-object and relay penalties separately; and retain resource failures. Native cold aggregation/verification graphs belong in their own panel with the M2 Max/one-worker scope and the trivial generic-program caveat. The data cannot establish that the provisional dependency weight of 16, the draft 4096-dependency capacity, or a one-second aggregation cadence is universally safe. No Lean fork or prover optimization is part of this experiment.
+Recommendations should follow measured completion, bytes, latency, CPU, memory and loss together: compare the two bindings at the same workload and link; identify the offered-load range that still delivers all objects; show large-object and relay penalties separately; and retain resource failures. Native cold aggregation/verification graphs belong in their own panel with the M2 Max/one-worker scope and the trivial generic-program caveat. The data cannot establish that the provisional dependency weight of 16, the draft 4096-dependency capacity, or a one-second aggregation cadence is universally safe. No Lean fork or prover optimization is part of this experiment. Parameter recommendations remain conditional until the matrix is complete: distinguish a tested configuration from a demonstrated threshold, and avoid claiming a binding is faster when completion or actual origination differs. The separate 200 ms RTT comparison uses the same assembly, 16 transactions/object, 293448-byte proofs, 8/32 objects/s and two repetitions per binding. Keep its `rtt200-*` labels outside `load-*`; it measures the receive-credit tradeoff and does not by itself prove that a larger window is safe.
 
 Reporting-only checks run without services or native proofs:
 
