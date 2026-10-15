@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using NUnit.Framework;
@@ -59,33 +61,49 @@ public class OptimismPayloadPreparationServiceTests
         releaseSpec.BaseFeeMaxChangeDenominator.Returns((UInt256)250);
         releaseSpec.ElasticityMultiplier.Returns(6UL);
         ISpecProvider? specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(parent).Returns(releaseSpec);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         IWorldState? stateProvider = Substitute.For<IWorldState>();
         stateProvider.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(true);
 
-        Block block = Build.A.Block
-            .WithExtraData([])
-            .TestObject;
+        // Stand in for the block processor: materialize the transactions and seal the header like BlockProcessor does.
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
-        processor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(block);
+        processor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(ci =>
+        {
+            BlockToProduce block = ci.Arg<BlockToProduce>();
+            Transaction[] transactions = block.Transactions.ToArray();
+            block.Header.GasUsed = GasCostOf.Transaction * (ulong)transactions.Length;
+            block.Header.Hash = block.Header.CalculateHash();
+            return new Block(block.Header, transactions, block.Uncles, block.Withdrawals);
+        });
+        ISealEngine sealEngine = Substitute.For<ISealEngine>();
+        sealEngine.CanSeal(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(true);
+        sealEngine.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(ci => Task.FromResult(ci.Arg<Block>()));
+        IOptimismSpecHelper specHelper = Substitute.For<IOptimismSpecHelper>();
+        specHelper.IsHolocene(Arg.Any<BlockHeader>()).Returns(true);
+        // A pending transaction makes the improved block better than the empty one, so it is the block served.
+        ITxSource txPoolTxSource = Substitute.For<ITxSource>();
+        txPoolTxSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+            .Returns([Build.A.Transaction.TestObject]);
 
-        OptimismPayloadPreparationService service = new(
-            blockProducer: new PostMergeBlockProducer(
-                processor: processor,
-                specProvider: specProvider,
-                stateProvider: stateProvider,
-                txSource: Substitute.For<ITxSource>(),
-                blockTree: Substitute.For<IBlockTree>(),
-                gasLimitCalculator: Substitute.For<IGasLimitCalculator>(),
-                sealEngine: Substitute.For<ISealEngine>(),
-                timestamper: Substitute.For<ITimestamper>(),
-                blocksConfig: Substitute.For<IBlocksConfig>(),
-                logManager: TestLogManager.Instance
-            ),
-            txPool: Substitute.For<ITxPool>(),
+        OptimismPostMergeBlockProducer blockProducer = new(
+            payloadAttrsTxSource: Substitute.For<ITxSource>(),
+            txPoolTxSource: txPoolTxSource,
+            processor: processor,
+            blockTree: Substitute.For<IBlockTree>(),
+            stateProvider: stateProvider,
+            gasLimitCalculator: Substitute.For<IGasLimitCalculator>(),
+            sealEngine: sealEngine,
+            timestamper: Substitute.For<ITimestamper>(),
             specProvider: specProvider,
-            blockImprovementContextFactory: NoBlockImprovementContextFactory.Instance,
+            specHelper: specHelper,
+            logManager: TestLogManager.Instance,
+            blocksConfig: Substitute.For<IBlocksConfig>()
+        );
+        OptimismPayloadPreparationService service = new(
+            blockProducer: blockProducer,
+            txPool: Substitute.For<ITxPool>(),
+            blockImprovementContextFactory: new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(10)),
             blocksConfig: new BlocksConfig
             {
                 SecondsPerSlot = 1
@@ -98,12 +116,15 @@ public class OptimismPayloadPreparationServiceTests
         testCase.Attributes.SuggestedFeeRecipient = TestItem.AddressA;
 
         string payloadId = service.StartPreparingPayload(parent, testCase.Attributes)!;
-        IBlockProductionContext context = (await service.GetPayload(payloadId))!;
+        IBlockProductionContext context = (await service.GetPayload(payloadId, skipCancel: true))!;
         Block currentBestBlock = context.CurrentBestBlock!;
 
-        Assert.That(currentBestBlock, Is.EqualTo(block));
-        Assert.That(currentBestBlock.Header.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out _), Is.True);
-        Assert.That(parameters, Is.EqualTo(testCase.ExpectedEIP1559Parameters));
-        Assert.That(currentBestBlock.Header.Hash, Is.EqualTo(currentBestBlock.Header.CalculateHash()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(currentBestBlock.Transactions, Has.Length.EqualTo(testCase.Attributes.NoTxPool ? 0 : 1), "served block");
+            Assert.That(currentBestBlock.Header.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out _), Is.True);
+            Assert.That(parameters, Is.EqualTo(testCase.ExpectedEIP1559Parameters));
+            Assert.That(currentBestBlock.Header.Hash, Is.EqualTo(currentBestBlock.Header.CalculateHash()));
+        }
     }
 }

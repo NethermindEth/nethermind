@@ -525,11 +525,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             ? Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas)
             : payerRegularGas;
         ulong spentGas = payerRegularGas + blockStateGas;
-        // Set explicitly like the regular path: the BlockGasUsed getter otherwise falls back to tx.GasLimit,
-        // which for a frame tx is the frame-gas sum rather than the gas spent that block validation sums.
+        // Set explicitly like the regular path: the BlockGasUsed and SpentGas getters otherwise fall back to tx.GasLimit,
+        // which for a frame tx is the frame-gas sum rather than the gas spent.
         if (!opts.HasFlag(ExecutionOptions.Warmup)) // only the main thread updates the transaction
         {
             tx.BlockGasUsed = blockRegularGas;
+            tx.SpentGas = spentGas;
         }
         Address payer = frameContext.Payer;
 
@@ -558,6 +559,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // unconditional as in PayFees.
         UInt256 fees = premiumPerGas * (UInt256)spentGas;
         WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+
+        if (accessTracker.TransientCreates is not null)
+        {
+            FinalizeTransientCreates(WorldState, in accessTracker, opts.HasFlag(ExecutionOptions.Commit) && !opts.HasFlag(ExecutionOptions.Restore));
+        }
 
         // EIP-6780: finalize committed frames' self-destructs.
         if (accessTracker.DestroyList.Count > 0)

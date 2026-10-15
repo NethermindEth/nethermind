@@ -57,11 +57,10 @@ public partial class BlockProcessor(
     private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() =>
         new(
             beaconBlockRootHandler,
-            blockHashStore,
             balManager
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
-        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, stateProvider));
+        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private ISystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -176,10 +175,6 @@ public partial class BlockProcessor(
         _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))
-        {
-            _systemContractHandler.InstallPredeploys(spec);
-        }
         CommitState(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
@@ -202,6 +197,12 @@ public partial class BlockProcessor(
     protected TxReceipt[] FinalizeBlock<TComputesCommitments>(Block block, IBlockTracer blockTracer, IReleaseSpec spec, TxReceipt[] receipts)
         where TComputesCommitments : struct, IFlag
     {
+        // EIP-8116: execution relies on running totals, so convert to per-transaction gas once before the receipts root.
+        if (spec.IsEip8116Enabled)
+        {
+            receipts.SetEip8116GasUsed();
+        }
+
         BlockHeader header = block.Header;
 
         using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);

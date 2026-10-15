@@ -43,6 +43,9 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for it to be accepted into the public mempool. EIP-8250 charges a first use of each keyed nonce key 97,920 state gas, so at the default value a first-use set of more than five keys does not propagate. `0` to lift the limit. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyStateGas { get; set; }
 
+    [ConfigItem(DefaultValue = "16", Description = "EIP-8298: the max pending frame transactions whose validation prefix relies on the same account, when that account's code can change through `DELEGATECALL` or `CALLCODE`. `0` to reject all such transactions.")]
+    int FrameTxMaxPendingPerDelegatingCode { get; set; }
+
     [ConfigItem(DefaultValue = "250", Description = "The max time, in milliseconds, one EIP-8141 validation-prefix simulation may run before the transaction is rejected. A local submission may also wait this long for a busy simulator, so its ceiling is twice this value. `0` to lift the limit.")]
     int FrameTxSimulationTimeoutMs { get; set; }
 
@@ -69,7 +72,7 @@ public interface ITxPoolConfig : IConfig
     bool FrameTxWidthEnabled { get; set; }
 
     /// <summary>MATCHA <c>safety_factor</c> in permille of the declared admission gas. Defaults to <c>1000</c>, minimum <c>1000</c>.</summary>
-    [ConfigItem(DefaultValue = "1000", Description = "EIP-8141 MATCHA `safety_factor`, in permille of a keyed-nonce frame transaction's `admission_gas`, that fixes the width its admission and each revalidation spends: `charge = ceil(safety_factor * admission_gas)`. `admission_gas` is declared work: the transaction's intrinsic gas, which prices its data, signatures and recent-root references, plus the validation prefix's execution gas limits and one cold SLOAD per nonce key, not the gas the prefix actually burns. `1000` charges exactly that declared gas; a higher value adds headroom for client work EVM gas does not measure. Values below `1000` are raised to `1000`. Spent width is never returned. Used only when `FrameTxWidthEnabled` is set.")]
+    [ConfigItem(DefaultValue = "1000", Description = "EIP-8141 MATCHA `safety_factor`, in permille of a keyed-nonce frame transaction's `admission_gas`, that fixes the width its admission and each revalidation spends: `charge = ceil(safety_factor * admission_gas)`. `admission_gas` is declared work: the transaction's intrinsic gas, which prices its data, signatures, nonce key access and recent-root references, plus the validation prefix's execution gas limits, not the gas the prefix actually burns. `1000` charges exactly that declared gas; a higher value adds headroom for client work EVM gas does not measure. Values below `1000` are raised to `1000`. Spent width is never returned. Used only when `FrameTxWidthEnabled` is set.")]
     ulong FrameTxWidthSafetyFactorPermille { get; set; }
 
     /// <summary>MATCHA <c>width_cap</c> in gas. Defaults to <c>0</c>, which lifts the cap.</summary>

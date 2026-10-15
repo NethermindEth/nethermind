@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -102,6 +103,31 @@ public struct ReceiptRecoveryBlock
             return GetNextTransactionHash().ValueHash256;
         }
 
+        ReadOnlySpan<byte> hashInput = ReadNextTransactionHashInput(out int encodedLength);
+        ValueHash256 hash = ValueKeccak.Compute(hashInput);
+        _currentTransactionPosition += encodedLength;
+        _currentTransactionIndex++;
+        return hash;
+    }
+
+    /// <summary>Skips one transaction while checking its envelope bounds and type, without computing its hash.</summary>
+    public void SkipNextTransaction()
+    {
+        if (_transactions is not null)
+        {
+            if (_currentTransactionIndex >= TransactionCount) ThrowNoTransactionRemaining();
+            _currentTransactionIndex++;
+            return;
+        }
+
+        _ = ReadNextTransactionHashInput(out int encodedLength);
+        _currentTransactionPosition += encodedLength;
+        _currentTransactionIndex++;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private readonly ReadOnlySpan<byte> ReadNextTransactionHashInput(out int encodedLength)
+    {
         if (_currentTransactionIndex >= TransactionCount)
         {
             ThrowNoTransactionRemaining();
@@ -125,7 +151,7 @@ public struct ReceiptRecoveryBlock
             RlpHelpers.ThrowRlpDataTruncated();
         }
 
-        int encodedLength = prefixLength + contentLength;
+        encodedLength = prefixLength + contentLength;
         ReadOnlySpan<byte> encodedTransaction = decoderContext.Peek(encodedLength);
         ReadOnlySpan<byte> hashInput;
         if (isLegacy)
@@ -153,10 +179,7 @@ public struct ReceiptRecoveryBlock
             hashInput = encodedTransaction.Slice(prefixLength, contentLength);
         }
 
-        ValueHash256 hash = ValueKeccak.Compute(hashInput);
-        _currentTransactionPosition += encodedLength;
-        _currentTransactionIndex++;
-        return hash;
+        return hashInput;
     }
 
     [DoesNotReturn, StackTraceHidden]
