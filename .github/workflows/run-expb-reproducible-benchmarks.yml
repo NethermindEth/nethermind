@@ -210,7 +210,7 @@ permissions:
 jobs:
   resolve:
     if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'performance is good' && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
       mode: ${{ steps.resolve.outputs.mode }}
@@ -724,7 +724,7 @@ jobs:
   prepare-docker:
     needs: [resolve]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     outputs:
       image: ${{ steps.resolve-image.outputs.image }}
       image_revision: ${{ steps.resolve-image.outputs.revision }}
@@ -2069,7 +2069,7 @@ jobs:
   report:
     needs: [resolve, prepare-docker, benchmark]
     if: always() && github.event_name == 'pull_request' && needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     concurrency:
       group: expb-report-${{ github.repository }}-pr-${{ github.event.pull_request.number }}
       cancel-in-progress: false
@@ -2359,7 +2359,7 @@ jobs:
   single-summary:
     needs: [resolve, benchmark]
     if: always() && needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     steps:
       - name: Download all metrics artifacts
         uses: actions/download-artifact@v8
@@ -2571,7 +2571,7 @@ jobs:
   resolve-images:
     needs: [resolve]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'multi'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     outputs:
       images: ${{ steps.resolve.outputs.images }}
     steps:
@@ -3183,7 +3183,7 @@ jobs:
   multi-campaign-summary:
     needs: [resolve, benchmark-multi]
     if: always() && needs.resolve.outputs.mode == 'multi'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     steps:
       - name: Download campaign artifact
         if: always()
