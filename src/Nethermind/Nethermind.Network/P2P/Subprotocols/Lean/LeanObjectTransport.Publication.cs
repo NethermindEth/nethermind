@@ -153,7 +153,7 @@ public sealed partial class LeanObjectTransport
         if (block.Header.RecursiveStark is not { } commitment || proof.Length > Eip8288Constants.MaxAggregateProofBytes
             || ValueKeccak.Compute(proof) != commitment.StarkProofHash.ValueHash256) return Verdict.Invalid;
         if (!_specProvider.GetSpec(block.Header).IsEip8288Enabled) return Verdict.Refused;
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
         ValueHash256 dependencyHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
         if (!Eip8288Dependencies.AreSchemesEnabled(dependencies) || !LeanProofCapacity.FitsBlock(dependencies)
             || dependencyHash != commitment.BlockDepsHash.ValueHash256) return Verdict.Invalid;

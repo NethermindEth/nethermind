@@ -62,28 +62,38 @@ public static class Eip8288Dependencies
         }
     }
 
-    /// <summary>Spec <c>dependencies(tx)</c>: sorted, deduplicated dependency triples.</summary>
-    public static List<FrameDependency> ForTransaction(Transaction tx) => Canonicalize(Declarations(tx));
+    /// <summary>Spec <c>dependencies(tx)</c>: resolves zero data hashes to the containing transaction's signature hash,
+    /// then sorts and deduplicates the triples without changing the frame data.</summary>
+    /// <param name="computeSignatureHash">The EIP-8141 canonical encoder, evaluated once only when a zero hash is declared.</param>
+    public static List<FrameDependency> ForTransaction(Transaction tx, Func<Transaction, ValueHash256> computeSignatureHash) =>
+        Canonicalize(Declarations(tx, computeSignatureHash));
 
-    private static IEnumerable<FrameDependency> Declarations(Transaction tx)
+    private static IEnumerable<FrameDependency> Declarations(Transaction tx, Func<Transaction, ValueHash256> computeSignatureHash)
     {
+        ValueHash256? signatureHash = null;
         TxFrame[]? frames = tx.Frames;
         if (frames is null) yield break;
 
         foreach (TxFrame frame in frames)
         {
             if (!IsDependencyFrame(frame)) continue;
-            foreach (FrameDependency dep in ParseFrame(frame)) yield return dep;
+            foreach (FrameDependency dep in ParseFrame(frame))
+            {
+                yield return dep.DataHash == default
+                    ? new FrameDependency(dep.Scheme, signatureHash ??= computeSignatureHash(tx), dep.VerificationKey)
+                    : dep;
+            }
         }
     }
 
     /// <summary>Spec <c>dependencies(block)</c>: sorted, deduplicated transaction dependencies.</summary>
-    /// <remarks>Walks the frames directly rather than through the iterators, which runs on every block.</remarks>
-    public static List<FrameDependency> ForBlock(Block block)
+    /// <remarks>Walks the frames directly rather than through the iterators, resolving zero data hashes once per transaction.</remarks>
+    public static List<FrameDependency> ForBlock(Block block, Func<Transaction, ValueHash256> computeSignatureHash)
     {
         List<FrameDependency> dependencies = [];
         foreach (Transaction tx in block.Transactions)
         {
+            ValueHash256? signatureHash = null;
             TxFrame[]? frames = tx.Frames;
             if (frames is null) continue;
 
@@ -96,7 +106,9 @@ public static class Eip8288Dependencies
                 for (int i = 0; i < count; i++)
                 {
                     ReadOnlySpan<byte> triple = data.Slice(i * Eip8288Constants.DependencyTripleLength, Eip8288Constants.DependencyTripleLength);
-                    dependencies.Add(new FrameDependency(triple[31], new ValueHash256(triple[32..64]), new ValueHash256(triple[64..96])));
+                    ValueHash256 dataHash = new(triple[32..64]);
+                    if (dataHash == default) dataHash = signatureHash ??= computeSignatureHash(tx);
+                    dependencies.Add(new FrameDependency(triple[31], dataHash, new ValueHash256(triple[64..96])));
                 }
             }
         }
@@ -220,5 +232,6 @@ public static class Eip8288Dependencies
         return (sphincs, stark);
     }
 
-    public static ValueHash256 ComputeBlockDepsHash(Block block) => ComputeDepsHash(ForBlock(block));
+    public static ValueHash256 ComputeBlockDepsHash(Block block, Func<Transaction, ValueHash256> computeSignatureHash) =>
+        ComputeDepsHash(ForBlock(block, computeSignatureHash));
 }

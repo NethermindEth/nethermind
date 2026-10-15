@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -13,7 +14,7 @@ public class LeanProofStoreTests
     [Test]
     public void One_sender_cannot_exhaust_witness_record_capacity()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Address sender = Sender(1);
         int admitted = 0;
         byte[] witness = new byte[6208];
@@ -32,7 +33,7 @@ public class LeanProofStoreTests
     [Test]
     public void Record_slots_accommodate_the_default_pool_transaction_capacity()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         byte[] witness = new byte[6208];
         for (int index = 0; index < 2048; index++)
         {
@@ -45,7 +46,7 @@ public class LeanProofStoreTests
     [Test]
     public void Shared_records_charge_once_and_release_only_after_the_last_transaction()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Address sender = Sender(1);
         FrameDependency[] dependencies = Enumerable.Range(0, LeanProofStore.MaxSenderPinnedRecords).Select(Dependency).ToArray();
         store.AddVerified(dependencies, dependencies.Select(_ => new byte[] { 1 }).ToArray(), null);
@@ -65,7 +66,7 @@ public class LeanProofStoreTests
     [Test]
     public void Rejected_cache_removal_preserves_newer_entries_and_required_witnesses()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Dependency(1), unrelated = Dependency(2);
         store.AddVerified([dependency], [[1]], null);
         store.AddCachedRecursive([dependency], [2]);

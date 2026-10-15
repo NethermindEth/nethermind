@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
@@ -33,7 +34,7 @@ public class NativeFrameAssertionsTests
     public async Task Lean_dependency_blocks_preserve_state_diff_assertion_semantics(string scenario)
     {
         byte[] proof = NativeLeanProofVerifierTests.MixedProof();
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         IReleaseSpec spec = Eip8288Prototype.Instance;
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(spec))
@@ -56,7 +57,7 @@ public class NativeFrameAssertionsTests
         transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         transaction.Hash = transaction.CalculateHash();
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(dependencies);
         Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proof), Is.True);
         proofs.AddVerified(dependencies, null, proof);
@@ -85,7 +86,7 @@ public class NativeFrameAssertionsTests
             Assert.That(state, Is.EqualTo(passes ? (ulong)GasCostOf.SSetState : 0));
             Assert.That(receipt.GasUsed, Is.EqualTo(execution + state));
             Assert.That(Math.Max(execution, state), Is.EqualTo(block.GasUsed));
-            Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block), Is.EqualTo(commitment));
+            Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue), Is.EqualTo(commitment));
             Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk,
                 block.StarkProof!), Is.True);
         }

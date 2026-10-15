@@ -19,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -52,7 +53,7 @@ public class NativeInclusionListTests
         FrameTxTestFrames.SignSecp256k1(bad, TestItem.PrivateKeyB, bad.SenderAddress!);
         bad.Hash = bad.CalculateHash();
         if (scenario == "uncovered") Assert.That(FrameTxValidation.IsWellFormed(bad, spec, out string? error), Is.True, error);
-        FrameDependency[] dependencies = [.. Eip8288Dependencies.ForTransaction(covered)];
+        FrameDependency[] dependencies = [.. Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue)];
         ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(dependencies);
         NativeLeanProofVerifierTests.AssertBareStarkProof(proofBytes, dependencies);
         Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proofBytes), Is.True);

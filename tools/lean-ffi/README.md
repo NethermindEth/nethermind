@@ -69,6 +69,10 @@ The decoded block cache skips proofs above 64 KiB. Invalid-block diagnostics ret
 proof-bearing records in a separate eight-entry / 64 MiB tier, counting body proofs and
 inclusion-list proof/dependency buffers and returning owned copies.
 
+A zero dependency `data_hash` resolves to the containing frame transaction's canonical
+signature hash before sorting and deduplication. Raw frame bytes remain zero for signing
+and `FRAMEDATACOPY`; wrapper and block proof statements carry the resolved dependency.
+
 * **SPHINCS witness:** public key (32 bytes), signature (6176 bytes). As in EIP-8288, the
   dependency key is the public key itself, root then public parameter. Both the key and the
   signature over `data_hash` are checked.

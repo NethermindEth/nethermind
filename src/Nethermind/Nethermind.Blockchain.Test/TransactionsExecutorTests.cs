@@ -17,6 +17,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
@@ -341,8 +342,8 @@ namespace Nethermind.Blockchain.Test
             tx.Frames = [dependencyFrame];
             FrameTxValidation.TryCalculateBlockGasReservations(tx, Eip8288Prototype.Instance, out ulong executionReservation, out _);
             Block block = Build.A.Block.WithGasLimit(executionReservation - shortfall).TestObject;
-            LeanProofStore proofs = new();
-            proofs.AddVerified([dependency], [[1]], null);
+            LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+            proofs.AddVerified(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue), [[1]], null);
             BlockProcessor.BlockProductionTransactionPicker txPicker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
 
             BlockProcessor.AddingTxEventArgs args = txPicker.CanAddTransaction(block, tx, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
@@ -362,7 +363,7 @@ namespace Nethermind.Blockchain.Test
             BlockToProduce producing = new(block.Header, block.Transactions, block.Uncles);
             ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
             IWorldState state = Substitute.For<IWorldState>();
-            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: new());
+            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: new(FrameTxSigHash.ComputeValue));
             BlockProcessor.BlockProductionTransactionsExecutor executor = new(adapter, state, picker, LimboLogs.Instance,
                 NullBlockAccessListManager.Instance, NullTxPool.Instance);
 
@@ -386,7 +387,7 @@ namespace Nethermind.Blockchain.Test
             transaction.NonceKeys = [UInt256.Zero];
             transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanStarkVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))];
-            LeanProofStore proofs = new();
+            LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
             proofs.AddVerified(dependencies, Enumerable.Repeat(new byte[] { 1 }, count).ToArray(), null);
             BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
             Block block = Build.A.Block.WithGasLimit(10_000_000).TestObject;

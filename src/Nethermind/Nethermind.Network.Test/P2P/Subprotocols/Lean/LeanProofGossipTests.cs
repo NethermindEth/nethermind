@@ -47,7 +47,7 @@ public class LeanProofGossipTests
     [Test]
     public void Disjoint_rotation_reuses_proven_groups_without_sliding_overlap()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Transaction[] transactions = new Transaction[17];
         for (int i = 0; i < transactions.Length; i++)
         {

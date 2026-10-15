@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -14,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
@@ -25,11 +30,123 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 public class NativeBlockProductionTests
 {
     [Test]
+    public async Task Zero_dependency_hash_proves_the_final_signature_hash_through_wrapper_and_block([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
+    {
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance))
+            .AddSingleton<ILeanProofVerifier>(NativeLeanProofVerifier.Instance)
+            .AddSingleton(proofs));
+        FrameDependency raw = new(Eip8288Constants.LeanSphincsScheme, default, NativeLeanProofVerifierTests.Dependency("sphincs").VerificationKey);
+        TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
+            new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([raw]))];
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = chain.SpecProvider.ChainId,
+            SenderAddress = TestItem.PrivateKeyB.Address,
+            NonceKeys = [UInt256.Zero],
+            Frames = frames,
+            GasLimit = FrameTxValidation.TotalGasLimit(frames),
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 100.GWei
+        };
+        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        transaction.Hash = transaction.CalculateHash();
+        byte[] encodedTransaction = TxDecoder.Instance.Encode(transaction).Bytes;
+        FrameDependency resolved = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue).Single();
+        byte[] witness = await SignMessage(resolved.DataHash);
+        ILeanProofVerifier verifier = NativeLeanProofVerifier.Instance;
+        Assert.That(verifier.VerifyLeanSphincs(resolved.DataHash, resolved.VerificationKey, witness), Is.True);
+        Assert.That(verifier.VerifyLeanSphincs(default, resolved.VerificationKey, witness), Is.False);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash([resolved]);
+        MempoolWrapper wrapper = new()
+        {
+            Transactions = [new WrapperTransaction(transaction)],
+            Deps = [resolved],
+            Mode = mode,
+            Proofs = mode == MempoolWrapper.ModeDirect ? [witness] : null,
+            RecursiveStark = mode == MempoolWrapper.ModeRecursive
+                ? new(RecursiveStarkAggregator.Prove(new AggregationInput { Deps = [resolved], Witnesses = [witness] }, verifier, in depsHash), new Hash256(depsHash))
+                : null
+        };
+        ProofWrapperAcceptance acceptance = await chain.Container.Resolve<ProofWrapperService>().AcceptDetailedAsync(
+            MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes,
+            new Dictionary<ValueHash256, Transaction> { [transaction.Hash!.ValueHash256] = transaction });
+        Assert.That(acceptance.Result.IsSuccess, Is.True, acceptance.Result.Error);
+        using CancellationTokenSource provingBudget = new(TimeSpan.FromMinutes(3));
+
+        Block block = await chain.Container.Resolve<TestBlockchainUtil>().AddBlock(
+            TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, provingBudget.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(1));
+            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(depsHash)));
+            Assert.That(verifier.VerifyRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, block.StarkProof!), Is.True);
+            Assert.That(verifier.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash([raw]), Eip8288Constants.AggregatedVk, block.StarkProof!), Is.False);
+            Assert.That(Eip8288Dependencies.ParseFrame(transaction.Frames![1]).Single(), Is.EqualTo(raw));
+            Assert.That(TxDecoder.Instance.Encode(transaction).Bytes, Is.EqualTo(encodedTransaction));
+        }
+        Transaction changed = new();
+        transaction.CopyTo(changed);
+        changed.Nonce++;
+        ValueHash256 changedHash = FrameTxSigHash.ComputeValue(changed);
+        Assert.That(changedHash, Is.Not.EqualTo(resolved.DataHash));
+        Assert.That(verifier.VerifyLeanSphincs(changedHash, resolved.VerificationKey, witness), Is.False);
+        changed.Hash = changed.CalculateHash();
+        MempoolWrapper changedWrapper = new()
+        {
+            Transactions = [new WrapperTransaction(changed)],
+            Deps = wrapper.Deps,
+            Mode = wrapper.Mode,
+            Proofs = wrapper.Proofs,
+            RecursiveStark = wrapper.RecursiveStark
+        };
+        Assert.That(MempoolWrapperValidator.Validate(changedWrapper, verifier, out string error), Is.False);
+        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
+    }
+
+    private static async Task<byte[]> SignMessage(ValueHash256 message)
+    {
+        string executable = Path.Combine(TestContext.CurrentContext.TestDirectory, "lean-vectors", OperatingSystem.IsWindows() ? "fixtures.exe" : "fixtures");
+        string output = Path.GetTempFileName();
+        using Process process = new()
+        {
+            StartInfo = new ProcessStartInfo(executable)
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                ArgumentList = { "--sign-message", Convert.ToHexString(message.Bytes), output }
+            }
+        };
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+        bool started = false;
+        try
+        {
+            started = process.Start();
+            Assert.That(started, Is.True);
+            Task<string> stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            Task<string> stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+            Assert.That(process.ExitCode, Is.Zero, await stderr + await stdout);
+            return await File.ReadAllBytesAsync(output, timeout.Token);
+        }
+        finally
+        {
+            if (started && !process.HasExited) process.Kill(entireProcessTree: true);
+            File.Delete(output);
+        }
+    }
+
+    [Test]
     public async Task Produces_and_validates_real_mixed_dependency_block([Values] bool preAggregate)
     {
         FrameDependency signature = NativeLeanProofVerifierTests.Dependency("sphincs");
         FrameDependency stark = NativeLeanProofVerifierTests.Dependency("stark");
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         CountingNativeVerifier verifier = new();
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance))
@@ -58,15 +175,15 @@ public class NativeBlockProductionTests
         int callsBeforeProduction = verifier.ProofCalls;
         Block block = await chain.Container.Resolve<TestBlockchainUtil>()
             .AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, provingBudget.Token);
-        ValueHash256 commitment = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        ValueHash256 commitment = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
         Assert.That(block.Transactions, Has.Length.EqualTo(1));
         Assert.That(block.Header.RecursiveStark, Is.Not.Null);
         Assert.That(block.Header.GasUsedPerDimension, Is.Not.Null);
-        NativeLeanProofVerifierTests.AssertBareStarkProof(block.StarkProof!, Eip8288Dependencies.ForBlock(block));
+        NativeLeanProofVerifierTests.AssertBareStarkProof(block.StarkProof!, Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue));
         (ulong Execution, ulong State) dimensions = block.Header.GasUsedPerDimension!.Value;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Eip8288Dependencies.ForBlock(block), Has.Count.EqualTo(2));
+            Assert.That(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(2));
             Assert.That(block.Header.RecursiveStark!.StarkProofHash, Is.EqualTo(Keccak.Compute(block.StarkProof!)));
             Assert.That(block.GasUsed, Is.LessThanOrEqualTo(block.GasLimit));
             Assert.That(Math.Max(dimensions.Execution, dimensions.State), Is.EqualTo(block.GasUsed));

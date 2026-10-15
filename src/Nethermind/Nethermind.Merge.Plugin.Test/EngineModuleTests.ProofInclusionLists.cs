@@ -36,7 +36,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 parent = chain.BlockTree.HeadHash!;
         Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction));
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
         InclusionListV1[] lists = [InclusionList(3, transaction, scenario == "missing-proof" ? null
             : new RecursiveStarkV1 { StarkProof = [2], DepsHash = scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash) })];
         PayloadAttributes attributes = BuildPerListPayloadAttributes(lists);
@@ -126,7 +126,7 @@ public partial class EngineModuleTests
         GetPayloadV6Result produced = (await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!))).Data!;
         Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
         string encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
-        string depsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction))).ToString();
+        string depsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue))).ToString();
         string lists = $$$"""[{"committeeIndex":"{{{committeeIndex}}}","transactions":["{{{encoded}}}"],"recursiveStark":{"starkProof":"0x02","depsHash":"{{{depsHash}}}"}}]""";
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV7",
@@ -188,7 +188,7 @@ public partial class EngineModuleTests
         RecursiveStarkV1? proof = scenario == "missing-proof" ? null : new()
         {
             StarkProof = scenario == "empty-proof" ? [] : [2],
-            DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction)))
+            DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)))
         };
         PayloadAttributes attributes = BuildPerListPayloadAttributes([InclusionList(0, transaction, proof)],
             timestamp: produced.ExecutionPayload.Timestamp + 12, slotNumber: 2);

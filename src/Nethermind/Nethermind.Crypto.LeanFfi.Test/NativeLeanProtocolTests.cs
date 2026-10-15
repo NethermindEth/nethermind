@@ -28,6 +28,7 @@ using EthGetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.
 using EthPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage;
 using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Stats.Model;
@@ -255,14 +256,14 @@ public class NativeLeanProtocolTests
             Assert.That(source.Disconnects, Is.Empty);
             Assert.That(target.Disconnects, Is.Empty);
         }
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         Assert.That(target.Chain.Container.Resolve<LeanProofStore>().TryGetInput(dependencies, out AggregationInput admitted), Is.True);
         NativeLeanProofVerifierTests.AssertBareStarkProof(admitted.RecursiveProofs[0].Proof.ToArray(), dependencies);
         Block block = await target.Chain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block.Transactions, Has.Length.EqualTo(1));
-            Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(Eip8288Dependencies.ComputeBlockDepsHash(block),
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue),
                 Eip8288Constants.AggregatedVk, block.StarkProof!), Is.True);
         }
         toTarget.Writer.TryComplete();

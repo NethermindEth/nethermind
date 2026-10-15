@@ -10,6 +10,7 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.ProofAggregation;
@@ -128,7 +129,7 @@ public class RecursiveStarkAggregatorTests
         FrameDependency a = Sphincs("a");
         FrameDependency b = Sphincs("b");
         byte[] first = [1];
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([a, b], recursive ? null : [first, [2]], recursive ? first : null);
         first[0] = 9;
 
@@ -186,7 +187,7 @@ public class RecursiveStarkAggregatorTests
     public void Pruning_a_recursive_input_discards_only_dependencies_no_retained_transaction_needs()
     {
         FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([a, b, c], null, [1]);
         Assert.That(store.TryGetInput([c, b], out AggregationInput input), Is.True);
         AggregationInput combined = RecursiveStarkAggregator.Combine([input], [b, c]);
@@ -202,7 +203,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Proof_store_rejects_missing_dependencies()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Assert.That(store.TryGetInput([Sphincs("missing")], out _), Is.False);
         Assert.That(store.TryGetInput([], out AggregationInput input), Is.True);
         Assert.That(input.Deps, Is.Empty);
@@ -483,7 +484,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Proof_store_evicts_oldest_coverage_without_removing_newer_witnesses([Values] bool sameDependency)
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency first = Sphincs("0");
         byte[] witness = new byte[64 * 1024 - Eip8288Constants.DependencyTripleLength];
         for (int i = 0; i < 1025; i++) store.AddVerified([sameDependency ? first : Sphincs(i.ToString())], [witness], null);
@@ -493,7 +494,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Empty_dependency_proofs_do_not_evict_useful_witnesses()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Sphincs("useful");
         store.AddVerified([dependency], [[1]], null);
         for (int i = 0; i < 1025; i++) store.AddVerified([], null, [2]);
@@ -503,7 +504,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Repeated_identical_proofs_do_not_evict_other_coverage()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency honest = Sphincs("honest");
         FrameDependency repeated = Sphincs("repeated");
         store.AddVerified([honest], [[1]], null);
@@ -517,7 +518,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void New_proof_identities_for_pending_coverage_do_not_evict_other_transactions()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency honest = Sphincs("honest");
         FrameDependency pending = Sphincs("pending");
         store.AddVerified([honest], [[1]], null);
@@ -532,7 +533,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Candidate_snapshots_share_owned_read_only_witness_buffers([Values] bool recursive)
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Sphincs("large");
         byte[] proof = new byte[4 * 1024 * 1024];
         store.AddVerified([dependency], recursive ? null : [proof], recursive ? proof : null);
@@ -556,7 +557,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public async Task Disposed_admission_scope_revokes_captured_execution_context()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Sphincs("temporary");
         Transaction transaction = new()
         {
@@ -580,7 +581,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Admission_reserves_capacity_and_pending_coverage_survives_unique_proof_floods()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         List<Transaction> pending = [];
         byte[] witness = new byte[64 * 1024 - Eip8288Constants.DependencyTripleLength];
         for (int i = 0; i < 1024; i++)
@@ -606,7 +607,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Overlapping_partial_admission_and_cache_eviction_preserve_original_pending_witnesses()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency a = Sphincs("pending-a"), b = Sphincs("pending-b");
         Transaction original = DependencyTransaction(a), later = DependencyTransaction(b);
         store.AddVerified([a], [[1]], null);
@@ -632,7 +633,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Rejected_reservations_release_capacity_without_publishing_coverage()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         for (int i = 0; i < 1100; i++)
         {
             FrameDependency dependency = Sphincs($"rejected:{i}");
@@ -645,7 +646,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Partial_direct_admission_releases_large_rejected_witnesses()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         List<Transaction> pending = [];
         byte[] rejectedWitness = new byte[4 * 1024 * 1024];
         for (int i = 0; i < 24; i++)
@@ -667,7 +668,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Rejected_pool_insertion_releases_unpublished_direct_witnesses()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Sphincs("rejected-insertion");
         Transaction transaction = DependencyTransaction(dependency);
         Assert.That(store.TryBeginAdmission([dependency], [[1]], null, out IDisposable? admission), Is.True);
@@ -682,7 +683,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Sender_quota_counts_shared_recursive_records_once_and_releases_the_last_owner()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency a = Sphincs("quota-a"), b = Sphincs("quota-b"), c = Sphincs("quota-c");
         byte[] proof = new byte[5 * 1024 * 1024];
         store.AddVerified([a], null, proof);

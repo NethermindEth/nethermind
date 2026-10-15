@@ -155,7 +155,7 @@ internal sealed class LeanTestNode : IDisposable
     public TestSingleReleaseSpecProvider Specs { get; }
     public LeanTestVerifier Verifier { get; } = new();
     public List<Transaction> Pending { get; } = [];
-    public LeanProofStore ProofStore { get; } = new();
+    public LeanProofStore ProofStore { get; } = new(FrameTxSigHash.ComputeValue);
     public LeanEthTransactions EthTransactions { get; } = new();
     public bool Reject { get; set; }
     public ProofWrapperService Wrappers { get; }
@@ -201,7 +201,7 @@ internal static class LeanTestObjects
     public static byte[] Wrapper(int proofBytes, bool hashOnly = false, params Transaction[] transactions)
     {
         Transaction[] sorted = [.. transactions.OrderBy(t => t.Hash!.ToString())];
-        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(sorted.SelectMany(Eip8288Dependencies.ForTransaction));
+        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(sorted.SelectMany(tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
         return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
             Transactions = [.. sorted.Select(t => hashOnly ? new WrapperTransaction(t.Hash!) : new WrapperTransaction(t))],

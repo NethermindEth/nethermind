@@ -54,9 +54,9 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             DecodedMaxFeePerGas = 1
         };
         FrameTxTestFrames.SignSecp256k1(frame, TestItem.PrivateKeyA, frame.SenderAddress);
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(frame);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(frame, FrameTxSigHash.ComputeValue);
         RecursiveStarkV1 proof = new() { StarkProof = [1], DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)) };
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FakeLeanProofVerifier verifier = new(true);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, store);

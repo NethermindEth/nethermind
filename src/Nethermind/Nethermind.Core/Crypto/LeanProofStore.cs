@@ -8,7 +8,7 @@ using System.Threading;
 namespace Nethermind.Core.Crypto;
 
 /// <summary>Bounded, thread-safe storage of verified dependency witnesses for block production.</summary>
-public sealed class LeanProofStore
+public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignatureHash)
 {
     /// <summary>Maximum retained wrapper size, bounded by the protocol ceiling.</summary>
     public const int MaxWrapperBytes = Eip8288Constants.MaxWrapperBytes;
@@ -22,6 +22,7 @@ public sealed class LeanProofStore
     // guarantee witness coverage for every transaction in a full pool.
     private const int MaxStoredRecords = 2048 * 16;
     private const int MaxCachedRecursiveRecords = 1024;
+    private readonly Func<Transaction, ValueHash256> _computeSignatureHash = computeSignatureHash;
     private readonly object _lock = new();
     private readonly Dictionary<FrameDependency, ProofRecord> _coverage = [];
     private readonly LinkedList<ProofRecord> _records = [];
@@ -162,7 +163,7 @@ public sealed class LeanProofStore
     /// <summary>Reserves pending witnesses before insertion; publication may be deferred to the insertion event.</summary>
     public bool PinPending(Transaction transaction, object? owner = null, bool publish = true)
     {
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction, _computeSignatureHash);
         if (dependencies.Count == 0) return true;
         if (transaction.Hash is null || transaction.SenderAddress is null) return false;
         lock (_lock)
@@ -441,7 +442,7 @@ public sealed class LeanProofStore
     /// <summary>Checks whether every dependency of a candidate transaction has a verified witness.</summary>
     public bool Covers(Transaction transaction)
     {
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction, _computeSignatureHash);
         lock (_lock)
             foreach (FrameDependency dependency in dependencies)
                 if (!TryResolve(dependency, out _)) return false;
