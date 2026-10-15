@@ -14,20 +14,51 @@ namespace Nethermind.BeaconChain.Sync;
 /// <param name="ExecutionInSync">Whether the execution layer confirmed the head VALID.</param>
 public sealed record HeadSnapshot(StatusMessageV2 Status, Hash256? FullHeadRoot, Hash256 JustifiedRoot, bool ExecutionInSync)
 {
-    private readonly Lazy<ForkedBeaconState?>? _state;
+    private readonly DeferredHeadState? _state;
 
-    /// <summary>The head's post-state for the Beacon API; a deferred one is taken on the first read and shared by every later one.</summary>
+    /// <summary>The head's post-state for the Beacon API once it is taken, otherwise <c>null</c>; reading it never waits or starts the copy.</summary>
     internal ForkedBeaconState? State
     {
-        get => _state?.Value;
-        init => _state = value is null ? null : new Lazy<ForkedBeaconState?>(value);
+        get => _state?.Taken;
+        init => _state = value is null ? null : new DeferredHeadState(value);
     }
 
-    /// <summary>The head's post-state, taken only when <see cref="State"/> is first read.</summary>
-    internal Lazy<ForkedBeaconState?>? DeferredState
+    /// <summary>The head's post-state, taken only when a reader asks for it.</summary>
+    internal DeferredHeadState? DeferredState
     {
         get => _state;
         init => _state = value;
+    }
+}
+
+/// <summary>The post-state of one head for the Beacon API, taken once by the first reader that asks for it and shared by every later one.</summary>
+internal sealed class DeferredHeadState
+{
+    private readonly Func<Task<ForkedBeaconState?>>? _take;
+    private readonly Lock _lock = new();
+    private Task<ForkedBeaconState?>? _taken;
+
+    /// <param name="take">Takes the state; it must not block the calling thread.</param>
+    public DeferredHeadState(Func<Task<ForkedBeaconState?>> take) => _take = take;
+
+    /// <summary>A state already taken.</summary>
+    public DeferredHeadState(ForkedBeaconState state) => _taken = Task.FromResult<ForkedBeaconState?>(state);
+
+    /// <summary>The state if a take has ended with it, otherwise <c>null</c>.</summary>
+    public ForkedBeaconState? Taken => Volatile.Read(ref _taken) is { IsCompletedSuccessfully: true } taken ? taken.Result : null;
+
+    /// <summary>Starts the take unless it has already started.</summary>
+    public Task<ForkedBeaconState?> TakeAsync()
+    {
+        lock (_lock)
+        {
+            if (_take is not null && _taken is null)
+            {
+                _taken = _take();
+            }
+
+            return _taken!;
+        }
     }
 }
 

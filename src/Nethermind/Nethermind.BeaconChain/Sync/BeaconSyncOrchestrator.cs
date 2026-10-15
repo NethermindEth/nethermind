@@ -2707,9 +2707,8 @@ public sealed class BeaconSyncOrchestrator(
         if (headSnapshots is not null)
         {
             HeadSnapshot? previousSnapshot = headSnapshots.Current;
-            Lazy<ForkedBeaconState?>? apiState = headSnapshots.CaptureState
-                ? previousSnapshot?.Status.HeadRoot == head.HeadRoot && previousSnapshot.FullHeadRoot == fullHeadRoot
-                    && previousSnapshot.DeferredState is { } previousState && (!previousState.IsValueCreated || previousState.Value is not null)
+            DeferredHeadState? apiState = headSnapshots.CaptureState
+                ? previousSnapshot?.Status.HeadRoot == head.HeadRoot && previousSnapshot.FullHeadRoot == fullHeadRoot && previousSnapshot.DeferredState is { } previousState
                     ? previousState : DeferApiState(importer as BlockImporter, head.HeadRoot)
                 : null;
             headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync) { DeferredState = apiState };
@@ -2729,27 +2728,26 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Applies the execution layer's forkchoice verdict for <paramref name="headRoot"/> to fork choice, dropping one that contradicts an earlier verdict.</summary>
-    /// <summary>Defers the API's copy of the post-state of <paramref name="root"/> to the first request that reads it.</summary>
+    /// <summary>Defers the API's copy of the post-state of <paramref name="root"/> to the first request that asks for it.</summary>
     /// <remarks>
-    /// A held Fulu state is cloned on the import thread, which owns it, so a head change with no API reader copies nothing. The wait blocks the
-    /// requesting thread only, never the import thread. A frozen Gloas state is taken now, before its retained tier can evict it.
+    /// A held Fulu state is cloned on the import thread, which owns it, so a head change with no API reader copies nothing; a request
+    /// awaits the copy without blocking a thread. A frozen Gloas state is taken now, before its retained tier can evict it.
     /// </remarks>
-    private Lazy<ForkedBeaconState?>? DeferApiState(BlockImporter? blockImporter, Hash256 root)
+    private DeferredHeadState? DeferApiState(BlockImporter? blockImporter, Hash256 root)
     {
-        if (ApiStateReader is null && blockImporter?.IsGloasBlock(root) == true)
+        if (ApiStateReader is null && blockImporter?.IsGloasBlock(root) == true && blockImporter.GetStateForApi(root) is { } gloas)
         {
-            return new Lazy<ForkedBeaconState?>(blockImporter.GetStateForApi(root));
+            return new DeferredHeadState(gloas);
         }
 
         Func<ForkedBeaconState?>? read = ApiStateReader is { } reader ? () => reader(root) : blockImporter is null ? null : () => blockImporter.GetStateForApi(root);
-        return read is null ? null : new Lazy<ForkedBeaconState?>(() =>
+        return read is null ? null : new DeferredHeadState(async () =>
         {
             try
             {
-                return _importThread.RunAsync(read).GetAwaiter().GetResult();
+                return await _importThread.RunAsync(read);
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OutOfMemoryException)
             {
                 if (_logger.IsError) _logger.Error($"Copying the head state of {root} for the Beacon API failed", e);
                 return null;
@@ -2757,6 +2755,7 @@ public sealed class BeaconSyncOrchestrator(
         });
     }
 
+    /// <summary>Applies the execution layer's forkchoice verdict for <paramref name="headRoot"/> to fork choice, dropping one that contradicts an earlier verdict.</summary>
     private void ApplyForkchoiceVerdict(IBlockImporter importer, Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)
     {
         try

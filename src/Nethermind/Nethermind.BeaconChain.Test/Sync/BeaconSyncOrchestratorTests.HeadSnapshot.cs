@@ -77,12 +77,15 @@ public partial class BeaconSyncOrchestratorTests
 
         int copiesWithoutReader = copies;
         HeadSnapshot published = snapshots.Current!;
-        ForkedBeaconState? first = published.State;
-        ForkedBeaconState? second = published.State;
+        ForkedBeaconState? unread = published.State;
+        ForkedBeaconState? first = await published.DeferredState!.TakeAsync();
+        ForkedBeaconState? second = await published.DeferredState.TakeAsync();
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(copiesWithoutReader, Is.Zero, "a head change must not copy the full state on the import worker when no request reads it");
+        Assert.That(unread, Is.Null, "reading the snapshot's state never starts the copy");
         Assert.That(copies, Is.EqualTo(1));
         Assert.That(second, Is.Not.Null.And.SameAs(first), "every read of one head shares one copy");
+        Assert.That(published.State, Is.SameAs(first));
     }
 }

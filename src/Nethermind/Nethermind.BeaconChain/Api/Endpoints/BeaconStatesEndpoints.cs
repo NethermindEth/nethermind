@@ -37,24 +37,36 @@ internal static class BeaconStatesEndpoints
     {
         app.MapGet("/eth/v1/beacon/states/{state_id}/fork", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, Fork));
         app.MapGet("/eth/v1/beacon/states/{state_id}/root", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, Root));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/finality_checkpoints", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, FinalityCheckpoints));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/validators", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, Validators));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/validators/{validator_id}", (HttpContext c, string state_id, string validator_id) => ValidatorById(c, state_id, validator_id, ctx.ForRequest()));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/validator_balances", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, ValidatorBalances));
-        app.MapPost("/eth/v1/beacon/states/{state_id}/validators", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, ValidatorsPost));
-        app.MapPost("/eth/v1/beacon/states/{state_id}/validator_balances", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, ValidatorBalancesPost));
-        app.MapPost("/eth/v1/beacon/states/{state_id}/validator_identities", (HttpContext c, string state_id) => ValidatorIdentities(c, state_id, ctx.ForRequest()));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/committees", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, Committees));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/pending_deposits", (HttpContext c, string state_id) =>
-            StateList(c, state_id, ctx.ForRequest(), static spec => spec.ElectraForkEpoch, static s => s.PendingDeposits!, static items => PendingDeposit.Encode(items), BeaconJsonWriter.WritePendingDepositsAsync));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/pending_partial_withdrawals", (HttpContext c, string state_id) =>
-            StateList(c, state_id, ctx.ForRequest(), static spec => spec.ElectraForkEpoch, static s => s.PendingPartialWithdrawals!, static items => PendingPartialWithdrawal.Encode(items), BeaconJsonWriter.WritePendingPartialWithdrawalsAsync));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/pending_consolidations", (HttpContext c, string state_id) =>
-            StateList(c, state_id, ctx.ForRequest(), static spec => spec.ElectraForkEpoch, static s => s.PendingConsolidations!, static items => PendingConsolidation.Encode(items), BeaconJsonWriter.WritePendingConsolidationsAsync));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/proposer_lookahead", (HttpContext c, string state_id) =>
-            StateList(c, state_id, ctx.ForRequest(), static spec => spec.FuluForkEpoch, static s => s.ProposerLookahead!, static items => MemoryMarshal.AsBytes(items.AsSpan()).ToArray(), BeaconJsonWriter.WriteUIntArrayValueAsync));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/randao", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, Randao));
-        app.MapGet("/eth/v1/beacon/states/{state_id}/sync_committees", (HttpContext c, string state_id) => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), state_id, SyncCommittees));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/finality_checkpoints", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r => ContentNegotiation.JsonOnly(c, r, state_id, FinalityCheckpoints)));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/validators", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r => ContentNegotiation.JsonOnly(c, r, state_id, Validators)));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/validators/{validator_id}", (HttpContext c, string state_id, string validator_id) => WithHeadState(c, state_id, ctx.ForRequest(), r => ValidatorById(c, state_id, validator_id, r)));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/validator_balances", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r => ContentNegotiation.JsonOnly(c, r, state_id, ValidatorBalances)));
+        app.MapPost("/eth/v1/beacon/states/{state_id}/validators", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r => ContentNegotiation.JsonOnly(c, r, state_id, ValidatorsPost)));
+        app.MapPost("/eth/v1/beacon/states/{state_id}/validator_balances", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r => ContentNegotiation.JsonOnly(c, r, state_id, ValidatorBalancesPost)));
+        app.MapPost("/eth/v1/beacon/states/{state_id}/validator_identities", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r => ValidatorIdentities(c, state_id, r)));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/committees", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r => ContentNegotiation.JsonOnly(c, r, state_id, Committees)));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/pending_deposits", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r =>
+            StateList(c, state_id, r, static spec => spec.ElectraForkEpoch, static s => s.PendingDeposits!, static items => PendingDeposit.Encode(items), BeaconJsonWriter.WritePendingDepositsAsync)));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/pending_partial_withdrawals", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r =>
+            StateList(c, state_id, r, static spec => spec.ElectraForkEpoch, static s => s.PendingPartialWithdrawals!, static items => PendingPartialWithdrawal.Encode(items), BeaconJsonWriter.WritePendingPartialWithdrawalsAsync)));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/pending_consolidations", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r =>
+            StateList(c, state_id, r, static spec => spec.ElectraForkEpoch, static s => s.PendingConsolidations!, static items => PendingConsolidation.Encode(items), BeaconJsonWriter.WritePendingConsolidationsAsync)));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/proposer_lookahead", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r =>
+            StateList(c, state_id, r, static spec => spec.FuluForkEpoch, static s => s.ProposerLookahead!, static items => MemoryMarshal.AsBytes(items.AsSpan()).ToArray(), BeaconJsonWriter.WriteUIntArrayValueAsync)));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/randao", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r => ContentNegotiation.JsonOnly(c, r, state_id, Randao)));
+        app.MapGet("/eth/v1/beacon/states/{state_id}/sync_committees", (HttpContext c, string state_id) => WithHeadState(c, state_id, ctx.ForRequest(), r => ContentNegotiation.JsonOnly(c, r, state_id, SyncCommittees)));
+    }
+
+    /// <summary>Runs <paramref name="handler"/> once the head's post-state is taken, when <paramref name="stateId"/> names the head; a 503 when it is not taken in time.</summary>
+    private static async Task WithHeadState(HttpContext c, string stateId, BeaconApiContext ctx, Func<BeaconApiContext, Task> handler)
+    {
+        if (!await ctx.WaitForHeadStateAsync(stateId, c.RequestAborted))
+        {
+            await ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable, "The head state is not ready yet; retry shortly.", c.RequestAborted);
+            return;
+        }
+
+        await handler(ctx);
     }
 
     /// <summary>beacon-APIs v5.0.0-alpha.2 <c>getStateRandao</c>: the mix <c>get_randao_mix</c> returns for the requested epoch, by default the state's own.</summary>

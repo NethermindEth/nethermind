@@ -99,7 +99,7 @@ public class BeaconApiHeadSnapshotTests
 
     [Test]
     public async Task Head_state_routes_read_the_snapshot_without_a_persisted_state(
-        [Values("fork", "finality_checkpoints", "randao", "validators")] string endpoint)
+        [Values("finality_checkpoints", "randao", "validators")] string endpoint)
     {
         HeadSnapshotHolder snapshots = new();
         await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
@@ -108,10 +108,10 @@ public class BeaconApiHeadSnapshotTests
         int copies = 0;
         snapshots.Current = new HeadSnapshot(new StatusMessageV2 { HeadRoot = Head, HeadSlot = Slot, FinalizedRoot = Hash256.Zero }, null, Hash256.Zero, true)
         {
-            DeferredState = new Lazy<ForkedBeaconState?>(() =>
+            DeferredState = new DeferredHeadState(() =>
             {
                 Interlocked.Increment(ref copies);
-                return new ForkedBeaconState.OfFulu(state);
+                return Task.FromResult<ForkedBeaconState?>(new ForkedBeaconState.OfFulu(state));
             }),
         };
 
@@ -122,6 +122,38 @@ public class BeaconApiHeadSnapshotTests
         Assert.That((response.StatusCode, again.StatusCode), Is.EqualTo((HttpStatusCode.OK, HttpStatusCode.OK)));
         Assert.That(host.Store.TryGetState(Head, out _), Is.False);
         Assert.That(copies, Is.EqualTo(1), "requests for one head share the one copy the first request takes");
+    }
+
+    [Test]
+    [CancelAfter(20_000)]
+    public async Task Head_fork_requests_answer_from_the_fork_schedule_while_the_import_thread_holds_the_head_state(CancellationToken token)
+    {
+        HeadSnapshotHolder snapshots = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
+        host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, Hash256.Zero));
+        TaskCompletionSource<ForkedBeaconState?> busyImportThread = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int takes = 0;
+        snapshots.Current = new HeadSnapshot(new StatusMessageV2 { HeadRoot = Head, HeadSlot = Slot, FinalizedRoot = Hash256.Zero }, null, Hash256.Zero, true)
+        {
+            DeferredState = new DeferredHeadState(() =>
+            {
+                Interlocked.Increment(ref takes);
+                return busyImportThread.Task;
+            }),
+        };
+
+        HttpResponseMessage[] forks = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => host.Client.GetAsync("/eth/v1/beacon/states/head/fork", token)));
+        using JsonDocument fork = await BeaconApiTestHost.ReadJsonAsync(forks[0]);
+        using HttpResponseMessage checkpoints = await host.Client.GetAsync("/eth/v1/beacon/states/head/finality_checkpoints", token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forks.Select(r => r.StatusCode), Is.All.EqualTo(HttpStatusCode.OK), "a fork read never waits for the import thread");
+        JsonElement data = fork.RootElement.GetProperty("data");
+        Assert.That((data.GetProperty("previous_version").GetString(), data.GetProperty("current_version").GetString(), data.GetProperty("epoch").GetString()),
+            Is.EqualTo(("0x05000000", "0x06000000", "411392")), "the mainnet Fulu head's fork");
+        Assert.That(checkpoints.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable), "a read of the state itself gives up after its timeout");
+        Assert.That(takes, Is.EqualTo(1), "only the request that reads the state itself asks the import thread for it");
+        foreach (HttpResponseMessage response in forks) response.Dispose();
     }
 
     [Test]
