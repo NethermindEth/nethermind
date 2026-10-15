@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -200,6 +201,11 @@ internal sealed partial class PersistentStorageProvider
 
             writes += WriteDeletes(deferredDeletes.AsSpan(), storageWriteBatch);
             return (writes, skipped);
+        }
+
+        private static partial class Pool
+        {
+            private static readonly ConcurrentQueue<PerContractState> _pool = [];
         }
     }
 }

@@ -110,14 +110,6 @@ public static partial class StatelessExecutor
     /// </remarks>
     public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
 
-    private static readonly StatelessValidationResult _defaultFailureResult = new()
-    {
-        NewPayloadRequestRoot = Hash256.Zero,
-        IsSuccess = false,
-        ChainId = 0,
-        SchemaId = 0
-    };
-
     private static bool TryRecoverSenders(
         Transaction[] transactions, byte[][] encodedTransactions, ISpecProvider specProvider, IReleaseSpec spec)
     {

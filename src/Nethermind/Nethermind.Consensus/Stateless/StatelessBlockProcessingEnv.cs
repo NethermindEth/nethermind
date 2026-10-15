@@ -163,7 +163,7 @@ public partial class StatelessBlockProcessingEnv(
 
     private BlockProcessor GetProcessor()
     {
-        BlockhashProvider blockhashProvider = new(BlockTree, WorldState, logManager);
+        BlockhashProvider blockhashProvider = new(BlockTree, logManager);
         ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
         BlockAccessListManager blockAccessListManager = new(
             WorldState,
