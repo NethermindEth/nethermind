@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -18,18 +17,13 @@ public partial class BlockProcessor
 {
     public interface ISystemContractHandler
         : IBeaconBlockRootHandler, IBlockhashStore, IWithdrawalProcessor, IExecutionRequestsProcessor
-    {
-        /// <summary>Installs every predeploy <paramref name="spec"/> activates, so their code and nonce are
-        /// captured in the computed state root and, on the BAL path, the block-level access list.</summary>
-        void InstallPredeploys(IReleaseSpec spec);
-    }
+    { }
 
     public sealed class SystemContractHandler(
         IBeaconBlockRootHandler beaconBlockRootHandler,
         IBlockhashStore blockHashStore,
         IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor,
-        IWorldState stateProvider) : ISystemContractHandler
+        IExecutionRequestsProcessor executionRequestsProcessor) : ISystemContractHandler
     {
         public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
             => beaconBlockRootHandler.BeaconRootsAccessList(block, spec, includeStorageCells);
@@ -43,16 +37,10 @@ public partial class BlockProcessor
         public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
             => blockHashStore.ApplyBlockhashStateChanges(blockHeader, spec);
 
-        public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, ulong requiredBlockNumber, IReleaseSpec spec)
-            => blockHashStore.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
-
         public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
             => executionRequestsProcessor.ProcessExecutionRequests(block, state, receipts, spec);
 
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
-
-        public void InstallPredeploys(IReleaseSpec spec)
-            => PredeployInstaller.Install(stateProvider, stateProvider, spec);
     }
 }

@@ -46,6 +46,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Trie;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -1898,7 +1899,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        InMemoryReceiptStorage receiptFinder = new();
 
         Block block = Build.A.Block.WithNumber(1)
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
@@ -1915,8 +1916,7 @@ public partial class EthRpcModuleTests
             .WithLogs(entries).TestObject;
         TxReceipt[] receiptsTab = { receipt };
         blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
-        receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
-        receiptFinder.Get(Arg.Any<Hash256>()).Returns(receiptsTab);
+        receiptFinder.Insert(block, receiptsTab);
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", TestItem.KeccakA.ToString(), "true");
@@ -2902,7 +2902,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        InMemoryReceiptStorage receiptFinder = new();
 
         Block block = Build.A.Block.WithNumber(1)
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
@@ -2921,8 +2921,7 @@ public partial class EthRpcModuleTests
             .WithLogs(entries).TestObject;
         TxReceipt[] receiptsTab = { receipt };
         blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
-        receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
-        receiptFinder.Get(Arg.Any<Hash256>()).Returns(receiptsTab);
+        receiptFinder.Insert(block, receiptsTab);
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).Build();
         string result = await ctx.Test.TestEthRpc("eth_getBlockByNumber", TestItem.KeccakA.ToString(), "true");
@@ -3153,6 +3152,22 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
+    /// <summary>
+    /// The receipt backfill keeps its lowest-inserted-block pointer under the zero hash in the legacy tx-hash keyed
+    /// receipts column. Looking that hash up must answer "no such transaction", not fail decoding the pointer.
+    /// </summary>
+    [TestCase("eth_getTransactionReceipt")]
+    [TestCase("eth_getTransactionByHash")]
+    public async Task Zero_hash_lookup_returns_null_after_receipt_backfill(string method)
+    {
+        using Context ctx = await Context.Create();
+        new Nethermind.Synchronization.SyncPointers(ctx.Test.DbProvider.BlocksDb, ctx.Test.DbProvider.ReceiptsDb, ctx.Test.DbProvider.MetadataDb, new ReceiptConfig())
+            .LowestInsertedReceiptBlockNumber = 24_600_000;
+
+        string serialized = await ctx.Test.TestEthRpc(method, Keccak.Zero.ToString());
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+    }
+
     [TestCase(new byte[] { 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x77, 0x6f, 0x72, 0x6c, 0x64 }, TestName = "AsciiMessage")]
     [TestCase(new byte[] { 0xde, 0xad, 0xbe, 0xaf }, TestName = "NonUtf8Message")]
     public async Task EthSign_WithMessage_RecoversSignerAddress(byte[] message)
@@ -3314,11 +3329,11 @@ public partial class EthRpcModuleTests
 
         private Context() { }
 
-        public static async Task<Context> CreateWithLondonEnabled()
+        public static async Task<Context> CreateWithLondonEnabled(IWallet? wallet = null)
         {
             OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
             TestSpecProvider specProvider = new(releaseSpec);
-            return await Create(specProvider);
+            return await Create(specProvider, wallet: wallet);
         }
 
         public static async Task<Context> CreateWithCancunEnabled()
@@ -3359,7 +3374,8 @@ public partial class EthRpcModuleTests
             IBlockchainBridge? blockchainBridge = null,
             Action<ContainerBuilder>? configurer = null,
             bool? useFlatDb = null,
-            int estimateErrorMargin = 0)
+            int estimateErrorMargin = 0,
+            IWallet? wallet = null)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -3376,6 +3392,11 @@ public partial class EthRpcModuleTests
             if (useFlatDb is not null)
             {
                 testBlockchainBuilder.WithFlatDb(useFlatDb.Value);
+            }
+
+            if (wallet is not null)
+            {
+                testBlockchainBuilder.WithWallet(wallet);
             }
 
             return Task.FromResult(new Context

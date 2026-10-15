@@ -121,7 +121,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         [Test]
         [CancelAfter(10000)]
-        public void AddPersistedNodes_Should_Propagate_Cancellation(CancellationToken cancellationToken)
+        public async Task AddPersistedNodes_Should_Propagate_Cancellation(CancellationToken cancellationToken)
         {
             // A non-cancellation exception is swallowed (above), but a cancelled ping is lifecycle
             // shutdown and must stop the load promptly rather than be swallowed.
@@ -129,7 +129,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeA.NodeId)), Arg.Any<CancellationToken>())
                 .Returns(Task.FromException<bool>(new OperationCanceledException()));
 
-            Assert.ThrowsAsync<OperationCanceledException>(
+            await Assert.ThrowsAsync<OperationCanceledException>(
                 async () => await _persistenceManager.LoadPersistedNodes(cancellationToken));
         }
 

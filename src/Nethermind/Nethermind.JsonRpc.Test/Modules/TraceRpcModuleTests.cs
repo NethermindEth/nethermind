@@ -2319,6 +2319,28 @@ public class TraceRpcModuleTests
         }
     }
 
+    // Shaped like trace-interop's fork-blob-fee-only probes: a blob fee cap only describes a blob transaction, which
+    // carries at least one versioned hash, so a cap alone is rejected, zero or not.
+    [Test]
+    public async Task Trace_call_rejects_a_lone_blob_fee_cap(
+        [Values("0x0", "0x1")] string cap,
+        [Values("trace_call", "trace_callMany")] string method)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Cancun.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\",\"gas\":\"0x493e0\",\"maxFeePerBlobGas\":\"{cap}\"}}");
+        string[] traceTypes = ["trace"];
+        object[] parameters = method == "trace_call"
+            ? [call.RootElement, traceTypes, "latest"]
+            : [new[] { new object[] { call.RootElement, traceTypes } }, "latest"];
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+
+        Assert.That(JToken.Parse(response)["error"]?["message"]?.Value<string>(),
+            Does.Contain(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction), response);
+    }
+
     // Shaped like trace-interop's field-null-blobVersionedHashes-unpriced and field-null-authorizationList-unpriced probes.
     [TestCase("blobVersionedHashes", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
     [TestCase("authorizationList", TxErrorMessages.NotAllowedCreateTransaction)]
@@ -3528,7 +3550,7 @@ public class TraceRpcModuleTests
             System.IO.Pipelines.Pipe pipe = new();
             try
             {
-                Assert.ThrowsAsync<OperationCanceledException>(async () => await streaming.WriteToAsync(pipe.Writer, cts.Token));
+                await Assert.ThrowsAsync<OperationCanceledException>(async () => await streaming.WriteToAsync(pipe.Writer, cts.Token));
             }
             finally
             {
@@ -3555,8 +3577,8 @@ public class TraceRpcModuleTests
     }
 
     [TestCaseSource(nameof(StreamingResourceSafetyCases))]
-    public void Streaming_resource_safety(Func<Task> scenario) =>
-        Assert.DoesNotThrowAsync(() => scenario());
+    public async Task Streaming_resource_safety(Func<Task> scenario) =>
+        await Assert.DoesNotThrowAsync(() => scenario());
 
     private static TraceRpcModule BuildModuleWithNonCanonicalReceipt(Hash256 txHash, Hash256 nonCanonicalBlockHash, bool traceNonCanonical = false)
     {
@@ -3763,7 +3785,7 @@ public class TraceRpcModuleTests
         await using AsyncCompletingStream stream = new();
         PipeWriter writer = PipeWriter.Create(stream);
 
-        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+        await Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
 
         await writer.CompleteAsync();
     }

@@ -4,11 +4,14 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Security;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
@@ -153,6 +156,48 @@ public class WalletTests
             Assert.That(recovered, Is.EqualTo(signerAddress), $"{i}");
             Console.WriteLine(tx.Signature);
             Assert.That(tx.Signature.ChainId, Is.EqualTo(chainId), "chainId");
+        }
+    }
+
+    [TestCase(WalletType.KeyStore, false, TestName = "KeyStore, locked")]
+    [TestCase(WalletType.KeyStore, true, TestName = "KeyStore, unlocked")]
+    [TestCase(WalletType.ProtectedKeyStore, false, TestName = "ProtectedKeyStore, locked")]
+    [TestCase(WalletType.ProtectedKeyStore, true, TestName = "ProtectedKeyStore, unlocked")]
+    public void HasKey_WhenKeyFileIsMissingFromAccountList_FindsItAsUnlockingDoes(WalletType walletType, bool unlocked)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SecureString passphrase = "passphrase".Secure();
+        KeyStoreConfig config = new() { KeyStoreDirectory = directory.Path, KdfparamsN = 1024 };
+        FileKeyStore keyStore = new(config, new EthereumJsonSerializer(), new AesEncrypter(config, LimboLogs.Instance),
+            new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config));
+        keyStore.StoreKey(TestItem.PrivateKeyD, passphrase);
+        File.Move(Directory.GetFiles(directory.Path).Single(), Path.Combine(directory.Path, $"{TestItem.AddressD.ToString(false, false)}.json"));
+        IWallet wallet = walletType == WalletType.KeyStore
+            ? new DevKeyStoreWallet(keyStore, LimboLogs.Instance, createTestAccounts: false)
+            : new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(new CryptoRandom(), Timestamper.Default, directory.Path),
+                Timestamper.Default, LimboLogs.Instance);
+        Assert.That(wallet.GetAccounts(), Does.Not.Contain(TestItem.AddressD), "precondition: the account list only names UTC key files");
+        if (unlocked)
+            Assert.That(wallet.UnlockAccount(TestItem.AddressD, passphrase), Is.True, "precondition: unlocking finds the key file");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wallet.HasKey(TestItem.AddressD), Is.True, "the key file is found by the lookup unlocking uses");
+            Assert.That(wallet.HasKey(TestItem.AddressE), Is.False, "no key file is named after this account");
+        }
+    }
+
+    [Test]
+    public void HasKey_WhenWalletKeepsTheDefault_AnswersFromTheAccountList()
+    {
+        IWallet wallet = _cachedWallets[WalletType.Memory].Wallet;
+        Address listed = wallet.GetAccounts()[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wallet.HasKey(listed), Is.True, "the account list names this account");
+            Assert.That(wallet.HasKey(TestItem.AddressE), Is.False, "the account list does not name this account");
+            Assert.That(((IWallet)NullWallet.Instance).HasKey(TestItem.AddressE), Is.False, "a wallet without accounts holds no key");
         }
     }
 }

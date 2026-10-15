@@ -95,7 +95,8 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
                 jsonRpcUrlCollection,
                 auth,
                 jsonRpcConfig.MaxBatchResponseBodySize,
-                jsonRpcConfig.WebSocketsProcessingConcurrency);
+                jsonRpcConfig.WebSocketsProcessingConcurrency,
+                jsonRpcConfig.MaxRequestBodySize);
 
             webSocketsManager!.AddModule(webSocketsModule, true);
         }

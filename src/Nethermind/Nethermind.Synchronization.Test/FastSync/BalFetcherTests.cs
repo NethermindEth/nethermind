@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
@@ -31,6 +32,7 @@ public class BalFetcherTests
         Success,
         Failure,
         Cancellation,
+        InvalidBal,
     }
 
     private const int BlockCount = 300;
@@ -121,7 +123,7 @@ public class BalFetcherTests
 
         if (outcome == FetchOutcome.Cancellation)
         {
-            Assert.ThrowsAsync<OperationCanceledException>(async () => await _fetcher.EnsureRange(from, b11, default));
+            await Assert.ThrowsAsync<OperationCanceledException>(async () => await _fetcher.EnsureRange(from, b11, default));
         }
         else
         {
@@ -138,19 +140,32 @@ public class BalFetcherTests
     }
 
     [Test]
-    public async Task Rejects_bal_that_does_not_match_header_hash()
+    public async Task Reports_peer_by_fault([Values(FetchOutcome.InvalidBal, FetchOutcome.Failure)] FetchOutcome outcome)
     {
         BlockHeader from = Block(10, bal: null);
         BlockHeader b11 = Block(11, [0x01, 0x02]);
-        // Peer serves garbage that won't hash to the header's BlockAccessListHash.
-        _balByHash[b11.Hash!.ValueHash256] = [0xDE, 0xAD];
-        AllocatePeer(Snap2Peer());
+        PeerInfo peer = Snap2Peer(outcome);
+        AllocatePeer(peer);
 
         bool result = await _fetcher.EnsureRange(from, b11, default);
 
-        Assert.That(result, Is.False);
-        Assert.That(_balStore.Exists(11, b11.Hash!), Is.False);
-        _pool.Received().ReportWeakPeer(Arg.Any<PeerInfo>(), AllocationContexts.State);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(_balStore.Exists(11, b11.Hash!), Is.False);
+        }
+
+        // A BAL not matching the header it was requested by is provable misbehaviour; a failed request is not.
+        if (outcome == FetchOutcome.InvalidBal)
+        {
+            _pool.Received().ReportBreachOfProtocol(peer, DisconnectReason.InvalidTxOrUncle, Arg.Any<string>());
+            _pool.DidNotReceive().ReportWeakPeer(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
+        }
+        else
+        {
+            _pool.Received().ReportWeakPeer(peer, AllocationContexts.State);
+            _pool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
     }
 
     [Test]
@@ -171,6 +186,7 @@ public class BalFetcherTests
         }
 
         _pool.DidNotReceive().ReportWeakPeer(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
+        _pool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
     [Test]
@@ -286,7 +302,8 @@ public class BalFetcherTests
                 _largestRequest = Math.Max(_largestRequest, requested.Count);
                 int served = Math.Min(requested.Count, _responseLimit);
                 ArrayPoolList<byte[]> response = new(served);
-                for (int i = 0; i < served; i++) response.Add(_balByHash.GetValueOrDefault(requested[i], []));
+                // An invalid BAL is garbage that won't hash to the header's BlockAccessListHash.
+                for (int i = 0; i < served; i++) response.Add(outcome == FetchOutcome.InvalidBal ? [0xDE, 0xAD] : _balByHash.GetValueOrDefault(requested[i], []));
                 return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(response));
             });
 

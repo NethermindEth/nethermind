@@ -177,6 +177,76 @@ public class HistoryWriterTests
         }
     }
 
+    [Test]
+    public void A_walk_whose_batch_fails_to_publish_leaves_nothing_pending_for_the_retry()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        PublishFailsOnceHistoryColumns failing = new(_historyColumns);
+        HistoryWriter writer = new(_db, failing, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> cleanColumns = new();
+        (HistoryAvailability cleanAvailability, HistoryRowFormat cleanRowFormat) = HistoryColumnsWriter.CreateSharedFormat(cleanColumns, config);
+        HistoryWriter clean = new(_db, cleanColumns, config, cleanAvailability, cleanRowFormat, LimboLogs.Instance, commitments: null);
+        clean.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))], storageChanges: [(AddrA, Slot1, 1)]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 200)), (AddrB, new Account(1, 1))], storageChanges: [(AddrA, Slot1, 2), (AddrA, Slot2, 7)]);
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 300))], storageChanges: [(AddrA, Slot1, 3)]);
+
+        failing.FailNextPublish = true;
+        Assert.That(() => writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None), Throws.InstanceOf<IOException>(),
+            "precondition: the walk fails while publishing its batch");
+        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+        clean.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (FlatHistoryColumns column in (ReadOnlySpan<FlatHistoryColumns>)[FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory])
+            {
+                Assert.That(_historyColumns.GetColumnDb(column).GetAll(ordered: true), Is.Not.Empty, $"precondition: the retry wrote {column} rows");
+                Assert.That(_historyColumns.GetColumnDb(column).GetAll(ordered: true), Is.EqualTo(cleanColumns.GetColumnDb(column).GetAll(ordered: true)).Using<KeyValuePair<byte[], byte[]>>(
+                        static (left, right) => left.Key.AsSpan().SequenceEqual(right.Key) && left.Value.AsSpan().SequenceEqual(right.Value)),
+                    $"{column}: a key the failed walk tracked must not reach the retry's rows");
+            }
+        }
+    }
+
+    private sealed class PublishFailsOnceHistoryColumns(IColumnsDb<FlatHistoryColumns> inner) : IColumnsDb<FlatHistoryColumns>
+    {
+        public bool FailNextPublish { get; set; }
+
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch() => new Batch(this, inner.StartWriteBatch());
+
+        public IDb GetColumnDb(FlatHistoryColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void SyncWal() => inner.SyncWal();
+        public void Dispose() { }
+
+        private sealed class Batch(PublishFailsOnceHistoryColumns owner, IColumnsWriteBatch<FlatHistoryColumns> inner) : IColumnsWriteBatch<FlatHistoryColumns>
+        {
+            public IWriteBatch GetColumnBatch(FlatHistoryColumns key) => inner.GetColumnBatch(key);
+
+            public void Clear() => inner.Clear();
+
+            public void Dispose()
+            {
+                if (!owner.FailNextPublish)
+                {
+                    inner.Dispose();
+                    return;
+                }
+
+                owner.FailNextPublish = false;
+                inner.Clear();
+                inner.Dispose();
+                throw new IOException("the disk is full");
+            }
+        }
+    }
+
     private sealed class ThrowingHistoryColumns(IColumnsDb<FlatHistoryColumns> inner, int throwOnAccountWrite) : IColumnsDb<FlatHistoryColumns>
     {
         public int AccountWrites { get; private set; }
@@ -1002,6 +1072,46 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void V3_RowsResolvedInsideTheWalk_MatchTheFlatEncoders()
+    {
+        (HistoryWriter windowedWriter, _) = CreateWindowedPair(retentionBlocks: 1000);
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        Account account = new(7, 4242, TestItem.KeccakA, TestItem.KeccakB);
+        UInt256 slot = Slot(0xde, 0xad, 0xbe, 0xef);
+        CommitBlock(0, 1,
+            accountChanges: [(AddrA, account), (AddrB, null)],
+            storageChanges: [(AddrA, Slot1, slot), (AddrA, Slot2, null)]);
+        CommitBlock(1, 2,
+            accountChanges: [(AddrA, new Account(8, 1)), (AddrB, new Account(1, 1))],
+            storageChanges: [(AddrA, Slot1, Slot(0x02)), (AddrA, Slot2, Slot(0x03))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        HistoryStoreV3 accountHistory = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        HistoryStoreV3 storageHistory = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory));
+        Span<byte> buffer = stackalloc byte[256];
+
+        int accountWritten = accountHistory.TryGetValueBeforeNextChange(1, AccountKey(AddrA), buffer, out ulong accountRow);
+        byte[] accountBytes = buffer[..accountWritten].ToArray();
+        int deletedWritten = accountHistory.TryGetValueBeforeNextChange(1, AccountKey(AddrB), buffer, out ulong deletedRow);
+        int slotWritten = storageHistory.TryGetValueBeforeNextChange(1, StorageKey(AddrA, Slot1), buffer, out ulong slotRow);
+        byte[] slotBytes = buffer[..slotWritten].ToArray();
+        int zeroedWritten = storageHistory.TryGetValueBeforeNextChange(1, StorageKey(AddrA, Slot2), buffer, out ulong zeroedRow);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountRow, Is.EqualTo(2UL));
+            Assert.That(accountBytes, Is.EqualTo(EncodedAccount(account)));
+            Assert.That(deletedRow, Is.EqualTo(2UL));
+            Assert.That(deletedWritten, Is.Zero);
+            Assert.That(slotRow, Is.EqualTo(2UL));
+            Assert.That(slotBytes, Is.EqualTo(EncodedSlot(slot.ToBigEndian().AsSpan())));
+            Assert.That(zeroedRow, Is.EqualTo(2UL));
+            Assert.That(zeroedWritten, Is.Zero);
+        }
+    }
+
+    [Test]
     public void V3Read_AtOrBelowWatermark_ResolvesCorrectly_BeforeAndAfterThePersistCatchesUp()
     {
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
@@ -1221,6 +1331,49 @@ public class HistoryWriterTests
         Assert.That(() => windowedReader.TryGetStorage(0, AddrA, 999999, out _),
             Throws.InstanceOf<InvalidOperationException>(),
             "a slot the over-cap destruct wrote no row for must fail closed rather than silently report absent");
+    }
+
+    [Test]
+    public void V3_ScopeCachedNoPoison_ThenOverCapDestructCaptured_ReadFailsClosed()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, slot), EncodedHistorySlot(0x01));
+        }
+
+        StorageClearsScopeCache scopeCache = new();
+        Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out _, scopeCache), Is.True);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, slot));
+        }
+
+        UInt256 missedSlot = 0;
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            try
+            {
+                windowedReader.TryGetStorage(0, AddrA, slot, out _);
+            }
+            catch (StateUnavailableException)
+            {
+                missedSlot = slot;
+                break;
+            }
+        }
+
+        Assert.That(missedSlot, Is.Not.EqualTo((UInt256)0), "the capped enumeration must have missed a slot for the scenario to exist");
+        Assert.That(() => windowedReader.TryGetStorage(0, AddrA, missedSlot, out _, scopeCache),
+            Throws.InstanceOf<StateUnavailableException>(),
+            "the scope cached \"no poison above block 0\" before the destruct was captured; trusting it reads a slot that held 0x01 as unset");
     }
 
     [Test]
@@ -1582,6 +1735,29 @@ public class HistoryWriterTests
         }
 
         _repository.RemoveAndReleaseInMemoryKnownState(StateAt(block), SnapshotTier.InMemoryBase);
+    }
+
+    [Test]
+    public void PendingV3Writes_AfterALongWalk_LetGoOfTheirCapacity_ButStayWarmForAShortOne()
+    {
+        HistoryWriter.PendingV3Writes pending = new(RlpWrapSlots);
+        for (int i = 0; i < 100_000; i++)
+        {
+            ValueHash256 key = Keccak.Compute(i.ToString()).ValueHash256;
+            pending.Storages[new HistoryWriter.PendingV3Writes.SlotKey(key, key)] = 1;
+        }
+
+        for (int i = 0; i < 1_000; i++) pending.Accounts[Keccak.Compute(i.ToString()).ValueHash256] = 1;
+
+        pending.Clear();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending.Storages, Is.Empty);
+            Assert.That(pending.Storages.EnsureCapacity(0), Is.LessThan(100_000), "a walk far longer than one persisted chunk must not hold its memory for the life of the process");
+            Assert.That(pending.Storages.EnsureCapacity(0), Is.GreaterThanOrEqualTo(1 << 16), "trimmed back to the limit, not to zero, so a chunk near it does not regrow the map from nothing");
+            Assert.That(pending.Accounts.EnsureCapacity(0), Is.GreaterThanOrEqualTo(1_000), "what a normal capture tracks stays allocated for the next one");
+        }
     }
 
     private void SeedGenesisFloor() => _writer.SeedGenesis([], StateAt(0).StateRoot);
