@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
 namespace Nethermind.State;
@@ -12,6 +14,8 @@ public partial class TrieStoreScopeProvider
 {
     private partial class WorldStateWriteBatch
     {
+        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+
         private static partial void WriteAccounts(StateTree stateTree, Dictionary<AddressAsKey, Account?> accounts)
         {
             if (Avx2.IsSupported && accounts.Count >= KeyHashBatch.MinimumBatchSize)

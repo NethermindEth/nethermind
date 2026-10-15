@@ -2874,6 +2874,60 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_forget_full_blob_hash_rejected_for_invalid_blob_proofs()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction valid = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction invalid = CloneFullBlobTransactionWithSameSidecar(valid, 0);
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)valid.NetworkWrapper!;
+            byte[][] invalidProofs = new byte[wrapper.Proofs.Length][];
+            for (int i = 0; i < invalidProofs.Length; i++)
+            {
+                invalidProofs[i] = [.. wrapper.Proofs[i]];
+            }
+
+            invalidProofs[0][0] ^= 1;
+            invalid.NetworkWrapper = wrapper with { Proofs = invalidProofs };
+
+            Assert.That(invalid.Hash, Is.EqualTo(valid.Hash));
+            Assert.That(_txPool.SubmitTx(invalid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+            Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+
+            Assert.That(_txPool.ForgetInvalidBlobProofs(valid.Hash!), Is.True);
+            Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.TryGetPendingBlobTransaction(valid.Hash!, out Transaction pending), Is.True);
+            Assert.That(pending.NetworkWrapper, Is.InstanceOf<ShardBlobNetworkWrapper>());
+            Assert.That(_txPool.ForgetInvalidBlobProofs(valid.Hash!), Is.False, "a pooled transaction stays known");
+        }
+
+        [Test]
+        public void should_not_forget_blob_hash_rejected_for_another_reason()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction gap = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(2UL)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceGap));
+            Assert.That(_txPool.ForgetInvalidBlobProofs(gap.Hash!), Is.False);
+            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+        }
+
+        [Test]
         public void should_reject_blob_sender_whose_first_nonce_is_in_the_future()
         {
             _txPool = CreatePool(

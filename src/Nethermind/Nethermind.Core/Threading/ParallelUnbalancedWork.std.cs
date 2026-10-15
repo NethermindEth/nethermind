@@ -11,6 +11,8 @@ namespace Nethermind.Core.Threading;
 
 public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
 {
+    public static readonly ParallelOptions DefaultOptions = new() { MaxDegreeOfParallelism = Cpu.RuntimeInformation.ProcessorCount };
+
     private readonly Data _data;
 
     private static partial void ForCore(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action)
