@@ -1,8 +1,11 @@
 using System.Buffers.Binary;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
+using BenchmarkDotNet.Toolchains;
+using BenchmarkDotNet.Toolchains.CsProj;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
@@ -12,10 +15,18 @@ using Nethermind.State.Flat.History;
 
 ManualConfig config = ManualConfig.Create(DefaultConfig.Instance);
 config.BuildTimeout = TimeSpan.FromMinutes(10);
+IToolchain toolchain = CsProjCoreToolchain.NetCoreApp10_0;
+config.AddJob(Job.Default
+    .WithRuntime(CoreRuntime.Core10_0)
+    .WithToolchain(new Toolchain(toolchain.Name,
+        new HistoryBoundsProjectGenerator(Path.GetFullPath("benchmarks/history-bounds/HistoryBounds.csproj")),
+        toolchain.Builder, toolchain.Executor))
+    .WithLaunchCount(1)
+    .WithWarmupCount(3)
+    .WithIterationCount(8));
 BenchmarkSwitcher.FromAssembly(typeof(HistoryBoundsBenchmarks).Assembly).Run(args, config);
 
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net10_0, launchCount: 1, warmupCount: 3, iterationCount: 8)]
 public class HistoryBoundsBenchmarks
 {
     private const int Groups = 25000;
@@ -152,4 +163,9 @@ public class HistoryBoundsBenchmarks
         public long AvailableMemoryBytes => 1L << 30;
         public int? MaxOpenFilesLimit => null;
     }
+}
+
+sealed class HistoryBoundsProjectGenerator(string projectPath) : CsProjGenerator("net10.0", null!, null!, null!)
+{
+    protected override FileInfo GetProjectFilePath(Type benchmarkTarget, BenchmarkDotNet.Loggers.ILogger logger) => new(projectPath);
 }
