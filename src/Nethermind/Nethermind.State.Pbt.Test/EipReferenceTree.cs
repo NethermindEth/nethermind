@@ -1,0 +1,124 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using Nethermind.Core.Extensions;
+using Nethermind.Pbt;
+
+namespace Nethermind.State.Pbt.Test;
+
+/// <summary>Independent rebuild-from-entries oracle for the variable-length EIP-8297 tree.</summary>
+public sealed class EipReferenceTree
+{
+    private readonly SortedDictionary<byte[], byte[]> _entries = new(Bytes.Comparer);
+
+    /// <summary>Adds or replaces a complete key and its 32-byte value.</summary>
+    public void Insert(ReadOnlySpan<byte> key, byte[] value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (key.Length is < 1 or > 8192) throw new ArgumentException("key must contain 1 through 8192 bytes", nameof(key));
+        if (value.Length != 32) throw new ArgumentException("value must be 32 bytes", nameof(value));
+
+        foreach (byte[] existing in _entries.Keys)
+        {
+            if (!existing.AsSpan().SequenceEqual(key) && (IsPrefix(existing, key) || IsPrefix(key, existing)))
+            {
+                throw new ArgumentException("keys must be prefix-free", nameof(key));
+            }
+        }
+
+        _entries[key.ToArray()] = (byte[])value.Clone();
+    }
+
+    /// <summary>Removes a key, returning whether it was present.</summary>
+    public bool Delete(ReadOnlySpan<byte> key) => _entries.Remove(key.ToArray());
+
+    /// <summary>Applies a batch of writes, deleting each key whose value is <c>null</c> or all zero and inserting the rest.</summary>
+    public void Apply(IEnumerable<(byte[] Key, byte[]? Value)> writes)
+    {
+        foreach ((byte[] key, byte[]? value) in writes)
+        {
+            if (value is null || value.AsSpan().IsZero()) Delete(key);
+            else Insert(key, value);
+        }
+    }
+
+    /// <summary>Returns the root hash, or 32 zero bytes for an empty tree.</summary>
+    public byte[] Merkelize()
+    {
+        KeyValuePair<byte[], byte[]>[] entries = [.. _entries];
+        return entries.Length == 0 ? new byte[32] : Fold(entries, 0, entries.Length, 0);
+    }
+
+    /// <summary>Returns the logical subtree hash anchored at a group boundary, or zero for an empty subtree.</summary>
+    public byte[] Merkelize<TPath>(TPath groupBoundary) where TPath : struct, IPbtNodePath<TPath>
+    {
+        List<KeyValuePair<byte[], byte[]>> matching = [];
+        foreach (KeyValuePair<byte[], byte[]> entry in _entries)
+        {
+            if (entry.Key.Length * 8 < groupBoundary.BitDepth) continue;
+            bool matches = true;
+            for (int bit = 0; bit < groupBoundary.BitDepth; bit++)
+            {
+                if (Bit(entry.Key, bit) == groupBoundary.GetBit(bit)) continue;
+                matches = false;
+                break;
+            }
+            if (matches) matching.Add(entry);
+        }
+        return matching.Count == 0 ? new byte[32] : Fold([.. matching], 0, matching.Count, groupBoundary.BitDepth);
+    }
+
+    private static byte[] Fold(KeyValuePair<byte[], byte[]>[] entries, int start, int end, int depth)
+    {
+        if (end - start == 1) return Hash([0, .. entries[start].Key, .. entries[start].Value]);
+
+        int differing = FirstDifference(entries[start].Key, entries[end - 1].Key, depth);
+
+        int split = start + 1;
+        while (split < end && Bit(entries[split].Key, differing) == 0) split++;
+
+        byte[] left = Fold(entries, start, split, differing + 1);
+        byte[] right = Fold(entries, split, end, differing + 1);
+        int prefixBits = differing - depth;
+
+        byte[] prefix = new byte[(prefixBits + 7) / 8];
+        for (int bit = 0; bit < prefixBits; bit++)
+        {
+            if (Bit(entries[start].Key, depth + bit) != 0) prefix[bit / 8] |= (byte)(1 << (7 - bit % 8));
+        }
+
+        byte[] preimage = new byte[3 + prefix.Length + 64];
+        preimage[0] = 1;
+        BinaryPrimitives.WriteUInt16BigEndian(preimage.AsSpan(1), (ushort)prefixBits);
+        prefix.CopyTo(preimage, 3);
+        left.CopyTo(preimage, 3 + prefix.Length);
+        right.CopyTo(preimage, 3 + prefix.Length + 32);
+        return Hash(preimage);
+    }
+
+    private static bool IsPrefix(ReadOnlySpan<byte> prefix, ReadOnlySpan<byte> value) =>
+        prefix.Length <= value.Length && value[..prefix.Length].SequenceEqual(prefix);
+
+    private static int FirstDifference(byte[] first, byte[] last, int start)
+    {
+        int length = Math.Min(first.Length, last.Length) * 8;
+        for (int bit = start; bit < length; bit++)
+        {
+            if (Bit(first, bit) != Bit(last, bit)) return bit;
+        }
+
+        return length;
+    }
+
+    private static int Bit(byte[] key, int bit) => (key[bit / 8] >> (7 - bit % 8)) & 1;
+
+    internal static byte[] Hash(byte[] data)
+    {
+        byte[] result = new byte[32];
+        Blake3.Hasher.Hash(data, result);
+        return result;
+    }
+}

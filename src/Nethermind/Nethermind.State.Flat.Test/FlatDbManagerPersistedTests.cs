@@ -267,7 +267,8 @@ public class FlatDbManagerPersistedTests
             LimboLogs.Instance,
             Substitute.For<IPersistedSnapshotCompactor>(),
             tier.Loader,
-            _processExitSource);
+            _processExitSource,
+            new UnconstrainedPersistTarget());
         await using FlatDbManager manager = new(
             tier.ResourcePool,
             _processExitSource,

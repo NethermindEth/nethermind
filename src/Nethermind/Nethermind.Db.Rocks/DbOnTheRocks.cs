@@ -775,11 +775,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags) => _reader.GetSpan(key, flags);
 
-    MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags)
-    {
-        Span<byte> span = ((IReadOnlyKeyValueStore)this).GetSpan(key, flags);
-        return span.IsNullOrEmpty() ? null : new DbSpanMemoryManager(this, span);
-    }
+    MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags) =>
+        _reader.GetOwnedMemory(key, flags);
 
     int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags) => _reader.Get(key, output, flags);
 
@@ -1631,6 +1628,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         InnerFlush(familyHandle);
+    }
+
+    public void FlushWithColumnFamilyOrThrow(IColumnFamilyHandle familyHandle)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+        try
+        {
+            _db.Flush(_defaultFlushOptions, familyHandle);
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
     }
 
     private const ulong CompactOnDeletionSlidingWindowKeys = 100_000;

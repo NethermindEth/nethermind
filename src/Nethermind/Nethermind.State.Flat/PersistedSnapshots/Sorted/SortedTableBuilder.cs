@@ -23,7 +23,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// and the next block's first key (the last block uses its own last key). Only the current data block and
 /// the index are buffered.
 /// </remarks>
-internal ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWriter
+public ref struct SortedTableBuilder<TWriter> where TWriter : IByteBufferWriter
 {
     private ref TWriter _writer;
     private readonly long _tableStart;

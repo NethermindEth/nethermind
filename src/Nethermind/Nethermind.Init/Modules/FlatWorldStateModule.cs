@@ -65,6 +65,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
+            .AddSingleton<IPersistTarget, UnconstrainedPersistTarget>()
             .AddSingleton<IArenaManager, IFlatDbConfig, IInitConfig, ILogManager>((cfg, initConfig, logManager) =>
             {
                 string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
@@ -215,7 +216,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         }
     }
 
-    internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
+    public class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {
         public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
     }

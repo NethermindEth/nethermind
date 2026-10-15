@@ -152,6 +152,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
             MergeForkIdTransition = config.MergeNetsplitBlock,
             TerminalTotalDifficulty = config.TerminalTotalDifficulty,
+            Eip8347TransitionTimestamp = config.BinaryTrieTime,
             BeaconChainGenesisTimestamp = config.BeaconChainGenesisTimestamp,
 
             // Post-merge per-EIP timestamp fan-out is driven off `HardforkLabels.All` below; only

@@ -3,10 +3,11 @@
 
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Flat.Io;
 
-/// <summary>Read-only whole-file mmap, serving as both the reader source and the reader.</summary>
+/// <summary>Read-only whole-file mmap, serving as the reader source.</summary>
 /// <remarks>
 /// For standalone files that are not arena-managed — a transient sorted run, for instance. The mapping
 /// covers the file as it was at construction, so the file must not be written or truncated while this
@@ -15,7 +16,7 @@ namespace Nethermind.State.Flat.Io;
 /// one per source in an array and use it from an iterator; the pointer is owned here and stays valid
 /// until <see cref="Dispose"/>.</para>
 /// </remarks>
-internal sealed unsafe class MappedByteFile : IByteReaderSource<MappedByteFile, NoOpPin>, IByteReader<NoOpPin>, IDisposable
+internal sealed unsafe class MappedByteFile : IByteReaderSource<WholeReadSessionReader, NoOpPin>, IDisposable
 {
     private const int MADV_SEQUENTIAL = 2;
 
@@ -47,26 +48,12 @@ internal sealed unsafe class MappedByteFile : IByteReaderSource<MappedByteFile, 
 
     public long Length { get; }
 
-    public MappedByteFile CreateReader() => this;
+    public WholeReadSessionReader CreateReader() => new(_basePtr, Length);
 
     /// <summary>Hints the kernel that the mapping will be read front to back, widening its readahead.</summary>
     public void AdviseSequential()
     {
         if (OperatingSystem.IsLinux()) Madvise(_basePtr, (nuint)Length, MADV_SEQUENTIAL);
-    }
-
-    public bool TryRead(long offset, scoped Span<byte> output)
-    {
-        if ((ulong)offset + (ulong)output.Length > (ulong)Length) return false;
-        new ReadOnlySpan<byte>(_basePtr + offset, output.Length).CopyTo(output);
-        return true;
-    }
-
-    public NoOpPin PinBuffer(Bound bound)
-    {
-        if ((ulong)bound.Offset + (ulong)bound.Length > (ulong)Length)
-            throw new ArgumentOutOfRangeException(nameof(bound));
-        return new NoOpPin(new ReadOnlySpan<byte>(_basePtr + bound.Offset, checked((int)bound.Length)));
     }
 
     public void Dispose()

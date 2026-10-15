@@ -1,0 +1,10 @@
+{
+  "builderDeposit": "0x0000bff46984e3725691fa540a8c7589300d8282",
+  "builderExit": "0x000064d678505ad48f8ccb093bc65613800e8282",
+  "edition": "builder-predeploys",
+  "eip": 8282,
+  "nonce": 1,
+  "preservesOriginalEdition": true,
+  "referenceCommit": "e31a37fb88c2b75c0897c033bd3f4279dee42268",
+  "source": "params.BuilderDepositCode and params.BuilderExitCode"
+}
