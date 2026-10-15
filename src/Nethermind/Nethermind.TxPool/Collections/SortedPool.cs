@@ -43,7 +43,7 @@ namespace Nethermind.TxPool.Collections
         private readonly IComparer<TValue> _sortedComparer;
 
         // worst element from every group, used to determine element that will be evicted when pool is full
-        protected readonly DictionarySortedSet<TValue, TKey> _worstSortedValues;
+        private protected readonly WorstValueHeap<TValue, TKey> _worstSortedValues;
         protected KeyValuePair<TValue, TKey>? _worstValue = null;
         private TValue[]? _snapshot;
         private SnapshotDictionary<TGroupKey, TValue[]>? _productionSnapshot;
@@ -61,7 +61,7 @@ namespace Nethermind.TxPool.Collections
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = []; // do not initialize it at the full capacity
             _buckets = [];
-            _worstSortedValues = new DictionarySortedSet<TValue, TKey>(_sortedComparer);
+            _worstSortedValues = new WorstValueHeap<TValue, TKey>(_sortedComparer);
             _logger = logManager?.GetClassLogger(typeof(SortedPool<,,>)) ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -594,7 +594,7 @@ namespace Nethermind.TxPool.Collections
                     return true;
                 }
 
-                if (worstValue.Key is not null && _worstSortedValues.Remove(worstValue))
+                if (worstValue.Key is not null && _worstSortedValues.Remove(worstValue.Key))
                 {
                     RemoveFromBucket(worstValue.Key, out _);
                 }
