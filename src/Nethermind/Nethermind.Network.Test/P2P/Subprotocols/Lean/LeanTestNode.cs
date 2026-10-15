@@ -117,7 +117,7 @@ internal sealed class LeanTestNode : IDisposable
 {
     public static readonly Hash256 Genesis = TestItem.KeccakH;
 
-    public LeanTestNode(bool manualTime = true, IReleaseSpec? spec = null)
+    public LeanTestNode(bool manualTime = true, IReleaseSpec? spec = null, ILogManager? logManager = null)
     {
         Time = manualTime ? new ManualTimeProvider() : null;
         Specs = new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance);
@@ -140,7 +140,7 @@ internal sealed class LeanTestNode : IDisposable
             return AcceptTxResult.Accepted;
         });
         Wrappers = new ProofWrapperService(Pool, Specs, Tree, ProofStore, Verifier);
-        Transport = new LeanObjectTransport(Tree, Specs, Pool, Wrappers, LimboLogs.Instance, Verifier, EthTransactions, Time);
+        Transport = new LeanObjectTransport(Tree, Specs, Pool, Wrappers, logManager ?? LimboLogs.Instance, Verifier, EthTransactions, Time);
     }
 
     public ManualTimeProvider? Time { get; }
