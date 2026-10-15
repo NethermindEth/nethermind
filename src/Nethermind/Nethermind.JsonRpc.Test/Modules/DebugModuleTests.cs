@@ -191,11 +191,14 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugGetRawReceipts_WhenHistoryPruned_ReturnsPrunedHistoryError()
+    public async Task DebugGetRawReceipts_WhenHistoryPruned_ReturnsPrunedHistoryError([Values] bool byHash)
     {
         _blockFinder.LowestServedBlock.Returns(2UL);
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
+        BlockHeader pruned = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.FindHeader(new BlockParameter(pruned.Hash!)).Returns(pruned);
 
-        using JsonRpcResponse response = await Request("debug_getRawReceipts", "0x1");
+        using JsonRpcResponse response = await Request("debug_getRawReceipts", byHash ? pruned.Hash! : "0x1");
 
         Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
     }

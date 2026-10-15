@@ -626,6 +626,12 @@ public class DebugRpcModule(
         {
             // As in geth, a hash is read as given, ignoring requireCanonical, and a block that is not stored has no receipts.
             block = blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.None);
+
+            // Deliberately unlike geth, which returns [] here: pruned history is reported rather than shown as an empty block.
+            if (block is null && blockFinder.IsBlockPruned(blockParameter))
+            {
+                return ResultWrapper<RawReceiptsResult>.Fail($"{ErrorMessages.PrunedHistoryUnavailable} for block {blockParameter}", ErrorCodes.PrunedHistoryUnavailable);
+            }
         }
         else
         {
