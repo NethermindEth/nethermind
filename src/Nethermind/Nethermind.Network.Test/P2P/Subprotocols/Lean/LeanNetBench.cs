@@ -504,8 +504,8 @@ public class LeanNetBenchNode
             INodeStatsManager stats = Substitute.For<INodeStatsManager>();
             BackgroundTaskScheduler scheduler = new(Substitute.For<IBranchProcessor>(), Substitute.For<IChainHeadInfoProvider>(), 2, 64, logs);
             ISyncServer sync = Substitute.For<ISyncServer>();
-            sync.Head.Returns(node.Tree.Head!.Header);
-            sync.Genesis.Returns(node.Tree.Genesis!);
+            sync.Head.Returns(_ => node.Tree.Head!.Header);
+            sync.Genesis.Returns(_ => node.Tree.Genesis!);
             sync.NetworkId.Returns(1UL);
             Enode enode = new(key.PublicKey, address, port);
             IProtocolValidator validator = Substitute.For<IProtocolValidator>();
