@@ -37,29 +37,15 @@ public class PayloadPreparationServiceTests
 
     [Test]
     [CancelAfter(30000)]
-    public async Task GetPayload_keeps_returning_the_block_it_handed_out_when_a_late_build_finishes([Values(false, true)] bool boost)
+    public async Task GetPayload_keeps_returning_the_block_it_handed_out_when_a_late_build_finishes([Values] bool boost)
     {
         Block empty = Build.A.Block.WithNumber(1).TestObject;
-        Block full = Build.A.Block.WithNumber(1).WithGasUsed(21000).WithTransactions(Build.A.Transaction.TestObject).TestObject;
         TaskCompletionSource<Block?> build = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        IBlockProducer producer = Substitute.For<IBlockProducer>();
-        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<Block?>(empty));
-        // A build past its last cancellation check finishes anyway.
-        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>())
-            .Returns(build.Task);
-        IBoostRelay relay = Substitute.For<IBoostRelay>();
-        relay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
-            .Returns(new BoostPayloadAttributes { Timestamp = Attributes.Timestamp, PrevRandao = Attributes.PrevRandao, SuggestedFeeRecipient = Attributes.SuggestedFeeRecipient });
-        IBlockImprovementContextFactory factory = boost
-            ? new BoostBlockImprovementContextFactory(producer, TimePerSlot, relay, Substitute.For<IStateReader>())
-            : new BlockImprovementContextFactory(producer, TimePerSlot);
-        using TestPayloadPreparationService service = new(producer, Substitute.For<ITxPool>(),
-            factory, Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(1));
+        using TestPayloadPreparationService service = CreateLateBuildService(boost, empty, build.Task, Substitute.For<IBoostRelay>());
         string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
 
         Block? handedOut = (await service.GetPayload(payloadId))!.CurrentBestBlock;
-        build.SetResult(full);
+        build.SetResult(FullBlock());
         Assert.That(() => service.Stored(payloadId)!.ImprovementTask.IsCompletedSuccessfully, Is.True.After(5000, 10));
         Block? again = (await service.GetPayload(payloadId))!.CurrentBestBlock;
 
@@ -67,6 +53,54 @@ public class PayloadPreparationServiceTests
         {
             Assert.That(handedOut, Is.SameAs(empty));
             Assert.That(again, Is.SameAs(handedOut), "a second getPayload must return the payload the first one committed to");
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task Concurrent_getPayloads_return_the_same_block_when_a_late_build_passed_its_disposed_check([Values] bool boost)
+    {
+        Block empty = Build.A.Block.WithNumber(1).TestObject;
+        TaskCompletionSource<Block?> build = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBoostRelay relay = Substitute.For<IBoostRelay>();
+        using TestPayloadPreparationService service = CreateLateBuildService(boost, empty, build.Task, relay);
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        IBlockImprovementContext context = service.Stored(payloadId)!;
+
+        using ManualResetEventSlim buildChecked = new(), firstPinning = new(), resumeBuild = new(), resumeFirst = new();
+        int pins = 0;
+        SetRaceSeams(context,
+            passedDisposedCheck: () =>
+            {
+                buildChecked.Set();
+                resumeBuild.Wait(WaitTimeout);
+            },
+            pinning: () =>
+            {
+                if (Interlocked.Increment(ref pins) != 1) return;
+                firstPinning.Set();
+                resumeFirst.Wait(WaitTimeout);
+            });
+
+        // The late build passes its disposed check, then the first getPayload marks the context disposed but has yet to pin.
+        build.SetResult(FullBlock());
+        Assert.That(buildChecked.Wait(WaitTimeout), Is.True, "build did not reach its CAS");
+        Task<IBlockProductionContext?> first = Task.Run(async () => await service.GetPayload(payloadId));
+        Assert.That(firstPinning.Wait(WaitTimeout), Is.True, "first getPayload did not start pinning");
+
+        Block? second = (await service.GetPayload(payloadId))!.CurrentBestBlock;
+        resumeBuild.Set();
+        Block? built = await context.ImprovementTask;
+        resumeFirst.Set();
+        Block? handedOut = (await first)!.CurrentBestBlock;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.SameAs(empty));
+            Assert.That(handedOut, Is.SameAs(second), "concurrent getPayloads must return the same payload");
+            Assert.That(built, Is.SameAs(empty), "the late build must not become the best block");
+            Assert.That(context.Best.CurrentBestBlock, Is.SameAs(empty));
+            _ = relay.DidNotReceiveWithAnyArgs().SendPayload(default!, default);
         }
     }
 
@@ -247,6 +281,45 @@ public class PayloadPreparationServiceTests
 
     private static void Retrieve(PayloadPreparationService service, string payloadId) =>
         service.GetPayload(payloadId).AsTask().GetAwaiter().GetResult();
+
+    private static Block FullBlock() =>
+        Build.A.Block.WithNumber(1).WithGasUsed(21000).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+
+    /// <summary>A service whose empty block is <paramref name="empty"/> and whose improvement build finishes with <paramref name="build"/>.</summary>
+    private static TestPayloadPreparationService CreateLateBuildService(bool boost, Block empty, Task<Block?> build, IBoostRelay relay)
+    {
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Block?>(empty));
+        // A build past its last cancellation check finishes anyway.
+        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>())
+            .Returns(build);
+        relay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
+            .Returns(new BoostPayloadAttributes { Timestamp = Attributes.Timestamp, PrevRandao = Attributes.PrevRandao, SuggestedFeeRecipient = Attributes.SuggestedFeeRecipient });
+        IBlockImprovementContextFactory factory = boost
+            ? new BoostBlockImprovementContextFactory(producer, TimePerSlot, relay, Substitute.For<IStateReader>())
+            : new BlockImprovementContextFactory(producer, TimePerSlot);
+        return new TestPayloadPreparationService(producer, Substitute.For<ITxPool>(),
+            factory, Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(1));
+    }
+
+    private static void SetRaceSeams(IBlockImprovementContext context, Action passedDisposedCheck, Action pinning)
+    {
+        switch (context)
+        {
+            case BlockImprovementContext plain:
+                plain.PassedDisposedCheck = passedDisposedCheck;
+                plain.Pinning = pinning;
+                break;
+            case BoostBlockImprovementContext boost:
+                boost.PassedDisposedCheck = passedDisposedCheck;
+                boost.Pinning = pinning;
+                break;
+            default:
+                Assert.Fail($"Unexpected context {context.GetType().Name}");
+                break;
+        }
+    }
 
     private static TestPayloadPreparationService CreateService(IBlockImprovementContextFactory factory)
     {

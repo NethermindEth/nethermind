@@ -23,6 +23,10 @@ public class BlockImprovementContext : IBlockImprovementContext
     private volatile BlockProductionSnapshot _best;
     private int _disposed;
 
+    // Test seams for pausing a late build after its Disposed check and a disposer before it pins.
+    internal Action? PassedDisposedCheck;
+    internal Action? Pinning;
+
     public BlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
         TimeSpan timeout,
@@ -72,12 +76,18 @@ public class BlockImprovementContext : IBlockImprovementContext
     }
 
     // A build that ignored cancellation can finish after the payload was handed out; it must not replace it.
-    private bool TrySetBest(BlockProductionSnapshot best, BlockProductionSnapshot expected) =>
-        !Disposed && Interlocked.CompareExchange(ref _best, best, expected) == expected;
+    private bool TrySetBest(BlockProductionSnapshot best, BlockProductionSnapshot expected)
+    {
+        if (Disposed) return false;
+        PassedDisposedCheck?.Invoke();
+        return Interlocked.CompareExchange(ref _best, best, expected) == expected;
+    }
 
     // Swaps in an equal snapshot so a TrySetBest that passed the Disposed check before it was set fails its CAS.
+    // Every disposer pins: one returning early could hand out a snapshot that a pending CAS then replaces.
     private void PinBest()
     {
+        Pinning?.Invoke();
         BlockProductionSnapshot best;
         do best = _best;
         while (Interlocked.CompareExchange(ref _best, new(best.CurrentBestBlock, best.BlockFees), best) != best);
@@ -90,7 +100,8 @@ public class BlockImprovementContext : IBlockImprovementContext
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 0) PinBest();
+        Interlocked.Exchange(ref _disposed, 1);
+        PinBest();
         CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
         CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }

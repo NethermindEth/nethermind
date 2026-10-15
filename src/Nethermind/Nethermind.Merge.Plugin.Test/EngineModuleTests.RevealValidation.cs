@@ -17,9 +17,8 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task NewPayloadV5_returns_invalid_for_gas_limit_outside_parent_bound(bool tooHigh)
+    [Test]
+    public async Task NewPayloadV5_returns_invalid_for_gas_limit_outside_parent_bound([Values] bool tooHigh)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         BlockHeader parent = await ImportAmsterdamBlock(chain);
@@ -42,9 +41,9 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCase((byte)ExecutionRequestType.BuilderDepositRequest)]
-    [TestCase((byte)ExecutionRequestType.BuilderExitRequest)]
-    public async Task NewPayloadV5_returns_invalid_for_builder_requests_the_block_does_not_produce(byte requestType)
+    [Test]
+    public async Task NewPayloadV5_returns_invalid_for_builder_requests_the_block_does_not_produce(
+        [Values((byte)ExecutionRequestType.BuilderDepositRequest, (byte)ExecutionRequestType.BuilderExitRequest)] byte requestType)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         BlockHeader parent = await ImportAmsterdamBlock(chain);
