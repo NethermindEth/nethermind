@@ -3305,26 +3305,58 @@ public class BlockCachePreWarmerTests
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
         const int senders = 8;
-        const int Workers = 2;
-        Transaction[] txs = new Transaction[senders];
-        for (int i = 0; i < senders; i++)
-        {
-            txs[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeys[i]).TestObject;
-        }
-
-        Block block = Build.A.Block.WithNumber(1).WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+        const int workers = 2;
+        Block block = BuildOneTxPerSenderBlock(senders, 1.Wei);
         int warmups = 0;
         ConcurrentDictionary<IReadOnlyTxProcessingScope, bool> warmingScopes = new();
         using ManualResetEventSlim openGate = new(initialState: true);
         WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate,
             () => Interlocked.Increment(ref warmups), scope => warmingScopes.TryAdd(scope, true));
-        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: Workers,
+        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: workers,
             parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
 
         await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
 
-        Assert.That(warmups, Is.GreaterThanOrEqualTo(senders), "every sender's job must be warmed");
-        Assert.That(warmingScopes, Has.Count.LessThanOrEqualTo(Workers), "a worker must reuse its scope for every job of the block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmups, Is.GreaterThanOrEqualTo(senders), "every sender's job must be warmed");
+            Assert.That(warmingScopes, Has.Count.LessThanOrEqualTo(workers), "a worker must reuse its scope for every job of the block");
+        }
+    }
+
+    /// <summary>
+    /// A block whose blob base fee overflows fails a worker's scope initialization; the scope must still be closed
+    /// when the env goes back to the pool, or every later rental of that env fails to open a world-state scope.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_Worker_ScopeInitializationFails_EnvStaysReusable()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        const int senders = 8;
+        int warmups = 0;
+        using ManualResetEventSlim openGate = new(initialState: true);
+        WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate, () => Interlocked.Increment(ref warmups));
+        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: 2,
+            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+        await RunPreWarmCaches(preWarmer, BuildOneTxPerSenderBlock(senders, 1.Wei, excessBlobGas: ulong.MaxValue), BuildParentHeader(), Osaka.Instance);
+        Assert.That(warmups, Is.Zero, "a block whose context cannot be built must not be warmed");
+
+        await RunPreWarmCaches(preWarmer, BuildOneTxPerSenderBlock(senders, 2.Wei), BuildParentHeader(), Osaka.Instance);
+        Assert.That(warmups, Is.GreaterThanOrEqualTo(senders), "the envs of the failed block must warm the next one");
+    }
+
+    private static Block BuildOneTxPerSenderBlock(int senders, UInt256 value, ulong? excessBlobGas = null)
+    {
+        Transaction[] txs = new Transaction[senders];
+        for (int i = 0; i < senders; i++)
+        {
+            txs[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithValue(value).SignedAndResolved(TestItem.PrivateKeys[i]).TestObject;
+        }
+
+        return Build.A.Block.WithNumber(1).WithTransactions(txs).WithGasLimit(30_000_000).WithExcessBlobGas(excessBlobGas).TestObject;
     }
 
     /// <summary>
