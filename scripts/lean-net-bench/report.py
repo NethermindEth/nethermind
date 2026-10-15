@@ -143,7 +143,7 @@ def main():
                     if values: points.append((size / 2**20, statistics.median(values)))
                 if points: axis.plot(*zip(*points), color=color, marker="o", label=names[binding])
         axes[0].set(title="Large proof-object delivery", ylabel="Useful Mbit/s per receiver")
-        axes[1].set(xlabel="Proof payload size", ylabel="Complete-run p95 latency (ms)", xscale="log", xticks=[.0625, 1, 8], xticklabels=["64 KiB", "1 MiB", "8 MiB"])
+        axes[1].set(xlabel="Proof payload size", ylabel="Worst-receiver p95 (ms)", xscale="log", xticks=[.0625, 1, 8], xticklabels=["64 KiB", "1 MiB", "8 MiB"])
         for axis in axes:
             axis.grid(alpha=.18)
             if axis.get_legend_handles_labels()[0]: axis.legend(fontsize=8)
@@ -225,7 +225,7 @@ def main():
 <h1>EIP-8437 transport measurements</h1><p>Production RLPx and QUIC bindings with authenticated ETH envelope recovery. Proof contents, pool admission and the verifier are controlled fixtures: completion means validated/recovered wrappers, not successful pool admission, native proving or block throughput. Broadcast uses a test signer and accepts the reconstructed consensus context; it does not exercise live CL anchor validation.</p>
 <p>Load scenarios: two processes, 100 Mbit/s per node, 50 ms RTT, no injected loss. Each aggregate contains distinct transactions and dependencies. Other link conditions appear in the table. Every attempted run is retained; failed runs are counted, not replaced.</p>
 {figures}{native_note}<h2>All runs</h2><p>p95 is shown only for complete runs. Goodput includes partial delivery and queue drain. Error bars are observed ranges, not confidence intervals. Actual origin rate is released objects divided by first-to-last release span plus one configured interval; latency begins actual origination and excludes earlier scheduler lateness. Unknown measurements remain unknown, not zero. Native and transport measurements use different hosts and must not be compared as a single throughput pipeline.</p>
-<div class="scroll"><table><thead><tr><th>Scenario</th><th>Runs</th><th>Scheduled objects/s</th><th>Actual origin objects/s</th><th>Released / scheduled objects</th><th>Useful Mbit/s</th><th>p95 ms</th><th>Failed runs</th><th>Missing objects</th><th>Errors</th></tr></thead><tbody>{''.join(table)}</tbody></table></div>
+<div class="scroll"><table><thead><tr><th>Scenario</th><th>Runs</th><th>Scheduled objects/s</th><th>Actual origin objects/s</th><th>Released / scheduled objects</th><th>Useful Mbit/s</th><th>Worst-receiver p95 ms</th><th>Failed runs</th><th>Missing objects</th><th>Errors</th></tr></thead><tbody>{''.join(table)}</tbody></table></div>
 <p><a href="results.json">Raw results and provenance</a></p><p>Source revisions: <code>{html.escape(', '.join(provenance))}</code></p></html>'''
     (out / "index.html").write_text(document)
 
