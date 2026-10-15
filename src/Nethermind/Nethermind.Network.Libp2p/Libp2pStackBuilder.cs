@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Linq;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
@@ -163,7 +164,8 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
             // Only IP, TCP and this peer id: the library would resolve any other component, such as a name inside, on the dialing thread,
             // and fails the whole dial on an address of another peer id, as a dnsaddr record can name.
             List<Multiaddress> tcp = [];
-            foreach (Multiaddress resolved in await ResolveAsync(addrs).WaitAsync(token))
+            List<(Multiaddress Address, Exception Error)> failures = [];
+            foreach (Multiaddress resolved in await ResolveAsync(addrs, failures).WaitAsync(token))
             {
                 if (resolved.Protocols is [IP4 or IP6, TCP, P2P] && resolved.GetPeerId() == peerId && !tcp.Contains(resolved))
                 {
@@ -174,7 +176,11 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
 
             if (tcp.Count == 0)
             {
-                throw new Libp2pException($"No TCP address to dial {peerId}");
+                // Callers log only this exception, as their host may have no logger factory for the resolution log.
+                throw failures.Count == 0
+                    ? new Libp2pException($"No TCP address to dial {peerId}")
+                    : new Libp2pException($"No TCP address to dial {peerId}: {string.Join("; ", failures.Select(static f => $"{f.Address}: {f.Error.Message}"))}",
+                        new AggregateException(failures.Select(static f => f.Error)));
             }
 
             return await DialAsync([.. tcp], token);
@@ -204,7 +210,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         }
 
         // A name that does not resolve leaves the other addresses of the peer to dial.
-        private async Task<List<Multiaddress>> ResolveAsync(Multiaddress[] addrs)
+        private async Task<List<Multiaddress>> ResolveAsync(Multiaddress[] addrs, List<(Multiaddress Address, Exception Error)> failures)
         {
             using CountedDnsLookup lookup = new(_dnsLookup, MaxDnsQueries, DnsDeadline);
             MultiaddrResolver resolver = new(lookup);
@@ -221,6 +227,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                 catch (Exception e) when (e is not OutOfMemoryException)
                 {
                     _resolutionLogger?.LogDebug(e, "Failed to resolve {Address}", addr);
+                    failures.Add((addr, e));
                 }
             }
 

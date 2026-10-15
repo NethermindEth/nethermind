@@ -238,6 +238,28 @@ public class OptimismGossipLoopbackTests
 
     [Test]
     [CancelAfter(60_000)]
+    public async Task A_static_peer_whose_name_fails_to_resolve_is_logged_with_the_cause(CancellationToken token)
+    {
+        IDnsLookup dns = Substitute.For<IDnsLookup>();
+        dns.QueryTxtAsync(Arg.Any<string>()).Returns(Task.FromException<IEnumerable<string>>(new InvalidOperationException("TXT query refused")));
+        // No logger factory, as in the production Shutter and Optimism hosts, so the dial failure is the only place the cause can surface.
+        await using Host node = await Host.StartAsync(token, dnsLookup: dns);
+        Multiaddress named = Multiaddress.Decode($"/dnsaddr/sequencer.test/p2p/{new Nethermind.Libp2p.Core.Identity().PeerId}");
+        IRoutingStateContainer routing = Substitute.For<IRoutingStateContainer>();
+        routing.ConnectedPeers.Returns([]);
+        List<string> lines = [];
+        InterfaceLogger log = Substitute.For<InterfaceLogger>();
+        log.IsDebug.Returns(true);
+        log.When(static l => l.Debug(Arg.Any<string>())).Do(call => lines.Add(call.Arg<string>()));
+        using StaticPeerKeeper keeper = new(node.Peer, routing, [named], new ILogger(log));
+
+        await keeper.CheckAsync(token);
+
+        Assert.That(lines, Has.One.Contains("TXT query refused"));
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
     public async Task A_name_that_never_resolves_does_not_hold_the_other_addresses(CancellationToken token)
     {
         await using Host sequencer = await Host.StartAsync(token);
