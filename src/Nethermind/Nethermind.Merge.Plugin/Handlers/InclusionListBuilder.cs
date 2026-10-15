@@ -9,12 +9,16 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyStateProvider headState)
+/// <param name="maxVerifyGasPerTx">EIP-7805 <c>MAX_VERIFY_GAS_PER_TX</c>, above which a frame transaction is no
+/// Profile 2 candidate; <c>0</c> lifts the cap.</param>
+internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyStateProvider headState,
+    ulong maxVerifyGasPerTx = Eip8369Constants.MaxVerifyGasPerTx)
 {
     // Conservative lower bound for an encoded transaction's size.
     private const int MinTransactionSizeBytes = 32;
@@ -32,7 +36,8 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
     /// <remarks>Restricted to each sender's appendable run, since nothing else could be appended. Drawn
-    /// uniformly, not by fee: a fee-ordered draw drops what a builder passes over.
+    /// uniformly, not by fee: a fee-ordered draw drops what a builder passes over. Once EIP-7805's Profile 2 is
+    /// active, each ready Profile 2 candidate frame transaction is drawn as a run of its own beside the senders.
     /// Not gated on pool revalidation: the ready-tx snapshot applies no per-transaction spec check, so around a
     /// fork the draw can include entries the new spec rejects — either because the pool's background revalidation
     /// is still catching up, or because the target block is the activation slot itself, whose timestamp is
@@ -41,24 +46,24 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
     {
         const int capacity = SenderSampleCapacity;
         Random rnd = Random.Shared;
-        UInt256 baseFee = NextBlockBaseFee(parent);
+        parent ??= blockTree.Head?.Header;
+        IReleaseSpec? spec = NextBlockSpec(parent);
+        UInt256 baseFee = parent is null ? UInt256.Zero : BaseFeeCalculator.Calculate(parent, spec!);
 
         // Reservoir over senders rather than over their runs, so the pool's size costs no allocation and no
         // state read: only the drawn senders below pay for one.
-        using ArrayPoolListRef<Transaction[]> drawn = new(capacity);
+        using ArrayPoolListRef<Draw> drawn = new(capacity);
         int seen = 0;
-        // The pool routes blob txs to separate storage this snapshot never reads. Frame txs can remain in
-        // mixed sender buckets and are removed below.
-        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(baseFee).Values)
+        foreach (Draw draw in Draws(parent, spec, baseFee))
         {
             if (drawn.Count < capacity)
             {
-                drawn.Add(pending);
+                drawn.Add(draw);
             }
             else
             {
                 int j = rnd.Next(seen + 1);
-                if (j < capacity) drawn[j] = pending;
+                if (j < capacity) drawn[j] = draw;
             }
             seen++;
         }
@@ -76,9 +81,11 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         try
         {
             using ArrayPoolListRef<Run> runs = new(capacity);
-            foreach (Transaction[] pending in drawn)
+            foreach (Draw draw in drawn)
             {
-                Run run = AppendableRun(pending, in baseFee, ref filtered);
+                Run run = draw.FrameCandidate is { } candidate
+                    ? ReadyCandidateRun(candidate, ref filtered)
+                    : AppendableRun(draw.Bucket!, in baseFee, ref filtered);
                 if (run.Length > 0) runs.Add(run);
             }
 
@@ -108,6 +115,53 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
 
     /// <summary>A sender's appendable run, as a range over its bucket or over the shared filtered buffer.</summary>
     private readonly record struct Run(Transaction[]? Bucket, int Start, int Length);
+
+    /// <summary>One reservoir entry: a sender's bucket, or a Profile 2 candidate frame transaction.</summary>
+    private readonly record struct Draw(Transaction[]? Bucket, Transaction? FrameCandidate);
+
+    /// <summary>What the reservoir draws from: the senders with a ready non-frame transaction, then, once Profile 2 is
+    /// active, the pool's Profile 2 candidates.</summary>
+    private IEnumerable<Draw> Draws(BlockHeader? parent, IReleaseSpec? spec, UInt256 baseFee)
+    {
+        // The pool routes blob txs to separate storage this snapshot never reads. Frame txs can remain in
+        // mixed sender buckets and are removed below.
+        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(baseFee).Values)
+        {
+            yield return new Draw(pending, null);
+        }
+
+        if (parent is null || spec is null || !Eip8369Profile2.IsActive(spec)) yield break;
+
+        foreach (Transaction tx in txPool.GetPendingTransactions())
+        {
+            if (IsProfile2Candidate(tx, in baseFee, parent.Timestamp)) yield return new Draw(null, tx);
+        }
+    }
+
+    /// <summary>Whether <paramref name="tx"/> is a Profile 2 candidate worth listing, judged without reading state.</summary>
+    /// <remarks>EIP-7805 § IL Building: a member should leave out a candidate whose expiry deadline is already behind
+    /// the target slot. The slot's timestamp is not known here, so only one at or behind the parent's is.</remarks>
+    private bool IsProfile2Candidate(Transaction tx, in UInt256 baseFee, ulong parentTimestamp) =>
+        tx.SupportsFrames
+        && tx.SenderAddress is not null
+        && tx.CanPayBaseFee(baseFee)
+        && Eip8369Profile2.Classify(tx, maxVerifyGasPerTx) == Profile2Exclusion.None
+        && Eip8369Profile2.VerifyBudgetCost(tx) <= Eip8369Constants.MaxVerifyGasPerIl
+        && !(FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline) && deadline <= parentTimestamp);
+
+    /// <summary>A drawn Profile 2 candidate as a run of its own, empty unless its nonce is the next one at the head.</summary>
+    /// <remarks>An EIP-8250 keyed transaction is judged on its own keys, an account-domain one on the account nonce.</remarks>
+    private Run ReadyCandidateRun(Transaction candidate, ref ArrayPoolListRef<Transaction> filtered)
+    {
+        Address sender = candidate.SenderAddress!;
+        bool ready = KeyedNonceManager.UsesKeyedNonce(candidate)
+            ? KeyedNonceManager.IsNonceSetValid(headState, sender, candidate.NonceKeys!, candidate.Nonce)
+            : headState.GetNonce(sender) == candidate.Nonce;
+        if (!ready) return default;
+
+        filtered.Add(candidate);
+        return new Run(null, filtered.Count - 1, 1);
+    }
 
     /// <summary>The transactions of <paramref name="pending"/> the next block could append, in order.</summary>
     /// <remarks>The pool vouches only that some bucket entry is ready, so the run is rebuilt here against the
@@ -161,14 +215,11 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         return filtered.AsSpan().Slice(start, kept);
     }
 
-    /// <summary>The base fee the next block will charge.</summary>
+    /// <summary>The spec of the next block, which fixes its base fee and whether Profile 2 is active.</summary>
     /// <remarks>Approximate at a fork boundary: the next timestamp is not derivable here, so the parent's
-    /// stands in and pre-fork EIP-1559 parameters are resolved for a post-fork block.</remarks>
-    private UInt256 NextBlockBaseFee(BlockHeader? parent)
-    {
-        parent ??= blockTree.Head?.Header;
-        return parent is null ? UInt256.Zero : BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(parent.Number + 1, parent.Timestamp));
-    }
+    /// stands in and the pre-fork spec is resolved for a post-fork block.</remarks>
+    private IReleaseSpec? NextBlockSpec(BlockHeader? parent) =>
+        parent is null ? null : specProvider.GetSpec(parent.Number + 1, parent.Timestamp);
 
     private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs)
     {
@@ -176,23 +227,32 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         try
         {
             int size = 0;
+            // EIP-7805 § IL Building: a member should keep its Profile 2 candidates' total VERIFY budget cost
+            // within MAX_VERIFY_GAS_PER_IL, which also has every one of them admitted whatever the fill's order.
+            ulong verifyBudget = Eip8369Constants.MaxVerifyGasPerIl;
             // The sample orders each sender's run by ascending nonce, so once one entry is skipped the rest
             // of that run is excused whenever the skipped one is absent: budget spent for no extra coverage.
+            // A frame candidate is a run of its own, so skipping it drops nothing else.
             HashSet<AddressAsKey>? droppedSenders = null;
             foreach (Transaction tx in txs)
             {
-                if (droppedSenders is not null && droppedSenders.Contains(tx.SenderAddress!)) continue;
+                bool frameCandidate = tx.SupportsFrames;
+                if (!frameCandidate && droppedSenders is not null && droppedSenders.Contains(tx.SenderAddress!)) continue;
+
+                ulong verifyCost = frameCandidate ? Eip8369Profile2.VerifyBudgetCost(tx) : 0;
+                if (verifyCost > verifyBudget) continue;
 
                 ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
 
                 if (size + txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList)
                 {
                     txBytes.Dispose();
-                    (droppedSenders ??= []).Add(tx.SenderAddress!);
+                    if (!frameCandidate) (droppedSenders ??= []).Add(tx.SenderAddress!);
                     continue;
                 }
 
                 size += txBytes.Count;
+                verifyBudget -= verifyCost;
                 result.Add(txBytes);
 
                 // No possible tx can fit in the remaining space.

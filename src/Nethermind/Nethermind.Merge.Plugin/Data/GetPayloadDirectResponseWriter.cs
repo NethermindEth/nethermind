@@ -39,6 +39,18 @@ internal static class GetPayloadDirectResponseWriter
         CancellationToken cancellationToken) =>
         WriteAsync(writer, block, blockValue, blobsBundle, executionRequests, shouldOverrideBuilder, includeV6Fields: true, cancellationToken);
 
+    /// <summary>The V6 response plus the build's EIP-7805 omission claims.</summary>
+    public static ValueTask WriteV7Async(
+        PipeWriter writer,
+        Block block,
+        UInt256 blockValue,
+        BlobsBundleV2 blobsBundle,
+        byte[][]? executionRequests,
+        bool shouldOverrideBuilder,
+        OmissionClaim[] omissionClaims,
+        CancellationToken cancellationToken) =>
+        WriteAsync(writer, block, blockValue, blobsBundle, executionRequests, shouldOverrideBuilder, includeV6Fields: true, cancellationToken, omissionClaims);
+
     private static async ValueTask WriteAsync(
         PipeWriter writer,
         Block block,
@@ -47,7 +59,8 @@ internal static class GetPayloadDirectResponseWriter
         byte[][]? executionRequests,
         bool shouldOverrideBuilder,
         bool includeV6Fields,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        OmissionClaim[]? omissionClaims = null)
     {
         writer.Write("{\"blockValue\":"u8);
         HexWriter.WriteUInt256HexString(writer, blockValue);
@@ -75,7 +88,27 @@ internal static class GetPayloadDirectResponseWriter
             }
         }
 
+        if (omissionClaims is not null)
+        {
+            WriteOmissionClaims(writer, omissionClaims);
+        }
+
         writer.Write("}"u8);
+    }
+
+    private static void WriteOmissionClaims(IBufferWriter<byte> writer, OmissionClaim[] claims)
+    {
+        writer.Write(",\"omissionClaims\":["u8);
+        for (int i = 0; i < claims.Length; i++)
+        {
+            if (i > 0) writer.Write(","u8);
+            writer.Write("{\"transactionHash\":"u8);
+            WriteHexString(writer, claims[i].TransactionHash.Bytes, chunked: false);
+            writer.Write(",\"evaluationIndex\":"u8);
+            HexWriter.WriteUlongHexString(writer, claims[i].EvaluationIndex);
+            writer.Write("}"u8);
+        }
+        writer.Write("]"u8);
     }
 
     private static async ValueTask<bool> WriteExecutionPayloadAsync(

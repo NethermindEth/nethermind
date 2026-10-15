@@ -68,6 +68,7 @@ namespace Nethermind.Specs
                 nameof(Eip8272Prototype) => Eip8272Prototype.Instance,
                 nameof(Eip7906Prototype) => Eip7906Prototype.Instance,
                 nameof(FramesDevnet1) => FramesDevnet1.Instance,
+                nameof(Eip8369Prototype) => Eip8369Prototype.Instance,
                 _ => throw new NotSupportedException(specName == unambiguousSpecName
                     ? $"Unknown fork name '{specName}'"
                     : $"Unknown fork name '{specName}' (resolved to '{unambiguousSpecName}')")

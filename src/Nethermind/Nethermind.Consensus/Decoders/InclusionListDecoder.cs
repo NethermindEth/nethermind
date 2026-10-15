@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -32,6 +34,37 @@ public class InclusionListDecoder(
         Transaction[] txs = TxsDecoder.DecodeTxs(txBytes, skipErrors: true).Transactions;
         _recoverSignatures.RecoverData(txs, spec, skipErrors: true);
         return txs;
+    }
+
+    /// <summary>Decodes each committee position's list and recovers the senders, tolerating entries that are neither.</summary>
+    /// <remarks>As <see cref="DecodeAndRecover(byte[][], IReleaseSpec)"/>, list by list, so each decoded list can be
+    /// shorter than its input. Envelopes repeated across positions share one decoded transaction, whose sender is
+    /// recovered and whose signatures are verified once however many lists carry it.</remarks>
+    public Transaction[][] DecodeAndRecover(byte[][][] inclusionLists, IReleaseSpec spec)
+    {
+        Transaction[][] decoded = DecodeLists(inclusionLists);
+        _recoverSignatures.RecoverData(InclusionLists.Distinct(decoded), spec, skipErrors: true);
+        return decoded;
+    }
+
+    /// <summary>Decodes each committee position's list, dropping undecodable entries and sharing one transaction
+    /// per hash across positions.</summary>
+    public static Transaction[][] DecodeLists(byte[][][] inclusionLists)
+    {
+        Dictionary<Hash256AsKey, Transaction> byHash = [];
+        Transaction[][] decoded = new Transaction[inclusionLists.Length][];
+        for (int position = 0; position < inclusionLists.Length; position++)
+        {
+            Transaction[] transactions = TxsDecoder.DecodeTxs(inclusionLists[position] ?? [], skipErrors: true).Transactions;
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                if (transactions[i].Hash is not { } hash) continue;
+                if (byHash.TryGetValue(hash, out Transaction? shared)) transactions[i] = shared;
+                else byHash[hash] = transactions[i];
+            }
+            decoded[position] = transactions;
+        }
+        return decoded;
     }
 
     private static byte[] Encode(Transaction transaction)

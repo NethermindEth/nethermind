@@ -45,9 +45,8 @@ namespace Nethermind.Consensus.Processing
         event EventHandler<BlockEventArgs> BlockAdded;
         /// <summary>
         /// Raised when a queued block has been executed and validated, before it is committed and before
-        /// <see cref="BlockRemoved"/>. The result is <see cref="ProcessingResult.Success"/> or
-        /// <see cref="ProcessingResult.InclusionListUnsatisfied"/>; every other outcome arrives through
-        /// <see cref="BlockRemoved"/> alone.
+        /// <see cref="BlockRemoved"/>. The result is <see cref="ProcessingResult.Success"/>; every other outcome
+        /// arrives through <see cref="BlockRemoved"/> alone.
         /// </summary>
         /// <remarks>
         /// Defaulted so an implementation outside this repository keeps compiling. One that does not raise it leaves

@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -27,6 +26,7 @@ public partial class EngineRpcModule(
     IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
     IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
     IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
+    IAsyncHandler<byte[], GetPayloadV7Result?> getPayloadHandlerV7,
     IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
     IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
     IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
@@ -40,7 +40,7 @@ public partial class EngineRpcModule(
     IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
     IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
     IInclusionListTxSource inclusionListTxSource,
-    IInclusionListComplianceEvaluator inclusionListComplianceEvaluator,
+    IInclusionChecks inclusionChecks,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
     IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
@@ -49,8 +49,7 @@ public partial class EngineRpcModule(
     ISpecProvider specProvider,
     GCKeeper gcKeeper,
     IBlockProcessingQueue processingQueue,
-    ILogManager logManager,
-    IBlockTree blockTree) : IEngineRpcModule
+    ILogManager logManager) : IEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
@@ -61,6 +60,7 @@ public partial class EngineRpcModule(
         IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
         IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
         IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
+        IAsyncHandler<byte[], GetPayloadV7Result?> getPayloadHandlerV7,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
@@ -74,7 +74,7 @@ public partial class EngineRpcModule(
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
         IInclusionListTxSource inclusionListTxSource,
-        IInclusionListComplianceEvaluator inclusionListComplianceEvaluator,
+        IInclusionChecks inclusionChecks,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
         IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
@@ -82,8 +82,7 @@ public partial class EngineRpcModule(
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         IBlockProcessingQueue processingQueue,
-        ILogManager logManager,
-        IBlockTree blockTree)
+        ILogManager logManager)
         : this(
             getPayloadHandlerV1,
             getPayloadHandlerV2,
@@ -91,6 +90,7 @@ public partial class EngineRpcModule(
             getPayloadHandlerV4,
             getPayloadHandlerV5,
             getPayloadHandlerV6,
+            getPayloadHandlerV7,
             newPayloadV1Handler,
             forkchoiceUpdatedV1Handler,
             executionGetPayloadBodiesByHashV1Handler,
@@ -104,7 +104,7 @@ public partial class EngineRpcModule(
             getPayloadBodiesByRangeV2Handler,
             getInclusionListTransactionsHandler,
             inclusionListTxSource,
-            inclusionListComplianceEvaluator,
+            inclusionChecks,
             newPayloadWithWitnessHandlerV4,
             newPayloadWithWitnessHandlerV5,
             newPayloadWithWitnessHandlerV6,
@@ -113,8 +113,7 @@ public partial class EngineRpcModule(
             specProvider,
             gcKeeper,
             processingQueue,
-            logManager,
-            blockTree)
+            logManager)
     {
     }
 

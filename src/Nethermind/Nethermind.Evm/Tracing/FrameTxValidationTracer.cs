@@ -8,18 +8,35 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-/// <summary>Enforces the EIP-8141 validation-prefix opcode rules during mempool prefix simulation,
-/// and captures the resolved payer.</summary>
+/// <summary>Enforces the EIP-8141 validation-prefix opcode rules during prefix simulation, and captures the
+/// resolved payer.</summary>
+/// <remarks>
+/// The storage surface is parameterised because EIP-8141's mempool rule and EIP-8369's Profile 2 draw it
+/// differently: EIP-8141 admits every slot of <paramref name="sender"/> alone, Profile 2 admits the first
+/// <paramref name="storageSlotBound"/> slots of <paramref name="sender"/> and the payer. Defaults reproduce
+/// the EIP-8141 rule exactly.
+/// </remarks>
+/// <param name="payer">A second account whose storage the prefix may read, or <c>null</c> for
+/// <paramref name="sender"/> only.</param>
+/// <param name="storageSlotBound">Slots below which a read is in surface, or <c>0</c> for no slot bound.</param>
+/// <param name="createInDeployFrame">Whether the deploy frame may install code at tx.sender with <c>CREATE</c> as well as
+/// <c>CREATE2</c>, as EIP-8141 and EIP-7805's Profile 2 deployment bookkeeping permit; the public mempool refuses it.</param>
+/// <param name="maxCodeBodies">EIP-7805 <c>MAX_REPLAY_CODE_BODIES</c>: the distinct code bodies the prefix may load, or
+/// <c>0</c> for no bound. A body is loaded when execution starts in it, after delegation is followed, or when
+/// <c>EXTCODESIZE</c> or <c>EXTCODECOPY</c> reads it; empty code loads nothing.</param>
+/// <param name="maxCodeBytes">EIP-7805 <c>MAX_REPLAY_CODE_BYTES</c>: their combined size, or <c>0</c> for no bound.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
 /// <param name="timeProvider">The clock <paramref name="timeout"/> is measured against; the system clock by default.</param>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
 /// <param name="preempt">Polled with <paramref name="token"/>; once it returns true the simulation stops and
 /// <see cref="Preempted"/> stays set.</param>
+/// <param name="maxVerifyGas">The prefix's VERIFY gas bound; EIP-8141's <c>MAX_VERIFY_GAS</c> by default.</param>
 public sealed class FrameTxValidationTracer(
     Address sender,
     Address expiryVerifier,
@@ -29,7 +46,12 @@ public sealed class FrameTxValidationTracer(
     TimeProvider? timeProvider = null,
     CancellationToken token = default,
     Func<bool>? preempt = null,
-    ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas)
+    ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas,
+    Address? payer = null,
+    UInt256 storageSlotBound = default,
+    bool createInDeployFrame = false,
+    int maxCodeBodies = 0,
+    long maxCodeBytes = 0)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -141,6 +163,20 @@ public sealed class FrameTxValidationTracer(
         SettleCreate();
         if (Violated) return;
 
+        _codeReadPending = false;
+        // Execution starts in a body at its first instruction. Only a change of executing code can be such a
+        // start, so a loop jumping back to offset 0 costs one reference comparison, never a rehash.
+        if (_codeBodies is not null && !ReferenceEquals(env.CodeInfo, _executingCode))
+        {
+            _executingCode = env.CodeInfo;
+            if (pc == 0 && _enteredCode!.Add(env.CodeInfo))
+            {
+                ReadOnlySpan<byte> code = env.CodeInfo.CodeSpan;
+                if (!code.IsEmpty) LoadCode(env.CodeInfo.CodeHash != default ? env.CodeInfo.CodeHash : HashCode(code), code.Length);
+                if (Violated) return;
+            }
+        }
+
         _inRecentRootCode = _recentRootKeys is not null && env.CallDepth == 0 && env.ExecutingAccount == Eip8272Constants.RecentRootAddress;
 
         switch (opcode)
@@ -176,8 +212,11 @@ public sealed class FrameTxValidationTracer(
                 _targetStackIndex = 1; // [gas, address, ...]
                 break;
             case Instruction.EXTCODESIZE:
-            case Instruction.EXTCODEHASH:
             case Instruction.EXTCODECOPY:
+                _targetStackIndex = 0; // [address, ...]
+                _codeReadPending = _codeBodies is not null;
+                break;
+            case Instruction.EXTCODEHASH:
                 _targetStackIndex = 0; // [address, ...]
                 break;
             case Instruction.GASPRICE:
@@ -200,15 +239,17 @@ public sealed class FrameTxValidationTracer(
                 // holds at inclusion, which its owner can change with SETCODEFROM.
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
-            case Instruction.CREATE:
+            case Instruction.CREATE when !createInDeployFrame || !_inDeployFrame:
                 // Its address is f(factory, factory.nonce), which any third party can move by making the
                 // factory create again; only CREATE2 makes the deployment a pure function of the transaction.
+                // Profile 2 replay judges one fixed state, so it takes the creator's nonce as given.
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
             case Instruction.TCREATE when spec.IsEip8360Enabled:
                 // EIP-8360: never installs code at tx.sender, the one creation the prefix admits.
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
+            case Instruction.CREATE:
             case Instruction.CREATE2:
                 // Allowed only in the deploy frame, and only to install code at tx.sender; the address is
                 // checked when the creation frame opens. Slot 0 is the endowment, banned as a funded CALL is.
@@ -242,6 +283,13 @@ public sealed class FrameTxValidationTracer(
             if (stack.Count <= index) return;
 
             Address target = stack.PeekAddress(index);
+            if (_codeReadPending)
+            {
+                ValueHash256 codeHash = state.GetCodeHash(target);
+                if (codeHash != Keccak.OfAnEmptyString.ValueHash256 && !_codeBodies!.Contains(codeHash)) LoadCode(codeHash, state.GetCode(in codeHash).Length);
+                if (Violated) return;
+            }
+
             if (IsForbiddenCallTarget(target))
             {
                 Violate($"CALL*/EXTCODE* to disallowed target {target} in validation prefix");
@@ -266,18 +314,62 @@ public sealed class FrameTxValidationTracer(
         }
     }
 
+    /// <summary>Distinct code bodies loaded so far, by hash, or <c>null</c> when neither bound applies.</summary>
+    private readonly HashSet<ValueHash256>? _codeBodies = maxCodeBodies > 0 || maxCodeBytes > 0 ? [] : null;
+
+    /// <summary>The code instances already counted, by reference: <see cref="CodeInfo"/> overrides equality.</summary>
+    private readonly HashSet<CodeInfo>? _enteredCode = maxCodeBodies > 0 || maxCodeBytes > 0 ? new(ReferenceEqualityComparer.Instance) : null;
+
+    private CodeInfo? _executingCode;
+    private long _codeBytes;
+    private bool _codeReadPending;
+
+    /// <summary>Bodies hashed because their code carried no stamped hash, which only initcode should need.</summary>
+    internal int CodeHashComputations { get; private set; }
+
+    private ValueHash256 HashCode(ReadOnlySpan<byte> code)
+    {
+        CodeHashComputations++;
+        return ValueKeccak.Compute(code);
+    }
+
+    /// <summary>EIP-7805: counts a code body the prefix loads against <c>MAX_REPLAY_CODE_BODIES</c> and <c>MAX_REPLAY_CODE_BYTES</c>.</summary>
+    private void LoadCode(in ValueHash256 codeHash, int length)
+    {
+        if (!_codeBodies!.Add(codeHash)) return;
+        _codeBytes += length;
+        if (maxCodeBodies > 0 && _codeBodies.Count > maxCodeBodies) Violate("validation code body count exceeded");
+        else if (maxCodeBytes > 0 && _codeBytes > maxCodeBytes) Violate("validation code byte limit exceeded");
+    }
+
     public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        // SLOAD may read only tx.sender storage, including transitively via CALL*/DELEGATECALL.
-        if (!Violated && address != sender && !IsRecentRootKeyRead(address, storageIndex)) Violate("SLOAD outside tx.sender storage");
+        // SLOAD may read only in-surface storage, including transitively via CALL*/DELEGATECALL.
+        if (!Violated && !InSurface(address, in storageIndex) && !IsRecentRootKeyRead(address, storageIndex)) ViolateSurface("SLOAD", address, in storageIndex);
     }
 
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
-        // The carve-out is the deploy frame's alone, and covers tx.sender's storage only. Every other prefix
-        // frame is static, so this is belt-and-braces -- but that is an invariant held in another file.
-        if (!Violated && (!_inDeployFrame || address != sender)) Violate("SSTORE outside tx.sender storage");
+        // The carve-out is the deploy frame's alone, and covers tx.sender's storage only -- never the payer's,
+        // whose slots are readable but not writable. Every other prefix frame is static.
+        if (Violated) return;
+        if (!_inDeployFrame) Violate("SSTORE outside tx.sender storage");
+        else if (address != sender || !InSlotBound(in storageIndex)) ViolateSurface("SSTORE", address, in storageIndex);
     }
+
+    /// <summary>Whether a storage cell the prefix touched is inside the configured surface.</summary>
+    private bool InSurface(Address address, in UInt256 slot) =>
+        (address == sender || (payer is not null && address == payer)) && InSlotBound(in slot);
+
+    private bool InSlotBound(in UInt256 slot) => storageSlotBound.IsZero || slot < storageSlotBound;
+
+    /// <summary>Records an out-of-surface storage access as a trace-rule violation.</summary>
+    // The default surface keeps its original wording; a widened or slot-bounded one names the cell,
+    // since the address alone no longer says which half of the rule failed.
+    private void ViolateSurface(string op, Address address, in UInt256 slot) =>
+        Violate(payer is null && storageSlotBound.IsZero
+            ? $"{op} outside tx.sender storage"
+            : $"{op} outside the permitted storage surface at {address}:{slot}");
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {

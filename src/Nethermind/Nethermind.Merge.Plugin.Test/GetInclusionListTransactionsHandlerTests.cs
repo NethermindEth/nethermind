@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -36,7 +37,7 @@ public class GetInclusionListTransactionsHandlerTests
         IChainHeadInfoProvider chainHeadInfo = Substitute.For<IChainHeadInfoProvider>();
         chainHeadInfo.ReadOnlyStateProvider.Returns(Substitute.For<IReadOnlyStateProvider>());
 
-        return new GetInclusionListTransactionsHandler(pool, Substitute.For<IBlockTree>(), specProvider, chainHeadInfo);
+        return new GetInclusionListTransactionsHandler(pool, Substitute.For<IBlockTree>(), specProvider, chainHeadInfo, new BlocksConfig());
     }
 
     // The list is built before its block exists and a missed slot moves the timestamp, so only whether

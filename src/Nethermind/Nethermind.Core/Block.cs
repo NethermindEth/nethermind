@@ -30,13 +30,11 @@ public class Block
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null,
-        ReadOnlyBlockAccessList? blockAccessList = null,
-        IEnumerable<Transaction>? inclusionListTransactions = null)
+        ReadOnlyBlockAccessList? blockAccessList = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
         BlockAccessList = blockAccessList;
-        InclusionListTransactions = inclusionListTransactions?.ToArray();
     }
 
     public Block(BlockHeader header) : this(
@@ -136,13 +134,14 @@ public class Block
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }
 
+    /// <summary>The EIP-7805 omission claims a build committed to for the inclusion-list entries it omitted.</summary>
     [JsonIgnore]
-    public Transaction[]? InclusionListTransactions { get; set; }
+    public OmissionClaim[]? OmissionClaims { get; set; }
 
-    // Set after the post-execution check: false means the block is valid and executable but did not
-    // honour its inclusion list (EIP-7805).
+    /// <summary>The EIP-8037 execution and state gas the block used before each of its transactions, as its execution
+    /// recorded them, so a later inclusion check can fit an omission claim exactly; <c>null</c> when not recorded.</summary>
     [JsonIgnore]
-    public bool IsInclusionListSatisfied { get; set; } = true;
+    public (ulong Execution, ulong State)[]? GasUsedBeforeTransactions { get; set; }
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }

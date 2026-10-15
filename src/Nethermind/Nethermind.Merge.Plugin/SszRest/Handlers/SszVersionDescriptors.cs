@@ -93,7 +93,8 @@ public readonly struct NewPayloadWithWitnessDescriptorV6 : INewPayloadWithWitnes
     public static Task<ResultWrapper<NewPayloadWithWitnessV1Result>> Call(IEngineRpcModule engine, in NewPayloadV6RequestWire wire)
     {
         ExecutionPayloadV4 ep = wire.ExecutionPayload.AsExecutionPayload();
-        return engine.engine_newPayloadWithWitnessV6(ep, SszCodec.GetBlobVersionedHashes(ep), wire.ParentBeaconBlockRoot, wire.ExecutionRequests.ToExecutionRequests(), wire.InclusionListTransactions.ToExecutionRequests());
+        return engine.engine_newPayloadWithWitnessV6(ep, SszCodec.GetBlobVersionedHashes(ep), wire.ParentBeaconBlockRoot, wire.ExecutionRequests.ToExecutionRequests(),
+            wire.InclusionLists.ToInclusionLists(), wire.OmissionClaims.ToClaims());
     }
 }
 
@@ -168,6 +169,20 @@ public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion
         ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
 }
 
+public readonly struct ForkchoiceUpdatedDescriptorV5 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV5RequestWire>
+{
+    public static int VersionNumber => EngineApiVersions.Fcu.V5;
+    public static Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Call(IEngineRpcModule engine, in ForkchoiceUpdatedV5RequestWire wire)
+    {
+        ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(wire.ForkchoiceState);
+        PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
+        BitArray? custody = wire.CustodyColumns is { Length: > 0 } c ? c[0].Bits : null;
+        return engine.engine_forkchoiceUpdatedV5(state, attrs, custody);
+    }
+    public static ulong? GetTimestamp(in ForkchoiceUpdatedV5RequestWire wire) =>
+        ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
+}
+
 // Paris (V1 routing) needs block_value, which engine_getPayloadV1 doesn't return — call V2.
 public readonly struct GetPayloadDescriptorV1 : IGetPayloadVersion<GetPayloadV2Result>
 {
@@ -221,6 +236,15 @@ public readonly struct GetPayloadDescriptorV6 : IGetPayloadVersion<GetPayloadV6R
         => engine.engine_getPayloadV6(id);
     public static int Encode(GetPayloadV6Result result, IBufferWriter<byte> writer)
         => SszCodec.EncodeGetPayloadV6Response(result, writer);
+}
+
+public readonly struct GetPayloadDescriptorV7 : IGetPayloadVersion<GetPayloadV7Result>
+{
+    public static int VersionNumber => EngineApiVersions.GetPayload.V7;
+    public static Task<ResultWrapper<GetPayloadV7Result?>> Call(IEngineRpcModule engine, byte[] id)
+        => engine.engine_getPayloadV7(id);
+    public static int Encode(GetPayloadV7Result result, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetPayloadV7Response(result, writer);
 }
 
 public interface IPayloadBodiesByHashVersion<TResult> where TResult : class

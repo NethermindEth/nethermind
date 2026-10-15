@@ -1,22 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-/// <summary>Answers an already-committed block's EIP-7805 inclusion-list compliance.</summary>
-/// <remarks>
-/// Lets <c>engine_forkchoiceUpdatedV5</c> derive <c>inclusionListSatisfied</c> for a <c>VALID</c> head from
-/// the retained list when the head's <c>engine_newPayloadV6</c> never produced an answer
-/// (<see href="https://github.com/ethereum/execution-apis/blob/main/src/engine/bogota.md">bogota.md</see>).
-/// </remarks>
+/// <summary>Runs one deferred EIP-7805 inclusion check against a block whose execution is <c>VALID</c>.</summary>
+/// <remarks>bogota.md § Deferred inclusion checking: the check runs apart from execution, which is answered
+/// without waiting for it.</remarks>
 public interface IInclusionListComplianceEvaluator
 {
-    /// <summary>Evaluates compliance of the block identified by <paramref name="blockHash"/> against
-    /// <paramref name="inclusionListTransactions"/>, without re-executing it.</summary>
-    /// <param name="blockHash">Hash of a block this node has committed.</param>
-    /// <param name="inclusionListTransactions">Aggregate inclusion list as RLP-encoded EIP-2718 entries.</param>
-    /// <returns><c>null</c> when the block, state, or execution gas dimensions needed to judge compliance are unavailable.</returns>
-    bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions);
+    /// <summary>Whether <paramref name="block"/> satisfies <paramref name="inclusionLists"/> under <paramref name="claims"/>,
+    /// without re-executing it.</summary>
+    /// <param name="block">A block this node executed as <c>VALID</c>, decoded from the request with its access list.</param>
+    /// <param name="inclusionLists">One decoded list per committee position.</param>
+    /// <param name="claims">The builder's committed omission claims.</param>
+    /// <returns><c>null</c> when the state or the execution gas counters needed to judge it are unavailable.</returns>
+    Task<bool?> EvaluateAsync(Block block, Transaction[][] inclusionLists, OmissionClaim[] claims, CancellationToken cancellationToken);
 }

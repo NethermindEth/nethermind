@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -63,14 +64,24 @@ namespace Nethermind.Consensus.Processing
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
+                IReadOnlySet<Hash256AsKey>? claimable = blockToProduce?.InclusionListCandidates;
+                List<OmissionClaim>? claims = null;
                 int i = 0;
                 foreach (Transaction currentTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
+                    // EIP-7805: only the first attempt is where the builder tried; a later offer is a duplicate.
+                    bool claimOnSkip = claimable is not null && currentTx.Hash is { } hash
+                        && claimable.Contains(hash) && !consideredTx.Contains(currentTx);
+                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx, out bool invalidHere);
                     if (action == TxAction.Stop) break;
+                    // A claim binds the builder: the omission is judged at the claimed index alone, so claim only where the
+                    // candidate is invalid there, never where it was skipped for a reason of the builder's own.
+                    if (action == TxAction.Skip && claimOnSkip && (claims?.Count ?? 0) < Eip8369Constants.MaxOmissionClaims
+                        && invalidHere)
+                        (claims ??= []).Add(new OmissionClaim(currentTx.Hash!, (ulong)includedTx.Count));
 
                     consideredTx.Add(currentTx);
                     if (action == TxAction.Add)
@@ -87,6 +98,7 @@ namespace Nethermind.Consensus.Processing
                 if (blockToProduce is not null)
                 {
                     blockToProduce.Transactions = includedTx.ToArray();
+                    blockToProduce.OmissionClaims = claims?.ToArray();
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }
@@ -97,7 +109,8 @@ namespace Nethermind.Consensus.Processing
                 int index,
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions,
-                HashSet<Transaction> transactionsInBlock)
+                HashSet<Transaction> transactionsInBlock,
+                out bool invalidHere)
             {
                 AddingTxEventArgs args = txPicker.CanAddTransaction(
                     block,
@@ -125,11 +138,12 @@ namespace Nethermind.Consensus.Processing
                     else
                     {
                         balManager.Rollback();
-                        args.Set(TxAction.Skip, result.ErrorDescription!);
+                        args.SetInvalid(result.ErrorDescription!);
                         EvictUnpaidFrameTx(currentTx, result);
                     }
                 }
 
+                invalidHere = args.IsInvalidHere;
                 return args.Action;
 
                 [MethodImpl(MethodImplOptions.NoInlining)]

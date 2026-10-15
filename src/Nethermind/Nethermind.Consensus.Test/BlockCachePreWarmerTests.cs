@@ -313,20 +313,6 @@ public class BlockCachePreWarmerTests
         }
     }
 
-    /// <summary>Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.</summary>
-    [Test]
-    public void CollectCalldataAddresses_ScansInclusionListTransactionsAfterTheBlocks()
-    {
-        Block block = BuildCalldataAddressBlock(out Address first, out Address second, out _);
-        Address third = new("0x5a52e96bacdabb82fd05763e25335261b270efcb");
-        byte[] data = new byte[4 + BlockCachePreWarmer.MinCalldataWordsForAddressWarm * 32];
-        third.Bytes.CopyTo(data.AsSpan(4 + 12));
-        block.InclusionListTransactions = [Build.A.Transaction.WithData(data).WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyD).TestObject];
-
-        using ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block);
-        Assert.That(collected, Is.EqualTo(new[] { first, second, third }));
-    }
-
     [Test]
     public void CollectCalldataAddresses_Cancelled_ScansNothing()
     {
