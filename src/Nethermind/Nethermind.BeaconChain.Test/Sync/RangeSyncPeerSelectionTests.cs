@@ -379,6 +379,39 @@ public class RangeSyncPeerSelectionTests
         Assert.That(behind.Failures, Is.Zero);
     }
 
+    [TestCase(1, false)]
+    [TestCase(2, true)]
+    [CancelAfter(30_000)]
+    public async Task A_tip_needing_two_peers_word_is_abandoned_for_finalized_only_on_it_and_charged_to_the_last_if_the_chain_links_through_it(int liars, bool fellBack, CancellationToken token)
+    {
+        const ulong tipSlot = AnchorSlot + 4;
+        const ulong targetSlot = AnchorSlot + 6;
+        ulong[] slots = [.. Enumerable.Range((int)AnchorSlot + 1, (int)(targetSlot - AnchorSlot)).Select(static s => (ulong)s)];
+        (SignedBeaconBlock _, Hash256 finalizedRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, slots);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        ForkedSignedBeaconBlock[] offTip = [new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(tipSlot + 1, Keccak.Compute("not the tip")))];
+        StubPeer[] peers = [.. Enumerable.Range(0, liars).Select(i =>
+        {
+            bool lied = false;
+            return new StubPeer($"liar {i}", targetSlot, (start, count) =>
+            {
+                if (lied) return [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)];
+                lied = true;
+                return offTip;
+            });
+        })];
+        RangeSync sync = new(new OfferingPool(peers), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+        bool rejected = false;
+        RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true, RequiredMismatches: 2);
+
+        List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(chainBlocks[tipSlot - AnchorSlot - 1].ComputeMessageRoot(), tipSlot, () => targetSlot, token, fallback));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(rejected, Is.EqualTo(fellBack));
+        Assert.That(yielded, Is.EqualTo(fellBack ? chainBlocks : chainBlocks.Where(static b => b.Slot > tipSlot)), "a re-download from finalized happens only on two peers' word");
+        Assert.That(peers.Select(static p => p.Reports.Count), Is.EqualTo(fellBack ? new[] { 0, 1 } : new[] { 0 }), "the peer whose word abandoned a tip the chain links through is charged");
+    }
+
     [TestCase(2UL, true, TestName = "Range sync behind the wall slot whose peers all report its own head refreshes their status instead of waiting")]
     [TestCase(1UL, false, TestName = "Range sync waiting on the wall slot's block does not refresh peer status")]
     [CancelAfter(30_000)]

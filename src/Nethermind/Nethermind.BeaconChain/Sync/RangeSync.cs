@@ -52,7 +52,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     private readonly INodeColumnCustodySource _custodySource = new DiscoveryNodeCustodySource(discovery);
 
     /// <summary>The anchor a run restarts from when its first block does not link to the unverified anchor it was given; <paramref name="Rejected"/> runs when that happens.</summary>
-    public sealed record AnchorFallback(Hash256 Root, ulong Slot, Action Rejected);
+    /// <param name="RequiredMismatches">The distinct peers whose first block must miss the given anchor before the run restarts here.</param>
+    public sealed record AnchorFallback(Hash256 Root, ulong Slot, Action Rejected, int RequiredMismatches = 1);
 
     /// <summary>Streams linked blocks after <paramref name="anchorSlot"/> until the moving target is reached; callers restart as it advances.</summary>
     /// <param name="anchorRoot">The required parent root of the first yielded block.</param>
@@ -84,6 +85,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         HashSet<string> behindTheirWord = [];
         // The peer whose empty answer skipped slots after the last verified block, until a batch links past them.
         IBeaconSyncPeer? skippedOnWordOf = null;
+        // Peers whose first block missed the unverified anchor.
+        HashSet<string>? anchorMisses = null;
+        // The peer whose miss abandoned the anchor, charged if the chain from the fallback links through that anchor after all.
+        (IBeaconSyncPeer Peer, Hash256 Root, ulong Slot)? abandonedOnWordOf = null;
 
         while (!token.IsCancellationRequested && nextSlot <= targetHeadSlot())
         {
@@ -131,9 +136,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
-            if (batch is { Linked: false } && fallback is not null)
+            if (batch is { Linked: false } && fallback is not null && (anchorMisses ??= []).Add(peer.Id) && anchorMisses.Count >= fallback.RequiredMismatches)
             {
                 // The first block names another parent: the unverified anchor is off the peers' chain, not the peer at fault.
+                abandonedOnWordOf = (peer, lastRoot, lastSlot);
                 lastRoot = fallback.Root;
                 lastSlot = fallback.Slot;
                 lastSupplier = null;
@@ -192,6 +198,15 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             {
                 lastRoot = batch.Value.Roots[^1];
                 lastSupplier = peer.Id;
+                if (abandonedOnWordOf is { } abandoned && lastSlot >= abandoned.Slot)
+                {
+                    if (Array.IndexOf(batch.Value.Roots, abandoned.Root) >= 0)
+                    {
+                        abandoned.Peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"The first block after {abandoned.Root} named another parent, but the chain from the fallback anchor links through it");
+                    }
+
+                    abandonedOnWordOf = null;
+                }
             }
 
             // BeaconBlocksByRange: a limited reply does not prove that its remaining slots are empty.

@@ -3011,8 +3011,10 @@ public sealed class BeaconSyncOrchestrator(
             // Before the tip, so a resume that moves the tip after this read also ends this round.
             CancellationToken restart = Volatile.Read(ref _rangeSyncRestart).Token;
             Tip tip = _syncTip;
+            // A tip that is the fork-choice head is abandoned for finalized only on the word of two peers, so one peer cannot force a re-download each slot.
+            bool tipIsHead = tip.Root == _lastHead?.HeadRoot;
             RangeSync.AnchorFallback? fallback = store.TryGetAnchor(out Hash256? finalizedRoot, out ulong finalizedSlot) && finalizedSlot < tip.Slot
-                ? new RangeSync.AnchorFallback(finalizedRoot, finalizedSlot, () => { })
+                ? new RangeSync.AnchorFallback(finalizedRoot, finalizedSlot, () => { }, tipIsHead ? 2 : 1)
                 : null;
             if (_rangeHeld is { } held && held.Tip.Slot > tip.Slot)
             {
@@ -3023,8 +3025,9 @@ public sealed class BeaconSyncOrchestrator(
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Range sync round starts past the blocks held for a deferred block, at slot {held.Tip.Slot} instead of {tip.Slot}");
-                // A rejected held branch may also have an orphaned imported tip, so keep the finalized fallback when available.
-                fallback = new RangeSync.AnchorFallback(fallback?.Root ?? tip.Root, fallback?.Slot ?? tip.Slot, () => { if (ReferenceEquals(_rangeHeld, held)) _rangeHeld = null; });
+                // A rejected held branch may also have an orphaned imported tip, so keep the finalized fallback when available and the tip is not the head.
+                RangeSync.AnchorFallback? beforeTip = tipIsHead ? null : fallback;
+                fallback = new RangeSync.AnchorFallback(beforeTip?.Root ?? tip.Root, beforeTip?.Slot ?? tip.Slot, () => { if (ReferenceEquals(_rangeHeld, held)) _rangeHeld = null; });
                 tip = held.Tip;
             }
 
