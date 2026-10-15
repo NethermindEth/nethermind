@@ -207,14 +207,14 @@ public class InclusionListValidatorTests
         }
     }
 
-    // EIP-8288: only block capacity over the final dependency union excuses omitting an entry the list's proof covers;
-    // the native proof envelope does not, and dependencies already in the block consume no capacity.
-    [TestCase(Eip8288Constants.MaxProofDependencies, 0, Eip8288Constants.LeanSphincsScheme, false, ExpectedResult = false, TestName = "Full proof envelope is no omission ground")]
-    [TestCase(Eip8288Constants.MaxDepsPerBlock, 0, Eip8288Constants.LeanSphincsScheme, false, ExpectedResult = true, TestName = "Full block excuses a new dependency")]
-    [TestCase(Eip8288Constants.MaxDepsPerBlock, 0, Eip8288Constants.LeanSphincsScheme, true, ExpectedResult = false, TestName = "Full block still fits a dependency it has")]
-    [TestCase(Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.LeanStarkScheme, false, ExpectedResult = true, TestName = "Full leanSTARK capacity excuses a new leanSTARK")]
-    [TestCase(Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.LeanSphincsScheme, false, ExpectedResult = true, TestName = "Full leanSTARK units excuse a new leanSPHINCS")]
-    public bool Only_block_dependency_capacity_excuses_an_omission(int blockDependencies, int blockLeanStark, byte scheme, bool present)
+    // EIP-8288: omission is permitted only when EIP-7805 excuses it. No block dependency count or weighted budget, local proof
+    // envelope or wrapper limit is an omission ground, however large the block's dependency union already is.
+    [TestCase(Eip8288Constants.MaxProofDependencies, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Full proof envelope is no omission ground")]
+    [TestCase(Eip8288Constants.MaxDepsPerAggregate, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Aggregate wrapper ceiling is no omission ground")]
+    [TestCase(Eip8288Constants.MaxDepsPerAggregate, 0, Eip8288Constants.LeanSphincsScheme, true, TestName = "Dependency already in a large block")]
+    [TestCase(256, 256, Eip8288Constants.LeanStarkScheme, false, TestName = "Many leanSTARKs are no omission ground for another")]
+    [TestCase(256, 256, Eip8288Constants.LeanSphincsScheme, false, TestName = "Many leanSTARKs are no omission ground for a leanSPHINCS")]
+    public void No_dependency_capacity_excuses_an_omission(int blockDependencies, int blockLeanStark, byte scheme, bool present)
     {
         FrameDependency[] blockDeps = new FrameDependency[blockDependencies];
         for (int i = 0; i < blockDependencies; i++)
@@ -243,9 +243,12 @@ public class InclusionListValidatorTests
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
         CommitteeInclusionList[] lists = [new(0, [entry], proof)];
-        Assert.That(InclusionListProofValidator.SelectEligible([entry], lists, new AcceptingVerifier(), spec, out _), Has.Length.EqualTo(1));
-        return InclusionListValidator.IsSatisfied(block, [entry], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator,
-            lists, new AcceptingVerifier(), frameCanInclude: static _ => true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(InclusionListProofValidator.SelectEligible([entry], lists, new AcceptingVerifier(), spec, out _), Has.Length.EqualTo(1));
+            Assert.That(InclusionListValidator.IsSatisfied(block, [entry], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator,
+                lists, new AcceptingVerifier(), frameCanInclude: static _ => true), Is.False);
+        }
     }
 
     // EIPs#12475: obligations are derived per counted list. An entry with dependencies binds through a list only if that

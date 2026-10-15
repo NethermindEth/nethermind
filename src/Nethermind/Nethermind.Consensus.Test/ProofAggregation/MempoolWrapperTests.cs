@@ -424,9 +424,12 @@ public class MempoolWrapperTests
         }
     }
 
-    [TestCase(Eip8288Constants.MaxLeanStarkDepsPerAggregate, null)]
-    [TestCase(Eip8288Constants.MaxLeanStarkDepsPerAggregate + 1, MempoolWrapperValidator.TooManyAggregateStarkDeps)]
-    public void Aggregate_leanstark_ceiling_is_checked_before_verification(int count, string? expected)
+    // EIPs#12473: mode 1 bounds dependencies by MAX_DEPS_PER_AGGREGATE_WRAPPER alone, whatever their schemes. Sets above the
+    // local proof envelope are valid wrappers that this node refuses locally.
+    [TestCase(Eip8288Constants.MaxGenericStarkProofs, false)]
+    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 1, true)]
+    [TestCase(64, true)]
+    public void Aggregate_has_no_leanstark_sublimit(int count, bool exceedsLocalVerifier)
     {
         (MempoolWrapper wrapper, Func<Hash256, Transaction?> resolve) = Batch(MempoolWrapper.ModeRecursive,
             [.. Enumerable.Range(0, count).Select(i => (IReadOnlyList<FrameDependency>)[Stark($"s{i}"), Sphincs($"p{i}")])]);
@@ -434,9 +437,9 @@ public class MempoolWrapperTests
         bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, resolve);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(valid, Is.EqualTo(expected is null), error);
-            Assert.That(error, Is.EqualTo(expected));
-            Assert.That(verifier.VerificationCalls, Is.EqualTo(expected is null ? 1 : 0));
+            Assert.That(valid, Is.True, error);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+            Assert.That(MempoolWrapperValidator.ExceedsLocalVerifier(wrapper), Is.EqualTo(exceedsLocalVerifier));
         }
     }
 

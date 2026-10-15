@@ -118,14 +118,11 @@ public class BlockValidatorTests
         Assert.That(result, Is.True, error);
     }
 
-    // EIP-8288 rule 4: a block must satisfy dependencies_fit_block, checked before the proof verifier runs.
-    [TestCase(Eip8288Constants.MaxDepsPerBlock, 0, true)]
-    [TestCase(3856, 16, true)]
-    [TestCase(3857, 16, false)]
-    [TestCase(256, 256, true)]
-    [TestCase(Eip8288Constants.MaxDepsPerBlock + 1, 0, false)]
-    [TestCase(Eip8288Constants.MaxLeanStarkDepsPerBlock + 1, Eip8288Constants.MaxLeanStarkDepsPerBlock + 1, false)]
-    public void Eip8288_enforces_block_dependency_capacity(int dependencies, int leanStark, bool valid)
+    // EIP-8288 Test Case 11: with sufficient gas and a valid proof, no dependency-count or weighted budget limits a block.
+    [TestCase(4097, 0)]
+    [TestCase(257, 257)]
+    [TestCase(3857, 16)]
+    public void Eip8288_has_no_block_dependency_quota(int dependencies, int leanStark)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize)
@@ -139,9 +136,8 @@ public class BlockValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(dependencies));
-            Assert.That(result, Is.EqualTo(valid), error);
-            Assert.That(error, Is.EqualTo(valid ? null : BlockErrorMessages.DependencyCapacityExceeded));
-            Assert.That(verifier.RecursiveCalls, Is.EqualTo(valid ? 1 : 0));
+            Assert.That(result, Is.True, error);
+            Assert.That(verifier.RecursiveCalls, Is.EqualTo(1));
         }
     }
 

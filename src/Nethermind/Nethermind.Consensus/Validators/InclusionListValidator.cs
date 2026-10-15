@@ -76,19 +76,15 @@ public static class InclusionListValidator
                 included[idx] = true;
         }
 
-        // EIP-8288: only block capacity over the final dependency union excuses an omission; local proving bounds do not.
-        HashSet<FrameDependency> dependencies = spec.IsEip8288Enabled ? [.. Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue)] : [];
-        LeanProofCapacity.AppendBudget capacity = LeanProofCapacity.CreateAppendBudget(dependencies, LeanProofCapacity.Block);
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i] || il[i].SupportsFrames && il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
             if (il[i].SupportsFrames)
             {
+                // EIP-8288 adds no omission grounds: no block dependency quota, local proving or wrapper limits.
                 if (!spec.IsEip8288Enabled || !CouldIncludeFrameTx(il[i], block, spec, txValidator)) continue;
-                List<FrameDependency> appended = Eip8288Dependencies.ForTransaction(il[i], FrameTxSigHash.ComputeValue);
-                if (capacity.CapacityError(appended) is null
-                    && (frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
+                if ((frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
                 continue;
             }
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;

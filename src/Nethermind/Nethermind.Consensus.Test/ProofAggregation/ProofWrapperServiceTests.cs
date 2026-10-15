@@ -925,15 +925,14 @@ public class ProofWrapperServiceTests
         Assert.That(verifier.VerificationCalls, Is.Zero);
     }
 
-    // EIPs#12473 and EIP-8437: an aggregate within EIP-8288's limits that the local verifier cannot check is refused
-    // locally, not invalid; one beyond those limits is still invalid.
-    [TestCase(false, ProofWrapperAcceptanceStatus.Refused)]
-    [TestCase(true, ProofWrapperAcceptanceStatus.Invalid)]
-    public async Task Aggregate_beyond_the_local_proof_capacity_is_refused_without_verification(bool aboveLeanStarkLimit,
-        ProofWrapperAcceptanceStatus expected)
+    // EIPs#12473: an aggregate within EIP-8288's limits that the local verifier cannot check is refused locally, not
+    // invalid, including more leanSTARKs than the local proof envelope since mode 1 has no scheme sublimit.
+    [TestCase(Eip8288Constants.MaxProofDependencies + 1, 0)]
+    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 1, Eip8288Constants.MaxGenericStarkProofs + 1)]
+    [TestCase(64, 32)]
+    public async Task Aggregate_beyond_the_local_proof_capacity_is_refused_without_verification(int count, int leanStark)
     {
-        int leanStark = aboveLeanStarkLimit ? Eip8288Constants.MaxLeanStarkDepsPerAggregate + 1 : 0;
-        FrameDependency[] deps = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1)
+        FrameDependency[] deps = [.. Enumerable.Range(0, count)
             .Select(i => new FrameDependency(i < leanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme,
                 Keccak.Compute(i.ToString()).ValueHash256, default))];
         List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
@@ -948,9 +947,8 @@ public class ProofWrapperServiceTests
         ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((await service.VerifyClaimedProofsAsync(wrapper)).Status, Is.EqualTo(expected));
-            if (!aboveLeanStarkLimit)
-                Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Refused));
+            Assert.That((await service.VerifyClaimedProofsAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Refused));
+            Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Refused));
             Assert.That(verifier.VerificationCalls, Is.Zero);
         }
     }

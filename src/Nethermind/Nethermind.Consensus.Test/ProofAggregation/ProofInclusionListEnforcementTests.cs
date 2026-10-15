@@ -30,7 +30,8 @@ public class ProofInclusionListEnforcementTests
 {
     [TestCase("valid", false)]
     [TestCase("bounded-proof", false)]
-    [TestCase("generic-full", true)]
+    // EIP-8288 has no block dependency quota: a block already holding 256 leanSTARKs excuses no omission.
+    [TestCase("generic-many", false)]
     [TestCase("generic-space", false)]
     [TestCase("generic-compressed-union", false)]
     [TestCase("generic-covered-and-new", false)]
@@ -124,8 +125,7 @@ public class ProofInclusionListEnforcementTests
             .WithTransactions(includedTransactions).TestObject;
         if (scenario.StartsWith("generic-", System.StringComparison.Ordinal))
         {
-            int count = scenario == "generic-full" ? Eip8288Constants.MaxLeanStarkDepsPerBlock
-                : scenario == "generic-space" ? Eip8288Constants.MaxLeanStarkDepsPerBlock - 1 : coveredAndNew ? 2 : 1;
+            int count = scenario == "generic-many" ? 256 : scenario == "generic-space" ? 255 : coveredAndNew ? 2 : 1;
             byte[] existing = new byte[count * Eip8288Constants.DependencyTripleLength];
             for (int i = 0; i < count; i++)
             {
