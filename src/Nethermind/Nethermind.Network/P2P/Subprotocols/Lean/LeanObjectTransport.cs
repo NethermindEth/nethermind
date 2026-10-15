@@ -12,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
@@ -269,7 +268,11 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
             if (_disposed) return;
             _disposed = true;
             foreach (LeanPeer peer in _peers.ToArray()) RemoveCore(peer);
-            foreach (LeanAssembly assembly in _assemblies.Values) Drop(assembly);
+            foreach (LeanAssembly assembly in _assemblies.Values)
+            {
+                if (assembly.Queued && !assembly.Started) ReleaseCompletion(assembly);
+                Drop(assembly);
+            }
             _assemblies.Clear();
         }
         _wrappers.WrapperValidated -= OnWrapperValidated;

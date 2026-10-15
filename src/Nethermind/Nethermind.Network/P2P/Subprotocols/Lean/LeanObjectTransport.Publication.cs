@@ -3,10 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Core.Crypto;
