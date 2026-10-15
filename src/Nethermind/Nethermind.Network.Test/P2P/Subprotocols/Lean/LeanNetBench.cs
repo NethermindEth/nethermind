@@ -75,6 +75,26 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Lean;
 [SupportedOSPlatform("windows")]
 public class LeanNetBenchNode
 {
+    /// <summary>Uses hash-indexed lookup for the benchmark's controlled pool.</summary>
+    internal static void ConfigureIndexedPool(LeanTestNode node)
+    {
+        ConcurrentDictionary<ValueHash256, Transaction> pending = new();
+        node.Pool.GetPendingTransactions().Returns(_ => pending.Values.ToArray());
+        node.Pool.TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            bool found = pending.TryGetValue(call.Arg<ValueHash256>(), out Transaction? transaction);
+            call[1] = transaction;
+            return found;
+        });
+        node.Pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
+        {
+            if (node.Reject) return AcceptTxResult.Invalid;
+            Transaction transaction = call.Arg<Transaction>();
+            pending.TryAdd(transaction.Hash!.ValueHash256, transaction);
+            return AcceptTxResult.Accepted;
+        });
+    }
+
     public sealed record PeerConfig(int Id, string Ip, int Port);
 
     public sealed record NodeConfig(int Id, string Binding, bool Broadcast, string Ip, int Port, PeerConfig[] Peers, int Nodes, int Kind,
@@ -107,6 +127,7 @@ public class LeanNetBenchNode
         void Log(string message) => Console.WriteLine($"[node {config.Id} {DateTime.UtcNow:HH:mm:ss.fff}] {message}");
 
         using LeanTestNode node = new(manualTime: false, logManager: logs);
+        ConfigureIndexedPool(node);
         node.Verifier.Delay = TimeSpan.FromMilliseconds(config.VerifyMs);
         ConcurrentDictionary<Hash256, BlockHeader> imported = new();
         node.Tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
@@ -611,4 +632,35 @@ internal sealed class BenchBroadcastProfile(long genesisUnixMs) : ILeanBroadcast
 
     public static byte[] Sign(LeanBroadcastManifest manifest) =>
         Ecdsa.Sign(Signer, manifest.Id(1, LeanTestNode.Genesis.ValueHash256)).BytesWithRecovery;
+}
+
+public class LeanNetBenchFixtureTests
+{
+    [Test]
+    public void Controlled_pool_uses_hash_index_and_owned_snapshots()
+    {
+        using LeanTestNode node = new();
+        LeanNetBenchNode.ConfigureIndexedPool(node);
+        Transaction[] transactions = [FrameTransaction(1), FrameTransaction(2)];
+        Transaction decoy = FrameTransaction(3);
+        node.Pending.Add(decoy);
+        foreach (Transaction transaction in transactions)
+            Assert.That(node.Pool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        node.Pool.SubmitTx(transactions[0], TxHandlingOptions.PersistentBroadcast);
+        Transaction[] snapshot = node.Pool.GetPendingTransactions();
+        Assert.That(snapshot, Is.EquivalentTo(transactions));
+        snapshot[0] = decoy;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Pool.GetPendingTransactions(), Is.EquivalentTo(transactions));
+            Assert.That(node.Pool.TryGetPendingTransaction(transactions[0].Hash!.ValueHash256, out Transaction? found), Is.True);
+            Assert.That(found, Is.SameAs(transactions[0]));
+            Assert.That(node.Pool.TryGetPendingTransaction(decoy.Hash!.ValueHash256, out Transaction? missing), Is.False);
+            Assert.That(missing, Is.Null);
+        }
+        node.Reject = true;
+        Assert.That(node.Pool.SubmitTx(decoy, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Invalid));
+        Assert.That(node.Pool.GetPendingTransactions(), Is.EquivalentTo(transactions));
+    }
 }
