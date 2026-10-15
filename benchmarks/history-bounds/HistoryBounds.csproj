@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsTestProject>false</IsTestProject>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     <DefineConstants Condition="'$(BoundsReuse)' == 'true'">$(DefineConstants);REUSE_BOUNDS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
