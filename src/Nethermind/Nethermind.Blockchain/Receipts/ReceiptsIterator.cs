@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly Func<IReceiptsRecovery.IRecoveryContext>? _logRecoveryContextFactory;
         private IReceiptsRecovery.IRecoveryContext? _recoveryContext;
         private IReceiptsRecovery.ISelectiveLogRecoveryContext? _selectiveLogRecoveryContext;
+        private readonly IReceiptsRecovery.IDeferredLogRecoveryContext? _deferredRecoveryContext;
         private int _logRecoveryReceiptIndex;
         private Hash256? _logRecoveryTransactionHash;
         private readonly IReceiptRefDecoder _receiptRefDecoder;
@@ -49,6 +50,14 @@ namespace Nethermind.Blockchain.Receipts
 
             _startingPosition = _reader.Position;
             _length = receiptsData.Length == 0 ? 0 : _reader.ReadSequenceLength() + _reader.Position;
+        }
+
+        internal ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, IReceiptRefDecoder receiptRefDecoder,
+            IReceiptsRecovery.IDeferredLogRecoveryContext recoveryContext)
+            : this(receiptsData, blocksDb, null, receiptRefDecoder)
+        {
+            _deferredRecoveryContext = recoveryContext;
+            _selectiveLogRecoveryContext = recoveryContext;
         }
 
         /// <summary>
@@ -139,7 +148,9 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_recoveryContextConfigured) return;
 
-            ConfigureRecovery(ref current, recoveryContextFactory?.Invoke());
+            ConfigureRecovery(ref current, _deferredRecoveryContext is null
+                ? recoveryContextFactory?.Invoke()
+                : _deferredRecoveryContext.CreateFullRecoveryContext());
         }
 
         private void ConfigureRecovery(ref TxReceiptStructRef current, IReceiptsRecovery.IRecoveryContext? context)

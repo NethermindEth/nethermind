@@ -11,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true) : IReceiptsRecovery
+    public partial class ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true) : IReceiptsRecovery
     {
         private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
