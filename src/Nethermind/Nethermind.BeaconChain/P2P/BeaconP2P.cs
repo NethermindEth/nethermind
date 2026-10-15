@@ -106,8 +106,8 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
-            .AddSingleton(new StatusProtocolV1(statusSource) { RequestViolationSink = ReportRequestViolation })
-            .AddSingleton(new StatusProtocolV2(statusSource) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new StatusProtocolV1(statusSource) { RequestViolationSink = ReportRequestViolation, RequestServed = OnStatusServed })
+            .AddSingleton(new StatusProtocolV2(statusSource) { RequestViolationSink = ReportRequestViolation, RequestServed = OnStatusServed })
             .AddSingleton(new GoodbyeProtocol { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new Eth2PingProtocol(metadataSource) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new MetaDataProtocolV3(metadataSource) { RequestViolationSink = ReportRequestViolation })
@@ -247,6 +247,11 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     // Status, Ping, MetaData and Goodbye stay open to every session, as admission needs them; a host without the peer manager admits no one itself.
     private bool IsAdmittedPeer(PeerId peerId) => _peerPool?.Value is not PeerManager manager || manager.IsAdmitted(peerId);
+
+    private void OnStatusServed(PeerId peerId, StatusMessageV2 status)
+    {
+        if (_peerPool?.Value is PeerManager manager) manager.OnInboundStatus(peerId, status);
+    }
 
     /// <summary>Records a protocol violation by an inbound requester against the peer's failure count, when the peer is connected.</summary>
     /// <remarks>The peer manager finds the peer by id; any other pool can only offer the peers selection would hand out.</remarks>

@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -392,6 +393,91 @@ public class PeerBandTests
             Assert.That(local.P2P.IsInPeerStoreForTest(remoteId), Is.EqualTo(staticPeers),
                 "the peer store never forgets an entry, so only a bounded set of peers, never any key that completes a handshake, may add one");
         }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_peer_whose_status_passed_our_checks_is_served_blocks_before_our_status_request_to_it_returns([Values] bool sameNetwork, CancellationToken token)
+    {
+        PeerManager? manager = null;
+        Node local = CreateNode(peerPool: new Lazy<IBeaconSyncPeerPool>(() => manager!));
+        SetMatchingStatus(local);
+        StatusMessageV2 ours = local.StatusHolder.CurrentStatus;
+        StatusMessageV2 sent = new()
+        {
+            ForkDigest = sameNetwork ? ours.ForkDigest : [9, 9, 9, 9],
+            FinalizedRoot = ours.FinalizedRoot,
+            FinalizedEpoch = ours.FinalizedEpoch,
+            HeadRoot = ours.HeadRoot,
+            HeadSlot = ours.HeadSlot,
+            EarliestAvailableSlot = ours.EarliestAvailableSlot,
+        };
+        // The remote answers this node's status request only once released, so that admission stays pending.
+        AsyncLocal<bool> sending = new();
+        using ManualResetEventSlim release = new();
+        bool holding = false;
+        Node remote = CreateNode(new ScriptedStatusSource(_ =>
+        {
+            if (Volatile.Read(ref holding) && !sending.Value) release.Wait(TimeSpan.FromSeconds(30));
+            return sent;
+        }));
+        await using PeerHostScope nodes = new(local.P2P, remote.P2P);
+        try
+        {
+            await nodes.StartAsync(token, remote.P2P, local.P2P);
+            manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+            Volatile.Write(ref holding, true);
+            ISession session = await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
+            sending.Value = true;
+            await remote.P2P.RequestStatusAsync(session, token);
+            sending.Value = false;
+
+            // The node stores no blocks, so a served request answers ResourceUnavailable; only a refusal answers 139.
+            byte answer = 0;
+            try
+            {
+                await remote.P2P.RequestBlocksByRangeAsync(session, AnchorSlot, 1, token);
+            }
+            catch (Eth2ReqRespException e)
+            {
+                answer = e.ResponseCode;
+            }
+
+            using IDisposable assertionScope = Assert.EnterMultipleScope();
+            Assert.That(answer, sameNetwork ? Is.Not.EqualTo(139) : Is.EqualTo(139),
+                sameNetwork ? "a peer on our chain is served while this node still waits for its status" : "a status on another chain does not open the data protocols");
+            Assert.That(manager.PeerCount, Is.Zero, "fixture: this node's own status request has not returned");
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [Test]
+    public void A_status_that_passed_before_the_admission_was_reserved_opens_the_data_protocols_once_it_is([Values] bool sameNetwork)
+    {
+        Node node = CreateNode();
+        SetMatchingStatus(node);
+        PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+        StatusMessageV2 ours = node.StatusHolder.CurrentStatus;
+        StatusMessageV2 sent = new()
+        {
+            ForkDigest = sameNetwork ? ours.ForkDigest : [9, 9, 9, 9],
+            FinalizedRoot = ours.FinalizedRoot,
+            FinalizedEpoch = ours.FinalizedEpoch,
+            HeadRoot = ours.HeadRoot,
+            HeadSlot = ours.HeadSlot,
+        };
+        PeerId remote = new Identity().PeerId;
+
+        manager.OnInboundStatus(remote, sent);
+        bool beforeReservation = manager.IsAdmitted(remote);
+        manager.ReserveDialingForTest($"/ip4/1.2.3.4/tcp/9000/p2p/{remote}");
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(beforeReservation, Is.False, "a status alone, with no admission pending, opens nothing");
+        Assert.That(manager.IsAdmitted(remote), Is.EqualTo(sameNetwork), "the reservation takes up a status that passed our checks before it");
     }
 
     [TestCase(false, TestName = "Maintenance_round_trims_the_worst_peer_once_over_the_high_watermark")]
@@ -780,7 +866,8 @@ public class PeerBandTests
 
     internal record Node(BeaconP2P P2P, BeaconChainStatusHolder StatusHolder, BeaconChainConfig Config, BeaconChainStore Store, LocalMetadataSource Metadata);
 
-    internal static Node CreateNode(IBeaconChainStatusSource? statusSource = null, ILogManager? logManager = null, TimeSpan? requestTimeout = null)
+    internal static Node CreateNode(IBeaconChainStatusSource? statusSource = null, ILogManager? logManager = null, TimeSpan? requestTimeout = null,
+        Lazy<IBeaconSyncPeerPool>? peerPool = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
@@ -788,8 +875,8 @@ public class PeerBandTests
         LocalMetadataSource metadataSource = new();
         ILogManager hostLogs = logManager ?? LoopbackTrace.NewNode() ?? LimboLogs.Instance;
         BeaconP2P p2p = requestTimeout is { } timeout
-            ? new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs) { RequestTimeout = timeout }
-            : new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs);
+            ? new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs, peerPool: peerPool) { RequestTimeout = timeout }
+            : new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs, peerPool: peerPool);
         return new Node(p2p, statusHolder, config, store, metadataSource);
     }
 

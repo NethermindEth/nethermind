@@ -18,6 +18,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -135,6 +136,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     // Admissions in flight per session, guarded by _admissionLock: DisconnectUnadmittedAsync leaves a session one of them holds open.
     private readonly Dictionary<ISession, int> _admittingSessions = [];
+
+    // The pool by peer id, for a lookup per data request; a closed session's record can outlive it beside the next one, so only its own record removes an entry.
+    private readonly ConcurrentDictionary<PeerId, ManagedPeer> _admittedById = new();
+    // Reserved peers whose own status request passed our checks, written under _admissionLock; the reservations bound them.
+    private readonly ConcurrentDictionary<PeerId, string> _statusPassedReserved = new();
+    // A status request can arrive before this node reserves the session; only a hint, taken up by the reservation.
+    private readonly LruCache<string, PeerId> _statusPassedUnreserved = new(256, "beacon status passed before reservation");
 
     /// <summary>Admission identity for directory entries and peer-id deduplication; ENR is known only for discovery dials.</summary>
     private readonly record struct Reservation(string PeerId, PeerDirection Direction, string? Enr);
@@ -796,7 +804,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 return false;
             }
 
-            _dialing[address] = new Reservation(peerId, direction, enr);
+            Reserve(address, new Reservation(peerId, direction, enr));
             return true;
         }
     }
@@ -843,8 +851,59 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return false;
     }
 
-    /// <summary>Whether <paramref name="peerId"/> passed admission and its session is still in the pool.</summary>
-    internal bool IsAdmitted(PeerId peerId) => TryFindConnected(peerId.ToString(), out _);
+    /// <summary>Whether <paramref name="peerId"/> may make data requests: it is in the pool, or its admission is pending and its own status request passed our checks.</summary>
+    /// <remarks>A peer that sent its status first may ask for data before this node's status request to it returns (consensus-specs phase0 p2p-interface "Status").</remarks>
+    internal bool IsAdmitted(PeerId peerId) => _admittedById.ContainsKey(peerId) || _statusPassedReserved.ContainsKey(peerId);
+
+    /// <summary>Records the status <paramref name="peerId"/> sent in its own status request, which this node answered.</summary>
+    internal void OnInboundStatus(PeerId peerId, StatusMessageV2 status)
+    {
+        if (StatusMismatch(status, _statusSource.CurrentStatus) is not null)
+        {
+            return;
+        }
+
+        string id = peerId.ToString();
+        lock (_admissionLock)
+        {
+            foreach (KeyValuePair<string, Reservation> reservation in _dialing)
+            {
+                if (reservation.Value.PeerId == id)
+                {
+                    _statusPassedReserved[peerId] = id;
+                    return;
+                }
+            }
+
+            _statusPassedUnreserved.Set(id, peerId);
+        }
+    }
+
+    // Called under _admissionLock.
+    private void Reserve(string address, Reservation reservation)
+    {
+        _dialing[address] = reservation;
+        if (_statusPassedUnreserved.TryRemove(reservation.PeerId, out PeerId? passed))
+        {
+            _statusPassedReserved[passed] = reservation.PeerId;
+        }
+    }
+
+    private void ReleaseReservation(string address)
+    {
+        lock (_admissionLock)
+        {
+            if (!_dialing.TryRemove(address, out Reservation reservation))
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<PeerId, string> passed in _statusPassedReserved)
+            {
+                if (passed.Value == reservation.PeerId) _statusPassedReserved.TryRemove(passed);
+            }
+        }
+    }
 
     private bool TryFindConnected(string peerId, out ManagedPeer? peer)
     {
@@ -1174,7 +1233,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         finally
         {
             dial.End(admitted: null);
-            _dialing.TryRemove(address, out _);
+            ReleaseReservation(address);
             _ = AdmitSessionLeftUnclaimedAsync(address, callerToken);
         }
     }
@@ -1361,6 +1420,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         lock (_admissionLock)
         {
             _peers[address] = peer;
+            if (BeaconP2P.RemotePeerIdOf(session) is { } admittedId) _admittedById[admittedId] = peer;
             Metrics.BeaconChainPeerCount = _peers.Count;
         }
 
@@ -1545,7 +1605,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
             finally
             {
-                _dialing.TryRemove(address, out _);
+                ReleaseReservation(address);
             }
         }
         catch (Exception e)
@@ -1721,11 +1781,31 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             peer.StatusRequestEnded();
         }
         peer.RecordMessageSent();
-        StatusMessageV2 local = _statusSource.CurrentStatus;
+        if (StatusMismatch(status, _statusSource.CurrentStatus) is { } mismatch)
+        {
+            await DropAsync(peer, GoodbyeReason.IrrelevantNetwork, mismatch, token);
+            return false;
+        }
+
+        peer.SetStatus(status, _timestamper.UtcNowOffset.UtcTicks);
+        peer.RecordActivity();
+        return true;
+    }
+
+    private void ForgetAdmitted(ManagedPeer peer)
+    {
+        if (BeaconP2P.RemotePeerIdOf(peer.Session) is { } peerId)
+        {
+            _admittedById.TryRemove(new KeyValuePair<PeerId, ManagedPeer>(peerId, peer));
+        }
+    }
+
+    /// <summary>Why a peer reporting <paramref name="status"/> is on another chain than <paramref name="local"/>, or <c>null</c> when it is not.</summary>
+    private string? StatusMismatch(StatusMessageV2 status, StatusMessageV2 local)
+    {
         if (!status.ForkDigest.AsSpan().SequenceEqual(local.ForkDigest))
         {
-            await DropAsync(peer, GoodbyeReason.IrrelevantNetwork, "fork digest mismatch", token);
-            return false;
+            return "fork digest mismatch";
         }
 
         if (_spec is not null)
@@ -1734,20 +1814,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             ulong currentSlot = now > _spec.GenesisTime ? (now - _spec.GenesisTime) / _spec.SecondsPerSlot : 0;
             if (status.HeadSlot > currentSlot + 1 || status.FinalizedEpoch > _spec.GetEpoch(currentSlot))
             {
-                await DropAsync(peer, GoodbyeReason.IrrelevantNetwork, "head or finalized checkpoint is ahead of the wall clock", token);
-                return false;
+                return "head or finalized checkpoint is ahead of the wall clock";
             }
         }
 
-        if (ConflictsWithFinalized(status, local, _store, _spec?.SlotsPerEpoch ?? 0))
-        {
-            await DropAsync(peer, GoodbyeReason.IrrelevantNetwork, $"finalized checkpoint {status.FinalizedRoot} at epoch {status.FinalizedEpoch} is not in our chain", token);
-            return false;
-        }
-
-        peer.SetStatus(status, _timestamper.UtcNowOffset.UtcTicks);
-        peer.RecordActivity();
-        return true;
+        return ConflictsWithFinalized(status, local, _store, _spec?.SlotsPerEpoch ?? 0)
+            ? $"finalized checkpoint {status.FinalizedRoot} at epoch {status.FinalizedEpoch} is not in our chain"
+            : null;
     }
 
     /// <summary>Whether the peer's finalized checkpoint is proven absent from this node's chain at its epoch.</summary>
@@ -1843,6 +1916,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             {
                 // Only this peer: once its session closed, a newer peer can hold the same address.
                 removed = _peers.TryRemove(new KeyValuePair<string, ManagedPeer>(peer.Id, peer));
+                ForgetAdmitted(peer);
                 Metrics.BeaconChainPeerCount = _peers.Count;
             }
         }
@@ -1902,6 +1976,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         lock (_admissionLock)
         {
             removed = _peers.TryRemove(new KeyValuePair<string, ManagedPeer>(peer.Id, peer));
+            ForgetAdmitted(peer);
             if (removed)
             {
                 peer.MarkRemovedOnClose();
@@ -2056,6 +2131,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             peer.SetStatus(status, _timestamper.UtcNowOffset.UtcTicks);
         }
         _peers[address] = peer;
+        if (BeaconP2P.RemotePeerIdOf(session) is { } admittedId) _admittedById[admittedId] = peer;
         if (removeWhenSessionCloses)
         {
             RemoveWhenSessionCloses(peer);
@@ -2074,7 +2150,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <summary>Internal so a test can put an address straight into the "dialing" reservation set,
     /// to exercise <see cref="TryGetPeer"/>'s own guard without racing a real dial's transient window.
     /// <paramref name="enr"/> lets a test also exercise the Beacon API's <c>enr</c> field without a live dial.</summary>
-    internal void ReserveDialingForTest(string address, string? enr = null) => _dialing[address] = new Reservation(ExtractPeerId(address), PeerDirection.Outbound, enr);
+    internal void ReserveDialingForTest(string address, string? enr = null)
+    {
+        lock (_admissionLock)
+        {
+            Reserve(address, new Reservation(ExtractPeerId(address), PeerDirection.Outbound, enr));
+        }
+    }
 
     /// <summary>Peer-id ban and disconnect history retained across <see cref="ManagedPeer"/> sessions.</summary>
     private sealed class BanRecord(long sequence)

@@ -552,6 +552,9 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
         }
     }
 
+    /// <summary>Receives each request answered with success, and the peer that sent it.</summary>
+    internal Action<PeerId, TRequest>? RequestServed { get; init; }
+
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
@@ -578,6 +581,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
             }
             ChargeRequest(context, 1, 32, perPeerOnly: true);
             await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, EncodeResponse(HandleRequest(request)), cts.Token);
+            if (context.State.RemotePeerId is { } requester) RequestServed?.Invoke(requester, request);
         }
         catch (Eth2ReqRespException e)
         {
