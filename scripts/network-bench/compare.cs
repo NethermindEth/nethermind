@@ -28,7 +28,7 @@ Console.WriteLine();
 Console.WriteLine($"Runner `{Env("RUNNER_LABEL")}`, base `{Short(Env("BASE_SHA"))}` ({Env("BASE_OUTCOME")}), " +
     $"head `{Short(Env("HEAD_SHA"))}` ({Env("HEAD_OUTCOME")}).");
 Console.WriteLine();
-Console.WriteLine("Medians are compared; a delta within the CV of either side is noise. Allocations are per operation and deterministic.");
+Console.WriteLine("Medians are compared; a delta within the CV of either side is noise. Allocations are per operation.");
 Console.WriteLine();
 
 if (headResults.Count == 0)
