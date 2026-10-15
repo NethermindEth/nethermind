@@ -129,7 +129,7 @@ public class BeaconChainStoreStatePruningTests
 
         _store.SetAnchor(Root(2), 40);
 
-        Assert.That(Has(1), Is.True);
+        Assert.That(_db.GetColumnDb(BeaconChainDbColumns.States).Get(Root(1).Bytes), Is.Not.Null, "pruning must not delete a state whose slot cannot be read");
     }
 
     [Test]
