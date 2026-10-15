@@ -23,6 +23,11 @@ internal class StartupHook
         string args = Environment.GetEnvironmentVariable("RPCPOC_ARGS");
         if (string.IsNullOrEmpty(args)) return;
 
+        // The harness compiles hot code at run time, by the plugin's Legacy rules, unless NETHERMIND_ILEVM_MODE names
+        // others; set before anything reads the plugin's settings.
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_MODE")))
+            Environment.SetEnvironmentVariable("NETHERMIND_ILEVM_MODE", "Legacy");
+
         // Windows power throttling (EcoQoS) can confine a background console process to the efficiency cores for a whole
         // run, which halves its throughput in some runs and not others; opt out so every run gets the same CPUs.
         if (OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("RPCPOC_THROTTLE") != "1")
@@ -43,19 +48,25 @@ internal class StartupHook
         }
 
         // The plugin is not in the host's dependency manifest; resolve it next to the host, as the plugin loader does
-        // for its plugins directory.
-        System.Runtime.Loader.AssemblyLoadContext.Default.Resolving += static (context, name) =>
+        // for its plugins directory, or from RPCPOC_PLUGIN_DIR, the build this harness was compiled against.
+        string pluginDir = Environment.GetEnvironmentVariable("RPCPOC_PLUGIN_DIR");
+        System.Runtime.Loader.AssemblyLoadContext.Default.Resolving += (context, name) =>
         {
             string path = System.IO.Path.Combine(AppContext.BaseDirectory, name.Name + ".dll");
+            if (!string.IsNullOrEmpty(pluginDir) && name.Name == "Nethermind.IlEvm")
+                path = System.IO.Path.Combine(pluginDir, name.Name + ".dll");
             return System.IO.File.Exists(path) ? context.LoadFromAssemblyPath(path) : null;
         };
 
         int code;
         try
         {
-            code = Environment.GetEnvironmentVariable("RPCPOC_MODE") == "cold"
-                ? RpcReplay.ColdLoad.Run(args.Split('|')).GetAwaiter().GetResult()
-                : RpcReplay.Harness.Run(args.Split('|')).GetAwaiter().GetResult();
+            code = Environment.GetEnvironmentVariable("RPCPOC_MODE") switch
+            {
+                "cold" => RpcReplay.ColdLoad.Run(args.Split('|')).GetAwaiter().GetResult(),
+                "ramp" => RpcReplay.ColdRamp.Run(args.Split('|')).GetAwaiter().GetResult(),
+                _ => RpcReplay.Harness.Run(args.Split('|')).GetAwaiter().GetResult(),
+            };
         }
         catch (Exception e)
         {

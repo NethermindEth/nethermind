@@ -20,6 +20,10 @@ internal class StartupHook
             string path = Path.Combine(AppContext.BaseDirectory, name.Name + ".dll");
             return File.Exists(path) ? context.LoadFromAssemblyPath(path) : null;
         };
+        // Every contract compiles on its first frame by the plugin's Legacy rules, unless NETHERMIND_ILEVM_MODE names
+        // others; set before anything reads the plugin's settings.
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_MODE")))
+            Environment.SetEnvironmentVariable("NETHERMIND_ILEVM_MODE", "Legacy");
         Attach();
     }
 

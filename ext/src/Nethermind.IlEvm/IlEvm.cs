@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
@@ -20,11 +21,24 @@ using Nethermind.Int256;
 
 namespace Nethermind.IlEvm;
 
+/// <summary>Which rules the production runner follows, one per process.</summary>
+public enum IlMode
+{
+    /// <summary>The shipped list and what live profiling promotes, each frame part admitted on its own; see <see cref="IlRuntime"/>.</summary>
+    Adaptive,
+    /// <summary>The rules before Adaptive: run-time compiles of hot code, and the shipped contracts on every block frame.</summary>
+    Legacy,
+    /// <summary>A measurement run (<see cref="IlEvmSettings.Stats"/>): the timed runners, on the Legacy rules.</summary>
+    Stats,
+    /// <summary>A profiling run (<see cref="IlEvmSettings.Profile"/>): every frame counted, nothing compiled.</summary>
+    Profile,
+}
+
 /// <summary>Switches for the EVM bytecode-to-IL compiler, set from <see cref="IIlEvmConfig"/> when the plugin loads.</summary>
 /// <remarks>
-/// A contract is compiled once it has run <see cref="Threshold"/> frames, on a background thread unless
-/// <see cref="CompileSynchronously"/> is set; until then, and for any frame the compiled code hands back, the
-/// interpreter runs it. The environment variables give defaults for tests and the replay harness.
+/// In <see cref="IlMode.Legacy"/> a contract is compiled once it has run <see cref="Threshold"/> frames, on a background
+/// thread unless <see cref="CompileSynchronously"/> is set; until then, and for any frame the compiled code hands back,
+/// the interpreter runs it. The environment variables give defaults for tests and the replay harness.
 /// </remarks>
 public static class IlEvmSettings
 {
@@ -32,10 +46,43 @@ public static class IlEvmSettings
     public static bool Enabled { get; set; } =
         RuntimeFeature.IsDynamicCodeSupported && Environment.GetEnvironmentVariable("NETHERMIND_ILEVM") != "0";
 
+    /// <summary>Which rules the production runner follows; <see cref="IlEvmModule"/> sets it from the config.</summary>
+    /// <remarks>
+    /// The default, for tests and the replay harness, is <c>NETHERMIND_ILEVM_MODE</c> (Adaptive or Legacy), else
+    /// Adaptive; Legacy whenever <see cref="IlEvmDiagnostics"/> are on, whose counters only the Legacy path keeps.
+    /// </remarks>
+    public static IlMode Mode { get; set; } = IlEvmDiagnostics.Enabled ? IlMode.Legacy :
+        Enum.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_MODE"), ignoreCase: true, out IlMode mode) && mode is IlMode.Legacy ? IlMode.Legacy : IlMode.Adaptive;
+
+    /// <summary>Which frames feed live profiling, as the config set it; for the exit line and the live profile.</summary>
+    public static IlEvmPrefer Prefer { get; set; } = IlEvmPrefer.Rpc;
+
+    /// <summary>Where compiled code runs, as <see cref="IlEvmModule"/> attached the runners: the config's, or All where <see cref="IlEvmPrefer.Blocks"/> needs it.</summary>
+    public static IlEvmScope Scope { get; set; } = IlEvmScope.Rpc;
+
+    /// <summary>Whether <see cref="IlEvmPrefer.Blocks"/> overrode a configured Scope of Rpc, which the startup step warns of.</summary>
+    public static bool ScopeForcedToAll { get; set; }
+
+    /// <summary>Adaptive: whether the visit gate admits each part of an admitted contract on its own, rather than every part compiled.</summary>
+    public static bool Gate { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_GATE") != "0";
+
+    /// <summary>Adaptive: whether the read-only queries' runner times compiled code against the interpreter, and takes it away where it loses.</summary>
+    public static bool QueryCheck { get; set; } = true;
+
+    /// <summary>Adaptive: as <see cref="QueryCheck"/>, for block processing's runner.</summary>
+    public static bool BlockCheck { get; set; } = true;
+
+    /// <summary>Adaptive diagnostics: block processing's runner declines every frame, so a run measures the hook alone.</summary>
+    public static bool BlockDeclineAll { get; set; }
+
     /// <summary>The opcodes a contract runs on the interpreter, over all its frames, after which it is compiled.</summary>
-    /// <remarks>Catches a contract whose few frames run long loops, which <see cref="Threshold"/> alone would miss.</remarks>
-    public static int OpcodeThreshold { get; set; } =
-        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_OPCODES"), out int opcodes) && opcodes > 0 ? opcodes : 20_000;
+    /// <remarks>
+    /// Catches a contract whose few frames run long loops, which <see cref="Threshold"/> alone would miss. A long, as
+    /// the counter it is compared with: an int counter wrapped past 2^31, so a threshold near it was met by the
+    /// busiest code first rather than never.
+    /// </remarks>
+    public static long OpcodeThreshold { get; set; } =
+        long.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_OPCODES"), out long opcodes) && opcodes > 0 ? opcodes : 20_000;
 
     /// <summary>The most compiled contracts kept for reuse by code content, across the code infos that carry them.</summary>
     public static int MaxCachedContracts { get; set; } = 8_192;
@@ -125,6 +172,7 @@ public static class IlEvmSettings
         int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_CHUNK_THRESHOLD"), out int chunkThreshold) && chunkThreshold > 0 ? chunkThreshold : 2;
 
     /// <summary>Compile every chunk once a contract is laid out, rather than each when frames reach it.</summary>
+    /// <remarks>Under the Adaptive rules each chunk is still a step of its own between blocks, queued once the layout is published, never one long step.</remarks>
     public static bool EagerChunks { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_EAGER_CHUNKS") == "1";
 
     /// <summary>Interpreted opcodes per second a contract must also run before it is compiled; 0 for no rate condition.</summary>
@@ -135,7 +183,8 @@ public static class IlEvmSettings
     public static int HotOpcodesPerSecond { get; set; } =
         int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_HOT_RATE"), out int hotRate) && hotRate >= 0 ? hotRate : 50_000;
 
-    /// <summary>Compile on the thread that crosses the threshold instead of in the background.</summary>
+    /// <summary>Legacy only: compile on the thread that crosses the threshold instead of in the background.</summary>
+    /// <remarks>The Adaptive rules ignore it: they JIT only between blocks, on the scheduler's workers, never on a frame's thread.</remarks>
     public static bool CompileSynchronously { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_SYNC") == "1";
 
     /// <summary>Time each compiled contract against the interpreter on its own frames, and give back to the interpreter one compiled code does not speed up.</summary>
@@ -202,14 +251,17 @@ public static class IlEvmSettings
             Interlocked.CompareExchange(ref _firstFrameAt, Environment.TickCount64, 0);
     }
 
+    /// <summary>When a runner first saw a frame, in <see cref="Environment.TickCount64"/> milliseconds; 0 until then.</summary>
+    internal static long FirstFrameAt => Volatile.Read(ref _firstFrameAt);
+
     /// <summary>Whether the process is still in its start-up window, for the self-check: <see cref="SelfCheckWarmUpMs"/> from the first frame.</summary>
-    internal static bool InWarmUp
+    internal static bool InWarmUp => InWarmUpAt(Environment.TickCount64);
+
+    /// <summary>Whether the start-up window lasts at <paramref name="now"/>, in <see cref="Environment.TickCount64"/> milliseconds.</summary>
+    internal static bool InWarmUpAt(long now)
     {
-        get
-        {
-            long first = Volatile.Read(ref _firstFrameAt);
-            return first == 0 || Environment.TickCount64 - first < SelfCheckWarmUpMs;
-        }
+        long first = Volatile.Read(ref _firstFrameAt);
+        return first == 0 || now - first < SelfCheckWarmUpMs;
     }
 
     /// <summary>
@@ -406,24 +458,63 @@ public static unsafe partial class IlEvm
         private const int ChunkFailed = 3;
 
         public readonly IlFork Fork = fork;
+        /// <summary>The body set the contract was compiled for, <see cref="IlFork.Bodies"/>: a frame of another runs on the interpreter, a check that needs no fork lookup.</summary>
+        public readonly OpcodeBodySet Bodies = fork.Bodies;
         /// <summary>The code compiled, to verify a content-hash hit byte for byte.</summary>
         public readonly ReadOnlyMemory<byte> Code = code;
-        /// <summary>Per code offset, the chunk of the compiled unit that starts there, or -1.</summary>
-        public readonly int[] EntryChunk = entryChunk;
+        /// <summary>Adaptive: the profile of the code, which holds this contract as shipped or live; null for a contract the Legacy rules compiled.</summary>
+        public IlCodeProfile? Profile;
+        /// <summary>
+        /// Adaptive: which kinds of thread may run the contract, <see cref="IlRuntime.RunMain"/>, <see cref="IlRuntime.RunWorkers"/>
+        /// and <see cref="IlRuntime.RunQuery"/>; a check that finds compiled code slower clears its runner's bits.
+        /// </summary>
+        /// <remarks>Written racily, a byte at a time: a frame that reads a stale mask runs one part either way.</remarks>
+        public byte RunMask;
+        /// <summary>Adaptive: whether the contract was shipped or promoted by live profiling, and by which source.</summary>
+        public IlOrigin Origin;
+        /// <summary>Adaptive: when a code state first took the contract, in <see cref="Environment.TickCount64"/> milliseconds; 0 until then.</summary>
+        public long AttachedAt;
+        /// <summary>Adaptive: the switchback checks of block processing's runner and of the read-only queries', made at publishing for each whose check is on; null for one whose is off.</summary>
+        public IlCheck? BlockCheck, QueryCheck;
+        /// <summary>Adaptive: the IL and tables live profiling's budget counts for a contract it promoted, while it counts them; 0 for any other, and once released.</summary>
+        public long BudgetBytes;
+        /// <summary>
+        /// Adaptive: a copy of the contract laid out against the ahead twins of the helpers it calls, optimized from their
+        /// first call (<see cref="PrecompileAhead"/>), which the queries' runner runs in its place until the runtime has
+        /// had time to optimize the helpers on calls; null for none, and once the copy is dropped (<see cref="IlWarmUp.SwitchFromAhead"/>).
+        /// </summary>
+        /// <remarks>Only for a shipped contract the list vouches for on every visit (<c>qminv=0</c>), compiled whole at startup.</remarks>
+        public volatile IlContract? Ahead;
+        /// <summary>Per code offset, the chunk of the compiled unit that starts there, or -1; empty once an Adaptive contract is released, so its frames hand back at once.</summary>
+        public int[] EntryChunk = entryChunk;
         /// <summary>Per code offset, the index of the compiled unit that starts there within its chunk.</summary>
-        public readonly int[] EntryIndex = entryIndex;
+        public int[] EntryIndex = entryIndex;
         /// <summary>Per code offset, the ordinal of the JUMPDEST there among the code's, or -1 where a jump may not land.</summary>
-        public readonly int[] JumpOrdinal = jumpOrdinal;
+        public int[] JumpOrdinal = jumpOrdinal;
         /// <summary>Per chunk and JUMPDEST ordinal less the chunk's base, the jump case of that JUMPDEST in the chunk, or -1 where the chunk does not compile it.</summary>
-        public readonly short[][] JumpCases = jumpCases;
+        public short[][] JumpCases = jumpCases;
         /// <summary>Per chunk, the ordinal its jump-case table starts at.</summary>
-        public readonly int[] JumpBases = jumpBases;
+        public int[] JumpBases = jumpBases;
         /// <summary>The bytes of the contract's tables, which the memory budgets count with its IL.</summary>
         public long TableBytes;
         /// <summary>Each chunk's runner once the JIT has compiled it; null while frames that reach the chunk are left to the interpreter.</summary>
         public readonly IlRunner?[] Runners = new IlRunner?[chunks];
         /// <summary>Each chunk's emitted method, bound to its <see cref="IlChunk"/> but not JIT-compiled until frames reach it.</summary>
         public readonly IlRunner[] Prepared = new IlRunner[chunks];
+        /// <summary>Each chunk's IL in bytes, which the inter-block scheduler estimates its JIT by.</summary>
+        public readonly int[] ChunkIlBytes = new int[chunks];
+        /// <summary>The methods each chunk calls, compiled ahead with it under the Adaptive rules (<see cref="IlWarmUp"/>); null once they are, or with nothing to compile.</summary>
+        private MethodBase[]?[]? _callees = new MethodBase[]?[chunks];
+
+        /// <summary>Records the methods <paramref name="chunk"/> calls, as its emitter found them.</summary>
+        internal void SetCallees(int chunk, HashSet<MethodBase> callees)
+        {
+            if (_callees is { } all)
+                all[chunk] = [.. callees];
+        }
+
+        /// <summary>The methods <paramref name="chunk"/> calls that are not compiled ahead yet; for tests.</summary>
+        internal MethodBase[]? CalleesOf(int chunk) => _callees?[chunk];
         private readonly int[] _entries = new int[chunks];
         private readonly int[] _states = new int[chunks];
         /// <summary>The prefix of the compiled methods' names.</summary>
@@ -432,12 +523,19 @@ public static unsafe partial class IlEvm
         /// <summary>Why the last chunk that failed to compile did, for diagnostics.</summary>
         public string? ChunkFailure;
         public int CompiledChunks;
-        /// <summary>Per segment instruction, its static gas, stack inputs and stack growth.</summary>
-        private readonly ulong[] _costs = costs;
-        private readonly int[] _inputs = inputs;
-        private readonly int[] _growths = growths;
-        private readonly bool[] _dynamic = dynamic;
-        private readonly bool[] _opaque = opaque;
+        /// <summary>Per segment instruction, its static gas, stack inputs and stack growth, and whether its walk must hand over; empty once an Adaptive contract is released.</summary>
+        private SegmentTables _segments = new(costs, inputs, growths, dynamic, opaque);
+
+        /// <summary>The tables a failed segment's walk reads, replaced whole, so a walk reads one set.</summary>
+        private sealed class SegmentTables(ulong[] costs, int[] inputs, int[] growths, bool[] dynamic, bool[] opaque)
+        {
+            public static readonly SegmentTables Empty = new([], [], [], [], []);
+            public readonly ulong[] Costs = costs;
+            public readonly int[] Inputs = inputs;
+            public readonly int[] Growths = growths;
+            public readonly bool[] Dynamic = dynamic;
+            public readonly bool[] Opaque = opaque;
+        }
         /// <summary>The size of the compiled methods, and how long the JIT took over them, for diagnostics.</summary>
         public int IlBytes;
         public TimeSpan JitTime;
@@ -453,10 +551,15 @@ public static unsafe partial class IlEvm
         /// <summary>Whether <see cref="IlBytes"/> counts toward <see cref="IlEvmSettings.LiveIlBytes"/>; cleared once by release or collection.</summary>
         private int _live;
 
-        /// <summary>Counts the contract's IL as alive, once it is laid out.</summary>
+        private volatile bool _released;
+
+        /// <summary>Whether the contract's code was released, so its frames run on the interpreter.</summary>
+        public bool IsReleased => _released;
+
         /// <summary>What the memory budgets count for the contract: its IL and its tables.</summary>
         public long MemoryBytes => IlBytes + TableBytes;
 
+        /// <summary>Counts the contract's IL as alive, once it is laid out.</summary>
         public void MarkLive()
         {
             if (Interlocked.Exchange(ref _live, 1) == 0)
@@ -464,15 +567,30 @@ public static unsafe partial class IlEvm
         }
 
         /// <summary>Drops the compiled code, for a contract the interpreter runs from now on; its frames are left to the interpreter.</summary>
+        /// <remarks>
+        /// An Adaptive contract also drops its tables: code states and threads' visits may hold it until they next resolve
+        /// or reuse their ways, and the memory the budget took it back for should be free by then. Its frames then hand
+        /// back on entry; one still running a chunk reads tables of its own, and a walk of a failed segment hands over.
+        /// </remarks>
         public void Release()
         {
             lock (Prepared)
             {
+                _released = true;
                 for (int chunk = 0; chunk < Prepared.Length; chunk++)
                 {
                     Volatile.Write(ref _states[chunk], ChunkFailed);
                     Volatile.Write(ref Runners[chunk], null);
                     Prepared[chunk] = null!;
+                }
+
+                if (Profile is not null)
+                {
+                    Volatile.Write(ref EntryChunk, []);
+                    EntryIndex = JumpOrdinal = JumpBases = [];
+                    JumpCases = [];
+                    Volatile.Write(ref _segments, SegmentTables.Empty);
+                    _callees = null;
                 }
             }
 
@@ -495,7 +613,9 @@ public static unsafe partial class IlEvm
         public EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, scoped ref nint programCounter, bool cancelable)
         {
             nint pc = programCounter;
-            if ((nuint)pc >= (nuint)EntryChunk.Length || EntryChunk[pc] < 0)
+            // Read once: a release replaces it with an empty table.
+            int[] entryChunk = EntryChunk;
+            if ((nuint)pc >= (nuint)entryChunk.Length || entryChunk[pc] < 0)
             {
                 if (IlEvmDiagnostics.Enabled)
                     Interlocked.Increment(ref IlEvmDiagnostics.EntryDeopts);
@@ -509,7 +629,8 @@ public static unsafe partial class IlEvm
             do
             {
                 pc = programCounter;
-                int chunk = (nuint)pc < (nuint)EntryChunk.Length ? EntryChunk[pc] : -1;
+                entryChunk = EntryChunk;
+                int chunk = (nuint)pc < (nuint)entryChunk.Length ? entryChunk[pc] : -1;
                 if (chunk < 0)
                     return IlDeopt;
                 IlRunner? runner = Runners[chunk] ?? Cold(chunk);
@@ -532,7 +653,8 @@ public static unsafe partial class IlEvm
             // A chunk that failed to compile is a cost of compiled code the self-check times; one waiting for the JIT is not.
             if (Volatile.Read(ref _states[chunk]) == ChunkFailed)
                 return null;
-            if (IlEvmSettings.CompileSynchronously)
+            // The Adaptive rules JIT only between blocks, whatever the knob says: never on a frame's thread.
+            if (IlEvmSettings.CompileSynchronously && IlEvmSettings.Mode != IlMode.Adaptive)
                 return CompileChunk(chunk);
             HitColdChunk = true;
             // Queued already: frames wait for the JIT without writing the shared counter again.
@@ -542,7 +664,14 @@ public static unsafe partial class IlEvm
                 Interlocked.CompareExchange(ref _states[chunk], ChunkQueued, ChunkCold) == ChunkCold)
             {
                 Interlocked.Increment(ref ChunkEvents);
-                if (!IlCompileQueue.Enqueue(() => CompileChunk(chunk)))
+                // Under the Adaptive rules the windows between blocks JIT it, as every compile; shipped contracts are
+                // compiled whole, so only one laid out with chunks left cold, as a live one is, gets here. The Legacy
+                // rules' background compiler takes it whenever it gets to it, blocks or not. A queue that turns it away
+                // leaves it to frames to ask again.
+                bool queued = IlEvmSettings.Mode == IlMode.Adaptive
+                    ? IlScheduler.TryEnqueue(new ChunkJob(this, chunk))
+                    : IlCompileQueue.Enqueue(() => CompileChunk(chunk));
+                if (!queued)
                 {
                     _entries[chunk] = 0;
                     Volatile.Write(ref _states[chunk], ChunkCold);
@@ -589,6 +718,14 @@ public static unsafe partial class IlEvm
             }
 
             TimeSpan jit = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+            // Under the Adaptive rules what the chunk calls is compiled here too, off the frames' threads; the other rules
+            // leave it to the first frames, as they did.
+            if (IlEvmSettings.Mode == IlMode.Adaptive && Volatile.Read(ref _callees) is { } allCallees && allCallees[chunk] is { } callees)
+            {
+                IlWarmUp.Prepare(callees);
+                allCallees[chunk] = null;
+            }
+
             lock (Prepared)
             {
                 if (Runners[chunk] is { } raced)
@@ -632,22 +769,30 @@ public static unsafe partial class IlEvm
 
         private EvmExceptionType FailSegment(int first, int count, ref ulong gas, nint head, ref int opCodes)
         {
+            // Read once: a release replaces the tables with empty ones, and a walk of a released contract hands over at the
+            // segment's start, where the interpreter faults the same way.
+            SegmentTables tables = Volatile.Read(ref _segments);
+            if ((uint)(first + count) > (uint)tables.Costs.Length)
+                return IlDeopt;
             for (int i = first; i < first + count; i++)
             {
-                if (_opaque[i]) return IlDeopt;
+                if (tables.Opaque[i]) return IlDeopt;
                 opCodes++;
-                ulong cost = _costs[i];
+                ulong cost = tables.Costs[i];
                 if (gas < cost) return EvmExceptionType.OutOfGas;
                 gas -= cost;
-                if (head < _inputs[i]) return EvmExceptionType.StackUnderflow;
-                int growth = _growths[i];
+                if (head < tables.Inputs[i]) return EvmExceptionType.StackUnderflow;
+                int growth = tables.Growths[i];
                 if (growth > 0 && head + growth >= EvmStack.MaxStackSize) return EvmExceptionType.StackOverflow;
-                if (_dynamic[i]) return IlDeopt;
+                if (tables.Dynamic[i]) return IlDeopt;
                 head += growth;
             }
 
             throw new InvalidOperationException("A segment failed its precondition with every opcode fitting.");
         }
+
+        /// <summary>Whether a release dropped the contract's tables; for tests.</summary>
+        internal bool TablesReleased => EntryChunk.Length == 0 && Volatile.Read(ref _segments) == SegmentTables.Empty;
     }
 
     /// <summary>One compiled chunk: what its dynamic method is bound to, with the tables its code reads.</summary>
@@ -692,31 +837,60 @@ public static unsafe partial class IlEvm
     internal readonly record struct IlSite(int Pc, int NextPc, ulong GasAfter, int FirstAfter, int CountedAfter, nint Execute, int HeadDelta, ulong GasBack);
 
     /// <summary>The compiler's state for one <see cref="CodeInfo"/>, held in the frame code runner's per-code slot.</summary>
+    /// <remarks>
+    /// The Adaptive fields, which <see cref="IlRuntime"/> writes when it resolves the code and every part a runner is
+    /// offered reads, come first, laid out by hand next to the object's header: a part of code a state holds reads one
+    /// cache line of it, the one its type check reads, rather than the three the runtime's own layout spread them over.
+    /// The Legacy rules' hotness and lookup fields follow.
+    /// </remarks>
+    [StructLayout(LayoutKind.Explicit)]
     internal sealed class IlCodeState
     {
-        public int Executions;
-        public int OpCodesRun;
-        /// <summary>Opcodes the interpreter ran for this code in the current one-second window, and when the window began.</summary>
-        public int WindowOpCodes;
-        public long WindowStart;
-        /// <summary>Frames that reported in the current window.</summary>
-        public int WindowFrames;
-        public int Pending;
-        /// <summary>Until when a hot frame does not ask for a compile again, after one was turned away by a budget.</summary>
-        public long RetryAfter;
-        public volatile IlContract? Contract;
-        public volatile IlFork? FailedFor;
-        public string? FailureReason;
-        /// <summary>A fast 64-bit hash of the code, taken once the code runs a second frame, keying the shared cache.</summary>
-        public long ContentHash;
-        public bool HasContentHash;
-        /// <summary>Whether the code was looked up among the precompiled contracts, which happens on its first frame of a fork they were compiled for.</summary>
-        public bool PrecompileChecked;
+        /// <summary>Adaptive: the <see cref="IlRuntime.Version"/> the runs below were resolved at; a state of another version resolves them again.</summary>
+        [FieldOffset(0)] public int Version;
+        /// <summary>Adaptive: spreads the states over each thread's visit table (<see cref="IlThread"/>), read beside the fields here rather than hashing the object.</summary>
+        [FieldOffset(4)] public readonly uint GateHash = IlThread.NextStateHash();
+        /// <summary>Adaptive: what block processing's runner runs the code on, or null for the interpreter; compiled for one body set, which each part checks.</summary>
+        [FieldOffset(8)] public volatile IlContract? BlockRun;
+        /// <summary>Adaptive: what the read-only queries' runner runs the code on, or null for the interpreter.</summary>
+        [FieldOffset(16)] public volatile IlContract? QueryRun;
+        /// <summary>Adaptive: the code's profile, or null when it has none, as for code no runner counts.</summary>
+        [FieldOffset(24)] public IlCodeProfile? Profile;
+        /// <summary>
+        /// Adaptive: the body set a part of block processing's runner, and of the queries' runner, last found no contract
+        /// for (<see cref="IlRuntime.ForkMiss"/>): parts of it go to the interpreter without looking again, until the state
+        /// resolves again at a new version.
+        /// </summary>
+        [FieldOffset(32)] public OpcodeBodySet? BlockMissed;
+        [FieldOffset(40)] public OpcodeBodySet? QueryMissed;
+
+        [FieldOffset(48)] public volatile IlContract? Contract;
+        [FieldOffset(56)] public volatile IlFork? FailedFor;
+        [FieldOffset(64)] public string? FailureReason;
         /// <summary>The precompiled contract for this code, kept apart so a run-time compile for another fork cannot displace it.</summary>
-        public volatile IlContract? Shipped;
-        /// <summary>The keccak of code no cache stamped, once computed for the precompiled lookup.</summary>
-        public ValueHash256 Keccak;
-        public bool HasKeccak;
+        [FieldOffset(72)] public volatile IlContract? Shipped;
+        /// <summary>Interpreted opcodes counted toward hotness; a long, as sampled frames count with a weight and busy code runs billions.</summary>
+        [FieldOffset(80)] public long OpCodesRun;
+        /// <summary>When the current one-second window of <see cref="WindowOpCodes"/> began.</summary>
+        [FieldOffset(88)] public long WindowStart;
+        /// <summary>Until when a hot frame does not ask for a compile again, after one was turned away by a budget.</summary>
+        [FieldOffset(96)] public long RetryAfter;
+        /// <summary>
+        /// A fast 64-bit hash of the code, taken once the code runs a second frame, keying the shared cache; also the key
+        /// code no cache stamped is found by among the shipped contracts and the profiles, hashed once per state.
+        /// </summary>
+        [FieldOffset(104)] public long ContentHash;
+        [FieldOffset(112)] public int Executions;
+        /// <summary>Opcodes the interpreter ran for this code in the current one-second window.</summary>
+        [FieldOffset(116)] public int WindowOpCodes;
+        /// <summary>Frames that reported in the current window.</summary>
+        [FieldOffset(120)] public int WindowFrames;
+        [FieldOffset(124)] public int Pending;
+        [FieldOffset(128)] public bool HasContentHash;
+        /// <summary>Whether the code was looked up among the precompiled contracts, which happens on its first frame of a fork they were compiled for.</summary>
+        [FieldOffset(129)] public bool PrecompileChecked;
+        /// <summary>Adaptive: the <see cref="IlRuntime.MissEpoch"/> the misses were recorded at; at a newer one their body sets are looked for again.</summary>
+        [FieldOffset(132)] public int MissEpoch;
     }
 
     /// <summary>A fork's opcode semantics as the compiler sees them, one per interned <see cref="OpcodeBodySet"/>.</summary>
@@ -736,7 +910,7 @@ public static unsafe partial class IlEvm
     [ThreadStatic] private static OpcodeBodySet? _lastBodies;
     [ThreadStatic] private static IlFork? _lastFork;
 
-    private static IlFork IlGetFork(OpcodeBodySet bodies)
+    internal static IlFork IlGetFork(OpcodeBodySet bodies)
     {
         if (ReferenceEquals(bodies, _lastBodies))
             return _lastFork!;
@@ -770,11 +944,11 @@ public static unsafe partial class IlEvm
     }
 
     /// <remarks>Two AES-based hashes, of the whole code and of its second half; a collision only costs a cache miss.</remarks>
-    private static long IlContentHash(CodeInfo codeInfo)
-    {
-        ReadOnlySpan<byte> code = codeInfo.CodeSpan;
-        return ((long)code.FastHash() << 32) | (uint)code[(code.Length / 2)..].FastHash();
-    }
+    internal static long IlContentHash(CodeInfo codeInfo) => IlContentHash(codeInfo.CodeSpan);
+
+    /// <summary>The content hash of <paramref name="code"/>, as <see cref="IlContentHash(CodeInfo)"/> takes it of a code info's code.</summary>
+    internal static long IlContentHash(ReadOnlySpan<byte> code) =>
+        ((long)code.FastHash() << 32) | (uint)code[(code.Length / 2)..].FastHash();
 
     /// <summary>The compiled contract to run a frame of <paramref name="codeInfo"/> on, or null for the interpreter.</summary>
     /// <remarks>Counts the frame towards the code's hotness and requests its compile once it is hot.</remarks>
@@ -783,10 +957,7 @@ public static unsafe partial class IlEvm
     {
         ref object? slot = ref IlEvmFrameRunner.CodeSlot(codeInfo);
         if (slot is not IlCodeState existing)
-        {
-            existing = new IlCodeState();
-            existing = Interlocked.CompareExchange(ref slot, existing, null) as IlCodeState ?? existing;
-        }
+            existing = NewState(ref slot);
 
         state = existing;
         count = false;
@@ -842,6 +1013,19 @@ public static unsafe partial class IlEvm
 
     [ThreadStatic] private static uint _hotnessRandom;
 
+    /// <summary>
+    /// A new state, published in the slot over nothing, or over an Adaptive mark in a process that switched rules; the
+    /// state another thread published first wins, and over anything else the new state serves the frame unpublished.
+    /// </summary>
+    private static IlCodeState NewState(ref object? slot)
+    {
+        object? seen = slot;
+        if (seen is not IlQuiet)
+            seen = null;
+        IlCodeState created = new();
+        return Interlocked.CompareExchange(ref slot, created, seen) as IlCodeState ?? created;
+    }
+
     /// <summary>The weight of a counted frame: <see cref="IlEvmSettings.HotnessSampling"/>, or 1 with diagnostics on, which report every frame.</summary>
     internal static int SamplingWeight => IlEvmDiagnostics.Enabled ? 1 : IlEvmSettings.HotnessSampling;
 
@@ -869,9 +1053,7 @@ public static unsafe partial class IlEvm
         // Nothing shipped: the code is left alone, the slot unclaimed.
         if (Volatile.Read(ref _precompiled) is null)
             return null;
-        IlCodeState created = new();
-        created = Interlocked.CompareExchange(ref slot, created, null) as IlCodeState ?? created;
-        return Attach(codeInfo, created, IlGetFork(bodies));
+        return Attach(codeInfo, NewState(ref slot), IlGetFork(bodies));
     }
 
     /// <summary>
@@ -894,9 +1076,7 @@ public static unsafe partial class IlEvm
 
         if (Volatile.Read(ref _precompiled) is null)
             return null;
-        IlCodeState created = new();
-        created = Interlocked.CompareExchange(ref slot, created, null) as IlCodeState ?? created;
-        return Attach(codeInfo, created, IlGetFork(bodies));
+        return Attach(codeInfo, NewState(ref slot), IlGetFork(bodies));
     }
 
     /// <summary>
@@ -928,26 +1108,34 @@ public static unsafe partial class IlEvm
     /// <summary>Code states that took a precompiled contract on their first frame: how much of the shipped list running code met.</summary>
     public static long PrecompiledAttached => Interlocked.Read(ref _precompiledAttached);
 
-    /// <summary>The contracts compiled at startup from the shipped list, by the keccak of their code; null when there are none.</summary>
+    /// <summary>The contracts compiled from the shipped list, by the keccak of their code; null when there are none.</summary>
+    /// <remarks>Code no cache stamped with its keccak is found by content instead, through <see cref="IlRuntime.ShippedByContent"/>.</remarks>
     private static Dictionary<ValueHash256, IlContract>? _precompiled;
-    /// <summary>Their code lengths, so code a cache never stamped with its keccak is hashed only when a precompiled one is as long.</summary>
-    private static HashSet<int>? _precompiledLengths;
 
-    /// <summary>Publishes the contracts compiled at startup; frames look them up by the keccak of their code from then on.</summary>
+    /// <summary>Publishes contracts compiled for a list in place of whatever was published, for tests; the startup compile adds through <see cref="IlRuntime.PublishShipped"/>.</summary>
     internal static void PublishPrecompiled(IReadOnlyDictionary<ValueHash256, IlContract> contracts)
     {
         if (contracts.Count == 0)
             return;
-        Dictionary<ValueHash256, IlContract> map = new(contracts);
-        Volatile.Write(ref _precompiledLengths, [.. map.Values.Select(static c => c.Code.Length)]);
+        ClearPrecompiled();
+        IlRuntime.PublishShipped([.. contracts.Select(static c => (new IlEvmPrecompileList.Entry(c.Key), c.Value))]);
+    }
+
+    /// <summary>Adds shipped contracts to those frames find by the keccak of their code, for <see cref="IlRuntime.PublishShipped"/>.</summary>
+    /// <remarks>Copied on write: a frame reads the map it finds without a lock.</remarks>
+    internal static void AddPrecompiled(IEnumerable<(ValueHash256 Hash, IlContract Contract)> contracts)
+    {
+        Dictionary<ValueHash256, IlContract> map = Volatile.Read(ref _precompiled) is { } published ? new(published) : [];
+        foreach ((ValueHash256 hash, IlContract contract) in contracts)
+            map[hash] = contract;
         Volatile.Write(ref _precompiled, map);
     }
 
-    /// <summary>Forgets the precompiled contracts, for tests.</summary>
+    /// <summary>Forgets the precompiled contracts, and with them every profile the runtime keeps, for tests.</summary>
     internal static void ClearPrecompiled()
     {
         Volatile.Write(ref _precompiled, null);
-        Volatile.Write(ref _precompiledLengths, null);
+        IlRuntime.ResetForTests();
     }
 
     /// <summary>How many contracts the startup compile published, for tests and diagnostics.</summary>
@@ -962,26 +1150,22 @@ public static unsafe partial class IlEvm
         Dictionary<ValueHash256, IlContract>? map = Volatile.Read(ref _precompiled);
         if (map is null)
             return null;
+        IlContract? contract;
         ValueHash256 hash = codeInfo.CodeHash;
-        if (hash == default)
+        if (hash != default)
         {
-            // Code no cache stamped, as from a state override: hashed once, and only when its length could match.
-            if (state.HasKeccak)
-            {
-                hash = state.Keccak;
-            }
-            else
-            {
-                if (Volatile.Read(ref _precompiledLengths) is not { } lengths || !lengths.Contains(codeInfo.CodeSpan.Length))
-                    return null;
-                hash = ValueKeccak.Compute(codeInfo.CodeSpan);
-                state.Keccak = hash;
-                state.HasKeccak = true;
-            }
+            if (!map.TryGetValue(hash, out contract))
+                return null;
+        }
+        else
+        {
+            // Code no cache stamped, as from a state override: found among the shipped contracts as long by its bytes.
+            // Never by its keccak, which takes tens of microseconds over large code, on the frame that met a new code info.
+            contract = IlRuntime.ShippedByContent(codeInfo)?.Shipped;
+            if (contract is null)
+                return null;
         }
 
-        if (!map.TryGetValue(hash, out IlContract? contract))
-            return null;
         if (ReferenceEquals(contract.Fork, fork))
             return contract;
         otherFork = true;
@@ -1001,6 +1185,24 @@ public static unsafe partial class IlEvm
         return contract;
     }
 
+    /// <summary>
+    /// As <see cref="Precompile"/>, laid out against the ahead twins of the out-of-line helpers, optimized from their first
+    /// call: a contract's ahead copy (<see cref="IlContract.Ahead"/>), the same code calling other methods.
+    /// </summary>
+    internal static IlContract? PrecompileAhead(byte[] code, OpcodeBodySet bodies, out string? reason)
+    {
+        bool layingOutAhead = _layingOutAhead;
+        _layingOutAhead = true;
+        try
+        {
+            return Precompile(code, bodies, out reason);
+        }
+        finally
+        {
+            _layingOutAhead = layingOutAhead;
+        }
+    }
+
     /// <summary>The body set the core runs for <paramref name="spec"/>, from its internal per-spec cache; null when this core has none.</summary>
     internal static OpcodeBodySet? BodySetFor(Nethermind.Core.Specs.IReleaseSpec spec) =>
         _bodySetFor?.Invoke(null, [spec]) as OpcodeBodySet;
@@ -1011,12 +1213,14 @@ public static unsafe partial class IlEvm
     /// <summary>How long code that a budget turned away waits before asking again.</summary>
     private const int RetryDelayMs = 5_000;
 
-    /// <summary>The interpreter ran <paramref name="ran"/> opcodes of a frame of <paramref name="codeInfo"/>; what makes it hot.</summary>
-    internal static void OnInterpreted(CodeInfo codeInfo, int ran)
+    /// <summary>The interpreter ran <paramref name="opCodes"/> opcodes of a frame of <paramref name="codeInfo"/>; what makes it hot.</summary>
+    internal static void OnInterpreted(CodeInfo codeInfo, int opCodes)
     {
         if (IlEvmFrameRunner.CodeSlot(codeInfo) is not IlCodeState state)
             return;
-        // Past its second frame only sampled frames report, each standing for HotnessSampling of them.
+        // Past its second frame only sampled frames report, each standing for HotnessSampling of them. Weighted, a
+        // frame's count can pass an int's range, so it is summed as a long and the window's count saturates.
+        long ran = opCodes;
         if (state.Executions > 2)
             ran *= SamplingWeight;
         state.OpCodesRun += ran;
@@ -1028,7 +1232,7 @@ public static unsafe partial class IlEvm
             state.WindowFrames = 0;
         }
 
-        state.WindowOpCodes += ran;
+        state.WindowOpCodes = (int)Math.Min(int.MaxValue, state.WindowOpCodes + ran);
         state.WindowFrames++;
     }
 
@@ -1132,10 +1336,14 @@ public static unsafe partial class IlEvm
 
     /// <summary>The compiled methods' IL size, JIT time and chunk count for <paramref name="codeInfo"/>, for benchmarks and diagnostics.</summary>
     public static (int IlBytes, TimeSpan JitTime, int Chunks)? CompileStats(CodeInfo codeInfo) =>
-        (IlEvmFrameRunner.CodeSlot(codeInfo) as IlCodeState)?.Contract is { } contract ? (contract.IlBytes, contract.JitTime, contract.CompiledChunks) : null;
+        CompiledOf(codeInfo) is { } contract ? (contract.IlBytes, contract.JitTime, contract.CompiledChunks) : null;
 
     /// <summary>Whether <paramref name="codeInfo"/> has a compiled contract, for tests and diagnostics.</summary>
-    public static bool IsCompiled(CodeInfo codeInfo) => (IlEvmFrameRunner.CodeSlot(codeInfo) as IlCodeState)?.Contract is not null;
+    public static bool IsCompiled(CodeInfo codeInfo) => CompiledOf(codeInfo) is not null;
+
+    /// <summary>The Legacy rules' contract of the code's state, else what an Adaptive runner runs it on.</summary>
+    private static IlContract? CompiledOf(CodeInfo codeInfo) =>
+        IlEvmFrameRunner.CodeSlot(codeInfo) is IlCodeState state ? state.Contract ?? state.QueryRun ?? state.BlockRun : null;
 
     /// <summary>The self-check of <paramref name="codeInfo"/>'s compiled contract: its verdict, and compiled time per opcode over the interpreter's.</summary>
     /// <summary>The self-check's verdicts so far in the process: kept compiled, put on probation, given back.</summary>
@@ -1721,18 +1929,111 @@ public static unsafe partial class IlEvm
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void IlCallDataLoadAtCalled(ref byte input, nint length, ulong offset, ref byte destination) => IlCallDataLoadAt(ref input, length, offset, ref destination);
 
-    private static readonly ConcurrentDictionary<MethodInfo, MethodInfo> _ilCalledTwins = new();
+    // Ahead twins of the called twins, and of the carry and the borrow: the same code, optimized from its first call.
+    // A contract's ahead copy calls them (IlContract.Ahead): it serves a node's first calls while the called twins, which
+    // tier up on calls and are profiled on them, still run tier-0 code, slower than the interpreter. Profiled on nothing,
+    // the ahead twins run a few percent slower than the called twins once those are optimized, so the copy is dropped
+    // then (IlWarmUp.SwitchFromAhead). Each is found by its called twin's name with the "Ahead" suffix.
 
-    /// <summary>The called twin of an inlined helper, found by name.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlCarryAhead(ref byte slot)
+    {
+        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
+        if (++Unsafe.Add(ref limbs, 1) != 0) return;
+        if (++Unsafe.Add(ref limbs, 2) != 0) return;
+        ++Unsafe.Add(ref limbs, 3);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlBorrowAhead(ref byte slot)
+    {
+        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
+        if (Unsafe.Add(ref limbs, 1)-- != 0) return;
+        if (Unsafe.Add(ref limbs, 2)-- != 0) return;
+        Unsafe.Add(ref limbs, 3)--;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlMath2CalledAhead<TOpMath>(ref byte top) where TOpMath : struct, EvmInstructions.IOpMath2Param => IlMath2<TOpMath>(ref top);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlMath2InPlaceCalledAhead<TOpMath>(ref byte top) where TOpMath : struct, EvmInstructions.IOpMath2Param => IlMath2InPlace<TOpMath>(ref top);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlMath2ConstCalledAhead<TOpMath>(ref byte operand, ref byte destination, ulong c0, ulong c1, ulong c2, ulong c3, bool constantOnTop)
+        where TOpMath : struct, EvmInstructions.IOpMath2Param =>
+        IlMath2Const<TOpMath>(ref operand, ref destination, c0, c1, c2, c3, constantOnTop);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlBitwiseCalledAhead<TOp>(ref byte top) where TOp : struct, EvmInstructions.IOpBitwise => IlBitwise<TOp>(ref top);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlBitwiseConstCalledAhead<TOp>(ref byte operand, ref byte destination, ulong c0, ulong c1, ulong c2, ulong c3, bool constantOnTop)
+        where TOp : struct, EvmInstructions.IOpBitwise =>
+        IlBitwiseConst<TOp>(ref operand, ref destination, c0, c1, c2, c3, constantOnTop);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlMath1CalledAhead<TOp>(ref byte top) where TOp : struct, EvmInstructions.IOpMath1Param => IlMath1<TOp>(ref top);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static bool IlPredicate2CalledAhead<TOpMath>(ref byte top) where TOpMath : struct, EvmInstructions.IOpMath2Param => IlPredicate2<TOpMath>(ref top);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static bool IlPredicate2ConstCalledAhead<TOpMath>(ref byte operand, ulong c0, ulong c1, ulong c2, ulong c3, bool constantOnTop)
+        where TOpMath : struct, EvmInstructions.IOpMath2Param =>
+        IlPredicate2Const<TOpMath>(ref operand, c0, c1, c2, c3, constantOnTop);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static bool IlPredicateBitwiseCalledAhead<TOp>(ref byte top) where TOp : struct, EvmInstructions.IOpBitwise => IlPredicateBitwise<TOp>(ref top);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static bool IlPredicateBitwiseConstCalledAhead<TOp>(ref byte operand, ulong c0, ulong c1, ulong c2, ulong c3, bool constantOnTop)
+        where TOp : struct, EvmInstructions.IOpBitwise =>
+        IlPredicateBitwiseConst<TOp>(ref operand, c0, c1, c2, c3, constantOnTop);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static bool IlPredicate1CalledAhead<TOp>(ref byte top) where TOp : struct, EvmInstructions.IOpMath1Param => IlPredicate1<TOp>(ref top);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static bool IlTryMLoadCalledAhead(ref EvmPooledMemory memory, ref byte slot) => IlTryMLoad(ref memory, ref slot);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static ulong IlTryMStoreCalledAhead(ref EvmPooledMemory memory, ref byte offsetSlot, ulong gas) => IlTryMStore(ref memory, ref offsetSlot, gas);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static bool IlTryMLoadAtCalledAhead(ref EvmPooledMemory memory, ulong offset, ref byte destination) => IlTryMLoadAt(ref memory, offset, ref destination);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static ulong IlTryMStoreAtCalledAhead(ref EvmPooledMemory memory, ulong offset, ref byte value, ulong gas) => IlTryMStoreAt(ref memory, offset, ref value, gas);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static ulong IlTryMStoreWordAtCalledAhead(ref EvmPooledMemory memory, ulong offset, ulong m0, ulong m1, ulong m2, ulong m3, ulong gas) =>
+        IlTryMStoreWordAt(ref memory, offset, m0, m1, m2, m3, gas);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlCallDataLoadAtCalledAhead(ref byte input, nint length, ulong offset, ref byte destination) => IlCallDataLoadAt(ref input, length, offset, ref destination);
+
+    private static readonly ConcurrentDictionary<MethodInfo, MethodInfo> _ilCalledTwins = new(), _ilAheadTwins = new();
+
+    /// <summary>Whether the code being laid out on this thread is a contract's ahead copy, whose calls go to the ahead twins (<see cref="PrecompileAhead"/>).</summary>
+    [ThreadStatic] private static bool _layingOutAhead;
+
+    /// <summary>The called twin of an inlined helper, found by name; its ahead twin while an ahead copy is laid out.</summary>
     [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "IlEvmSettings.Enabled is false without dynamic code, so nothing reaches the compiler.")]
     [UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "Opcode bodies are rooted by the dispatch table; the compiler is off without dynamic code.")]
     [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "The twins are private static methods of this type, referenced here.")]
-    private static MethodInfo IlCalledTwin(MethodInfo helper) =>
-        _ilCalledTwins.GetOrAdd(helper, static h =>
-        {
-            MethodInfo twin = typeof(IlEvm).GetMethod(h.Name + "Called", BindingFlags.NonPublic | BindingFlags.Static)!;
-            return h.IsGenericMethod ? twin.MakeGenericMethod(h.GetGenericArguments()) : twin;
-        });
+    private static MethodInfo IlCalledTwin(MethodInfo helper) => _layingOutAhead
+        ? _ilAheadTwins.GetOrAdd(helper, static h => IlTwin(h, "CalledAhead"))
+        : _ilCalledTwins.GetOrAdd(helper, static h => IlTwin(h, "Called"));
+
+    [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "IlEvmSettings.Enabled is false without dynamic code, so nothing reaches the compiler.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "Opcode bodies are rooted by the dispatch table; the compiler is off without dynamic code.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "The twins are private static methods of this type, referenced here.")]
+    private static MethodInfo IlTwin(MethodInfo helper, string suffix)
+    {
+        MethodInfo twin = typeof(IlEvm).GetMethod(helper.Name + suffix, BindingFlags.NonPublic | BindingFlags.Static)!;
+        return helper.IsGenericMethod ? twin.MakeGenericMethod(helper.GetGenericArguments()) : twin;
+    }
 
     /// <summary>MLOAD of a word inside the active, initialized memory, which needs no gas beyond the opcode's; false for anything else.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1787,7 +2088,16 @@ public static unsafe partial class IlEvm
     /// ends the frame with that result. Gas, head and counter are then the frame's.
     /// </returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static EvmExceptionType IlEmbedded(IlChunk chunk, int site, VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter, out int opsAdjust, nint head, ulong gasNow)
+    private static EvmExceptionType IlEmbedded(IlChunk chunk, int site, VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter, out int opsAdjust, nint head, ulong gasNow) =>
+        IlEmbeddedRun(chunk, site, vm, ref stack, ref gas, ref programCounter, out opsAdjust, head, gasNow);
+
+    /// <summary><see cref="IlEmbedded"/> optimized from its first call, for a contract's ahead copy (<see cref="IlContract.Ahead"/>).</summary>
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static EvmExceptionType IlEmbeddedAhead(IlChunk chunk, int site, VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter, out int opsAdjust, nint head, ulong gasNow) =>
+        IlEmbeddedRun(chunk, site, vm, ref stack, ref gas, ref programCounter, out opsAdjust, head, gasNow);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType IlEmbeddedRun(IlChunk chunk, int site, VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter, out int opsAdjust, nint head, ulong gasNow)
     {
         ref readonly IlSite info = ref chunk.Sites[site];
         // The interpreter's head and gas before the opcode: the segment's charge for it and the ones after it comes back.
@@ -1895,7 +2205,8 @@ public static unsafe partial class IlEvm
         private static extern int SchedSetScheduler(int pid, int policy, ref SchedParam param);
 
         /// <summary>Moves the calling thread to SCHED_IDLE, which an unprivileged thread may always do; false if the call fails.</summary>
-        private static bool SetIdleScheduling()
+        /// <remarks>The inter-block scheduler's workers take it too, under <see cref="IlEvmSettings.CompileIdle"/>.</remarks>
+        internal static bool SetIdleScheduling()
         {
             const int SchedIdle = 5;
             try
@@ -2019,6 +2330,7 @@ public static unsafe partial class IlEvm
         private static readonly FieldInfo StackInputData = typeof(EvmStack).GetField("InputData", BindingFlags.NonPublic | BindingFlags.Instance)!;
         private static readonly FieldInfo StackInputDataLength = typeof(EvmStack).GetField("InputDataLength", BindingFlags.NonPublic | BindingFlags.Instance)!;
         private static readonly MethodInfo EmbeddedMethod = typeof(IlEvm).GetMethod(nameof(IlEmbedded), BindingFlags.NonPublic | BindingFlags.Static)!;
+        private static readonly MethodInfo EmbeddedAheadMethod = typeof(IlEvm).GetMethod(nameof(IlEmbeddedAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
         /// <summary>The signature of a body's Execute, for <c>calli</c>.</summary>
         private static readonly Type[] BodySignature = [typeof(EvmStack).MakeByRefType(), typeof(EthereumGasPolicy).MakeByRefType(), typeof(VirtualMachine<EthereumGasPolicy>), typeof(nint).MakeByRefType()];
 
@@ -2051,14 +2363,16 @@ public static unsafe partial class IlEvm
         private static readonly MethodInfo TryMStoreAt = typeof(IlEvm).GetMethod(nameof(IlTryMStoreAt), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo TryMStoreWordAt = typeof(IlEvm).GetMethod(nameof(IlTryMStoreWordAt), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo CarryMethod = typeof(IlEvm).GetMethod(nameof(IlCarry), BindingFlags.NonPublic | BindingFlags.Static)!;
+        private static readonly MethodInfo CarryAheadMethod = typeof(IlEvm).GetMethod(nameof(IlCarryAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo VectorCreate = typeof(Vector256).GetMethod(nameof(Vector256.Create), [typeof(ulong), typeof(ulong), typeof(ulong), typeof(ulong)])!;
         private static readonly MethodInfo VectorCreateScalar = typeof(Vector256).GetMethod(nameof(Vector256.CreateScalar), [typeof(ulong)])!;
         private static readonly MethodInfo VectorAsByte = typeof(Vector256).GetMethod(nameof(Vector256.AsByte))!.MakeGenericMethod(typeof(ulong));
         private static readonly MethodInfo VectorOnesComplement = typeof(Vector256).GetMethod(nameof(Vector256.OnesComplement))!.MakeGenericMethod(typeof(byte));
         private static readonly MethodInfo BorrowMethod = typeof(IlEvm).GetMethod(nameof(IlBorrow), BindingFlags.NonPublic | BindingFlags.Static)!;
+        private static readonly MethodInfo BorrowAheadMethod = typeof(IlEvm).GetMethod(nameof(IlBorrowAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
 
         [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "IlEvmSettings.Enabled is false without dynamic code, so nothing reaches the compiler.")]
-        public static IlContract? Compile(CodeInfo codeInfo, IlFork fork, out string? reason)
+        internal static IlContract? Compile(CodeInfo codeInfo, IlFork fork, out string? reason)
         {
             if (fork.UsesCallDestinations)
             {
@@ -2215,7 +2529,9 @@ public static unsafe partial class IlEvm
                     return null;
                 }
 
-                if (IlEvmSettings.EagerChunks)
+                // The Adaptive rules' layouts run as steps between blocks, each its own estimate's length: their eager chunks
+                // are jobs of their own (LayoutJob), never one long step.
+                if (IlEvmSettings.EagerChunks && IlEvmSettings.Mode != IlMode.Adaptive)
                     contract.CompileAllChunks();
                 reason = null;
                 return contract;
@@ -2253,6 +2569,8 @@ public static unsafe partial class IlEvm
             IlChunk chunk = new(contract, contract.JumpCases[index], contract.JumpBases[index], segments.ToArray(), sites.ToArray());
             IlRunner runner = (IlRunner)method.CreateDelegate(typeof(IlRunner), chunk);
             contract.IlBytes += generator.ILOffset;
+            contract.ChunkIlBytes[index] = generator.ILOffset;
+            contract.SetCallees(index, generator.Callees);
             failure = null;
             return runner;
         }
@@ -2929,6 +3247,16 @@ public static unsafe partial class IlEvm
             /// <summary>What the emitter is writing, for <see cref="IlEvmDiagnostics"/>; IL instructions are tallied under it.</summary>
             public string Category = "entry";
 
+            /// <summary>Every method the chunk calls, directly or through an opcode body's entry point, which its JIT does not compile with it: they are compiled ahead, off the frames' threads (<see cref="IlWarmUp"/>).</summary>
+            public readonly HashSet<MethodBase> Callees = [];
+
+            /// <summary>Records a method the chunk calls through a function pointer.</summary>
+            public void Calls(MethodBase? method)
+            {
+                if (method is not null)
+                    Callees.Add(method);
+            }
+
             public int ILOffset => generator.ILOffset;
 
             public LocalBuilder DeclareLocal(Type type)
@@ -3008,6 +3336,7 @@ public static unsafe partial class IlEvm
                 Count(opcode);
                 if ((method.MethodImplementationFlags & MethodImplAttributes.AggressiveInlining) != 0)
                     InlineSites++;
+                Callees.Add(method);
                 generator.Emit(opcode, method);
             }
 
@@ -4032,7 +4361,7 @@ public static unsafe partial class IlEvm
                     {
                         il.MarkLabel(wrapped);
                         Slot(second);
-                        il.Emit(OpCodes.Call, add ? CarryMethod : BorrowMethod);
+                        il.Emit(OpCodes.Call, add ? (_layingOutAhead ? CarryAheadMethod : CarryMethod) : (_layingOutAhead ? BorrowAheadMethod : BorrowMethod));
                         il.Emit(OpCodes.Br, back);
                     });
                     return true;
@@ -4170,6 +4499,7 @@ public static unsafe partial class IlEvm
                 sites.Add(new IlSite(instruction.Pc, instruction.Pc + instruction.Size, instruction.GasAfter,
                     segment.FirstTableIndex + index + 1, segment.Instructions.Count - index - 1, op.ExecutePointer,
                     deltaBefore, instruction.GasAfter + op.StaticGas));
+                il.Calls(op.Execute);
 
                 // The head and gas go in as they are; the site's table entry adjusts them, which keeps each site small.
                 Label leaves = NewLabel();
@@ -4182,7 +4512,7 @@ public static unsafe partial class IlEvm
                 il.Emit(OpCodes.Ldloca, _opsAdjust);
                 il.Emit(OpCodes.Ldloc, _head);
                 il.Emit(OpCodes.Ldloc, _gas);
-                il.Emit(OpCodes.Call, EmbeddedMethod);
+                il.Emit(OpCodes.Call, _layingOutAhead ? EmbeddedAheadMethod : EmbeddedMethod);
                 il.Emit(OpCodes.Stloc, _result);
                 il.Emit(OpCodes.Ldloc, _result);
                 il.Emit(OpCodes.Brtrue, leaves);
@@ -4585,6 +4915,7 @@ public static unsafe partial class IlEvm
                     il.Emit(OpCodes.Ldc_I8, (long)op.ExecutePointer);
                     il.Emit(OpCodes.Conv_I);
                     il.EmitCalli(typeof(EvmExceptionType), BodySignature);
+                    il.Calls(op.Execute);
                 }
             }
 

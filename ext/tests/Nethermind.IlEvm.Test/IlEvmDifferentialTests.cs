@@ -47,6 +47,7 @@ public partial class IlEvmDifferentialTests
     private int _savedThreshold;
     private bool _savedSync;
     private bool _savedSelfCheck;
+    private IlMode _savedMode;
 
     private readonly record struct Outcome(
         bool IsError, bool ShouldRevert, EvmExceptionType Exception, ulong GasLeft, string Output, string Logs, string Storage, int OpCodes, int Polls = 0)
@@ -90,8 +91,11 @@ public partial class IlEvmDifferentialTests
         _savedThreshold = IlEvmSettings.Threshold;
         _savedSync = IlEvmSettings.CompileSynchronously;
         _savedSelfCheck = IlEvmSettings.SelfCheck;
-        // Compiled code runs every frame it is given here, whatever it would prove against the interpreter.
+        _savedMode = IlEvmSettings.Mode;
+        // Compiled code runs every frame it is given here, whatever it would prove against the interpreter, and every
+        // contract compiles on its first frame, by the Legacy rules.
         IlEvmSettings.SelfCheck = false;
+        IlEvmSettings.Mode = IlMode.Legacy;
 
         _spec = Osaka.Instance;
         _container = new ContainerBuilder().AddModule(new TestNethermindModule(_spec)).Build();
@@ -123,6 +127,7 @@ public partial class IlEvmDifferentialTests
         IlEvmSettings.Threshold = _savedThreshold;
         IlEvmSettings.CompileSynchronously = _savedSync;
         IlEvmSettings.SelfCheck = _savedSelfCheck;
+        IlEvmSettings.Mode = _savedMode;
         _stateScope?.Dispose();
         _scope?.Dispose();
         _container?.Dispose();
@@ -383,11 +388,12 @@ public partial class IlEvmDifferentialTests
         TestContext.Out.WriteLine($"{calls.Count} calls: geometric-mean speedup x{Math.Exp(logRatios / calls.Count):F3}, total x{(double)totalInterpreter / totalCompiled:F3}");
     }
 
-    private Outcome Run(CodeInfo codeInfo, byte[] input, ulong gas, bool compiledCode)
+    /// <param name="compileColdChunks">Whether a chunk not compiled yet is compiled when a frame reaches it, else left to hand the frame back.</param>
+    private Outcome Run(CodeInfo codeInfo, byte[] input, ulong gas, bool compiledCode, bool compileColdChunks = true)
     {
         IlEvmSettings.Enabled = compiledCode;
         IlEvmSettings.Threshold = 1;
-        IlEvmSettings.CompileSynchronously = true;
+        IlEvmSettings.CompileSynchronously = compileColdChunks;
         try
         {
             using ExecutionEnvironment environment = ExecutionEnvironment.Rent(

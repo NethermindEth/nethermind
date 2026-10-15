@@ -65,10 +65,11 @@ public class IlEvmStatsTests
     private EthereumVirtualMachine _plainQueryVm = null!;
     private IDisposable? _stateScope;
     private Settings _saved;
+    private IlMode _savedMode;
 
     /// <summary>The settings these tests change, restored after each.</summary>
     private readonly record struct Settings(
-        bool Enabled, int Threshold, int Opcodes, int HotRate, bool Sync, bool SelfCheck, bool Profile, bool Stats, bool BlockCompile, bool BlockCheck,
+        bool Enabled, int Threshold, long Opcodes, int HotRate, bool Sync, bool SelfCheck, bool Profile, bool Stats, bool BlockCompile, bool BlockCheck,
         int Sampling, int CheckDelay, double KeepRatio, int WarmUp, int Recheck, int EarlyRecheck)
     {
         public static Settings Read() => new(IlEvmSettings.Enabled, IlEvmSettings.Threshold, IlEvmSettings.OpcodeThreshold, IlEvmSettings.HotOpcodesPerSecond,
@@ -139,8 +140,11 @@ public class IlEvmStatsTests
     public void SetUp()
     {
         _saved = Settings.Read();
+        _savedMode = IlEvmSettings.Mode;
         Forget();
         IlEvmSettings.Enabled = true;
+        // The production runners these tests compare with follow the Legacy rules, as a measurement run does.
+        IlEvmSettings.Mode = IlMode.Legacy;
         // Nothing becomes hot on its own: whatever runs compiled was shipped, unless a test says otherwise.
         IlEvmSettings.Threshold = int.MaxValue;
         IlEvmSettings.OpcodeThreshold = int.MaxValue;
@@ -156,6 +160,7 @@ public class IlEvmStatsTests
     public void TearDown()
     {
         _saved.Write();
+        IlEvmSettings.Mode = _savedMode;
         ProcessingThread.IsBlockProcessingThread = false;
         Forget();
     }
@@ -397,7 +402,7 @@ public class IlEvmStatsTests
         Assert.That(Totals(HandBackCode()).Of(RunPath.HandedBack, ThreadKind.Other).Parts, Is.EqualTo(Runs));
         // The query runner looked the shipped contract up, so the code has a state; no frame counted toward it.
         IlEvm.IlCodeState state = (IlEvm.IlCodeState)IlEvmFrameRunner.CodeSlot(codeInfo)!;
-        Assert.That((state.Executions, state.OpCodesRun), Is.EqualTo((0, 0)), "the interpreter's opcodes after a hand-back are not reported for hotness");
+        Assert.That((state.Executions, state.OpCodesRun), Is.EqualTo((0, 0L)), "the interpreter's opcodes after a hand-back are not reported for hotness");
     }
 
     [Test]
@@ -788,7 +793,7 @@ public class IlEvmStatsTests
         for (int frame = 0; frame < 200; frame++)
         {
             IlEvm.IlCodeState? before = IlEvmFrameRunner.CodeSlot(codeInfo) as IlEvm.IlCodeState;
-            (int executions, int opCodes) = (before?.Executions ?? 0, before?.OpCodesRun ?? 0);
+            (int executions, long opCodes) = (before?.Executions ?? 0, before?.OpCodesRun ?? 0);
             Run(_queryVm, codeInfo, LoopInput);
             IlEvm.IlCodeState state = (IlEvm.IlCodeState)IlEvmFrameRunner.CodeSlot(codeInfo)!;
             if (state.Executions == executions)

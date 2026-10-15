@@ -40,7 +40,8 @@ public class IlEvmPrecompileTests
     private IWorldState _state = null!;
     private IVirtualMachine _vm = null!;
     private IDisposable? _stateScope;
-    private (bool Enabled, int Threshold, int Opcodes, bool Sync, bool SelfCheck, bool Profile, bool BlockCompile, bool BlockCheck) _saved;
+    private (bool Enabled, int Threshold, long Opcodes, bool Sync, bool SelfCheck, bool Profile, bool BlockCompile, bool BlockCheck) _saved;
+    private IlMode _savedMode;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -48,6 +49,9 @@ public class IlEvmPrecompileTests
         _saved = (IlEvmSettings.Enabled, IlEvmSettings.Threshold, IlEvmSettings.OpcodeThreshold, IlEvmSettings.CompileSynchronously,
             IlEvmSettings.SelfCheck, IlEvmSettings.Profile, IlEvmSettings.BlockRuntimeCompile, IlEvmSettings.BlockSelfCheck);
         IlEvmSettings.SelfCheck = false;
+        // The Legacy rules, which these tests are of.
+        _savedMode = IlEvmSettings.Mode;
+        IlEvmSettings.Mode = IlMode.Legacy;
         _spec = Osaka.Instance;
         _container = new ContainerBuilder().AddModule(new TestNethermindModule(_spec)).Build();
         IWorldStateScopeProvider scopeProvider = _container.Resolve<IWorldStateManager>().GlobalWorldState;
@@ -75,6 +79,7 @@ public class IlEvmPrecompileTests
     {
         (IlEvmSettings.Enabled, IlEvmSettings.Threshold, IlEvmSettings.OpcodeThreshold, IlEvmSettings.CompileSynchronously,
             IlEvmSettings.SelfCheck, IlEvmSettings.Profile, IlEvmSettings.BlockRuntimeCompile, IlEvmSettings.BlockSelfCheck) = _saved;
+        IlEvmSettings.Mode = _savedMode;
         IlEvm.ClearPrecompiled();
         IlEvmProfile.Reset();
         _stateScope?.Dispose();

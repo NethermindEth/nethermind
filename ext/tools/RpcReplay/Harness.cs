@@ -12,6 +12,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Db;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
@@ -111,6 +114,90 @@ public static class Harness
         }
     }
 
+    /// <summary>
+    /// Starts the Adaptive rules as a node's startup does: the settings from a config - live profiling of the queries
+    /// unless <c>RPCPOC_PREFER</c> names another source, and the RPC list unless <c>RPCPOC_RPC_LIST=0</c> - then the
+    /// plugin's startup step, which compiles the RPC list from the code its entries carry and the shipped list from the
+    /// chain's code database, attaches the inter-block scheduler to the chain's block processing, idle with no blocks,
+    /// with live profiling's scorer on its maintenance, and starts its workers.
+    /// </summary>
+    internal static async Task StartAdaptive(BasicTestBlockchain chain)
+    {
+        IlEvmConfig config = new()
+        {
+            Enabled = true,
+            Prefer = Enum.TryParse(Environment.GetEnvironmentVariable("RPCPOC_PREFER"), ignoreCase: true, out IlEvmPrefer prefer) ? prefer : IlEvmPrefer.Rpc,
+        };
+        // Set by name, so the harness also runs a plugin build from before the RPC list.
+        System.Reflection.PropertyInfo rpcList = typeof(IlEvmConfig).GetProperty("PrecompileRpc");
+        rpcList?.SetValue(config, Environment.GetEnvironmentVariable("RPCPOC_RPC_LIST") != "0");
+        IlEvmModule.Configure(config);
+        IlEvmStartupStep step = new(config, chain.Container.Resolve<IDbProvider>(), chain.BlockTree, chain.Container.Resolve<ISpecProvider>(),
+            new Lazy<IMainProcessingContext>(() => chain.Container.Resolve<IMainProcessingContext>()), chain.Container.Resolve<IBlocksConfig>(),
+            new ExitSource(), new OneLineLogManager());
+        await step.Execute(CancellationToken.None);
+        // For experiments: an idle wait before the first call, as a node may have between its startup and its first call.
+        if (int.TryParse(Environment.GetEnvironmentVariable("RPCPOC_IDLE_MS"), out int idleMs) && idleMs > 0)
+            await Task.Delay(idleMs);
+        // The reference pass runs on the interpreter.
+        IlEvmSettings.Enabled = false;
+        Console.WriteLine($"adaptive: prefer {IlEvmSettings.Prefer}, query counting {IlRuntime.QueryCounting}, gate {IlEvmSettings.Gate}, rpc list {rpcList?.GetValue(config) ?? "none"}, " +
+            $"list {IlShippedBacklog.Compiled} compiled, {IlShippedBacklog.MissingCount} not in the chain; {IlScheduler.DescribeCurrent()}");
+    }
+
+    /// <summary>A process exit that never comes: the exit line is the harness's to print.</summary>
+    internal sealed class ExitSource : Nethermind.Config.IProcessExitSource
+    {
+        public void Exit(int exitCode) { }
+        public CancellationToken Token => CancellationToken.None;
+    }
+
+    /// <summary>The plugin's info lines on the console, prefixed, for the run's log.</summary>
+    internal sealed class OneLineLogManager : ILogManager
+    {
+        public ILogger GetClassLogger<T>() => new(new ConsoleLine());
+        public ILogger GetLogger(string loggerName) => new(new ConsoleLine());
+
+        private sealed class ConsoleLine : InterfaceLogger
+        {
+            public bool IsInfo => true;
+            public bool IsWarn => true;
+            public bool IsDebug => false;
+            public bool IsTrace => false;
+            public bool IsError => true;
+            public void Info(string text) => Console.WriteLine("  " + text);
+            public void Warn(string text) => Console.WriteLine("  WARN " + text);
+            public void Debug(string text) { }
+            public void Trace(string text) { }
+            public void Error(string text, Exception ex = null) => Console.WriteLine("  ERROR " + text + (ex is null ? "" : " " + ex));
+        }
+    }
+
+    /// <summary>
+    /// The diagnostics' per-code counts of the measured rounds, by keccak: <c>per code 0x... size=... parts=interpreted/compiled
+    /// ops=... us=interpreted/compiled speedup=...</c>, the busiest first, where every part of the code ran on either path.
+    /// </summary>
+    private static IEnumerable<string> ByKeccak()
+    {
+        Dictionary<string, (int Size, long PlainFrames, long PlainOps, long PlainTicks, long CompiledFrames, long CompiledOps, long CompiledTicks)> codes = [];
+        foreach (KeyValuePair<object, IlEvmDiagnostics.ContractStats> entry in IlEvmDiagnostics.Contracts)
+        {
+            if (entry.Key is not Nethermind.Evm.CodeAnalysis.CodeInfo codeInfo) continue;
+            string keccak = Nethermind.Core.Crypto.ValueKeccak.Compute(codeInfo.CodeSpan).ToString();
+            IlEvmDiagnostics.ContractStats c = entry.Value;
+            codes.TryGetValue(keccak, out var sum);
+            codes[keccak] = (c.CodeLength, sum.PlainFrames + c.PlainFrames, sum.PlainOps + c.PlainOps, sum.PlainTicks + c.PlainTicks,
+                sum.CompiledFrames + c.CompiledFrames, sum.CompiledOps + c.CompiledOps, sum.CompiledTicks + c.CompiledTicks);
+        }
+
+        foreach ((string keccak, var c) in codes.OrderByDescending(static kv => kv.Value.PlainTicks + kv.Value.CompiledTicks))
+        {
+            double plain = c.PlainFrames > 0 ? Us(c.PlainTicks) / c.PlainFrames : 0, compiled = c.CompiledFrames > 0 ? Us(c.CompiledTicks) / c.CompiledFrames : 0;
+            yield return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"per code {keccak} size={c.Size} parts={c.PlainFrames}/{c.CompiledFrames} ops={(c.PlainFrames > 0 ? c.PlainOps / c.PlainFrames : 0)} us={plain:F3}/{compiled:F3} speedup={(compiled > 0 ? plain / compiled : 0):F3}");
+        }
+    }
+
     public static async Task<int> Run(string[] a)
     {
         using JitInlineListener jitTrace = Environment.GetEnvironmentVariable("RPCPOC_JITTRACE") == "1" ? new JitInlineListener() : null;
@@ -139,9 +226,11 @@ public static class Harness
         int n = requests.Count;
         Console.WriteLine($"requests {n}, rounds {rounds}, threshold {threshold}, eager {eager}, gasCap {gasCap}, GC server {System.Runtime.GCSettings.IsServerGC}, cpus {Environment.ProcessorCount}");
 
+        bool adaptive = IlEvmSettings.Mode == IlMode.Adaptive;
         IlEvmSettings.Enabled = false;
         IlEvmSettings.Threshold = threshold;
-        IlEvmSettings.CompileSynchronously = eager;
+        // The Legacy rules compile on the frame's thread when eager; the Adaptive ones only ever between blocks.
+        IlEvmSettings.CompileSynchronously = eager && !adaptive;
 
         JsonRpcConfig rpcConfig = new() { Timeout = 600_000, GasCap = gasCap, EnabledModules = [ModuleType.Eth, ModuleType.Debug] };
         Stopwatch setup = Stopwatch.StartNew();
@@ -152,6 +241,8 @@ public static class Harness
             .AddSingleton<IReadOnlyQueryModule>(new IlEvmQueryModule(ReadOnlyQueryKind.Call)));
         Console.WriteLine($"il-evm: {IlEvmModule.Unsupported() ?? "supported"}");
         Console.WriteLine($"chain ready in {setup.ElapsedMilliseconds} ms, head #{chain.BlockTree.Head?.Number} baseFee {chain.BlockTree.Head?.Header.BaseFeePerGas} gasLimit {chain.BlockTree.Head?.Header.GasLimit}");
+        if (adaptive)
+            await StartAdaptive(chain);
 
         IJsonRpcService service = chain.Container.Resolve<IJsonRpcService>();
         JsonRpcProcessor processor = new(service, rpcConfig, chain.Container.Resolve<IFileSystem>(), NullLogManager.Instance);
@@ -234,17 +325,70 @@ public static class Harness
             Console.WriteLine($"pass {pass} (compiler warm-up) {Us(Stopwatch.GetTimestamp() - start) / 1000:F0} ms, compiled {IlEvmSettings.CompiledContracts}, failed {IlEvmSettings.FailedContracts}");
         }
 
+        // Legacy: until the background compiler has nothing more to do. Adaptive: until the scheduler, idle with no blocks,
+        // has no job left and has run no step for a while, its scorer having promoted what the warm-up counted.
         long settled = -1;
         for (int k = 0; k < 120; k++)
         {
-            long now = IlEvmSettings.CompiledContracts + IlEvmSettings.FailedContracts;
-            if (now == settled) break;
+            long now = adaptive
+                ? (IlScheduler.Current?.Steps ?? 0) + (IlScheduler.Current?.Pending ?? 0) * 1_000_000_007L + IlLive.Totals().Promoted * 1_000_003L
+                : IlEvmSettings.CompiledContracts + IlEvmSettings.FailedContracts;
+            if (now == settled && (!adaptive || IlScheduler.Current?.Pending == 0)) break;
             settled = now;
-            await Task.Delay(500);
+            await Task.Delay(adaptive ? 2_000 : 500);
         }
 
-        Console.WriteLine($"compile queue settled: compiled {IlEvmSettings.CompiledContracts}, failed {IlEvmSettings.FailedContracts}");
+        Console.WriteLine(adaptive
+            ? $"scheduler settled: {IlLive.Describe()}; {IlScheduler.DescribeCurrent()}"
+            : $"compile queue settled: compiled {IlEvmSettings.CompiledContracts}, failed {IlEvmSettings.FailedContracts}");
+        // The RPC list's ahead copies serve only a node's first seconds: the rounds measure the contracts' own code, once
+        // the copies have gone and a pass has had the helpers tier up on calls. Read by name, so the harness also runs a
+        // plugin build from before them.
+        Type warmUp = typeof(IlEvmSettings).Assembly.GetType("Nethermind.IlEvm.IlWarmUp");
+        long Ahead(string name) => warmUp?.GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.GetValue(null) is { } value ? Convert.ToInt64(value) : 0;
+        if (adaptive && Ahead("AheadArmed") > 0)
+        {
+            for (int k = 0; k < 120 && Ahead("AheadSwitched") == 0; k++)
+                await Task.Delay(500);
+            for (int i = 0; i < n; i++)
+            {
+                (long _, byte[] hash, long ops) = await Send(i);
+                mismatches += Verify("after the ahead copies", i, hash, ops);
+            }
+
+            await Task.Delay(1_000);
+            Console.WriteLine($"ahead copies: {Ahead("AheadArmed")} armed, switched {Ahead("AheadSwitchedAfterMs") / 1000.0:F1} s after the first frame");
+        }
+
         IlEvmDiagnostics.Contracts.Clear();
+
+        // Profile mode: one path only, the corpus cycled for a fixed time, so a sampling profiler sees that path alone.
+        if (int.TryParse(Environment.GetEnvironmentVariable("RPCPOC_PROFILE_SECONDS"), out int profileSeconds) && profileSeconds > 0)
+        {
+            bool compiledPath = Environment.GetEnvironmentVariable("RPCPOC_PROFILE_MODE") != "interpreter";
+            IlEvmSettings.Enabled = compiledPath;
+            Collect();
+            long until = Stopwatch.GetTimestamp() + profileSeconds * Stopwatch.Frequency;
+            long sent = 0, sentOps = 0;
+            long profileStart = Stopwatch.GetTimestamp();
+            Console.WriteLine($"PROFILE START {(compiledPath ? "compiled" : "interpreter")} for {profileSeconds} s");
+            while (Stopwatch.GetTimestamp() < until)
+            {
+                for (int i = 0; i < n && Stopwatch.GetTimestamp() < until; i++)
+                {
+                    (long _, byte[] hash, long ops) = await Send(i);
+                    mismatches += Verify(compiledPath ? "profile compiled" : "profile interpreter", i, hash, ops);
+                    sent++;
+                    sentOps += ops;
+                }
+            }
+
+            double seconds = (Stopwatch.GetTimestamp() - profileStart) / (double)Stopwatch.Frequency;
+            Console.WriteLine($"PROFILE END {sent} requests in {seconds:F1} s ({sent / seconds:F1} req/s, {sentOps / seconds / 1e6:F1} Mops/s), {mismatches} mismatches, gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
+            if (adaptive)
+                Console.WriteLine($"PROFILE STATE {IlLive.Describe()}; {IlScheduler.DescribeCurrent()}");
+            return mismatches == 0 ? 0 : 1;
+        }
 
         // Measured rounds, ABBA within a round and the order flipped between rounds.
         List<long>[] interpreted = Enumerable.Range(0, n).Select(static _ => new List<long>()).ToArray();
@@ -276,6 +420,9 @@ public static class Harness
             foreach (string line in IlEvmDiagnostics.DescribeIl(45)) Console.WriteLine("  " + line);
             Console.WriteLine("per code over the measured rounds (interpreter / compiled):");
             foreach (string line in IlEvmDiagnostics.DescribeContracts(40)) Console.WriteLine("  " + line);
+            // The same by code content: the code infos of one code, which a cache's collisions split, summed under its
+            // keccak, for tools/make_rpc_list.py.
+            foreach (string line in ByKeccak()) Console.WriteLine(line);
         }
 
         // Module-level: the same calls with pre-parsed arguments, so JSON parsing and serialization are excluded.
