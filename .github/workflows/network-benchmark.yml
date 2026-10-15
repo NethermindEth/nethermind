@@ -68,6 +68,12 @@ jobs:
           persist-credentials: false
           path: head
 
+      # Before anything that can fail, so the comparison step always has a runtime.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: head/global.json
+
       - name: Resolve base
         id: refs
         shell: bash
@@ -78,17 +84,19 @@ jobs:
         run: |
           set -euo pipefail
           base="${BASE_INPUT:-$(git merge-base origin/master HEAD)}"
-          base_sha="$(git rev-parse --verify "${base}^{commit}")"
-          git worktree add --detach "${GITHUB_WORKSPACE}/base" "${base_sha}"
           {
-            echo "base=${base_sha}"
+            echo "base=$(git rev-parse --verify "${base}^{commit}")"
             echo "head=$(git rev-parse HEAD)"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+      # A checkout rather than a worktree: the self-hosted runner keeps its workspace between runs, and
+      # checkout cleans what a previous run left in the directory.
+      - name: Check out base
+        uses: actions/checkout@v6
         with:
-          global-json-file: head/global.json
+          ref: ${{ steps.refs.outputs.base }}
+          persist-credentials: false
+          path: base
 
       - name: Run benchmarks at base
         id: run-base
