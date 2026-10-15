@@ -28,6 +28,10 @@ public partial class EngineModuleTests
     [TestCase("missing-proof")]
     [TestCase("bad-proof")]
     [TestCase("wrong-commitment")]
+    // EIPs#12475: a malformed entry or a proof whose emptiness disagrees with its deps_hash also only voids that list's
+    // dependency-bearing obligations instead of failing the request.
+    [TestCase("empty-proof")]
+    [TestCase("empty-transaction")]
     public async Task NewPayload_bad_inclusion_proof_does_not_invalidate_the_block(string scenario)
     {
         OverridableReleaseSpec spec = InclusionProofEngineSpec();
@@ -37,8 +41,9 @@ public partial class EngineModuleTests
         Hash256 parent = chain.BlockTree.HeadHash!;
         Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
-        InclusionListV1[] lists = [InclusionList(3, transaction, scenario == "missing-proof" ? null
-            : new RecursiveStarkV1 { StarkProof = [2], DepsHash = scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash) })];
+        InclusionListV1[] lists = [InclusionList(3, transaction, scenario is "missing-proof" or "empty-transaction" ? null
+            : new RecursiveStarkV1 { StarkProof = scenario == "empty-proof" ? [] : [2], DepsHash = scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash) })];
+        if (scenario == "empty-transaction") lists[0].Transactions = [.. lists[0].Transactions!, []];
         PayloadAttributes attributes = BuildPerListPayloadAttributes(lists);
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV6(new(parent, Keccak.Zero, parent), attributes);
         Assert.That(build.Result.ResultType, Is.EqualTo(ResultType.Success), build.Result.Error);
@@ -142,7 +147,6 @@ public partial class EngineModuleTests
     [TestCase("duplicate-position")]
     [TestCase("descending-position")]
     [TestCase("position-out-of-range")]
-    [TestCase("empty-transaction")]
     [TestCase("oversized-list")]
     [TestCase("too-many-lists")]
     public async Task NewPayloadV7_rejects_malformed_lists_as_invalid_params(string scenario)
@@ -159,7 +163,6 @@ public partial class EngineModuleTests
             "duplicate-position" => [new() { CommitteeIndex = 1, Transactions = [] }, new() { CommitteeIndex = 1, Transactions = [] }],
             "descending-position" => [new() { CommitteeIndex = 2, Transactions = [] }, new() { CommitteeIndex = 1, Transactions = [] }],
             "position-out-of-range" => [new() { CommitteeIndex = Eip7805Constants.InclusionListCommitteeSize, Transactions = [] }],
-            "empty-transaction" => [new() { Transactions = [[]] }],
             "oversized-list" => [new() { Transactions = [new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]] }],
             _ => [.. Enumerable.Range(0, Eip7805Constants.InclusionListCommitteeSize + 1).Select(i => new InclusionListV1 { CommitteeIndex = (ulong)i, Transactions = [] })]
         };
@@ -171,7 +174,7 @@ public partial class EngineModuleTests
 
     [TestCase("missing-proof")]
     [TestCase("bad-proof")]
-    [TestCase("empty-proof")]
+    [TestCase("oversized-proof")]
     public async Task Forkchoice_applies_checkpoints_before_inclusion_proof_attributes(string scenario)
     {
         OverridableReleaseSpec spec = InclusionProofEngineSpec();
@@ -187,7 +190,7 @@ public partial class EngineModuleTests
         Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
         RecursiveStarkV1? proof = scenario == "missing-proof" ? null : new()
         {
-            StarkProof = scenario == "empty-proof" ? [] : [2],
+            StarkProof = scenario == "oversized-proof" ? new byte[Eip8288Constants.MaxAggregateProofBytes + 1] : [2],
             DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)))
         };
         PayloadAttributes attributes = BuildPerListPayloadAttributes([InclusionList(0, transaction, proof)],
@@ -201,8 +204,8 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(head));
             Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(head));
             Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(head));
-            Assert.That(result.Result.ResultType, Is.EqualTo(scenario == "empty-proof" ? ResultType.Failure : ResultType.Success));
-            if (scenario == "empty-proof") Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
+            Assert.That(result.Result.ResultType, Is.EqualTo(scenario == "oversized-proof" ? ResultType.Failure : ResultType.Success));
+            if (scenario == "oversized-proof") Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
         }
     }
 
