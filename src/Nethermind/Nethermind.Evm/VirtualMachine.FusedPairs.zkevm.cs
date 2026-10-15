@@ -141,7 +141,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     paired[(int)Instruction.MLOAD] = Entry(&ExecutePush1MLoad);
                 if (handlers[(int)Instruction.MSTORE] == Entry(&ExecuteMStoreInsideBacking))
                     paired[(int)Instruction.MSTORE] = Entry(&ExecutePush1MStore);
+                if (handlers[(int)Instruction.SHL] == ShiftLeftStep.Handler &&
+                    handlers[(int)Instruction.SUB] == BinaryStep<SubtractOperation>.Handler &&
+                    handlers[(int)Instruction.AND] == BinaryStep<AndOperation>.Handler)
+                    paired[FollowerHandlersLength + ((int)Instruction.PUSH1 | 1 << 8)] = Entry(&ExecutePush1OneByFollower);
             }
+
+            FuseOnesMask<EvmInstructions.Op4>(handlers, paired, Instruction.PUSH4);
+            FuseOnesMask<EvmInstructions.Op20>(handlers, paired, Instruction.PUSH20);
 
             if (handlers[(int)Instruction.JUMP] == Entry(&ExecuteJumpToAnalyzedDestination))
             {
@@ -715,6 +722,136 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // Indexed first and offset after, so the offset folds into the load.
             nint next = Unsafe.Add(ref handlers[Unsafe.Add(ref ip, 2)], -FollowerHandlersLength);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+        }
+
+        /// <summary>
+        /// <see cref="ExecutePush1ByFollower"/> for a PUSH1 of 1, which also runs <c>PUSH1 1 PUSH1 1 PUSH1 n SHL SUB</c>, the
+        /// mask of the low n bits, as one step, with the AND after it that usually applies it.
+        /// </summary>
+        /// <remarks>
+        /// Compilers build the 160-bit address mask this way. With too little gas or stack for the whole sequence, it
+        /// runs opcode by opcode, so each opcode faults where it would unfused.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecutePush1OneByFollower(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            ref byte opcode = ref ip;
+            byte following = Unsafe.Add(ref opcode, 2);
+            if (following == (byte)Instruction.PUSH1 && Unsafe.Add(ref opcode, 3) == 1 && Unsafe.Add(ref opcode, 4) == (byte)Instruction.PUSH1 &&
+                Unsafe.Add(ref opcode, 6) == (byte)Instruction.SHL && Unsafe.Add(ref opcode, 7) == (byte)Instruction.SUB)
+            {
+                int bits = Unsafe.Add(ref opcode, 5);
+                if (Unsafe.Add(ref opcode, 8) == (byte)Instruction.AND)
+                {
+                    // The three pushes go above the word the AND reads.
+                    if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 4) && TryCharge(ref gas, 6 * VeryLowGasCost.GasCost))
+                    {
+                        ref ulong word = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
+                        word &= LowBitsOfLimb(bits, 0);
+                        Unsafe.Add(ref word, 1) &= LowBitsOfLimb(bits, 1);
+                        Unsafe.Add(ref word, 2) &= LowBitsOfLimb(bits, 2);
+                        Unsafe.Add(ref word, 3) &= LowBitsOfLimb(bits, 3);
+                        ip = ref Unsafe.Add(ref ip, 9);
+                        nint masked = handlers[PairAt(ref ip)];
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, masked);
+                    }
+                }
+                else if (head < EvmStack.MaxStackSize - 3 && TryCharge(ref gas, 5 * VeryLowGasCost.GasCost))
+                {
+                    ref ulong mask = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head));
+                    mask = LowBitsOfLimb(bits, 0);
+                    Unsafe.Add(ref mask, 1) = LowBitsOfLimb(bits, 1);
+                    Unsafe.Add(ref mask, 2) = LowBitsOfLimb(bits, 2);
+                    Unsafe.Add(ref mask, 3) = LowBitsOfLimb(bits, 3);
+                    head++;
+                    ip = ref Unsafe.Add(ref ip, 8);
+                    nint pushed = handlers[PairAt(ref ip)];
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, pushed);
+                }
+            }
+
+            nint next = Unsafe.Add(ref handlers[following], -FollowerHandlersLength);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+        }
+
+        /// <summary>The limb <paramref name="limb"/> of the mask of the low <paramref name="bits"/> bits of a word.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong LowBitsOfLimb(int bits, int limb)
+        {
+            int inLimb = bits - limb * 64;
+            return inLimb >= 64 ? ulong.MaxValue : inLimb <= 0 ? 0 : (1UL << inLimb) - 1;
+        }
+
+        /// <summary>Installs <see cref="ExecuteOnesMask{TOpCount}"/> for <paramref name="push"/> where its first immediate is 0xff.</summary>
+        private static void FuseOnesMask<TOpCount>(ReadOnlySpan<nint> handlers, nint[] paired, Instruction push)
+            where TOpCount : struct, EvmInstructions.IOpCount
+        {
+            if (handlers[(int)push] == Entry(&ExecutePush<TOpCount>) && handlers[(int)Instruction.AND] == BinaryStep<AndOperation>.Handler)
+                paired[FollowerHandlersLength + ((int)push | byte.MaxValue << 8)] = Entry(&ExecuteOnesMask<TOpCount>);
+        }
+
+        /// <summary>
+        /// PUSH4 or PUSH20 of all 0xff bytes, the uint32 or address mask, fused with the AND after it, which keeps the low
+        /// 32 or 160 bits of the word below.
+        /// </summary>
+        /// <remarks>
+        /// The entry is keyed on the mask's first byte, so the rest of it and the AND are tested here. Every other case
+        /// runs the push alone.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteOnesMask<TOpCount>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+            where TOpCount : struct, EvmInstructions.IOpCount
+        {
+            Debug.Assert(TOpCount.Count is 4 or 20);
+            // One unsigned test bounds the depth on both sides: the AND needs a word below the pushed one.
+            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
+            {
+                ref byte immediates = ref Unsafe.Add(ref ip, 1);
+                bool ones = TOpCount.Count == 4
+                    ? Unsafe.ReadUnaligned<uint>(ref immediates) == uint.MaxValue
+                    : (Unsafe.ReadUnaligned<ulong>(ref immediates) & Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref immediates, 8))) == ulong.MaxValue &&
+                        Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref immediates, 16)) == uint.MaxValue;
+                if (ones && Unsafe.Add(ref immediates, TOpCount.Count) == (byte)Instruction.AND)
+                {
+                    ref ulong word = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
+                    if (TOpCount.Count == 4)
+                    {
+                        SetWord(ref word, word & uint.MaxValue);
+                    }
+                    else
+                    {
+                        Unsafe.Add(ref word, 2) &= uint.MaxValue;
+                        Unsafe.Add(ref word, 3) = 0;
+                    }
+
+                    ip = ref Unsafe.Add(ref ip, TOpCount.Count + 2);
+                    nint next = handlers[PairAt(ref ip)];
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+                }
+
+                gas += 2 * VeryLowGasCost.GasCost;
+            }
+
+            nint alone = Entry(&ExecutePush<TOpCount>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, alone);
         }
 
         /// <summary>Two opcodes of fixed cost that only rearrange or combine the words on top of the stack, run as one step.</summary>

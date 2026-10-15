@@ -163,7 +163,7 @@ public class EthereumRunnerTests
         {
             IBlockProcessor wrapped = scenario == WarmupScenario.SupportedBehindCatchUp ? main.BlockProcessor : Substitute.For<IBlockProcessor>();
             api.MainProcessingContext!.BlockProcessor.Returns(new FinalizedBlockAccessListProcessor(wrapped,
-                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), NullLogManager.Instance));
+                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), container.Resolve<IReceiptsRecovery>(), NullLogManager.Instance));
             api.MainProcessingContext.TransactionProcessor.Returns(main.TransactionProcessor);
         }
 
