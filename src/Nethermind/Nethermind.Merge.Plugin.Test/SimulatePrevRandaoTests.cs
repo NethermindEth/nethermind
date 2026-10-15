@@ -95,10 +95,10 @@ public class SimulatePrevRandaoTests : BaseEngineModuleTests
         await ProduceBranchV1(chain.EngineRpcModule, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true, random: HeadRandom);
 
         BlockHeader head = chain.BlockTree.Head!.Header;
-        Assume.That(chain.SpecProvider.TerminalTotalDifficulty, Is.Not.Null);
-        Assume.That(chain.SpecProvider.MergeBlockNumber, Is.Null);
-        Assume.That(head.Difficulty, Is.EqualTo(UInt256.Zero));
-        Assume.That(head.MixHash, Is.EqualTo(HeadRandom));
+        Assert.That(chain.SpecProvider.TerminalTotalDifficulty, Is.Not.Null);
+        Assert.That(chain.SpecProvider.MergeBlockNumber, Is.Null);
+        Assert.That(head.Difficulty, Is.EqualTo(UInt256.Zero));
+        Assert.That(head.MixHash, Is.EqualTo(HeadRandom));
         return chain;
     }
 

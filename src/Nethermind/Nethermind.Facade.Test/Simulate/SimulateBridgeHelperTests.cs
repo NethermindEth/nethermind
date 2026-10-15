@@ -75,7 +75,7 @@ public class SimulateBridgeHelperTests
     public bool Simulated_header_is_post_merge_after_a_parent_at_terminal_total_difficulty(ulong? parentTotalDifficulty)
     {
         TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 1_000 };
-        Assume.That(specProvider.MergeBlockNumber, Is.Null);
+        Assert.That(specProvider.MergeBlockNumber, Is.Null);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithDifficulty(100).TestObject;
         parent.TotalDifficulty = parentTotalDifficulty;
 
@@ -94,7 +94,7 @@ public class SimulateBridgeHelperTests
     public void Simulated_prevrandao_reads_the_mix_hash_on_a_chain_merged_by_terminal_total_difficulty(ulong parentDifficulty, ulong? parentTotalDifficulty, bool overridden)
     {
         TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 1_000 };
-        Assume.That(specProvider.MergeBlockNumber, Is.Null);
+        Assert.That(specProvider.MergeBlockNumber, Is.Null);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithDifficulty(parentDifficulty).WithMixHash(TestItem.KeccakB).TestObject;
         parent.TotalDifficulty = parentTotalDifficulty;
 

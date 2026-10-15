@@ -986,8 +986,8 @@ public class EthSimulateTestsBlocksAndTransactions
         TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
         BlockHeader head = chain.BlockFinder.Head!.Header;
         specProvider.TerminalTotalDifficulty = head.TotalDifficulty;
-        Assume.That(specProvider.MergeBlockNumber, Is.Null);
-        Assume.That(head.Difficulty, Is.Not.EqualTo(UInt256.Zero));
+        Assert.That(specProvider.MergeBlockNumber, Is.Null);
+        Assert.That(head.Difficulty, Is.Not.EqualTo(UInt256.Zero));
 
         Hash256? overrideHash = overrideHex is not null ? new Hash256(overrideHex) : null;
         SimulatePayload<TransactionForRpc> payload = new()
