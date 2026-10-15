@@ -1718,9 +1718,8 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(Instruction.CALL)]
-    [TestCase(Instruction.CALLCODE)]
-    public void Insufficient_balance_call_has_enter_exit_without_fault(Instruction opcode)
+    [Test]
+    public void Insufficient_balance_call_has_enter_exit_without_fault([Values(Instruction.CALL, Instruction.CALLCODE)] Instruction opcode)
     {
         TestState.CreateAccount(TestItem.AddressC, 10);
         TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("00"), Prague.Instance);

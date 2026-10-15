@@ -564,6 +564,11 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         new("6001600067ffffffffffffffff3e", 100000UL, "gas uint64 overflow"),
         new("68010000000000000000600060003e", 100000UL, "gas uint64 overflow"),
         new("600160006420000000003e", 100000UL, "out of gas: gas uint64 overflow"),
+        new("60016000637fffffdf3e", 100000UL, "out of gas"),
+        new("60016000637fffffe03e", 100000UL, "out of gas"),
+        new("6001600063800000003e", 100000UL, "out of gas"),
+        new("6001600063800000003e", 10000000000000UL, "return data out of bounds"),
+        new("6000600063800000003e", 100000UL, null),
         new("6001600060003e", 100000UL, "return data out of bounds"),
         new("60006001680100000000000000003e", 100000UL, "return data out of bounds"),
         new("60006000680100000000000000003e", 100000UL, null)
