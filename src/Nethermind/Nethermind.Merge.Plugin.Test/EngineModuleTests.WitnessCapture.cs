@@ -384,6 +384,37 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task Handler_returns_recent_witness_for_resent_payload_without_re_executing()
+    {
+        WitnessRendezvous rendezvous = new();
+        Witness? toPublish = MakeStubWitness();
+        IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
+        module
+            .engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(call =>
+            {
+                // Only the first submission executes; a resent known block publishes nothing.
+                if (rendezvous.TryClaim(call.Arg<ExecutionPayloadV4>().BlockHash!, out TaskCompletionSource<Witness?>? tcs))
+                    tcs!.SetResult(Interlocked.Exchange(ref toPublish, null));
+                return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
+            });
+
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(() => module, rendezvous);
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
+        ExecutionPayloadParams<ExecutionPayloadV4> request = new(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []);
+
+        byte[][] capturedState;
+        using (ResultWrapper<NewPayloadWithWitnessV1Result> first = await handler.HandleAsync(request))
+            capturedState = first.Data.ExecutionWitness!.State.ToArray();
+
+        // The block is not in the block tree, so only the cache can supply this witness.
+        using ResultWrapper<NewPayloadWithWitnessV1Result> resent = await handler.HandleAsync(request);
+
+        Assert.That(resent.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(resent.Data.ExecutionWitness!.State.ToArray(), Is.EqualTo(capturedState));
+    }
+
     private static IEnumerable<TestCaseData> NonValidOutcomes()
     {
         yield return new TestCaseData((Func<IEngineRpcModule>)(() => WitnessHandlerBuilder.SucceedingEngineModule(
@@ -542,7 +573,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task E2E_already_known_payload_returns_the_same_witness()
+    public async Task E2E_already_known_payload_returns_the_same_witness([Values] bool fromRecentWitnesses)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -550,11 +581,18 @@ public partial class EngineModuleTests
         Transaction tx = BuildWitnessTransfer(chain);
         chain.AddTransactions(tx);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, 1);
+        ExecutionPayloadParams<ExecutionPayloadV4> request = new(payload, [], TestItem.KeccakE, requests ?? []);
 
         using ResultWrapper<NewPayloadWithWitnessV1Result> first =
             await rpc.engine_newPayloadWithWitnessV5(payload, [], TestItem.KeccakE, requests ?? []);
+
+        // A fresh handler has no recent witnesses, so it must re-execute the block.
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder =>
+        {
+            if (!fromRecentWitnesses) builder.RegisterType<NewPayloadWithWitnessHandler>().AsSelf().SingleInstance();
+        });
         using ResultWrapper<NewPayloadWithWitnessV1Result> repeated =
-            await rpc.engine_newPayloadWithWitnessV5(payload, [], TestItem.KeccakE, requests ?? []);
+            await scope.Resolve<NewPayloadWithWitnessHandler>().HandleAsync(request);
 
         Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(repeated.Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -562,7 +600,7 @@ public partial class EngineModuleTests
         Witness? generated = repeated.Data.ExecutionWitness;
         Assert.That(captured, Is.Not.Null);
         Assert.That(generated, Is.Not.Null,
-            "newPayload skips a known block, so the handler must re-execute it to return the witness");
+            "newPayload skips a known block, so the handler must supply the witness itself");
         using (Assert.EnterMultipleScope())
         {
             Assert.That(generated!.State.ToArray(), Is.EqualTo(captured!.State.ToArray()));

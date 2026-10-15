@@ -8,6 +8,8 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -32,7 +34,11 @@ public sealed class NewPayloadWithWitnessHandler(
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>,
     IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>
 {
+    /// <summary>Consensus clients resend payloads they already sent (e.g. after a restart), so recent witnesses are kept to answer those without re-executing.</summary>
+    private const int RecentWitnessCount = 8;
+
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<NewPayloadWithWitnessHandler>();
+    private readonly LruCache<Hash256, CachedWitness> _recentWitnesses = new(RecentWitnessCount, nameof(NewPayloadWithWitnessHandler));
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(ExecutionPayloadParams<ExecutionPayloadV3> request) =>
         HandleAsync(
@@ -108,7 +114,7 @@ public sealed class NewPayloadWithWitnessHandler(
         {
             // newPayload skips execution for a block it already knows, so nothing is captured, but a VALID
             // response must still carry the witness.
-            witness = capturedWitness ?? GenerateWitness(blockHash, methodName);
+            witness = GetOrGenerateWitness(blockHash, capturedWitness, methodName);
             if (witness is null)
             {
                 return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
@@ -121,6 +127,18 @@ public sealed class NewPayloadWithWitnessHandler(
 
         return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(
             NewPayloadWithWitnessV1Result.FromPayloadStatus(payloadStatus, witness));
+    }
+
+    /// <summary>Returns the witness of a VALID block: the captured one, a recently returned one, or one rebuilt by re-execution.</summary>
+    /// <returns><c>null</c> when the witness must be rebuilt but the block, its parent or the parent state is missing.</returns>
+    private Witness? GetOrGenerateWitness(Hash256 blockHash, Witness? capturedWitness, string methodName)
+    {
+        if (capturedWitness is null && _recentWitnesses.TryGet(blockHash, out CachedWitness? cached))
+            return cached.ToWitness();
+
+        Witness? witness = capturedWitness ?? GenerateWitness(blockHash, methodName);
+        if (witness is not null) _recentWitnesses.Set(blockHash, CachedWitness.From(witness));
+        return witness;
     }
 
     /// <summary>Rebuilds the witness of an already-processed block by re-executing it on its parent state.</summary>
@@ -142,5 +160,23 @@ public sealed class NewPayloadWithWitnessHandler(
 
         using IWitnessGeneratingBlockProcessingEnvScope scope = witnessEnvFactory.Value.CreateScope();
         return scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
+    }
+
+    /// <summary>A witness copy that owns no pooled buffers, so eviction needs no disposal and never races a response still serializing its own copy.</summary>
+    private sealed class CachedWitness(byte[][] codes, byte[][] state, byte[][] keys, byte[][] headers)
+    {
+        public static CachedWitness From(Witness witness) => new(
+            witness.Codes.AsSpan().ToArray(),
+            witness.State.AsSpan().ToArray(),
+            witness.Keys.AsSpan().ToArray(),
+            witness.Headers.AsSpan().ToArray());
+
+        public Witness ToWitness() => new()
+        {
+            Codes = new ArrayPoolList<byte[]>(codes),
+            State = new ArrayPoolList<byte[]>(state),
+            Keys = new ArrayPoolList<byte[]>(keys),
+            Headers = new ArrayPoolList<byte[]>(headers)
+        };
     }
 }
