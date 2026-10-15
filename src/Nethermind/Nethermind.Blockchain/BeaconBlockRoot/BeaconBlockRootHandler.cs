@@ -15,7 +15,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 {
     private const ulong LegacyGasLimit = 30_000_000UL;
 
-    private static readonly AccessList BeaconRootsOnlyAccessList = BuildAddressOnlyAccessList(Eip4788Constants.BeaconRootsAddress);
+    private static AccessList BeaconRootsOnlyAccessList => field ??= BuildAddressOnlyAccessList(Eip4788Constants.BeaconRootsAddress);
 
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
         => BeaconRootsAccessList(block, spec, includeStorageCells: true).accessList;
