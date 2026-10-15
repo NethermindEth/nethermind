@@ -21,7 +21,8 @@ public sealed partial class LeanObjectTransport
 
     /// <summary>The outcome of validating a completed object.</summary>
     /// <remarks><see cref="Refused"/> is a local inability to finish validation, including an unsupported proof or a closed
-    /// source. It does not establish invalidity, so it is neither penalized nor tombstoned.</remarks>
+    /// source. It does not establish invalidity, so it is neither penalized nor tombstoned.
+    /// <see cref="Unresolved"/> is soft-tombstoned only while the source's ETH recovery link remains bound.</remarks>
     private enum Verdict { Valid, Invalid, LocalFailure, Refused, Unresolved }
 
     /// <summary>Hands the owned reassembly buffer to the bounded validation queue without a completion copy.</summary>
