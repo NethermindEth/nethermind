@@ -861,6 +861,44 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Sparse_bodies_response_is_matched_by_content_and_not_reported()
+    {
+        // Check bodies against their headers for real, so a body paired with the wrong header is caught.
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateSuggestedBlock(default!, default!, out _).ReturnsForAnyArgs(true);
+        blockValidator
+            .ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(ci => BlockValidator.ValidateTxRootMatchesTxs(ci.ArgAt<BlockHeader>(0), ci.ArgAt<BlockBody>(1), out _));
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IBlockValidator>(blockValidator));
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
+
+        // The peer omits the first requested body, as the protocol allows for a body it does not have.
+        syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(async ci =>
+            {
+                OwnedBlockBodies full = await ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions);
+                return new OwnedBlockBodies(full.Bodies.Skip(1).ToArray());
+            });
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(8UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        Assert.That(await ctx.HandleOneRequest(peerInfo), Is.EqualTo(SyncResponseHandlingResult.OK));
+        ctx.PeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+
+        // The bodies that were sent were matched to their headers, so only the omitted body is asked for again.
+        using BlocksRequest? followUp = await ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+        Assert.That(followUp, Is.Not.Null);
+        Assert.That(followUp!.BodiesRequests.Select(static b => b.Number), Is.EqualTo(new[] { 1UL }));
+    }
+
+    [Test]
     public async Task Throws_on_receipt_task_exception_when_downloading_receipts()
     {
         await using IContainer node = CreateFastSyncNode(fastSyncLag: 1);

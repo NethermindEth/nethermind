@@ -117,6 +117,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             // Build-up rounds (!commit) span the whole block: later txs may redeploy this address,
             // so the order-preserving journaled clear is required; the O(1) mark needs a commit after.
+            // Restore runs also pass !commit, since the restore must be able to undo the destroy.
             if (commit) worldState.MarkStorageDestroyed(toBeDestroyed);
             else worldState.ClearStorage(toBeDestroyed);
             worldState.DeleteAccount(toBeDestroyed);
@@ -414,7 +415,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 SuppressLogs = !_tracerFlags.IsCollectingLogs && !_tracerFlags.IsTracingLogs,
                 MaterializeLogMemory = _tracerFlags.IsTracingInstructions || _tracerFlags.IsTracingMemory,
                 // EIP-8279: system calls have no floor to settle against, so they are not metered.
-                BalDataMeter = spec.IsEip8279Enabled && !tx.IsSystem()
+                BalDataMeter = SpecFlags.Eip8279(spec) && !tx.IsSystem()
                     ? (_balDataMeter ??= new()).Reset(TGasPolicy.GetRemainingGas(intrinsicGas.FloorGas), tx.GasLimit)
                     : null,
             });
@@ -513,7 +514,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     long destroyRefund = (long)spec.GasCosts.DestroyRefund;
                     foreach (Address toBeDestroyed in destroyList)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit, removeSelfdestructBurn, tracer, tracingLogs);
+                        // A restore run must be able to undo the destroy, so it takes the journaled clear.
+                        FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit && !restore, removeSelfdestructBurn, tracer, tracingLogs);
                         if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                     }
                 }
@@ -1564,8 +1566,10 @@ namespace Nethermind.Evm.TransactionProcessing
                     JournalSet<Address>? destroyList = substate.DestroyList;
                     if (!deferFinalization && destroyList?.Count > 0)
                     {
-                        // Same derivation as Execute: !commit = build-up round spanning the block.
-                        bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
+                        // Same derivation as Execute: !commit = build-up round spanning the block. A restore run
+                        // (eth_call, estimateGas) must be able to undo the destroy, so it takes the journaled clear too.
+                        bool commit = (opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled))
+                                      && !opts.HasFlag(ExecutionOptions.Restore);
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                         bool tracingRefunds = _tracerFlags.IsTracingRefunds;
@@ -1597,7 +1601,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, TGasPolicy.FromULong(ExecutedFloorGas(floorGasLong)), gas.Standard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, TGasPolicy.FromULong(ExecutedFloorGas(spec, floorGasLong)), gas.Standard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
@@ -1618,11 +1622,11 @@ namespace Nethermind.Evm.TransactionProcessing
             if (spec.IsEip8037Enabled)
             {
                 // Preserve the top-frame authorization state gas folded into the execution baseline.
-                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(floorGasLong), postIntrinsicStateReservoir);
+                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(spec, floorGasLong), postIntrinsicStateReservoir);
             }
             else
             {
-                gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(floorGasLong));
+                gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(spec, floorGasLong));
             }
             goto Complete;
         CompleteWithoutFrame:
@@ -1638,8 +1642,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
         /// <summary>The floor to settle an executed transaction against: the static floor extended by EIP-8279's metered bytes.</summary>
         /// <remarks>Metered bytes are never rewound, so the extension applies whether execution succeeded, reverted or halted.</remarks>
-        private ulong ExecutedFloorGas(ulong staticFloorGas) =>
-            VirtualMachine.TxExecutionContext.BalDataMeter?.FloorGas ?? staticFloorGas;
+        private ulong ExecutedFloorGas(IReleaseSpec spec, ulong staticFloorGas) =>
+            SpecFlags.Eip8279(spec) && VirtualMachine.TxExecutionContext.BalDataMeter is { } balDataMeter
+                ? balDataMeter.FloorGas
+                : staticFloorGas;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void RefundRevertedExecutionStateGas(IReleaseSpec spec, long stateGasFloor, ref TGasPolicy gas)
