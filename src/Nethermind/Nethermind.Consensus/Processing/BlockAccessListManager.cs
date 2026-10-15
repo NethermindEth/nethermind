@@ -252,6 +252,16 @@ public partial class BlockAccessListManager(
         }
     }
 
+    public int CountPendingTransactionItems()
+    {
+        // Block building runs sequentially, so the current slice is the single processor's.
+        if (!Enabled || ParallelExecutionEnabled || _currentGeneratedBlockAccessList is null) return 0;
+
+        CheckInitialized();
+        BlockAccessListAtIndex? slice = _txProcessorWithWorldStateManager.Get(null).WorldState.GetGeneratingBlockAccessList();
+        return slice is null ? 0 : _currentGeneratedBlockAccessList.CountNewItems(slice);
+    }
+
     public void Rollback()
     {
         if (Enabled)

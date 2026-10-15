@@ -40,6 +40,14 @@ public interface IBlockAccessListManager
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
     ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null);
     void NextTransaction();
+
+    /// <summary>
+    /// Number of items the current transaction's slice would add to <see cref="GeneratedBlockAccessList"/> once
+    /// <see cref="NextTransaction"/> merges it.
+    /// </summary>
+    /// <remarks>Zero when no list is being built. The cost is proportional to the slice, not to the block.</remarks>
+    int CountPendingTransactionItems() => 0;
+
     void Rollback();
     void ReturnTxProcessor(uint balIndex);
 

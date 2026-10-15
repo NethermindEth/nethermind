@@ -103,6 +103,21 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         block.DisposeAccountChanges();
     }
 
+    [Test]
+    public void List_over_the_item_limit_is_executed([Values] bool overLimit)
+    {
+        using TestEnvironment env = new(useFlatDb);
+        // The list holds one account, so a gas limit just under one item's cost allows none.
+        Block block = env.CreateBlock(gasLimit: Eip7928Constants.ItemCost - (overLimit ? 1ul : 0ul));
+        Assert.That(block.BlockAccessList is null, Is.EqualTo(overLimit), "queued processing leaves a list over the limit off");
+        // Attach it regardless, as a path that skipped the queued-processing check would.
+        block.BlockAccessList = env.StoredList(block);
+        env.Beacon.GetFinalizedHash().Returns(block.Hash);
+        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
+        env.Processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Amsterdam.Instance);
+        Assert.That(env.Recording.Calls, Is.EqualTo(overLimit ? 1 : 0));
+    }
+
     [TestCase(ProcessingOptions.ReadOnlyChain)]
     [TestCase(ProcessingOptions.ForceProcessing)]
     [TestCase(ProcessingOptions.NoValidation)]
@@ -306,7 +321,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             Tree.SuggestBlock(Genesis, BlockTreeSuggestOptions.None);
         }
 
-        public Block CreateBlock(bool matchingRoot = true, bool matchingList = true, bool insert = true, bool withTransaction = false, Block? parent = null, UInt256? balance = null, Hash256? receiptsRoot = null, Transaction? transaction = null)
+        public Block CreateBlock(bool matchingRoot = true, bool matchingList = true, bool insert = true, bool withTransaction = false, Block? parent = null, UInt256? balance = null, Hash256? receiptsRoot = null, ulong? gasLimit = null, Transaction? transaction = null)
         {
             parent ??= Genesis;
             UInt256 finalBalance = balance ?? 25;
@@ -326,6 +341,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             if (withTransaction) builder.WithTransactions(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject);
             if (transaction is not null) builder.WithTransactions(transaction);
             if (receiptsRoot is not null) builder.WithReceiptsRoot(receiptsRoot);
+            if (gasLimit is not null) builder.WithGasLimit(gasLimit.Value);
             Block block = builder.TestObject;
             block.Header.IsPostMerge = true;
             if (insert) Tree.Insert(block.Header);
@@ -336,6 +352,9 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
                 .RecoverDataForQueuedProcessing(block);
             return block;
         }
+
+        public ReadOnlyBlockAccessList StoredList(Block block) =>
+            _container.Resolve<IBlockAccessListStore>().Get(block.Number, block.Hash!)!;
 
         public void Dispose() => _container.Dispose();
     }
