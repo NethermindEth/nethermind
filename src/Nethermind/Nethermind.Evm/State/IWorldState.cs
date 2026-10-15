@@ -54,7 +54,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void ApplyBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
-    new ref readonly UInt256 GetBalance(Address address);
+    new UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
 

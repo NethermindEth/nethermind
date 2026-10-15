@@ -29,7 +29,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 {
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
-    private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
     // Single-slot cache for the last storage cell read: a repeated same-cell SLOAD skips the BAL
     // read-recording. Reset in Clear() and Restore() (a revert can un-record the cell's slot).
@@ -209,17 +208,12 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         Debug.Assert(actual == expected, "Storage must not change between reading the current value and recording the write.");
     }
 
-    public override ref readonly UInt256 GetBalance(Address address)
+    public override UInt256 GetBalance(Address address)
     {
-        if (_generatingBlockAccessList is null) return ref base.GetBalance(address);
+        if (_generatingBlockAccessList is null) return base.GetBalance(address);
 
         AccountChangesAtIndex? accountChanges = RecordReadAndGetChanges(address);
-        if (accountChanges?.BalanceChange is { } bc)
-        {
-            _scratchBalance = bc.Value;
-            return ref _scratchBalance;
-        }
-        return ref base.GetBalance(address);
+        return accountChanges?.BalanceChange is { } bc ? bc.Value : base.GetBalance(address);
     }
 
     public override ulong GetNonce(Address address)

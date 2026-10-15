@@ -758,6 +758,8 @@ namespace Nethermind.Blockchain.Test
             return true;
         }
 
+        public override UInt256 GetBalance(Address address) => ulong.MaxValue;
+
         private sealed class TestReadOnlyStateProvider : IReadOnlyStateProvider
         {
             public static TestReadOnlyStateProvider Instance { get; } = new();

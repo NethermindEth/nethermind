@@ -40,7 +40,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private Address? _lastPureAccountAddress;
     private Account? _lastPureAccount;
     private BalReadCoverage? _readCoverage;
-    private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
 
@@ -251,22 +250,19 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue) { }
 
-    public override ref readonly UInt256 GetBalance(Address address)
+    public override UInt256 GetBalance(Address address)
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
         if (accountChanges.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balanceChange))
         {
-            _scratchBalance = balanceChange.Value;
-            return ref _scratchBalance;
+            return balanceChange.Value;
         }
         if (_parentReader is WorldState worldState)
         {
-            Account? account = ReadParentAccount(worldState, address);
-            _scratchBalance = account?.Balance ?? UInt256.Zero;
-            return ref _scratchBalance;
+            return ReadParentAccount(worldState, address)?.Balance ?? UInt256.Zero;
         }
-        return ref _parentReader!.GetBalance(address);
+        return _parentReader!.GetBalance(address);
     }
 
     public override ulong GetNonce(Address address)

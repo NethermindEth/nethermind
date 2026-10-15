@@ -435,14 +435,14 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         return nonce;
     }
 
-    public override ref readonly UInt256 GetBalance(Address address)
+    public override UInt256 GetBalance(Address address)
     {
-        if (!_active) return ref base.GetBalance(address);
+        if (!_active) return base.GetBalance(address);
         ref AccountPrecondition account = ref Require(address, AccountFields.Balance);
         account.BalanceValueReads++;
-        ref readonly UInt256 balance = ref base.GetBalance(address);
+        UInt256 balance = base.GetBalance(address);
         if (!account.Modified && account.Balance != balance) _opaque = true;
-        return ref balance;
+        return balance;
     }
 
     public override ref readonly ValueHash256 GetCodeHash(Address address)

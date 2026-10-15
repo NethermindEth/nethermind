@@ -883,8 +883,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return true;
         }
 
-        Account? account = _stateProvider.GetThroughCache(address);
-        if (account?.HasStorage == true)
+        if (_stateProvider.GetThroughCache(address).HasStorage)
         {
             return true;
         }

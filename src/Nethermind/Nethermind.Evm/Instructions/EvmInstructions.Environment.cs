@@ -570,7 +570,7 @@ public static partial class EvmInstructions
         // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
         if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(address)) goto OutOfGas;
 
-        ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
+        UInt256 result = vm.WorldState.GetBalance(address);
         return PushBalance<TTracingInst, OnFlag>(ref stack, in result);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
@@ -601,7 +601,7 @@ public static partial class EvmInstructions
         if (TCheck.IsActive && !TGasPolicy.UpdateGas<SelfBalanceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         // Get balance for currently executing account.
-        ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
+        UInt256 result = vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
         return PushBalance<TTracingInst, TCheck>(ref stack, in result);
     }
 

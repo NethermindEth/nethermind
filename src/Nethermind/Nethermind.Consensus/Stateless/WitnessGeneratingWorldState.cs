@@ -219,10 +219,10 @@ public class WitnessGeneratingWorldState(
         return base.IsDeadAccount(address);
     }
 
-    public override ref readonly UInt256 GetBalance(Address address)
+    public override UInt256 GetBalance(Address address)
     {
         RecordEmptySlots(address);
-        return ref base.GetBalance(address);
+        return base.GetBalance(address);
     }
 
     public override ref readonly ValueHash256 GetCodeHash(Address address)

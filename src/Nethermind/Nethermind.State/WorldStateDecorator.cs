@@ -49,8 +49,8 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual ulong GetNonce(Address address)
         => State.GetNonce(address);
 
-    public virtual ref readonly UInt256 GetBalance(Address address)
-        => ref State.GetBalance(address);
+    public virtual UInt256 GetBalance(Address address)
+        => State.GetBalance(address);
 
     public virtual ref readonly ValueHash256 GetCodeHash(Address address)
         => ref State.GetCodeHash(address);

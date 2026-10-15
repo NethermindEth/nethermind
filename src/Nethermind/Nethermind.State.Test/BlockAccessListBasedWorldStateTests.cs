@@ -731,7 +731,7 @@ public class BlockAccessListBasedWorldStateTests
         private readonly ulong _nonce = kind == "nonce" ? 1UL : 0UL;
         private readonly ValueHash256 _codeHash = kind == "code" ? ValueKeccak.Compute([0x00]) : Keccak.OfAnEmptyString.ValueHash256;
         public bool ReportMissing { get; set; }
-        public override ref readonly UInt256 GetBalance(Address address) => ref _balance;
+        public override UInt256 GetBalance(Address address) => _balance;
         public override ulong GetNonce(Address address) => _nonce;
         public override ref readonly ValueHash256 GetCodeHash(Address address) => ref _codeHash;
         public override bool AccountExists(Address address) => !ReportMissing && base.AccountExists(address);

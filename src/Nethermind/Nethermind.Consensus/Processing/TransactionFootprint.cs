@@ -146,7 +146,7 @@ internal struct AccountPrecondition
         if ((fields & AccountFields.Nonce) != 0 && state.GetNonce(address) != Nonce) return false;
         if ((fields & (AccountFields.Balance | AccountFields.MinimumBalance)) != 0)
         {
-            ref readonly UInt256 balance = ref state.GetBalance(address);
+            UInt256 balance = state.GetBalance(address);
             if (((fields & AccountFields.Balance) != 0 && balance != Balance) || balance < MinimumBalance) return false;
         }
 

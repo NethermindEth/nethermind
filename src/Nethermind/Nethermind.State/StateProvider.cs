@@ -27,8 +27,6 @@ namespace Nethermind.State;
 
 internal partial class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>
 {
-    private static readonly UInt256 _zero = UInt256.Zero;
-
     private readonly LocalMetrics _metrics = metrics;
 
 
@@ -79,7 +77,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // cached address matches, so a hit needs no staleness probe. Invalidated
     // when a restore/commit/reset recycles the change log (epoch).
     private Address? _cachedAddress;
-    private Account? _cachedAccount;
+    // Position in _changes of the cached account's head, or -1 for an account that does not exist.
+    private int _cachedIndex;
     // Word-sized: every account read compares them, and the zkVM guest pays several times an aligned load for a narrow one.
     private long _cachedEpoch = -1;
     private long _epoch;
@@ -114,33 +113,21 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         _codeDb = scope?.CodeDb;
     }
 
-    public bool IsContract(Address address)
-    {
-        Account? account = GetThroughCache(address);
-        return account is not null && account.IsContract;
-    }
+    public bool IsContract(Address address) => GetThroughCache(address).IsContract;
 
-    public bool AccountExists(Address address) => GetThroughCache(address) is not null;
+    public bool AccountExists(Address address) => GetThroughCache(address).Exists;
 
-    public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
+    public Account GetAccount(Address address) => GetThroughCache(address).ToAccount() ?? Account.TotallyEmpty;
 
     public bool IsDeadAccount(Address address)
     {
-        Account? account = GetThroughCache(address);
-        return account?.IsEmpty ?? true;
+        ref readonly AccountValue account = ref GetThroughCache(address);
+        return !account.Exists || account.IsEmpty;
     }
 
-    public ulong GetNonce(Address address)
-    {
-        Account? account = GetThroughCache(address);
-        return account?.Nonce ?? 0;
-    }
+    public ulong GetNonce(Address address) => GetThroughCache(address).Nonce;
 
-    public ref readonly UInt256 GetBalance(Address address)
-    {
-        Account? account = GetThroughCache(address);
-        return ref account is not null ? ref account.Balance : ref _zero;
-    }
+    public UInt256 GetBalance(Address address) => GetThroughCache(address).Balance;
 
     /// <summary>Returns the balance <paramref name="address"/> had at the start of the current transaction.</summary>
     /// <remarks>
@@ -156,13 +143,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             while (index > transactionStart)
             {
                 index = changes[index].PrevIdx;
-                if (index == -1) return GetState(address)?.Balance ?? UInt256.Zero;
+                if (index == -1) return GetState(address).Balance;
             }
 
-            return changes[index].Account?.Balance ?? UInt256.Zero;
+            return changes[index].Account.Balance;
         }
 
-        return GetState(address)?.Balance ?? UInt256.Zero;
+        return GetState(address).Balance;
     }
 
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
@@ -171,7 +158,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         // Read the account first: for a cold one this appends the JustCache change, so the anchor
         // taken below is the position the code-hash update occupies rather than one before it.
-        Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
+        AccountValue account = GetAccountForCodeUpdate(address);
 
         // Don't reinsert if already inserted. This can be the case when the same
         // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
@@ -214,7 +201,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// </remarks>
     public void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
     {
-        Account account = GetThroughCache(address) ?? ThrowIfNull(address);
+        AccountValue account = GetAccountForCodeUpdate(address);
         if (codeHash != Keccak.OfAnEmptyString.ValueHash256)
         {
             if (_transientCode is null)
@@ -233,55 +220,45 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// <remarks>Commit and Reset also drop it, for a transaction that ended without finalizing its accounts.</remarks>
     public void ResetTransientCode() => _transientCode?.Clear();
 
-    private void SetCodeHash(Address address, Account account, in ValueHash256 codeHash, IReleaseSpec spec, bool isGenesis)
+    private void SetCodeHash(Address address, in AccountValue account, in ValueHash256 codeHash, IReleaseSpec spec, bool isGenesis)
     {
         if (account.CodeHash.ValueHash256 != codeHash)
         {
             _needsStateRootUpdate = true;
-            if (_logger.IsTrace) TraceUpdate(address, codeHash, account);
-            Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
+            if (_logger.IsTrace) TraceUpdate(address, codeHash, account.CodeHash);
 
-            PushUpdate(address, changedAccount);
+            PushUpdate(address, account.WithCodeHash((Hash256)codeHash));
         }
         else if (spec.IsEip158Enabled && !isGenesis)
         {
             if (_logger.IsTrace) Trace(address);
             if (account.IsEmpty)
             {
-                PushTouch(address, account, spec, account.Balance.IsZero);
+                PushTouch(address, in account, spec, account.Balance.IsZero);
             }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceUpdate(Address address, in ValueHash256 codeHash, Account account)
-            => _logger.Trace($"Update {address} C {account.CodeHash} -> {codeHash}");
+        void TraceUpdate(Address address, in ValueHash256 codeHash, Hash256 oldCodeHash)
+            => _logger.Trace($"Update {address} C {oldCodeHash} -> {codeHash}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace(Address address) => _logger.Trace($"Touch {address} (code hash)");
     }
 
-    [DoesNotReturn, StackTraceHidden]
-    private static Account ThrowIfNull(Address address)
-        => throw new InvalidOperationException($"Account {address} is null when updating code hash");
+    private AccountValue GetAccountForCodeUpdate(Address address)
+    {
+        ref readonly AccountValue account = ref GetThroughCache(address);
+        return account.Exists ? account : ThrowIfNull(address);
+
+        [DoesNotReturn, StackTraceHidden]
+        static AccountValue ThrowIfNull(Address address)
+            => throw new InvalidOperationException($"Account {address} is null when updating code hash");
+    }
 
     private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, out UInt256 oldBalance)
     {
         _needsStateRootUpdate = true;
-
-        Account GetThroughCacheCheckExists()
-        {
-            Account? result = GetThroughCache(address);
-            if (result is null)
-            {
-                ThrowNonExistingAccount();
-            }
-
-            return result;
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowNonExistingAccount()
-                => throw new InvalidOperationException("Updating balance of a non-existing account");
-        }
 
         bool isZero = balanceChange.IsZero;
         if (isZero)
@@ -291,12 +268,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             // hitting non-existing account when subtracting Zero-value from the sender
             if (releaseSpec.IsEip158Enabled && !isSubtracting)
             {
-                Account touched = GetThroughCacheCheckExists();
+                ref readonly AccountValue touched = ref GetThroughCacheCheckExists(address);
 
                 if (_logger.IsTrace) TraceTouch(address);
                 if (touched.IsEmpty)
                 {
-                    PushTouch(address, touched, releaseSpec, true);
+                    PushTouch(address, in touched, releaseSpec, true);
                 }
             }
 
@@ -304,7 +281,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             return;
         }
 
-        Account account = GetThroughCacheCheckExists();
+        ref readonly AccountValue account = ref GetThroughCacheCheckExists(address);
 
         if (isSubtracting && account.Balance < balanceChange)
         {
@@ -314,17 +291,27 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         oldBalance = account.Balance;
         UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
 
-        Account changedAccount = account.WithChangedBalance(newBalance);
-        if (_logger.IsTrace) TraceUpdate(address, in balanceChange, isSubtracting, account, in newBalance);
+        if (_logger.IsTrace) TraceUpdate(address, in balanceChange, isSubtracting, in oldBalance, in newBalance);
 
-        PushUpdate(address, changedAccount);
+        PushUpdate(address, account.WithBalance(newBalance));
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceTouch(Address address) => _logger.Trace($"Touch {address} (balance)");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceUpdate(Address address, in UInt256 balanceChange, bool isSubtracting, Account account, in UInt256 newBalance)
-            => _logger.Trace($"Update {address} B {account.Balance.ToHexString(skipLeadingZeros: true)} -> {newBalance.ToHexString(skipLeadingZeros: true)} ({(isSubtracting ? "-" : "+")}{balanceChange})");
+        void TraceUpdate(Address address, in UInt256 balanceChange, bool isSubtracting, in UInt256 oldBalance, in UInt256 newBalance)
+            => _logger.Trace($"Update {address} B {oldBalance.ToHexString(skipLeadingZeros: true)} -> {newBalance.ToHexString(skipLeadingZeros: true)} ({(isSubtracting ? "-" : "+")}{balanceChange})");
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowNonExistingAccount()
+            => throw new InvalidOperationException("Updating balance of a non-existing account");
+
+        ref readonly AccountValue GetThroughCacheCheckExists(Address address)
+        {
+            ref readonly AccountValue result = ref GetThroughCache(address);
+            if (!result.Exists) ThrowNonExistingAccount();
+            return ref result;
+        }
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInsufficientBalanceException(Address address)
@@ -348,45 +335,44 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     public void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
     {
         _needsStateRootUpdate = true;
-        Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
+        ref readonly AccountValue account = ref GetThroughCache(address);
+        if (!account.Exists) ThrowNullAccount(address);
         oldNonce = account.Nonce;
-        Account changedAccount = account.WithChangedNonce(oldNonce + delta);
-        if (_logger.IsTrace) Trace(address, account, changedAccount);
+        ulong newNonce = oldNonce + delta;
+        if (_logger.IsTrace) Trace(address, oldNonce, newNonce);
 
-        PushUpdate(address, changedAccount);
+        PushUpdate(address, account.WithNonce(newNonce));
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(Address address, Account account, Account changedAccount)
-            => _logger.Trace($"Update {address} N {account.Nonce.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
+        void Trace(Address address, ulong oldNonce, ulong newNonce)
+            => _logger.Trace($"Update {address} N {oldNonce.ToHexString(skipLeadingZeros: true)} -> {newNonce.ToHexString(skipLeadingZeros: true)}");
 
         [DoesNotReturn, StackTraceHidden]
-        static Account ThrowNullAccount(Address address)
+        static void ThrowNullAccount(Address address)
             => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
     }
 
     public void DecrementNonce(Address address, ulong delta)
     {
         _needsStateRootUpdate = true;
-        Account? account = GetThroughCache(address) ?? ThrowNullAccount(address);
-        Account changedAccount = account.WithChangedNonce(account.Nonce - delta);
-        if (_logger.IsTrace) Trace(address, account, changedAccount);
+        ref readonly AccountValue account = ref GetThroughCache(address);
+        if (!account.Exists) ThrowNullAccount(address);
+        ulong newNonce = account.Nonce - delta;
+        if (_logger.IsTrace) Trace(address, account.Nonce, newNonce);
 
-        PushUpdate(address, changedAccount);
+        PushUpdate(address, account.WithNonce(newNonce));
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(Address address, Account account, Account changedAccount)
-            => _logger.Trace($"  Update {address} N {account.Nonce.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
+        void Trace(Address address, ulong oldNonce, ulong newNonce)
+            => _logger.Trace($"  Update {address} N {oldNonce.ToHexString(skipLeadingZeros: true)} -> {newNonce.ToHexString(skipLeadingZeros: true)}");
 
         [DoesNotReturn, StackTraceHidden]
-        static Account ThrowNullAccount(Address address)
+        static void ThrowNullAccount(Address address)
             => throw new InvalidOperationException($"Account {address} is null when decrementing nonce");
     }
 
-    public ref readonly ValueHash256 GetCodeHash(Address address)
-    {
-        Account? account = GetThroughCache(address);
-        return ref account is not null ? ref account.CodeHash.ValueHash256 : ref Keccak.OfAnEmptyString.ValueHash256;
-    }
+    // Points into the immutable hash object, not the journal, so a later change cannot overwrite it.
+    public ref readonly ValueHash256 GetCodeHash(Address address) => ref GetThroughCache(address).CodeHash.ValueHash256;
 
     public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         => GetCodeCore(in codeHash);
@@ -415,8 +401,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     public ReadOnlyMemory<byte> GetCode(Address address)
     {
-        Account? account = GetThroughCache(address);
-        if (account is null)
+        ref readonly AccountValue account = ref GetThroughCache(address);
+        if (!account.Exists)
         {
             return Array.Empty<byte>();
         }
@@ -570,8 +556,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         _needsStateRootUpdate = true;
         if (_logger.IsTrace) Trace(address, balance, nonce);
 
-        Account account = (balance.IsZero && nonce == 0) ? Account.TotallyEmpty : new Account(nonce, balance);
-        PushNew(address, account);
+        PushNew(address, AccountValue.New(nonce, balance));
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace(Address address, in UInt256 balance, in ulong nonce)
@@ -592,7 +577,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 _needsStateRootUpdate = true;
                 if (_logger.IsTrace) Trace(address);
 
-                Push(address, Account.TotallyEmpty, ChangeType.RecreateEmpty);
+                Push(address, AccountValue.TotallyEmpty, ChangeType.RecreateEmpty);
             }
         }
 
@@ -655,7 +640,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         if (stateTracer.IsTracingState)
         {
-            Dictionary<AddressAsKey, ChangeTrace> trace = [];
+            Dictionary<AddressAsKey, AccountTrace> trace = [];
             CommitChanges<OnFlag>(changes, removeEmptyAccounts, isTracing, trace);
             // Reporting code changes reads both the code DB and the lookup recycled by the flush worker.
             AwaitCodeFlush(codeFlushTask);
@@ -748,7 +733,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         ReadOnlySpan<Change> changes,
         bool removeEmptyAccounts,
         bool isTracing,
-        Dictionary<AddressAsKey, ChangeTrace>? trace)
+        Dictionary<AddressAsKey, AccountTrace>? trace)
         where TStateTracing : struct, IFlag
     {
         Debug.Assert(TStateTracing.IsActive == (trace is not null));
@@ -773,7 +758,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             {
                 if (TStateTracing.IsActive && change.ChangeType == ChangeType.JustCache)
                 {
-                    RequireTrace(trace).UpdateTrace(change.Address, change.Account);
+                    RequireTrace(trace).UpdateTrace(change.Address, in change.Account);
                 }
 
                 continue;
@@ -802,40 +787,40 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 case ChangeType.Touch:
                 case ChangeType.Update:
                     {
-                        Account account = change.RequiredAccount;
+                        AccountValue account = change.RequiredAccount;
                         if (removeEmptyAccounts && account.IsEmpty)
                         {
                             if (isTracing) TraceRemoveEmpty(change);
-                            SetState(change.Address, null);
-                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, null);
+                            SetState(change.Address, AccountValue.None);
+                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, AccountValue.None);
                         }
                         else
                         {
                             if (isTracing) TraceUpdate(change);
-                            SetState(change.Address, account);
-                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, account);
+                            SetState(change.Address, in account);
+                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, in account);
                         }
 
                         break;
                     }
                 case ChangeType.New:
                     {
-                        Account account = change.RequiredAccount;
+                        AccountValue account = change.RequiredAccount;
                         if (!removeEmptyAccounts || !account.IsEmpty)
                         {
                             if (isTracing) TraceCreate(change);
-                            SetState(change.Address, account);
-                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, account);
+                            SetState(change.Address, in account);
+                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, in account);
                         }
 
                         break;
                     }
                 case ChangeType.RecreateEmpty:
                     {
-                        Account account = change.RequiredAccount;
+                        AccountValue account = change.RequiredAccount;
                         if (isTracing) TraceCreate(change);
-                        SetState(change.Address, account);
-                        if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, account);
+                        SetState(change.Address, in account);
+                        if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, in account);
 
                         break;
                     }
@@ -850,8 +835,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
                         if (!wasItCreatedNow)
                         {
-                            SetState(change.Address, null);
-                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, null);
+                            SetState(change.Address, AccountValue.None);
+                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, AccountValue.None);
                         }
 
                         break;
@@ -864,7 +849,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Dictionary<AddressAsKey, ChangeTrace> RequireTrace(Dictionary<AddressAsKey, ChangeTrace>? trace) =>
+    private static Dictionary<AddressAsKey, AccountTrace> RequireTrace(Dictionary<AddressAsKey, AccountTrace>? trace) =>
         trace ?? throw new InvalidOperationException("State tracing is active without a trace accumulator.");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -896,8 +881,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// Whether <paramref name="address"/> has an account at the end of the block, or <see langword="null"/> when the block
     /// never loaded the account through this provider.
     /// </summary>
-    internal bool? HasAccountAtBlockEnd(Address address) =>
-        _blockChanges.TryGetValue(address, out ChangeTrace change) ? change.After is not null : null;
+    internal bool? HasAccountAtBlockEnd(Address address)
+    {
+        ref ChangeTrace change = ref _blockChanges.GetValueRefOrNullRef(address);
+        return Unsafe.IsNullRef(ref change) ? null : change.After.Exists;
+    }
 
     /// <summary>
     /// Copies the final value of every account the block touched, reads included, out of the block's change record.
@@ -909,9 +897,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     internal ArrayPoolList<KeyValuePair<AddressAsKey, Account?>> CopyAccountChanges()
     {
         ArrayPoolList<KeyValuePair<AddressAsKey, Account?>> accounts = new(_blockChanges.Count);
-        foreach (KeyValuePair<AddressAsKey, ChangeTrace> change in _blockChanges)
+        foreach (AddressAsKey key in _blockChanges.Keys)
         {
-            accounts.Add(new KeyValuePair<AddressAsKey, Account?>(change.Key, change.Value.After));
+            accounts.Add(new KeyValuePair<AddressAsKey, Account?>(key, _blockChanges.GetValueRefOrNullRef(key).GetAfterAccount()));
         }
 
         return accounts;
@@ -944,10 +932,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         foreach (AddressAsKey key in _blockChanges.Keys)
         {
             ref ChangeTrace change = ref _blockChanges.GetValueRefOrNullRef(key);
-            if (change.Before != change.After)
+            if (!change.After.Matches(change.Before))
             {
-                change.Before = change.After;
-                writeBatch.Set(key, change.After);
+                Account? after = change.GetAfterAccount();
+                change.Before = after;
+                writeBatch.Set(key, after);
                 writes++;
             }
             else
@@ -963,13 +952,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     }
 
     public bool WarmUp(Address address)
-        => GetState(address) is not null;
+        => GetState(address).Exists;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ref ChangeTrace GetOrAddBlockChange(AddressAsKey key, out bool exists)
         => ref _blockChanges.GetValueRefOrAddDefault(key, out exists);
 
-    internal Account? GetPureRead(Address address) => GetState(address);
+    internal Account? GetPureRead(Address address) => GetStateEntry(address).GetAfterAccount();
 
     /// <summary>Layers a transaction prefix over cached block-start account changes.</summary>
     internal void ApplyAccountOverlay(IStateReadOverlay overlay)
@@ -981,33 +970,46 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         foreach (AddressAsKey key in _blockChanges.Keys)
         {
             ref ChangeTrace change = ref _blockChanges.GetValueRefOrNullRef(key);
-            if (overlay.TryGetAccount(key.Value, change.After, out Account? account)) change.After = account;
+            if (overlay.TryGetAccount(key.Value, change.GetAfterAccount(), out Account? account)) change.SetAfter(account);
         }
     }
 
-    private Account? GetState(Address address)
+    private ref readonly AccountValue GetState(Address address) => ref GetStateEntry(address).After;
+
+    private ref ChangeTrace GetStateEntry(Address address)
     {
         AddressAsKey addressAsKey = address;
         ref ChangeTrace accountChanges = ref GetOrAddBlockChange(addressAsKey, out bool exists);
         if (!exists)
         {
             _metrics.IncrementStateTreeReads();
-            Account? account = Tree.Get(address);
-
-            accountChanges = new(account, account);
+            accountChanges = new(Tree.Get(address));
         }
         else
         {
             _metrics.IncrementStateTreeCacheHits();
         }
-        return accountChanges.After;
+        return ref accountChanges;
     }
 
+    /// <summary>Records a value the backend reports for <paramref name="address"/>, keeping its object.</summary>
     internal void SetState(Address address, Account? account)
+    {
+        ref ChangeTrace accountChanges = ref RecordWrite(address, removal: account is null);
+        accountChanges.SetAfter(account);
+    }
+
+    internal void SetState(Address address, in AccountValue account)
+    {
+        ref ChangeTrace accountChanges = ref RecordWrite(address, removal: !account.Exists);
+        accountChanges.SetAfter(in account);
+    }
+
+    private ref ChangeTrace RecordWrite(Address address, bool removal)
     {
         _metrics.IncrementAccountWrites();
         ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out bool exists);
-        if (account is null)
+        if (removal)
         {
             _metrics.IncrementAccountDeleted();
             // A block that removes an account it never read has nothing to compare against, so the removal would go
@@ -1016,78 +1018,72 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             // and the read counters must keep saying so.
             if (!exists)
             {
-                Account? removed = Tree.Get(address);
-                accountChanges = new(removed, removed);
+                accountChanges = new(Tree.Get(address));
             }
             // A removal takes the account's storage with it whichever path removed it; caches of that storage learn of it here.
-            if (accountChanges.After is { } previous && (previous.HasStorage || !Tree.StorageRootsAreAuthoritative))
+            if (accountChanges.After.Exists && (accountChanges.After.HasStorage || !Tree.StorageRootsAreAuthoritative))
                 _removedWithStorage.Add(address);
         }
 
-        accountChanges.After = account;
         _needsStateRootUpdate = true;
+        return ref accountChanges;
     }
 
-    private Account? GetAndAddToCache(Address address)
+    /// <returns>The position of the account's new change, or -1 when it does not exist.</returns>
+    private int GetAndAddToCache(Address address)
     {
         // Rarely non-empty, and probing an empty set still hashes the key.
-        if (_nullAccountReads.Count != 0 && _nullAccountReads.Contains(address)) return null;
+        if (_nullAccountReads.Count != 0 && _nullAccountReads.Contains(address)) return -1;
 
-        Account? account = GetState(address);
-        if (account is not null)
+        ref readonly AccountValue account = ref GetState(address);
+        if (account.Exists)
         {
-            PushJustCache(address, account);
-        }
-        else
-        {
-            // just for tracing - potential perf hit, maybe a better solution?
-            _nullAccountReads.Add(address);
+            PushJustCache(address, in account);
+            return _changes.Count - 1;
         }
 
-        return account;
+        // just for tracing - potential perf hit, maybe a better solution?
+        _nullAccountReads.Add(address);
+        return -1;
     }
 
-    internal Account? GetThroughCache(Address address)
+    /// <summary>The account's current value, <see cref="AccountValue.None"/> when it does not exist.</summary>
+    /// <remarks>The reference points into the journal: read it before the next change, which can overwrite it.</remarks>
+    internal ref readonly AccountValue GetThroughCache(Address address)
     {
-        if (IsFrontCacheHit(address))
+        if (!IsFrontCacheHit(address))
         {
-            return _cachedAccount;
-        }
-        if (_intraTxCache.TryGetValue(address, out int head))
-        {
+            _cachedIndex = _intraTxCache.TryGetValue(address, out int head) ? head : GetAndAddToCache(address);
             _cachedAddress = address;
             _cachedEpoch = _epoch;
-            return _cachedAccount = _changes[head].Account;
         }
-        Account? account = GetAndAddToCache(address);
-        _cachedAddress = address;
-        _cachedEpoch = _epoch;
-        return _cachedAccount = account;
+
+        return ref _cachedIndex < 0 ? ref AccountValue.None : ref CollectionsMarshal.AsSpan(_changes)[_cachedIndex].Account;
     }
 
-    private void PushJustCache(Address address, Account account)
-        => Push(address, account, ChangeType.JustCache);
+    private void PushJustCache(Address address, in AccountValue account)
+        => Push(address, in account, ChangeType.JustCache);
 
-    private void PushUpdate(Address address, Account account)
-        => Push(address, account, ChangeType.Update);
+    private void PushUpdate(Address address, in AccountValue account)
+        => Push(address, in account, ChangeType.Update);
 
-    private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
+    private void PushTouch(Address address, in AccountValue account, IReleaseSpec releaseSpec, bool isZero)
     {
         if (isZero && address == releaseSpec.Eip158IgnoredAccount) return;
-        Push(address, account, ChangeType.Touch);
+        Push(address, in account, ChangeType.Touch);
     }
 
     private void PushDelete(Address address)
-        => Push(address, null, ChangeType.Delete);
+        => Push(address, AccountValue.None, ChangeType.Delete);
 
-    private void PushNew(Address address, Account account)
-        => Push(address, account, ChangeType.New);
+    private void PushNew(Address address, in AccountValue account)
+        => Push(address, in account, ChangeType.New);
 
-    private void Push(Address address, Account? touchedAccount, ChangeType changeType)
+    private void Push(Address address, in AccountValue touchedAccount, ChangeType changeType)
     {
         ref int head = ref _intraTxCache.GetValueRefOrAddDefault(address, out bool exists);
-        if (changeType == ChangeType.Touch
-            && exists && _changes[head].ChangeType == ChangeType.Touch)
+        ChangeType headType = exists ? CollectionsMarshal.AsSpan(_changes)[head].ChangeType : ChangeType.Null;
+        if (changeType == ChangeType.Touch && headType == ChangeType.Touch)
         {
             return;
         }
@@ -1095,17 +1091,17 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         // Only a change rewrites the account's leaf at commit, so only a change is worth warming its trie path
         // for, and only the transaction's first change of an account needs to say so. No-op for backends
         // without trie warm-up.
-        if (changeType != ChangeType.JustCache && (!exists || _changes[head].ChangeType == ChangeType.JustCache))
+        if (changeType != ChangeType.JustCache && (!exists || headType == ChangeType.JustCache))
         {
             _tree?.HintWarmAccount(address);
         }
 
         int prevIdx = exists ? head : -1;
         head = _changes.Count;
-        _changes.Add(new Change(address, touchedAccount, changeType, prevIdx));
+        _changes.Add(new Change(address, in touchedAccount, changeType, prevIdx));
         // Keep the front cache coherent: a push almost always follows a read of the same account.
         if (IsFrontCacheHit(address))
-            _cachedAccount = touchedAccount;
+            _cachedIndex = head;
     }
 
     public ArrayPoolList<AddressAsKey>? ChangedAddresses()
@@ -1140,7 +1136,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
         {
             if (accountChanges.HasStateChanges && _blockChanges.Remove(accountChanges.Address, out ChangeTrace change))
-                scope.HintGet(accountChanges.Address, change.After);
+                scope.HintGet(accountChanges.Address, change.GetAfterAccount());
         }
     }
 
@@ -1186,55 +1182,132 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     internal void SetNonce(Address address, in ulong nonce)
     {
         _needsStateRootUpdate = true;
-        Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
-        Account changedAccount = account.WithChangedNonce(nonce);
-        if (_logger.IsTrace) Trace(address, account, changedAccount);
+        ref readonly AccountValue account = ref GetThroughCache(address);
+        if (!account.Exists) ThrowNullAccount(address);
+        if (_logger.IsTrace) Trace(address, account.Nonce, nonce);
 
-        PushUpdate(address, changedAccount);
+        PushUpdate(address, account.WithNonce(nonce));
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(Address address, Account account, Account changedAccount)
-            => _logger.Trace($"Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+        void Trace(Address address, ulong oldNonce, ulong newNonce)
+            => _logger.Trace($"Update {address} N {oldNonce} -> {newNonce}");
 
         [DoesNotReturn, StackTraceHidden]
-        static Account ThrowNullAccount(Address address)
+        static void ThrowNullAccount(Address address)
             => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
     }
 
-    private readonly struct Change(Address address, Account? account, ChangeType type, int prevIdx)
+    private readonly struct Change(Address address, in AccountValue account, ChangeType type, int prevIdx)
     {
         public readonly Address Address = address;
-        public readonly Account? Account = account;
+        public readonly AccountValue Account = account;
         public readonly ChangeType ChangeType = type;
 
         /// <summary>Index into <c>_changes</c> of the previous change for the same address, or -1 if none.</summary>
         public readonly int PrevIdx = prevIdx;
 
         public bool IsNull => ChangeType == ChangeType.Null;
-        public Account RequiredAccount => Account ?? throw new InvalidOperationException($"{ChangeType} changes require an account value.");
+        public AccountValue RequiredAccount => Account.Exists ? Account : throw new InvalidOperationException($"{ChangeType} changes require an account value.");
     }
 
-    internal struct ChangeTrace(Account? before, Account? after)
+    /// <summary>An account's fields held inline, so a change to them allocates nothing; <c>default</c> is no account.</summary>
+    /// <remarks>
+    /// The journal and the block's change record hold these instead of <see cref="Nethermind.Core.Account"/> objects, which
+    /// are immutable and so cost one allocation per balance or nonce change. An object is built only where one leaves the
+    /// provider, once per changed account per block.
+    /// </remarks>
+    internal readonly struct AccountValue
     {
-        public ChangeTrace(Account? after) : this(null, after)
+        public static readonly AccountValue None = default;
+        public static readonly AccountValue TotallyEmpty = new(0, UInt256.Zero, null, null);
+
+        public readonly UInt256 Balance;
+        public readonly ulong Nonce;
+        private readonly Hash256? _codeHash;
+        private readonly Hash256? _storageRoot;
+        public readonly bool Exists;
+
+        private AccountValue(ulong nonce, in UInt256 balance, Hash256? codeHash, Hash256? storageRoot)
         {
+            Balance = balance;
+            Nonce = nonce;
+            _codeHash = codeHash;
+            _storageRoot = storageRoot;
+            Exists = true;
         }
 
-        public Account? Before { get; set; } = before;
-        public Account? After { get; set; } = after;
+        public static AccountValue From(Account? account) =>
+            account is null ? None : new(account.Nonce, account.Balance, account.HasCode ? account.CodeHash : null, account.HasStorage ? account.StorageRoot : null);
+
+        public static AccountValue New(ulong nonce, in UInt256 balance) => new(nonce, balance, null, null);
+
+        public Hash256 CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
+        public Hash256 StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
+        public bool HasStorage => _storageRoot is not null;
+        public bool IsContract => _codeHash is not null;
+        public bool IsEmpty => _codeHash is null && Balance.IsZero && Nonce == 0;
+
+        public AccountValue WithBalance(in UInt256 balance) => new(Nonce, balance, _codeHash, _storageRoot);
+        public AccountValue WithNonce(ulong nonce) => new(nonce, Balance, _codeHash, _storageRoot);
+        public AccountValue WithCodeHash(Hash256 codeHash) => new(Nonce, Balance, codeHash == Keccak.OfAnEmptyString ? null : codeHash, _storageRoot);
+
+        public Account? ToAccount() =>
+            !Exists ? null
+            : _codeHash is null && _storageRoot is null && Nonce == 0 && Balance.IsZero ? Core.Account.TotallyEmpty
+            : new Account(Nonce, Balance, StorageRoot, CodeHash);
+
+        public AccountStruct ToStruct(in ValueHash256 storageRoot) => new(Nonce, Balance, storageRoot, CodeHash.ValueHash256);
+
+        /// <summary>Whether <paramref name="account"/> holds the same values, absence included.</summary>
+        public bool Matches(Account? account) =>
+            account is null ? !Exists
+            : Exists && Nonce == account.Nonce && Balance == account.Balance
+              && CodeHash == account.CodeHash && StorageRoot == account.StorageRoot;
+
+        public bool Matches(in AccountValue other) =>
+            Exists == other.Exists && Nonce == other.Nonce && Balance == other.Balance
+            && CodeHash == other.CodeHash && StorageRoot == other.StorageRoot;
     }
+
+    /// <summary>An account as the tree holds it and as the block has left it since the scope's last flush.</summary>
+    /// <remarks>Mutable: reach it by reference, or the object <see cref="GetAfterAccount"/> builds is built again.</remarks>
+    internal struct ChangeTrace(Account? loaded)
+    {
+        public Account? Before = loaded;
+        /// <summary>The block's value; assigned only through <see cref="SetAfter(in AccountValue)"/>, which keeps the object in step.</summary>
+        public AccountValue After = AccountValue.From(loaded);
+        // After as an object: the one read from the tree until a change, built on first need after one.
+        private Account? _afterAccount = loaded;
+
+        public Account? GetAfterAccount() => _afterAccount ??= After.ToAccount();
+
+        public void SetAfter(in AccountValue after)
+        {
+            After = after;
+            _afterAccount = null;
+        }
+
+        public void SetAfter(Account? after)
+        {
+            After = AccountValue.From(after);
+            _afterAccount = after;
+        }
+    }
+
+    /// <summary>An account's values before and after a commit, as a state trace reports them.</summary>
+    internal readonly record struct AccountTrace(AccountValue Before, AccountValue After);
 }
 
 internal static class Extensions
 {
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace.Add(address, new ChangeTrace(change));
+    public static void AddToTrace(this Dictionary<AddressAsKey, AccountTrace> trace, Address address, in AccountValue change) => trace.Add(address, new AccountTrace(AccountValue.None, change));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace[address] = new ChangeTrace(change, trace[address].After);
+    public static void UpdateTrace(this Dictionary<AddressAsKey, AccountTrace> trace, Address address, in AccountValue change) => trace[address] = new AccountTrace(change, trace[address].After);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, IWorldStateTracer stateTracer, OptimizedHashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
+    public static void ReportStateTrace(this Dictionary<AddressAsKey, AccountTrace> trace, IWorldStateTracer stateTracer, OptimizedHashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
     {
         foreach (Address nullRead in nullAccountReads)
         {
@@ -1244,25 +1317,22 @@ internal static class Extensions
         ReportChanges(trace, stateTracer, stateProvider);
     }
 
-    private static void ReportChanges(Dictionary<AddressAsKey, ChangeTrace> trace, IStateTracer stateTracer, StateProvider stateProvider)
+    private static void ReportChanges(Dictionary<AddressAsKey, AccountTrace> trace, IStateTracer stateTracer, StateProvider stateProvider)
     {
-        foreach (KeyValuePair<AddressAsKey, ChangeTrace> entry in trace)
+        foreach (KeyValuePair<AddressAsKey, AccountTrace> entry in trace)
         {
             Address address = entry.Key;
-            ChangeTrace change = entry.Value;
+            (AccountValue before, AccountValue after) = entry.Value;
             bool someChangeReported = false;
 
-            Account? before = change.Before;
-            Account? after = change.After;
+            UInt256? beforeBalance = before.Exists ? before.Balance : null;
+            UInt256? afterBalance = after.Exists ? after.Balance : null;
 
-            UInt256? beforeBalance = before?.Balance;
-            UInt256? afterBalance = after?.Balance;
+            UInt256? beforeNonce = before.Exists ? before.Nonce : null;
+            UInt256? afterNonce = after.Exists ? after.Nonce : null;
 
-            UInt256? beforeNonce = before?.Nonce;
-            UInt256? afterNonce = after?.Nonce;
-
-            Hash256? beforeCodeHash = before?.CodeHash;
-            Hash256? afterCodeHash = after?.CodeHash;
+            Hash256? beforeCodeHash = before.Exists ? before.CodeHash : null;
+            Hash256? afterCodeHash = after.Exists ? after.CodeHash : null;
 
             if (beforeCodeHash != afterCodeHash)
             {

@@ -96,9 +96,8 @@ namespace Nethermind.State
         public bool TryGetAccount(Address address, out AccountStruct account)
         {
             // Note: This call is for compatibility with `IAccountStateProvider` and should not be called directly by VM. Because its slower.
-            account = _stateProvider.GetAccount(address)
-                .WithChangedStorageRoot(_persistentStorageProvider.GetStorageRoot(address))
-                .ToStruct();
+            ValueHash256 storageRoot = _persistentStorageProvider.GetStorageRoot(address);
+            account = _stateProvider.GetThroughCache(address).ToStruct(in storageRoot);
 
             return !account.IsTotallyEmpty;
         }
@@ -294,7 +293,7 @@ namespace Nethermind.State
             return _stateProvider.GetNonce(address);
         }
 
-        public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
+        public bool HasCode(Address address) => _stateProvider.IsContract(address);
 
         public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
         {
@@ -406,10 +405,10 @@ namespace Nethermind.State
             _persistentStorageProvider.ForgetBlockChanges(bal);
         }
 
-        public ref readonly UInt256 GetBalance(Address address)
+        public UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();
-            return ref _stateProvider.GetBalance(address);
+            return _stateProvider.GetBalance(address);
         }
 
         public ValueHash256 GetStorageRoot(Address address)
@@ -440,9 +439,9 @@ namespace Nethermind.State
         public bool IsNonZeroAccount(Address address, out bool accountExists)
         {
             DebugGuardInScope();
-            Account? account = _stateProvider.GetThroughCache(address);
-            accountExists = account is not null;
-            return account is not null && (account.IsContract || account.Nonce != 0);
+            ref readonly StateProvider.AccountValue account = ref _stateProvider.GetThroughCache(address);
+            accountExists = account.Exists;
+            return account.Exists && (account.IsContract || account.Nonce != 0);
         }
 
         public bool IsDeadAccount(Address address)
