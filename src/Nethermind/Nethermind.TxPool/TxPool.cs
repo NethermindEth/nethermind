@@ -36,6 +36,7 @@ using ITimer = Nethermind.Core.Timers.ITimer;
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Test")]
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 
 namespace Nethermind.TxPool
 {
