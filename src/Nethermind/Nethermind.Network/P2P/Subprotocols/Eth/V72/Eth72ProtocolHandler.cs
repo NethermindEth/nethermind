@@ -68,7 +68,7 @@ public class Eth72ProtocolHandler(
     IBlobCustodyTracker blobCustodyTracker,
     ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
     ITxGossipPolicy? transactionsGossipPolicy = null,
-        Subprotocols.Lean.LeanEthTransactions? leanTransactions = null)
+    Subprotocols.Lean.LeanEthTransactions? leanTransactions = null)
     : Eth71ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, leanTransactions), IStaticProtocolInfo
     , ISparseBlobPoolPeer
 {
