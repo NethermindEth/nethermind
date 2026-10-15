@@ -417,7 +417,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             try
             {
-                bool currentBestBlockIsEmpty = blockContext.Best.CurrentBestBlock?.Transactions.Length == 0;
+                // A null best block means no valid empty build exists yet, so wait for the improvement like an empty one.
+                bool currentBestBlockIsEmpty = blockContext.Best.CurrentBestBlock is null or { Transactions.Length: 0 };
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                 {
                     // Inform current improvement that we need results now

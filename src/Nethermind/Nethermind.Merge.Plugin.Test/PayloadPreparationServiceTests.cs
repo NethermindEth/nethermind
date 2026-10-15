@@ -213,6 +213,31 @@ public class PayloadPreparationServiceTests
             TimeSpan.FromMilliseconds(1));
     }
 
+    [Test]
+    [CancelAfter(30000)]
+    public async Task GetPayload_waits_for_the_improvement_when_there_is_no_empty_block()
+    {
+        using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
+        TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Block improved = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        BlockProductionSnapshot best = new(null, UInt256.Zero);
+        IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
+        context.Best.Returns(_ => best);
+        context.ImprovementTask.Returns(improvement.Task);
+        service.Store("payload", context);
+
+        ValueTask<IBlockProductionContext?> payload = service.GetPayload("payload", skipCancel: true);
+        bool returnedEarly = payload.IsCompleted;
+        best = new(improved, UInt256.One);
+        improvement.SetResult(improved);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(returnedEarly, Is.False);
+            Assert.That((await payload)?.CurrentBestBlock, Is.SameAs(improved));
+        }
+    }
+
     private sealed class TestPayloadPreparationService(
         IBlockProducer blockProducer,
         ITxPool txPool,
