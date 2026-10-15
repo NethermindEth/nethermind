@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Deterministic reporting checks; no network namespaces, services or native proofs."""
+import contextlib
+import io
+import os
+import sys
 import importlib.util
 import hashlib
 import json
@@ -20,8 +24,87 @@ def load(name):
 
 controller = load('netbench')
 report = load('report')
+matrix = load('matrix')
 
 class MetricsTests(unittest.TestCase):
+    @unittest.skipUnless(hasattr(os, "wait4"), "native capture requires macOS/Linux wait4")
+    def test_native_capture_records_profile_and_historical_case_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            probe = Path(directory, "fake-probe")
+            key = "a" * 64
+            probe.write_text(f"#!{sys.executable}\nprint('mode,profile_key')\nprint('REGRESSION-NOT-A-PROOF,{key}')\n")
+            probe.chmod(0o755)
+            out = Path(directory, "captured")
+            command = [sys.executable, str(HERE / "native-cost/capture.py"), "--exe", str(probe), "--out", str(out),
+                       "--repetitions", "2", "--fork-revision", "b" * 40, "--profile-key", key]
+            capture = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(capture.returncode, 0, capture.stderr)
+            self.assertTrue((out / "sphincs1.csv").exists())
+            self.assertTrue((out / "sphincs1-r2.csv").exists())
+            self.assertFalse((out / "sphincs1-r1.csv").exists())
+            metadata = json.loads((out / "sphincs1.json").read_text())
+            self.assertEqual(metadata["profileKey"], key)
+            self.assertEqual(metadata["forkRevision"], "b" * 40)
+            self.assertEqual(metadata["repetitions"], 2)
+            self.assertEqual(metadata["binarySha256"], hashlib.sha256(probe.read_bytes()).hexdigest())
+            wrong = Path(directory, "wrong-profile")
+            command[command.index(str(out))] = str(wrong)
+            command[-1] = "c" * 64
+            capture = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(capture.returncode, 1, capture.stderr)
+            retained = json.loads((wrong / "prepare_parents.json").read_text())
+            self.assertEqual(retained["exitCode"], 0)
+            self.assertIn("expected profile key", retained["error"])
+            self.assertFalse((wrong / "sphincs1.csv").exists())
+
+    def test_matrix_resume_preserves_every_recorded_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            results = Path(directory, "results.jsonl")
+            previous = [
+                {"label": "load-rlpx-tx1-r1-rep1", "missing": 0},
+                {"label": "load-rlpx-tx1-r8-rep1", "missing": 2},
+                {"label": "load-rlpx-tx1-r32-rep1", "error": "deadline"},
+            ]
+            original = "".join(json.dumps(row) + "\n" for row in previous)
+            results.write_text(original)
+            with patch("sys.argv", ["matrix.py", "--test-dll", "unused.dll", "--results", str(results),
+                                     "--repetitions", "1", "--match", "load-rlpx-tx1-"]), \
+                    patch.object(matrix.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, '{"missing":0}')) as launch, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(matrix.main(), 0)
+            self.assertEqual(launch.call_count, 1)
+            self.assertIn("load-rlpx-tx1-r64-rep1", launch.call_args.args[0])
+            self.assertEqual(results.read_text(), original)
+
+    def test_existing_attempt_directory_cannot_supply_stale_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old = Path(directory, "same-label")
+            old.mkdir()
+            provenance = old / "provenance.json"
+            provenance.write_text('{"source_revision":"STALE"}')
+            results = Path(directory, "results.jsonl")
+            original = '{"label":"same-label","missing":2}\n'
+            results.write_text(original)
+            stderr = io.StringIO()
+            with patch("sys.argv", ["netbench.py", "run", "--test-dll", "unused.dll", "--out", directory,
+                                     "--label", "same-label", "--results", str(results)]), \
+                    contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    controller.main()
+            self.assertEqual(error.exception.code, 2)
+            self.assertIn("use a new attempt label", stderr.getvalue())
+            self.assertEqual(results.read_text(), original)
+            self.assertEqual(provenance.read_text(), '{"source_revision":"STALE"}')
+
+    def test_broadcast_rlpx_is_rejected_before_creating_an_attempt(self):
+        with patch("sys.argv", ["netbench.py", "run", "--test-dll", "unused.dll", "--binding", "rlpx",
+                                 "--broadcast", "--kind", "2", "--interval-ms", "12000"]), \
+                patch.object(controller, "run") as launch, contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                controller.main()
+        self.assertEqual(error.exception.code, 2)
+        launch.assert_not_called()
+
     def test_two_bursts_cover_two_release_intervals(self):
         records = [(0, 0)] * 4 + [(1_000_000_000, 1_000_000_000)] * 4
         row = controller.origination_metrics(records, 1000, 16, 1)

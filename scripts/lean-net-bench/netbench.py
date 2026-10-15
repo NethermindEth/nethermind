@@ -352,10 +352,17 @@ def retain_process_failures(summary, exit_codes):
         summary["error"] = f"{summary['error']}; {message}" if summary.get("error") else message
 
 
+class RunDirectoryExistsError(FileExistsError):
+    """An earlier attempt owns this directory; never reuse its measurements or provenance."""
+
+
 def run(args):
     n, edges = topology(args.topology)
     run_dir = os.path.abspath(os.path.join(args.out, args.label or time.strftime("run-%Y%m%d-%H%M%S")))
-    os.makedirs(run_dir, exist_ok=False)
+    try:
+        os.makedirs(run_dir, exist_ok=False)
+    except FileExistsError as error:
+        raise RunDirectoryExistsError(f"run directory already exists: {run_dir}; use a new attempt label") from error
     digest = hashlib.sha256()
     with open(args.test_dll, "rb") as binary:
         for chunk in iter(lambda: binary.read(1024 * 1024), b""):
@@ -611,8 +618,12 @@ def main():
         parser.error("broadcast requires one object per 12-second slot")
     if args.broadcast and args.kind != 2:
         parser.error("broadcast is defined only for kind 2")
+    if args.broadcast and args.binding != "ethp2p":
+        parser.error("broadcast requires the ethp2p binding")
     try:
         summary = run(args)
+    except RunDirectoryExistsError as error:
+        parser.error(str(error))
     except Exception as error:
         traceback.print_exc()
         summary = {"label": args.label, "error": str(error), "binding": args.binding,

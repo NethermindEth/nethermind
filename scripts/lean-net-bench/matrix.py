@@ -46,8 +46,7 @@ def main():
         with open(args.results) as stream:
             for line in stream:
                 row = json.loads(line)
-                if not row.get("error") and row.get("missing") == 0:
-                    done.add(row["label"])
+                done.add(row["label"])
     failures = 0
     for repetition in range(1, args.repetitions + 1):
         for name, scenario in scenarios(args.proof_bytes, proof_sizes):

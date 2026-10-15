@@ -47,7 +47,7 @@ The matched RTT cases use 16 transactions/object and identical remaining argumen
 
 At 200 ms / 8/s, median whole-window goodput was 8.00 objects/s RLPx and 5.89 QUIC; median complete-run p95 was 1.732 s and 3.174 s. This tests the configured window and recovery pipeline, not an alternative receive-window sweep. [RTT PNG](report/matched-rtt.png).
 
-Every size, shaped-link, chain and broadcast attempt completed. At 8 MiB proof size, median goodput was 0.985 objects/s RLPx and 0.714 QUIC; median p95 was 1.229 s and 6.364 s. Each broadcast attempt delivered 3/3 objects with 48 measured / 64 lifetime accepted shards. This demonstrates coded participation with retrieval fallback, not the winning path or real CL authorization. [Large-object PNG](report/large-objects.png) · [Link/topology PNG](report/link-topology.png) · [Broadcast PNG](report/broadcast-fallback.png).
+Every size, shaped-link, chain and broadcast attempt completed. At 1% injected loss and 4 objects/s offered, RLPx p95 was 17.9/18.3 s with 1.04/1.03 objects/s goodput; QUIC p95 was 4.3/10.2 s with 2.56/1.78 objects/s. These two attempts per binding show a loss-sensitive case, not a universal ranking. At 8 MiB proof size, median goodput was 0.985 objects/s RLPx and 0.714 QUIC; median p95 was 1.229 s and 6.364 s. Each broadcast attempt delivered 3/3 objects with 48 measured / 64 lifetime accepted shards. This demonstrates coded participation with retrieval fallback, not the winning path or real CL authorization. [Large-object PNG](report/large-objects.png) · [Link/topology PNG](report/link-topology.png) · [Broadcast PNG](report/broadcast-fallback.png).
 
 ## Failures, metrics and reproduction
 
@@ -67,4 +67,4 @@ python3 scripts/lean-net-bench/report.py \
   --out /tmp/eip8437-report
 ```
 
-Use matplotlib 3.9.4. The archive includes original run commands, configurations, logs and guard scripts, without source/binary archives or proof blobs. [V8/V9 diagnostics](diagnostics/README.md) remain separate single-sample sources. [Native costs](../../2026-10-14/native/README.md) reuse the existing real-proof capture on a different host/profile; they are not a combined transport/proving throughput measurement.
+Use matplotlib 3.9.4. The archive includes original run commands, configurations, logs and guard scripts, without source/binary archives or proof blobs. The authoritative campaign recipe is the archived `eip8437-v12-guarded-campaign.py` plus `matrix-v12/commands.jsonl` and `long-rtt-v12/commands.jsonl`, with their recorded argv/environment and host prerequisites. The generic `matrix.py` plan does not schedule the separate RTT supplement. [V8/V9 diagnostics](diagnostics/README.md) remain separate single-sample sources. [Native costs](../../2026-10-14/native/README.md) reuse the existing real-proof capture on a different host/profile; they are not a combined transport/proving throughput measurement.
