@@ -370,8 +370,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// stale head; protected peers may leave the pool above target.</remarks>
     private async Task TrimToPeerBandAsync(string[] staticAddresses, CancellationToken token)
     {
-        int overflow = _peers.Count - _config.MaxPeerCount;
-        if (overflow <= 0 && (OutboundCount >= OutboundFloor || _peers.Count <= _config.TargetPeerCount))
+        if (_peers.Count <= _config.MaxPeerCount)
         {
             return;
         }

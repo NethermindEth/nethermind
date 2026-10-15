@@ -269,6 +269,31 @@ public class PeerBandTests
         Assert.That(manager.PeerCount, Is.EqualTo(2));
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Maintenance_keeps_inbound_peers_within_the_band_while_outbound_peers_are_below_the_floor(CancellationToken token)
+    {
+        Node local = CreateNode();
+        Node first = CreateNode();
+        Node second = CreateNode();
+        SetMatchingStatus(local, first, second);
+        // Target 1 and max 3 reserve one outbound slot, so two inbound peers fill the inbound share without passing the ceiling.
+        local.Config.TargetPeerCount = 1;
+        local.Config.MaxPeerCount = 3;
+        await using PeerHostScope hosts = new(local.P2P, first.P2P, second.P2P);
+        await hosts.StartAsync(token, first.P2P, second.P2P, local.P2P);
+        PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+        await first.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+        await second.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+        await WaitUntilAsync(() => manager.PeerCount == 2, token, "the inbound peers were not admitted");
+
+        await manager.RunMaintenanceRoundAsync(token);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(manager.PeerCount, Is.EqualTo(2), "dropping inbound peers frees no outbound slot, so it only causes reconnect churn");
+        Assert.That(manager.GetPeerDiagnostics().Any(static d => d.LastDisconnectReason == "TooManyPeers"), Is.False);
+    }
+
     [TestCase(CeilingAdmission.SequentialDials, 2)]
     [TestCase(CeilingAdmission.ConcurrentDials, 3)]
     [TestCase(CeilingAdmission.StaticReconnect, 2)]
