@@ -326,7 +326,7 @@ public class LeanObjectTransportTests
         Assert.That(node.Transport.TryReserveNodeBytes(link.NodeKey, 512 * 1024, out IDisposable? credit), Is.True);
         using (credit)
         {
-            byte[] body = OpaqueWrapperBody((int)LeanProtocol.MaxObjectBytes);
+            byte[] body = Wrapper(Eip8288Constants.MaxAggregateProofBytes, true, FrameTransaction(90));
             LeanDescriptor descriptor = Describe(body);
             node.Transport.OnAnnounce(peer, new([descriptor]));
             long reserved = node.Transport.IncompleteBytes;
@@ -375,6 +375,34 @@ public class LeanObjectTransportTests
         }
         finally { foreach (IDisposable lease in leases) lease.Dispose(); }
         Assert.That(node.Transport.IncompleteBytes, Is.Zero);
+    }
+
+    [Test]
+    public void New_retrieval_preserves_ingress_headroom([Values] bool global)
+    {
+        using LeanTestNode node = new();
+        FakeLink link = Link("source");
+        LeanPeer peer = node.Connect(link);
+        byte[] body = OpaqueWrapperBody(2 * 1024 * 1024);
+        LeanDescriptor descriptor = Describe(body);
+        long retained = (global ? LeanLimits.MaxIncompleteBytes : LeanLimits.MaxPeerBytes) - 2L * body.Length - (global ? 1024 : 384) * 1024;
+        List<IDisposable> leases = [];
+        try
+        {
+            for (int i = 0; retained > 0; i++)
+            {
+                long bytes = Math.Min(retained, LeanLimits.MaxPeerBytes);
+                Assert.That(node.Transport.TryReserveNodeBytes(global ? Link($"budget:{i}").NodeKey : link.NodeKey, bytes,
+                    out IDisposable? lease), Is.True);
+                leases.Add(lease!);
+                retained -= bytes;
+            }
+            node.Transport.OnAnnounce(peer, new([descriptor]));
+            Assert.That(link.Sent<GetChunksMessage>(), Is.Empty);
+        }
+        finally { foreach (IDisposable lease in leases) lease.Dispose(); }
+        node.Tick(TimeSpan.FromMilliseconds(1));
+        Assert.That(link.Sent<GetChunksMessage>(), Is.Not.Empty);
     }
 
     [Test]

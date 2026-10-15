@@ -269,7 +269,11 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
             _disposed = true;
             DisposeBroadcastSidecars();
             foreach (LeanPeer peer in _peers.ToArray()) RemoveCore(peer);
-            foreach (LeanAssembly assembly in _assemblies.Values) Drop(assembly);
+            foreach (LeanAssembly assembly in _assemblies.Values)
+            {
+                if (assembly.Queued && !assembly.Started) ReleaseCompletion(assembly);
+                Drop(assembly);
+            }
             _assemblies.Clear();
         }
         _wrappers.WrapperValidated -= OnWrapperValidated;

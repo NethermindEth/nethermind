@@ -7,6 +7,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -156,6 +157,34 @@ public class InvalidBlockInterceptorTest
 
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
+    }
+
+    [Test]
+    public void Corrupt_peer_proof_does_not_poison_valid_header([Values] bool missing)
+    {
+        BlockValidator bodyValidator = new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance,
+            NullLogManager.Instance, Substitute.For<ILeanProofVerifier>());
+        _baseValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(call => bodyValidator.ValidateBodyAgainstHeader(call.Arg<BlockHeader>(), call.Arg<BlockBody>(), out _));
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        byte[] authenticProof = [];
+        block.Header.RecursiveStark = new(Keccak.Compute(authenticProof), Keccak.OfAnEmptyString);
+        block.Header.Hash = block.Header.CalculateHash();
+        block.StarkProof = missing ? null : [2];
+        _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(false);
+        Assert.That(HeaderValidator.ValidateHash(block.Header), Is.True);
+
+        Assert.That(_invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _), Is.False);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _tracker.DidNotReceive().OnInvalidBlock(block.Hash!, block.ParentHash);
+            _tracker.DidNotReceive().SetChildParent(block.Hash!, block.ParentHash!);
+        }
+        block.StarkProof = authenticProof;
+        Assert.That(_invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _), Is.False);
+        _tracker.Received().OnInvalidBlock(block.Hash!, block.ParentHash);
     }
 
 }
