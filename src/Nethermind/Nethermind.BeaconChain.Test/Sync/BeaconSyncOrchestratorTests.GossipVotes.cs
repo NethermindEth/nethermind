@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.Test.P2P.Gossip;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Snappier;
@@ -70,6 +71,46 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries + 1 - GossipRouter.PayloadAttestationVerifyAttempts), "each repeat past the limit is dropped before it is queued");
         Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts + 1), "the limit for the pair and one for the other validator");
         Assert.That(harness.Importer.GossipOperations, Is.All.TypeOf<PayloadAttestationMessage>());
+    }
+
+    [Test]
+    public async Task Peers_whose_forged_payload_attestation_is_rejected_get_no_more_votes_verified_in_the_slot_and_honest_votes_still_are()
+    {
+        const int ptcSize = (int)Nethermind.BeaconChain.Spec.Presets.PtcSize;
+        const byte honestSeed = 100;
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
+        harness.Importer.GossipOperationVerdict = static operation => ((PayloadAttestationMessage)operation).Signature!.Bytes[0] == honestSeed;
+        harness.Orchestrator.RouteGossipEvents();
+        PeerId[] forgers = [NewPeer(), NewPeer()];
+
+        for (byte attempt = 1; attempt <= GossipRouter.PayloadAttestationVerifyAttempts; attempt++)
+        {
+            for (int forger = 0; forger < forgers.Length; forger++)
+            {
+                for (ulong member = 0; member < ptcSize; member++)
+                    PtcVote(router, slot, member, signatureSeed: (byte)(forger * GossipRouter.PayloadAttestationVerifyAttempts + attempt), source: forgers[forger]);
+                await DrainVotes(harness);
+            }
+        }
+
+        MessageValidity[] honest = [.. Enumerable.Range(0, ptcSize).Select(member => PtcVote(router, slot, (ulong)member, signatureSeed: honestSeed, source: NewPeer()))];
+        await DrainVotes(harness);
+
+        PayloadAttestationMessage[] verified = [.. harness.Importer.GossipOperations.Cast<PayloadAttestationMessage>()];
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(honest, Is.All.EqualTo(MessageValidity.Ignored));
+        Assert.That(verified.Where(static vote => vote.Signature!.Bytes[0] == honestSeed).Select(static vote => vote.ValidatorIndex), Is.EquivalentTo(Enumerable.Range(0, ptcSize).Select(static member => (ulong)member)),
+            "every PTC member's honest vote is verified after the floods");
+        Assert.That(verified.Count(static vote => vote.Signature!.Bytes[0] != honestSeed), Is.LessThanOrEqualTo(BeaconSyncOrchestrator.VotesPerPass),
+            "a forger's rejected vote stops the verification of its other votes for the slot");
+
+        static PeerId NewPeer() => new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+
+        static async Task DrainVotes(Harness harness)
+        {
+            for (int pass = 0; pass <= BeaconSyncOrchestrator.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass; pass++)
+                await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        }
     }
 
     [Test]
@@ -433,7 +474,7 @@ public partial class BeaconSyncOrchestratorTests
     private static readonly ulong[] EveryValidator = [.. Enumerable.Range(0, 1 << 16).Select(static i => (ulong)i)];
     private static readonly ConditionalWeakTable<GossipRouter, HashSet<ulong>> SlotsWithPtc = [];
 
-    private static MessageValidity PtcVote(GossipRouter router, ulong slot, ulong validatorIndex, bool payloadPresent = true, byte signatureSeed = 0)
+    private static MessageValidity PtcVote(GossipRouter router, ulong slot, ulong validatorIndex, bool payloadPresent = true, byte signatureSeed = 0, PeerId? source = null)
     {
         HashSet<ulong> slots = SlotsWithPtc.GetOrCreateValue(router);
         lock (slots)
@@ -449,7 +490,7 @@ public partial class BeaconSyncOrchestratorTests
             ValidatorIndex = validatorIndex,
             Data = new PayloadAttestationData { BeaconBlockRoot = Keccak.Compute("voted block"), Slot = slot, PayloadPresent = payloadPresent },
             Signature = new BlsSignature([.. Enumerable.Repeat(signatureSeed, BlsSignature.Length)]),
-        })));
+        })), GossipVerdict.None, source);
     }
 
     [Test]

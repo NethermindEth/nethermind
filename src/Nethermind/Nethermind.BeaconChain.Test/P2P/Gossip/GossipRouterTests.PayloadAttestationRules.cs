@@ -207,38 +207,6 @@ public partial class GossipRouterTests
     }
 
     [Test]
-    public void Forged_payload_attestations_from_one_peer_leave_every_ptc_member_a_raise_for_another_and_fresh_peers_stay_capped()
-    {
-        const int ptcSize = (int)Nethermind.BeaconChain.Spec.Presets.PtcSize;
-        (GossipRouter router, _) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000, holdBlock: true);
-        router.RequiresPtc = true;
-        router.SetPtc(PtcSlot, [.. Enumerable.Range(0, ptcSize).Select(member => (ulong)member)]);
-        int raised = 0;
-        router.PayloadAttestationMessageReceived += (_, _) => raised++;
-        PeerId NewPeer() => new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
-        void Vote(PeerId peer, byte seed)
-        {
-            for (ulong member = 0; member < ptcSize; member++)
-                Handle(router, PtcVote(PtcBlockRoot, PtcSlot, member, signatureSeed: seed), peer);
-        }
-
-        PeerId flooder = NewPeer();
-        for (byte seed = 1; seed <= GossipRouter.PayloadAttestationVerifyAttempts; seed++)
-            Vote(flooder, seed);
-        int flooded = raised;
-        Vote(NewPeer(), seed: 100);
-        int honest = raised - flooded;
-        for (byte seed = 101; seed < 110; seed++)
-            Vote(NewPeer(), seed);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(flooded, Is.EqualTo(ptcSize * GossipRouter.PayloadAttestationVerifyAttempts), "fixture: the flood spends all of its peer's attempts");
-        Assert.That(honest, Is.EqualTo(ptcSize), "a flood by one peer must not spend another peer's vote for the same member");
-        Assert.That(raised, Is.EqualTo(ptcSize * GossipRouter.PayloadAttestationRaisesPerValidator), "fresh peers buy no more verifies than the per-member cap");
-        Assert.That(router.GetDropCount(GossipDropReason.PayloadAttestationVerifiesSpent), Is.GreaterThan(0));
-    }
-
-    [Test]
     public void Released_payload_attestation_gives_back_its_attempt_and_message_id([Values] bool knownPeer)
     {
         (GossipRouter router, _) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000, holdBlock: true);

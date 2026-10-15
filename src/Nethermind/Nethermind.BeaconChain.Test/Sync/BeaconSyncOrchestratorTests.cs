@@ -1629,6 +1629,7 @@ public partial class BeaconSyncOrchestratorTests
         public bool? OnGossipAggregate(SignedAggregateAndProof aggregate) => Consume(aggregate);
         public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => Consume(aggregate);
         public bool? AcceptsGossipOperations { get; set; } = true;
+        public Func<object, bool?>? GossipOperationVerdict { get; set; }
         public bool? OnGossipAttesterSlashing(AttesterSlashing slashing) => Consume(slashing);
         public bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => Consume(slashing);
         public bool? OnGossipPayloadAttestation(PayloadAttestationMessage message) => Consume(message);
@@ -1638,7 +1639,7 @@ public partial class BeaconSyncOrchestratorTests
         {
             GossipOperations.Add(operation);
             TicksAtGossipOperations.Add(Ticks.Count);
-            return AcceptsGossipOperations;
+            return GossipOperationVerdict is { } verdict ? verdict(operation) : AcceptsGossipOperations;
         }
     }
 
