@@ -87,6 +87,35 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task A_work_item_that_throws_is_skipped_without_charging_its_sender_and_the_worker_goes_on()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150, 151);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 4);
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        Hash256 faultingRoot = SszRoots.HashTreeRoot(chain[0].Message!);
+        Hash256 nextRoot = SszRoots.HashTreeRoot(chain[1].Message!);
+        harness.Importer.OnImported = (_, root) =>
+        {
+            if (root == faultingRoot) throw new InvalidOperationException("scripted fault");
+        };
+        (GossipVerdict faulting, List<MessageValidity> faultingGiven) = RecordingVerdict();
+        (GossipVerdict next, List<MessageValidity> nextGiven) = RecordingVerdict();
+        ulong faultsBefore = Metrics.BeaconChainWorkerFaults;
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[0]), faulting));
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[1]), next));
+
+        Assert.That(() => CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None), Throws.Nothing);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(faultingGiven, Is.EqualTo(new[] { MessageValidity.Throttled }), "a local fault neither charges the sender nor caches the message");
+        Assert.That(nextGiven, Is.EqualTo(new[] { MessageValidity.Accepted }), "the worker goes on with the next item");
+        Assert.That(harness.Importer.Known, Does.Contain(nextRoot));
+        Assert.That(Metrics.BeaconChainWorkerFaults, Is.GreaterThan(faultsBefore));
+    }
+
+    [Test]
     public async Task Pending_block_verdict_is_ignored_once_the_block_is_dropped()
     {
         Harness harness = CreateHarness();
@@ -210,9 +239,12 @@ public partial class BeaconSyncOrchestratorTests
             Snappier.Snappy.CompressToArray(SignedBeaconBlock.Encode(block)), async verdict =>
             {
                 harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfFulu(block), verdict));
-                Assert.That(await Assert.CatchAsync(async () => await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None)),
-                    Is.SameAs(failure), "a partially applied import must stop the worker after settling the relay verdict");
-            }, MessageValidity.Ignored);
+                if (cancelled)
+                    Assert.That(await Assert.CatchAsync(async () => await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None)),
+                        Is.SameAs(failure), "a cancellation stops the worker after settling the relay verdict");
+                else
+                    Assert.That(async () => await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None), Throws.Nothing, "a local fault skips the item, not the worker");
+            }, MessageValidity.Throttled);
     }
 
     internal static async Task AssertBlockVerdictAsync(IBlockImporter importer, ForkedSignedBeaconBlock block, byte[] payload, MessageValidity expected, GossipRouter? router = null)

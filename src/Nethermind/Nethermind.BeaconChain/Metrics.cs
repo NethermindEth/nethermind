@@ -32,6 +32,7 @@ public class Metrics
     internal static ulong NewPayloadCallsCount;
     internal static ulong NewPayloadMillisecondsCount;
     internal static ulong ForkchoiceUpdatedCallsCount;
+    internal static ulong WorkerFaultsCount;
     private static long _headSlotDelay;
     private static int _peerCount;
     private static long _lastBlockImportMs;
@@ -120,4 +121,10 @@ public class Metrics
     [CounterMetric]
     [Description("In-process engine_forkchoiceUpdated calls issued by the embedded driver.")]
     public static ulong BeaconChainForkchoiceUpdatedCalls { get => Volatile.Read(ref ForkchoiceUpdatedCallsCount); set => Volatile.Write(ref ForkchoiceUpdatedCallsCount, value); }
+    [CounterMetric]
+    [Description("Work items the embedded driver's import worker skipped because handling them threw.")]
+    public static ulong BeaconChainWorkerFaults { get => Volatile.Read(ref WorkerFaultsCount); set => Volatile.Write(ref WorkerFaultsCount, value); }
+    [GaugeMetric]
+    [Description("Whether the embedded driver stopped after a fault (1) while the execution layer keeps running; reset by a restart.")]
+    public static int BeaconChainDriverStopped { get; set; }
 }

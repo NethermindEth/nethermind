@@ -59,19 +59,19 @@ public class BeaconChainServiceStartupTests
     }
 
     [Test]
-    public void A_failed_driver_run_cancels_its_component_token_and_requests_process_exit()
+    public void A_failed_driver_run_cancels_its_component_token_and_stops_only_the_driver()
     {
-        IProcessExitSource exit = NSubstitute.Substitute.For<IProcessExitSource>();
-        using IContainer container = KickContainer(new KickEngine(new PubkeyCache()), new PubkeyCache()).AddSingleton(exit).Build();
+        Metrics.BeaconChainDriverStopped = 0;
+        using IContainer container = KickContainer(new KickEngine(new PubkeyCache()), new PubkeyCache()).Build();
         SeedAnchor(container.Resolve<BeaconChainStore>(), gloas: false, nextCommittee: false, key: null, blockStateRoot: GloasTestFixtures.Hash(0x5A));
         BeaconChainService service = container.Resolve<BeaconChainService>();
         CancellationTokenSource source = (CancellationTokenSource)typeof(BeaconChainService)
             .GetField("_cancellationTokenSource", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(service)!;
 
-        Assert.That(async () => await service.Start(), Throws.Exception);
+        Assert.That(async () => await service.Start(), Throws.Nothing, "a driver fault must not surface to node shutdown or exit the node");
 
         Assert.That(source.IsCancellationRequested, Is.True);
-        NSubstitute.SubstituteExtensions.Received(exit, 1).Exit(ExitCodes.GeneralError);
+        Assert.That(Metrics.BeaconChainDriverStopped, Is.EqualTo(1));
     }
 
     [Test]
@@ -79,8 +79,8 @@ public class BeaconChainServiceStartupTests
     {
         PubkeyCache pubkeys = new();
         KickEngine engine = new(pubkeys);
-        IProcessExitSource exit = Substitute.For<IProcessExitSource>();
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
         logger.IsWarn.Returns(true);
         logger.IsInfo.Returns(true);
         ILogger detectorLogger = new(logger);
@@ -93,14 +93,14 @@ public class BeaconChainServiceStartupTests
         logger.When(log => log.Warn(Arg.Any<string>())).Do(_ => detector.ThrowIfStoodDown());
         logger.When(log => log.Info(Arg.Is<string>(text => text.StartsWith("Starting embedded beacon chain driver."))))
             .Do(_ => detector.OnExternalEngineCall());
-        using IContainer container = KickContainer(engine, pubkeys).AddSingleton(detector).AddSingleton(exit).AddSingleton(detectorLogs).Build();
+        using IContainer container = KickContainer(engine, pubkeys).AddSingleton(detector).AddSingleton(detectorLogs).Build();
         SeedAnchor(container.Resolve<BeaconChainStore>(), gloas: false, nextCommittee: false, key: null);
         BeaconChainService service = container.Resolve<BeaconChainService>();
 
         await service.Start();
 
         Assert.That(detector.HasStoodDown, Is.True);
-        exit.DidNotReceive().Exit(Arg.Any<int>());
+        logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Any<Exception?>());
     }
 
     [Test]
@@ -265,8 +265,7 @@ public class BeaconChainServiceStartupTests
         if (blockMatchesState) metadata.OnCacheWritten = service.Stop;
         else engine.OnCall = service.Stop;
 
-        if (blockMatchesState) await service.Start();
-        else Assert.That(async () => await service.Start(), Throws.TypeOf<ForkChoiceException>());
+        await service.Start();
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(engine.PubkeysHeldAtCall, blockMatchesState ? Is.EqualTo(new[] { 0 }) : Is.Empty, "the call requires a verified anchor and precedes the cache build");
@@ -294,8 +293,7 @@ public class BeaconChainServiceStartupTests
         BeaconChainService service = container.Resolve<BeaconChainService>();
         metadata.OnCacheWritten = service.Stop;
 
-        if (blockMatchesState) await service.Start();
-        else Assert.That(async () => await service.Start(), Throws.TypeOf<InvalidDataException>());
+        await service.Start();
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(engine.PubkeysHeldAtCall, blockMatchesState ? Is.EqualTo(new[] { 0 }) : Is.Empty);
@@ -485,11 +483,11 @@ public class BeaconChainServiceStartupTests
         };
         answer.SetResult(PayloadStatusV1.Syncing);
 
-        Assert.That(async () => await run.WaitAsync(TimeSpan.FromSeconds(30)), Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("scripted failure"));
+        await run.WaitAsync(TimeSpan.FromSeconds(30));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(pubkeyCache.ObservedCancellation, Is.True, "the warm-up was cancelled by the failure, not left to run on");
-        Assert.That(logManager.Errors, Has.Count.EqualTo(1), "only the failure itself is reported");
+        Assert.That(logManager.Errors.Select(static e => e.Exception), Has.One.TypeOf<InvalidOperationException>().With.Message.EqualTo("scripted failure"), "only the failure itself is reported");
     }
 
     [Test]
@@ -499,11 +497,13 @@ public class BeaconChainServiceStartupTests
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(state, null);
         PubkeyCache pubkeyCache = new();
         KickEngine engine = new(pubkeyCache);
-        await using IContainer container = KickContainer(engine, pubkeyCache, config: new BeaconChainConfig { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = "http://invalid.localhost:1" }).Build();
+        TestErrorLogManager logManager = new();
+        await using IContainer container = KickContainer(engine, pubkeyCache, logManager, new BeaconChainConfig { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = "http://invalid.localhost:1" }).Build();
 
-        Assert.That(async () => await container.Resolve<BeaconChainService>().Start(), Throws.TypeOf<InvalidDataException>());
+        await container.Resolve<BeaconChainService>().Start();
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(logManager.Errors.Select(static e => e.Exception), Has.One.TypeOf<InvalidDataException>());
         Assert.That(engine.PubkeysHeldAtCall, Is.Empty, "no forkchoiceUpdated");
         Assert.That(pubkeyCache.Count, Is.Zero);
         Assert.That(new PubkeyCache().TryLoad(container.Resolve<BeaconChainStore>(), state.Validators!), Is.False);
@@ -561,7 +561,7 @@ public class BeaconChainServiceStartupTests
             StartRetryDelay = TimeSpan.FromMilliseconds(1)
         };
 
-        Assert.That(async () => await service.Start().WaitAsync(TimeSpan.FromSeconds(30)), Throws.TypeOf<DirectoryNotFoundException>());
+        await service.Start().WaitAsync(TimeSpan.FromSeconds(30));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Has.Exactly(1).Items);
@@ -616,8 +616,7 @@ public class BeaconChainServiceStartupTests
             metadata.OnCacheWritten = service.Stop;
         }
 
-        if (waitForCache) await service.Start().WaitAsync(TimeSpan.FromSeconds(60));
-        else Assert.That(async () => await service.Start().WaitAsync(TimeSpan.FromSeconds(60)), Throws.TypeOf<InvalidDataException>());
+        await service.Start().WaitAsync(TimeSpan.FromSeconds(60));
         return (logs, engine, pubkeyCache);
     }
 

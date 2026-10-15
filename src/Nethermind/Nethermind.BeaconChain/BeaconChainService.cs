@@ -11,7 +11,6 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.ServiceStopper;
@@ -39,8 +38,7 @@ public sealed class BeaconChainService(
     ILogManager logManager,
     DataColumnSidecarPool? columnPool = null,
     ProcessStallWatchdog? watchdog = null,
-    ColumnBackfill? columnBackfill = null,
-    IProcessExitSource? processExit = null) : IDisposable, IStoppableService
+    ColumnBackfill? columnBackfill = null) : IDisposable, IStoppableService
 {
     private static readonly TimeSpan DefaultStartRetryDelay = TimeSpan.FromSeconds(30);
 
@@ -122,9 +120,8 @@ public sealed class BeaconChainService(
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error("Embedded beacon chain driver failed; stopping the node.", e);
-            processExit?.Exit(ExitCodes.GeneralError);
-            throw;
+            if (_logger.IsError) _logger.Error("Embedded beacon chain driver failed and stopped; the execution layer has no consensus driver until the node restarts.", e);
+            Metrics.BeaconChainDriverStopped = 1;
         }
         finally
         {

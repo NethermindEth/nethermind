@@ -687,8 +687,20 @@ public sealed class BeaconSyncOrchestrator(
         return true;
     }
 
-    // A tick skipped in a backlog never ran on_tick, but a vote queued after it is checked against that slot (gloas/fork-choice.md on_payload_attestation_message).
     private async Task ProcessVoteAsync(QueuedVote vote, CancellationToken token)
+    {
+        try
+        {
+            await ProcessVoteCoreAsync(vote, token);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            OnWorkerFault(vote.Item, e);
+        }
+    }
+
+    // A tick skipped in a backlog never ran on_tick, but a vote queued after it is checked against that slot (gloas/fork-choice.md on_payload_attestation_message).
+    private async Task ProcessVoteCoreAsync(QueuedVote vote, CancellationToken token)
     {
         if (vote.NewestSlotTick > _appliedSlotTick)
         {
@@ -705,6 +717,38 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     private async Task ProcessItemAsync(WorkItem item, CancellationToken token)
+    {
+        try
+        {
+            await ProcessItemCoreAsync(item, token);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            OnWorkerFault(item, e);
+        }
+    }
+
+    /// <summary>Skips a work item whose handling threw, so one fault does not stop the worker.</summary>
+    /// <remarks>A local fault is not the sender's: the item's pending gossip verdict is throttled, so the sender is not charged and the message id is not cached.</remarks>
+    private void OnWorkerFault(WorkItem item, Exception e)
+    {
+        Interlocked.Increment(ref Metrics.WorkerFaultsCount);
+        if (_logger.IsError) _logger.Error($"Import worker failed on {DescribeWorkItem(item)} ({item.GetType().Name}) and skipped it.", e);
+        GossipVerdict? verdict = item switch
+        {
+            GossipBlockItem gossip => gossip.Verdict,
+            GossipAggregateItem aggregate => aggregate.Verdict,
+            GossipGloasAggregateItem aggregate => aggregate.Verdict,
+            GossipAttesterSlashingItem slashing => slashing.Verdict,
+            GossipGloasAttesterSlashingItem slashing => slashing.Verdict,
+            GossipPayloadAttestationItem payloadAttestation => payloadAttestation.Verdict,
+            GossipEnvelopeItem envelope => envelope.Verdict,
+            _ => null,
+        };
+        verdict?.Complete(MessageValidity.Throttled);
+    }
+
+    private async Task ProcessItemCoreAsync(WorkItem item, CancellationToken token)
     {
         long startMs = Environment.TickCount64;
         switch (item)
@@ -845,6 +889,11 @@ public sealed class BeaconSyncOrchestrator(
         RangeBlockItem range => $"the range block at slot {range.Block.Slot}",
         GossipBlockItem gossip => $"the gossip block at slot {gossip.Block.Slot}",
         SlotTickItem tick => $"the slot tick of slot {tick.Slot}",
+        GossipPayloadAttestationItem { Message.Data: { } data } => $"a payload attestation for block {data.BeaconBlockRoot} at slot {data.Slot}",
+        EnvelopeItem envelope => $"the execution payload envelope for block {envelope.Envelope.Message?.BeaconBlockRoot}",
+        ColumnsHeldItem held => $"the held columns of block {held.BlockRoot}",
+        ColumnFetchEndedItem ended => $"the ended column fetch of block {ended.BlockRoot}",
+        AncestorFetchedItem fetched => $"the fetched ancestor {fetched.Root}",
         _ => item.GetType().Name,
     };
 
@@ -2019,8 +2068,9 @@ public sealed class BeaconSyncOrchestrator(
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            IgnoreBlockVerdict(block);
-            verdict?.Complete(MessageValidity.Ignored);
+            // A local fault is not the sender's, so the message is neither charged nor cached.
+            if (_gossipVerdicts.Remove(block, out GossipVerdict? tracked)) tracked.Complete(MessageValidity.Throttled);
+            verdict?.Complete(MessageValidity.Throttled);
             throw;
         }
     }
