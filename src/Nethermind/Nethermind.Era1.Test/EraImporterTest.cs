@@ -9,6 +9,7 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Era1.Exceptions;
+using NSubstitute;
 
 namespace Nethermind.Era1.Test;
 
@@ -61,6 +62,31 @@ public class EraImporterTest
 
         IEraImporter sut = targetCtx.Resolve<IEraImporter>();
         Assert.That(() => sut.Import(testCtx.ResolveTempDirPath(), 0, 0, null, CancellationToken.None), Throws.TypeOf<EraVerificationException>());
+    }
+
+    [Test]
+    public async Task ImportAsArchiveSync_ValidatesBlockAgainstItsParent()
+    {
+        await using IContainer testCtx = await EraTestModule.CreateExportedEraEnv(64);
+        Block genesis = testCtx.Resolve<IBlockTree>().FindBlock(0)!;
+
+        IBlockTree blockTree = Build.A.BlockTree().TestObject;
+        blockTree.SuggestBlock(genesis, BlockTreeSuggestOptions.None);
+
+        // The archive's own verification passes; only the parent-relative rules, which processing cannot catch, reject.
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>()).Returns(true);
+        blockValidator.ValidateOrphanedBlock(Arg.Any<Block>(), out Arg.Any<string?>()).Returns(true);
+        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), Arg.Any<bool>()).Returns(false);
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton<IBlockValidator>(blockValidator)
+            .Build();
+
+        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
+        Assert.That(() => sut.Import(testCtx.ResolveTempDirPath(), 0, 0, null, CancellationToken.None), Throws.TypeOf<EraVerificationException>());
+        blockValidator.Received().ValidateSuggestedBlock(Arg.Is<Block>(b => b.Number == 1), Arg.Is<BlockHeader>(p => p.Hash == genesis.Hash), out Arg.Any<string?>(), Arg.Any<bool>());
     }
 
     [Test]
