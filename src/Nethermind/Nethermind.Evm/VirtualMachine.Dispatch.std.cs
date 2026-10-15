@@ -332,7 +332,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         FastPathComplete:
             pc++;
             opCodeCount++;
-            int traceStackHead = DispatchFlags.ConstTracing && state.Vm.IsTracingActions ? (int)stack.Head : 0;
+            int traceStackHead = 0;
             EvmExceptionType exceptionType;
             if (!TTracingInst.IsActive
                 && (typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OffFlag>) || typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OnFlag>)))
@@ -382,7 +382,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         EvmExceptionType stackFailure = CheckedStackFailure<TOpcode>(in stack);
                         if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && stackFailure == EvmExceptionType.StackUnderflow)
-                            state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
+                            state.Vm.TraceActionErrorDetails($"stack underflow ({stack.Head} <=> {TOpcode.StackInputs})");
                         return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, stackFailure);
                     }
 
@@ -398,13 +398,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (exceptionType != EvmExceptionType.None)
                     {
                         if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && exceptionType == EvmExceptionType.StackUnderflow)
-                            state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
+                            state.Vm.TraceActionErrorDetails($"stack underflow ({stack.Head} <=> {TOpcode.StackInputs})");
                         return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
                     }
                 }
             }
             else if (carriesExecutionGas && TOpcode.ChargesFixedGas)
             {
+                if (DispatchFlags.ConstTracing && TOpcode.StackInputs > 0)
+                    traceStackHead = (int)stack.Head;
                 LoadFixedGas(out TGasPolicy localGas, gas);
                 if (TOpcode.UsesVm)
                     exceptionType = TOpcode.Execute(ref stack, ref localGas, state.Vm, ref pc);
@@ -414,6 +416,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
             else
             {
+                if (DispatchFlags.ConstTracing && TOpcode.StackInputs > 0)
+                    traceStackHead = (int)stack.Head;
                 if (carriesExecutionGas)
                     SetExecutionGas(ref state.Gas, gas);
                 exceptionType = TOpcode.Execute(ref stack, ref state.Gas, state.Vm, ref pc);
@@ -421,8 +425,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     gas = GetExecutionGas(ref state.Gas);
             }
 
-            if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions &&
-                !TOpcode.HasCheckedBody && exceptionType == EvmExceptionType.StackUnderflow && TOpcode.StackInputs > 0)
+            if (DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody && TOpcode.StackInputs > 0 &&
+                exceptionType == EvmExceptionType.StackUnderflow && state.Vm.IsTracingActions)
                 state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
 
             if (!TContinuable.IsActive)

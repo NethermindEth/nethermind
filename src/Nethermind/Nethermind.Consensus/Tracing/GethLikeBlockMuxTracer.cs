@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -27,6 +28,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
     private readonly List<Hash256?> _transactions = [];
     private IReadOnlyCollection<GethLikeTxTrace>? _results;
     private bool _releasedResults;
+    private bool _disposed;
 
     internal GethLikeBlockMuxTracer(GethTraceOptions options, Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createChild)
     {
@@ -139,8 +141,12 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
             {
                 int index = 0;
                 foreach (GethLikeTxTrace trace in child.BuildResult())
+                {
+                    if (index == results.Length)
+                        throw new InvalidOperationException("Mux child returned a different number of transaction traces.");
                     values[index++].Add(name, JsonSerializer.SerializeToElement(trace,
                         TypeInfoJsonSerializer.GetTypeInfo<GethLikeTxTrace>(EthereumJsonSerializer.JsonOptions)));
+                }
                 if (index != results.Length)
                     throw new InvalidOperationException("Mux child returned a different number of transaction traces.");
             }
@@ -157,19 +163,36 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
     {
         if (_releasedResults) return;
         _releasedResults = true;
+        Exception? failure = null;
         foreach (IBlockTracer<GethLikeTxTrace> child in _children.Values)
         {
             if (child is GethLikeBlockMuxTracer) continue;
-            foreach (GethLikeTxTrace trace in child.BuildResult())
-                trace.Dispose();
+            try
+            {
+                foreach (GethLikeTxTrace trace in child.BuildResult())
+                    trace.Dispose();
+            }
+            catch (Exception exception)
+            {
+                failure ??= exception;
+            }
         }
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
     /// <inheritdoc/>
     public void Dispose()
     {
-        foreach (IBlockTracer<GethLikeTxTrace> child in _children.Values)
-            child.TryDispose();
-        ReleaseResults();
+        if (_disposed) return;
+        _disposed = true;
+        try
+        {
+            ReleaseResults();
+        }
+        finally
+        {
+            foreach (IBlockTracer<GethLikeTxTrace> child in _children.Values)
+                child.TryDispose();
+        }
     }
 }

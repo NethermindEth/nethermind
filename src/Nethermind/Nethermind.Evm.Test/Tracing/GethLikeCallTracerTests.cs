@@ -556,11 +556,21 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     private static TestCaseData[] ActionDiagnosticCompositionCases =>
     [
         new("01", 100000UL, "stack underflow (0 <=> 2)"),
-        new("600160006110003e", 21100UL, "out of gas")
+        new("600160006110003e", 21100UL, "out of gas"),
+        new("600101", 100000UL, "stack underflow (1 <=> 2)"),
+        new("60016001f1", 100000UL, "stack underflow (2 <=> 7)"),
+        new("56", 100000UL, "stack underflow (0 <=> 1)"),
+        new("60016000680100000000000000003e", 100000UL, "gas uint64 overflow"),
+        new("6001600067ffffffffffffffff3e", 100000UL, "gas uint64 overflow"),
+        new("68010000000000000000600060003e", 100000UL, "gas uint64 overflow"),
+        new("600160006420000000003e", 100000UL, "out of gas: gas uint64 overflow"),
+        new("6001600060003e", 100000UL, "return data out of bounds"),
+        new("60006001680100000000000000003e", 100000UL, "return data out of bounds"),
+        new("60006000680100000000000000003e", 100000UL, null)
     ];
 
     [TestCaseSource(nameof(ActionDiagnosticCompositionCases))]
-    public void Call_trace_diagnostics_do_not_depend_on_opcode_tracer(string bytecode, ulong gasLimit, string expectedError)
+    public void Call_trace_diagnostics_do_not_depend_on_opcode_tracer(string bytecode, ulong gasLimit, string? expectedError)
     {
         (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.PragueActivation, gasLimit, Bytes.FromHexString(bytecode));
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.PragueActivation);
@@ -580,8 +590,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(standaloneJson, Is.EqualTo(composedJson));
-            Assert.That(standaloneTrace.RootElement.GetProperty("error").GetString(), Is.EqualTo(expectedError));
-            Assert.That(composedTrace.RootElement.GetProperty("error").GetString(), Is.EqualTo(expectedError));
+            Assert.That(standaloneTrace.RootElement.TryGetProperty("error", out JsonElement standaloneError) ? standaloneError.GetString() : null, Is.EqualTo(expectedError));
+            Assert.That(composedTrace.RootElement.TryGetProperty("error", out JsonElement composedError) ? composedError.GetString() : null, Is.EqualTo(expectedError));
         }
     }
 
