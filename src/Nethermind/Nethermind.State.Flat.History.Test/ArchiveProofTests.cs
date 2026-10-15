@@ -765,6 +765,43 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void A_composed_node_over_a_child_whose_rows_record_it_empty_is_served_from_commitments_alone()
+    {
+        // Depth 1 is composed from its children at depth 2. In a small trie many of them are empty, and a child whose
+        // rows record it as empty must not be rebuilt from the history rows: under a long chain that reads every row
+        // under its path, which runs out of the scan budget.
+        _policy = new CommitmentDepthPolicy(CommitmentDepthPolicy.MinIntervalLog2);
+        Address proven = AddressUnder("12", 0x4000_0000);
+        Address sibling = AddressUnder("13", 0x4100_0000);
+        Address vanished = AddressUnder("10", 0x4200_0000);
+        Address[] elsewhere = [AddressUnder("7a", 0x4300_0000), AddressUnder("7b", 0x4400_0000)];
+
+        ReplaceChain();
+        _chain.AddBlock(0, block =>
+        {
+            foreach (Address address in new[] { proven, sibling, vanished, elsewhere[0], elsewhere[1] }) block.SetBalance(address, 100);
+        });
+        _chain.AddBlock(1, block => block.SetAccount(vanished, null));
+        _chain.AddBlock(2, block => block.SetBalance(proven, 200));
+        _chain.AddBlock(3, block => block.SetBalance(elsewhere[0], 300));
+        _chain.PublishWatermark();
+        BuildCommitments();
+
+        AccountProof expected = _chain.ExpectedProof(proven, 3);
+        AccountProof expectedAbsent = _chain.ExpectedProof(vanished, 3);
+
+        CorruptEveryAccountRow();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ProveFromArchive(proven, 3).Proof, Is.EqualTo(expected.Proof),
+                "the child at 10 is empty from block 1 on and its rows say so; rebuilding it reads the (here corrupt) history row of the deleted account");
+            Assert.That(ProveFromArchive(vanished, 3).Proof, Is.EqualTo(expectedAbsent.Proof),
+                "an absence proof through the same composed node takes the same empty child");
+        }
+    }
+
+    [Test]
     public void A_storage_proof_at_a_windows_last_change_is_served_from_commitments_alone([Values(1L, 40L)] long maxRowsPerPartition)
     {
         BuildCommitments(maxRowsPerPartition);
