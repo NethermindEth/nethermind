@@ -87,7 +87,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public async Task A_work_item_that_throws_is_skipped_without_charging_its_sender_and_the_worker_goes_on()
+    public async Task A_work_item_that_throws_is_skipped_without_charging_its_sender_and_the_worker_goes_on([Values] bool internalTimeout)
     {
         Harness harness = CreateHarness();
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150, 151);
@@ -98,7 +98,7 @@ public partial class BeaconSyncOrchestratorTests
         Hash256 nextRoot = SszRoots.HashTreeRoot(chain[1].Message!);
         harness.Importer.OnImported = (_, root) =>
         {
-            if (root == faultingRoot) throw new InvalidOperationException("scripted fault");
+            if (root == faultingRoot) throw internalTimeout ? new OperationCanceledException("scripted internal timeout") : new InvalidOperationException("scripted fault");
         };
         (GossipVerdict faulting, List<MessageValidity> faultingGiven) = RecordingVerdict();
         (GossipVerdict next, List<MessageValidity> nextGiven) = RecordingVerdict();
@@ -289,15 +289,20 @@ public partial class BeaconSyncOrchestratorTests
         SignedBeaconBlock block = TestChain.CreateBlock(WallSlot, TestItem.KeccakA);
         IBlockImporter importer = Substitute.For<IBlockImporter>();
         importer.IsKnown(TestItem.KeccakA).Returns(true);
-        Exception failure = cancelled ? new OperationCanceledException() : new InvalidOperationException("store unavailable");
-        importer.Import(Arg.Any<ForkedSignedBeaconBlock>(), Arg.Any<Hash256>(), true).Returns(_ => throw failure);
+        using CancellationTokenSource shutdown = new();
+        Exception failure = cancelled ? new OperationCanceledException(shutdown.Token) : new InvalidOperationException("store unavailable");
+        importer.Import(Arg.Any<ForkedSignedBeaconBlock>(), Arg.Any<Hash256>(), true).Returns(_ =>
+        {
+            if (cancelled) shutdown.Cancel();
+            throw failure;
+        });
         harness.Orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(0, Hash256.Zero)), Hash256.Zero);
         await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.BeaconBlock,
             Snappier.Snappy.CompressToArray(SignedBeaconBlock.Encode(block)), async verdict =>
             {
                 harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfFulu(block), verdict));
                 if (cancelled)
-                    Assert.That(await Assert.CatchAsync(async () => await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None)),
+                    Assert.That(await Assert.CatchAsync(async () => await harness.Orchestrator.ProcessQueuedAsync(shutdown.Token)),
                         Is.SameAs(failure), "a cancellation stops the worker after settling the relay verdict");
                 else
                     Assert.That(async () => await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None), Throws.Nothing, "a local fault skips the item, not the worker");

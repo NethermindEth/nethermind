@@ -703,7 +703,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             await ProcessVoteCoreAsync(vote, token);
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
             OnWorkerFault(vote.Item, e);
         }
@@ -732,7 +732,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             await ProcessItemCoreAsync(item, token);
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
             OnWorkerFault(item, e);
         }
