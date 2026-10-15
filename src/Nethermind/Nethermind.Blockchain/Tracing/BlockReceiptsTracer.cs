@@ -183,7 +183,9 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         txReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
         txReceipt.BlockHash = Block.Hash;
         txReceipt.BlockNumber = Block.Number;
-        txReceipt.Index = _currentIndex;
+        // The receipt's position, not the count of traced transactions: a producer that discards a
+        // transaction after its trace started must not shift the index of the receipts that follow.
+        txReceipt.Index = _txReceipts.Count;
         txReceipt.GasUsed = gasConsumed.SpentGas;  // Post-refund for this tx
         txReceipt.EffectiveGasPrice = effectiveGasPrice;
         txReceipt.Sender = transaction.SenderAddress;
@@ -339,7 +341,6 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     }
 
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
-    protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = [];
     private readonly List<(ulong Execution, ulong State)> _cumulativeBlockGasPerTx = [];  // Track pre-refund block gas for restore (execution + EIP-8037 state)
     private ulong _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
@@ -407,7 +408,6 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     {
         Block = block;
         _bloomsRemoved = block.Header.Bloom?.IsZeroLength == true;
-        _currentIndex = 0;
         CurrentTx = null;
         _currentTxTracer = NullTxTracer.Instance;
         _currentFrameTxTracer = null;
@@ -453,7 +453,6 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         _currentFrameTxTracer = null;
         Block = null!;
         CurrentTx = null;
-        _currentIndex = 0;
         _frameTxPayer = null;
         _frameTxReceipts = null;
         _txReceipts.Clear();
@@ -473,11 +472,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         return _currentTxTracer;
     }
 
-    public void EndTxTrace()
-    {
-        _otherTracer.EndTxTrace();
-        _currentIndex++;
-    }
+    public void EndTxTrace() => _otherTracer.EndTxTrace();
 
     public void EndBlockTrace() => EndBlockTrace(accumulateBlockBloom: true);
 
