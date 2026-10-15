@@ -104,13 +104,13 @@ public interface IIlEvmConfig : IConfig
     [ConfigItem(Description = "The most IL and tables the contracts live profiling compiled may hold, in MiB (Adaptive: per source); under Simple a full budget evicts the least used promoted contract for a busier one. MaxLiveIlBytes stays the hard cap.", DefaultValue = "128")]
     int LiveBudgetMiB { get; set; }
 
-    [ConfigItem(Description = "Simple only: how many leading entries of the shipped list compile at startup; 0 compiles all of them.", DefaultValue = "300")]
+    [ConfigItem(Description = "Simple only: how many leading entries of the shipped list compile at startup; 0 compiles all of them.", DefaultValue = "0")]
     int ListSize { get; set; }
 
     [ConfigItem(Description = "Simple only: the time between live promotion rounds, in milliseconds.", DefaultValue = "5000")]
     int PromoteMs { get; set; }
 
-    [ConfigItem(Description = "Simple only: the interpreted opcodes per second a contract must run in the read-only queries to be promoted to compiled code.", DefaultValue = "200000")]
+    [ConfigItem(Description = "Simple only: the interpreted opcodes per second a contract must run in the read-only queries to be promoted to compiled code.", DefaultValue = "1000000")]
     long PromoteOps { get; set; }
 
     [ConfigItem(Description = "Adaptive only, diagnostics: block processing's runner is attached but declines every frame, which measures the hook's own cost.", DefaultValue = "false", HiddenFromDocs = true)]
@@ -179,9 +179,9 @@ public class IlEvmConfig : IIlEvmConfig
     public int CompileThreads { get; set; } = 1;
     public int IdleCompileThreads { get; set; }
     public int LiveBudgetMiB { get; set; } = 128;
-    public int ListSize { get; set; } = 300;
+    public int ListSize { get; set; } = 0;
     public int PromoteMs { get; set; } = 5_000;
-    public long PromoteOps { get; set; } = 200_000;
+    public long PromoteOps { get; set; } = 1_000_000;
     public bool BlockDeclineAll { get; set; }
     public int Threshold { get; set; } = 32;
     public long OpcodeThreshold { get; set; } = 20_000;

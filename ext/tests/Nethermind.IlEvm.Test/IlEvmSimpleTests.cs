@@ -257,7 +257,7 @@ public class IlEvmSimpleTests : IlEvmAdaptiveFixture
         Assert.That((IlSimple.PromoteMs, IlSimple.PromoteOps, IlSimple.CompileThreads, IlSimple.BudgetBytes), Is.EqualTo((1234, 99L, 2, 3L << 20)));
         Assert.That(IlRuntime.QueryCounting, Is.False, "the Adaptive rules' counting stays off");
         IlEvmModule.Configure(new IlEvmConfig { Enabled = true });
-        Assert.That((IlEvmSettings.Mode, IlSimple.Promote, IlSimple.PromoteMs, IlSimple.PromoteOps), Is.EqualTo((IlMode.Simple, true, 5_000, 200_000L)), "the defaults");
+        Assert.That((IlEvmSettings.Mode, IlSimple.Promote, IlSimple.PromoteMs, IlSimple.PromoteOps), Is.EqualTo((IlMode.Simple, true, 5_000, 1_000_000L)), "the defaults");
     }
 
     [Test]

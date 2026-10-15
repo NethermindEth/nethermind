@@ -335,7 +335,7 @@ internal static class IlSimple
     public static int PromoteMs { get; set; } = 5_000;
 
     /// <summary>The interpreted opcodes per second a code must run to be promoted.</summary>
-    public static long PromoteOps { get; set; } = 200_000;
+    public static long PromoteOps { get; set; } = 1_000_000;
 
     /// <summary>The threads a round compiles on.</summary>
     public static int CompileThreads { get; set; } = 1;

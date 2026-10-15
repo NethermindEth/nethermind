@@ -79,11 +79,11 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
         Assert.That(IlEvmPrecompileList.ParseList(["# calib only=1"]).Entries, Is.Empty);
 
         // The shipped list, of either format: each entry with its code's size and the profile's counts, or with the fields
-        // tools/make_list.py measures; at most the tool's 300 entries, and calibration values that are numbers.
+        // tools/make_list.py measures; at most the tool's 500 entries, and calibration values that are numbers.
         Assume.That(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_PRECOMPILE_LIST"), Is.Null.Or.Empty, "an override replaces the lists");
         IlEvmPrecompileList.ListFile shipped = IlEvmPrecompileList.LoadList(IlEvmPrecompileSource.Shipped, out string origin);
         Assert.That(origin, Is.EqualTo("Shipped"));
-        Assert.That(shipped.Entries, Has.Count.InRange(1, 300));
+        Assert.That(shipped.Entries, Has.Count.InRange(1, 500));
         Assert.That(shipped.Entries.All(static e => e.Size > 0 && (e is { Ops: > 0, Frames: > 0, Score: null } || e is { Score: not null, Use: not null, Shape: not null })), Is.True);
         Assert.That(IlEvmPrecompileList.CalibrationValues(shipped.Calibration).Values.All(static v => double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _)), Is.True);
         Assert.That(shipped.Entries.Select(static e => e.Hash), Is.EqualTo(IlEvmPrecompileList.Load()));

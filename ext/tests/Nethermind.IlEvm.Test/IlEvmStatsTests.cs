@@ -879,11 +879,11 @@ public class IlEvmStatsTests
         Assert.That(IlEvmPrecompileList.Load(IlEvmPrecompileSource.Candidates), Is.EqualTo(candidates.Select(static e => e.Hash)));
 
         List<ValueHash256> shipped = IlEvmPrecompileList.Load(IlEvmPrecompileSource.Shipped);
-        Assert.That(shipped, Has.Count.EqualTo(300));
+        Assert.That(shipped, Has.Count.EqualTo(500));
         Assert.That(IlEvmPrecompileList.Load(), Is.EqualTo(shipped));
         Assert.That(IlEvmPrecompileList.Parse(File.ReadLines(ListFile("Precompile.txt"))), Is.EqualTo(shipped), "the shipped list is read as it always was");
+        // The shipped list comes from all 10k fusaka payloads, the candidates from the first 1,000 blocks: no longer a subset.
         Assert.That(candidates, Has.Count.GreaterThan(shipped.Count), "the candidates are the wider list");
-        Assert.That(shipped, Is.SubsetOf(candidates.Select(static e => e.Hash)), "from the same profile");
     }
 
     /// <summary>A list file of the plugin's sources.</summary>
@@ -1029,7 +1029,7 @@ public class IlEvmStatsTests
         Assert.That(lines[0], Does.StartWith($"IL-EVM precompile: 0 of {candidates.Count - light} shipped contracts compiled for the spec of block 6 " +
             $"(list Candidates, {light} of {candidates.Count} entries under 2000 opcodes per frame skipped; {candidates.Count - light} not in the code database, 0 declined"));
         Assert.That(Precompile(new IlEvmConfig { Selection = IlEvmSelection.Adaptive, Enabled = true })[0],
-            Does.StartWith("IL-EVM precompile: 0 of 300 shipped contracts compiled for the spec of block 6 (list Shipped; 300 not in the code database, 0 declined"));
+            Does.StartWith("IL-EVM precompile: 0 of 500 shipped contracts compiled for the spec of block 6 (list Shipped; 500 not in the code database, 0 declined"));
 
         // A list file names code that is there: the entries under the bar are not compiled, those without counts are.
         IDb codeDb = ((IDbProvider)dbProvider).CodeDb;

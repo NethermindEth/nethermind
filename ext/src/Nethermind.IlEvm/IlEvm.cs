@@ -156,6 +156,21 @@ public static class IlEvmSettings
     /// <summary>Compile the common forms with a constant operand - comparisons, masks, shifts, small additions - straight to limb operations.</summary>
     public static bool DirectArithmetic { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_DIRECT") != "0";
 
+    /// <summary>
+    /// Keep a segment's words in vector registers where they can be, on AVX2 hardware unless <c>NETHERMIND_ILEVM_VECTOR=0</c>:
+    /// bitwise operations, comparisons, CALLDATALOAD, NOT, ISZERO, and shifts, small additions and subtractions and
+    /// power-of-two multiplications, divisions and remainders by a constant compile to 256-bit vector code whose results
+    /// stay in locals; DUP and SWAP move nothing, and words reach their stack slots in one 32-byte store where the
+    /// interpreter, a helper or a body needs them there.
+    /// </summary>
+    /// <remarks>
+    /// A word written in parts - one limb of an addition, four limbs of a mask - and read whole by the next opcode cannot be
+    /// forwarded from the store buffer: the read waits for the stores to reach the cache, many times the operation's cost.
+    /// MLOAD and MSTORE stay helper calls: in place below the initialized limit they measured slower, and 45% more code.
+    /// </remarks>
+    public static bool VectorForms { get; set; } =
+        System.Runtime.Intrinsics.X86.Avx2.IsSupported && Vector256.IsHardwareAccelerated && Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_VECTOR") != "0";
+
     /// <summary>Let the JIT inline the bodies compiled code runs directly (CALLDATALOAD and the like) rather than call them out of line.</summary>
     public static bool InlineBodies { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_INLINE_BODIES") != "0";
 
@@ -375,6 +390,30 @@ public static class IlEvmDiagnostics
     /// <summary>IL instructions the compiler emitted, by what they implement.</summary>
     public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> IlByCategory = new();
 
+    /// <summary>
+    /// Have compiled code store the id of what it runs next - an opcode, a segment's checks, a shared path - in
+    /// <see cref="Marker"/> as it goes, with <c>NETHERMIND_ILEVM_MARKERS=1</c>, for a sampling profiler that reads it
+    /// with each sample. The runtime keeps no IL-to-native map of dynamic methods, so this is how samples in compiled
+    /// code, and in the helpers and bodies it calls, are told apart by opcode.
+    /// </summary>
+    /// <remarks>Each marker costs a store; unlike the other diagnostics it leaves the rules as they are set.</remarks>
+    public static readonly bool Markers = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_MARKERS") == "1";
+
+    /// <summary>With <see cref="Markers"/>: the id of what compiled code runs, 0 outside it.</summary>
+    public static int Marker;
+
+    /// <summary>With <see cref="Markers"/>: each marker's method, what it marks and the code offset of its opcode.</summary>
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<int, (string Method, string Category, int Pc)> MarkerNames = new();
+
+    private static int _lastMarker;
+
+    internal static int NextMarker(string method, string category, int pc)
+    {
+        int id = Interlocked.Increment(ref _lastMarker);
+        MarkerNames[id] = (method, category, pc);
+        return id;
+    }
+
     public static IEnumerable<string> DescribeIl(int top)
     {
         long total = 0;
@@ -440,6 +479,8 @@ public static unsafe partial class IlEvm
 #pragma warning restore CS0649
         /// <summary>The opcode count from which a taken jump polls for cancellation; <see cref="int.MaxValue"/> when the run is not cancelable.</summary>
         public int PollAt;
+        /// <summary><see cref="OpCodes"/> when the machine's opcode count last took them in, at a chunk's exit.</summary>
+        public int Counted;
     }
 
     internal delegate EvmExceptionType IlRunner(
@@ -1697,14 +1738,16 @@ public static unsafe partial class IlEvm
     private static void IlMath2Const<TOpMath>(ref byte operand, ref byte destination, ulong c0, ulong c1, ulong c2, ulong c3, bool constantOnTop)
         where TOpMath : struct, EvmInstructions.IOpMath2Param
     {
-        UInt256 constant = new(c0, c1, c2, c3);
+        // Built as one vector: four limb stores read back whole could not be forwarded.
+        UInt256 constant = Unsafe.BitCast<Vector256<ulong>, UInt256>(Vector256.Create(c0, c1, c2, c3));
         ref UInt256 value = ref Unsafe.As<byte, UInt256>(ref operand);
         UInt256 result;
         if (constantOnTop)
             TOpMath.Operation(in constant, in value, out result);
         else
             TOpMath.Operation(in value, in constant, out result);
-        Unsafe.As<byte, UInt256>(ref destination) = result;
+        // One 32-byte store, which the next opcode's whole-word read is forwarded from.
+        Unsafe.WriteUnaligned(ref destination, Vector256.Create(result.u0, result.u1, result.u2, result.u3));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1730,7 +1773,7 @@ public static unsafe partial class IlEvm
     private static bool IlPredicate2Const<TOpMath>(ref byte operand, ulong c0, ulong c1, ulong c2, ulong c3, bool constantOnTop)
         where TOpMath : struct, EvmInstructions.IOpMath2Param
     {
-        UInt256 constant = new(c0, c1, c2, c3);
+        UInt256 constant = Unsafe.BitCast<Vector256<ulong>, UInt256>(Vector256.Create(c0, c1, c2, c3));
         ref UInt256 value = ref Unsafe.As<byte, UInt256>(ref operand);
         UInt256 result;
         if (constantOnTop)
@@ -1804,7 +1847,7 @@ public static unsafe partial class IlEvm
         ref UInt256 a = ref Unsafe.As<byte, UInt256>(ref top);
         ref UInt256 b = ref Unsafe.Subtract(ref a, 1);
         TOpMath.Operation(in a, in b, out UInt256 result);
-        b = result;
+        Unsafe.WriteUnaligned(ref Unsafe.As<UInt256, byte>(ref b), Vector256.Create(result.u0, result.u1, result.u2, result.u3));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1850,6 +1893,39 @@ public static unsafe partial class IlEvm
         }
     }
 
+    /// <summary>CALLDATALOAD of an offset held in a register, past the end of the input or not below 2^32: zeros where the input ends.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Vector256<ulong> IlCallDataWord(ref byte input, nint length, Vector256<ulong> offset) => IlCallDataWordAt(ref input, length, offset);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static Vector256<ulong> IlCallDataWordAhead(ref byte input, nint length, Vector256<ulong> offset) => IlCallDataWordAt(ref input, length, offset);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<ulong> IlCallDataWordAt(ref byte input, nint length, Vector256<ulong> offset)
+    {
+        // Past the input, or past 2^64, the body reads nothing and pushes zero.
+        ulong at = offset.GetElement(0);
+        if ((offset.GetElement(1) | offset.GetElement(2) | offset.GetElement(3)) != 0 || at >= (ulong)length)
+            return Vector256<ulong>.Zero;
+        // Not through IlCallDataLoadAt: its InitBlockUnaligned of a word in a vector local is emitted by the .NET 10 JIT
+        // as a VEX.256 vmovq, which the processor faults on.
+        uint available = (uint)length - (uint)at;
+        ref byte source = ref Unsafe.Add(ref input, (nint)at);
+        EvmWord word;
+        if (available >= EvmStack.WordSize)
+        {
+            word = Unsafe.ReadUnaligned<EvmWord>(ref source);
+        }
+        else
+        {
+            // The input's last bytes, then zeros.
+            word = default;
+            Unsafe.CopyBlockUnaligned(ref Unsafe.As<EvmWord, byte>(ref word), ref source, available);
+        }
+
+        return word.ByteSwap().AsUInt64();
+    }
+
     // The memory's word fast paths are internal to the core; the accessors bind them by name and inline like direct calls.
 
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "GetActiveInitializedWord")]
@@ -1863,22 +1939,64 @@ public static unsafe partial class IlEvm
 
     /// <summary>Carries one into limb 1 and up of the word at <paramref name="slot"/>, for an addition whose low limb wrapped.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void IlCarry(ref byte slot)
-    {
-        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
-        if (++Unsafe.Add(ref limbs, 1) != 0) return;
-        if (++Unsafe.Add(ref limbs, 2) != 0) return;
-        ++Unsafe.Add(ref limbs, 3);
-    }
+    private static void IlCarry(ref byte slot) => IlCarryWord(ref slot);
 
     /// <summary>Borrows one from limb 1 and up of the word at <paramref name="slot"/>, for a subtraction whose low limb wrapped.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void IlBorrow(ref byte slot)
+    private static void IlBorrow(ref byte slot) => IlBorrowWord(ref slot);
+
+    /// <summary>Carries one into limb 1 and up of <paramref name="word"/>, held in a register by compiled code, for an addition whose low limb wrapped.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Vector256<ulong> IlCarryVector(Vector256<ulong> word) => IlCarryLimbs(word);
+
+    /// <summary>Borrows one from limb 1 and up of <paramref name="word"/>, held in a register by compiled code, for a subtraction whose low limb wrapped.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Vector256<ulong> IlBorrowVector(Vector256<ulong> word) => IlBorrowLimbs(word);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static Vector256<ulong> IlCarryVectorAhead(Vector256<ulong> word) => IlCarryLimbs(word);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static Vector256<ulong> IlBorrowVectorAhead(Vector256<ulong> word) => IlBorrowLimbs(word);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<ulong> IlCarryLimbs(Vector256<ulong> word)
     {
-        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
-        if (Unsafe.Add(ref limbs, 1)-- != 0) return;
-        if (Unsafe.Add(ref limbs, 2)-- != 0) return;
-        Unsafe.Add(ref limbs, 3)--;
+        ulong u1 = word.GetElement(1) + 1, u2 = word.GetElement(2), u3 = word.GetElement(3);
+        if (u1 == 0 && ++u2 == 0)
+            u3++;
+        return Vector256.Create(word.GetElement(0), u1, u2, u3);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<ulong> IlBorrowLimbs(Vector256<ulong> word)
+    {
+        ulong u1 = word.GetElement(1), u2 = word.GetElement(2), u3 = word.GetElement(3);
+        if (u1-- == 0 && u2-- == 0)
+            u3--;
+        return Vector256.Create(word.GetElement(0), u1, u2, u3);
+    }
+
+    /// <summary>The carry, reading and writing the word whole, as compiled code wrote it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void IlCarryWord(ref byte slot)
+    {
+        Vector256<ulong> word = Unsafe.ReadUnaligned<Vector256<ulong>>(ref slot);
+        ulong u1 = word.GetElement(1) + 1, u2 = word.GetElement(2), u3 = word.GetElement(3);
+        if (u1 == 0 && ++u2 == 0)
+            u3++;
+        Unsafe.WriteUnaligned(ref slot, Vector256.Create(word.GetElement(0), u1, u2, u3));
+    }
+
+    /// <summary>The borrow, reading and writing the word whole, as compiled code wrote it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void IlBorrowWord(ref byte slot)
+    {
+        Vector256<ulong> word = Unsafe.ReadUnaligned<Vector256<ulong>>(ref slot);
+        ulong u1 = word.GetElement(1), u2 = word.GetElement(2), u3 = word.GetElement(3);
+        if (u1-- == 0 && u2-- == 0)
+            u3--;
+        Unsafe.WriteUnaligned(ref slot, Vector256.Create(word.GetElement(0), u1, u2, u3));
     }
 
     // Called twins of the helpers above: compiled code calls these instead when the helpers are not to be inlined,
@@ -1951,22 +2069,10 @@ public static unsafe partial class IlEvm
     // then (IlWarmUp.SwitchFromAhead). Each is found by its called twin's name with the "Ahead" suffix.
 
     [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlCarryAhead(ref byte slot)
-    {
-        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
-        if (++Unsafe.Add(ref limbs, 1) != 0) return;
-        if (++Unsafe.Add(ref limbs, 2) != 0) return;
-        ++Unsafe.Add(ref limbs, 3);
-    }
+    private static void IlCarryAhead(ref byte slot) => IlCarryWord(ref slot);
 
     [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlBorrowAhead(ref byte slot)
-    {
-        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
-        if (Unsafe.Add(ref limbs, 1)-- != 0) return;
-        if (Unsafe.Add(ref limbs, 2)-- != 0) return;
-        Unsafe.Add(ref limbs, 3)--;
-    }
+    private static void IlBorrowAhead(ref byte slot) => IlBorrowWord(ref slot);
 
     [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
     private static void IlMath2CalledAhead<TOpMath>(ref byte top) where TOpMath : struct, EvmInstructions.IOpMath2Param => IlMath2<TOpMath>(ref top);
@@ -2366,6 +2472,7 @@ public static unsafe partial class IlEvm
         private static readonly FieldInfo? OpCodeCountField = typeof(VirtualMachine<EthereumGasPolicy>).GetField("<OpCodeCount>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance);
         private static readonly FieldInfo StateOpCodes = typeof(IlRunState).GetField(nameof(IlRunState.OpCodes))!;
         private static readonly FieldInfo StatePollAt = typeof(IlRunState).GetField(nameof(IlRunState.PollAt))!;
+        private static readonly FieldInfo StateCounted = typeof(IlRunState).GetField(nameof(IlRunState.Counted))!;
         private static readonly MethodInfo FailAtMethod = typeof(IlChunk).GetMethod(nameof(IlChunk.FailAt), BindingFlags.Public | BindingFlags.Instance)!;
         private static readonly MethodInfo GetOpCodeCount = typeof(VirtualMachine<EthereumGasPolicy>).GetProperty(nameof(VirtualMachine<EthereumGasPolicy>.OpCodeCount))!.GetGetMethod()!;
         private static readonly MethodInfo SetOpCodeCount = typeof(VirtualMachine<EthereumGasPolicy>).GetProperty(nameof(VirtualMachine<EthereumGasPolicy>.OpCodeCount))!.GetSetMethod()!;
@@ -2384,6 +2491,39 @@ public static unsafe partial class IlEvm
         private static readonly MethodInfo VectorAsByte = typeof(Vector256).GetMethod(nameof(Vector256.AsByte))!.MakeGenericMethod(typeof(ulong));
         private static readonly MethodInfo VectorOnesComplement = typeof(Vector256).GetMethod(nameof(Vector256.OnesComplement))!.MakeGenericMethod(typeof(byte));
         private static readonly MethodInfo BorrowMethod = typeof(IlEvm).GetMethod(nameof(IlBorrow), BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        /// <summary>A generic <see cref="Vector256"/> method of <paramref name="parameters"/> vector parameters, made for <paramref name="element"/>.</summary>
+        private static MethodInfo VectorMethod(string name, Type element, int parameters) =>
+            typeof(Vector256).GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Single(m => m.Name == name && m.IsGenericMethodDefinition && m.GetParameters().Length == parameters &&
+                             m.GetParameters().All(static p => p.ParameterType.IsGenericType && p.ParameterType.GetGenericTypeDefinition() == typeof(Vector256<>)))
+                .MakeGenericMethod(element);
+
+        private static readonly MethodInfo VecAdd = VectorMethod(nameof(Vector256.Add), typeof(ulong), 2);
+        private static readonly MethodInfo VecSubtract = VectorMethod(nameof(Vector256.Subtract), typeof(ulong), 2);
+        private static readonly MethodInfo VecAnd = VectorMethod(nameof(Vector256.BitwiseAnd), typeof(ulong), 2);
+        private static readonly MethodInfo VecOr = VectorMethod(nameof(Vector256.BitwiseOr), typeof(ulong), 2);
+        private static readonly MethodInfo VecXor = VectorMethod(nameof(Vector256.Xor), typeof(ulong), 2);
+        private static readonly MethodInfo VecEqualsAll = VectorMethod(nameof(Vector256.EqualsAll), typeof(ulong), 2);
+        private static readonly MethodInfo VecToScalar = VectorMethod(nameof(Vector256.ToScalar), typeof(ulong), 1);
+        private static readonly MethodInfo VecAsInt64 = VectorMethod(nameof(Vector256.AsInt64), typeof(ulong), 1);
+        private static readonly MethodInfo VecGreaterThanSigned = VectorMethod(nameof(Vector256.GreaterThan), typeof(long), 2);
+        private static readonly MethodInfo VecMaskSigned = VectorMethod(nameof(Vector256.ExtractMostSignificantBits), typeof(long), 1);
+        private static readonly MethodInfo VecZero = typeof(Vector256<ulong>).GetProperty(nameof(Vector256<ulong>.Zero))!.GetGetMethod()!;
+        private static readonly MethodInfo VecOnesComplement = VectorMethod(nameof(Vector256.OnesComplement), typeof(ulong), 1);
+        private static readonly MethodInfo VecGetElement = typeof(Vector256).GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Single(static m => m.Name == nameof(Vector256.GetElement) && m.IsGenericMethodDefinition).MakeGenericMethod(typeof(ulong));
+        private static readonly MethodInfo CarryVectorMethod = typeof(IlEvm).GetMethod(nameof(IlCarryVector), BindingFlags.NonPublic | BindingFlags.Static)!;
+        private static readonly MethodInfo CallDataWordMethod = typeof(IlEvm).GetMethod(nameof(IlCallDataWord), BindingFlags.NonPublic | BindingFlags.Static)!;
+        private static readonly MethodInfo CallDataWordAheadMethod = typeof(IlEvm).GetMethod(nameof(IlCallDataWordAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
+        private static readonly MethodInfo VecAsByte = VectorMethod(nameof(Vector256.AsByte), typeof(ulong), 1);
+        private static readonly MethodInfo VecBytesAsUInt64 = VectorMethod(nameof(Vector256.AsUInt64), typeof(byte), 1);
+        private static readonly MethodInfo Permute4x64 = typeof(System.Runtime.Intrinsics.X86.Avx2).GetMethod(nameof(System.Runtime.Intrinsics.X86.Avx2.Permute4x64), [typeof(Vector256<ulong>), typeof(byte)])!;
+        private static readonly MethodInfo ShuffleBytes = typeof(System.Runtime.Intrinsics.X86.Avx2).GetMethod(nameof(System.Runtime.Intrinsics.X86.Avx2.Shuffle), [typeof(Vector256<byte>), typeof(Vector256<byte>)])!;
+        private static readonly MethodInfo TestZ = typeof(System.Runtime.Intrinsics.X86.Avx).GetMethod(nameof(System.Runtime.Intrinsics.X86.Avx.TestZ), [typeof(Vector256<ulong>), typeof(Vector256<ulong>)])!;
+        private static readonly MethodInfo CarryVectorAheadMethod = typeof(IlEvm).GetMethod(nameof(IlCarryVectorAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
+        private static readonly MethodInfo BorrowVectorMethod = typeof(IlEvm).GetMethod(nameof(IlBorrowVector), BindingFlags.NonPublic | BindingFlags.Static)!;
+        private static readonly MethodInfo BorrowVectorAheadMethod = typeof(IlEvm).GetMethod(nameof(IlBorrowVectorAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo BorrowAheadMethod = typeof(IlEvm).GetMethod(nameof(IlBorrowAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
 
         [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "IlEvmSettings.Enabled is false without dynamic code, so nothing reaches the compiler.")]
@@ -2568,7 +2708,7 @@ public static unsafe partial class IlEvm
                 InitLocals = false
             };
 
-            IlWriter generator = new(method.GetILGenerator());
+            IlWriter generator = new(method.GetILGenerator()) { MethodName = method.Name };
             List<IlSegmentInfo> segments = [];
             List<IlSite> sites = [];
             Emitter emitter = new(generator, units, unitsByPc, contract.Code.Length, segments, sites, inlineBudget);
@@ -2895,6 +3035,9 @@ public static unsafe partial class IlEvm
 
             private enum Held : byte { Memory, Constant, Flag }
 
+            /// <summary>Whether the segment keeps words in vector locals (<see cref="IlEvmSettings.VectorForms"/>), whose forms are larger.</summary>
+            private static bool Tracked => IlEvmSettings.VectorForms && IlEvmSettings.DirectArithmetic;
+
             /// <summary>What the stack positions hold relative to the segment's start; any not listed are in memory.</summary>
             /// <remarks>A SWAP can move a virtual value below the start, so positions there are tracked too.</remarks>
             private readonly Dictionary<int, Held> _held = [];
@@ -3026,6 +3169,9 @@ public static unsafe partial class IlEvm
                         bool folds = At(h - 1) == Held.Constant && At(h - 2) == Held.Constant;
                         // A shift by a constant amount is a direct form over the limbs, several times a helper call.
                         bool constantShift = op.Family == IlFamily.Shift && At(h - 1) == Held.Constant;
+                        // With the vector forms a bitwise result, and a constant shift's or addition's, stays in a local.
+                        bool tracked = Tracked && !op.IsPredicate &&
+                            (op.Family == IlFamily.Bitwise || ((op.Family == IlFamily.Shift || op.Family == IlFamily.Math2) && (At(h - 1) == Held.Constant || At(h - 2) == Held.Constant)));
                         Set(h - 1, Held.Memory);
                         _height = h - 1;
                         if (folds)
@@ -3034,8 +3180,8 @@ public static unsafe partial class IlEvm
                             break;
                         }
 
-                        Set(h - 2, op.IsPredicate ? Held.Flag : Held.Memory);
-                        _il += constantShift ? 72 : op.IsPredicate || IlEvmSettings.DirectArithmetic ? 24 : 14;
+                        Set(h - 2, op.IsPredicate ? Held.Flag : tracked ? Held.Constant : Held.Memory);
+                        _il += constantShift ? 72 : op.IsPredicate && Tracked ? 36 : op.IsPredicate || IlEvmSettings.DirectArithmetic ? 24 : 14;
                         break;
                     }
                     case IlKind.MLoad:
@@ -3046,6 +3192,10 @@ public static unsafe partial class IlEvm
                     case IlKind.MStore:
                         _il += 50 + (At(h - 1) == Held.Constant ? Write : 0) + (At(h - 2) == Held.Constant ? Write : 0) + Write * VirtualBelow(h - 2);
                         Produce(h - 2, h - 2);
+                        break;
+                    case IlKind.CheckedBody when Tracked && op.IsCallDataLoad:
+                        _il += 50;
+                        Set(h - 1, Held.Constant);
                         break;
                     case IlKind.EmbeddedBody:
                     {
@@ -3284,9 +3434,28 @@ public static unsafe partial class IlEvm
 
             public void MarkLabel(Label label) => generator.MarkLabel(label);
 
+            /// <summary>With <see cref="IlEvmDiagnostics.Markers"/>: the method's name, the code offset of the opcode being emitted, and the category last marked.</summary>
+            public string MethodName = "";
+            public int Pc = -1;
+            private string? _marked;
+
+            /// <summary>With <see cref="IlEvmDiagnostics.Markers"/>: stores <paramref name="id"/> in the marker.</summary>
+            public void StoreMarker(int id)
+            {
+                generator.Emit(OpCodes.Ldc_I4, id);
+                generator.Emit(OpCodes.Stsfld, MarkerField);
+            }
+
+            private static readonly FieldInfo MarkerField = typeof(IlEvmDiagnostics).GetField(nameof(IlEvmDiagnostics.Marker))!;
+
             private void Count(OpCode opcode)
             {
                 Instructions++;
+                if (IlEvmDiagnostics.Markers && !ReferenceEquals(_marked, Category))
+                {
+                    _marked = Category;
+                    StoreMarker(IlEvmDiagnostics.NextMarker(MethodName, Category, Pc));
+                }
                 if (IlEvmDiagnostics.Enabled)
                     IlEvmDiagnostics.IlByCategory.AddOrUpdate(Category, 1, static (_, v) => v + 1);
                 if (opcode.OperandType is OperandType.InlineVar or OperandType.ShortInlineVar ||
@@ -3409,9 +3578,6 @@ public static unsafe partial class IlEvm
             private LocalBuilder _base = null!;
             private LocalBuilder _frame = null!;
             private LocalBuilder _pc = null!;
-            private LocalBuilder _ops = null!;
-            private LocalBuilder _opsAtEntry = null!;
-            private LocalBuilder _poll = null!;
             private LocalBuilder _result = null!;
             private LocalBuilder _target = null!;
             private LocalBuilder _limb = null!;
@@ -3449,9 +3615,6 @@ public static unsafe partial class IlEvm
                 _base = il.DeclareLocal(typeof(byte).MakeByRefType());
                 _frame = il.DeclareLocal(typeof(byte).MakeByRefType());
                 _pc = il.DeclareLocal(typeof(nint));
-                _ops = il.DeclareLocal(typeof(int));
-                _opsAtEntry = il.DeclareLocal(typeof(int));
-                _poll = il.DeclareLocal(typeof(int));
                 _result = il.DeclareLocal(typeof(EvmExceptionType));
                 _target = il.DeclareLocal(typeof(int));
                 _limb = il.DeclareLocal(typeof(ulong));
@@ -3529,7 +3692,8 @@ public static unsafe partial class IlEvm
                 il.Emit(OpCodes.Ldloc, _failSegment);
                 il.Emit(OpCodes.Ldloc, _gas);
                 il.Emit(OpCodes.Ldloc, _head);
-                il.Emit(OpCodes.Ldloc, _ops);
+                il.Emit(OpCodes.Ldarg_S, ArgState);
+                il.Emit(OpCodes.Ldfld, StateOpCodes);
                 il.Emit(OpCodes.Ldloca, _failGas);
                 il.Emit(OpCodes.Ldloca, _failOps);
                 il.Emit(OpCodes.Ldarg_S, ArgProgramCounter);
@@ -3541,8 +3705,9 @@ public static unsafe partial class IlEvm
                 il.Emit(OpCodes.Beq, fromStart);
                 il.Emit(OpCodes.Ldloc, _failGas);
                 il.Emit(OpCodes.Stloc, _gas);
+                il.Emit(OpCodes.Ldarg_S, ArgState);
                 il.Emit(OpCodes.Ldloc, _failOps);
-                il.Emit(OpCodes.Stloc, _ops);
+                il.Emit(OpCodes.Stfld, StateOpCodes);
                 // fromStart: nothing of the segment ran, so its starting gas and head are the interpreter's.
                 il.MarkLabel(fromStart);
                 SyncHead(0);
@@ -3569,10 +3734,12 @@ public static unsafe partial class IlEvm
             private void EmitLeaveSite()
             {
                 il.MarkLabel(_leaveSite);
-                il.Emit(OpCodes.Ldloc, _ops);
+                il.Emit(OpCodes.Ldarg_S, ArgState);
+                il.Emit(OpCodes.Ldarg_S, ArgState);
+                il.Emit(OpCodes.Ldfld, StateOpCodes);
                 il.Emit(OpCodes.Ldloc, _opsAdjust);
                 il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Stloc, _ops);
+                il.Emit(OpCodes.Stfld, StateOpCodes);
                 il.Emit(OpCodes.Br, _exit);
             }
 
@@ -3608,15 +3775,8 @@ public static unsafe partial class IlEvm
                     il.Emit(OpCodes.Call, MemoryOf);
                     il.Emit(OpCodes.Stloc, _memory);
                 }
-                // The chain's opcode count and poll mark come in with the frame's run and leave with it.
-                il.Emit(OpCodes.Ldarg_S, ArgState);
-                il.Emit(OpCodes.Ldfld, StateOpCodes);
-                il.Emit(OpCodes.Dup);
-                il.Emit(OpCodes.Stloc, _ops);
-                il.Emit(OpCodes.Stloc, _opsAtEntry);
-                il.Emit(OpCodes.Ldarg_S, ArgState);
-                il.Emit(OpCodes.Ldfld, StatePollAt);
-                il.Emit(OpCodes.Stloc, _poll);
+                // The chain's opcode count and poll mark stay in the run state, in memory: as locals live through every
+                // segment, the JIT moved them between registers and the stack at nearly every block boundary.
 
                 Label[] entries = new Label[units.Count];
                 for (int i = 0; i < units.Count; i++)
@@ -3642,6 +3802,7 @@ public static unsafe partial class IlEvm
             {
                 Label deopt = NewLabel();
                 il.MarkLabel(LabelOf(segment));
+                il.Pc = segment.StartPc;
                 il.Category = "segment checks";
 
                 bool checks = segment.Gas > 0 || segment.MinHeight > 0 || segment.MaxPeak > 0;
@@ -3723,17 +3884,37 @@ public static unsafe partial class IlEvm
                 {
                     IlInstruction instruction = instructions[i];
                     IlOp op = instruction.Op;
-                    if (IlEvmDiagnostics.Enabled)
+                    if (IlEvmDiagnostics.Markers)
+                    {
+                        il.Category = ((Instruction)instruction.Opcode).ToString();
+                        il.Pc = instruction.Pc;
+                    }
+                    else if (IlEvmDiagnostics.Enabled)
                         il.Category = op.Kind is IlKind.Native or IlKind.CheckedBody or IlKind.EmbeddedBody ? $"{op.Kind} {op.Name}" : op.Kind.ToString();
                     switch (op.Kind)
                     {
                         case IlKind.Push:
-                            _virtual[delta] = VVal.Constant(instruction.U0, instruction.U1, instruction.U2, instruction.U3);
+                            SetValue(delta, VVal.Constant(instruction.U0, instruction.U1, instruction.U2, instruction.U3));
                             delta++;
                             break;
                         case IlKind.ProgramCounter:
-                            _virtual[delta] = VVal.Constant((ulong)instruction.Pc, 0, 0, 0);
+                            SetValue(delta, VVal.Constant((ulong)instruction.Pc, 0, 0, 0));
                             delta++;
+                            break;
+                        case IlKind.Dup when _vstack:
+                        {
+                            // The copy is the source's value, or an alias of its slot: nothing moves. The aliases of the
+                            // copy's slot are resolved before the source is read: the source may be one of them, and a
+                            // spill while resolving may write it to its slot and free its local.
+                            int source = delta - op.Count;
+                            if (!_virtual.ContainsKey(delta))
+                                ResolveAliasesOf(delta);
+                            SetValue(delta, Virtual(source) ?? VVal.AliasOf(source));
+                            delta++;
+                            break;
+                        }
+                        case IlKind.Swap when _vstack:
+                            SwapValues(delta - 1, delta - 1 - op.Count);
                             break;
                         case IlKind.Dup:
                         {
@@ -3785,6 +3966,20 @@ public static unsafe partial class IlEvm
                             break;
                         case IlKind.JumpDest:
                             break;
+                        case IlKind.Gas when _vstack:
+                            // GAS reads what the interpreter would hold after it: the segment charged the rest already.
+                            il.Emit(OpCodes.Ldloc, _gas);
+                            if (instruction.GasAfter > 0)
+                            {
+                                il.Emit(OpCodes.Ldc_I8, (long)instruction.GasAfter);
+                                il.Emit(OpCodes.Add);
+                            }
+
+                            il.Emit(OpCodes.Call, VectorCreateScalar);
+                            il.Emit(OpCodes.Stloc, VecScratch);
+                            BindScratch(delta);
+                            delta++;
+                            break;
                         case IlKind.Gas:
                             // GAS reads what the interpreter would hold after it: the segment charged the rest already.
                             _virtual.Remove(delta);
@@ -3808,6 +4003,7 @@ public static unsafe partial class IlEvm
                             else
                             {
                                 _virtual.Remove(delta - 1);
+                                BeforeWrite(delta - 1, delta);
                                 il.Emit(OpCodes.Ldarg_S, ArgStack);
                                 il.Emit(OpCodes.Ldfld, StackInputData);
                                 il.Emit(OpCodes.Ldarg_S, ArgStack);
@@ -3817,19 +4013,24 @@ public static unsafe partial class IlEvm
                                 il.Emit(OpCodes.Call, Memory(CallDataLoadAt));
                             }
                             break;
+                        case IlKind.CheckedBody when op.IsCallDataLoad && _vstack:
+                            EmitCallDataLoadTracked(delta);
+                            break;
                         case IlKind.CheckedBody:
                             for (int position = delta - op.StackInputs; position < delta; position++)
                                 Materialize(position);
+                            BeforeWrite(delta - op.StackInputs, Math.Max(delta, delta + op.StackGrowth));
                             SyncHead(delta);
                             CallBody(instruction, op);
                             il.Emit(OpCodes.Pop);
                             delta += op.StackGrowth;
                             break;
                         case IlKind.Native when op.Native is null && !(IlEvmSettings.DirectArithmetic &&
-                            Virtual(delta - 1) is { Kind: VKind.Const } && Virtual(delta - 2) is null or { Kind: VKind.Const }):
+                            Virtual(delta - 1) is { Kind: VKind.Const } && (_vstack || Virtual(delta - 2) is null or { Kind: VKind.Const })):
                             // An operation the plugin has no helper for, without the constant amount its direct form needs.
                             for (int position = delta - op.StackInputs; position < delta; position++)
                                 Materialize(position);
+                            BeforeWrite(delta - op.StackInputs, Math.Max(delta, delta + op.StackGrowth));
                             SyncHead(delta);
                             CallBody(instruction, op);
                             il.Emit(OpCodes.Pop);
@@ -3850,6 +4051,9 @@ public static unsafe partial class IlEvm
                             for (int position = delta - op.StackInputs; position < delta; position++)
                                 Materialize(position);
                             int after = delta + op.StackGrowth;
+                            // The body writes its slots; whatever aliases them reads them first, and the hand-back snapshot
+                            // names what it read them into.
+                            BeforeWrite(delta - op.StackInputs, Math.Max(delta, after));
                             EmbeddedCall(segment, i, delta, after, Snapshot(after));
                             delta = after;
                             break;
@@ -3885,6 +4089,14 @@ public static unsafe partial class IlEvm
                 Const,
                 /// <summary>A comparison result, 0 or 1, held in an int local.</summary>
                 Bool,
+                /// <summary>A word held whole in a <c>Vector256&lt;ulong&gt;</c> local (<see cref="IlEvmSettings.VectorForms"/>).</summary>
+                Vec,
+                /// <summary>
+                /// The word in the stack slot of another position, <see cref="VVal.Source"/>, whose own value is in its slot: what
+                /// DUP leaves (<see cref="IlEvmSettings.VectorForms"/>). Before that slot is written, or its position takes a
+                /// value of its own, the alias reads it into a vector local.
+                /// </summary>
+                Alias,
             }
 
             /// <summary>An immutable virtual stack value; positions that share one (after DUP) share the object.</summary>
@@ -3896,8 +4108,15 @@ public static unsafe partial class IlEvm
                 /// <summary>For <see cref="VKind.Bool"/>: the value is <see cref="Flag"/> inverted (ISZERO of it).</summary>
                 public bool Negated;
 
+                /// <summary>For <see cref="VKind.Vec"/>: the local holding the word.</summary>
+                public LocalBuilder? Local;
+                /// <summary>For <see cref="VKind.Alias"/>: the position whose slot holds the word.</summary>
+                public int Source;
+
                 public static VVal Constant(ulong u0, ulong u1, ulong u2, ulong u3) => new() { Kind = VKind.Const, U0 = u0, U1 = u1, U2 = u2, U3 = u3 };
                 public static VVal Boolean(LocalBuilder flag, bool negated) => new() { Kind = VKind.Bool, Flag = flag, Negated = negated };
+                public static VVal Vector(LocalBuilder local) => new() { Kind = VKind.Vec, Local = local };
+                public static VVal AliasOf(int source) => new() { Kind = VKind.Alias, Source = source };
                 public bool IsZero => (U0 | U1 | U2 | U3) == 0;
                 public bool FitsOffset => U1 == 0 && U2 == 0 && U3 == 0 && U0 <= uint.MaxValue;
             }
@@ -3933,6 +4152,16 @@ public static unsafe partial class IlEvm
                     return;
                 }
 
+                if (value.Kind is VKind.Vec or VKind.Alias)
+                {
+                    // One 32-byte store, of the local or of the aliased slot's word: an alias's slot holds its own position's
+                    // value, never written while the alias lives, so the stores of several positions go in any order.
+                    Slot(position);
+                    LoadVec(position, value);
+                    il.Emit(OpCodes.Stobj, typeof(Vector256<ulong>));
+                    return;
+                }
+
                 StoreSmallWord(position, () =>
                 {
                     il.Emit(OpCodes.Ldloc, value.Flag!);
@@ -3951,6 +4180,65 @@ public static unsafe partial class IlEvm
                     EmitStore(position, value);
             }
 
+            /// <summary>SWAP: exchanges two positions' values; a word in its slot whose position turns virtual is read into a local first.</summary>
+            private void SwapValues(int a, int b)
+            {
+                VVal? va = Virtual(a);
+                VVal? vb = Virtual(b);
+                if (va is not null && vb is not null)
+                {
+                    _virtual[a] = vb;
+                    _virtual[b] = va;
+                    return;
+                }
+
+                if (va is null && vb is null)
+                {
+                    // Both in their slots: each takes the other's word, read before anything is written.
+                    Slot(a);
+                    il.Emit(OpCodes.Ldobj, typeof(Vector256<ulong>));
+                    il.Emit(OpCodes.Stloc, VecScratchB);
+                    Slot(b);
+                    il.Emit(OpCodes.Ldobj, typeof(Vector256<ulong>));
+                    il.Emit(OpCodes.Stloc, VecScratch);
+                    ResolveAliasesOf(a);
+                    ResolveAliasesOf(b);
+                    LocalBuilder forA = NewVec();
+                    il.Emit(OpCodes.Ldloc, VecScratch);
+                    il.Emit(OpCodes.Stloc, forA);
+                    _virtual[a] = VVal.Vector(forA);
+                    LocalBuilder forB = NewVec();
+                    il.Emit(OpCodes.Ldloc, VecScratchB);
+                    il.Emit(OpCodes.Stloc, forB);
+                    _virtual[b] = VVal.Vector(forB);
+                    return;
+                }
+
+                // One in its slot: the other position takes its word, read now; it takes the other's value.
+                int inSlot = va is null ? a : b;
+                int other = va is null ? b : a;
+                VVal value = (va ?? vb)!;
+                // An alias of that very slot: both hold its word, and nothing changes.
+                if (value.Kind == VKind.Alias && value.Source == inSlot)
+                    return;
+                // The slot's aliases first: a spill while resolving them may write the other position to its slot and
+                // free the local its value names, so the swap starts again from what is left.
+                if (ResolveAliasesOf(inSlot))
+                {
+                    SwapValues(a, b);
+                    return;
+                }
+
+                Slot(inSlot);
+                il.Emit(OpCodes.Ldobj, typeof(Vector256<ulong>));
+                il.Emit(OpCodes.Stloc, VecScratch);
+                _virtual[inSlot] = value;
+                LocalBuilder local = NewVec();
+                il.Emit(OpCodes.Ldloc, VecScratch);
+                il.Emit(OpCodes.Stloc, local);
+                _virtual[other] = VVal.Vector(local);
+            }
+
             /// <summary>Writes out every virtual value below <paramref name="limit"/>, the positions that stay on the stack.</summary>
             private void MaterializeBelow(int limit)
             {
@@ -3961,6 +4249,165 @@ public static unsafe partial class IlEvm
             /// <summary>The virtual values below <paramref name="limit"/>, for an out-of-line path that must write them out.</summary>
             private (int Position, VVal Value)[] Snapshot(int limit) =>
                 _virtual.Where(entry => entry.Key < limit).OrderBy(entry => entry.Key).Select(entry => (entry.Key, entry.Value)).ToArray();
+
+            /// <summary>Whether this chunk keeps words in vector locals and DUPs as aliases (<see cref="IlEvmSettings.VectorForms"/>).</summary>
+            private readonly bool _vstack = IlEvmSettings.VectorForms && IlEvmSettings.DirectArithmetic;
+
+            /// <summary>The chunk's vector locals; one holds a word while some position's <see cref="VKind.Vec"/> value is it.</summary>
+            private readonly List<LocalBuilder> _vecLocals = [];
+
+            /// <summary>The most vector locals a chunk declares; past them the words held in locals are written to their slots.</summary>
+            private const int MaxVecLocals = 48;
+
+            private LocalBuilder? _vecScratchB;
+
+            /// <summary>A second scratch vector, for an operand an operation reads again after computing into <see cref="VecScratch"/>.</summary>
+            private LocalBuilder VecScratchB => _vecScratchB ??= il.DeclareLocal(typeof(Vector256<ulong>));
+
+            /// <summary>A vector local no position's value holds, or null when the chunk has declared all it may.</summary>
+            /// <remarks>
+            /// A local a cold path's snapshot still names may be taken: the path reads it where it branches off, before anything
+            /// later in the segment writes it again.
+            /// </remarks>
+            private LocalBuilder? TryNewVec()
+            {
+                HashSet<LocalBuilder>? used = null;
+                foreach (VVal value in _virtual.Values)
+                {
+                    if (value.Kind == VKind.Vec)
+                        (used ??= []).Add(value.Local!);
+                }
+
+                foreach (LocalBuilder local in _vecLocals)
+                {
+                    if (used is null || !used.Contains(local))
+                        return local;
+                }
+
+                if (_vecLocals.Count >= MaxVecLocals)
+                    return null;
+                LocalBuilder created = il.DeclareLocal(typeof(Vector256<ulong>));
+                _vecLocals.Add(created);
+                return created;
+            }
+
+            /// <summary>A vector local for a new value, writing the words held in locals out to their slots if none is free.</summary>
+            private LocalBuilder NewVec()
+            {
+                if (TryNewVec() is { } local)
+                    return local;
+                SpillVecs();
+                return TryNewVec()!;
+            }
+
+            /// <summary>Writes every word held in a vector local to its slot, freeing the locals.</summary>
+            private void SpillVecs()
+            {
+                foreach (int position in _virtual.Where(static e => e.Value.Kind == VKind.Vec).Select(static e => e.Key).Order().ToArray())
+                    Materialize(position);
+            }
+
+            /// <summary>
+            /// Before the slot of <paramref name="position"/> is written, or its position takes a value of its own: the aliases
+            /// of the slot read the word it holds into one vector local.
+            /// </summary>
+            /// <returns>Whether the slot had aliases, and resolving them may have spilled the vector locals.</returns>
+            private bool ResolveAliasesOf(int position)
+            {
+                if (!_vstack)
+                    return false;
+                List<int>? aliased = null;
+                foreach ((int at, VVal value) in _virtual)
+                {
+                    if (value.Kind == VKind.Alias && value.Source == position)
+                        (aliased ??= []).Add(at);
+                }
+
+                if (aliased is null)
+                    return false;
+                LocalBuilder local = NewVec();
+                Slot(position);
+                il.Emit(OpCodes.Ldobj, typeof(Vector256<ulong>));
+                il.Emit(OpCodes.Stloc, local);
+                VVal word = VVal.Vector(local);
+                foreach (int at in aliased)
+                    _virtual[at] = word;
+                return true;
+            }
+
+            /// <summary>Before an operation writes the slots of the positions from <paramref name="from"/> to <paramref name="to"/>, exclusive.</summary>
+            private void BeforeWrite(int from, int to)
+            {
+                for (int position = from; position < to; position++)
+                    ResolveAliasesOf(position);
+            }
+
+            /// <summary>Gives <paramref name="position"/>, whose old value has been consumed, a value it does not hold in its slot.</summary>
+            private void SetValue(int position, VVal value)
+            {
+                if (!_virtual.ContainsKey(position))
+                    ResolveAliasesOf(position);
+                _virtual[position] = value;
+            }
+
+            /// <summary>Gives <paramref name="position"/>, whose old value has been consumed, the word left in <see cref="VecScratch"/>.</summary>
+            private void BindScratch(int position)
+            {
+                _virtual.Remove(position);
+                ResolveAliasesOf(position);
+                LocalBuilder local = NewVec();
+                il.Emit(OpCodes.Ldloc, VecScratch);
+                il.Emit(OpCodes.Stloc, local);
+                _virtual[position] = VVal.Vector(local);
+            }
+
+            /// <summary>For an operation that reads its operands from their slots: writes a virtual one other than a constant there.</summary>
+            private void InSlotUnlessConstant(int position, ref VVal? value)
+            {
+                if (value is not null && value.Kind != VKind.Const)
+                {
+                    Materialize(position);
+                    value = null;
+                }
+            }
+
+            /// <summary>Pushes limb <paramref name="limb"/> of the word at <paramref name="position"/>, whose virtual value is <paramref name="value"/>.</summary>
+            private void LoadLimb(int position, VVal? value, int limb)
+            {
+                switch (value?.Kind)
+                {
+                    case null:
+                        SlotLimb(position, limb);
+                        break;
+                    case VKind.Alias:
+                        SlotLimb(value.Source, limb);
+                        break;
+                    case VKind.Const:
+                        il.Emit(OpCodes.Ldc_I8, (long)(limb switch { 0 => value.U0, 1 => value.U1, 2 => value.U2, _ => value.U3 }));
+                        break;
+                    case VKind.Vec:
+                        il.Emit(OpCodes.Ldloc, value.Local!);
+                        il.Emit(OpCodes.Ldc_I4, limb);
+                        il.Emit(OpCodes.Call, VecGetElement);
+                        break;
+                    default:
+                        if (limb != 0)
+                        {
+                            il.Emit(OpCodes.Ldc_I8, 0L);
+                            break;
+                        }
+
+                        il.Emit(OpCodes.Ldloc, value.Flag!);
+                        if (value.Negated)
+                        {
+                            il.Emit(OpCodes.Ldc_I4_1);
+                            il.Emit(OpCodes.Xor);
+                        }
+
+                        il.Emit(OpCodes.Conv_U8);
+                        break;
+                }
+            }
 
             private void EmitLimbs(VVal constant)
             {
@@ -4010,6 +4457,12 @@ public static unsafe partial class IlEvm
 
             private void EmitNative(IlOp op, ref int delta)
             {
+                if (_vstack)
+                {
+                    EmitNativeTracked(op, ref delta);
+                    return;
+                }
+
                 if (op.StackInputs == 1)
                 {
                     int x = delta - 1;
@@ -4250,6 +4703,421 @@ public static unsafe partial class IlEvm
                 }
             }
 
+            /// <summary>Pushes the word at <paramref name="position"/>, whose virtual value is <paramref name="value"/>, as four limbs in one vector.</summary>
+            private void LoadVec(int position, VVal? value)
+            {
+                if (value is null || value.Kind == VKind.Alias)
+                {
+                    Slot(value is null ? position : value.Source);
+                    il.Emit(OpCodes.Ldobj, typeof(Vector256<ulong>));
+                }
+                else if (value.Kind == VKind.Vec)
+                {
+                    il.Emit(OpCodes.Ldloc, value.Local!);
+                }
+                else if (value.Kind == VKind.Const)
+                {
+                    EmitVecConst(value.U0, value.U1, value.U2, value.U3);
+                }
+                else
+                {
+                    il.Emit(OpCodes.Ldloc, value.Flag!);
+                    if (value.Negated)
+                    {
+                        il.Emit(OpCodes.Ldc_I4_1);
+                        il.Emit(OpCodes.Xor);
+                    }
+
+                    il.Emit(OpCodes.Conv_U8);
+                    il.Emit(OpCodes.Call, VectorCreateScalar);
+                }
+            }
+
+            /// <summary>Pushes a constant word as a vector, which the JIT loads from its data.</summary>
+            private void EmitVecConst(ulong u0, ulong u1, ulong u2, ulong u3)
+            {
+                if ((u0 | u1 | u2 | u3) == 0)
+                {
+                    il.Emit(OpCodes.Call, VecZero);
+                    return;
+                }
+
+                il.Emit(OpCodes.Ldc_I8, (long)u0);
+                if ((u1 | u2 | u3) == 0)
+                {
+                    il.Emit(OpCodes.Call, VectorCreateScalar);
+                    return;
+                }
+
+                il.Emit(OpCodes.Ldc_I8, (long)u1);
+                il.Emit(OpCodes.Ldc_I8, (long)u2);
+                il.Emit(OpCodes.Ldc_I8, (long)u3);
+                il.Emit(OpCodes.Call, VectorCreate);
+            }
+
+            private LocalBuilder? _vecScratch;
+            private LocalBuilder? _signedScratch0;
+            private LocalBuilder? _signedScratch1;
+
+            private LocalBuilder VecScratch => _vecScratch ??= il.DeclareLocal(typeof(Vector256<ulong>));
+
+            /// <summary>The bit flipping a limb's sign, so that unsigned limbs compare as signed ones.</summary>
+            private const ulong SignBit = 0x8000_0000_0000_0000;
+
+            /// <summary>
+            /// EQ of any two words, and LT, GT, SLT and SGT of any two that are not a small constant and a word, as a flag on
+            /// the evaluation stack, from whole-word vector reads.
+            /// </summary>
+            /// <remarks>
+            /// A comparison of words is decided by their most significant limb that differs. With each limb's sign bit flipped
+            /// (all but the top one's for the signed comparisons), signed limb comparisons give the limbs where the first
+            /// word is below the second and where it is above as two 4-bit masks, and the first is below exactly when its
+            /// mask is the larger.
+            /// </remarks>
+            private bool TryEmitVectorComparison(IlOp op, VVal? va, VVal? vb, int top, int second)
+            {
+                Type? operation = OperationOf(op);
+                if (operation == typeof(EvmInstructions.OpBitwiseEq))
+                {
+                    LoadVec(top, va);
+                    LoadVec(second, vb);
+                    il.Emit(OpCodes.Call, VecEqualsAll);
+                    return true;
+                }
+
+                bool below = operation == typeof(EvmInstructions.OpLt) || operation == typeof(EvmInstructions.OpSLt);
+                bool signed = operation == typeof(EvmInstructions.OpSLt) || operation == typeof(EvmInstructions.OpSGt);
+                if (!below && !signed && operation != typeof(EvmInstructions.OpGt))
+                    return false;
+
+                // A small constant against a word in its slot reads three limbs and compares one, as cheap as this.
+                VVal? constant = va is { Kind: VKind.Const } ? va : vb is { Kind: VKind.Const } ? vb : null;
+                VVal? word = ReferenceEquals(constant, va) ? vb : va;
+                if (!signed && constant is not null && word is null && constant.U1 == 0 && constant.U2 == 0 && constant.U3 == 0)
+                    return false;
+
+                ulong topFlip = signed ? 0 : SignBit;
+                _signedScratch0 ??= il.DeclareLocal(typeof(Vector256<long>));
+                _signedScratch1 ??= il.DeclareLocal(typeof(Vector256<long>));
+                LoadFlipped(top, va, topFlip);
+                il.Emit(OpCodes.Stloc, _signedScratch0);
+                LoadFlipped(second, vb, topFlip);
+                il.Emit(OpCodes.Stloc, _signedScratch1);
+                // The opcode compares the top (a) with the second (b): LT and SLT ask a < b, GT and SGT a > b.
+                LocalBuilder low = below ? _signedScratch0 : _signedScratch1;
+                LocalBuilder high = below ? _signedScratch1 : _signedScratch0;
+                // Limbs where low < high, then where low > high; low < high when the first mask is the larger.
+                il.Emit(OpCodes.Ldloc, high);
+                il.Emit(OpCodes.Ldloc, low);
+                il.Emit(OpCodes.Call, VecGreaterThanSigned);
+                il.Emit(OpCodes.Call, VecMaskSigned);
+                il.Emit(OpCodes.Ldloc, low);
+                il.Emit(OpCodes.Ldloc, high);
+                il.Emit(OpCodes.Call, VecGreaterThanSigned);
+                il.Emit(OpCodes.Call, VecMaskSigned);
+                il.Emit(OpCodes.Cgt_Un);
+                return true;
+            }
+
+            /// <summary>Pushes the word at <paramref name="position"/> with each limb's sign bit flipped, the top limb's only by <paramref name="topFlip"/>, as signed limbs.</summary>
+            private void LoadFlipped(int position, VVal? value, ulong topFlip)
+            {
+                if (value is { Kind: VKind.Const })
+                {
+                    EmitVecConst(value.U0 ^ SignBit, value.U1 ^ SignBit, value.U2 ^ SignBit, value.U3 ^ topFlip);
+                }
+                else
+                {
+                    LoadVec(position, value);
+                    EmitVecConst(SignBit, SignBit, SignBit, topFlip);
+                    il.Emit(OpCodes.Call, VecXor);
+                }
+
+                il.Emit(OpCodes.Call, VecAsInt64);
+            }
+
+            /// <summary>An arithmetic, comparison or bitwise opcode over values the segment tracks (<see cref="IlEvmSettings.VectorForms"/>).</summary>
+            /// <remarks>
+            /// The vector forms read their operands wherever they are and leave their results in vector locals or flags; the
+            /// helpers read theirs from the slots, constants aside, and write the second slot.
+            /// </remarks>
+            private void EmitNativeTracked(IlOp op, ref int delta)
+            {
+                if (op.StackInputs == 1)
+                {
+                    int x = delta - 1;
+                    VVal? value = Virtual(x);
+                    if (value is { Kind: VKind.Const })
+                    {
+                        _virtual[x] = Fold(op, value, null);
+                        return;
+                    }
+
+                    if (op.IsPredicate)
+                    {
+                        // ISZERO: of a flag, the flag inverted; of a word, a new flag from one whole-word test.
+                        if (value is { Kind: VKind.Bool })
+                        {
+                            _virtual[x] = VVal.Boolean(value.Flag!, !value.Negated);
+                            return;
+                        }
+
+                        LocalBuilder flag = NewFlag();
+                        LoadVec(x, value);
+                        il.Emit(OpCodes.Call, VecZero);
+                        il.Emit(OpCodes.Call, VecEqualsAll);
+                        il.Emit(OpCodes.Stloc, flag);
+                        _virtual.Remove(x);
+                        SetValue(x, VVal.Boolean(flag, negated: false));
+                        return;
+                    }
+
+                    if (op.Operation?.DeclaringType == typeof(EvmInstructions.OpNot))
+                    {
+                        LoadVec(x, value);
+                        il.Emit(OpCodes.Call, VecOnesComplement);
+                        il.Emit(OpCodes.Stloc, VecScratch);
+                        BindScratch(x);
+                        return;
+                    }
+
+                    // CLZ and the like: the helper over the slot, in place.
+                    InSlotUnlessConstant(x, ref value);
+                    BeforeWrite(x, x + 1);
+                    Slot(x);
+                    il.Emit(OpCodes.Call, Arithmetic(op.Native!));
+                    return;
+                }
+
+                int top = delta - 1;
+                int second = delta - 2;
+                VVal? va = Virtual(top);
+                VVal? vb = Virtual(second);
+                delta--;
+                if (va is { Kind: VKind.Const } && vb is { Kind: VKind.Const })
+                {
+                    _virtual.Remove(top);
+                    _virtual[second] = Fold(op, va, vb);
+                    return;
+                }
+
+                if (op.IsPredicate)
+                {
+                    LocalBuilder flag = NewFlag();
+                    if (!TryEmitVectorComparison(op, va, vb, top, second))
+                    {
+                        // A small constant against a word in its slot, or a comparison the vector forms do not take: the limb
+                        // compare and the helpers read the operands from their slots.
+                        InSlotUnlessConstant(top, ref va);
+                        InSlotUnlessConstant(second, ref vb);
+                        if (TryEmitComparison(op, va, vb, top, second))
+                        {
+                            // The flag is on the evaluation stack.
+                        }
+                        else if (va is not null)
+                        {
+                            Slot(second);
+                            EmitLimbs(va);
+                            il.Emit(OpCodes.Ldc_I4_1);
+                            il.Emit(OpCodes.Call, Arithmetic(op.PredicateConst!));
+                        }
+                        else if (vb is not null)
+                        {
+                            Slot(top);
+                            EmitLimbs(vb);
+                            il.Emit(OpCodes.Ldc_I4_0);
+                            il.Emit(OpCodes.Call, Arithmetic(op.PredicateConst!));
+                        }
+                        else
+                        {
+                            Slot(top);
+                            il.Emit(OpCodes.Call, Arithmetic(op.Predicate!));
+                        }
+                    }
+
+                    il.Emit(OpCodes.Stloc, flag);
+                    _virtual.Remove(top);
+                    _virtual.Remove(second);
+                    SetValue(second, VVal.Boolean(flag, negated: false));
+                    return;
+                }
+
+                if (TryEmitVectorForm(op, va, vb, top, second))
+                {
+                    _virtual.Remove(top);
+                    BindScratch(second);
+                    return;
+                }
+
+                // The helpers read both operands from their slots, a constant aside, and write the second slot.
+                InSlotUnlessConstant(top, ref va);
+                InSlotUnlessConstant(second, ref vb);
+                _virtual.Remove(top);
+                _virtual.Remove(second);
+                BeforeWrite(second, second + 1);
+                if (va is not null)
+                {
+                    // The constant was on top; the other operand and the result share the second slot.
+                    Slot(second);
+                    Slot(second);
+                    EmitLimbs(va);
+                    il.Emit(OpCodes.Ldc_I4_1);
+                    il.Emit(OpCodes.Call, Arithmetic(op.NativeConst!));
+                }
+                else if (vb is not null)
+                {
+                    Slot(top);
+                    Slot(second);
+                    EmitLimbs(vb);
+                    il.Emit(OpCodes.Ldc_I4_0);
+                    il.Emit(OpCodes.Call, Arithmetic(op.NativeConst!));
+                }
+                else
+                {
+                    Slot(top);
+                    il.Emit(OpCodes.Call, Arithmetic(op.Native!));
+                }
+            }
+
+            /// <summary>
+            /// AND, OR and XOR of any two words; SHL and SHR by a constant amount; ADD and SUB of a constant below 2^64, or of
+            /// one whose two's complement is: the result left in <see cref="VecScratch"/>, the operands read wherever they are.
+            /// </summary>
+            private bool TryEmitVectorForm(IlOp op, VVal? va, VVal? vb, int top, int second)
+            {
+                Type? operation = OperationOf(op);
+                MethodInfo? bitwise = operation == typeof(EvmInstructions.OpBitwiseAnd) ? VecAnd
+                    : operation == typeof(EvmInstructions.OpBitwiseOr) ? VecOr
+                    : operation == typeof(EvmInstructions.OpBitwiseXor) ? VecXor
+                    : null;
+                if (bitwise is not null)
+                {
+                    LoadVec(top, va);
+                    LoadVec(second, vb);
+                    il.Emit(OpCodes.Call, bitwise);
+                    il.Emit(OpCodes.Stloc, VecScratch);
+                    return true;
+                }
+
+                // Arithmetic of two words is left to the helpers: a vector form of ADD and SUB, with each limb's carry moved
+                // up a limb, measured slower than the helper call.
+                VVal? constant = va is { Kind: VKind.Const } ? va : vb is { Kind: VKind.Const } ? vb : null;
+                if (constant is null)
+                    return false;
+
+                bool constantOnTop = ReferenceEquals(constant, va);
+                int x = constantOnTop ? second : top;
+                VVal? vx = constantOnTop ? vb : va;
+
+                // The core's shift operations are internal, so they are told apart by name.
+                if (operation?.Name is "OpShr" or "OpShl")
+                {
+                    // Only a constant amount, on top, shifting the second.
+                    if (!constantOnTop)
+                        return false;
+                    if (constant.U1 != 0 || constant.U2 != 0 || constant.U3 != 0 || constant.U0 >= 256)
+                    {
+                        il.Emit(OpCodes.Call, VecZero);
+                        il.Emit(OpCodes.Stloc, VecScratch);
+                        return true;
+                    }
+
+                    EmitShiftConstant(second, vb, (int)constant.U0, right: operation.Name == "OpShr");
+                    il.Emit(OpCodes.Stloc, VecScratch);
+                    return true;
+                }
+
+                // MUL by a power of two is a left shift, DIV by one a right shift, MOD by one a mask; by zero each is zero.
+                bool mul = operation == typeof(EvmInstructions.OpMul);
+                if (mul || ((operation == typeof(EvmInstructions.OpDiv) || operation == typeof(EvmInstructions.OpMod)) && !constantOnTop))
+                {
+                    if (constant.IsZero)
+                    {
+                        il.Emit(OpCodes.Call, VecZero);
+                        il.Emit(OpCodes.Stloc, VecScratch);
+                        return true;
+                    }
+
+                    int bit = PowerOfTwo(constant);
+                    if (bit < 0)
+                        return false;
+                    if (operation == typeof(EvmInstructions.OpMod))
+                    {
+                        LoadVec(x, vx);
+                        EmitVecConst(LowBits(bit, 0), LowBits(bit, 1), LowBits(bit, 2), LowBits(bit, 3));
+                        il.Emit(OpCodes.Call, VecAnd);
+                    }
+                    else
+                    {
+                        EmitShiftConstant(x, vx, bit, right: !mul);
+                    }
+
+                    il.Emit(OpCodes.Stloc, VecScratch);
+                    return true;
+                }
+
+                bool add = operation == typeof(EvmInstructions.OpAdd);
+                if (!add && operation != typeof(EvmInstructions.OpSub))
+                    return false;
+                if (!add && constantOnTop)
+                    return false;
+
+                // x + c or x - c; a constant whose two's complement is small adds or subtracts that instead.
+                ulong amount;
+                bool subtract = !add;
+                if (constant.U1 == 0 && constant.U2 == 0 && constant.U3 == 0)
+                {
+                    amount = constant.U0;
+                }
+                else if (constant.U1 == ulong.MaxValue && constant.U2 == ulong.MaxValue && constant.U3 == ulong.MaxValue && constant.U0 != 0)
+                {
+                    amount = 0 - constant.U0;
+                    subtract = !subtract;
+                }
+                else
+                {
+                    return false;
+                }
+
+                LoadVec(x, vx);
+                if (amount == 0)
+                {
+                    il.Emit(OpCodes.Stloc, VecScratch);
+                    return true;
+                }
+
+                // The low limb changes by the amount in the vector; when it wraps, the limbs above take the carry or the
+                // borrow out of line.
+                il.Emit(OpCodes.Stloc, VecScratchB);
+                il.Emit(OpCodes.Ldloc, VecScratchB);
+                EmitVecConst(amount, 0, 0, 0);
+                il.Emit(OpCodes.Call, subtract ? VecSubtract : VecAdd);
+                il.Emit(OpCodes.Stloc, VecScratch);
+                Label wrapped = NewLabel();
+                Label back = NewLabel();
+                il.Emit(OpCodes.Ldloc, VecScratchB);
+                il.Emit(OpCodes.Call, VecToScalar);
+                if (!subtract)
+                {
+                    // Added: wrapped when the new low limb is below the amount. Subtracted: when the old one was.
+                    il.Emit(OpCodes.Ldc_I8, (long)amount);
+                    il.Emit(OpCodes.Add);
+                }
+
+                il.Emit(OpCodes.Ldc_I8, (long)amount);
+                il.Emit(OpCodes.Blt_Un, wrapped);
+                il.MarkLabel(back);
+                AddOutOfLine(() =>
+                {
+                    il.MarkLabel(wrapped);
+                    il.Emit(OpCodes.Ldloc, VecScratch);
+                    il.Emit(OpCodes.Call, !subtract ? (_layingOutAhead ? CarryVectorAheadMethod : CarryVectorMethod) : (_layingOutAhead ? BorrowVectorAheadMethod : BorrowVectorMethod));
+                    il.Emit(OpCodes.Stloc, VecScratch);
+                    il.Emit(OpCodes.Br, back);
+                });
+                return true;
+            }
+
             /// <summary>
             /// AND and OR with a constant, SHL and SHR by a constant amount, ADD of a constant below 2^64 and SUB of one
             /// from the top, written into the second slot from the other operand's limbs.
@@ -4385,15 +5253,151 @@ public static unsafe partial class IlEvm
                 return false;
             }
 
+            private LocalBuilder? _offsetScratch;
+
+            /// <summary>The offset a CALLDATALOAD reads at, which its cold path reads again; <see cref="VecScratch"/> takes its result.</summary>
+            private LocalBuilder OffsetScratch => _offsetScratch ??= il.DeclareLocal(typeof(Vector256<ulong>));
+
+            /// <summary>Byte-reverses the vector on the evaluation stack, between the stack's limb order and memory's big-endian bytes.</summary>
+            private void EmitByteSwap()
+            {
+                // The 128-bit halves swapped, then each half's bytes reversed.
+                il.Emit(OpCodes.Ldc_I4, 0b01_00_11_10);
+                il.Emit(OpCodes.Call, Permute4x64);
+                il.Emit(OpCodes.Call, VecAsByte);
+                EmitVecConst(0x18191a1b1c1d1e1fUL, 0x1011121314151617UL, 0x08090a0b0c0d0e0fUL, 0x0001020304050607UL);
+                il.Emit(OpCodes.Call, VecAsByte);
+                il.Emit(OpCodes.Call, ShuffleBytes);
+                il.Emit(OpCodes.Call, VecBytesAsUInt64);
+            }
+
+            /// <summary>Branches to <paramref name="far"/> unless the word in <paramref name="local"/> is an offset below 2^32.</summary>
+            private void BranchUnlessOffset(LocalBuilder local, Label far)
+            {
+                il.Emit(OpCodes.Ldloc, local);
+                EmitVecConst(0xFFFF_FFFF_0000_0000UL, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue);
+                il.Emit(OpCodes.Call, TestZ);
+                il.Emit(OpCodes.Brfalse, far);
+            }
+
+            /// <summary>CALLDATALOAD of a tracked offset: 32 bytes inside the input read into a local; anything else through a helper.</summary>
+            private void EmitCallDataLoadTracked(int delta)
+            {
+                int offset = delta - 1;
+                VVal? value = Virtual(offset);
+                LocalBuilder at = OffsetScratch;
+                Label slow = NewLabel();
+                Label back = NewLabel();
+                LoadVec(offset, value);
+                il.Emit(OpCodes.Stloc, at);
+                BranchUnlessOffset(at, slow);
+                // offset + 32 <= the input's length, then the 32 bytes there.
+                il.Emit(OpCodes.Ldloc, at);
+                il.Emit(OpCodes.Call, VecToScalar);
+                il.Emit(OpCodes.Ldc_I8, 32L);
+                il.Emit(OpCodes.Add);
+                il.Emit(OpCodes.Ldarg_S, ArgStack);
+                il.Emit(OpCodes.Ldfld, StackInputDataLength);
+                il.Emit(OpCodes.Conv_U8);
+                il.Emit(OpCodes.Bgt_Un, slow);
+                il.Emit(OpCodes.Ldarg_S, ArgStack);
+                il.Emit(OpCodes.Ldfld, StackInputData);
+                il.Emit(OpCodes.Ldloc, at);
+                il.Emit(OpCodes.Call, VecToScalar);
+                il.Emit(OpCodes.Conv_I);
+                il.Emit(OpCodes.Add);
+                il.Emit(OpCodes.Unaligned, (byte)1);
+                il.Emit(OpCodes.Ldobj, typeof(Vector256<ulong>));
+                EmitByteSwap();
+                il.Emit(OpCodes.Stloc, VecScratch);
+                il.MarkLabel(back);
+                BindScratch(offset);
+                AddOutOfLine(() =>
+                {
+                    il.MarkLabel(slow);
+                    il.Emit(OpCodes.Ldarg_S, ArgStack);
+                    il.Emit(OpCodes.Ldfld, StackInputData);
+                    il.Emit(OpCodes.Ldarg_S, ArgStack);
+                    il.Emit(OpCodes.Ldfld, StackInputDataLength);
+                    il.Emit(OpCodes.Ldloc, at);
+                    il.Emit(OpCodes.Call, _layingOutAhead ? CallDataWordAheadMethod : CallDataWordMethod);
+                    il.Emit(OpCodes.Stloc, VecScratch);
+                    il.Emit(OpCodes.Br, back);
+                });
+            }
+
+            /// <summary>Pushes the word at <paramref name="position"/> shifted by a constant amount below 256, as one vector.</summary>
+            private void EmitShiftConstant(int position, VVal? value, int shift, bool right)
+            {
+                if (shift == 0)
+                {
+                    LoadVec(position, value);
+                    return;
+                }
+
+                int q = shift / 64;
+                int r = shift % 64;
+                // Every limb of the result from the value's limbs, then all four into one vector.
+                for (int limb = 0; limb < 4; limb++)
+                {
+                    int source = right ? limb + q : limb - q;
+                    if (source < 0 || source > 3)
+                    {
+                        il.Emit(OpCodes.Ldc_I8, 0L);
+                        continue;
+                    }
+
+                    LoadLimb(position, value, source);
+                    if (r == 0)
+                        continue;
+                    il.Emit(OpCodes.Ldc_I4, r);
+                    il.Emit(right ? OpCodes.Shr_Un : OpCodes.Shl);
+                    int carrySource = right ? source + 1 : source - 1;
+                    if (carrySource is >= 0 and <= 3)
+                    {
+                        LoadLimb(position, value, carrySource);
+                        il.Emit(OpCodes.Ldc_I4, 64 - r);
+                        il.Emit(right ? OpCodes.Shl : OpCodes.Shr_Un);
+                        il.Emit(OpCodes.Or);
+                    }
+                }
+
+                il.Emit(OpCodes.Call, VectorCreate);
+            }
+
+            /// <summary>Limb <paramref name="limb"/> of 2^<paramref name="bit"/> - 1.</summary>
+            private static ulong LowBits(int bit, int limb) =>
+                bit >= 64 * (limb + 1) ? ulong.MaxValue : bit <= 64 * limb ? 0 : (1UL << (bit - 64 * limb)) - 1;
+
+            /// <summary>The bit a power-of-two constant has set, or -1 when it has none or more than one.</summary>
+            private static int PowerOfTwo(VVal constant)
+            {
+                ulong[] limbs = [constant.U0, constant.U1, constant.U2, constant.U3];
+                int bit = -1;
+                for (int limb = 0; limb < 4; limb++)
+                {
+                    if (limbs[limb] == 0)
+                        continue;
+                    if (bit >= 0 || (limbs[limb] & (limbs[limb] - 1)) != 0)
+                        return -1;
+                    bit = limb * 64 + System.Numerics.BitOperations.TrailingZeroCount(limbs[limb]);
+                }
+
+                return bit;
+            }
+
             private void EmitMLoad(IlUnit segment, int index, IlOp op, int delta)
             {
                 int offset = delta - 1;
                 VVal? value = Virtual(offset);
-                if (value is not null && (value.Kind == VKind.Bool || !value.FitsOffset))
+                if (value is not null && (value.Kind != VKind.Const || !value.FitsOffset))
                 {
                     Materialize(offset);
                     value = null;
                 }
+
+                // The word loaded lands in the offset's slot.
+                BeforeWrite(offset, offset + 1);
 
                 Label slow = NewLabel();
                 Label back = NewLabel();
@@ -4432,12 +5436,12 @@ public static unsafe partial class IlEvm
                 int word = delta - 2;
                 VVal? vo = Virtual(offset);
                 VVal? vw = Virtual(word);
-                if (vw is { Kind: VKind.Bool })
+                if (vw is not null && vw.Kind != VKind.Const)
                 {
                     Materialize(word);
                     vw = null;
                 }
-                if (vo is not null && (vo.Kind == VKind.Bool || !vo.FitsOffset))
+                if (vo is not null && (vo.Kind != VKind.Const || !vo.FitsOffset))
                 {
                     Materialize(offset);
                     vo = null;
@@ -4557,7 +5561,8 @@ public static unsafe partial class IlEvm
 
             private void EmitSingle(IlUnit unit)
             {
-                il.Category = "single " + unit.Instructions[0].Op.Kind;
+                il.Category = IlEvmDiagnostics.Markers ? "single " + (Instruction)unit.Instructions[0].Opcode : "single " + unit.Instructions[0].Op.Kind;
+                il.Pc = unit.StartPc;
                 IlInstruction instruction = unit.Instructions[0];
                 IlOp op = instruction.Op;
                 il.MarkLabel(LabelOf(unit));
@@ -4686,7 +5691,7 @@ public static unsafe partial class IlEvm
                 VVal? vc = Virtual(condition);
                 _virtual.Remove(destination);
                 _virtual.Remove(condition);
-                if (vd is { Kind: VKind.Bool })
+                if (vd is not null && vd.Kind != VKind.Const)
                 {
                     EmitStore(destination, vd);
                     vd = null;
@@ -4705,10 +5710,18 @@ public static unsafe partial class IlEvm
                 }
 
                 Label notTaken = NewLabel();
-                if (vc is not null)
+                if (vc is { Kind: VKind.Bool })
                 {
                     il.Emit(OpCodes.Ldloc, vc.Flag!);
                     il.Emit(vc.Negated ? OpCodes.Brtrue : OpCodes.Brfalse, notTaken);
+                }
+                else if (vc is not null)
+                {
+                    // A word in a local, or in the slot an alias names, which nothing above has written.
+                    LoadVec(condition, vc);
+                    il.Emit(OpCodes.Call, VecZero);
+                    il.Emit(OpCodes.Call, VecEqualsAll);
+                    il.Emit(OpCodes.Brtrue, notTaken);
                 }
                 else
                 {
@@ -4832,14 +5845,18 @@ public static unsafe partial class IlEvm
             private void EmitExit()
             {
                 il.MarkLabel(_exit);
+                if (IlEvmDiagnostics.Markers)
+                    il.StoreMarker(0);
                 il.Emit(OpCodes.Ldarg_S, ArgVm);
                 il.Emit(OpCodes.Ldarg_S, ArgVm);
                 if (OpCodeCountField is not null)
                     il.Emit(OpCodes.Ldfld, OpCodeCountField);
                 else
                     il.Emit(OpCodes.Call, GetOpCodeCount);
-                il.Emit(OpCodes.Ldloc, _ops);
-                il.Emit(OpCodes.Ldloc, _opsAtEntry);
+                il.Emit(OpCodes.Ldarg_S, ArgState);
+                il.Emit(OpCodes.Ldfld, StateOpCodes);
+                il.Emit(OpCodes.Ldarg_S, ArgState);
+                il.Emit(OpCodes.Ldfld, StateCounted);
                 il.Emit(OpCodes.Sub);
                 il.Emit(OpCodes.Add);
                 if (OpCodeCountField is not null)
@@ -4847,11 +5864,9 @@ public static unsafe partial class IlEvm
                 else
                     il.Emit(OpCodes.Call, SetOpCodeCount);
                 il.Emit(OpCodes.Ldarg_S, ArgState);
-                il.Emit(OpCodes.Ldloc, _ops);
-                il.Emit(OpCodes.Stfld, StateOpCodes);
                 il.Emit(OpCodes.Ldarg_S, ArgState);
-                il.Emit(OpCodes.Ldloc, _poll);
-                il.Emit(OpCodes.Stfld, StatePollAt);
+                il.Emit(OpCodes.Ldfld, StateOpCodes);
+                il.Emit(OpCodes.Stfld, StateCounted);
                 il.Emit(OpCodes.Ldloc, _result);
                 il.Emit(OpCodes.Ret);
             }
@@ -4940,23 +5955,27 @@ public static unsafe partial class IlEvm
             {
                 Label slow = NewLabel();
                 Label back = NewLabel();
-                il.Emit(OpCodes.Ldloc, _ops);
+                il.Emit(OpCodes.Ldarg_S, ArgState);
+                il.Emit(OpCodes.Ldfld, StateOpCodes);
                 if (landedJumpDest != 0)
                 {
                     il.Emit(OpCodes.Ldc_I4, landedJumpDest);
                     il.Emit(OpCodes.Add);
                 }
-                il.Emit(OpCodes.Ldloc, _poll);
+                il.Emit(OpCodes.Ldarg_S, ArgState);
+                il.Emit(OpCodes.Ldfld, StatePollAt);
                 il.Emit(OpCodes.Bge, slow);
                 il.MarkLabel(back);
 
                 AddOutOfLine(() =>
                 {
                     il.MarkLabel(slow);
-                    il.Emit(OpCodes.Ldloc, _ops);
+                    il.Emit(OpCodes.Ldarg_S, ArgState);
+                    il.Emit(OpCodes.Ldarg_S, ArgState);
+                    il.Emit(OpCodes.Ldfld, StateOpCodes);
                     il.Emit(OpCodes.Ldc_I4, landedJumpDest + IlPollInterval);
                     il.Emit(OpCodes.Add);
-                    il.Emit(OpCodes.Stloc, _poll);
+                    il.Emit(OpCodes.Stfld, StatePollAt);
                     il.Emit(OpCodes.Ldarg_S, ArgVm);
                     il.Emit(OpCodes.Call, PollCancellation);
                     il.Emit(OpCodes.Br, back);
@@ -4966,10 +5985,12 @@ public static unsafe partial class IlEvm
             private void AddOps(int count)
             {
                 if (count == 0) return;
-                il.Emit(OpCodes.Ldloc, _ops);
+                il.Emit(OpCodes.Ldarg_S, ArgState);
+                il.Emit(OpCodes.Ldarg_S, ArgState);
+                il.Emit(OpCodes.Ldfld, StateOpCodes);
                 il.Emit(OpCodes.Ldc_I4, count);
                 il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Stloc, _ops);
+                il.Emit(OpCodes.Stfld, StateOpCodes);
             }
 
             private void MoveHead(int delta)
@@ -5034,6 +6055,16 @@ public static unsafe partial class IlEvm
 
             private void SlotIsZero(int slot)
             {
+                if (IlEvmSettings.VectorForms)
+                {
+                    // One whole-word read, tested against zero.
+                    Slot(slot);
+                    il.Emit(OpCodes.Ldobj, typeof(Vector256<ulong>));
+                    il.Emit(OpCodes.Call, VecZero);
+                    il.Emit(OpCodes.Call, VecEqualsAll);
+                    return;
+                }
+
                 SlotLimb(slot, 0);
                 SlotLimb(slot, 1);
                 il.Emit(OpCodes.Or);

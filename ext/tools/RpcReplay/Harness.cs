@@ -227,9 +227,17 @@ public static class Harness
         }
     }
 
+    /// <summary>Where compiled code stores its markers (NETHERMIND_ILEVM_MARKERS=1), for the sampler to read with each sample.</summary>
+    private static unsafe ulong MarkerAddress() => (ulong)System.Runtime.CompilerServices.Unsafe.AsPointer(ref IlEvmDiagnostics.Marker);
+
     public static async Task<int> Run(string[] a)
     {
         using JitInlineListener jitTrace = Environment.GetEnvironmentVariable("RPCPOC_JITTRACE") == "1" ? new JitInlineListener() : null;
+        // For an out-of-process sampler: where the JIT put each method, and a marker file the profile window is announced in.
+        string codeMapPath = Environment.GetEnvironmentVariable("RPCPOC_CODEMAP");
+        // Also for the compiled chunks' native code size, reported at the end with RPCPOC_CODESIZE=1.
+        using CodeMapListener codeMap = string.IsNullOrEmpty(codeMapPath) && Environment.GetEnvironmentVariable("RPCPOC_CODESIZE") != "1" ? null : new CodeMapListener();
+        string profileMarker = Environment.GetEnvironmentVariable("RPCPOC_PROFILE_MARKER");
         string corpusPath = a[0];
         string groupsPath = a[1];
         string outCsv = a[2];
@@ -346,7 +354,9 @@ public static class Harness
         // Warm-up on the compiler: contracts cross the threshold and compile in the background.
         int mismatches = 0;
         IlEvmSettings.Enabled = true;
-        for (int pass = 1; pass <= 2; pass++)
+        // Two passes compile; more (RPCPOC_WARMUP_PASSES) also let the helpers compiled code calls tier up before the rounds.
+        int warmUpPasses = int.TryParse(Environment.GetEnvironmentVariable("RPCPOC_WARMUP_PASSES"), out int warmUps) && warmUps > 2 ? warmUps : 2;
+        for (int pass = 1; pass <= warmUpPasses; pass++)
         {
             long start = Stopwatch.GetTimestamp();
             for (int i = 0; i < n; i++)
@@ -437,6 +447,8 @@ public static class Harness
             long sent = 0, sentOps = 0;
             long profileStart = Stopwatch.GetTimestamp();
             Console.WriteLine($"PROFILE START {(compiledPath ? "compiled" : "interpreter")} for {profileSeconds} s");
+            if (!string.IsNullOrEmpty(profileMarker))
+                File.WriteAllText(profileMarker, $"start {Environment.ProcessId} {MarkerAddress():x}");
             while (Stopwatch.GetTimestamp() < until)
             {
                 for (int i = 0; i < n && Stopwatch.GetTimestamp() < until; i++)
@@ -448,12 +460,37 @@ public static class Harness
                 }
             }
 
+            if (!string.IsNullOrEmpty(profileMarker))
+            {
+                File.WriteAllText(profileMarker, "end");
+                // The sampler resolves its addresses through this process's runtime before it may exit.
+                for (int k = 0; k < 600; k++)
+                {
+                    await Task.Delay(200);
+                    try
+                    {
+                        if (File.ReadAllText(profileMarker).Trim() == "resolved") break;
+                    }
+                    catch (IOException)
+                    {
+                    }
+                }
+            }
             double seconds = (Stopwatch.GetTimestamp() - profileStart) / (double)Stopwatch.Frequency;
+            if (codeMap is not null && !string.IsNullOrEmpty(codeMapPath))
+            {
+                await Task.Delay(1_000);
+                codeMap.Write(codeMapPath);
+            }
             Console.WriteLine($"PROFILE END {sent} requests in {seconds:F1} s ({sent / seconds:F1} req/s, {sentOps / seconds / 1e6:F1} Mops/s), {mismatches} mismatches, gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
             if (adaptive)
                 Console.WriteLine($"PROFILE STATE {IlLive.Describe()}; {IlScheduler.DescribeCurrent()}");
             return mismatches == 0 ? 0 : 1;
         }
+
+        // With NETHERMIND_ILEVM_MARKERS=1 and RPCPOC_MARKER_SAMPLE=1: a thread on a core of its own reads the marker
+        // compiled code stores as it goes, through the measured rounds, for where compiled code and what it calls spend.
+        using MarkerSampler markerSampler = IlEvmDiagnostics.Markers && Environment.GetEnvironmentVariable("RPCPOC_MARKER_SAMPLE") == "1" ? new MarkerSampler() : null;
 
         // Measured rounds, ABBA within a round and the order flipped between rounds.
         List<long>[] interpreted = Enumerable.Range(0, n).Select(static _ => new List<long>()).ToArray();
@@ -479,6 +516,7 @@ public static class Harness
             }
         }
 
+        markerSampler?.Report();
         if (IlEvmDiagnostics.Enabled)
         {
             Console.WriteLine("IL emitted by category:");
@@ -642,6 +680,8 @@ public static class Harness
         (int kept, int probation, int givenBack) = IlEvm.SelfCheckVerdicts;
         Console.WriteLine($"self-check: {kept} kept compiled, {probation} put on probation, {givenBack} given back");
         jitTrace?.Report();
+        if (codeMap is not null)
+            Console.WriteLine(codeMap.DescribeChunks());
         IlEvmSettings.Enabled = false;
         chain.Dispose();
         return mismatches == 0 ? 0 : 1;

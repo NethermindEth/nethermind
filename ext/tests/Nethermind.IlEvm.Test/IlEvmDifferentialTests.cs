@@ -173,6 +173,28 @@ public partial class IlEvmDifferentialTests
         }
     }
 
+    /// <summary>One program from a trace line (<c>ILEVM_FUZZ_TRACE=1</c>): ILEVM_REPRO_CODE, _INPUT, _GAS and _CHUNK.</summary>
+    [Test, Explicit("Debugging one traced program")]
+    public void Traced_program_matches_the_interpreter()
+    {
+        byte[] code = Bytes.FromHexString(Environment.GetEnvironmentVariable("ILEVM_REPRO_CODE") ?? "0x00");
+        byte[] input = Bytes.FromHexString(Environment.GetEnvironmentVariable("ILEVM_REPRO_INPUT") ?? "0x");
+        ulong gas = ulong.Parse(Environment.GetEnvironmentVariable("ILEVM_REPRO_GAS") ?? "400000");
+        int savedChunk = IlEvmSettings.ChunkInstructions;
+        IlEvmSettings.ChunkInstructions = int.Parse(Environment.GetEnvironmentVariable("ILEVM_REPRO_CHUNK") ?? "1400");
+        try
+        {
+            CodeInfo codeInfo = new(code);
+            Outcome expected = Run(codeInfo, input, gas, compiledCode: false);
+            Outcome actual = Run(codeInfo, input, gas, compiledCode: true);
+            Assert.That(Same(expected, actual), $"interpreter {expected}\ncompiled    {actual}");
+        }
+        finally
+        {
+            IlEvmSettings.ChunkInstructions = savedChunk;
+        }
+    }
+
     private void RunPrograms(Random random, int seed, int programs, bool memoryHeavy)
     {
         int compiled = 0;
@@ -187,6 +209,8 @@ public partial class IlEvmDifferentialTests
 
             foreach (ulong gas in GasLimits(random))
             {
+                if (Environment.GetEnvironmentVariable("ILEVM_FUZZ_TRACE") == "1")
+                    Console.Error.WriteLine($"TRACE p{p} gas {gas} code {code.ToHexString(true)} input {input.ToHexString(true)}");
                 _cancelAfter = int.MaxValue;
                 Outcome expected = Run(codeInfo, input, gas, compiledCode: false);
                 Outcome actual = Run(codeInfo, input, gas, compiledCode: true);
