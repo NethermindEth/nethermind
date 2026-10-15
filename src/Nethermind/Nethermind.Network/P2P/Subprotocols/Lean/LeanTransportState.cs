@@ -66,7 +66,7 @@ internal sealed class LeanBoundedSet(int capacity)
 }
 
 /// <summary>Fully validated objects this node serves, bounded by bytes and count.</summary>
-/// <remarks>Only objects that passed reconstruction and kind validation, or were produced locally, are added.</remarks>
+/// <remarks>Only wrappers that passed reconstruction and full validation, or were produced locally, are added.</remarks>
 internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, int maxObjects = LeanLimits.MaxStoreObjects)
 {
     internal sealed class Entry(LeanDescriptor descriptor, byte[] body, Dictionary<ValueHash256, Transaction>? envelopes = null)
@@ -86,7 +86,6 @@ internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, 
     }
 
     private readonly Dictionary<ValueHash256, Entry> _objects = [];
-    private readonly Dictionary<ValueHash256, ValueHash256> _primary = [];
     private readonly Dictionary<ValueHash256, ValueHash256> _byEnvelope = [];
     private readonly LinkedList<ValueHash256> _order = new();
 
@@ -96,15 +95,6 @@ internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, 
     public bool TryGet(in ValueHash256 objectId, out Entry entry) => _objects.TryGetValue(objectId, out entry!);
 
     public bool Contains(in ValueHash256 objectId) => _objects.ContainsKey(objectId);
-
-    public bool TryLookup(in LeanSelector selector, out Entry entry)
-    {
-        entry = null!;
-        ValueHash256 objectId = selector.LookupKey;
-        if (selector.Kind == LeanProtocol.KindBlockProof && !_primary.TryGetValue(PrimaryKey(selector.Kind, selector.LookupKey), out objectId))
-            return false;
-        return _objects.TryGetValue(objectId, out entry!) && entry.Descriptor.Kind == selector.Kind && entry.Descriptor.ProfileId == selector.ProfileId;
-    }
 
     /// <summary>Finds an envelope retained for a hash entry of a stored wrapper.</summary>
     public bool TryGetEnvelope(in ValueHash256 transaction, out Transaction envelope)
@@ -122,8 +112,6 @@ internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, 
         entry.Node = _order.AddLast(objectId);
         _objects[objectId] = entry;
         Bytes += entry.Bytes;
-        if (entry.Descriptor.Kind != LeanProtocol.KindWrapper)
-            _primary[PrimaryKey(entry.Descriptor.Kind, entry.Descriptor.PrimaryKey)] = objectId;
         if (entry.Envelopes is not null)
             foreach (ValueHash256 transaction in entry.Envelopes.Keys) _byEnvelope[transaction] = objectId;
         return true;
@@ -141,23 +129,9 @@ internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, 
         if (!_objects.Remove(objectId, out Entry? entry)) return;
         _order.Remove(entry.Node!);
         Bytes -= entry.Bytes;
-        if (entry.Descriptor.Kind != LeanProtocol.KindWrapper)
-        {
-            ValueHash256 key = PrimaryKey(entry.Descriptor.Kind, entry.Descriptor.PrimaryKey);
-            if (_primary.TryGetValue(key, out ValueHash256 current) && current == objectId) _primary.Remove(key);
-        }
         if (entry.Envelopes is not null)
             foreach (ValueHash256 transaction in entry.Envelopes.Keys)
                 if (_byEnvelope.TryGetValue(transaction, out ValueHash256 current) && current == objectId) _byEnvelope.Remove(transaction);
-    }
-
-    // Block hashes and package hashes share one map, so the kind is folded into the key.
-    private static ValueHash256 PrimaryKey(byte kind, in ValueHash256 key)
-    {
-        Span<byte> preimage = stackalloc byte[33];
-        preimage[0] = kind;
-        key.Bytes.CopyTo(preimage[1..]);
-        return ValueKeccak.Compute(preimage);
     }
 }
 
@@ -188,7 +162,7 @@ internal sealed class LeanPeer(ILeanLink link, LeanStatusMessage status, LeanNod
     public bool Closed { get; set; }
 
     public ulong LastIssued { get; set; }
-    public Dictionary<ulong, LeanOutgoingRequest> Live { get; } = [];
+    public Dictionary<ulong, LeanChunksRequest> Live { get; } = [];
 
     public ulong LastIncoming { get; set; }
     public Dictionary<ulong, LeanServing> Serving { get; } = [];
@@ -213,7 +187,8 @@ internal sealed class LeanPeer(ILeanLink link, LeanStatusMessage status, LeanNod
     public override string ToString() => Link.Description;
 }
 
-internal abstract class LeanOutgoingRequest(ulong id, long now)
+/// <summary>An outgoing GetChunks request, the only request type.</summary>
+internal sealed class LeanChunksRequest(ulong id, long now, LeanAssembly assembly, int[] indices)
 {
     public ulong Id { get; } = id;
     public long Created { get; } = now;
@@ -222,16 +197,6 @@ internal abstract class LeanOutgoingRequest(ulong id, long now)
 
     /// <summary>Cancel was sent: the request keeps its slot until a terminal response or expiry, and its payloads are discarded.</summary>
     public bool Cancelled { get; set; }
-}
-
-internal sealed class LeanObjectsRequest(ulong id, long now, LeanSelector[] selectors) : LeanOutgoingRequest(id, now)
-{
-    public LeanSelector[] Selectors { get; } = selectors;
-    public TaskCompletionSource<LeanObjectResult[]?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-}
-
-internal sealed class LeanChunksRequest(ulong id, long now, LeanAssembly assembly, int[] indices) : LeanOutgoingRequest(id, now)
-{
     public LeanAssembly Assembly { get; } = assembly;
     public int[] Indices { get; } = indices;
 
@@ -276,21 +241,12 @@ internal sealed class LeanAssembly(LeanDescriptor descriptor, long now, long met
     public int VerificationBytes { get; set; }
     public long RetrievalBytes { get; set; }
 
-    /// <summary>Whether the reconstructed object goes through kind validation and, if valid, into the served store.</summary>
-    public bool Validate { get; set; }
-
     /// <summary>Cancels validation and transaction recovery of a completed body when the assembly expires.</summary>
     public CancellationTokenSource? Processing { get; set; }
 
     /// <summary>Whether processing of the completed body has begun, so expiry cancels it instead of releasing the body.</summary>
     public bool Started { get; set; }
 
-    /// <summary>Wrappers waiting on this object for direct transaction recovery; its new chunks advance their idle timers.</summary>
-
-    /// <summary>Callers waiting for the integrity-checked body: kind-2 sidecar fetches and transaction-hash recovery.</summary>
-    public List<TaskCompletionSource<LeanFetchedBody?>> Waiters { get; } = [];
-    public int BodyLeases { get; set; }
-    public bool ReleaseRequested { get; set; }
     public bool Dropped { get; set; }
     public bool Queued { get; set; }
     public bool MetadataReleased { get; set; }
@@ -298,17 +254,8 @@ internal sealed class LeanAssembly(LeanDescriptor descriptor, long now, long met
 
     public bool IsComplete => Received == Chunks.Length;
 
-
     public void AddSource(LeanPeer peer)
     {
         if (!Sources.Contains(peer) && Sources.Count < LeanLimits.MaxSourcesPerAssembly) Sources.Add(peer);
     }
-}
-
-/// <summary>Owns a fetched body and its byte reservation through the caller's verification.</summary>
-internal sealed class LeanFetchedBody(byte[] body, Action? release = null) : IDisposable
-{
-    private Action? _release = release;
-    public byte[] Body { get; } = body;
-    public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
 }

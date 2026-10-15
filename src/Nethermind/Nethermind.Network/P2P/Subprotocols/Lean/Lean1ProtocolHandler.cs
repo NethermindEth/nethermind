@@ -24,8 +24,6 @@ public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nod
 {
     private static readonly LeanStatusMessageSerializer StatusSerializer = new();
     private static readonly AnnounceObjectsMessageSerializer AnnounceSerializer = new();
-    private static readonly GetObjectsMessageSerializer GetObjectsSerializer = new();
-    private static readonly ObjectsMessageSerializer ObjectsSerializer = new();
     private static readonly GetChunksMessageSerializer GetChunksSerializer = new();
     private static readonly CompleteMessageSerializer CompleteSerializer = new();
     private static readonly CancelMessageSerializer CancelSerializer = new();
@@ -96,16 +94,10 @@ public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nod
             switch (message.PacketType)
             {
                 case LeanMessageCode.AnnounceObjects: _transport.OnAnnounce(peer, AnnounceSerializer.Decode(data)); break;
-                case LeanMessageCode.GetObjects: _transport.OnGetObjects(peer, GetObjectsSerializer.Decode(data)); break;
-                case LeanMessageCode.Objects:
-                    if (data.Length > LeanProtocol.MaxMetadataResponseBytes) throw new RlpException("Objects exceeds MAX_METADATA_RESPONSE_BYTES");
-                    _transport.OnObjects(peer, ObjectsSerializer.Decode(data));
-                    break;
                 case LeanMessageCode.GetChunks: _transport.OnGetChunks(peer, GetChunksSerializer.Decode(data)); break;
                 case LeanMessageCode.Chunk: _transport.OnChunk(peer, LeanChunkView.Parse(data)); break;
                 case LeanMessageCode.Complete: _transport.OnComplete(peer, CompleteSerializer.Decode(data)); break;
                 case LeanMessageCode.Cancel: _transport.OnCancel(peer, CancelSerializer.Decode(data)); break;
-
             }
         }
         catch (RlpException exception)
@@ -163,7 +155,7 @@ public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nod
     private void Violation(string reason)
     {
         if (Logger.IsDebug) Logger.Debug($"{Session} lean/1 violation: {reason}");
-        LeanMetrics.Record(0, LeanEvent.Violation);
+        LeanMetrics.Record(LeanEvent.Violation);
         Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, $"lean/1: {reason}");
     }
 
@@ -174,8 +166,6 @@ public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nod
         switch (message)
         {
             case AnnounceObjectsMessage announce: Send(announce); break;
-            case GetObjectsMessage getObjects: Send(getObjects); break;
-            case ObjectsMessage objects: Send(objects); break;
             case GetChunksMessage getChunks: Send(getChunks); break;
             case CompleteMessage complete: Send(complete); break;
             case CancelMessage cancel: Send(cancel); break;

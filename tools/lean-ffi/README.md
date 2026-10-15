@@ -116,7 +116,7 @@ Startup checks ABI 6, the new key and all nine bounds
 together; lean status checks the pinned key before proof transfer. New devnets require fresh
 chain and database namespaces.
 
-The latest companion specification uses a 4,096-dependency block ceiling and a shared 4,096-unit budget (leanSPHINCS weight 1, leanSTARK weight 16). These are distinct from this prototype guest's 256-dependency and 16-generic-claim limits. This key cannot prove every set allowed by the draft's public capacity; this prototype is not full-capacity conformance. Local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a profile supporting every valid public set. A trivial-program timing sample cannot justify weight 16 for every permitted generic program; worst-case profile geometry, recursive merges and discards still require measurement.
+The latest companion specification has no block dependency quota: blocks are bounded by gas, and mode-1 wrappers by a scheme-independent 4,096-dependency ceiling. This prototype guest's 256-dependency and 16-generic-claim limits are local; this key cannot prove every set the draft permits, so this prototype is not full-capacity conformance. Wrappers above the local limits are refused locally, not judged invalid, and local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a profile supporting every set the fork's gas rules permit, with the complete construction, including recursive merges and discards, benchmarked against the slot deadline.
 
 ## Proving resources
 
@@ -224,37 +224,36 @@ proof gossip use the same verification, pool insertion and witness-retention rul
 ## Negotiated proof gossip
 
 When the EIP-8288 fork is active, the node advertises `lean/1` alongside ETH. The
-[EIP-8437 draft](https://github.com/ethereum/EIPs/pull/12423) defines eight RLP messages:
-Status, AnnounceObjects, GetObjects, Objects, GetChunks, Chunk, Complete and Cancel.
-Status negotiates chain ID, genesis, profiles, supported kinds and maximum object size.
+[EIP-8437 draft](https://github.com/ethereum/EIPs/pull/12423) defines six consecutively numbered
+RLP messages (`0x00`–`0x05`): Status, AnnounceObjects, GetChunks, Chunk, Complete and Cancel.
+Status negotiates chain ID, genesis, profiles and maximum object size.
 The profile is `keccak256("lean/1/profile\0" || AGGREGATED_VK)`.
 
-Kind 1 carries the canonical EIP-8288 wrapper
+The only object is the canonical hash-only EIP-8288 wrapper
 `[transaction_hashes, mode, [dependencies, proof_content]]`. Hashes are sorted and unique;
 transaction envelopes are recovered over the same authenticated peer's ETH protocol,
 including envelopes retained with validated wrappers after pool eviction. The descriptor
-is `[kind, profile_id, context, byte_length, content_hash]`; its object ID is
-`keccak256("lean/1/object\0" || rlp(descriptor))`.
+is `[profile_id, byte_length, content_hash]`; its object ID is
+`keccak256("lean/1/object\0" || rlp(descriptor))`. There are no metadata lookups; receivers
+retrieve only announced wrappers.
 
-Kind 2 is optional block-proof retrieval: context is `[block_hash]`, and the body is
-`[stark_proof]`. The ordinary header must already be known. The received proof must match
-its hash commitment and verify against its dependency commitment before use. Ordinary
-block bodies already carry the proof. There is no inclusion-list object kind.
+Block proofs travel only in block bodies and execution payloads; inclusion-list proofs travel
+with authenticated CL inclusion lists through the Engine API. Neither is a `lean/1` object.
 An ordinary ETH body response counts proof bytes toward its soft 2 MiB response budget;
 the first body is still returned when its proof alone is larger, up to the 8 MiB proof bound.
 The existing 16 MiB decoded-packet and 12 MiB compressed-frame ceilings still apply. A body
-whose proof and transactions exceed those transport ceilings remains unsupported; optional
-kind-2 retrieval does not permit stripping the proof from an ordinary block body.
+whose proof and transactions exceed those transport ceilings remains unsupported.
 
 Objects are bounded to 9 MiB, chunks to 64 KiB and messages to 128 KiB. A request may
 ask for at most 32 chunks (2 MiB), with four outstanding requests per peer in each
-direction. Request IDs are positive and strictly increasing across both request types;
+direction. GetChunks request IDs are positive and strictly increasing in send order;
 gaps are permitted. Cancelled requests retain their slots until termination or expiry.
 
-One source supplies an assembly at a time. Changing sources discards its bytes, and at
-most three source attempts are allowed within the original five-minute deadline.
-Requests expire after 30 seconds without progress or two minutes absolutely; assemblies
-expire after 30 seconds without progress or five minutes absolutely. Deferred work is
+One source supplies an assembly at a time. Changing sources discards its bytes. The local
+policy uses EIP-8437's recommended defaults: at most three source attempts within the original
+five-minute deadline; requests expire after 30 seconds without progress or two minutes
+absolutely; assemblies expire after 30 seconds without progress or five minutes absolutely.
+Retries and source changes never renew these lifetimes. Deferred work is
 bounded and scheduled fairly. Quota pressure defers work without penalizing the peer.
 
 The shared receive budget is 18 MiB per source and 72 MiB globally. It includes assembly

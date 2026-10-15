@@ -11,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
-/// <summary>Drives background aggregation on the EIP-8288 cadence and publishes each new wrapper as a kind-1 object.</summary>
+/// <summary>Drives background aggregation on the EIP-8288 cadence and publishes each new wrapper over <c>lean/1</c>.</summary>
 /// <remarks>Peers fetch the announced wrapper on demand, so an unchanged wrapper is never sent or announced again.</remarks>
 public sealed class LeanProofGossip(ProofWrapperService wrappers, LeanObjectTransport transport, ILogManager logManager,
     TimeProvider? timeProvider = null) : IAsyncDisposable, IDisposable

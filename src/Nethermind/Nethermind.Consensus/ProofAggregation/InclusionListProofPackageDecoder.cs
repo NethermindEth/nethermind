@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
-/// RLP codec for the EIP-8288 FOCIL <c>[transactions, [stark_proof, deps_hash]]</c>, the EIP-8437 kind-3 body.
+/// RLP codec for the EIP-8288 FOCIL <c>[transactions, [stark_proof, deps_hash]]</c> package.
 /// </summary>
 public sealed class InclusionListProofPackageDecoder : RlpDecoder<InclusionListProofPackage>
 {

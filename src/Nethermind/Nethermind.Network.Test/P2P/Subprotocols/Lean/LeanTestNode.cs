@@ -146,7 +146,7 @@ internal sealed class LeanTestNode : IDisposable
             return AcceptTxResult.Accepted;
         });
         Wrappers = new ProofWrapperService(Pool, Specs, Tree, ProofStore, Verifier);
-        Transport = new LeanObjectTransport(Tree, Specs, Pool, Wrappers, logManager ?? LimboLogs.Instance, Verifier, EthTransactions, Time);
+        Transport = new LeanObjectTransport(Tree, Pool, Wrappers, logManager ?? LimboLogs.Instance, EthTransactions, Time);
     }
 
     public ManualTimeProvider? Time { get; }
@@ -161,8 +161,8 @@ internal sealed class LeanTestNode : IDisposable
     public ProofWrapperService Wrappers { get; }
     public LeanObjectTransport Transport { get; }
 
-    public static LeanStatusMessage Status(ulong maxObjectBytes = LeanLimits.MaxObjectBytes, byte kinds = LeanObjectTransport.LocalKinds) =>
-        new(1, Genesis.ValueHash256, [LeanObjectTransport.LocalProfile], kinds, maxObjectBytes);
+    public static LeanStatusMessage Status(ulong maxObjectBytes = LeanLimits.MaxObjectBytes) =>
+        new(1, Genesis.ValueHash256, [LeanObjectTransport.LocalProfile], maxObjectBytes);
 
     public LeanPeer Connect(FakeLink link, LeanStatusMessage? status = null) =>
         Transport.Accept(link, status ?? Status()) ?? throw new InvalidOperationException("Status was refused");
@@ -225,8 +225,7 @@ internal static class LeanTestObjects
         return body;
     }
 
-    public static LeanDescriptor Describe(byte[] body) =>
-        LeanDescriptor.Create(LeanProtocol.KindWrapper, LeanObjectTransport.LocalProfile, LeanDescriptor.WrapperContext(), body);
+    public static LeanDescriptor Describe(byte[] body) => LeanDescriptor.Create(LeanObjectTransport.LocalProfile, body);
 
     public static ChunkMessage Chunk(ulong requestId, LeanDescriptor descriptor, byte[] body, int index) =>
         new(requestId, descriptor.ObjectId, index, body.AsMemory(index * LeanProtocol.ChunkBytes, descriptor.ChunkLength(index)));

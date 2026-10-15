@@ -125,9 +125,9 @@ namespace Nethermind.Network
         public static long OversizedTransactionsSkipped;
 
         [CounterMetric]
-        [Description("EIP-8437 lean/1 proof object events by object kind, 0 for events without a kind.")]
-        [KeyIsLabel("kind", "event")]
-        public static NonBlocking.ConcurrentDictionary<P2P.Subprotocols.Lean.LeanObjectEventKey, long> LeanObjectEvents { get; } = new();
+        [Description("EIP-8437 lean/1 wrapper transport events.")]
+        [KeyIsLabel("event")]
+        public static NonBlocking.ConcurrentDictionary<string, long> LeanObjectEvents { get; } = new();
 
         [CounterMetric]
         [Description("Number of lean/1 chunks verified and retained.")]

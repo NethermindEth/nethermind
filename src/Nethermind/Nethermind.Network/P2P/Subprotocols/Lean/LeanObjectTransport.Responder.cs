@@ -11,60 +11,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
 public sealed partial class LeanObjectTransport
 {
-    // Request ID, both list prefixes and slack for the largest prefix forms.
-    private const int ResponseOverhead = 32;
-    private const int NonOkResultBytes = 3;
-    private const int MaxOnDemandBuilds = 2;
-    private const ulong MaxOnDemandDepth = 64;
-
-    internal void OnGetObjects(LeanPeer peer, GetObjectsMessage message)
-    {
-        Outbox outbox = new();
-        bool accepted;
-        lock (_gate) accepted = !peer.Closed && CheckIncomingId(peer, message.RequestId, outbox);
-        if (!accepted) { outbox.Flush(); return; }
-        // Block proofs are built from the block tree on demand, outside the lock, since hashing a proof is not cheap.
-        int builds = 0;
-        foreach (LeanSelector selector in message.Selectors)
-            if (selector.Kind == LeanProtocol.KindBlockProof && selector.ProfileId == LocalProfile
-                && builds < MaxOnDemandBuilds && EnsureBlockProof(selector)) builds++;
-
-        bool enabled = IsEnabled;
-        lock (_gate)
-        {
-            if (peer.Closed)
-            {
-                outbox.Flush();
-                return;
-            }
-            bool busy = !enabled || peer.Node.ServingRequests >= LeanProtocol.MaxRequestsPerPeer;
-            LeanSelector[] selectors = message.Selectors;
-            LeanObjectResult[] results = new LeanObjectResult[selectors.Length];
-            int remaining = LeanProtocol.MaxMetadataResponseBytes - ResponseOverhead - selectors.Length * NonOkResultBytes;
-            for (int i = 0; i < selectors.Length; i++)
-            {
-                LeanSelector selector = selectors[i];
-                LeanObjectResult result;
-                if (busy) result = LeanObjectResult.Of(LeanResultStatus.Busy);
-                else if (selector.ProfileId != LocalProfile || (LocalKinds & (1 << (selector.Kind - 1))) == 0)
-                    result = LeanObjectResult.Of(LeanResultStatus.Unsupported);
-                else if (!_store.TryLookup(selector, out LeanObjectStore.Entry entry)) result = LeanObjectResult.Of(LeanResultStatus.Unavailable);
-                else if (entry.Descriptor.ByteLength > peer.Status.MaxObjectBytes) result = LeanObjectResult.Of(LeanResultStatus.TooLarge);
-                else
-                {
-                    result = new(LeanResultStatus.Ok, entry.Descriptor);
-                    // OK results that would overflow the response are returned as Busy rather than omitted or split.
-                    int length = ObjectsMessageSerializer.EncodeResult(result).Length - NonOkResultBytes;
-                    if (length > remaining) result = LeanObjectResult.Of(LeanResultStatus.Busy);
-                    else remaining -= length;
-                }
-                results[i] = result;
-            }
-            outbox.Send(peer, new ObjectsMessage(message.RequestId, results));
-        }
-        outbox.Flush();
-    }
-
     internal void OnGetChunks(LeanPeer peer, GetChunksMessage message)
     {
         bool enabled = IsEnabled;
@@ -87,8 +33,8 @@ public sealed partial class LeanObjectTransport
                 outbox.Flush();
                 return;
             }
-            // A held descriptor's profile, kind and size are checked against the peer's Status before serving.
-            else if (!peer.Status.SupportsKind(entry.Descriptor.Kind) || Array.IndexOf(peer.Status.Profiles, entry.Descriptor.ProfileId) < 0)
+            // A held descriptor's profile and size are checked against the peer's Status before serving.
+            else if (Array.IndexOf(peer.Status.Profiles, entry.Descriptor.ProfileId) < 0)
                 status = LeanCompleteStatus.Unsupported;
             else if (entry.Descriptor.ByteLength > peer.Status.MaxObjectBytes) status = LeanCompleteStatus.TooLarge;
             else
@@ -115,7 +61,7 @@ public sealed partial class LeanObjectTransport
             {
                 if (cancellation.IsCancellationRequested) break;
                 // The responder must stop serving by the request's absolute deadline.
-                if (_clock.GetElapsedTime(started) >= LeanProtocol.MaxRequestAge)
+                if (_clock.GetElapsedTime(started) >= LeanLimits.RequestAge)
                 {
                     stopped = true;
                     break;
@@ -124,7 +70,7 @@ public sealed partial class LeanObjectTransport
                 ChunkMessage chunk = new(serving.Id, serving.ObjectId, index,
                     entry.Body.AsMemory(offset, entry.Descriptor.ChunkLength(index)));
                 using CancellationTokenSource idle = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-                idle.CancelAfter(LeanProtocol.MaxRequestIdle);
+                idle.CancelAfter(LeanLimits.RequestIdle);
                 if (!await peer.Link.SendChunkAsync(chunk, idle.Token).ConfigureAwait(false))
                 {
                     stopped = true;
@@ -158,7 +104,7 @@ public sealed partial class LeanObjectTransport
                 if (served)
                 {
                     Interlocked.Increment(ref _stats.ObjectsServed);
-                    LeanMetrics.Record(entry.Descriptor.Kind, LeanEvent.Served);
+                    LeanMetrics.Record(LeanEvent.Served);
                 }
             }
             serving.Cancellation.Dispose();
@@ -175,20 +121,5 @@ public sealed partial class LeanObjectTransport
             if (peer.Serving.TryGetValue(message.RequestId, out LeanServing? serving) && !serving.CompleteWritten)
                 serving.Cancellation.Cancel();
         }
-    }
-
-    /// <summary>Builds the sidecar of a recent canonical block on demand; true when a proof had to be hashed.</summary>
-    /// <remarks>Only blocks this node validated itself are served, and only near the head, which bounds the hashing a peer can cause.</remarks>
-    private bool EnsureBlockProof(in LeanSelector selector)
-    {
-        lock (_gate) if (_store.TryLookup(selector, out _)) return false;
-        Hash256 hash = new(selector.LookupKey);
-        if (_blockTree.FindHeader(hash, Blockchain.BlockTreeLookupOptions.TotalDifficultyNotNeeded | Blockchain.BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
-                is not { RecursiveStark: not null } header
-            || _blockTree.Head is not { } head || header.Number > head.Number || head.Number - header.Number > MaxOnDemandDepth
-            || !_blockTree.IsMainChain(header)) return false;
-        if (_blockTree.FindBlock(hash, Blockchain.BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { } block)
-            PublishBlockProof(block, announce: false);
-        return true;
     }
 }

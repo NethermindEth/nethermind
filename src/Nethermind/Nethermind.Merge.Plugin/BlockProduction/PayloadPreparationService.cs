@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -48,7 +47,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     private readonly TimeSpan? _improvementDelay;
 
     private readonly TimeSpan _cleanupOldPayloadDelay;
-    private readonly IBlockProofSidecarSource? _proofSidecars;
     private readonly TimeSpan _timePerSlot;
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
@@ -60,15 +58,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
         ILogManager logManager,
-        IBlocksConfig blockConfig,
-        IBlockProofSidecarSource? proofSidecars = null) : this(
+        IBlocksConfig blockConfig) : this(
         blockProducer,
         txPool,
         blockImprovementContextFactory,
         timerFactory,
         logManager,
-        TimeSpan.FromSeconds(blockConfig.SecondsPerSlot),
-        proofSidecars: proofSidecars)
+        TimeSpan.FromSeconds(blockConfig.SecondsPerSlot))
     {
     }
 
@@ -80,10 +76,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null,
-        IBlockProofSidecarSource? proofSidecars = null)
+        TimeSpan? improvementDelay = null)
     {
-        _proofSidecars = proofSidecars;
         _blockProducer = blockProducer;
         _txPool = txPool;
         _blockImprovementContextFactory = blockImprovementContextFactory;
@@ -446,8 +440,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     }
                 }
 
-                // Retain the produced proof for optional EIP-8437 retrieval after the payload is delivered.
-                if (blockContext.Best.CurrentBestBlock is { } block) _proofSidecars?.RememberProduced(block);
                 return blockContext.Best;
             }
             finally

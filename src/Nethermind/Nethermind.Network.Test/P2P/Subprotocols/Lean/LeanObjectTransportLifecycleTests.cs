@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Lean;
 public class LeanObjectTransportLifecycleTests
 {
     [Test]
-    public async Task Disposal_releases_queued_bodies_and_preserves_active_owners([Values] bool retainFetchedBody)
+    public async Task Disposal_releases_queued_bodies_and_preserves_the_active_owner()
     {
         using LeanTestNode node = new();
         Transaction first = FrameTransaction(93), second = FrameTransaction(94);
@@ -30,7 +30,6 @@ public class LeanObjectTransportLifecycleTests
         LeanPeer peer = node.Connect(link);
         using ManualResetEventSlim gate = new();
         node.Verifier.Gate = gate;
-        LeanFetchedBody? fetched = null;
         try
         {
             node.Transport.OnAnnounce(peer, new([firstDescriptor]));
@@ -40,41 +39,27 @@ public class LeanObjectTransportLifecycleTests
             node.Transport.OnAnnounce(peer, new([secondDescriptor]));
             Serve(node, peer, link, secondDescriptor, secondBody);
             Assert.That(node.Transport.CompletionBytes, Is.GreaterThan(activeBytes), "the second body is queued behind the blocked verifier");
-            if (retainFetchedBody)
-            {
-                byte[] proofBody = LeanBodies.EncodeBlockProof(Proof(3072));
-                LeanDescriptor proofDescriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
-                    LeanDescriptor.BlockProofContext(TestItem.KeccakA.ValueHash256), proofBody);
-                Task<LeanFetchedBody?> waiting = node.Transport.FetchBodyAsync(proofDescriptor, peer, CancellationToken.None);
-                Serve(node, peer, link, proofDescriptor, proofBody);
-                fetched = await waiting.WaitAsync(TimeSpan.FromSeconds(10));
-                Assert.That(fetched, Is.Not.Null);
-            }
 
             node.Transport.Dispose();
-            await Until(() => node.Transport.CompletionBytes == activeBytes + (fetched?.Body.Length ?? 0));
+            await Until(() => node.Transport.CompletionBytes == activeBytes);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(node.Transport.IncompleteBytes, Is.Zero, "queued metadata is released");
-                Assert.That(node.Transport.CompletionBytes, Is.EqualTo(activeBytes + (fetched?.Body.Length ?? 0)),
-                    "queued bodies are released; active verification and fetched leases remain charged");
+                Assert.That(node.Transport.CompletionBytes, Is.EqualTo(activeBytes),
+                    "queued bodies are released; active verification remains charged");
             }
-            gate.Set();
-            await Until(() => node.Transport.CompletionBytes == (fetched?.Body.Length ?? 0));
-            Assert.That(peer.ChargedBytes, Is.EqualTo(fetched?.Body.Length ?? 0));
         }
         finally
         {
             gate.Set();
-            fetched?.Dispose();
             await Until(() => node.Transport.CompletionBytes == 0);
         }
         Assert.That(peer.ChargedBytes, Is.Zero);
     }
 
     [Test]
-    public async Task Recovery_overlaps_with_four_workers_while_verification_and_waited_import_stay_bounded()
+    public async Task Recovery_overlaps_with_four_workers_while_verification_stays_serialized()
     {
         using LeanTestNode node = new();
         Transaction[] transactions = [.. Enumerable.Range(130, 5).Select(FrameTransaction)];
@@ -110,19 +95,6 @@ public class LeanObjectTransportLifecycleTests
                 Assert.That(node.Verifier.MaxActive, Is.EqualTo(1));
             }
 
-            FakeLink healthy = new("waited-import");
-            LeanPeer source = node.Connect(healthy);
-            byte[] proofBody = LeanBodies.EncodeBlockProof(Proof(3072));
-            LeanDescriptor proofDescriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
-                LeanDescriptor.BlockProofContext(TestItem.KeccakA.ValueHash256), proofBody);
-            Task<LeanFetchedBody?> waiting = node.Transport.FetchBodyAsync(proofDescriptor, source, CancellationToken.None);
-            Serve(node, source, healthy, proofDescriptor, proofBody);
-            using (LeanFetchedBody? fetched = await waiting.WaitAsync(TimeSpan.FromSeconds(10)))
-            {
-                Assert.That(fetched, Is.Not.Null, "waited kind 2 retrieval bypasses occupied wrapper workers");
-                Assert.That(fetched!.Body, Is.EqualTo(proofBody));
-            }
-
             release.TrySetResult();
             await Until(() => descriptors.All(descriptor => node.Transport.IsStored(descriptor.ObjectId))
                 && node.Transport.CompletionBytes == 0);
@@ -156,7 +128,7 @@ public class LeanObjectTransportLifecycleTests
         for (int index = 0; index < bodies.Length; index++) Serve(node, peer, link, descriptors[index], bodies[index]);
         await Until(() => link.RecoveryCalls == 4);
         if (stop == "dispose") node.Transport.Dispose();
-        else if (stop == "expire") node.Tick(LeanProtocol.MaxAssemblyIdle);
+        else if (stop == "expire") node.Tick(LeanLimits.AssemblyIdle);
         else
         {
             node.Transport.Remove(peer);
@@ -206,7 +178,7 @@ public class LeanObjectTransportLifecycleTests
             for (int index = 1; index < bodies.Length; index++) Serve(node, peer, link, descriptors[index], bodies[index]);
             await Until(() => node.Transport.QueuedValidations == 2);
             if (dispose) node.Transport.Dispose();
-            else node.Tick(LeanProtocol.MaxAssemblyIdle);
+            else node.Tick(LeanLimits.AssemblyIdle);
             await Until(() => node.Transport.CompletionBytes == activeBytes);
             Assert.That(node.Verifier.Calls, Is.EqualTo(1), "canceled semaphore waiters cannot enter the backend");
             gate.Set();

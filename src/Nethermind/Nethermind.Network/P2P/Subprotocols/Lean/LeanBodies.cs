@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
-/// <summary>Canonical body encodings of the two EIP-8437 object kinds, checked before kind validation.</summary>
+/// <summary>The canonical hash-only EIP-8288 wrapper body carried by EIP-8437, checked before wrapper validation.</summary>
 public static class LeanBodies
 {
     /// <summary>Checks the hash-only EIP-8288 wrapper encoding before envelope recovery.</summary>
@@ -70,36 +70,10 @@ public static class LeanBodies
         return hashes;
     }
 
-    /// <summary>Parses the kind-2 body <c>RLP([stark_proof])</c>.</summary>
-    public static ReadOnlySpan<byte> ParseBlockProof(ReadOnlySpan<byte> body)
-    {
-        LeanRlpReader outer = new(body);
-        LeanRlpReader list = outer.ReadList();
-        outer.End();
-        ReadOnlySpan<byte> proof = list.ReadBytes();
-        list.End();
-        CheckAggregateProof(proof);
-        return proof;
-    }
-
-    public static byte[] EncodeBlockProof(ReadOnlySpan<byte> starkProof) => LeanRlp.EncodeList(LeanRlp.EncodeBytes(starkProof));
-
-    /// <summary>Applies the canonical encoding check of <paramref name="kind"/>.</summary>
-    public static void Check(byte kind, ReadOnlySpan<byte> body)
-    {
-        switch (kind)
-        {
-            case LeanProtocol.KindWrapper: ParseWrapper(body); break;
-            case LeanProtocol.KindBlockProof: ParseBlockProof(body); break;
-            default: throw new RlpException($"Unknown object kind {kind}");
-        }
-    }
-
-    /// <summary>EIP-8437 applies the fork's <c>MAX_AGGREGATE_PROOF_BYTES</c> to every aggregate proof before proof decoding or
+    /// <summary>EIP-8288 applies the fork's <c>MAX_AGGREGATE_PROOF_BYTES</c> to every aggregate proof before proof decoding or
     /// verification; the transport's object ceiling does not replace it.</summary>
     private static void CheckAggregateProof(ReadOnlySpan<byte> proof)
     {
         if (proof.Length > Eip8288Constants.MaxAggregateProofBytes) throw new RlpException("Aggregate proof exceeds MAX_AGGREGATE_PROOF_BYTES");
     }
-
 }

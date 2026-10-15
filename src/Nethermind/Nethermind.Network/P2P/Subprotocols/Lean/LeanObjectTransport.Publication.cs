@@ -15,68 +15,44 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
 public sealed partial class LeanObjectTransport
 {
-    private static readonly TimeSpan SidecarRetry = TimeSpan.FromMilliseconds(250);
-
     private void OnWrapperValidated(byte[] wrapper, IReadOnlyDictionary<ValueHash256, Transaction> resolved) =>
-        PublishInBackground(() => Publish(LeanProtocol.KindWrapper, LeanDescriptor.WrapperContext(), wrapper, announce: true, resolved));
-
-    private void OnNewHead(object? sender, BlockEventArgs e)
-    {
-        BlockHeader header = e.Block.Header;
-        if (header.RecursiveStark is not null && e.Block.StarkProof is not null && _specProvider.GetSpec(header).IsEip8288Enabled)
-            PublishInBackground(() => PublishBlockProof(e.Block, announce: true));
-    }
-
-    private void PublishInBackground(Action publish) => _ = Task.Run(() =>
-    {
-        try { publish(); }
-        catch (Exception exception) when (exception is ArgumentException or RlpException or InvalidOperationException)
+        _ = Task.Run(() =>
         {
-            if (_logger.IsDebug) _logger.Debug($"lean/1 could not publish an object: {exception.Message}");
-        }
-    });
+            try { Publish(wrapper, resolved); }
+            catch (Exception exception) when (exception is ArgumentException or RlpException or InvalidOperationException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"lean/1 could not publish a wrapper: {exception.Message}");
+            }
+        });
 
     /// <summary>Stores and announces the latest locally aggregated wrapper.</summary>
-    public bool PublishWrapper(byte[] wrapper) => Publish(LeanProtocol.KindWrapper, LeanDescriptor.WrapperContext(), wrapper, announce: true);
+    public bool PublishWrapper(byte[] wrapper) => Publish(wrapper);
 
-    private void PublishBlockProof(Block block, bool announce)
-    {
-        if (block.Header.RecursiveStark is null || block.StarkProof is not { } proof || block.Hash is null
-            || ValueKeccak.Compute(proof) != block.Header.RecursiveStark.StarkProofHash.ValueHash256) return;
-        Publish(LeanProtocol.KindBlockProof, LeanDescriptor.BlockProofContext(block.Hash.ValueHash256),
-            LeanBodies.EncodeBlockProof(proof), announce);
-    }
-
-    private bool Publish(byte kind, byte[] context, byte[] body, bool announce,
-        IReadOnlyDictionary<ValueHash256, Transaction>? resolved = null)
+    private bool Publish(byte[] body, IReadOnlyDictionary<ValueHash256, Transaction>? resolved = null)
     {
         if (!IsEnabled || body.Length == 0 || (ulong)body.Length > LeanLimits.MaxObjectBytes) return false;
-        Dictionary<ValueHash256, Transaction>? envelopes = null;
-        if (kind == LeanProtocol.KindWrapper)
+        Dictionary<ValueHash256, Transaction> envelopes = [];
+        long envelopeBytes = body.Length + 256;
+        foreach (ValueHash256 hash in LeanBodies.ParseWrapper(body))
         {
-            envelopes = [];
-            long envelopeBytes = body.Length + 256;
-            foreach (ValueHash256 hash in LeanBodies.ParseWrapper(body))
-            {
-                if (resolved?.TryGetValue(hash, out Transaction? transaction) != true && !_txPool.TryGetPendingTransaction(hash, out transaction)) return false;
-                if ((transaction!.Hash ?? transaction.CalculateHash()).ValueHash256 != hash) return false;
-                // Store ownership cannot follow callers mutating a resolved transaction after publication.
-                envelopeBytes += TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping) + 128;
-                if (envelopeBytes > LeanLimits.MaxStoreBytes) return false;
-                byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
-                envelopes.Add(hash, TxDecoder.Instance.DecodeCompleteNotNull(encoded, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping));
-            }
+            if (resolved?.TryGetValue(hash, out Transaction? transaction) != true && !_txPool.TryGetPendingTransaction(hash, out transaction)) return false;
+            if ((transaction!.Hash ?? transaction.CalculateHash()).ValueHash256 != hash) return false;
+            // Store ownership cannot follow callers mutating a resolved transaction after publication.
+            envelopeBytes += TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping) + 128;
+            if (envelopeBytes > LeanLimits.MaxStoreBytes) return false;
+            byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+            envelopes.Add(hash, TxDecoder.Instance.DecodeCompleteNotNull(encoded, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping));
         }
-        LeanDescriptor descriptor = LeanDescriptor.Create(kind, LocalProfile, context, body);
+        LeanDescriptor descriptor = LeanDescriptor.Create(LocalProfile, body);
         Outbox outbox = new();
         lock (_gate)
         {
             if (_disposed || !_store.TryAdd(new(descriptor, (byte[])body.Clone(), envelopes))) return false;
             _tombstones.Remove(descriptor.ObjectId);
-            if (announce) AnnounceToPeers(descriptor, outbox);
+            AnnounceToPeers(descriptor, outbox);
         }
         outbox.Flush();
-        LeanMetrics.Record(kind, LeanEvent.Published);
+        LeanMetrics.Record(LeanEvent.Published);
         if (_logger.IsDebug) _logger.Debug($"lean/1 published {descriptor}");
         return true;
     }
@@ -100,12 +76,11 @@ public sealed partial class LeanObjectTransport
         long now = _clock.GetTimestamp();
         foreach (LeanPeer peer in _peers)
         {
-            if (!peer.Status.SupportsKind(descriptor.Kind) || descriptor.ByteLength > peer.Status.MaxObjectBytes
-                || peer.Known.Contains(descriptor.ObjectId, now)) continue;
+            if (descriptor.ByteLength > peer.Status.MaxObjectBytes || peer.Known.Contains(descriptor.ObjectId, now)) continue;
             peer.Known.Add(descriptor.ObjectId);
             outbox.Send(peer, new AnnounceObjectsMessage([descriptor]));
             Interlocked.Increment(ref _stats.AnnouncedOut);
-            LeanMetrics.Record(descriptor.Kind, LeanEvent.Announced);
+            LeanMetrics.Record(LeanEvent.Announced);
         }
     }
 
@@ -117,8 +92,7 @@ public sealed partial class LeanObjectTransport
         foreach (LeanObjectStore.Entry entry in _store.Recent())
         {
             LeanDescriptor descriptor = entry.Descriptor;
-            if (!peer.Status.SupportsKind(descriptor.Kind) || descriptor.ByteLength > peer.Status.MaxObjectBytes
-                || peer.Known.Contains(descriptor.ObjectId, now)) continue;
+            if (descriptor.ByteLength > peer.Status.MaxObjectBytes || peer.Known.Contains(descriptor.ObjectId, now)) continue;
             selected.Add(descriptor);
             if (selected.Count == LeanProtocol.MaxAnnouncements) break;
         }
@@ -127,108 +101,10 @@ public sealed partial class LeanObjectTransport
         foreach (LeanDescriptor descriptor in selected)
         {
             peer.Known.Add(descriptor.ObjectId);
-            LeanMetrics.Record(descriptor.Kind, LeanEvent.Announced);
+            LeanMetrics.Record(LeanEvent.Announced);
         }
         Interlocked.Add(ref _stats.AnnouncedOut, selected.Count);
         outbox.Send(peer, new AnnounceObjectsMessage([.. selected]));
-    }
-
-    /// <inheritdoc/>
-    public void RememberProduced(Block block)
-    {
-        if (block.Hash is not { } hash || block.Header.RecursiveStark is not { } commitment || block.StarkProof is not { } proof) return;
-        lock (_gate)
-        {
-            if (_produced.ContainsKey(hash.ValueHash256)) return;
-            if (_producedOrder.Count >= MaxProducedProofs && _producedOrder.TryDequeue(out ValueHash256 oldest)) _produced.Remove(oldest);
-            _produced[hash.ValueHash256] = new((byte[])proof.Clone(), commitment.BlockDepsHash);
-            _producedOrder.Enqueue(hash.ValueHash256);
-        }
-    }
-
-    private bool IsValidBlockProof(Block block, ReadOnlySpan<byte> proof) => CheckBlockProof(block, proof) == Verdict.Valid;
-
-    private Verdict CheckBlockProof(Block block, ReadOnlySpan<byte> proof)
-    {
-        if (block.Header.RecursiveStark is not { } commitment || proof.Length > Eip8288Constants.MaxAggregateProofBytes
-            || ValueKeccak.Compute(proof) != commitment.StarkProofHash.ValueHash256) return Verdict.Invalid;
-        if (!_specProvider.GetSpec(block.Header).IsEip8288Enabled) return Verdict.Refused;
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
-        ValueHash256 dependencyHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        if (!Eip8288Dependencies.AreSchemesEnabled(dependencies) || !LeanProofCapacity.FitsBlock(dependencies)
-            || dependencyHash != commitment.BlockDepsHash.ValueHash256) return Verdict.Invalid;
-        if (LeanProofCapacity.CapacityError(new HashSet<FrameDependency>(dependencies)) is not null) return Verdict.Refused;
-        try
-        {
-            // The native bool verifier also returns false for a missing library: distinguish local availability first.
-            _proofVerifier.EnsureAvailable();
-            return _proofVerifier.VerifyRecursiveStark(in dependencyHash, Eip8288Constants.AggregatedVk, proof) ? Verdict.Valid : Verdict.Invalid;
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            if (_logger.IsDebug) _logger.Debug($"lean/1 block-proof verification unavailable: {exception.Message}");
-            return Verdict.LocalFailure;
-        }
-    }
-
-    /// <inheritdoc/>
-    public async Task<RecursiveStark?> TryGetAsync(Block block, CancellationToken cancellationToken)
-    {
-        if (block.Hash is not { } hash || block.Header.RecursiveStark is not { } commitment) return null;
-        if (block.StarkProof is { } supplied)
-            return IsValidBlockProof(block, supplied) ? new((byte[])supplied.Clone(), commitment.BlockDepsHash) : null;
-        LeanSelector selector = new(LeanProtocol.KindBlockProof, LocalProfile, hash.ValueHash256);
-        byte[]? local = null;
-        lock (_gate)
-        {
-            if (_produced.TryGetValue(hash.ValueHash256, out RecursiveStark? produced)) local = produced.StarkProof;
-            else if (_store.TryLookup(selector, out LeanObjectStore.Entry entry)) local = LeanBodies.ParseBlockProof(entry.Body).ToArray();
-        }
-        if (local is not null && IsValidBlockProof(block, local)) return new((byte[])local.Clone(), commitment.BlockDepsHash);
-        if (!IsEnabled) return null;
-        HashSet<LeanPeer> asked = [];
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            LeanPeer[] candidates;
-            Task signal;
-            lock (_gate)
-            {
-                signal = _hintSignal.Task;
-                List<LeanPeer> available = [];
-                if (_hints.TryGetValue(hash.ValueHash256, out List<LeanPeer>? hinted))
-                    foreach (LeanPeer peer in hinted) if (!peer.Closed && !asked.Contains(peer)) available.Add(peer);
-                foreach (LeanPeer peer in _peers)
-                    if (!peer.Closed && !asked.Contains(peer) && !available.Contains(peer)
-                        && peer.Status.SupportsKind(LeanProtocol.KindBlockProof)) available.Add(peer);
-                candidates = [.. available];
-            }
-            foreach (LeanPeer peer in candidates)
-            {
-                asked.Add(peer);
-                LeanObjectResult[]? results = await RequestObjectsAsync(peer, [selector], cancellationToken).ConfigureAwait(false);
-                if (results?[0] is not { Status: LeanResultStatus.Ok, Descriptor: { } descriptor }) continue;
-                using LeanFetchedBody? fetched = await FetchBodyAsync(descriptor, peer, cancellationToken).ConfigureAwait(false);
-                if (fetched is null) continue;
-                ReadOnlySpan<byte> proof = LeanBodies.ParseBlockProof(fetched.Body);
-                Verdict verdict = CheckBlockProof(block, proof);
-                if (verdict != Verdict.Valid)
-                {
-                    if (verdict == Verdict.Invalid)
-                    {
-                        Outbox outbox = new();
-                        lock (_gate) Violation(peer, "Block proof differs from its header or dependency statement", outbox);
-                        outbox.Flush();
-                    }
-                    continue;
-                }
-                Interlocked.Increment(ref _stats.SidecarsFetched);
-                return new(proof.ToArray(), commitment.BlockDepsHash);
-            }
-            if (asked.Count >= LeanLimits.MaxSourcesPerAssembly) return null;
-            try { await Task.WhenAny(signal, Task.Delay(SidecarRetry, cancellationToken)).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return null; }
-        }
-        return null;
     }
 
     private void LogStats(long now)
@@ -248,8 +124,7 @@ public sealed partial class LeanObjectTransport
         long chunksOut = Interlocked.Exchange(ref stats.ChunksServed, 0);
         long served = Interlocked.Exchange(ref stats.ObjectsServed, 0);
         long violations = Interlocked.Exchange(ref stats.Violations, 0);
-        long sidecars = Interlocked.Exchange(ref stats.SidecarsFetched, 0);
-        if (announcedIn + announcedOut + fetched + chunksIn + chunksOut + violations + sidecars == 0) return;
+        if (announcedIn + announcedOut + fetched + chunksIn + chunksOut + violations == 0) return;
         int peers, stored, assemblies;
         long storedBytes;
         lock (_gate)
@@ -261,6 +136,6 @@ public sealed partial class LeanObjectTransport
         }
         _logger.Info($"lean/1 | {peers} peers, {stored} objects stored ({storedBytes / (1024 * 1024)} MiB), {assemblies} assemblies | last {StatsInterval.TotalSeconds:N0}s: " +
             $"announced in {announcedIn} out {announcedOut}, fetched {fetched}, reassembled {reassembled}, validated {validated}, invalid {invalid}, " +
-            $"local failures {localFailures}, expired {expired}, chunks in {chunksIn} out {chunksOut}, objects served {served}, sidecars {sidecars}, violations {violations}");
+            $"local failures {localFailures}, expired {expired}, chunks in {chunksIn} out {chunksOut}, objects served {served}, violations {violations}");
     }
 }

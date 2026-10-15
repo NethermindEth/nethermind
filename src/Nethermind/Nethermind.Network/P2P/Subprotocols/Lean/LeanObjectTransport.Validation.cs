@@ -29,14 +29,8 @@ public sealed partial class LeanObjectTransport
     /// <remarks>Without room the assembly stays charged and is retried on the timer until it expires.</remarks>
     private void TryComplete(LeanAssembly assembly, Outbox outbox)
     {
-        if (_disposed || !assembly.IsComplete || assembly.Queued || assembly.Dropped) return;
-        if (!assembly.Validate && assembly.Waiters.Count == 0)
-        {
-            _assemblies.Remove(assembly.Descriptor.ObjectId);
-            Drop(assembly);
-            return;
-        }
-        if (assembly.Validate && _pendingValidations >= LeanLimits.MaxPendingValidations) return;
+        if (_disposed || !assembly.IsComplete || assembly.Queued || assembly.Dropped
+            || _pendingValidations >= LeanLimits.MaxPendingValidations) return;
         long length = assembly.RetrievalBytes;
         _incompleteBytes -= length;
         _completionBytes += length;
@@ -46,13 +40,6 @@ public sealed partial class LeanObjectTransport
         ReleaseChunks(assembly, releaseMetadata: false);
         assembly.Processing = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
         CancelRequestsFor(assembly, outbox);
-        if (!assembly.Validate)
-        {
-            // Bodies fetched for a waiter (sidecars, transaction recovery) never wait behind the validation they may serve.
-            assembly.Started = true;
-            _ = Task.Run(() => ProcessAndReleaseAsync(assembly));
-            return;
-        }
         _pendingValidations++;
         _validation.Enqueue(assembly);
         if (_validationWorkers < MaxRecoveringValidations)
@@ -113,7 +100,7 @@ public sealed partial class LeanObjectTransport
         {
             // The assembly reached a deadline while its body awaited validation or recovery.
             Interlocked.Increment(ref _stats.Expired);
-            LeanMetrics.Record(assembly.Descriptor.Kind, LeanEvent.Expired);
+            LeanMetrics.Record(LeanEvent.Expired);
             if (_logger.IsDebug) _logger.Debug($"lean/1 assembly expired during validation: {assembly.Descriptor}");
         }
         catch (Exception exception)
@@ -142,13 +129,7 @@ public sealed partial class LeanObjectTransport
                         assembly.Started = false;
                         assembly.Received = 0;
                         assembly.RetrySource = false;
-                        assembly.ReleaseRequested = false;
                     }
-                }
-                if (assembly.Queued || assembly.Dropped)
-                {
-                    foreach (TaskCompletionSource<LeanFetchedBody?> waiter in assembly.Waiters) waiter.TrySetResult(null);
-                    assembly.Waiters.Clear();
                 }
                 Schedule(outbox, _clock.GetTimestamp());
             }
@@ -157,11 +138,10 @@ public sealed partial class LeanObjectTransport
         }
     }
 
-    /// <summary>Releases a completed body's reservation after processing and all fetched-body leases finish.</summary>
+    /// <summary>Releases a completed body's reservation after processing finishes.</summary>
     private void ReleaseCompletion(LeanAssembly assembly)
     {
-        assembly.ReleaseRequested = true;
-        if (assembly.Body is null || assembly.BodyLeases != 0) return;
+        if (assembly.Body is null) return;
         long released = assembly.RetrievalBytes + assembly.RecoveryBytes;
         _completionBytes -= released;
         if (assembly.CompletionSource is { } source) { source.ChargedBytes -= released; PruneNode(source.Node); }
@@ -169,7 +149,7 @@ public sealed partial class LeanObjectTransport
         assembly.RetrievalBytes = 0;
         assembly.CompletionSource = null;
         assembly.Body = null;
-        if (!assembly.Started && assembly.Validate)
+        if (!assembly.Started)
         {
             // Released while still queued: the queue skips it once dequeued.
             _pendingValidations--;
@@ -183,8 +163,7 @@ public sealed partial class LeanObjectTransport
         cancellation.ThrowIfCancellationRequested();
         LeanDescriptor descriptor = assembly.Descriptor;
         byte[] body = assembly.Body!;
-        List<ValueHash256>? entries = null;
-        string? integrityError = CheckIntegrity(descriptor, body, ref entries, out int verificationBytes);
+        string? integrityError = CheckIntegrity(descriptor, body, out List<ValueHash256> entries, out int verificationBytes);
         if (integrityError is not null)
         {
             Outbox outbox = new();
@@ -202,9 +181,7 @@ public sealed partial class LeanObjectTransport
             return;
         }
         assembly.VerificationBytes = verificationBytes;
-        LeanMetrics.Record(descriptor.Kind, LeanEvent.Reassembled);
-        TaskCompletionSource<LeanFetchedBody?>[] waiters;
-        bool validate;
+        LeanMetrics.Record(LeanEvent.Reassembled);
         lock (_gate)
         {
             long unused = assembly.RetrievalBytes - body.Length - verificationBytes;
@@ -215,31 +192,14 @@ public sealed partial class LeanObjectTransport
                 if (assembly.CompletionSource is { } source) source.ChargedBytes -= unused;
             }
             Interlocked.Increment(ref _stats.Reassembled);
-            waiters = [.. assembly.Waiters];
-            assembly.Waiters.Clear();
-            validate = assembly.Validate;
         }
-        foreach (TaskCompletionSource<LeanFetchedBody?> waiter in waiters)
-        {
-            lock (_gate)
-            {
-                assembly.BodyLeases++;
-                LeanFetchedBody lease = new(body, () => ReleaseFetchedBody(assembly));
-                if (!waiter.TrySetResult(lease)) lease.Dispose();
-            }
-        }
-        if (!validate) return;
 
-        (Verdict verdict, string? error) = descriptor.Kind switch
-        {
-            LeanProtocol.KindWrapper => await ValidateWrapperAsync(assembly, body, entries!, cancellation).ConfigureAwait(false),
-            _ => (Verdict.LocalFailure, "kind is fetched only on demand")
-        };
+        (Verdict verdict, string? error) = await ValidateWrapperAsync(assembly, body, entries, cancellation).ConfigureAwait(false);
         switch (verdict)
         {
             case Verdict.Valid:
                 Interlocked.Increment(ref _stats.Validated);
-                LeanMetrics.Record(descriptor.Kind, LeanEvent.Validated);
+                LeanMetrics.Record(LeanEvent.Validated);
                 if (_logger.IsDebug) _logger.Debug($"lean/1 validated {descriptor} from {assembly.Contributors.Count} peer(s)");
                 break;
             case Verdict.Invalid:
@@ -247,7 +207,7 @@ public sealed partial class LeanObjectTransport
                 break;
             case Verdict.Refused:
                 Interlocked.Increment(ref _stats.LocalFailures);
-                LeanMetrics.Record(descriptor.Kind, LeanEvent.LocalFailure);
+                LeanMetrics.Record(LeanEvent.LocalFailure);
                 if (_logger.IsDebug) _logger.Debug($"lean/1 refused {descriptor}: {error}");
                 break;
             default:
@@ -258,22 +218,22 @@ public sealed partial class LeanObjectTransport
                         && (verdict != Verdict.Unresolved || source.Link.HasTransactionRecovery))
                         _tombstones.Add(descriptor.ObjectId, _clock.GetTimestamp() + (long)(LeanLimits.SoftTombstone.TotalSeconds * _clock.TimestampFrequency));
                 }
-                LeanMetrics.Record(descriptor.Kind, LeanEvent.LocalFailure);
+                LeanMetrics.Record(LeanEvent.LocalFailure);
                 if (_logger.IsDebug) _logger.Debug($"lean/1 could not admit {descriptor}: {error}");
                 break;
         }
     }
 
-    /// <summary>Checks length, <c>content_hash</c>, the canonical body encoding.</summary>
-    private static string? CheckIntegrity(LeanDescriptor descriptor, byte[] body, ref List<ValueHash256>? entries, out int verificationBytes)
+    /// <summary>Checks length, <c>content_hash</c> and the canonical hash-only wrapper encoding.</summary>
+    private static string? CheckIntegrity(LeanDescriptor descriptor, byte[] body, out List<ValueHash256> entries, out int verificationBytes)
     {
+        entries = [];
         verificationBytes = 0;
         if ((ulong)body.Length != descriptor.ByteLength) return "reconstructed length differs from the descriptor";
         if (ValueKeccak.Compute(body) != descriptor.ContentHash) return "content hash mismatch";
         try
         {
-            if (descriptor.Kind == LeanProtocol.KindWrapper) entries = LeanBodies.ParseWrapper(body, out verificationBytes);
-            else LeanBodies.Check(descriptor.Kind, body);
+            entries = LeanBodies.ParseWrapper(body, out verificationBytes);
         }
         catch (RlpException exception)
         {
@@ -294,7 +254,7 @@ public sealed partial class LeanObjectTransport
             foreach (LeanPeer peer in suppliers) Violation(peer, $"supplied invalid {assembly.Descriptor}: {reason}", outbox);
         }
         outbox.Flush();
-        LeanMetrics.Record(assembly.Descriptor.Kind, LeanEvent.Invalid);
+        LeanMetrics.Record(LeanEvent.Invalid);
         if (_logger.IsInfo) _logger.Info($"lean/1 rejected {assembly.Descriptor}: {reason}");
     }
 
@@ -415,66 +375,12 @@ public sealed partial class LeanObjectTransport
         lock (_gate)
         {
             if (bytes < 0 || assembly.Dropped || source.Closed || !source.Link.HasTransactionRecovery || assembly.CompletionSource != source
-                || !CanReserveObjectBytes(bytes, assembly.Waiters.Count != 0)
+                || !CanReserveObjectBytes(bytes)
                 || bytes > LeanLimits.MaxPeerBytes - source.ChargedBytes - 4 * LeanProtocol.MaxMessageBytes) return false;
             _completionBytes += bytes;
             source.ChargedBytes += bytes;
             assembly.RecoveryBytes += bytes;
             return true;
         }
-    }
-
-    /// <summary>Retrieves an object's integrity-checked body from <paramref name="source"/>, merging with any existing assembly.</summary>
-    /// <param name="descriptor">The checked descriptor of the object.</param>
-    /// <param name="source">The peer that offered the object.</param>
-    /// <param name="cancellationToken">Stops waiting; an assembly nobody else waits for is then dropped.</param>
-    internal async Task<LeanFetchedBody?> FetchBodyAsync(LeanDescriptor descriptor, LeanPeer source, CancellationToken cancellationToken)
-    {
-        TaskCompletionSource<LeanFetchedBody?> waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        LeanAssembly? assembly;
-        Outbox outbox = new();
-        lock (_gate)
-        {
-            long now = _clock.GetTimestamp();
-            if (_store.TryGet(descriptor.ObjectId, out LeanObjectStore.Entry entry)) return new LeanFetchedBody(entry.Body);
-            if (_tombstones.Contains(descriptor.ObjectId, now)) return null;
-            if (!_assemblies.TryGetValue(descriptor.ObjectId, out assembly))
-                assembly = TryCreateAssembly(descriptor, source.Closed ? null : source, now, waited: true);
-            if (assembly is null || assembly.Dropped) return null;
-            if (!source.Closed) assembly.AddSource(source);
-            assembly.Waiters.Add(waiter);
-            Schedule(outbox, now);
-        }
-        outbox.Flush();
-        await using CancellationTokenRegistration registration = cancellationToken.Register(static state =>
-            ((TaskCompletionSource<LeanFetchedBody?>)state!).TrySetResult(null), waiter);
-        LeanFetchedBody? body = await waiter.Task.ConfigureAwait(false);
-        if (body is null) ReleaseWaiter(assembly, waiter);
-        return body;
-    }
-
-    private void ReleaseFetchedBody(LeanAssembly assembly)
-    {
-        lock (_gate)
-        {
-            assembly.BodyLeases--;
-            if (assembly.ReleaseRequested) ReleaseCompletion(assembly);
-        }
-    }
-
-    private void ReleaseWaiter(LeanAssembly assembly, TaskCompletionSource<LeanFetchedBody?> waiter)
-    {
-        Outbox outbox = new();
-        lock (_gate)
-        {
-            assembly.Waiters.Remove(waiter);
-            if (assembly.Waiters.Count == 0 && !assembly.Validate && !assembly.Queued && !assembly.Dropped
-                && _assemblies.Remove(assembly.Descriptor.ObjectId))
-            {
-                CancelRequestsFor(assembly, outbox);
-                Drop(assembly);
-            }
-        }
-        outbox.Flush();
     }
 }

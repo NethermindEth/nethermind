@@ -15,17 +15,14 @@ public abstract class LeanMessage : P2PMessage
     public override string Protocol => LeanProtocol.Code;
 }
 
-/// <summary><c>Status (0x00) = [1, chain_id, genesis_hash, profiles, kinds, max_object_bytes]</c>.</summary>
-public sealed class LeanStatusMessage(UInt256 chainId, ValueHash256 genesisHash, ValueHash256[] profiles, byte kinds, ulong maxObjectBytes) : LeanMessage
+/// <summary><c>Status (0x00) = [1, chain_id, genesis_hash, profiles, max_object_bytes]</c>.</summary>
+public sealed class LeanStatusMessage(UInt256 chainId, ValueHash256 genesisHash, ValueHash256[] profiles, ulong maxObjectBytes) : LeanMessage
 {
     public override int PacketType => LeanMessageCode.Status;
     public UInt256 ChainId { get; } = chainId;
     public ValueHash256 GenesisHash { get; } = genesisHash;
     public ValueHash256[] Profiles { get; } = profiles;
-    public byte Kinds { get; } = kinds;
     public ulong MaxObjectBytes { get; } = maxObjectBytes;
-
-    public bool SupportsKind(byte kind) => (Kinds & (1 << (kind - 1))) != 0;
 }
 
 /// <summary><c>AnnounceObjects (0x01) = [descriptor, ...]</c>, in strictly ascending object ID order.</summary>
@@ -35,29 +32,7 @@ public sealed class AnnounceObjectsMessage(LeanDescriptor[] descriptors) : LeanM
     public LeanDescriptor[] Descriptors { get; } = descriptors;
 }
 
-/// <summary><c>GetObjects (0x02) = [request_id, selectors]</c>.</summary>
-public sealed class GetObjectsMessage(ulong requestId, LeanSelector[] selectors) : LeanMessage
-{
-    public override int PacketType => LeanMessageCode.GetObjects;
-    public ulong RequestId { get; } = requestId;
-    public LeanSelector[] Selectors { get; } = selectors;
-}
-
-/// <summary>One <c>result = [status, descriptor_or_empty]</c> of an Objects response.</summary>
-public readonly record struct LeanObjectResult(LeanResultStatus Status, LeanDescriptor? Descriptor)
-{
-    public static LeanObjectResult Of(LeanResultStatus status) => new(status, null);
-}
-
-/// <summary><c>Objects (0x03) = [request_id, results]</c>.</summary>
-public sealed class ObjectsMessage(ulong requestId, LeanObjectResult[] results) : LeanMessage
-{
-    public override int PacketType => LeanMessageCode.Objects;
-    public ulong RequestId { get; } = requestId;
-    public LeanObjectResult[] Results { get; } = results;
-}
-
-/// <summary><c>GetChunks (0x04) = [request_id, object_id, indices]</c>.</summary>
+/// <summary><c>GetChunks (0x02) = [request_id, object_id, indices]</c>.</summary>
 public sealed class GetChunksMessage(ulong requestId, ValueHash256 objectId, int[] indices) : LeanMessage
 {
     public override int PacketType => LeanMessageCode.GetChunks;
@@ -66,7 +41,7 @@ public sealed class GetChunksMessage(ulong requestId, ValueHash256 objectId, int
     public int[] Indices { get; } = indices;
 }
 
-/// <summary><c>Chunk (0x05) = [request_id, object_id, index, chunk_bytes]</c>.</summary>
+/// <summary><c>Chunk (0x03) = [request_id, object_id, index, chunk_bytes]</c>.</summary>
 public sealed class ChunkMessage(ulong requestId, ValueHash256 objectId, int index, ReadOnlyMemory<byte> data) : LeanMessage
 {
     public override int PacketType => LeanMessageCode.Chunk;
@@ -76,7 +51,7 @@ public sealed class ChunkMessage(ulong requestId, ValueHash256 objectId, int ind
     public ReadOnlyMemory<byte> Data { get; } = data;
 }
 
-/// <summary><c>Complete (0x06) = [request_id, object_id, status]</c>.</summary>
+/// <summary><c>Complete (0x04) = [request_id, object_id, status]</c>.</summary>
 public sealed class CompleteMessage(ulong requestId, ValueHash256 objectId, LeanCompleteStatus status) : LeanMessage
 {
     public override int PacketType => LeanMessageCode.Complete;
@@ -85,7 +60,7 @@ public sealed class CompleteMessage(ulong requestId, ValueHash256 objectId, Lean
     public LeanCompleteStatus Status { get; } = status;
 }
 
-/// <summary><c>Cancel (0x07) = [request_id]</c>.</summary>
+/// <summary><c>Cancel (0x05) = [request_id]</c>.</summary>
 public sealed class CancelMessage(ulong requestId) : LeanMessage
 {
     public override int PacketType => LeanMessageCode.Cancel;
@@ -95,19 +70,17 @@ public sealed class CancelMessage(ulong requestId) : LeanMessage
 /// <summary>Shared strict framing: a size bound before any parsing, one outer list, and no trailing bytes.</summary>
 public abstract class LeanMessageSerializer<T> : IZeroMessageSerializer<T> where T : LeanMessage
 {
-    protected virtual int MaxBytes => LeanProtocol.MaxMessageBytes;
-
     public virtual void Serialize(IByteBuffer byteBuffer, T message)
     {
         byte[] encoded = Encode(message);
-        if (encoded.Length > MaxBytes) throw new ArgumentException($"{typeof(T).Name} exceeds its message size limit");
+        if (encoded.Length > LeanProtocol.MaxMessageBytes) throw new ArgumentException($"{typeof(T).Name} exceeds its message size limit");
         byteBuffer.WriteBytes(encoded);
     }
 
     public T Deserialize(IByteBuffer byteBuffer)
     {
         int length = byteBuffer.ReadableBytes;
-        if (length > MaxBytes) throw new RlpException($"{typeof(T).Name} exceeds its message size limit");
+        if (length > LeanProtocol.MaxMessageBytes) throw new RlpException($"{typeof(T).Name} exceeds its message size limit");
         T message = Decode(LeanWire.Span(byteBuffer));
         byteBuffer.SkipBytes(length);
         return message;
@@ -116,7 +89,7 @@ public abstract class LeanMessageSerializer<T> : IZeroMessageSerializer<T> where
     /// <summary>Decodes message data, which must be exactly one canonical list.</summary>
     public T Decode(ReadOnlySpan<byte> data)
     {
-        if (data.Length > MaxBytes) throw new RlpException($"{typeof(T).Name} exceeds its message size limit");
+        if (data.Length > LeanProtocol.MaxMessageBytes) throw new RlpException($"{typeof(T).Name} exceeds its message size limit");
         LeanRlpReader outer = new(data);
         LeanRlpReader fields = outer.ReadList();
         outer.End();
@@ -172,8 +145,7 @@ public sealed class LeanStatusMessageSerializer : LeanMessageSerializer<LeanStat
         byte[][] profiles = new byte[message.Profiles.Length][];
         for (int i = 0; i < profiles.Length; i++) profiles[i] = LeanRlp.EncodeBytes(message.Profiles[i].Bytes);
         return LeanRlp.EncodeList(LeanRlp.EncodeUInt(LeanProtocol.StatusVersion), LeanRlp.EncodeUInt256(message.ChainId),
-            LeanRlp.EncodeBytes(message.GenesisHash.Bytes), LeanRlp.EncodeList(profiles), LeanRlp.EncodeUInt(message.Kinds),
-            LeanRlp.EncodeUInt(message.MaxObjectBytes));
+            LeanRlp.EncodeBytes(message.GenesisHash.Bytes), LeanRlp.EncodeList(profiles), LeanRlp.EncodeUInt(message.MaxObjectBytes));
     }
 
     protected override LeanStatusMessage Decode(ref LeanRlpReader fields)
@@ -182,12 +154,9 @@ public sealed class LeanStatusMessageSerializer : LeanMessageSerializer<LeanStat
         UInt256 chainId = fields.ReadUInt256();
         ValueHash256 genesis = fields.ReadHash();
         ValueHash256[] profiles = ReadAscendingHashes(ref fields, LeanProtocol.MaxProfiles);
-        ulong kinds = fields.ReadUInt64();
-        // Bit zero (kind 1) is mandatory and only kinds 1 and 2 exist.
-        if ((kinds & 1) == 0 || kinds > 0b11) throw new RlpException("Invalid lean kinds mask");
         ulong maxObjectBytes = fields.ReadUInt64();
         if (maxObjectBytes is 0 or > LeanProtocol.MaxObjectBytes) throw new RlpException("Invalid max_object_bytes");
-        return new(chainId, genesis, profiles, (byte)kinds, maxObjectBytes);
+        return new(chainId, genesis, profiles, maxObjectBytes);
     }
 }
 
@@ -212,87 +181,6 @@ public sealed class AnnounceObjectsMessageSerializer : LeanMessageSerializer<Ann
                 throw new RlpException("Announcements are not in strictly ascending object ID order");
         }
         return new(descriptors);
-    }
-}
-
-public sealed class GetObjectsMessageSerializer : LeanMessageSerializer<GetObjectsMessage>
-{
-    public override byte[] Encode(GetObjectsMessage message)
-    {
-        byte[][] selectors = new byte[message.Selectors.Length][];
-        for (int i = 0; i < selectors.Length; i++)
-        {
-            LeanSelector selector = message.Selectors[i];
-            selectors[i] = LeanRlp.EncodeList(LeanRlp.EncodeUInt(selector.Kind), LeanRlp.EncodeBytes(selector.ProfileId.Bytes),
-                LeanRlp.EncodeBytes(selector.LookupKey.Bytes));
-        }
-        return LeanRlp.EncodeList(LeanRlp.EncodeUInt(message.RequestId), LeanRlp.EncodeList(selectors));
-    }
-
-    protected override GetObjectsMessage Decode(ref LeanRlpReader fields)
-    {
-        ulong requestId = fields.ReadUInt64();
-        LeanRlpReader list = fields.ReadList();
-        int count = list.CountRemaining(LeanProtocol.MaxLookups);
-        if (count == 0) throw new RlpException("Empty selector list");
-        LeanSelector[] selectors = new LeanSelector[count];
-        for (int i = 0; i < count; i++)
-        {
-            LeanRlpReader item = list.ReadList();
-            byte kind = item.ReadUInt8();
-            ValueHash256 profile = item.ReadHash();
-            ValueHash256 key = item.ReadHash();
-            item.End();
-            if (kind is < LeanProtocol.KindWrapper or > LeanProtocol.KindBlockProof) throw new RlpException("Unknown selector kind");
-            selectors[i] = new(kind, profile, key);
-            if (i > 0 && selectors[i - 1].CompareTo(selectors[i]) >= 0) throw new RlpException("Selectors are not strictly ascending");
-        }
-        list.End();
-        return new(requestId, selectors);
-    }
-}
-
-public sealed class ObjectsMessageSerializer : LeanMessageSerializer<ObjectsMessage>
-{
-    protected override int MaxBytes => LeanProtocol.MaxMetadataResponseBytes;
-
-    public override byte[] Encode(ObjectsMessage message)
-    {
-        byte[][] results = new byte[message.Results.Length][];
-        for (int i = 0; i < results.Length; i++) results[i] = EncodeResult(message.Results[i]);
-        return LeanRlp.EncodeList(LeanRlp.EncodeUInt(message.RequestId), LeanRlp.EncodeList(results));
-    }
-
-    public static byte[] EncodeResult(LeanObjectResult result) => result.Status == LeanResultStatus.Ok
-        ? LeanRlp.EncodeList(LeanRlp.EncodeUInt(0), result.Descriptor!.Encoded)
-        : LeanRlp.EncodeList(LeanRlp.EncodeUInt((ulong)result.Status), LeanRlp.EncodeBytes([]));
-
-    protected override ObjectsMessage Decode(ref LeanRlpReader fields)
-    {
-        ulong requestId = fields.ReadUInt64();
-        LeanRlpReader list = fields.ReadList();
-        int count = list.CountRemaining(LeanProtocol.MaxLookups);
-        if (count == 0) throw new RlpException("Empty Objects response");
-        LeanObjectResult[] results = new LeanObjectResult[count];
-        for (int i = 0; i < count; i++)
-        {
-            LeanRlpReader item = list.ReadList();
-            byte status = item.ReadUInt8();
-            if (status > (byte)LeanResultStatus.TooLarge) throw new RlpException("Unknown result status");
-            if (status != (byte)LeanResultStatus.Ok)
-            {
-                item.ReadEmptyBytes();
-                results[i] = LeanObjectResult.Of((LeanResultStatus)status);
-            }
-            else
-            {
-                LeanDescriptor descriptor = LeanDescriptor.Decode(item.ReadItem());
-                results[i] = new(LeanResultStatus.Ok, descriptor);
-            }
-            item.End();
-        }
-        list.End();
-        return new(requestId, results);
     }
 }
 

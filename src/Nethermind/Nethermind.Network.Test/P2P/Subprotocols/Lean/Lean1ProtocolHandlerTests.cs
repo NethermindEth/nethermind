@@ -26,7 +26,7 @@ using static Nethermind.Network.Test.P2P.Subprotocols.Lean.LeanTestObjects;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Lean;
 
-/// <summary>The <c>lean/1</c> handler: Status negotiation, strict decoding, and two in-process peers exchanging each kind.</summary>
+/// <summary>The <c>lean/1</c> handler: Status negotiation, strict decoding, and two in-process peers exchanging wrappers.</summary>
 public class Lean1ProtocolHandlerTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
@@ -61,8 +61,6 @@ public class Lean1ProtocolHandlerTests
     {
         LeanStatusMessage m => new LeanStatusMessageSerializer().Encode(m),
         AnnounceObjectsMessage m => new AnnounceObjectsMessageSerializer().Encode(m),
-        GetObjectsMessage m => new GetObjectsMessageSerializer().Encode(m),
-        ObjectsMessage m => new ObjectsMessageSerializer().Encode(m),
         GetChunksMessage m => new GetChunksMessageSerializer().Encode(m),
         ChunkMessage m => new ChunkMessageSerializer().Encode(m),
         CompleteMessage m => new CompleteMessageSerializer().Encode(m),
@@ -91,8 +89,6 @@ public class Lean1ProtocolHandlerTests
             .Do(call => disconnects.Enqueue($"{call.Arg<DisconnectReason>()}: {call.Arg<string>()}"));
         Route<LeanStatusMessage>(session, post);
         Route<AnnounceObjectsMessage>(session, post);
-        Route<GetObjectsMessage>(session, post);
-        Route<ObjectsMessage>(session, post);
         Route<GetChunksMessage>(session, post);
         Route<CompleteMessage>(session, post);
         Route<CancelMessage>(session, post);
@@ -206,68 +202,6 @@ public class Lean1ProtocolHandlerTests
         AssertNoDisconnects(connection);
     }
 
-    [Test]
-    public async Task Block_proof_sidecar_matches_known_header_and_full_block_body([Values(0, 300_000)] int proofBytes)
-    {
-        await using Connection connection = new();
-        await connection.Open();
-        byte[] expectedProof = Proof(proofBytes);
-        BlockHeader header = LeanTransportTests.ProofHeader(expectedProof);
-        IBlockTree tree = connection.A.Node.Tree;
-        tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
-        tree.IsMainChain(header).Returns(true);
-        Block complete = new(header, new BlockBody([], [], starkProof: expectedProof));
-        tree.FindBlock(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(complete);
-        Block block = new(header.Clone(), new BlockBody());
-
-        using CancellationTokenSource deadline = new(Timeout);
-        RecursiveStark? proof = await connection.B.Node.Transport.TryGetAsync(block, deadline.Token);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(proof, Is.Not.Null);
-            Assert.That(proof!.StarkProof, Is.EqualTo(expectedProof));
-            Assert.That(proof.BlockDepsHash, Is.EqualTo(header.RecursiveStark.BlockDepsHash));
-        }
-        AssertNoDisconnects(connection);
-    }
-
-    [TestCase("availability")]
-    [TestCase("verification")]
-    [TestCase("invalid proof")]
-    public async Task Sidecar_distinguishes_local_verifier_failure_from_invalid_peer_proof(string failure)
-    {
-        await using Connection connection = new();
-        await connection.Open();
-        byte[] proof = Proof(1024);
-        BlockHeader header = LeanTransportTests.ProofHeader(proof);
-        connection.A.Node.Tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
-        connection.A.Node.Tree.IsMainChain(header).Returns(true);
-        connection.A.Node.Tree.FindBlock(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
-            .Returns(new Block(header, new BlockBody([], [], starkProof: proof)));
-        if (failure == "availability") connection.B.Node.Verifier.AvailabilityError = new InvalidOperationException("backend unavailable");
-        else if (failure == "verification") connection.B.Node.Verifier.VerificationError = new NotSupportedException("local verifier geometry");
-        else connection.B.Node.Verifier.Valid = false;
-        using CancellationTokenSource timeout = new(TimeSpan.FromMilliseconds(600));
-        RecursiveStark? result = await connection.B.Node.Transport.TryGetAsync(new Block(header.Clone(), new BlockBody()), timeout.Token);
-        Assert.That(result, Is.Null);
-        Assert.That(connection.B.Disconnects.Count, Is.EqualTo(failure == "invalid proof" ? 1 : 0));
-        Assert.That(connection.B.Node.Transport.IncompleteBytes + connection.B.Node.Transport.CompletionBytes, Is.Zero);
-    }
-
-    [Test]
-    public async Task Unavailable_sidecar_returns_nothing_without_penalty()
-    {
-        await using Connection connection = new();
-        await connection.Open();
-        BlockHeader header = LeanTransportTests.ProofHeader([1]);
-        header.RecursiveStark = null;
-
-        using CancellationTokenSource deadline = new(TimeSpan.FromMilliseconds(600));
-        Assert.That(await connection.B.Node.Transport.TryGetAsync(new Block(header, new BlockBody()), deadline.Token), Is.Null);
-        AssertNoDisconnects(connection);
-    }
-
     private static Side Single(out LeanTestNode node, bool bulk = true)
     {
         node = new LeanTestNode();
@@ -287,6 +221,7 @@ public class Lean1ProtocolHandlerTests
     [TestCase("second status")]
     [TestCase("malformed")]
     [TestCase("unknown message")]
+    [TestCase("former Cancel ID")]
     [TestCase("after incompatible status")]
     public void Protocol_violations_disconnect_the_peer(string scenario)
     {
@@ -311,10 +246,15 @@ public class Lean1ProtocolHandlerTests
                     Receive(side, LeanMessageCode.Status, StatusBytes());
                     Receive(side, LeanProtocol.MessageCount, [0xc0]);
                     break;
+                case "former Cancel ID":
+                    // Six consecutive IDs: 0x07 is outside the capability's message space.
+                    Receive(side, LeanMessageCode.Status, StatusBytes());
+                    Receive(side, 0x07, Encode(new CancelMessage(1)));
+                    break;
                 case "after incompatible status":
                     // Disabling only the capability leaves the handler inert rather than disconnecting.
                     Receive(side, LeanMessageCode.Status, StatusBytes(new LeanStatusMessage(2, LeanTestNode.Genesis.ValueHash256,
-                        [LeanObjectTransport.LocalProfile], 1, LeanLimits.MaxObjectBytes)));
+                        [LeanObjectTransport.LocalProfile], LeanLimits.MaxObjectBytes)));
                     Assert.That(side.Disconnects, Is.Empty);
                     Assert.That(node.Transport.PeerCount, Is.Zero);
                     return;

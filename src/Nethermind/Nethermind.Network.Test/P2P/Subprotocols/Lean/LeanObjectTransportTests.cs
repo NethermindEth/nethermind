@@ -166,29 +166,8 @@ public class LeanObjectTransportTests
         Assert.That(link.Sent<GetChunksMessage>(), Has.Length.EqualTo(1));
         node.Tick(TimeSpan.FromSeconds(15));
         Assert.That(node.Transport.AssemblyCount, Is.EqualTo(1), "the body idle timer starts at retrieval, not the earlier admission");
-        node.Tick(LeanProtocol.MaxAssemblyIdle + TimeSpan.FromSeconds(1));
+        node.Tick(LeanLimits.AssemblyIdle + TimeSpan.FromSeconds(1));
         Assert.That(node.Transport.AssemblyCount, Is.Zero);
-    }
-
-    [Test]
-    public async Task Fetched_sidecar_remains_charged_until_native_validation_owner_releases_it()
-    {
-        using LeanTestNode node = new();
-        FakeLink link = Link("source");
-        LeanPeer peer = node.Connect(link);
-        byte[] body = LeanBodies.EncodeBlockProof(Proof(2 * ChunkBytes));
-        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
-            LeanDescriptor.BlockProofContext(Keccak.Zero.ValueHash256), body);
-        using CancellationTokenSource timeout = new(Timeout);
-        Task<LeanFetchedBody?> fetch = node.Transport.FetchBodyAsync(descriptor, peer, timeout.Token);
-        ServeAll(node, peer, link, descriptor, body);
-        LeanFetchedBody? fetched = await fetch;
-        Assert.That(fetched, Is.Not.Null);
-        await Until(() => node.Transport.AssemblyCount == 0);
-        Assert.That(node.Transport.CompletionBytes + node.Transport.IncompleteBytes, Is.EqualTo(body.Length), "verification still owns the charged contiguous body");
-        fetched!.Dispose();
-        fetched.Dispose();
-        Assert.That(node.Transport.CompletionBytes + node.Transport.IncompleteBytes, Is.Zero);
     }
 
     [Test]
@@ -257,7 +236,7 @@ public class LeanObjectTransportTests
     }
 
     [Test]
-    public async Task Integrity_retry_keeps_waiters_and_accounting_until_validation_finishes()
+    public async Task Integrity_retry_keeps_accounting_until_validation_finishes()
     {
         using LeanTestNode node = new();
         Transaction transaction = FrameTransaction(2);
@@ -268,24 +247,18 @@ public class LeanObjectTransportTests
         LeanDescriptor descriptor = Describe(body);
         node.Transport.OnAnnounce(peerA, new([descriptor]));
         node.Transport.OnAnnounce(peerB, new([descriptor]));
-        using CancellationTokenSource timeout = new(Timeout);
-        Task<LeanFetchedBody?> fetched = node.Transport.FetchBodyAsync(descriptor, peerA, timeout.Token);
         byte[] corrupted = (byte[])body.Clone();
         corrupted[^1] ^= 1;
         ServeAll(node, peerA, a, descriptor, corrupted);
         await Until(() => b.Sent<GetChunksMessage>().Length > 0);
-        Assert.That(fetched.IsCompleted, Is.False);
         Assert.That(peerA.Assemblies, Is.EqualTo(1));
         Assert.That(peerA.ChargedBytes, Is.EqualTo(descriptor.ChunkCount * 24L + 1024));
         using ManualResetEventSlim gate = new();
         node.Verifier.Gate = gate;
         ServeAll(node, peerB, b, descriptor, body);
-        LeanFetchedBody? lease = await fetched.WaitAsync(Timeout);
-        Assert.That(lease, Is.Not.Null);
         await node.Verifier.Entered.Task.WaitAsync(Timeout);
         try
         {
-            lease!.Dispose();
             Assert.That(node.Transport.CompletionBytes, Is.EqualTo(body.Length + 2 * ChunkBytes));
             Assert.That(peerB.ChargedBytes, Is.EqualTo(node.Transport.CompletionBytes));
             Assert.That(peerA.Assemblies, Is.EqualTo(1));
@@ -312,7 +285,7 @@ public class LeanObjectTransportTests
             node.Transport.OnComplete(peer, new(request.RequestId, descriptor.ObjectId, LeanCompleteStatus.Unavailable));
         }
         Assert.That(link.Sent<GetChunksMessage>(), Has.Length.EqualTo(3));
-        node.Tick(LeanProtocol.MaxAssemblyIdle);
+        node.Tick(LeanLimits.AssemblyIdle);
         Assert.That(node.Transport.AssemblyCount, Is.Zero);
         Assert.That(node.Transport.IncompleteBytes, Is.Zero);
     }
@@ -334,7 +307,7 @@ public class LeanObjectTransportTests
             Deliver(node, peer, Chunk(request.RequestId, descriptor, body, 0));
             Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(reserved));
             Assert.That(peer.ChargedBytes, Is.LessThan(LeanLimits.MaxPeerBytes));
-            node.Tick(LeanProtocol.MaxAssemblyIdle);
+            node.Tick(LeanLimits.AssemblyIdle);
             Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(512 * 1024));
         }
         Assert.That(node.Transport.IncompleteBytes, Is.Zero);
@@ -406,13 +379,13 @@ public class LeanObjectTransportTests
     }
 
     [Test]
-    public async Task Slow_gossip_reservations_leave_room_for_a_maximum_waited_block_proof()
+    public void Concurrent_maximum_retrievals_share_the_global_budget()
     {
         using LeanTestNode node = new();
         List<FakeLink> gossip = [];
-        for (int index = 0; index < 4; index++)
+        for (int index = 0; index < 5; index++)
         {
-            FakeLink link = Link($"slow-gossip:{index}");
+            FakeLink link = Link($"maximum-gossip:{index}");
             gossip.Add(link);
             LeanPeer peer = node.Connect(link);
             byte[] body = Wrapper(Eip8288Constants.MaxAggregateProofBytes, true, FrameTransaction(120 + index));
@@ -420,98 +393,58 @@ public class LeanObjectTransportTests
         }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(gossip.Take(3).All(link => link.Sent<GetChunksMessage>().Length > 0), Is.True);
-            Assert.That(gossip[3].Sent<GetChunksMessage>(), Is.Empty, "the fourth wrapper would consume import headroom");
+            Assert.That(gossip.Take(4).All(link => link.Sent<GetChunksMessage>().Length > 0), Is.True);
+            Assert.That(gossip[4].Sent<GetChunksMessage>(), Is.Empty, "a fifth body and decoder reservation exceeds the global budget");
+            Assert.That(node.Transport.IncompleteBytes, Is.LessThanOrEqualTo(LeanLimits.MaxIncompleteBytes - LeanProtocol.MaxCreditBytes));
         }
-
-        FakeLink healthy = Link("healthy-import");
-        LeanPeer source = node.Connect(healthy);
-        byte[] proofBody = LeanBodies.EncodeBlockProof(Proof(Eip8288Constants.MaxAggregateProofBytes));
-        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
-            LeanDescriptor.BlockProofContext(TestItem.KeccakA.ValueHash256), proofBody);
-        using CancellationTokenSource cancellation = new();
-        Task<LeanFetchedBody?> fetched = node.Transport.FetchBodyAsync(descriptor, source, cancellation.Token);
-        try
-        {
-            Assert.That(healthy.Sent<GetChunksMessage>(), Is.Not.Empty, "a waited proof can use the import reservation");
-            Assert.That(healthy.Sent<GetChunksMessage>().All(request => request.ObjectId == descriptor.ObjectId), Is.True);
-            Assert.That(node.Transport.IncompleteBytes, Is.LessThanOrEqualTo(LeanLimits.MaxIncompleteBytes));
-        }
-        finally { await cancellation.CancelAsync(); }
-        Assert.That(await fetched, Is.Null);
-        Assert.That(source.ChargedBytes, Is.Zero);
     }
 
     [Test]
-    public async Task ETH_recovery_and_gossip_metadata_preserve_waited_import_capacity()
+    public async Task ETH_recovery_under_global_pressure_is_a_local_refusal()
     {
         using LeanTestNode node = new();
-        using ManualResetEventSlim resumeRecovery = new();
-        TaskCompletionSource recovering = new(TaskCreationOptions.RunContinuationsAsynchronously);
         List<IDisposable> pressure = [];
         Transaction transaction = FrameTransaction(135);
         FakeLink gossip = Link("recovering-gossip", transaction);
         LeanPeer peer = node.Connect(gossip);
         bool firstRecovery = true;
-        bool recoveryResumed = false;
+        int assemblies = 0;
+        FakeLink deferred = Link("metadata-gossip");
+        LeanPeer deferredSource = node.Connect(deferred);
         gossip.OnRecover = _ =>
         {
             if (firstRecovery)
             {
                 firstRecovery = false;
-                long target = LeanLimits.MaxIncompleteBytes - (long)LeanLimits.MaxObjectBytes - LeanProtocol.MaxCreditBytes - 1;
+                long target = LeanLimits.MaxIncompleteBytes - LeanProtocol.MaxCreditBytes;
                 ReserveGlobalBytes(node, target - node.Transport.IncompleteBytes - node.Transport.CompletionBytes, pressure);
-                recovering.TrySetResult();
-                recoveryResumed = resumeRecovery.Wait(Timeout);
+                assemblies = node.Transport.AssemblyCount;
+                node.Transport.OnAnnounce(deferredSource, new([Describe(Wrapper(ChunkBytes, true, FrameTransaction(136)))]));
             }
             return [transaction];
         };
         byte[] body = Wrapper(ChunkBytes, true, transaction);
         LeanDescriptor descriptor = Describe(body);
-        node.Transport.OnAnnounce(peer, new([descriptor]));
-        ServeAll(node, peer, gossip, descriptor, body);
         try
         {
-            await recovering.Task.WaitAsync(Timeout);
-            int assemblies = node.Transport.AssemblyCount;
-            FakeLink deferred = Link("metadata-gossip");
-            LeanPeer deferredSource = node.Connect(deferred);
-            node.Transport.OnAnnounce(deferredSource, new([Describe(Wrapper(ChunkBytes, true, FrameTransaction(136)))]));
+            node.Transport.OnAnnounce(peer, new([descriptor]));
+            ServeAll(node, peer, gossip, descriptor, body);
+            await Until(() => node.Transport.IsTombstoned(descriptor.ObjectId));
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(node.Transport.AssemblyCount, Is.EqualTo(assemblies), "gossip metadata cannot consume the import margin");
+                Assert.That(node.Transport.AssemblyCount, Is.LessThanOrEqualTo(assemblies), "gossip metadata cannot exceed the global budget");
                 Assert.That(deferred.Sent<GetChunksMessage>(), Is.Empty);
-            }
-            node.Transport.Remove(deferredSource);
-
-            FakeLink healthy = Link("recovery-import");
-            LeanPeer source = node.Connect(healthy);
-            byte[] proofBody = LeanBodies.EncodeBlockProof(Proof(Eip8288Constants.MaxAggregateProofBytes));
-            LeanDescriptor proofDescriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
-                LeanDescriptor.BlockProofContext(TestItem.KeccakA.ValueHash256), proofBody);
-            using CancellationTokenSource cancellation = new(Timeout);
-            Task<LeanFetchedBody?> fetching = node.Transport.FetchBodyAsync(proofDescriptor, source, cancellation.Token);
-            Assert.That(healthy.Sent<GetChunksMessage>(), Is.Not.Empty, "waited metadata and body use the import margin");
-            ServeAll(node, source, healthy, proofDescriptor, proofBody);
-            using LeanFetchedBody? fetched = await fetching.WaitAsync(Timeout);
-            Assert.That(fetched?.Body, Is.EqualTo(proofBody));
-            resumeRecovery.Set();
-            await Until(() => node.Transport.AssemblyCount == 0);
-            using (Assert.EnterMultipleScope())
-            {
                 Assert.That(gossip.RecoveryCalls, Is.EqualTo(1));
-                Assert.That(recoveryResumed, Is.True, "recovery stayed in flight until the waited proof completed");
-                Assert.That(node.Pending, Is.Empty, "the ETH envelope could not reserve the protected margin");
+                Assert.That(node.Pending, Is.Empty, "the ETH envelope could not reserve capacity");
                 Assert.That(node.Transport.IsStored(descriptor.ObjectId), Is.False);
                 Assert.That(gossip.Penalties, Is.Empty, "local recovery pressure is not invalid peer data");
-                Assert.That(healthy.Penalties, Is.Empty);
             }
         }
         finally
         {
-            resumeRecovery.Set();
             foreach (IDisposable lease in pressure) lease.Dispose();
         }
+        node.Transport.Remove(deferredSource);
         node.Tick(LeanLimits.SoftTombstone + TimeSpan.FromSeconds(1));
         gossip.Clear();
         node.Transport.OnAnnounce(peer, new([descriptor]));
@@ -555,55 +488,44 @@ public class LeanObjectTransportTests
         FakeLink link = Link("gaps");
         LeanPeer peer = node.Connect(link);
         peer.LastIssued = 10;
-        node.Transport.OnObjects(peer, new(5, [LeanObjectResult.Of(LeanResultStatus.Unavailable)]));
+        node.Transport.OnComplete(peer, new(5, default, LeanCompleteStatus.Unavailable));
         Assert.That(link.Penalties, Is.Empty);
-        node.Transport.OnObjects(peer, new(11, [LeanObjectResult.Of(LeanResultStatus.Unavailable)]));
+        node.Transport.OnComplete(peer, new(11, default, LeanCompleteStatus.Unavailable));
         Assert.That(link.Penalties, Has.Length.EqualTo(1));
     }
 
     [Test]
-    public async Task Cancelled_request_keeps_slot_and_crossed_served_releases_it_without_body_retention()
+    public void Cancelled_request_keeps_slot_and_crossed_served_releases_it_without_body_retention()
     {
         using LeanTestNode node = new();
         FakeLink link = Link("cancel");
         LeanPeer peer = node.Connect(link);
-        byte[] body = OpaqueWrapperBody(2 * ChunkBytes);
+        byte[] body = OpaqueWrapperBody(40 * ChunkBytes);
         LeanDescriptor descriptor = Describe(body);
-        using CancellationTokenSource cancellation = new();
-        Task<LeanFetchedBody?> fetch = node.Transport.FetchBodyAsync(descriptor, peer, cancellation.Token);
-        GetChunksMessage request = link.Sent<GetChunksMessage>().Single();
-        cancellation.Cancel();
-        Assert.That(await fetch.WaitAsync(Timeout), Is.Null);
-        Assert.That(peer.Live, Has.Count.EqualTo(1));
-        Deliver(node, peer, Chunk(request.RequestId, descriptor, body, 0));
-        node.Transport.OnComplete(peer, new(request.RequestId, descriptor.ObjectId, LeanCompleteStatus.Served));
-        Assert.That(peer.Live, Is.Empty);
-        Assert.That(node.Transport.IncompleteBytes, Is.Zero);
-        Assert.That(link.Penalties, Is.Empty);
-    }
-
-    [Test]
-    public async Task Cancelled_metadata_response_releases_slot_without_using_results()
-    {
-        using LeanTestNode node = new();
-        FakeLink link = Link("metadata-cancel");
-        LeanPeer peer = node.Connect(link);
-        using CancellationTokenSource cancellation = new();
-        Task<LeanObjectResult[]?> fetch = node.Transport.RequestObjectsAsync(peer, [new(1, LeanObjectTransport.LocalProfile, default)], cancellation.Token);
-        cancellation.Cancel();
-        Assert.That(await fetch.WaitAsync(Timeout), Is.Null);
-        Assert.That(peer.Live, Has.Count.EqualTo(1));
-        ulong id = link.Sent<GetObjectsMessage>().Single().RequestId;
-        node.Transport.OnObjects(peer, new(id, [LeanObjectResult.Of(LeanResultStatus.Busy)]));
-        Assert.That(peer.Live, Is.Empty);
-        Assert.That(link.Penalties, Is.Empty);
+        node.Transport.OnAnnounce(peer, new([descriptor]));
+        GetChunksMessage[] requests = link.Sent<GetChunksMessage>();
+        Assert.That(requests, Has.Length.EqualTo(2));
+        // Restarting the source cancels its other outstanding request, which keeps its slot until a terminal response.
+        node.Transport.OnComplete(peer, new(requests[0].RequestId, descriptor.ObjectId, LeanCompleteStatus.Unavailable));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Sent<CancelMessage>().Select(cancel => cancel.RequestId), Is.EqualTo(new[] { requests[1].RequestId }));
+            Assert.That(peer.Live.Keys, Is.EqualTo(new[] { requests[1].RequestId }));
+        }
+        Deliver(node, peer, Chunk(requests[1].RequestId, descriptor, body, requests[1].Indices[0]));
+        node.Transport.OnComplete(peer, new(requests[1].RequestId, descriptor.ObjectId, LeanCompleteStatus.Served));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Live, Is.Empty);
+            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(descriptor.ChunkCount * 24L + 1024), "only assembly metadata remains");
+            Assert.That(link.Penalties, Is.Empty);
+        }
     }
 
     [TestCase("object")]
     [TestCase("index")]
     [TestCase("length")]
     [TestCase("served early")]
-    [TestCase("wrong response")]
     public void Invalid_chunk_response_is_a_protocol_violation(string invalid)
     {
         using LeanTestNode node = new();
@@ -619,7 +541,6 @@ public class LeanObjectTransportTests
             case "index": Deliver(node, peer, Chunk(request.RequestId, descriptor, body, 1)); break;
             case "length": Deliver(node, peer, new(request.RequestId, descriptor.ObjectId, 0, new byte[] { 1 })); break;
             case "served early": node.Transport.OnComplete(peer, new(request.RequestId, descriptor.ObjectId, LeanCompleteStatus.Served)); break;
-            case "wrong response": node.Transport.OnObjects(peer, new(request.RequestId, [LeanObjectResult.Of(LeanResultStatus.Busy)])); break;
         }
         Assert.That(link.Penalties, Has.Length.EqualTo(1));
     }
@@ -723,21 +644,25 @@ public class LeanObjectTransportTests
         using LeanTestNode node = new();
         FakeLink link = Link("ordered");
         LeanPeer peer = node.Connect(link);
+        LeanDescriptor first = Describe(OpaqueWrapperBody(2 * ChunkBytes, 1)), second = Describe(OpaqueWrapperBody(2 * ChunkBytes, 2));
         using ManualResetEventSlim release = new();
         TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         link.OnSend = message =>
         {
-            if (message is GetObjectsMessage { RequestId: 1 }) { entered.TrySetResult(); release.Wait(TimeSpan.FromSeconds(5)); }
+            if (message is GetChunksMessage { RequestId: 1 }) { entered.TrySetResult(); release.Wait(TimeSpan.FromSeconds(5)); }
         };
-        Task first = Task.Run(() => node.Transport.RequestObjectsAsync(peer, [new(1, LeanObjectTransport.LocalProfile, default)], CancellationToken.None));
+        Task announcing = Task.Run(() => node.Transport.OnAnnounce(peer, new([first])));
         await entered.Task.WaitAsync(Timeout);
-        _ = node.Transport.RequestObjectsAsync(peer, [new(1, LeanObjectTransport.LocalProfile, TestItem.KeccakA.ValueHash256)], CancellationToken.None);
+        node.Transport.OnAnnounce(peer, new([second]));
         release.Set();
-        await Until(() => link.Sent<GetObjectsMessage>().Length == 2);
-        Assert.That(link.Sent<GetObjectsMessage>().Select(request => request.RequestId), Is.EqualTo(new ulong[] { 1, 2 }));
-        foreach (GetObjectsMessage request in link.Sent<GetObjectsMessage>())
-            node.Transport.OnObjects(peer, new(request.RequestId, [LeanObjectResult.Of(LeanResultStatus.Unavailable)]));
-        await first.WaitAsync(Timeout);
+        await announcing.WaitAsync(Timeout);
+        await Until(() => link.Sent<GetChunksMessage>().Length == 2);
+        GetChunksMessage[] sent = link.Sent<GetChunksMessage>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sent.Select(request => request.RequestId), Is.EqualTo(new ulong[] { 1, 2 }));
+            Assert.That(sent.Select(request => request.ObjectId), Is.EqualTo(new[] { first.ObjectId, second.ObjectId }));
+        }
     }
 
     [Test]
@@ -750,7 +675,7 @@ public class LeanObjectTransportTests
             .Select(seed => Describe(OpaqueWrapperBody(ChunkBytes * 2, seed))).OrderBy(descriptor => descriptor.ObjectId).ToArray();
         node.Transport.OnAnnounce(peer, new(descriptors));
         Assert.That(peer.Deferred, Has.Count.EqualTo(1));
-        node.Tick(LeanProtocol.MaxAssemblyIdle);
+        node.Tick(LeanLimits.AssemblyIdle);
         Assert.That(peer.Deferred, Is.Empty);
         Assert.That(link.Penalties, Is.Empty);
     }

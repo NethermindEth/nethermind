@@ -89,8 +89,6 @@ public class NativeLeanProtocolTests
             .Do(call => context.Disconnects.Enqueue(call.Arg<string>()));
         Route<LeanStatusMessage>(context);
         Route<AnnounceObjectsMessage>(context);
-        Route<GetObjectsMessage>(context);
-        Route<ObjectsMessage>(context);
         Route<GetChunksMessage>(context);
         Route<CompleteMessage>(context);
         Route<CancelMessage>(context);
@@ -124,8 +122,6 @@ public class NativeLeanProtocolTests
     {
         LeanStatusMessage m => new LeanStatusMessageSerializer().Encode(m),
         AnnounceObjectsMessage m => new AnnounceObjectsMessageSerializer().Encode(m),
-        GetObjectsMessage m => new GetObjectsMessageSerializer().Encode(m),
-        ObjectsMessage m => new ObjectsMessageSerializer().Encode(m),
         GetChunksMessage m => new GetChunksMessageSerializer().Encode(m),
         ChunkMessage m => new ChunkMessageSerializer().Encode(m),
         CompleteMessage m => new CompleteMessageSerializer().Encode(m),
@@ -198,7 +194,7 @@ public class NativeLeanProtocolTests
         };
         context.Handler.Init();
         Receive(context, new LeanStatusMessage(mismatch == "chain" ? valid.ChainId + 1 : valid.ChainId,
-            mismatch == "genesis" ? TestItem.KeccakA.ValueHash256 : valid.GenesisHash, [profile], valid.Kinds, valid.MaxObjectBytes));
+            mismatch == "genesis" ? TestItem.KeccakA.ValueHash256 : valid.GenesisHash, [profile], valid.MaxObjectBytes));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(context.Disconnects, Is.Empty);

@@ -2,14 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
-using Nethermind.Core.Metric;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
-
-public readonly record struct LeanObjectEventKey(string Kind, string Event) : IMetricLabels
-{
-    public string[] Labels => [Kind, Event];
-}
 
 internal enum LeanEvent
 {
@@ -24,23 +18,19 @@ internal enum LeanEvent
     Published,
     Served,
     RequestExpired,
-    Violation,
-    SidecarFetched,
-    SidecarUnavailable
+    Violation
 }
 
 internal static class LeanMetrics
 {
-    private static readonly string[] Kinds = ["0", "1", "2", "3"];
-
     private static readonly string[] Events =
     [
         "announced", "announcement_received", "fetch_started", "reassembled", "validated", "invalid", "local_failure",
-        "expired", "published", "served", "request_expired", "violation", "sidecar_fetched", "sidecar_unavailable"
+        "expired", "published", "served", "request_expired", "violation"
     ];
 
-    public static void Record(byte kind, LeanEvent leanEvent) =>
-        Metrics.LeanObjectEvents.AddOrUpdate(new LeanObjectEventKey(Kinds[kind & 3], Events[(int)leanEvent]), 1, static (_, value) => value + 1);
+    public static void Record(LeanEvent leanEvent) =>
+        Metrics.LeanObjectEvents.AddOrUpdate(Events[(int)leanEvent], 1, static (_, value) => value + 1);
 
     public static void ChunkReceived() => Interlocked.Increment(ref Metrics.LeanChunksReceived);
 
