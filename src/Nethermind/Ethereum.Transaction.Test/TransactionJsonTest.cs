@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -76,7 +77,7 @@ public class TransactionJsonTest : GeneralStateTestBase
     }
 
     [Test]
-    public void Amsterdam_state_test_without_env_slot_number_defaults_to_zero()
+    public async Task Amsterdam_state_test_without_env_slot_number_defaults_to_zero()
     {
         Address contract = new("0x0000000000000000000000707690000000008024");
         using PrivateKey senderKey = new("0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8");
@@ -120,7 +121,7 @@ public class TransactionJsonTest : GeneralStateTestBase
             Transaction = transaction,
         };
 
-        EthereumTestResult result = RunTest(test);
+        EthereumTestResult result = await RunTest(test);
 
         Assert.That(result.Pass, Is.True);
         Assert.That(result.StateRoot, Is.EqualTo(test.PostHash));
@@ -133,7 +134,7 @@ public class TransactionJsonTest : GeneralStateTestBase
     /// Expected hash from pyspec: test_eip2930_tx_validity[fork_Istanbul-invalid-state_test]
     /// </summary>
     [Test]
-    public void Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
+    public async Task Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
     {
         Address sender = new("0x1ad9bc24818784172ff393bb6f89f094d4d2ca29");
         Address recipient = new("0x67eb8fcbef83a0662b030f8bc89a10070c167a66");
@@ -186,7 +187,7 @@ public class TransactionJsonTest : GeneralStateTestBase
             Transaction = transaction,
         };
 
-        EthereumTestResult result = RunTest(test);
+        EthereumTestResult result = await RunTest(test);
 
         Assert.That(result.StateRoot, Is.EqualTo(test.PostHash), "invalid AccessList tx on pre-Berlin fork should not mutate state");
         Assert.That(result.Pass, Is.True);
@@ -204,7 +205,7 @@ public class TransactionJsonTest : GeneralStateTestBase
     /// <c>frontier/validation/test_transaction.py::test_unrecoverable_signature</c>.
     /// </remarks>
     [Test]
-    public void Fixture_transaction_executes_only_as_the_sender_its_signature_recovers([Values] bool signatureRecovers)
+    public async Task Fixture_transaction_executes_only_as_the_sender_its_signature_recovers([Values] bool signatureRecovers)
     {
         using PrivateKey senderKey = new("0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8");
 
@@ -255,7 +256,7 @@ public class TransactionJsonTest : GeneralStateTestBase
             Transaction = JsonToEthereumTest.Convert(postStateJson, transactionJson, BlockchainIds.Mainnet),
         };
 
-        EthereumTestResult result = RunTest(test);
+        EthereumTestResult result = await RunTest(test);
 
         using (Assert.EnterMultipleScope())
         {
