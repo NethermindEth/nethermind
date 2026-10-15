@@ -36,11 +36,28 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
         detector.SetInner(engine);
     }
 
+    // The witness handlers resolve IEngineRpcModule from the container, which is this decorator, so their inner
+    // newPayload call would count as an external client; the flag follows the async flow of the forwarded call.
+    private static readonly AsyncLocal<bool> s_forwardingWitnessCall = new();
+
     private async Task<ResultWrapper<T>> DetectAfter<T>(Task<ResultWrapper<T>> call)
     {
         ResultWrapper<T> result = await call;
-        if (result.Result.ResultType == ResultType.Success && result.Data is not null) _detector.OnExternalEngineCall();
+        if (!s_forwardingWitnessCall.Value && result.Result.ResultType == ResultType.Success && result.Data is not null) _detector.OnExternalEngineCall();
         return result;
+    }
+
+    private static async Task<ResultWrapper<T>> ForwardWitnessCall<T>(Func<Task<ResultWrapper<T>>> call)
+    {
+        s_forwardingWitnessCall.Value = true;
+        try
+        {
+            return await call();
+        }
+        finally
+        {
+            s_forwardingWitnessCall.Value = false;
+        }
     }
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
@@ -77,13 +94,13 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
         => DetectAfter(_engine.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes, custodyColumns));
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV4(ExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
-        => _engine.engine_newPayloadWithWitnessV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+        => ForwardWitnessCall(() => _engine.engine_newPayloadWithWitnessV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV5(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
-        => _engine.engine_newPayloadWithWitnessV5(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+        => ForwardWitnessCall(() => _engine.engine_newPayloadWithWitnessV5(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
-        => _engine.engine_newPayloadWithWitnessV6(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions);
+        => ForwardWitnessCall(() => _engine.engine_newPayloadWithWitnessV6(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions));
 
     public ResultWrapper<IReadOnlyList<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
         => _engine.engine_exchangeCapabilities(methods);

@@ -182,6 +182,30 @@ public class EngineTests
     }
 
     [Test]
+    public async Task A_witness_call_forwarded_back_through_the_decorator_does_not_stand_down_the_driver()
+    {
+        IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
+        ExternalClDetector detector = CreateDetector(inner, out ExternalClInterceptingEngineRpcModule decorator);
+        inner.engine_newPayloadV4(default!, default!, default, default)
+            .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestHash })));
+        // The witness handler resolves IEngineRpcModule from the container, which is the decorator itself.
+        inner.engine_newPayloadWithWitnessV4(default!, default!, default, default)
+            .ReturnsForAnyArgs(async _ =>
+            {
+                await decorator.engine_newPayloadV4(null!, [], null, null);
+                return ResultWrapper<NewPayloadWithWitnessV1Result>.Success(new NewPayloadWithWitnessV1Result { Status = PayloadStatus.Valid });
+            });
+
+        await decorator.engine_newPayloadWithWitnessV4(null!, [], null, null);
+        bool detectedAfterWitnessCall = detector.IsExternalClDetected;
+        await decorator.engine_newPayloadV4(null!, [], null, null);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(detectedAfterWitnessCall, Is.False, "a witness submission is stateless tooling, not a consensus client");
+        Assert.That(detector.IsExternalClDetected, Is.True, "a direct newPayload still counts");
+    }
+
+    [Test]
     public async Task Decorator_detects_external_engine_calls_but_not_capability_queries_or_driver_calls()
     {
         IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
