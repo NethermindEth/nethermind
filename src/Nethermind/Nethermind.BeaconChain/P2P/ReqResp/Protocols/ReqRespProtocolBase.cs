@@ -552,7 +552,8 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
         }
     }
 
-    /// <summary>Receives each request answered with success, and the peer that sent it.</summary>
+    /// <summary>Receives each request about to be answered with success, and the peer that sent it, before the answer is written.</summary>
+    /// <remarks>Runs first so that whatever it records is in place when the requester, once answered, sends its next request.</remarks>
     internal Action<PeerId, TRequest>? RequestServed { get; init; }
 
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
@@ -580,8 +581,9 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
                 request = DecodeRequest(await inboundSlot.ReadRequestAsync(stream, MaxRequestSize, cts.Token));
             }
             ChargeRequest(context, 1, 32, perPeerOnly: true);
-            await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, EncodeResponse(HandleRequest(request)), cts.Token);
+            byte[] response = EncodeResponse(HandleRequest(request));
             if (context.State.RemotePeerId is { } requester) RequestServed?.Invoke(requester, request);
+            await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, response, cts.Token);
         }
         catch (Eth2ReqRespException e)
         {
