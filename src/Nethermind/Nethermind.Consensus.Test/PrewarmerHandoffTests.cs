@@ -1809,6 +1809,73 @@ public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTes
     }
 
     [Test]
+    public void A_transaction_whose_sender_lands_after_its_run_was_taken_over_is_left_to_the_run()
+    {
+        Transaction late = Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei);
+        Block block = BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei), late, Unrelated());
+        Run executed = Process(block, adapter: null);
+        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = new(
+            new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(ProcessingScope.Resolve<PrewarmerEnvFactory>(), caches),
+            minPoolSize: 4,
+            concurrency: 3,
+            parallelExecutionBatchRead: true,
+            ProcessingScope.Resolve<NodeStorageCache>(),
+            caches,
+            LimboLogs.Instance,
+            senderRecovery: new LateSender(late, TestItem.AddressB),
+            handoff: true,
+            earlyStart: EarlyStart);
+        PrewarmerTxAdapter adapter = new(
+            new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>()),
+            preWarmer,
+            new PrewarmerState(caches, isPrewarmer: false),
+            ProcessingScope.Resolve<IWorldState>(),
+            LimboLogs.Instance);
+        preWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block, null), () => preWarmer.SpeculativeMarkerPublished);
+        late.SenderAddress = null;
+
+        // The runs are stored before the workers start, so the late transaction is the only one a worker could warm.
+        using ManualResetEventSlim seeded = new(initialState: false);
+        preWarmer.Seeded = seeded.Set;
+        preWarmer.BeforeTransactionWorkers = () => seeded.Wait(TimeSpan.FromSeconds(10));
+        RunPreWarmCaches(preWarmer, block);
+        bool[] taken = [.. Enumerable.Range(0, block.Transactions.Length).Select(i => preWarmer.Footprints?.Get(i)?.FromMempool == true)];
+        Run run = Process(block, adapter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(late.SenderAddress, Is.EqualTo(TestItem.AddressB), "precondition: the sender landed while the block was warmed");
+            Assert.That(taken, Is.All.True);
+            Assert.That(run.Results, Is.EqualTo(executed.Results));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
+            Assert.That(run.Tally.Replayed, Is.EqualTo(3));
+        }
+    }
+
+    /// <summary>A recovery in flight whose one sender lands only once a warm worker waits for it, after the block's jobs were taken.</summary>
+    private sealed class LateSender(Transaction tx, Address sender) : ISenderRecoveryTracker, ISenderRecoveryProgress
+    {
+        private int _recovered;
+        private int _landing;
+
+        public ISenderRecoveryProgress GetInFlight(Transaction[] txs) => this;
+        public int Recovered => Volatile.Read(ref _recovered);
+        public bool IsCompleted => false;
+
+        public bool WaitForCompletion(int millisecondsTimeout)
+        {
+            if (Interlocked.Exchange(ref _landing, 1) == 0)
+            {
+                tx.SenderAddress = sender;
+                Volatile.Write(ref _recovered, 1);
+            }
+
+            return false;
+        }
+    }
+
+    [Test]
     public void Runs_are_warmed_again_where_the_caches_did_not_carry_over()
     {
         // Taking a run over reads its preconditions from the caches, which only the warm pass refills after a clear.
