@@ -210,7 +210,9 @@ public class PrewarmerHandoffTests(IReleaseSpec spec, int refreshWorkers) : Prew
             // The later deployments read the factory's nonce, which the first one increments.
             Assert.That(replayed, Is.EqualTo(1));
             // Their creations clear the storage the first one wrote, so their runs read it as cleared whatever the seed.
-            Assert.That(PreWarmer.Footprints!.RefreshesRun, Is.LessThanOrEqualTo(4));
+            // Side by side, one refresh is stored while another runs, and the check of the other's seeds counts that as a
+            // change: the refreshes repeat a few times, short of the block's refreshes.
+            Assert.That(PreWarmer.Footprints!.RefreshesRun, Is.LessThanOrEqualTo(RefreshWorkers == 1 ? 4 : BlockFootprints.MaxRefreshesPerBlock - 1));
         }
     }
 
@@ -627,8 +629,12 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     {
         SeedGate gate = new();
         using BlockCachePreWarmer preWarmer = HoldingPreWarmer(gate, workers: 2);
-        // The second call reads the counter the first one writes, so it is refreshed.
-        Block block = BuildBlock(Call(TestItem.PrivateKeyA, 0, Counter), Call(TestItem.PrivateKeyB, 0, Counter));
+        // The second call reads the counter the first one writes, so it is refreshed; a block of fewer than three
+        // transactions is not warmed.
+        Block block = BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Counter),
+            Call(TestItem.PrivateKeyB, 0, Counter),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei));
         StorageCell counted = new(Counter, 0);
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
         gate.Arm(holds: 1);
@@ -1629,6 +1635,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec, int refreshWorkers = 1)
 {
     protected IReleaseSpec Spec { get; } = spec;
+
+    protected int RefreshWorkers => refreshWorkers;
 
     // PUSH0 SLOAD PUSH1 1 ADD PUSH0 SSTORE STOP
     private static readonly byte[] CounterCode = [0x5F, 0x54, 0x60, 0x01, 0x01, 0x5F, 0x55, 0x00];
