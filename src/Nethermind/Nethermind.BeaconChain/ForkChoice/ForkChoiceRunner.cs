@@ -1088,9 +1088,11 @@ public sealed class ForkChoiceRunner
         }
         if (count < 0)
         {
-            // The sender names the epoch, so one outside the window never hits the memo; past the budget the epoch IGNORE that follows refuses it.
+            // The sender names the epoch: one outside the window is scanned within a slot budget and kept out of the memo, so it can
+            // neither evict the window's entries nor exceed the budget; past it the epoch IGNORE that follows refuses the message.
             ulong currentEpoch = _store.CurrentEpoch;
-            if (epoch != currentEpoch && epoch + 1 != currentEpoch)
+            bool inWindow = epoch == currentEpoch || epoch + 1 == currentEpoch;
+            if (!inWindow)
             {
                 if (_outOfWindowCommitteeScanSlot != _store.CurrentSlot)
                 {
@@ -1106,9 +1108,12 @@ public sealed class ForkChoiceRunner
             foreach (Validator validator in ValidatorsOf(state))
                 if (validator.IsActiveValidator(epoch)) active++;
             count = CommitteeCache.GetCommitteeCountPerSlot(active);
-            if (_gossipCommitteeCounts.Count == CommitteeCacheLru.DefaultCapacity)
-                _gossipCommitteeCounts.RemoveAt(0);
-            _gossipCommitteeCounts.Add((_lastHeadRoot!, epoch, count));
+            if (inWindow)
+            {
+                if (_gossipCommitteeCounts.Count == CommitteeCacheLru.DefaultCapacity)
+                    _gossipCommitteeCounts.RemoveAt(0);
+                _gossipCommitteeCounts.Add((_lastHeadRoot!, epoch, count));
+            }
         }
         // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The committee index is within the expected range".
         if (index >= count)

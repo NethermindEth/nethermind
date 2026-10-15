@@ -1519,20 +1519,29 @@ public class BlockImporterTests
         long refusedBefore = RefusedByForkChoice("gossip_aggregate");
         const int aggregates = ForkChoiceRunner.MaxOutOfWindowCommitteeScansPerSlot * 4;
 
+        // The current epoch's count is memoized by the first aggregate naming it.
+        Aggregate(1, committeeIndex: 5);
+        int scansForTheWindow = runner.GossipCommitteeCountScans;
         // The sender names the target epoch, and each unseen epoch costs a registry walk to find its committee count.
         for (ulong epoch = 40; epoch < 40 + aggregates; epoch++)
-        {
-            Attestation vote = chain.Vote(1, chain.AnchorRoot);
-            vote.Data!.Slot = BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch);
-            vote.Data.Target!.Epoch = epoch;
-            vote.CommitteeBits![0] = false;
-            vote.CommitteeBits[5] = true;
-            importer.OnGossipAggregate(new SignedAggregateAndProof { Message = new AggregateAndProof { AggregatorIndex = 0, Aggregate = vote } });
-        }
+            Aggregate(BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch), committeeIndex: 5);
+        int scansAfterTheBurst = runner.GossipCommitteeCountScans;
+        Aggregate(1, committeeIndex: 5);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(RefusedByForkChoice("gossip_aggregate") - refusedBefore, Is.EqualTo(aggregates), "every aggregate is refused");
-        Assert.That(runner.GossipCommitteeCountScans, Is.EqualTo(ForkChoiceRunner.MaxOutOfWindowCommitteeScansPerSlot), "the registry walks stop at the slot budget");
+        Assert.That(RefusedByForkChoice("gossip_aggregate") - refusedBefore, Is.EqualTo(aggregates + 2), "every aggregate is refused");
+        Assert.That(scansAfterTheBurst - scansForTheWindow, Is.EqualTo(ForkChoiceRunner.MaxOutOfWindowCommitteeScansPerSlot), "the registry walks stop at the slot budget");
+        Assert.That(runner.GossipCommitteeCountScans, Is.EqualTo(scansAfterTheBurst), "the burst does not evict the current epoch's count");
+
+        void Aggregate(ulong slot, int committeeIndex)
+        {
+            Attestation vote = chain.Vote(1, chain.AnchorRoot);
+            vote.Data!.Slot = slot;
+            vote.Data.Target!.Epoch = chain.Spec.GetEpoch(slot);
+            vote.CommitteeBits![0] = false;
+            vote.CommitteeBits[committeeIndex] = true;
+            importer.OnGossipAggregate(new SignedAggregateAndProof { Message = new AggregateAndProof { AggregatorIndex = 0, Aggregate = vote } });
+        }
     }
 
     [Test]
