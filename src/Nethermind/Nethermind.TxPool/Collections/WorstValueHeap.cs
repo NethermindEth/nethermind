@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
@@ -13,15 +12,12 @@ namespace Nethermind.TxPool.Collections;
 /// comparer is a strict total order (the pool comparer ends in a hash tie-break). A member's ordering inputs may change
 /// only immediately before <see cref="Update"/>.
 /// </remarks>
-internal sealed class WorstValueHeap<TValue, TKey>(IComparer<TValue> comparer)
+internal sealed class WorstValueHeap<TValue, TKey>(IComparer<TValue> comparer) where TValue : notnull
 {
-    // SortedPool leaves TValue unconstrained, but it never holds a null value.
-#pragma warning disable CS8714
     private readonly Dictionary<TValue, int> _slots = new(ReferenceComparer.Instance);
-#pragma warning restore CS8714
-    private (TValue Value, TKey Key)[] _heap = [];
+    private readonly List<(TValue Value, TKey Key)> _heap = [];
 
-    public int Count { get; private set; }
+    public int Count => _heap.Count;
 
     /// <summary>The worst value, or <see langword="default"/> when empty, as <see cref="SortedSet{T}.Max"/> returns.</summary>
     public KeyValuePair<TValue, TKey> Max => Count == 0 ? default : new(_heap[0].Value, _heap[0].Key);
@@ -32,13 +28,8 @@ internal sealed class WorstValueHeap<TValue, TKey>(IComparer<TValue> comparer)
     {
         if (!_slots.TryAdd(value, Count)) return false;
 
-        if (Count == _heap.Length)
-        {
-            Array.Resize(ref _heap, Math.Max(16, _heap.Length * 2));
-        }
-
-        _heap[Count] = (value, key);
-        SiftUp(Count++);
+        _heap.Add((value, key));
+        SiftUp(Count - 1);
         return true;
     }
 
@@ -46,14 +37,10 @@ internal sealed class WorstValueHeap<TValue, TKey>(IComparer<TValue> comparer)
     {
         if (!_slots.Remove(value, out int slot)) return false;
 
-        int last = --Count;
-        if (slot != last)
-        {
-            Move(last, slot);
-            if (!SiftUp(slot)) SiftDown(slot);
-        }
-
-        _heap[last] = default;
+        int last = Count - 1;
+        if (slot != last) Move(last, slot);
+        _heap.RemoveAt(last);
+        if (slot != last && !SiftUp(slot)) SiftDown(slot);
         return true;
     }
 

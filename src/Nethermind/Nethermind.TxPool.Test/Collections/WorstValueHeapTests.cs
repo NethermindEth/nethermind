@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable enable
-
 using System;
 using System.Collections.Generic;
-using Nethermind.Core.Collections;
 using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
@@ -15,15 +12,15 @@ namespace Nethermind.TxPool.Test.Collections;
 public class WorstValueHeapTests
 {
     /// <summary>
-    /// Replays one seeded sequence of adds, removals, reprices and evictions against the sorted set the heap
-    /// replaced, repricing the set's members the only way it allowed: out of the set, changed, then re-added.
+    /// Replays one seeded sequence of adds, removals, reprices and evictions against a <see cref="SortedSet{T}"/>,
+    /// repricing its members the only way it allows: out of the set, changed, then re-added.
     /// </summary>
     [Test]
     public void Max_matches_the_sorted_set_through_random_changes([Range(1, 50)] int seed)
     {
         Random random = new(seed);
         WorstValueHeap<Item, int> heap = new(ItemComparer.Instance);
-        DictionarySortedSet<Item, int> set = new(ItemComparer.Instance);
+        SortedSet<Item> set = new(ItemComparer.Instance);
         List<Item> members = [];
 
         for (int step = 0; step < 2_000; step++)
@@ -32,7 +29,7 @@ public class WorstValueHeapTests
             {
                 case 0:
                     Item added = new(random.Next(64), step);
-                    Assert.That(heap.Add(added, step), Is.EqualTo(set.Add(added, step)), $"add, step {step}");
+                    Assert.That(heap.Add(added, step), Is.EqualTo(set.Add(added)), $"add, step {step}");
                     members.Add(added);
                     break;
                 case 1:
@@ -41,14 +38,13 @@ public class WorstValueHeapTests
                     break;
                 case 2:
                     Item repriced = members[random.Next(members.Count)];
-                    int key = repriced.Id;
                     set.Remove(repriced);
                     repriced.Priority = random.Next(64);
-                    set.Add(repriced, key);
+                    set.Add(repriced);
                     heap.Update(repriced);
                     break;
                 default:
-                    Item worst = set.Max.Key;
+                    Item worst = set.Max;
                     Assert.That(heap.Remove(worst), Is.EqualTo(set.Remove(worst)), $"evict, step {step}");
                     members.Remove(worst);
                     break;
@@ -57,8 +53,8 @@ public class WorstValueHeapTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(heap.Count, Is.EqualTo(set.Count), $"count, step {step}");
-                Assert.That(heap.Max.Key, Is.SameAs(set.Max.Key), $"max, step {step}");
-                Assert.That(heap.Max.Value, Is.EqualTo(set.Max.Value), $"max key, step {step}");
+                Assert.That(heap.Max.Key, Is.SameAs(set.Max), $"max, step {step}");
+                Assert.That(heap.Max.Value, Is.EqualTo(set.Max?.Id ?? 0), $"max key, step {step}");
             }
         }
     }
@@ -100,9 +96,9 @@ public class WorstValueHeapTests
     {
         public static readonly ItemComparer Instance = new();
 
-        public int Compare(Item? x, Item? y)
+        public int Compare(Item x, Item y)
         {
-            int byPriority = x!.Priority.CompareTo(y!.Priority);
+            int byPriority = x.Priority.CompareTo(y.Priority);
             return byPriority != 0 ? byPriority : x.Id.CompareTo(y.Id);
         }
     }

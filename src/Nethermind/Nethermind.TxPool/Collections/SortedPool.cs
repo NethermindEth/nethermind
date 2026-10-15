@@ -21,6 +21,7 @@ namespace Nethermind.TxPool.Collections
     /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
     public abstract partial class SortedPool<TKey, TValue, TGroupKey>
         where TKey : notnull
+        where TValue : notnull
         where TGroupKey : notnull
     {
         internal delegate bool BucketVisitor<TState>(TValue value, ref TState state);
