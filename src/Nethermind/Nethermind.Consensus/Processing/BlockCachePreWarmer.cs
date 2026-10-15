@@ -2694,9 +2694,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 return scope;
             }
 
-            scope = _env!.BuildAtTarget(blockState.Block.Header);
+            scope = _scope = _env!.BuildAtTarget(blockState.Block.Header);
             scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(blockState.Block.Header, blockState.Spec));
-            return _scope = scope;
+            return scope;
         }
 
         public void Dispose() => _run.Dispose();
