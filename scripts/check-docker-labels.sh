@@ -156,7 +156,6 @@ mkdir "$stub_context/publish"
 
 failures=0
 labels=''
-exposed_ports=''
 
 check_label() {
   local key=$1 want=$2 got
@@ -170,18 +169,6 @@ check_label() {
   fi
 
   printf '  ok   %s = %s\n' "$key" "$got"
-}
-
-check_exposed_port() {
-  local port=$1
-
-  if ! jq -e --arg port "$port" 'type == "object" and has($port)' <<< "$exposed_ports" > /dev/null; then
-    printf '  FAIL exposed port %s is missing\n' "$port" >&2
-    failures=$((failures + 1))
-    return
-  fi
-
-  printf '  ok   exposed port %s\n' "$port"
 }
 
 for dockerfile in "${dockerfiles[@]}"; do
@@ -228,7 +215,6 @@ for dockerfile in "${dockerfiles[@]}"; do
   "${build[@]}"
 
   labels=$(docker image inspect --format '{{json .Config.Labels}}' "$tag")
-  exposed_ports=$(docker image inspect --format '{{json .Config.ExposedPorts}}' "$tag")
 
   echo "Checking the labels of $tag"
   check_label org.opencontainers.image.title "$title"
@@ -245,9 +231,11 @@ for dockerfile in "${dockerfiles[@]}"; do
 
   case "$dockerfile" in
     Dockerfile | Dockerfile.chiseled)
-      echo "Checking the exposed ports of $tag"
-      check_exposed_port 30303/tcp
-      check_exposed_port 30303/udp
+      if ! docker image inspect --format '{{json .Config.ExposedPorts}}' "$tag" |
+        jq -e 'has("30303/tcp") and has("30303/udp")' > /dev/null; then
+        echo "FAIL: $dockerfile must expose TCP and UDP port 30303" >&2
+        failures=$((failures + 1))
+      fi
       ;;
   esac
 done
