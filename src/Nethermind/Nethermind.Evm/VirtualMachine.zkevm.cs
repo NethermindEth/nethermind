@@ -18,10 +18,10 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
-    private static readonly OpcodeTable _opcodeTable = new();
+    private static OpcodeTable? _opcodeTable;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static OpcodeTable GetOpcodeTable() => _opcodeTable;
+    private static OpcodeTable GetOpcodeTable() => _opcodeTable ??= new();
 
     /// <inheritdoc/>
     /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
@@ -45,6 +45,17 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     }
 
     public object? ReturnData;
+
+    /// <summary>The largest nested RETURN/REVERT output staged in the reused scratch buffer.</summary>
+    /// <remarks>
+    /// The guest has no GC, so a copy per output would grow the heap with the gas spent on outputs rather than with the
+    /// largest one. Memory gas keeps every output far below this; it only keeps the power-of-two growth in range.
+    /// </remarks>
+    private const int MaxRetainedReturnDataLength = 1 << 30;
+
+    /// <inheritdoc/>
+    /// <remarks>A reverted output, or code above the EIP-170 limit, is never deposited, so it can share the nested-output scratch.</remarks>
+    private partial bool IsUndeployableCreateOutput(int length, bool isRevert) => isRevert || (Spec.LimitCodeSize && length > Spec.MaxCodeSize);
 
     /// <summary>
     /// <see cref="InitializeFrameCore{Eip158, Eip8360}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.

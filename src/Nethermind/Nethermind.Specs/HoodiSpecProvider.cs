@@ -40,5 +40,5 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
     public override ulong NetworkId => BlockchainIds.Hoodi;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
 
-    public static readonly HoodiSpecProvider Instance = new();
+    public static HoodiSpecProvider Instance => field ??= new();
 }

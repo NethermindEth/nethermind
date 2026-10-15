@@ -345,6 +345,18 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
+    public void Decorating_block_processing_components_leaves_the_handoff_on([Values] bool worldState)
+    {
+        Action<ContainerBuilder> decorate = worldState
+            ? static builder => builder.AddDecorator<IWorldState, ForwardingWorldState>()
+            : static builder => builder.AddDecorator<ITransactionProcessor, ForwardingProcessor>();
+        TearDown();
+        Initialize(handoff: true, decorate);
+
+        Assert.That(Handoff(ThreeIndependentTransactions()).Tally.Replayed, Is.EqualTo(3));
+    }
+
+    [Test]
     public void Blocks_whose_gas_or_access_list_is_built_while_executing_are_not_recorded()
     {
         Block block = ThreeIndependentTransactions();
@@ -427,16 +439,12 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
-    public void Only_envs_on_the_ethereum_transaction_processor_record()
+    public void Envs_record_only_under_the_marked_transaction_processor_registration([Values] bool replaced)
     {
-        PrewarmerEnvFactory Factory(ITransactionProcessor processor) =>
-            new(ProcessingScope.Resolve<IWorldStateManager>(), LimboLogs.Instance, ProcessingScope, new BlocksConfig(), processor);
+        TearDown();
+        Initialize(handoff: true, replaced ? static builder => builder.AddSingleton(Substitute.For<ITransactionProcessor>()) : null);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Factory(ProcessingScope.Resolve<ITransactionProcessor>()).RecordsFootprints, Is.True);
-            Assert.That(Factory(Substitute.For<ITransactionProcessor>()).RecordsFootprints, Is.False);
-        }
+        Assert.That(ProcessingScope.Resolve<PrewarmerEnvFactory>().RecordsFootprints, Is.EqualTo(!replaced));
     }
 
     [Test]
@@ -1220,6 +1228,19 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         public int MainThreadTxIndex { get; set; }
     }
 
+    private sealed class ForwardingWorldState(IWorldState state) : WorldStateDecorator(state);
+
+    private sealed class ForwardingProcessor(ITransactionProcessor processor) : ITransactionProcessor
+    {
+        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options) =>
+            processor.Process(transaction, txTracer, options);
+
+        public void SetBlockExecutionContext(BlockHeader blockHeader) => processor.SetBlockExecutionContext(blockHeader);
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
+            processor.SetBlockExecutionContext(in blockExecutionContext);
+    }
+
     /// <summary>Envs whose scopes expose their world state through one more decorator than the recorder.</summary>
     private sealed class OuterDecoratedEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches, Func<IWorldState, IWorldState>? decorate = null)
         : IPooledObjectPolicy<IPrewarmerEnv>
@@ -1349,9 +1370,10 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     [SetUp]
     public void Setup() => Initialize(handoff: true);
 
-    protected void Initialize(bool handoff)
+    /// <param name="configure">Registrations made after the production ones, as a plugin's would be.</param>
+    protected void Initialize(bool handoff, Action<ContainerBuilder>? configure = null)
     {
-        _container = new ContainerBuilder()
+        ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new BlocksConfig
             {
                 PreWarming = PreWarmMode.Block,
@@ -1360,8 +1382,9 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
                 PreWarmHandoff = handoff
             }))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Spec))
-            .AddSingleton<IStateHeaderProvider>(new Parents(_headers))
-            .Build();
+            .AddSingleton<IStateHeaderProvider>(new Parents(_headers));
+        configure?.Invoke(builder);
+        _container = builder.Build();
 
         IMainProcessingModule[] mainModules = _container.Resolve<IMainProcessingModule[]>();
         IWorldStateManager worldStateManager = _container.Resolve<IWorldStateManager>();

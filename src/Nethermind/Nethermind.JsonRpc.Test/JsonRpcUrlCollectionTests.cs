@@ -7,6 +7,7 @@ using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 using NUnit.Framework;
 using NSubstitute;
+using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -57,6 +58,21 @@ public class JsonRpcUrlCollectionTests
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
             { 1234, new JsonRpcUrl("http", "127.0.0.1", 1234, RpcEndpoint.Ws, false, _enabledModules) }
         }, Is.EqualTo(urlCollection));
+    }
+
+    [Test]
+    public void Separate_ws_url_keeps_the_engine_body_size_limit()
+    {
+        JsonRpcConfig jsonRpcConfig = new()
+        {
+            Enabled = true,
+            WebSocketsPort = 1234,
+            EnabledModules = [.. _enabledModules, ModuleType.Engine]
+        };
+
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+
+        Assert.That(urlCollection[1234].MaxRequestBodySize, Is.EqualTo(SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API));
     }
 
     [Test]

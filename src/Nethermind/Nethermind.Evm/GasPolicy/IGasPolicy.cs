@@ -344,7 +344,8 @@ public partial interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSel
         TSelf.CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
     static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit);
 
-    static abstract bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec, out TSelf available);
+    /// <param name="capExecutionGas">Whether EIP-8037 caps the execution gas at TX_MAX_GAS_LIMIT and moves the rest into the state gas reservoir.</param>
+    static abstract bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec, out TSelf available, bool capExecutionGas = true);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childExecutionGas) => TSelf.FromULong(childExecutionGas);

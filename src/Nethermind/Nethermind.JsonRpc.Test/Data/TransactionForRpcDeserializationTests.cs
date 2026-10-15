@@ -57,7 +57,8 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{}""");
             yield return Make(TxType.EIP1559, """{"type":null}""");
             yield return Make(TxType.EIP1559, """{"additionalField":""}""");
-            yield return Make(TxType.EIP1559, """{"MaxFeePerBlobGas":"0x0"}""");
+            // A blob fee cap names a blob transaction, which needs blob hashes, so it no longer converts without them.
+            yield return Make(TxType.Blob, """{"MaxFeePerBlobGas":"0x0"}""");
             yield return Make(TxType.EIP1559,
                 """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x1","gas":"0x0","input":null,"maxPriorityFeePerGas":"0x1"}""");
             yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""");
@@ -86,7 +87,7 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"maxPriorityFeePerGas":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"MaxPriorityFeePerGas":"0x0"}""");
-            yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","maxFeePerBlobGas":"0x0"}""");
+            yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","maxFeePerBlobGas":"0x0"}""");
 
             yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"maxFeePerBlobGas":"0x0", "blobVersionedHashes":[]}""");
