@@ -326,7 +326,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.CREATE] = GetCreateHandler<EvmInstructions.OpCreate, TTracingInst, TCancelable>(spec);
         lookup[(int)Instruction.CALL] = GetCallHandler<EvmInstructions.OpCall, TTracingInst, TCancelable>(spec);
         lookup[(int)Instruction.CALLCODE] = GetCallHandler<EvmInstructions.OpCallCode, TTracingInst, TCancelable>(spec);
-        lookup[(int)Instruction.RETURN] = TerminatingOpcodeHandler<ReturnOpcode, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.RETURN] = TerminatingOpcodeHandler<ReturnOpcode<TTracingInst>, TTracingInst, TCancelable>();
         if (spec.DelegateCallEnabled)
             lookup[(int)Instruction.DELEGATECALL] = GetCallHandler<EvmInstructions.OpDelegateCall, TTracingInst, TCancelable>(spec);
         if (spec.Create2OpcodeEnabled)
@@ -338,7 +338,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (spec.StaticCallEnabled)
             lookup[(int)Instruction.STATICCALL] = GetCallHandler<EvmInstructions.OpStaticCall, TTracingInst, TCancelable>(spec);
         if (spec.RevertOpcodeEnabled)
-            lookup[(int)Instruction.REVERT] = TerminatingOpcodeHandler<RevertOpcode, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.REVERT] = TerminatingOpcodeHandler<RevertOpcode<TTracingInst>, TTracingInst, TCancelable>();
         if (spec.IsEip5920Enabled)
             lookup[(int)Instruction.PAY] = GetPayHandler<TTracingInst, TCancelable>(spec);
 
@@ -1951,23 +1951,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [SkipLocalsInit]
-    private readonly struct ReturnOpcode : IOpcodeBody
+    private readonly struct ReturnOpcode<TTracingInst> : IOpcodeBody
+        where TTracingInst : struct, IFlag
     {
         public static ulong? TraceGasCost => 0;
         public static int StackInputs => 2;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionReturn(ref stack, ref gas, vm);
+            EvmInstructions.InstructionReturn<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
-    private readonly struct RevertOpcode : IOpcodeBody
+    private readonly struct RevertOpcode<TTracingInst> : IOpcodeBody
+        where TTracingInst : struct, IFlag
     {
         public static ulong? TraceGasCost => 0;
         public static int StackInputs => 2;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionRevert(ref stack, ref gas, vm);
+            EvmInstructions.InstructionRevert<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
