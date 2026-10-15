@@ -540,6 +540,37 @@ public partial class GossipRouterTests
             "an unheld root is consumed and not cached, so the stored block's bid decides the next envelope");
     }
 
+    // gloas/p2p-interface.md execution_payload: an envelope for an unseen block MAY be queued; its queue must stay bounded while the import waits.
+    [Test]
+    public void Envelopes_for_unseen_blocks_are_throttled_past_their_byte_budget_until_it_frees()
+    {
+        EnvelopeFixture fixture = new(withStore: true);
+        ulong laterSlot = EnvelopeFixture.WallSlot + GossipRouter.UnseenBlockEnvelopeSlots + 1;
+        SignedExecutionPayloadEnvelope Unseen(int index, ulong slot = 0)
+        {
+            SignedExecutionPayloadEnvelope envelope = fixture.Envelope(Keccak.Compute($"unseen block {index}"));
+            envelope.Message!.Payload!.BlockAccessList = new byte[8 * 1024 * 1024];
+            envelope.Message.Payload.SlotNumber = slot == 0 ? EnvelopeFixture.WallSlot : slot;
+            return envelope;
+        }
+
+        int fits = (int)(GossipRouter.UnseenBlockEnvelopeBytes / SignedExecutionPayloadEnvelope.GetLength(Unseen(0)));
+        MessageValidity[] filling = [.. Enumerable.Range(0, fits).Select(index => fixture.Handle(Unseen(index)))];
+        MessageValidity overBudget = fixture.Handle(Unseen(fits));
+        MessageValidity copy = fixture.Handle(Unseen(fits));
+        MessageValidity heldBlock = fixture.Handle(fixture.Envelope());
+        int raisedWhileFull = fixture.Raised;
+        fixture.Timestamper.Set(SepoliaSlotStart(laterSlot).AddSeconds(6));
+        MessageValidity afterExpiry = fixture.Handle(Unseen(fits, laterSlot));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(filling, Is.All.EqualTo(MessageValidity.Ignored));
+        Assert.That((overBudget, copy), Is.EqualTo((MessageValidity.Throttled, MessageValidity.Throttled)), "past the budget an envelope is throttled and its id not cached");
+        Assert.That(heldBlock, Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(raisedWhileFull, Is.EqualTo(fits + 1), "an envelope for a held block is not held to the budget");
+        Assert.That((afterExpiry, fixture.Raised), Is.EqualTo((MessageValidity.Ignored, fits + 2)), "the budget frees once its charges expire");
+    }
+
     [Test]
     public void Held_block_is_decoded_once_for_every_envelope_naming_it()
     {

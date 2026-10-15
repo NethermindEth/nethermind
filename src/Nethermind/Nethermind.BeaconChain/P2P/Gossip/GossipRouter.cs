@@ -135,6 +135,16 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>The most stored blocks decoded per slot to read the slot of the held, uncached block a payload attestation votes on.</summary>
     internal const int PtcBlockSlotReadsPerSlot = 16;
 
+    /// <summary>The most decoded bytes of envelopes for unseen blocks raised to the import pipeline and not yet expired or refused by it.</summary>
+    /// <remarks>
+    /// The pubsub verdict of such an envelope is given at once, so no pending-validation bound holds it while it waits in the import queue.
+    /// A charge expires after <see cref="UnseenBlockEnvelopeSlots"/> slots, the window in which the pipeline keeps it for its block.
+    /// </remarks>
+    internal const long UnseenBlockEnvelopeBytes = 64 * 1024 * 1024;
+
+    /// <summary>The slots after the current one for which an envelope for an unseen block holds its charge on <see cref="UnseenBlockEnvelopeBytes"/>.</summary>
+    internal const ulong UnseenBlockEnvelopeSlots = 2;
+
     private readonly ILogger _logger = logManager.GetClassLogger<GossipRouter>();
     private readonly LruKeyCache<ValueHash256> _seenMessages = new(SeenCacheSize, "beacon gossip seen messages");
 
@@ -173,6 +183,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private readonly PerSlotBudget _votedBlockSlotReads = new(VotedBlockSlotReadsPerSlot);
     private readonly PerSlotBudget _envelopeBlockDecodes = new(StoreDecodesPerSlot);
     private readonly PerSlotBudget _ptcBlockSlotReads = new(PtcBlockSlotReadsPerSlot);
+    private readonly SlotExpiringByteBudget _unseenBlockEnvelopes = new(UnseenBlockEnvelopeBytes, UnseenBlockEnvelopeSlots);
 
     // A held block never changes, so its bid is decoded once, not once per envelope; a root not held is never cached, as it may arrive a moment later.
     private readonly LruCache<Hash256, EnvelopeBlock> _envelopeBlocks = new(EnvelopeBlockCacheSize, "beacon gossip envelope blocks");
@@ -618,6 +629,15 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
         // A consumer that refuses the message for local load leaves no id in the pubsub router, so a later copy is checked again.
         Action releaseSeen = () => seenMessages.Delete(seenKey);
+        Action? releaseCharge = null;
+        if (verdict is { UnseenBlock: true } && (releaseCharge = _unseenBlockEnvelopes.TryCharge(payload!.Length, slotClock.CurrentSlot)) is null)
+        {
+            releaseSeen();
+            releaseClaim?.Invoke(value);
+            Interlocked.Increment(ref Metrics.GossipThrottledCount);
+            return MessageValidity.Throttled;
+        }
+
         if (verdict?.DeferToSlot is { } slot)
         {
             // phase0 p2p: [IGNORE] a future slot, which MAY be queued; the message is ignored now, so no verdict waits for its slot.
@@ -637,6 +657,11 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             bool refused = false;
             GossipVerdict consumed = GossipVerdict.Local();
             consumed.ReleaseOnThrottle(() => refused = true);
+            if (releaseCharge is not null)
+            {
+                consumed.ReleaseOnEnd(releaseCharge);
+            }
+
             Raise(raise, value, consumed);
             if (refused)
             {
@@ -939,7 +964,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             case EnvelopeBlockLookup.NotHeld:
                 return SignedBeaconBlockCodec.IsGloasSlot(payload.SlotNumber, spec)
                     && payload.SlotNumber >= slotClock.CurrentSlot && payload.SlotNumber - slotClock.CurrentSlot <= 1
-                    ? Verdict.Settle(MessageValidity.Ignored) : Verdict.Ignore(GossipDropReason.InvalidField);
+                    ? Verdict.Settle(MessageValidity.Ignored) with { UnseenBlock = true } : Verdict.Ignore(GossipDropReason.InvalidField);
             case EnvelopeBlockLookup.BudgetSpent:
                 return Verdict.Ignore(GossipDropReason.StoreDecodeBudgetSpent);
         }
@@ -1283,7 +1308,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     /// <param name="Settled">Whether the message is raised with <paramref name="Validity"/> given at once, rather than dropped or left to the consumer.</param>
     /// <param name="Release">Undoes the claims the checks made, for a settled message its consumer refuses for local load.</param>
-    private readonly record struct Verdict(GossipDropReason Reason, MessageValidity Validity, ulong? DeferToSlot = null, bool Settled = false, Action? Release = null)
+    /// <param name="UnseenBlock">Whether the settled message waits for a block not seen yet, so it is charged to <see cref="UnseenBlockEnvelopeBytes"/>.</param>
+    private readonly record struct Verdict(GossipDropReason Reason, MessageValidity Validity, ulong? DeferToSlot = null, bool Settled = false, Action? Release = null,
+        bool UnseenBlock = false)
     {
         public static Verdict Settle(MessageValidity validity, Action? release = null) => new(default, validity, Settled: true, Release: release);
         public static Verdict Reject(GossipDropReason reason) => new(reason, MessageValidity.Rejected);
