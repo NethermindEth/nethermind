@@ -447,6 +447,7 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.BlockGasUsed = sentinel;
+        tx.SpentGas = sentinel;
 
         Block block = Build.A.Block.WithNumber(1)
             .WithBeneficiary(Beneficiary)
@@ -461,6 +462,7 @@ public partial class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.True, "must reach settlement, else this pins nothing");
             Assert.That(tx.BlockGasUsed, warmup ? Is.EqualTo(sentinel) : Is.Not.EqualTo(sentinel));
+            Assert.That(tx.SpentGas, warmup ? Is.EqualTo(sentinel) : Is.Not.EqualTo(sentinel));
         }
     }
 
