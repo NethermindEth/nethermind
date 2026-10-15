@@ -74,3 +74,5 @@ Reporting-only checks run without services or native proofs:
 python3 scripts/lean-net-bench/test_metrics.py
 python3 -O scripts/lean-net-bench/test_metrics.py
 ```
+
+CPU counters are raw process deltas between each node's actual `snapshot_before_ns` and `snapshot_after_ns`; `cpu_ms_total` remains authoritative for those recorded windows. The idle-adjusted value is only an estimate. `idle_snapshot_ns` and warmup-completed counts at idle/start expose late sampling and unfinished warmup; the fixed settling delay alone proves neither. CPU comparisons are eligible only when every node has all warmup objects complete at idle/start, both snapshots begin within 10 ms of their scheduled times, the idle interval lasts at least 1.9 s, and no measured origin/completion precedes the start snapshot. Otherwise the adjusted estimate is null and CPU comparisons must be omitted. Raw counters, timing metadata and reasons remain available; these checks do not establish host isolation or a process-memory bound.

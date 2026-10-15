@@ -71,6 +71,23 @@ class MetricsTests(unittest.TestCase):
         self.assertNotIn("error", row)
         self.assertFalse(report.incomplete(row))
 
+    def test_cpu_comparison_requires_timely_clean_snapshots(self):
+        row = {"idle_snapshot_ns": 1_000_000_000, "snapshot_before_ns": 3_000_000_000,
+               "snapshot_after_ns": 4_000_000_000, "measured_ns": 3_000_000_000,
+               "warmup_completed_at_idle": 3, "warmup_completed_at_start": 3,
+               "originated": {"3": 3_001_000_000}, "completed": {"3": 3_500_000_000}}
+        self.assertTrue(controller.cpu_snapshot_quality({0: row}, 3, 1)["eligible"])
+        for changes, reason in [({"idle_snapshot_ns": 1_050_000_000}, "late idle"),
+                                ({"snapshot_before_ns": 3_050_000_000}, "snapshot"),
+                                ({"warmup_completed_at_idle": 2}, "unfinished warmup"),
+                                ({"originated": {"3": 2_999_000_000}}, "activity precedes")]:
+            with self.subTest(changes=changes):
+                quality = controller.cpu_snapshot_quality({0: dict(row, **changes)}, 3, 1)
+                self.assertFalse(quality["eligible"])
+                self.assertTrue(any(reason in issue for issue in quality["issues"]))
+        self.assertFalse(controller.cpu_snapshot_quality({0: row}, 3, 2)["eligible"])
+        self.assertFalse(controller.cpu_snapshot_quality({0: {}}, 3, 1)["eligible"])
+
     def test_partial_measurement_is_retained_but_not_complete(self):
         rows = [{'missing': 2, 'goodput_tx_per_s_per_receiver': 4}, {'error': 'timeout'}]
         self.assertEqual(report.measured_values(rows, 'goodput_tx_per_s_per_receiver'), [4])

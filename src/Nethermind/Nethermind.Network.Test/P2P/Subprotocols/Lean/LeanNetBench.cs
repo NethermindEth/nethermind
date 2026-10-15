@@ -79,7 +79,12 @@ public class LeanNetBenchNode
     internal static void ConfigureIndexedPool(LeanTestNode node)
     {
         ConcurrentDictionary<ValueHash256, Transaction> pending = new();
-        node.Pool.GetPendingTransactions().Returns(_ => pending.Values.ToArray());
+        node.Pool.GetPendingTransactions().Returns(_ =>
+        {
+            List<Transaction> snapshot = new(pending.Count);
+            foreach (KeyValuePair<ValueHash256, Transaction> entry in pending) snapshot.Add(entry.Value);
+            return snapshot.ToArray();
+        });
         node.Pool.TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction?>()).Returns(call =>
         {
             bool found = pending.TryGetValue(call.Arg<ValueHash256>(), out Transaction? transaction);
@@ -272,12 +277,15 @@ public class LeanNetBenchNode
         }
 
         Snapshot idle = default, before = default;
+        int warmupAtIdle = 0, warmupAtStart = 0;
         Task snapshot = Task.Run(async () =>
         {
-            // The two seconds before the measured window, when warm-up objects have settled, calibrate the idle CPU rate.
+            // Record warm-up completion rather than assuming the fixed settling delay was sufficient.
             await WaitUntil(measured - 2_000_000_000L);
+            warmupAtIdle = completed.Count(e => e.Key < config.Warmup);
             idle = Snapshot.Take();
             await WaitUntil(measured);
+            warmupAtStart = completed.Count(e => e.Key < config.Warmup);
             before = Snapshot.Take();
         });
         try
@@ -318,6 +326,11 @@ public class LeanNetBenchNode
             ["start_ns"] = start,
             ["measured_ns"] = measured,
             ["finished_ns"] = finished,
+            ["idle_snapshot_ns"] = idle.Time,
+            ["snapshot_before_ns"] = before.Time,
+            ["snapshot_after_ns"] = after.Time,
+            ["warmup_completed_at_idle"] = warmupAtIdle,
+            ["warmup_completed_at_start"] = warmupAtStart,
             ["originated"] = originated.ToDictionary(static e => e.Key.ToString(), static e => e.Value),
             ["completed"] = completed.ToDictionary(static e => e.Key.ToString(), static e => e.Value),
             ["cpu_user_ms"] = (after.User - before.User).TotalMilliseconds,
@@ -634,6 +647,9 @@ internal sealed class BenchBroadcastProfile(long genesisUnixMs) : ILeanBroadcast
         Ecdsa.Sign(Signer, manifest.Id(1, LeanTestNode.Genesis.ValueHash256)).BytesWithRecovery;
 }
 
+[SupportedOSPlatform("linux")]
+[SupportedOSPlatform("macos")]
+[SupportedOSPlatform("windows")]
 public class LeanNetBenchFixtureTests
 {
     [Test]

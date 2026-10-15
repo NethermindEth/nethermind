@@ -192,6 +192,34 @@ def origination_metrics(records, interval_ms, transactions_per_object, kind):
     }
 
 
+def cpu_snapshot_quality(results, warmup, expected_nodes):
+    """Conservative eligibility for CPU comparisons; raw measured deltas remain available."""
+    issues = []
+    tolerance_ns = 10_000_000
+    if len(results) != expected_nodes:
+        issues.append("missing node results")
+    for node, result in sorted(results.items()):
+        required = ("idle_snapshot_ns", "snapshot_before_ns", "snapshot_after_ns", "measured_ns",
+                    "warmup_completed_at_idle", "warmup_completed_at_start")
+        if any(key not in result for key in required):
+            issues.append(f"node {node}: missing snapshot metadata")
+            continue
+        idle, before, after = (result[key] for key in required[:3])
+        measured = result["measured_ns"]
+        if not measured - 2_000_000_000 <= idle <= measured - 2_000_000_000 + tolerance_ns:
+            issues.append(f"node {node}: late idle snapshot")
+        if not measured <= before <= measured + tolerance_ns or after <= before or before - idle < 1_900_000_000:
+            issues.append(f"node {node}: late or invalid measurement snapshot")
+        if result["warmup_completed_at_idle"] != warmup or result["warmup_completed_at_start"] != warmup:
+            issues.append(f"node {node}: unfinished warmup at CPU baseline")
+        activity = [when for field in ("originated", "completed") for index, when in result.get(field, {}).items()
+                    if int(index) >= warmup]
+        if activity and min(activity) < before:
+            issues.append(f"node {node}: measured activity precedes CPU snapshot")
+    return {"eligible": not issues, "issues": issues, "late_tolerance_ms": tolerance_ns / 1e6,
+            "policy": "all warmup complete before idle/start; timely snapshots; no measured activity before start snapshot"}
+
+
 def retain_process_failures(summary, exit_codes):
     """Retain child exit status even when a node wrote measurements before failing during cleanup."""
     summary["node_exit_codes"] = {str(node): code for node, code in exit_codes.items()}
@@ -386,7 +414,10 @@ def run(args):
     summary["cpu_ms_per_object"] = cpu / args.objects
     idle = sum(r["idle_cpu_ms_per_s"] * r["window_ms"] / 1000 for r in results.values())
     summary["idle_cpu_ms_per_s"] = sum(r["idle_cpu_ms_per_s"] for r in results.values())
-    summary["cpu_net_ms_per_object"] = max(0.0, cpu - idle) / args.objects
+    summary["cpu_snapshot_quality"] = cpu_snapshot_quality(results, args.warmup, n)
+    summary["cpu_comparison_eligible"] = summary["cpu_snapshot_quality"]["eligible"]
+    summary["cpu_net_ms_per_object"] = max(0.0, cpu - idle) / args.objects if summary["cpu_comparison_eligible"] else None
+    summary["cpu_net_scope"] = "idle-adjusted estimate; raw cpu_ms_total is authoritative for actual snapshot windows"
     origins = {origin(index) for index in measured_indices}
     summary["cpu_ms_origin_per_object"] = sum(results[o]["cpu_user_ms"] + results[o]["cpu_sys_ms"] for o in origins if o in results) / args.objects
     summary["alloc_mb_per_object"] = sum(r["allocated_bytes"] for r in results.values()) / args.objects / 2**20
