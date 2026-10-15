@@ -312,24 +312,27 @@ public class BlockchainBridgeTests
         Transaction tx = new() { GasLimit = 50_000 };
         IBlockchainBridge bridge = container.Resolve<BlockchainBridge>();
 
-        switch (call)
+        string? error = call switch
         {
-            case OverrideCall.Call:
-                bridge.Call(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, CancellationToken.None);
-                break;
-            case OverrideCall.EstimateGas:
-                bridge.EstimateGas(header, tx, 1, stateOverride, blobBaseFeeOverride, blockOverride, 0, CancellationToken.None);
-                break;
-            case OverrideCall.EstimateFrameGas:
-                bridge.EstimateFrameGas(header, tx, [], [], 0, 1, stateOverride, blockOverride, CancellationToken.None, out _);
-                break;
-        }
+            OverrideCall.Call => bridge.Call(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, CancellationToken.None).Error,
+            OverrideCall.EstimateGas => bridge.EstimateGas(header, tx, 1, stateOverride, blobBaseFeeOverride, blockOverride, 0, CancellationToken.None).Error,
+            OverrideCall.EstimateFrameGas => bridge.EstimateFrameGas(header, tx, [], [], 0, 1, stateOverride, blockOverride, CancellationToken.None, out _).Error,
+            _ => throw new ArgumentOutOfRangeException(nameof(call))
+        };
 
-        // The shared DTO also carries fields used only for debug_traceCall's unsupported-field validation.
-        bool hasAppliedOverrides = input is not (OverrideInput.None or OverrideInput.Empty or OverrideInput.BeaconRoot or OverrideInput.Withdrawals);
-        shared.Received(hasAppliedOverrides ? 0 : 1).TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>());
-        exclusive.Received(hasAppliedOverrides ? 1 : 0).TryBuildAndOverride(
-            Arg.Any<BlockHeader?>(), stateOverride, blockOverride, out Arg.Any<Scope<BlockchainBridge.BlockProcessingComponents>?>());
+        bool unsupported = input is OverrideInput.BeaconRoot or OverrideInput.Withdrawals;
+        using (Assert.EnterMultipleScope())
+        {
+            if (unsupported)
+            {
+                string field = input == OverrideInput.BeaconRoot ? "beaconRoot" : "withdrawals";
+                Assert.That(error, Is.EqualTo($"block override \"{field}\" is not supported for this RPC method"));
+            }
+            bool hasAppliedOverrides = !unsupported && input is not (OverrideInput.None or OverrideInput.Empty);
+            shared.Received(hasAppliedOverrides || unsupported ? 0 : 1).TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>());
+            exclusive.Received(hasAppliedOverrides ? 1 : 0).TryBuildAndOverride(
+                Arg.Any<BlockHeader?>(), stateOverride, blockOverride, out Arg.Any<Scope<BlockchainBridge.BlockProcessingComponents>?>());
+        }
     }
 
     [Test]
