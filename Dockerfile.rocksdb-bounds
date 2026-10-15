@@ -4,7 +4,7 @@
 
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.402-resolute@sha256:6924c5c6564690089a67509f5a6ae85d7afa28d7f0f6466ec1b8a5439764ca92 AS bindings
 WORKDIR /bindings
-ADD https://github.com/NethermindEth/rocksdb-bindings.git#eb9ec80901072cac4d9b04cf6a3f4d6f761365ef .
+ADD --keep-git-dir=true https://github.com/NethermindEth/rocksdb-bindings.git#eb9ec80901072cac4d9b04cf6a3f4d6f761365ef .
 ADD --checksum=sha256:64f66f3e77b4c602c173cd0123c98b04035c7f6f4ac144967de9746d78aeaec2 https://media.githubusercontent.com/media/NethermindEth/rocksdb-bindings/eb9ec80901072cac4d9b04cf6a3f4d6f761365ef/src/Nethermind.RocksDbBindings/runtimes/linux-x64/native/librocksdb.so src/Nethermind.RocksDbBindings/runtimes/linux-x64/native/librocksdb.so
 ADD --checksum=sha256:035ff436164e01acd3677c2eeeefe0e626823b6415c084bd8735a02476df1fe9 https://media.githubusercontent.com/media/NethermindEth/rocksdb-bindings/eb9ec80901072cac4d9b04cf6a3f4d6f761365ef/src/Nethermind.RocksDbBindings/runtimes/linux-arm64/native/librocksdb.so src/Nethermind.RocksDbBindings/runtimes/linux-arm64/native/librocksdb.so
 

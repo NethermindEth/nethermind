@@ -76,6 +76,7 @@ jobs:
               cd "$arm"
               dotnet run --project benchmarks/history-bounds -c Release "${properties[@]}" -- --filter '*' --exporters json markdown --artifacts "$output" --join
             )
+            python3 candidate/benchmarks/history-bounds/verify.py "$output"
           done
       - name: Job summary
         if: always()
