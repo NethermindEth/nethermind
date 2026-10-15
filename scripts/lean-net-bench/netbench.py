@@ -192,6 +192,15 @@ def origination_metrics(records, interval_ms, transactions_per_object, kind):
     }
 
 
+def retain_process_failures(summary, exit_codes):
+    """Retain child exit status even when a node wrote measurements before failing during cleanup."""
+    summary["node_exit_codes"] = {str(node): code for node, code in exit_codes.items()}
+    failed = [f"node {node}: {code if code is not None else 'did not exit'}" for node, code in exit_codes.items() if code != 0]
+    if failed:
+        message = "node process failure (" + ", ".join(failed) + ")"
+        summary["error"] = f"{summary['error']}; {message}" if summary.get("error") else message
+
+
 def run(args):
     n, edges = topology(args.topology)
     run_dir = os.path.abspath(os.path.join(args.out, args.label or time.strftime("run-%Y%m%d-%H%M%S")))
@@ -214,6 +223,12 @@ def run(args):
     with open(os.path.join(run_dir, "provenance.json"), "w") as f:
         json.dump(provenance, f, indent=2)
     processes = []
+    summary = {"label": args.label, "topology": args.topology, "nodes": n, "binding": args.binding, "broadcast": args.broadcast,
+               "kind": args.kind, "objects": args.objects, "warmup": args.warmup, "proof_bytes": args.proof_bytes, "transactions_per_object": args.transactions_per_object, "burst": args.burst,
+               "interval_ms": args.interval_ms, "origins": args.origins, "verify_ms": args.verify_ms, "rtt_ms": args.rtt_ms,
+               "loss": args.loss, "rate_mbit": args.rate_mbit, "sysctl": args.sysctl, "load": open("/proc/loadavg").read().split()[:3] if os.path.exists("/proc/loadavg") else None}
+    summary["provenance"] = provenance
+    summary["run_dir"] = run_dir
     try:
         if args.netns:
             setup(n)
@@ -264,12 +279,6 @@ def run(args):
                 time.sleep(0.05)
             return False
 
-        summary = {"label": args.label, "topology": args.topology, "nodes": n, "binding": args.binding, "broadcast": args.broadcast,
-                   "kind": args.kind, "objects": args.objects, "warmup": args.warmup, "proof_bytes": args.proof_bytes, "transactions_per_object": args.transactions_per_object, "burst": args.burst,
-                   "interval_ms": args.interval_ms, "origins": args.origins, "verify_ms": args.verify_ms, "rtt_ms": args.rtt_ms,
-                   "loss": args.loss, "rate_mbit": args.rate_mbit, "sysctl": args.sysctl, "load": open("/proc/loadavg").read().split()[:3] if os.path.exists("/proc/loadavg") else None}
-        summary["provenance"] = provenance
-        summary["run_dir"] = run_dir
         cpu_before = cpu_after = None
         before = after = None
         if not wait_files("ready", 120):
@@ -301,6 +310,7 @@ def run(args):
                 p.wait(timeout=10)
             if not log.closed:
                 log.close()
+        retain_process_failures(summary, {i: process.returncode for i, (process, _) in enumerate(processes)})
         if args.netns and not args.keep:
             teardown()
 
@@ -311,7 +321,8 @@ def run(args):
             with open(path) as f:
                 results[i] = json.load(f)
     if len(results) < n:
-        summary["error"] = f"only {len(results)} of {n} results"
+        message = f"only {len(results)} of {n} results"
+        summary["error"] = f"{summary['error']}; {message}" if summary.get("error") else message
         if not results:
             return summary
 

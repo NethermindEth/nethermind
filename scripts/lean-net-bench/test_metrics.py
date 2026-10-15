@@ -48,6 +48,29 @@ class MetricsTests(unittest.TestCase):
         self.assertTrue(report.incomplete(row))
         self.assertEqual(report.measured_values([row], 'goodput_tx_per_s_per_receiver'), [])
 
+    def test_failed_cleanup_preserves_measurements_and_marks_run_incomplete(self):
+        row = {"missing": 0, "completed": 6, "goodput_tx_per_s_per_receiver": 12.5}
+        controller.retain_process_failures(row, {0: 0, 1: 1})
+        self.assertEqual(row["node_exit_codes"], {"0": 0, "1": 1})
+        self.assertIn("node 1: 1", row["error"])
+        self.assertEqual(row["goodput_tx_per_s_per_receiver"], 12.5)
+        self.assertEqual(row["completed"], 6)
+        self.assertTrue(report.incomplete(row))
+
+    def test_process_failure_retains_existing_error_and_forced_termination(self):
+        row = {"error": "only one result", "missing": 2}
+        controller.retain_process_failures(row, {0: -9, 1: None})
+        self.assertTrue(row["error"].startswith("only one result;"))
+        self.assertIn("node 0: -9", row["error"])
+        self.assertIn("node 1: did not exit", row["error"])
+        self.assertTrue(report.incomplete(row))
+
+    def test_successful_processes_do_not_invent_failure(self):
+        row = {"missing": 0}
+        controller.retain_process_failures(row, {0: 0, 1: 0})
+        self.assertNotIn("error", row)
+        self.assertFalse(report.incomplete(row))
+
     def test_partial_measurement_is_retained_but_not_complete(self):
         rows = [{'missing': 2, 'goodput_tx_per_s_per_receiver': 4}, {'error': 'timeout'}]
         self.assertEqual(report.measured_values(rows, 'goodput_tx_per_s_per_receiver'), [4])
