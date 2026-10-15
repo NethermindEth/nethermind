@@ -69,7 +69,7 @@ internal sealed class StreamingFinalizer
         catch (EezSettlementException) { throw new RpcException(new Status(StatusCode.Unimplemented, "unsupported settlement profile")); }
     }
 
-    private static AdmittedWindow ToWindow(SessionOperation operation, Finalize finalization)
+    internal static AdmittedWindow ToWindow(SessionOperation operation, Finalize finalization)
     {
         BlockWitness[] selected = operation.CopyBlocks();
         EezStatelessBlock[] blocks = new EezStatelessBlock[selected.Length];

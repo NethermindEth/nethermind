@@ -66,7 +66,7 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/eez/devnet -p 'test_*.py'
           python3 scripts/eez/devnet/upstream.py vectors --revision "$UPSTREAM_REVISION" --directory "$RUNNER_TEMP/eez-vectors" --output "$RUNNER_TEMP/eez-vectors/upstream.json"
-      - name: Resolve current RollupX execution data
+      - name: Resolve current RollupX streaming and execution data
         env:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_REVISION: ${{ inputs.rollupx_revision }}

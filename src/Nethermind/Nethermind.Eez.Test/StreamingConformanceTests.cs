@@ -207,22 +207,7 @@ public class StreamingConformanceTests
                         ServerFrame expected = ServerFrame.Parser.ParseFrom(Convert.FromHexString(step.GetProperty("protobuf_hex").GetString()!));
                         Assert.That(await streams[name].ResponseStream.MoveNext(), Is.True, context + ": expected response, not EOF");
                         ServerFrame actual = streams[name].ResponseStream.Current.Clone();
-                        string diagnostic = actual.Rejected?.Message ?? "";
-                        NormalizeBindings(expected, actual, sessions, epochs, context);
-                        if (actual.Validated is not null) actual.Validated.Reused = false;
-                        if (actual.Rejected is not null) actual.Rejected.Message = "";
-                        if (actual.Proof is not null)
-                        {
-                            Assert.That(expected.Proof, Is.Not.Null, context + ": no unsolicited proof");
-                            byte[] signature = actual.Proof.Proof_.ToByteArray();
-                            Assert.That(signature.Length, Is.EqualTo(65), context + ": a proof is a recoverable ECDSA signature");
-                            Assert.That(signature[64], Is.AnyOf(27, 28), context + ": recovery byte follows the on-chain format");
-                            ValueHash256 digest = new(expected.Proof.PublicInputsHash.Span);
-                            Signature recoverable = new(signature.AsSpan(0, 64), signature[64] - 27);
-                            Assert.That(new EthereumEcdsa(0).RecoverAddress(recoverable, in digest), Is.EqualTo(attester), context + ": signer is recovered over the independent expected digest");
-                            actual.Proof.Proof_ = expected.Proof.Proof_;
-                        }
-                        Assert.That(actual, Is.EqualTo(expected), context + ": response fields and cursor match unchanged upstream expectations; " + diagnostic);
+                        CompareFrame(expected, actual, sessions, epochs, attester, context);
                         break;
                     case "half_close":
                         await streams[name].RequestStream.CompleteAsync();
@@ -248,6 +233,27 @@ public class StreamingConformanceTests
             Assert.That(streams, Is.Empty, "all transcript streams reach an explicit EOF");
         }
         finally { foreach (AsyncDuplexStreamingCall<ClientFrame, ServerFrame> stream in streams.Values) stream.Dispose(); }
+    }
+
+    internal static void CompareFrame(ServerFrame expected, ServerFrame actual, Dictionary<ByteString, ByteString> sessions,
+        Dictionary<(ByteString Id, ulong Epoch), ulong> epochs, Address attester, string context)
+    {
+        string diagnostic = actual.Rejected?.Message ?? "";
+        NormalizeBindings(expected, actual, sessions, epochs, context);
+        if (actual.Validated is not null) actual.Validated.Reused = false;
+        if (actual.Rejected is not null) actual.Rejected.Message = "";
+        if (actual.Proof is not null)
+        {
+            Assert.That(expected.Proof, Is.Not.Null, context + ": no unsolicited proof");
+            byte[] signature = actual.Proof.Proof_.ToByteArray();
+            Assert.That(signature.Length, Is.EqualTo(65), context + ": a proof is a recoverable ECDSA signature");
+            Assert.That(signature[64], Is.AnyOf(27, 28), context + ": recovery byte follows the on-chain format");
+            ValueHash256 digest = new(expected.Proof.PublicInputsHash.Span);
+            Signature recoverable = new(signature.AsSpan(0, 64), signature[64] - 27);
+            Assert.That(new EthereumEcdsa(0).RecoverAddress(recoverable, in digest), Is.EqualTo(attester), context + ": signer is recovered over the independent expected digest");
+            actual.Proof.Proof_ = expected.Proof.Proof_;
+        }
+        Assert.That(actual, Is.EqualTo(expected), context + ": response fields and cursor match unchanged upstream expectations; " + diagnostic);
     }
 
     private static void NormalizeBindings(ServerFrame expected, ServerFrame actual, Dictionary<ByteString, ByteString> sessions,

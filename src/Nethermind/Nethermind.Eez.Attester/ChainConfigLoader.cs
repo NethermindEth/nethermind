@@ -12,20 +12,27 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Eez.Attester;
 
-/// <summary>
-/// Loads the L2 fork schedule from a genesis document, or from its bare chain configuration. The attester checks
-/// rollup0 settlement only, so a RollupX chain configuration is refused.
-/// </summary>
 internal static class ChainConfigLoader
 {
     public static ISpecProvider Load(string path)
     {
-        JsonNode document = JsonNode.Parse(File.ReadAllText(path)) ?? throw new InvalidDataException($"{path} is empty");
-        if ((document["config"] ?? document)[RollupXGenesis.SectionName] is not null)
-        {
-            throw new InvalidDataException($"{path} configures a RollupX chain, which this attester does not attest yet");
-        }
+        (ISpecProvider specs, EezChainRules rules) = LoadProfile(path);
+        if (rules.IsRollupX) throw new InvalidDataException($"{path} configures a RollupX chain, which requires the native streaming profile");
+        return specs;
+    }
 
+    internal static (ISpecProvider Specs, EezChainRules Rules) LoadProfile(string path)
+    {
+        JsonNode document = Read(path);
+        EezChainRules rules = EezChainRules.FromGenesis(JsonSerializer.SerializeToElement(document));
+        return (new EezSpecProvider(new ChainSpecBasedSpecProvider(Parse(document)), rules), rules);
+    }
+
+    internal static ISpecProvider LoadL1(string path) => new ChainSpecBasedSpecProvider(Parse(Read(path)));
+
+    private static JsonNode Read(string path)
+    {
+        JsonNode document = JsonNode.Parse(File.ReadAllText(path)) ?? throw new InvalidDataException($"{path} is empty");
         if (document["config"] is null)
         {
             document = new JsonObject
@@ -42,7 +49,9 @@ internal static class ChainConfigLoader
             };
         }
 
-        ChainSpec chainSpec = new GethGenesisLoader(new EthereumJsonSerializer()).Load(new MemoryStream(Encoding.UTF8.GetBytes(document.ToJsonString())));
-        return new EezSpecProvider(new ChainSpecBasedSpecProvider(chainSpec), EezChainRules.FromGenesis(JsonSerializer.SerializeToElement(document)));
+        return document;
     }
+
+    private static ChainSpec Parse(JsonNode document) =>
+        new GethGenesisLoader(new EthereumJsonSerializer()).Load(new MemoryStream(Encoding.UTF8.GetBytes(document.ToJsonString())));
 }

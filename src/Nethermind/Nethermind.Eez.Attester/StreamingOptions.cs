@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Eez.Attester;
 
@@ -15,6 +16,10 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri L1Rpc, Uri
     string ServerCertificate, string ServerPasswordFile, string[] ComposerCertificates, StreamingRegistryLimits RegistryLimits,
     StreamingSessionLimits SessionLimits, StreamingTransportLimits TransportLimits)
 {
+    internal StreamingSettlementProfile Profile { get; init; }
+    internal string? L1ChainConfigPath { get; init; }
+    internal Hash256? L2GenesisHash { get; init; }
+
     internal static StreamingOptions Load(string path, AttesterOptions attester)
     {
         try
@@ -25,8 +30,9 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri L1Rpc, Uri
                 UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
                 MaxDepth = 16,
             }) ?? throw Invalid();
-            if (settings.Profile != "rollup0-calldata" || !IPAddress.IsLoopback(attester.ListenAddress.Address) ||
+            if (settings.Profile is not ("rollup0-calldata" or "rollupx-native") || !IPAddress.IsLoopback(attester.ListenAddress.Address) ||
                 settings.L1ChainId == 0 || settings.ComposerCertificates is not { Length: > 0 and <= 16 }) throw Invalid();
+            if (settings.Profile == "rollup0-calldata" && (settings.L1ChainConfigPath is not null || settings.L2GenesisHash is not null)) throw Invalid();
             IPEndPoint listen = IPEndPoint.Parse(Required(settings.ListenAddress));
             if (listen.Port != 0 && listen.Port == attester.ListenAddress.Port) throw Invalid();
             Address registry = new(Required(settings.Registry));
@@ -49,7 +55,12 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri L1Rpc, Uri
             for (int i = 0; i < pins.Length; i++) pins[i] = Path.GetFullPath(Required(settings.ComposerCertificates[i]), directory);
             return new StreamingOptions(listen, Rpc(settings.L1Rpc), Rpc(settings.L2Rpc), settings.L1ChainId, registry, manager,
                 Path.GetFullPath(Required(settings.ServerCertificate), directory), Path.GetFullPath(Required(settings.ServerPasswordFile), directory),
-                pins, registryLimits, sessionLimits, transportLimits);
+                pins, registryLimits, sessionLimits, transportLimits)
+            {
+                Profile = settings.Profile == "rollupx-native" ? StreamingSettlementProfile.RollupXNative : StreamingSettlementProfile.Rollup0Calldata,
+                L1ChainConfigPath = settings.Profile == "rollupx-native" ? Path.GetFullPath(Required(settings.L1ChainConfigPath), directory) : null,
+                L2GenesisHash = settings.Profile == "rollupx-native" ? GenesisHash(settings.L2GenesisHash) : null,
+            };
         }
         catch (Exception exception) when (exception is JsonException or FormatException or ArgumentException or OverflowException or IOException)
         {
@@ -72,6 +83,12 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri L1Rpc, Uri
         return bytes.AsSpan(0, length).ToArray();
     }
 
+    private static Hash256 GenesisHash(string? value)
+    {
+        Hash256 hash = new(Required(value));
+        return hash == Keccak.Zero ? throw Invalid() : hash;
+    }
+
     private static Uri Rpc(string? value) => Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) &&
         uri.Scheme is "http" or "https" && uri.UserInfo.Length == 0 && uri.Fragment.Length == 0 ? uri : throw Invalid();
 
@@ -82,6 +99,8 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri L1Rpc, Uri
     {
         public string? Profile { get; init; }
         public string? ListenAddress { get; init; }
+        public string? L1ChainConfigPath { get; init; }
+        public string? L2GenesisHash { get; init; }
         public string? L1Rpc { get; init; }
         public string? L2Rpc { get; init; }
         public ulong L1ChainId { get; init; }
@@ -97,4 +116,10 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri L1Rpc, Uri
         public long MaxReservedBytes { get; init; } = 512 * 1024 * 1024;
         public int RetentionSeconds { get; init; } = 600;
     }
+}
+
+internal enum StreamingSettlementProfile
+{
+    Rollup0Calldata,
+    RollupXNative,
 }

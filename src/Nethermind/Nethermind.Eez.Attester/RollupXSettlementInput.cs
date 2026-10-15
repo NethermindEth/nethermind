@@ -34,7 +34,7 @@ internal sealed record RollupXSettlementInput(PostBatch Batch, NativeStream Stre
         {
             PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(snapshot.AbiCalldata.Span);
             RollupXPostBatchProfile.Validate(batch, context.RollupId, context.ProofSystem, count);
-            if (batch.Proofs is not [{ Length: 0 }]) throw Invalid();
+            if (batch.Proofs is not ([] or [{ Length: 0 }])) throw Invalid();
             foreach (ByteString blob in snapshot.Blobs)
                 if (blob.Length != BlobStream.BytesPerBlob) throw Invalid();
             byte[] logical = new byte[checked(count * BlobStream.DataBytesPerBlob)];

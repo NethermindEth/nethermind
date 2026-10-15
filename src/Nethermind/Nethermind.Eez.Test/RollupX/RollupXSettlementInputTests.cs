@@ -69,6 +69,22 @@ public class RollupXSettlementInputTests
         }
     }
 
+    [TestCase(0)]
+    [TestCase(1)]
+    public void Decode_ProoflessCarrier_PreservesPublicInputs(int slots)
+    {
+        RollupXSettlementInput original = Decode(_input);
+        Rewrite(_input, batch => batch with { Proofs = slots == 0 ? [] : [[]] });
+        RollupXSettlementInput decoded = Decode(_input);
+        ValueHash256 expected = RollupXPostBatchProfile.PublicInputsHash(original.Batch, _context.RollupId, _context.VerificationKey, original.BlobHashes, original.Target);
+        ValueHash256 actual = RollupXPostBatchProfile.PublicInputsHash(decoded.Batch, _context.RollupId, _context.VerificationKey, decoded.BlobHashes, decoded.Target);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Batch.Proofs.Length, Is.EqualTo(slots), "proofless input arity is preserved");
+            Assert.That(actual, Is.EqualTo(expected), "empty input proof carriers do not change the signed execution commitment");
+        }
+    }
+
     [TestCaseSource(nameof(InvalidInputs))]
     public void Decode_MalformedPhysicalInput_IsInvalidArgument(Action<SettlementInput> mutate)
     {
@@ -299,7 +315,6 @@ public class RollupXSettlementInputTests
         yield return Case("TruncatedAbi", static input => input.AbiCalldata = ByteString.CopyFrom(input.AbiCalldata.Span[..^1]));
         yield return Case("TrailingAbiByte", static input => input.AbiCalldata = ByteString.CopyFrom([.. input.AbiCalldata.Span, 0]));
         yield return Case("PopulatedProof", static input => Rewrite(input, static batch => batch with { Proofs = [[1]] }));
-        yield return Case("NoProofSlot", static input => Rewrite(input, static batch => batch with { Proofs = [] }));
         yield return Case("ExtraProofSlot", static input => Rewrite(input, static batch => batch with { Proofs = [[], []] }));
         yield return Case("CalldataTail", static input => Rewrite(input, static batch => batch with { CallData = [1] }));
         yield return Case("LegacyBlockNumber", static input => Rewrite(input, static batch => batch with { BlockNumber = 0 }));

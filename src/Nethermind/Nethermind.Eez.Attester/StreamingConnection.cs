@@ -9,7 +9,8 @@ using Nethermind.Eez.Prove.V2;
 
 namespace Nethermind.Eez.Attester;
 
-internal sealed class StreamingConnection(StreamingSessionRegistry registry, string authenticatedOwner, ulong rollupId)
+internal sealed class StreamingConnection(StreamingSessionRegistry registry, string authenticatedOwner, ulong rollupId,
+    StreamingSettlementProfile settlementProfile = StreamingSettlementProfile.Rollup0Calldata)
 {
     private static readonly Task Unbound = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
     private readonly object _lock = new();
@@ -22,6 +23,16 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
     private bool _retired;
     private Task? _proofRevoked;
     private Task _attachmentRevoked = Unbound;
+
+    private void ValidateSettlement(SettlementInput? settlement)
+    {
+        switch (settlementProfile)
+        {
+            case StreamingSettlementProfile.Rollup0Calldata: StreamingFinalizer.ValidateSupportedSettlement(settlement); break;
+            case StreamingSettlementProfile.RollupXNative: RollupXStreamingFinalizer.ValidateSupportedSettlement(settlement); break;
+            default: throw new InvalidOperationException("unknown settlement profile");
+        }
+    }
 
     internal StreamingDispatch Dispatch(ClientFrame frame)
     {
@@ -70,7 +81,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
             {
                 StreamingDispatch? rejection = AuthorizeBound(frame);
                 if (rejection is not null) return rejection;
-                if (frame.Finalize is not null) StreamingFinalizer.ValidateSupportedSettlement(frame.Finalize.Settlement);
+                if (frame.Finalize is not null) ValidateSettlement(frame.Finalize.Settlement);
                 return null;
             }
             catch (RpcException exception)
@@ -127,7 +138,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
                 _pending = _session!.AdmitBlock(_binding, frame.RequestId, frame.Block.Data);
                 return StreamingDispatch.Work(_pending);
             case ClientFrame.KindOneofCase.Finalize:
-                StreamingFinalizer.ValidateSupportedSettlement(frame.Finalize.Settlement);
+                ValidateSettlement(frame.Finalize.Settlement);
                 _pending = _session!.AdmitFinalize(_binding, frame.RequestId, frame.Finalize);
                 return StreamingDispatch.Work(_pending);
             case ClientFrame.KindOneofCase.Rewind:

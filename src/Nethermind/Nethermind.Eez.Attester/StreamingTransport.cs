@@ -21,19 +21,22 @@ internal sealed class StreamingTransport
     private readonly ILogger<StreamingTransport> _logger;
     private readonly ulong _rollupId;
     private readonly TimeProvider _time;
+    private readonly StreamingSettlementProfile _settlementProfile;
     private int _connections;
 
     internal StreamingTransport(StreamingSessionRegistry registry, BackendAdmission admission, StreamingBlockExecutor executor,
         StreamingTransportLimits limits, ulong rollupId, ILogger<StreamingTransport> logger, TimeProvider? time = null,
-        Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null)
+        Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null,
+        StreamingSettlementProfile settlementProfile = StreamingSettlementProfile.Rollup0Calldata)
         : this(registry, admission, (operation, cancellation) => Task.Run(() => executor.Execute(operation, cancellation), CancellationToken.None),
-            limits, rollupId, logger, time, finalize)
+            limits, rollupId, logger, time, finalize, settlementProfile)
     { }
 
     internal StreamingTransport(StreamingSessionRegistry registry, BackendAdmission admission,
         Func<SessionOperation, CancellationToken, Task<ExecutedStreamingBlock>> execute,
         StreamingTransportLimits limits, ulong rollupId, ILogger<StreamingTransport> logger, TimeProvider? time = null,
-        Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null)
+        Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null,
+        StreamingSettlementProfile settlementProfile = StreamingSettlementProfile.Rollup0Calldata)
     {
         limits.Validate();
         if (rollupId == 0) throw new ArgumentOutOfRangeException(nameof(rollupId));
@@ -41,6 +44,7 @@ internal sealed class StreamingTransport
         _admission = admission;
         _execute = execute;
         _finalize = finalize;
+        _settlementProfile = settlementProfile;
         _limits = limits;
         _rollupId = rollupId;
         _logger = logger;
@@ -50,7 +54,7 @@ internal sealed class StreamingTransport
     internal async Task Run(IAsyncStreamReader<ClientFrame> input, IServerStreamWriter<ServerFrame> output,
         string authenticatedOwner, CancellationToken cancellation)
     {
-        StreamingConnection connection = new(_registry, authenticatedOwner, _rollupId);
+        StreamingConnection connection = new(_registry, authenticatedOwner, _rollupId, _settlementProfile);
         if (Interlocked.Increment(ref _connections) > _limits.MaxConnections)
         {
             Interlocked.Decrement(ref _connections);

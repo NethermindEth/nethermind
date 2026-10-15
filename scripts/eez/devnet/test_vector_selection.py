@@ -194,13 +194,16 @@ class RollupXExecutionSelectionTests(unittest.TestCase):
         snapshot = Path(upstream.__file__).resolve().parents[3] / "src/Nethermind/Nethermind.Eez.Test/Fixtures/rollupx/recorded-execution"
         reviewed = json.loads((snapshot / "provenance.json").read_text())
         payloads = {}
-        for name in self.names:
-            identity = fixture or "updated-" + name
+        for filename in reviewed["cases"]:
+            name = filename.removesuffix(".json")
+            identity = fixture or "updated-" + (name if name in self.names else "baseline-lookup")
             document = {"format": 2, "case": name, "fixture": identity, "events": [
                 {"direction": "client"}, {"direction": "server"}, {"direction": "client"}, {"direction": "eof"}]}
             if malformed is not None: document.update(malformed)
             payloads[self.prefix + "streaming-v2/" + name + ".json"] = json.dumps(document).encode()
-            payloads[self.prefix + identity + "/l2-genesis.json"] = json.dumps({"config": {"chainId": 123 if name == "baseline-lookup" else 456}}).encode()
+            payloads.setdefault(self.prefix + identity + "/l2-genesis.json", json.dumps({"config": {"chainId": 123 if name == "baseline-lookup" else 456}}).encode())
+            payloads[self.prefix + identity + "/l1-genesis.json"] = json.dumps({"config": {"chainId": 1337}}).encode()
+            payloads[self.prefix + identity + "/identity.json"] = json.dumps({"fixture": identity}).encode()
         if available:
             for name in reviewed["cases"]:
                 payloads.setdefault(self.prefix + "streaming-v2/" + name, b"{}")
@@ -248,13 +251,23 @@ class RollupXExecutionSelectionTests(unittest.TestCase):
             self.assertEqual(calls.count("commits/main"), 1)
             self.assertNotIn("pulls/89", calls)
             self.assertEqual(source["execution_baselines"], ["baseline-lookup", "baseline-static"])
-            self.assertEqual((len(source["cases"]), source["streaming_replay"]), (29, "not-implemented"))
+            self.assertEqual((len(source["cases"]), source["streaming_replay"]), (29, "format2-raw"))
             for name in self.names:
                 for local, remote in ((name + ".json", "streaming-v2/" + name + ".json"),
                         ("updated-" + name + ".genesis.json", "updated-" + name + "/l2-genesis.json")):
                     raw = gzip.decompress((args.directory / (local + ".gz")).read_bytes())
                     self.assertEqual(raw, payloads[self.prefix + remote])
                     self.assertEqual(source["files"][local], {"length": len(raw), "sha256": hashlib.sha256(raw).hexdigest()})
+
+    def test_manifest_is_metadata_and_all_original_cases_are_downloaded(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args, _, manifest, payloads = self.invoke(Path(temporary), add="manifest.json")
+            source = manifest["execution_vectors"]
+            self.assertEqual(len(source["cases"]), 29)
+            self.assertNotIn("manifest.json", source["cases"])
+            for name in source["cases"]:
+                self.assertEqual(gzip.decompress((args.directory / (name + ".gz")).read_bytes()),
+                    payloads[self.prefix + "streaming-v2/" + name])
 
     def test_explicit_public_replay_freezes_that_revision_instead_of_new_main(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -271,7 +284,7 @@ class RollupXExecutionSelectionTests(unittest.TestCase):
             self.assertEqual(source["revision"], "759ae5f5cbf87c16b52cedfecc05aae737e90a87")
             self.assertEqual(source["core_revision"], "9a1f815336c20d28e5ec5cecbf195c41fbd5ab0f")
             self.assertIn("pulls/89", calls)
-            self.assertEqual(len(source["files"]), 4)
+            self.assertEqual(len(source["files"]), 35)
             self.assertEqual(source, json.loads((args.directory / "provenance.json").read_text()))
             for name, expected in source["files"].items():
                 raw = gzip.decompress((args.directory / (name + ".gz")).read_bytes())

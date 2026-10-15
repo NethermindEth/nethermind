@@ -231,7 +231,7 @@ def rollupx_execution(args):
     entries = {entry["path"]: entry for entry in tree["tree"] if entry["type"] == "blob"}
     prefix = "crates/eez-proof-signer/tests/fixtures/"
     vector_prefix = prefix + "streaming-v2/"
-    cases = sorted(path[len(vector_prefix):] for path in entries if path.startswith(vector_prefix) and path.endswith(".json"))
+    cases = sorted(path[len(vector_prefix):] for path in entries if path.startswith(vector_prefix) and path.endswith(".json") and path != vector_prefix + "manifest.json")
     baseline_names = ("baseline-lookup", "baseline-static")
     if cases:
         if cases != reviewed["cases"]:
@@ -267,22 +267,28 @@ def rollupx_execution(args):
         (args.directory / (name + ".gz")).write_bytes(gzip.compress(data, mtime=0))
         return json.loads(data)
 
-    for name in baseline_names:
-        document = read(name + ".json", vector_prefix + name + ".json")
+    fixtures = set()
+    for filename in cases:
+        name = filename.removesuffix(".json")
+        document = read(filename, vector_prefix + filename)
         fixture = document.get("fixture")
         if document.get("format") != 2 or document.get("case") != name or not isinstance(fixture, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,127}", fixture):
             raise ValueError("unsupported RollupX execution recording")
         events = document.get("events", [])
         if not 4 <= len(events) <= 4096 or not {"client", "server", "eof"} <= {event.get("direction") for event in events}:
             raise ValueError("incomplete RollupX execution recording")
-        read(fixture + ".genesis.json", prefix + fixture + "/l2-genesis.json")
+        if fixture not in fixtures:
+            read(fixture + ".genesis.json", prefix + fixture + "/l2-genesis.json")
+            read(fixture + ".l1-genesis.json", prefix + fixture + "/l1-genesis.json")
+            read(fixture + ".identity.json", prefix + fixture + "/identity.json")
+            fixtures.add(fixture)
     source["cases"] = cases
     source["execution_baselines"] = list(baseline_names)
-    source["streaming_replay"] = "not-implemented"
+    source["streaming_replay"] = "format2-raw"
     (args.directory / "provenance.json").write_text(json.dumps(source, indent=2) + "\n")
     manifest["execution_vectors"] = source
     args.output.write_text(json.dumps(manifest, indent=2) + "\n")
-    print("Selected 2 recorded execution baselines; full streaming replay remains pending for " + str(len(cases)) + " cases")
+    print("Selected " + str(len(cases)) + " unchanged streaming cases and 2 execution baselines")
 
 
 def main():

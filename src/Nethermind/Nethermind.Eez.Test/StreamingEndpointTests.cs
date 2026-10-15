@@ -346,7 +346,7 @@ public class StreamingEndpointTests(string fixture, int from, int to)
             return request.CreateSelfSigned(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2100, 1, 1, 0, 0, 0, TimeSpan.Zero));
         }
 
-        private static Uri AddressOf(WebApplication app, string scheme) => new(app.Services.GetRequiredService<IServer>().Features
+        internal static Uri AddressOf(WebApplication app, string scheme) => new(app.Services.GetRequiredService<IServer>().Features
             .Get<IServerAddressesFeature>()!.Addresses.Single(address => address.StartsWith(scheme + ":", StringComparison.Ordinal)));
 
         private static async Task Forward(HttpContext context, HttpClient client)

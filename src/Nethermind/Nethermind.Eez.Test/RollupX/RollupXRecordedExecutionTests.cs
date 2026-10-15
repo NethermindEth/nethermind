@@ -28,6 +28,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 using Block = Nethermind.Core.Block;
+using SignedInt256 = Nethermind.Int256.Int256;
 using PostBatch = Nethermind.Eez.Execution.Settlement.PostBatch;
 
 namespace Nethermind.Eez.Test.RollupX;
@@ -156,6 +157,61 @@ public class RollupXRecordedExecutionTests(string recording)
     public void Verify_TruncatedExecution_RejectsOperations() =>
         Assert.That(() => RollupXOperationsCheck.Verify(_operations, _executed[..^1]),
             Throws.TypeOf<EezSettlementException>(), "a valid prefix does not cover the published operation count");
+
+    [Test]
+    public void Verify_RecordedNativeSettlement_MatchesExecutedEffectsAndObservations()
+    {
+        PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(_settlement.AbiCalldata.Span);
+        RollupXObservationClaim[] observations = RollupXSettlementVerifier.Verify(batch, _stream, _executed, _anchor.RollupId);
+
+        ReplayObservations(observations);
+
+        Assert.That(observations.Length, Is.EqualTo(recording == "baseline-lookup" ? 1 : 0),
+            "the recorded lookup needs an independent EVM read; outbound static results are checked through executed source tables");
+    }
+
+    [TestCase("anchor-value", TestName = "NativeSettlementRejectsAnchorValue")]
+    [TestCase("anchor-outcome", TestName = "NativeSettlementRejectsAnchorOutcome")]
+    [TestCase("extra-entry", TestName = "NativeSettlementRejectsExtraEntry")]
+    [TestCase("missing-entry", TestName = "NativeSettlementRejectsMissingEntry")]
+    [TestCase("immediate-count", TestName = "NativeSettlementRejectsImmediateCount")]
+    [TestCase("native-outcome", TestName = "NativeSettlementRejectsChangedOutcome")]
+    [TestCase("native-target", TestName = "NativeSettlementRejectsChangedTarget")]
+    public void Verify_ChangedSettlementOrNativeSemantics_Rejects(string change)
+    {
+        PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(_settlement.AbiCalldata.Span);
+        StreamMessage[] messages = (StreamMessage[])_stream.Messages.Clone();
+        switch (change)
+        {
+            case "anchor-value":
+                batch.Entries[0] = batch.Entries[0] with
+                {
+                    RollupUpdates = [batch.Entries[0].RollupUpdates[0] with { EtherDelta = new SignedInt256(1) }]
+                };
+                break;
+            case "anchor-outcome": batch.Entries[0] = batch.Entries[0] with { Success = false }; break;
+            case "extra-entry": batch = batch with { Entries = [.. batch.Entries, batch.Entries[^1]] }; break;
+            case "missing-entry": batch = batch with { Entries = batch.Entries[..^1] }; break;
+            case "immediate-count": batch = batch with { ImmediateEntryCount = batch.ImmediateEntryCount + 1 }; break;
+            case "native-outcome":
+                int result = Array.FindIndex(messages, static message => message is StreamMessage.Return);
+                StreamMessage.Return original = (StreamMessage.Return)messages[result];
+                messages[result] = original with { ReturnData = new byte[] { 0x45 } };
+                break;
+            case "native-target":
+                int call = Array.FindIndex(messages, static message => message is StreamMessage.Call or StreamMessage.StaticCall);
+                messages[call] = messages[call] switch
+                {
+                    StreamMessage.Call mutable => mutable with { To = Address.Zero },
+                    StreamMessage.StaticCall read => read with { To = Address.Zero },
+                    _ => throw new InvalidOperationException(),
+                };
+                break;
+            default: throw new InvalidOperationException();
+        }
+        Assert.That(() => RollupXSettlementVerifier.Verify(batch, _stream with { Messages = messages }, _executed, _anchor.RollupId),
+            Throws.TypeOf<EezSettlementException>(), "each published semantic field must reproduce independently executed settlement evidence");
+    }
 
     internal RollupXObservationClaim RecordedLookup()
     {

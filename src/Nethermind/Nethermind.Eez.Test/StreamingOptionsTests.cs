@@ -48,10 +48,54 @@ public class StreamingOptionsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((options.L1ChainId, options.Registry, options.Manager), Is.EqualTo((31337UL, TestItem.AddressA, TestItem.AddressB)), "deployment identity comes from startup configuration");
+            Assert.That(options.Profile, Is.EqualTo(StreamingSettlementProfile.Rollup0Calldata));
             Assert.That(Path.IsPathFullyQualified(options.ServerCertificate), Is.True, "certificate paths are anchored to the config directory");
             Assert.That((options.TransportLimits.MaxConnections, options.SessionLimits.MaxBytes, options.RegistryLimits.MaxReservedBytes),
                 Is.EqualTo((8, 64L * 1024 * 1024, 512L * 1024 * 1024)), "default resource budgets are finite");
         }
+    }
+
+    [Test]
+    public void Load_RollupX_ResolvesTrustedProfileInputs()
+    {
+        JsonObject json = Valid();
+        json["profile"] = "rollupx-native";
+        json["l1ChainConfigPath"] = "l1.json";
+        json["l2GenesisHash"] = TestItem.KeccakA.ToString();
+        using TempPath file = Config(json);
+        StreamingOptions options = StreamingOptions.Load(file.Path, Attester());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.Profile, Is.EqualTo(StreamingSettlementProfile.RollupXNative));
+            Assert.That(options.L1ChainConfigPath, Is.EqualTo(Path.GetFullPath("l1.json", Path.GetDirectoryName(file.Path)!)));
+            Assert.That(options.L2GenesisHash, Is.EqualTo(TestItem.KeccakA));
+        }
+    }
+
+    [TestCase("l1ChainConfigPath", null)]
+    [TestCase("l1ChainConfigPath", "")]
+    [TestCase("l2GenesisHash", null)]
+    [TestCase("l2GenesisHash", "0x00")]
+    [TestCase("l2GenesisHash", "0x0000000000000000000000000000000000000000000000000000000000000000")]
+    public void Load_RollupX_MissingOrInvalidTrustInput_Rejects(string key, string? value)
+    {
+        JsonObject json = Valid();
+        json["profile"] = "rollupx-native";
+        json["l1ChainConfigPath"] = "l1.json";
+        json["l2GenesisHash"] = TestItem.KeccakA.ToString();
+        json[key] = value;
+        using TempPath file = Config(json);
+        Assert.That(() => StreamingOptions.Load(file.Path, Attester()), Throws.TypeOf<FormatException>());
+    }
+
+    [TestCase("l1ChainConfigPath", "l1.json")]
+    [TestCase("l2GenesisHash", "0x0000000000000000000000000000000000000000000000000000000000000001")]
+    public void Load_Rollup0_WithNativeTrustInput_Rejects(string key, string value)
+    {
+        JsonObject json = Valid();
+        json[key] = value;
+        using TempPath file = Config(json);
+        Assert.That(() => StreamingOptions.Load(file.Path, Attester()), Throws.TypeOf<FormatException>());
     }
 
     [TestCase(false, TestName = "Load_ExactFourCopyReservation_IsAccepted")]

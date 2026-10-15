@@ -8,11 +8,13 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Eez.Prove.V2;
 using Nethermind.Eez.Execution;
 using Nethermind.Logging;
 
@@ -24,7 +26,7 @@ internal sealed class StreamingRuntime : IDisposable
     private readonly HttpClient _l1;
     private readonly HttpClient _l2;
     private readonly StreamingBlockExecutor _executor;
-    private readonly StreamingFinalizer _finalizer;
+    private readonly Func<SessionOperation, CancellationToken, Task<Proof>> _finalize;
     private readonly ulong _rollupId;
     private int _disposed;
     internal StreamingOptions Options { get; }
@@ -32,7 +34,7 @@ internal sealed class StreamingRuntime : IDisposable
     internal StreamingSessionRegistry Registry { get; }
 
     private StreamingRuntime(StreamingOptions options, X509Certificate2 certificate, StreamingIdentity identity,
-        HttpClient l1, HttpClient l2, StreamingSessionRegistry registry, StreamingBlockExecutor executor, StreamingFinalizer finalizer, ulong rollupId)
+        HttpClient l1, HttpClient l2, StreamingSessionRegistry registry, StreamingBlockExecutor executor, Func<SessionOperation, CancellationToken, Task<Proof>> finalize, ulong rollupId)
     {
         Options = options;
         _certificate = certificate;
@@ -41,14 +43,16 @@ internal sealed class StreamingRuntime : IDisposable
         _l2 = l2;
         Registry = registry;
         _executor = executor;
-        _finalizer = finalizer;
+        _finalize = finalize;
         _rollupId = rollupId;
     }
 
     internal static StreamingRuntime Load(AttesterOptions options, ISpecProvider specs, AttestationPipeline pipeline,
-        EezAttestationSigner signer, ILogManager logs)
+        EezAttestationSigner signer, ILogManager logs, EezChainRules? chainRules = null)
     {
         StreamingOptions settings = StreamingOptions.Load(options.StreamingConfigPath ?? throw StreamingOptions.Invalid(), options);
+        if ((settings.Profile == StreamingSettlementProfile.RollupXNative) != (chainRules?.IsRollupX == true))
+            throw StreamingOptions.Invalid();
         X509Certificate2? certificate = null;
         HttpClient? l1 = null, l2 = null;
         StreamingSessionRegistry? registry = null;
@@ -75,10 +79,30 @@ internal sealed class StreamingRuntime : IDisposable
             l1 = Source(settings.L1Rpc);
             l2 = Source(settings.L2Rpc);
             registry = new StreamingSessionRegistry(settings.RegistryLimits, settings.SessionLimits, TimeProvider.System);
-            Rollup0ParentAuthorizer authorizer = new(new SettlementRpcReader(l1, TimeSpan.FromSeconds(5)), new SettlementRpcReader(l2, TimeSpan.FromSeconds(5)),
-                settings.L1ChainId, settings.Registry, settings.Manager, pipeline.Context, signer.Address);
+            EezChainRules rules;
+            Func<SessionOperation, CancellationToken, Task<Proof>> finalize;
+            SettlementRpcReader l1Reader = new(l1, TimeSpan.FromSeconds(5));
+            SettlementRpcReader l2Reader = new(l2, TimeSpan.FromSeconds(5));
+            if (settings.Profile == StreamingSettlementProfile.RollupXNative)
+            {
+                rules = chainRules is { IsRollupX: true } ? chainRules : throw StreamingOptions.Invalid();
+                ISpecProvider l1Specs = ChainConfigLoader.LoadL1(settings.L1ChainConfigPath!);
+                if (l1Specs.ChainId != settings.L1ChainId || rules.Schedule!.L1Reference.ChainId != settings.L1ChainId)
+                    throw StreamingOptions.Invalid();
+                RollupXParentAuthorizer authorizer = new(l1Reader, l2Reader, settings.Registry, settings.Manager,
+                    pipeline.Context, signer.Address, rules.Schedule, settings.L2GenesisHash!);
+                finalize = new RollupXStreamingFinalizer(l1Specs, specs, rules, pipeline.Context, signer, authorizer, logs).Finalize;
+            }
+            else
+            {
+                if (chainRules is { IsRollupX: true }) throw StreamingOptions.Invalid();
+                rules = EezChainRules.Rollup0;
+                Rollup0ParentAuthorizer authorizer = new(l1Reader, l2Reader,
+                    settings.L1ChainId, settings.Registry, settings.Manager, pipeline.Context, signer.Address);
+                finalize = new StreamingFinalizer(pipeline, signer, authorizer).Finalize;
+            }
             return new StreamingRuntime(settings, certificate, identity, l1, l2, registry,
-                new StreamingBlockExecutor(specs, EezChainRules.Rollup0, logs), new StreamingFinalizer(pipeline, signer, authorizer), pipeline.Context.RollupId);
+                new StreamingBlockExecutor(specs, rules, logs), finalize, pipeline.Context.RollupId);
         }
         catch (Exception exception)
         {
@@ -92,7 +116,7 @@ internal sealed class StreamingRuntime : IDisposable
     }
 
     internal StreamingTransport CreateTransport(BackendAdmission admission, ILogger<StreamingTransport> logger) =>
-        new(Registry, admission, _executor, Options.TransportLimits, _rollupId, logger, finalize: _finalizer.Finalize);
+        new(Registry, admission, _executor, Options.TransportLimits, _rollupId, logger, finalize: _finalize, settlementProfile: Options.Profile);
 
     internal void ConfigureListeners(IWebHostBuilder host, AttesterOptions options) => host.ConfigureKestrel(kestrel =>
     {

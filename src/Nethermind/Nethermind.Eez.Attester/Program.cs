@@ -92,9 +92,12 @@ public static class Program
             });
             app.MapGrpcService<StreamingProverService>();
         }
-        app.MapGrpcService<ProverService>();
-        ProverService prover = app.Services.GetRequiredService<ProverService>();
-        if (streaming is null) app.Lifetime.ApplicationStopping.Register(() => prover.WaitUntilIdle().GetAwaiter().GetResult());
+        if (streaming?.Options.Profile != StreamingSettlementProfile.RollupXNative)
+        {
+            app.MapGrpcService<ProverService>();
+            ProverService prover = app.Services.GetRequiredService<ProverService>();
+            if (streaming is null) app.Lifetime.ApplicationStopping.Register(() => prover.WaitUntilIdle().GetAwaiter().GetResult());
+        }
         return app;
     }
 
@@ -103,13 +106,15 @@ public static class Program
         TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder());
         ILogManager logManager = SimpleConsoleLogManager.Instance;
         PrivateKey key = AttestationKeyStore.Unlock(options.KeyStoreDirectory, options.PasswordFile, options.AttesterAddress, logManager);
-        ISpecProvider specProvider = ChainConfigLoader.Load(options.ChainConfigPath);
+        (ISpecProvider specProvider, EezChainRules rules) = ChainConfigLoader.LoadProfile(options.ChainConfigPath);
+        if (rules.IsRollupX && options.StreamingConfigPath is null)
+            throw new InvalidOperationException("RollupX attestation requires the native streaming profile");
         EezSettlementContext context = new(options.RollupId, specProvider.ChainId, options.ProofSystem, options.VerificationKey, options.BlockTimeSeconds, options.GasLimit);
 
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         EezAttestationSigner signer = new(key);
         AttestationPipeline pipeline = new(specProvider, context, signer, logManager);
-        using StreamingRuntime? streaming = options.StreamingConfigPath is null ? null : StreamingRuntime.Load(options, specProvider, pipeline, signer, logManager);
+        using StreamingRuntime? streaming = options.StreamingConfigPath is null ? null : StreamingRuntime.Load(options, specProvider, pipeline, signer, logManager, rules);
         if (streaming is null) builder.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(options.ListenAddress, listen => listen.Protocols = HttpProtocols.Http2));
         WebApplication app = Build(builder, options, pipeline, streaming);
 
