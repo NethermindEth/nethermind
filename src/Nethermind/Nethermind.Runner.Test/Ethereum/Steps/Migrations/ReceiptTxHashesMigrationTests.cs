@@ -1,21 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Init.Steps.Migrations;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -38,14 +38,18 @@ public class ReceiptTxHashesMigrationTests
 
         await chain.RunMigration();
 
-        for (ulong number = 1; number <= 3; number++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(chain.Read(number), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(number), RlpBehaviors.Storage)));
+            for (ulong number = 1; number <= 3; number++)
+            {
+                Assert.That(chain.Read(number), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(number), RlpBehaviors.Storage)));
+            }
         }
 
-        chain.ChainLevels.ClearReceivedCalls();
+        byte[] writtenAfterCompletion = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(3), RlpBehaviors.Storage);
+        chain.Store(3, writtenAfterCompletion);
         await chain.RunMigration();
-        chain.ChainLevels.DidNotReceiveWithAnyArgs().LoadLevel(default);
+        Assert.That(chain.Read(3), Is.EqualTo(writtenAfterCompletion));
     }
 
     [Test]
@@ -58,14 +62,17 @@ public class ReceiptTxHashesMigrationTests
         chain.Store(1, withHashes);
         chain.Store(2, full);
         chain.Store(4, withoutBody);
-        chain.BlockStore.GetReceiptRecoveryBlock(4, chain.Blocks[4].Hash!).Returns((ReceiptRecoveryBlock?)null);
+        chain.DeleteBody(4);
 
         await chain.RunMigration();
 
-        Assert.That(chain.Read(1), Is.EqualTo(withHashes));
-        Assert.That(chain.Read(2), Is.EqualTo(full));
-        Assert.That(chain.Read(3), Is.Null);
-        Assert.That(chain.Read(4), Is.EqualTo(withoutBody));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Read(1), Is.EqualTo(withHashes));
+            Assert.That(chain.Read(2), Is.EqualTo(full));
+            Assert.That(chain.Read(3), Is.Null);
+            Assert.That(chain.Read(4), Is.EqualTo(withoutBody));
+        }
     }
 
     [Test]
@@ -111,9 +118,12 @@ public class ReceiptTxHashesMigrationTests
 
         await chain.RunMigration();
 
-        Assert.That(chain.Read(3), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(3), RlpBehaviors.Storage)));
-        Assert.That(chain.Read(2), Is.EqualTo(withoutHashes[2]));
-        Assert.That(chain.Read(1), Is.EqualTo(withoutHashes[1]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Read(3), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(3), RlpBehaviors.Storage)));
+            Assert.That(chain.Read(2), Is.EqualTo(withoutHashes[2]));
+            Assert.That(chain.Read(1), Is.EqualTo(withoutHashes[1]));
+        }
     }
 
     [Test]
@@ -127,7 +137,33 @@ public class ReceiptTxHashesMigrationTests
         await chain.RunMigration();
 
         Assert.That(chain.Read(2), Is.EqualTo(withoutHashes));
-        chain.BlockStore.DidNotReceiveWithAnyArgs().GetReceiptRecoveryBlock(default, default!);
+    }
+
+    [Test]
+    public async Task Adds_transaction_hashes_to_receipts_written_while_disabled_after_it_is_enabled_again()
+    {
+        using Chain chain = new(2);
+        for (ulong number = 1; number <= 2; number++)
+        {
+            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+        }
+
+        await chain.RunMigration();
+        byte[] writtenWhileDisabled = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(2), RlpBehaviors.Storage);
+        chain.Store(2, writtenWhileDisabled);
+        await chain.RunMigration(new ReceiptConfig { StoreTxHashes = false });
+
+        await chain.RunMigration();
+
+        Assert.That(chain.Read(2), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(2), RlpBehaviors.Storage)));
+    }
+
+    [Test]
+    public void Is_registered_as_a_database_migration()
+    {
+        using Chain chain = new(1);
+
+        Assert.That(chain.RegisteredMigrations().OfType<ReceiptTxHashesMigration>().Count(), Is.EqualTo(1));
     }
 
     [Test]
@@ -145,34 +181,38 @@ public class ReceiptTxHashesMigrationTests
     private sealed class Chain : System.IDisposable
     {
         public readonly Block[] Blocks;
-        public readonly IBlockStore BlockStore = Substitute.For<IBlockStore>();
         public readonly IBlockProcessingQueue ProcessingQueue = Substitute.For<IBlockProcessingQueue>();
         public readonly IHistoryPruner HistoryPruner = Substitute.For<IHistoryPruner>();
-        public readonly IChainLevelInfoRepository ChainLevels = Substitute.For<IChainLevelInfoRepository>();
-        private readonly TestMemColumnsDb<ReceiptsColumns> _receiptsDb = new();
-        private readonly IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private readonly ISyncModeSelector _syncModeSelector = Substitute.For<ISyncModeSelector>();
+        private readonly IContainer _container;
+        private readonly IDb _receipts;
 
         public Chain(int length)
         {
+            _syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+            ProcessingQueue.IsEmpty.Returns(true);
+            _container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(new ReceiptConfig()))
+                .AddSingleton(_syncModeSelector)
+                .AddSingleton(ProcessingQueue)
+                .AddSingleton(HistoryPruner)
+                .Build();
+            _receipts = _container.Resolve<IColumnsDb<ReceiptsColumns>>().GetColumnDb(ReceiptsColumns.Blocks);
+
+            IBlockTree blockTree = _container.Resolve<IBlockTree>();
             Blocks = new Block[length + 1];
+            Blocks[0] = Core.Test.Builders.Build.A.Block.WithNumber(0).TestObject;
+            AddToMainChain(blockTree, Blocks[0]);
             for (int number = 1; number <= length; number++)
             {
-                Block block = Core.Test.Builders.Build.A.Block
-                    .WithNumber((ulong)number)
+                Blocks[number] = Core.Test.Builders.Build.A.Block
+                    .WithParent(Blocks[number - 1])
                     .WithTransactions(
                         Core.Test.Builders.Build.A.Transaction.WithNonce((ulong)number).SignedAndResolved().TestObject,
                         Core.Test.Builders.Build.A.Transaction.WithNonce((ulong)number + 100).SignedAndResolved().TestObject)
                     .TestObject;
-                Blocks[number] = block;
-                BlockStore.GetReceiptRecoveryBlock(block.Number, block.Hash!).Returns(new ReceiptRecoveryBlock(block));
-                ChainLevels.LoadLevel(block.Number).Returns(new ChainLevelInfo(true, new BlockInfo(block.Hash!, 0)));
+                AddToMainChain(blockTree, Blocks[number]);
             }
-
-            _blockTree.Head.Returns(Blocks[length]);
-            _blockTree.GetLowestBlock().Returns(1UL);
-            _syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
-            ProcessingQueue.IsEmpty.Returns(true);
         }
 
         public TxReceipt[] ReceiptsWithTxHashes(ulong number) =>
@@ -183,27 +223,32 @@ public class ReceiptTxHashesMigrationTests
         public TxReceipt[] ReceiptsWithoutTxHashes(ulong number) =>
             ReceiptsWithTxHashes(number).Select(static r => new TxReceipt(r) { TxHash = null }).ToArray();
 
-        public void Store(ulong number, byte[] value) => _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Key(number), value);
+        public void Store(ulong number, byte[] value) => _receipts.Set(Key(number), value);
 
-        public byte[] Read(ulong number) => _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Get(Key(number));
+        public byte[] Read(ulong number) => _receipts.Get(Key(number));
+
+        public void DeleteBody(ulong number) => _container.Resolve<IBlockStore>().Delete(number, Blocks[number].Hash!);
+
+        public IEnumerable<IDatabaseMigration> RegisteredMigrations() => _container.Resolve<IEnumerable<IDatabaseMigration>>();
 
         public Task RunMigration() => RunMigration(new ReceiptConfig());
 
+        /// <summary>Runs a new instance over the same databases, as a node restart does.</summary>
         public async Task RunMigration(ReceiptConfig config)
         {
-            await using ReceiptTxHashesMigration migration = new(
-                config,
-                _receiptsDb,
-                BlockStore,
-                _blockTree,
-                ChainLevels,
-                _syncModeSelector,
-                ProcessingQueue,
-                HistoryPruner,
-                LimboLogs.Instance);
+            await using ILifetimeScope scope = _container.BeginLifetimeScope(builder => builder
+                .AddSingleton<IReceiptConfig>(config)
+                .AddSingleton<ReceiptTxHashesMigration>());
+            ReceiptTxHashesMigration migration = scope.Resolve<ReceiptTxHashesMigration>();
 
             await migration.Run(CancellationToken.None);
             await migration.Completion;
+        }
+
+        private static void AddToMainChain(IBlockTree blockTree, Block block)
+        {
+            blockTree.SuggestBlock(block);
+            blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
         }
 
         private byte[] Key(ulong number)
@@ -213,6 +258,6 @@ public class ReceiptTxHashesMigrationTests
             return key;
         }
 
-        public void Dispose() => _receiptsDb.Dispose();
+        public void Dispose() => _container.Dispose();
     }
 }

@@ -592,10 +592,14 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(ReadStoredReceipts(block)[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes));
         RecoveredLogFields recovered = RecoverFirstLogFields(block);
 
-        Assert.That(recovered.TransactionHash, Is.EqualTo(block.Transactions[0].Hash));
-        Assert.That(recovered.Index, Is.EqualTo(0));
-        Assert.That(recovered.BlockNumber, Is.EqualTo(block.Number));
-        Assert.That(recovered.BlockHash, Is.EqualTo(block.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovered.TransactionHash, Is.EqualTo(block.Transactions[0].Hash));
+            Assert.That(recovered.Index, Is.EqualTo(0));
+            Assert.That(recovered.BlockNumber, Is.EqualTo(block.Number));
+            Assert.That(recovered.BlockHash, Is.EqualTo(block.Hash));
+        }
+
         _blockStore.DidNotReceiveWithAnyArgs().GetReceiptRecoveryBlock(default, default!);
     }
 

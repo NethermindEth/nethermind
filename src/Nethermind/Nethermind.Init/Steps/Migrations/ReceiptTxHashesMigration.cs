@@ -55,6 +55,7 @@ public sealed class ReceiptTxHashesMigration(
     private readonly CancellationTokenSource _stop = new();
     private CancellationTokenSource? _linked;
     private Task _migration = Task.CompletedTask;
+    private int _disposed;
 
     internal Task Completion => _migration;
 
@@ -66,6 +67,11 @@ public sealed class ReceiptTxHashesMigration(
             _linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stop.Token);
             CancellationToken token = _linked.Token;
             _migration = Task.Run(() => RunInBackground(token), CancellationToken.None);
+        }
+        else
+        {
+            // Receipts written while the pass is off have no hashes, so the next enabled run starts from the head again.
+            _metadata.Remove(NextBlockKey.Bytes);
         }
 
         return Task.CompletedTask;
@@ -89,6 +95,8 @@ public sealed class ReceiptTxHashesMigration(
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
         await _stop.CancelAsync();
         await _migration;
         _linked?.Dispose();

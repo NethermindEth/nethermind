@@ -125,13 +125,20 @@ namespace Nethermind.Core.Test.Encoding
 
             byte[] encoded = decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage);
 
-            Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes));
-            Assert.That(encoded, Has.Length.EqualTo(decoder.GetLength(receipts, RlpBehaviors.Storage)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes));
+                Assert.That(encoded, Has.Length.EqualTo(decoder.GetLength(receipts, RlpBehaviors.Storage)));
+            }
+
             RlpReader reader = new(encoded);
             Assert.That(ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes), Is.True);
-            for (int i = 0; i < count; i++)
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(txHashes.Slice(i * Hash256.Size, Hash256.Size).ToArray(), Is.EqualTo(receipts[i].TxHash!.BytesToArray()));
+                for (int i = 0; i < count; i++)
+                {
+                    Assert.That(txHashes.Slice(i * Hash256.Size, Hash256.Size).ToArray(), Is.EqualTo(receipts[i].TxHash!.BytesToArray()));
+                }
             }
         }
 
@@ -153,9 +160,12 @@ namespace Nethermind.Core.Test.Encoding
 
             byte[] encoded = ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(receipts, RlpBehaviors.Storage);
 
-            Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
-            Assert.That(encoded, Has.Length.EqualTo(ReceiptArrayStorageDecoder.WithoutTxHashes.GetLength(receipts, RlpBehaviors.Storage)));
-            Assert.That(encoded, Is.EqualTo(ReceiptArrayStorageDecoder.Instance.EncodeAsBytes(WithoutTxHashes(receipts), RlpBehaviors.Storage)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
+                Assert.That(encoded, Has.Length.EqualTo(ReceiptArrayStorageDecoder.WithoutTxHashes.GetLength(receipts, RlpBehaviors.Storage)));
+                Assert.That(encoded, Is.EqualTo(ReceiptArrayStorageDecoder.Instance.EncodeAsBytes(WithoutTxHashes(receipts), RlpBehaviors.Storage)));
+            }
         }
 
         [Test]
@@ -167,10 +177,13 @@ namespace Nethermind.Core.Test.Encoding
             byte[] withoutHashes = decoder.EncodeAsBytes(WithoutTxHashes(receipts), RlpBehaviors.Storage);
 
             decoder.Decode(withHashes).AssertEquivalentTo(decoder.Decode(withoutHashes));
-            Assert.That(decoder.DecodeAllowingMissing(withHashes), Has.Length.EqualTo(receipts.Length));
-            Assert.That(ReceiptArrayStorageDecoder.IsCompactEncoding(withHashes), Is.True);
-            Assert.That(ReceiptArrayStorageDecoder.IsCompactEncodingWithoutTxHashes(withHashes), Is.False);
-            Assert.That(ReceiptArrayStorageDecoder.IsCompactEncodingWithoutTxHashes(withoutHashes), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoder.DecodeAllowingMissing(withHashes), Has.Length.EqualTo(receipts.Length));
+                Assert.That(ReceiptArrayStorageDecoder.IsCompactEncoding(withHashes), Is.True);
+                Assert.That(ReceiptArrayStorageDecoder.IsCompactEncodingWithoutTxHashes(withHashes), Is.False);
+                Assert.That(ReceiptArrayStorageDecoder.IsCompactEncodingWithoutTxHashes(withoutHashes), Is.True);
+            }
         }
 
         [Test]
