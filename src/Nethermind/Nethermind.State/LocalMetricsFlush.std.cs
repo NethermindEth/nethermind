@@ -7,8 +7,6 @@ using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.State;
 
-#pragma warning disable NETH003 // File name does not match the contained type
-
 /// <summary>
 /// Folds a world-state scope's <see cref="LocalMetrics"/> accumulator into the global
 /// <see cref="DbMetrics"/> / <see cref="EvmMetrics"/> counters and resets it.

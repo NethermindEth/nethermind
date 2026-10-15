@@ -68,6 +68,7 @@ public enum Instruction : byte
     BLOBHASH = 0x49,
     BLOBBASEFEE = 0x4a,
     SLOTNUM = 0x4b,
+    SETCODEFROM = 0x4c, // EIP-8298 (opcode provisional; TBD in spec)
 
     POP = 0x50,
     MLOAD = 0x51,
@@ -188,7 +189,10 @@ public enum Instruction : byte
     RETURN = 0xf3,
     DELEGATECALL = 0xf4,
     CREATE2 = 0xf5,
+    // EIP-8360 leaves the opcode TBD; 0xf6 is provisional.
+    TCREATE = 0xf6,
     STATICCALL = 0xfa,
+    PAY = 0xfc, // EIP-5920
     REVERT = 0xfd,
     INVALID = 0xfe,
     SELFDESTRUCT = 0xff

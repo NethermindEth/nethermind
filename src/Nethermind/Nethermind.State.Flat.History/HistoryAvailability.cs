@@ -164,8 +164,19 @@ public sealed class HistoryAvailability
     {
         Span<byte> key = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);
-        byte[]? capturedRoot = _availableBlocks.Get(key);
-        return capturedRoot is { Length: RootBytes } && stateRoot == new ValueHash256(capturedRoot);
+        Span<byte> capturedRoot = stackalloc byte[RootBytes];
+        int length;
+        try
+        {
+            length = _availableBlocks.Get(key, capturedRoot);
+        }
+        catch (ArgumentException)
+        {
+            // Only a block-number key holding more than a root, which no writer produces: fail closed, as for any other length.
+            return false;
+        }
+
+        return length == RootBytes && capturedRoot.SequenceEqual(stateRoot.Bytes);
     }
 
     /// <summary>The raw stamped format byte, or <c>null</c> for a fresh DB.</summary>

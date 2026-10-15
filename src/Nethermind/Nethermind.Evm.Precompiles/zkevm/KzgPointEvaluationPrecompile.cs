@@ -9,6 +9,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class KzgPointEvaluationPrecompile
 {
+    public static Address Address => field ??= Address.FromNumber(0x0a);
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => RunInternal(inputData);
 
     private static partial string DescribeFailedVerification(ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> proof) =>

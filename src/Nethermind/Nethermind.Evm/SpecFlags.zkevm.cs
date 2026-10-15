@@ -48,6 +48,9 @@ internal static partial class SpecFlags
     public const bool ConstEip8279 = false;
 
     /// <inheritdoc cref="ConstEip150"/>
+    public const bool ConstEip8360 = false;
+
+    /// <inheritdoc cref="ConstEip150"/>
     public const bool ConstNetGasMetering = true;
 
     public static bool Eip150(IReleaseSpec spec) => ConstEip150;
@@ -69,6 +72,8 @@ internal static partial class SpecFlags
     public static bool Eip8141(IReleaseSpec spec) => ConstEip8141;
 
     public static bool Eip8279(IReleaseSpec spec) => ConstEip8279;
+
+    public static bool Eip8360(IReleaseSpec spec) => ConstEip8360;
 
     public static bool NetGasMetering(IReleaseSpec spec) => ConstNetGasMetering;
 
@@ -110,6 +115,7 @@ internal static partial class SpecFlags
         Check(spec.IsEip7906Enabled, ConstEip7906, "EIP-7906");
         Check(spec.IsEip8141Enabled, ConstEip8141, "EIP-8141");
         Check(spec.IsEip8279Enabled, ConstEip8279, "EIP-8279");
+        Check(spec.IsEip8360Enabled, ConstEip8360, "EIP-8360");
         Check(spec.UseNetGasMetering, ConstNetGasMetering, "NetGasMetering");
         Follows(spec.IsEip2780Enabled, spec.IsEip8038Enabled, "EIP-2780", "EIP-8038");
         Follows(spec.IsEip7708Enabled, spec.IsEip8038Enabled, "EIP-7708", "EIP-8038");
