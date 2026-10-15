@@ -161,7 +161,7 @@ public partial class EthRpcModuleTests
         // keeps accepting a lone cap, as its spec fixtures expect.
         JToken? error = JToken.Parse(response)["error"];
         if (method == "eth_call")
-            Assert.That(error?["message"]?.Value<string>(), Does.Contain(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction), response);
+            Assert.That(error?["message"]?.Value<string>(), Does.Contain(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes), response);
         else
             Assert.That(error, Is.Null, response);
     }
@@ -1007,6 +1007,30 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
+    }
+
+    /// <summary>
+    /// Only eth_simulateV1 with <c>validation: false</c> lifts the EIP-7825 execution gas cap; eth_call keeps it.
+    /// </summary>
+    [Test]
+    public async Task Eth_call_keeps_the_execution_gas_cap_for_gas_above_it()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        ulong gas = Eip7825Constants.DefaultTxGasLimitCap * 2;
+        ctx.Test.RpcConfig.GasCap = gas * 2;
+
+        Address probe = EthRpcSimulateTestsBase.GasProbeContractAddress;
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"{{probe}}","gas":"0x{{gas:X}}"}""")!;
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{probe}}}":{"code":"{{{EthRpcSimulateTestsBase.GasProbeBytecode}}}"}}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>($$"""{"gasLimit":"0x{{gas:X}}"}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
+
+        string? result = JToken.Parse(serialized)["result"]?.Value<string>();
+        Assert.That(result, Is.Not.Null, serialized);
+        Assert.That(new UInt256(Bytes.FromHexString(result!), isBigEndian: true), Is.LessThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap));
     }
 
     /// <summary>

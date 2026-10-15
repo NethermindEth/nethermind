@@ -15,6 +15,7 @@ public static class RpcTransactionErrors
     public const string InvalidBlobVersionedHashVersion = "blob versioned hash version must be 0x01";
     public const string MissingToInBlobTx = "missing \"to\" in blob transaction";
     public const string ZeroMaxFeePerBlobGas = "maxFeePerBlobGas, if specified, must be non-zero";
+    public const string BlobFeeCapWithoutBlobHashes = "maxFeePerBlobGas specified without blobVersionedHashes";
 
     public static string MaxFeePerGasSmallerThanMaxPriorityFeePerGas(UInt256? maxFeePerGas, UInt256? maxPriorityFeePerGas)
         => $"maxFeePerGas ({maxFeePerGas}) < maxPriorityFeePerGas ({maxPriorityFeePerGas})";

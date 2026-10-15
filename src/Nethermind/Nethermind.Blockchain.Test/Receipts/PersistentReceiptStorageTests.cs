@@ -328,7 +328,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
-    private void CreateStorage(bool captureHealthy = true)
+    private void CreateStorage(bool captureHealthy = true, bool configuredDecoder = false)
     {
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
         IStateHistoryCaptureStatus captureStatus = Substitute.For<IStateHistoryCaptureStatus>();
@@ -341,7 +341,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             _blockTree,
             _blockStore,
             _receiptConfig,
-            _decoder,
+            configuredDecoder ? null : _decoder,
             logManager: _logManager,
             historyCaptureStatus: captureStatus
         )
@@ -611,6 +611,57 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(receiptStructRef.Logs, Is.Null.Or.Empty);
 
         Assert.That(iterator.TryGetNext(out _), Is.False);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Log_recovery_takes_the_stored_transaction_hash_without_reading_the_body()
+    {
+        Assume.That(useCompactReceipts, "Only compact receipts store the transaction hashes.");
+        (Block block, TxReceipt[] _) = InsertBlock();
+        _storage.ClearCache();
+        _blockStore.ClearReceivedCalls();
+
+        Assert.That(ReadStoredReceipts(block)[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes));
+        RecoveredLogFields recovered = RecoverFirstLogFields(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovered.TransactionHash, Is.EqualTo(block.Transactions[0].Hash));
+            Assert.That(recovered.Index, Is.EqualTo(0));
+            Assert.That(recovered.BlockNumber, Is.EqualTo(block.Number));
+            Assert.That(recovered.BlockHash, Is.EqualTo(block.Hash));
+        }
+
+        _blockStore.DidNotReceiveWithAnyArgs().GetReceiptRecoveryBlock(default, default!);
+    }
+
+    [TestCase(true, ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes)]
+    [TestCase(false, ReceiptArrayStorageDecoder.CompactEncoding)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Stores_the_transaction_hashes_only_when_configured(bool storeTxHashes, int marker)
+    {
+        Assume.That(useCompactReceipts, "Only compact receipts store the transaction hashes.");
+        _receiptConfig.StoreTxHashes = storeTxHashes;
+        CreateStorage(configuredDecoder: true);
+
+        (Block block, TxReceipt[] _) = InsertBlock();
+
+        Assert.That(ReadStoredReceipts(block)[0], Is.EqualTo(marker));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Log_recovery_reads_the_body_for_compact_receipts_without_transaction_hashes()
+    {
+        Assume.That(useCompactReceipts, "Only compact receipts store the transaction hashes.");
+        (Block block, TxReceipt[] receipts) = InsertBlock();
+        _storage.ClearCache();
+        TxReceipt[] withoutHashes = receipts.Select(static r => new TxReceipt(r) { TxHash = null }).ToArray();
+        WriteStoredReceipts(block, _decoder.EncodeAsBytes(withoutHashes, RlpBehaviors.Storage));
+        _blockStore.ClearReceivedCalls();
+
+        Assert.That(ReadStoredReceipts(block)[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
+        Assert.That(RecoverFirstLogFields(block).TransactionHash, Is.EqualTo(block.Transactions[0].Hash));
+        _blockStore.Received().GetReceiptRecoveryBlock(block.Number, block.Hash!);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1128,6 +1179,36 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             receipts = [Build.A.Receipt.WithCalculatedBloom().TestObject];
         }
         return (block, receipts);
+    }
+
+    private readonly record struct RecoveredLogFields(Hash256? TransactionHash, int Index, ulong BlockNumber, Hash256 BlockHash);
+
+    private RecoveredLogFields RecoverFirstLogFields(Block block)
+    {
+        Assert.That(_storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator), Is.True);
+        try
+        {
+            Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
+            iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? transactionHash);
+            return new RecoveredLogFields(transactionHash, receipt.Index, receipt.BlockNumber, receipt.BlockHash.ToCommitment());
+        }
+        finally
+        {
+            iterator.Dispose();
+        }
+    }
+
+    private byte[] ReadStoredReceipts(Block block) =>
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Get(StoredReceiptsKey(block))!;
+
+    private void WriteStoredReceipts(Block block, byte[] value) =>
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(StoredReceiptsKey(block), value);
+
+    private static byte[] StoredReceiptsKey(Block block)
+    {
+        byte[] key = new byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(block.Number, block.Hash!, key);
+        return key;
     }
 
     private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, ulong? headNumber = null, WriteFlags writeFlags = WriteFlags.None)
