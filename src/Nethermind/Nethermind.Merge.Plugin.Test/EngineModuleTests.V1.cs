@@ -505,6 +505,14 @@ public partial class EngineModuleTests
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
         IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
         Assert.That(badBlockStore.GetAll().Single().Number, Is.EqualTo(blockNumber));
+
+        // paris.md: latestValidHash names a fully validated ancestor or is null; the unknown parent is neither.
+        ResultWrapper<PayloadStatusV1> resent = await rpc.engine_newPayloadV1(payload);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resent.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(resent.Data.LatestValidHash, Is.Null);
+        }
     }
 
     [Test]
@@ -539,6 +547,18 @@ public partial class EngineModuleTests
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
         IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
         Assert.That(badBlockStore.GetAll().Single().Number, Is.EqualTo(childNumber));
+
+        // paris.md: latestValidHash names a fully validated ancestor or is null; the parent was never executed.
+        ResultWrapper<PayloadStatusV1> resent = await rpc.engine_newPayloadV1(childPayload);
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoice = await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(childPayload.BlockHash, Keccak.Zero, Keccak.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resent.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(resent.Data.LatestValidHash, Is.Null);
+            Assert.That(forkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(forkchoice.Data.PayloadStatus.LatestValidHash, Is.Null);
+        }
     }
 
     [Test]
@@ -560,6 +580,8 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
+        // A post-merge executed parent: genesis is a terminal block and would be reported as the zero hash.
+        await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
         getPayloadResult.ReceiptsRoot = TestItem.KeccakA;
         Block? block = getPayloadResult.TryGetBlock().Data;
@@ -568,6 +590,15 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
         Assert.That(chain.BlockFinder.SearchForBlock(new BlockParameter(getPayloadResult.BlockHash)).IsError, Is.True);
+
+        // paris.md: the executed parent is the most recent fully validated ancestor, on the first answer and on a re-send.
+        ResultWrapper<PayloadStatusV1> resent = await rpc.engine_newPayloadV1(getPayloadResult);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executePayloadResult.Data.LatestValidHash, Is.EqualTo(getPayloadResult.ParentHash));
+            Assert.That(resent.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(resent.Data.LatestValidHash, Is.EqualTo(getPayloadResult.ParentHash));
+        }
     }
 
     [Test]
