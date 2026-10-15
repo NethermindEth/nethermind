@@ -170,7 +170,7 @@ public sealed class HistoryReader
 
             // An over-cap destruct left no per-slot rows, so fail closed rather than omit slots.
             bool poisoned = clearsCache is not null
-                ? clearsCache.TryGetPoisonedClearAbove(addrHash, _storageClears, block, out ulong poisonBlock)
+                ? clearsCache.TryGetPoisonedClearAbove(addrHash, _storageClears, _availability, block, out ulong poisonBlock)
                 : _storageClears.TryGetPoisonedClearAbove(addrHash.Bytes, block, out poisonBlock);
             if (poisoned && rowBlock > poisonBlock)
                 throw new StateUnavailableException(

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -192,7 +193,7 @@ public class BlockchainBridgeTests
     public void Call_computes_the_hash_of_other_types()
     {
         // Stands in for a plugin's decoder: core registers none for deposit transactions.
-        TxDecoder.Instance.RegisterDecoder(TxType.DepositTx, new EIP1559TxDecoder<Transaction>());
+        TxDecoder.Instance.RegisterDecoder(TxType.DepositTx, new EIP1559TxDecoder());
         try
         {
             Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
@@ -264,6 +265,68 @@ public class BlockchainBridgeTests
             Assert.That(callOutput.InputError, Is.True, "the RPC error names the gas limit");
             Assert.That(callOutput.GasSpent, Is.EqualTo(50_000ul), "the requested gas limit");
         }
+    }
+
+    [Test]
+    public void Override_routing_cases_cover_all_block_fields() =>
+        Assert.That(Enum.GetNames<OverrideInput>(), Is.SupersetOf(typeof(BlockOverride).GetProperties()
+            .Where(static property => property.CanWrite)
+            .Select(static property => property.Name)));
+
+    [TestCaseSource(nameof(OverrideRoutingCases))]
+    public void Override_processing_uses_exclusive_source_only_when_fields_are_supplied(OverrideCall call, OverrideInput input)
+    {
+        IShareableTxProcessorSource shared = Substitute.For<IShareableTxProcessorSource>();
+        IShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents> exclusive =
+            Substitute.For<IShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents>>();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(_blockTree)
+            .AddSingleton<IReceiptFinder>(_receiptStorage)
+            .AddSingleton(Substitute.For<ILogFinder>())
+            .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
+            .AddSingleton(shared)
+            .AddSingleton(exclusive)
+            .AddScoped<SimulateReadOnlyBlocksProcessingEnvPool>(ctx => new(ctx.Resolve<ISimulateReadOnlyBlocksProcessingEnvFactory>().Create, 1))
+            .AddScoped<BlockchainBridge>()
+            .Build();
+        BlockOverride? blockOverride = input switch
+        {
+            OverrideInput.None or OverrideInput.State or OverrideInput.BlobFeeArgument => null,
+            OverrideInput.Number => new() { Number = 0 },
+            OverrideInput.PrevRandao => new() { PrevRandao = Hash256.Zero },
+            OverrideInput.Time => new() { Time = 0 },
+            OverrideInput.GasLimit => new() { GasLimit = 0 },
+            OverrideInput.FeeRecipient => new() { FeeRecipient = Address.Zero },
+            OverrideInput.BaseFeePerGas => new() { BaseFeePerGas = UInt256.Zero },
+            OverrideInput.BlobBaseFee => new() { BlobBaseFee = UInt256.Zero },
+            _ => new(),
+        };
+        Dictionary<Address, AccountOverride>? stateOverride = input == OverrideInput.State
+            ? new() { [TestItem.AddressA] = new() { Balance = UInt256.One } }
+            : null;
+        UInt256? blobBaseFeeOverride = input == OverrideInput.BlobFeeArgument ? UInt256.Zero : null;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
+        Transaction tx = new() { GasLimit = 50_000 };
+        IBlockchainBridge bridge = container.Resolve<BlockchainBridge>();
+
+        switch (call)
+        {
+            case OverrideCall.Call:
+                bridge.Call(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, CancellationToken.None);
+                break;
+            case OverrideCall.EstimateGas:
+                bridge.EstimateGas(header, tx, 1, stateOverride, blobBaseFeeOverride, blockOverride, 0, CancellationToken.None);
+                break;
+            case OverrideCall.EstimateFrameGas:
+                bridge.EstimateFrameGas(header, tx, [], [], 0, 1, stateOverride, blockOverride, CancellationToken.None, out _);
+                break;
+        }
+
+        bool hasOverrides = input is not (OverrideInput.None or OverrideInput.Empty);
+        shared.Received(hasOverrides ? 0 : 1).TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>());
+        exclusive.Received(hasOverrides ? 1 : 0).TryBuildAndOverride(
+            Arg.Any<BlockHeader?>(), stateOverride, blockOverride, out Arg.Any<Scope<BlockchainBridge.BlockProcessingComponents>?>());
     }
 
     [Test]
@@ -1168,15 +1231,15 @@ public class BlockchainBridgeTests
         Assert.That(_blockchainBridge.HasStateForBlock(header), Is.False);
     }
 
-    // A transaction's gas limit funds both EIP-8037 dimensions, so the request cap depletes by their sum
-    // while the two block budgets each track one dimension.
-    [TestCase(50_000ul, 30_000ul, 120_000ul, 30_000ul, 30_000ul, TestName = "Simulate adapter depletes the request cap by both gas dimensions")]
-    [TestCase(80_000ul, 60_000ul, 60_000ul, 0ul, 0ul, TestName = "Simulate adapter accepts exact block and state budgets")]
-    [TestCase(80_001ul, 60_001ul, 59_998ul, 0ul, 0ul, TestName = "Simulate adapter saturates block budgets exceeded by one")]
-    [TestCase(ulong.MaxValue - 1, 60_000ul, 0ul, 0ul, 0ul, TestName = "Simulate adapter saturates the request cap instead of wrapping")]
+    // The request cap depletes by the receipt gas used, while the two block budgets each track one EIP-8037 dimension.
+    [TestCase(50_000ul, 30_000ul, 10_000ul, 190_000ul, 30_000ul, 30_000ul, TestName = "Simulate adapter depletes the request cap by the receipt gas used")]
+    [TestCase(80_000ul, 60_000ul, 10_000ul, 190_000ul, 0ul, 0ul, TestName = "Simulate adapter accepts exact block and state budgets")]
+    [TestCase(80_001ul, 60_001ul, 10_000ul, 190_000ul, 0ul, 0ul, TestName = "Simulate adapter saturates block budgets exceeded by one")]
+    [TestCase(ulong.MaxValue - 1, 60_000ul, ulong.MaxValue - 1, 0ul, 0ul, 0ul, TestName = "Simulate adapter saturates the request cap and block budgets instead of wrapping")]
     public void Simulate_adapter_uses_block_gas_used_for_budgets(
         ulong blockGasUsed,
         ulong blockStateGasUsed,
+        ulong spentGas,
         ulong expectedTotalGasLeft,
         ulong expectedBlockGasLeft,
         ulong expectedBlockStateGasLeft)
@@ -1188,23 +1251,23 @@ public class BlockchainBridgeTests
             BlockStateGasLeft = 60_000,
             Validate = true,
         };
-        simulateRequestState.SetTxsWithExplicitGas(
+        simulateRequestState.Calls =
             [
                 new()
                 {
                     HadGasLimitInRequest = true,
                     Transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject
                 }
-            ]);
+            ];
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
         processor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
             .Returns(ci =>
             {
                 Transaction tx = ci.Arg<Transaction>();
-                tx.SpentGas = 10_000;
+                tx.SpentGas = spentGas;
                 tx.BlockGasUsed = blockGasUsed;
-                GasConsumed gasConsumed = new(10_000, blockGasUsed, blockGasUsed, blockStateGasUsed);
+                GasConsumed gasConsumed = new(spentGas, blockGasUsed, blockGasUsed, blockStateGasUsed);
                 ci.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, gasConsumed, [], []);
                 return TransactionResult.Ok;
             });
@@ -1236,12 +1299,12 @@ public class BlockchainBridgeTests
             BlockStateGasLeft = blockStateGasLimit,
             Validate = false,
         };
-        simulateRequestState.SetTxsWithExplicitGas(
+        simulateRequestState.Calls =
             [
                 new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
                 new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
                 new() { HadGasLimitInRequest = false, Transaction = new Transaction() }
-            ]);
+            ];
 
         List<ulong> executedGasLimits = [];
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
@@ -1281,11 +1344,11 @@ public class BlockchainBridgeTests
             BlockStateGasLeft = 300_000,
             Validate = false,
         };
-        simulateRequestState.SetTxsWithExplicitGas(
+        simulateRequestState.Calls =
             [
                 new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
                 new() { HadGasLimitInRequest = false, Transaction = new Transaction() }
-            ]);
+            ];
 
         List<ulong> executedGasLimits = [];
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
@@ -1295,6 +1358,7 @@ public class BlockchainBridgeTests
                 Transaction tx = ci.Arg<Transaction>();
                 executedGasLimits.Add(tx.GasLimit);
                 ulong blockGasUsed = executedGasLimits.Count == 1 ? 100_000UL : 0;
+                tx.SpentGas = blockGasUsed;
                 tx.BlockGasUsed = blockGasUsed;
                 GasConsumed gasConsumed = new(blockGasUsed, blockGasUsed, blockGasUsed);
                 ci.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, gasConsumed, [], []);
@@ -1302,7 +1366,7 @@ public class BlockchainBridgeTests
             });
 
         SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
-        Transaction first = new() { GasLimit = 200_000 };
+        Transaction first = new() { GasLimit = 80_000 };
         Transaction second = new() { GasLimit = 500_000 };
         using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(first, second);
         ExecuteWithReceiptsTracer(adapter, receiptsTracer, first);
@@ -1310,7 +1374,7 @@ public class BlockchainBridgeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(executedGasLimits, Is.EqualTo(new ulong[] { 200_000, 0 }));
+            Assert.That(executedGasLimits, Is.EqualTo(new ulong[] { 80_000, 0 }));
             Assert.That(simulateRequestState.TotalGasLeft, Is.EqualTo(200_000));
             Assert.That(simulateRequestState.BlockGasLeft, Is.Zero);
         }
@@ -1334,39 +1398,119 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void Simulate_adapter_saturates_block_gas_left_when_explicit_gas_exceeds_it()
+    public void Simulate_adapter_rejects_explicit_gas_above_remaining_block_gas([Values] bool validate)
     {
         SimulateRequestState simulateRequestState = new()
         {
             TotalGasLeft = 300_000,
             BlockGasLeft = 80_000,
-            Validate = false,
+            Validate = validate,
         };
-        simulateRequestState.SetTxsWithExplicitGas(
-            [
-                new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
-                new() { HadGasLimitInRequest = false, Transaction = new Transaction() }
-            ]);
+        simulateRequestState.Calls = [new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 80_001, Transaction = new Transaction() }];
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        processor.Trace(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(ci =>
-            {
-                ci.Arg<Transaction>().BlockGasUsed = 100_000;
-                return TransactionResult.Ok;
-            });
-
         SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
-        Transaction explicitGas = new() { GasLimit = 200_000 };
-        using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(explicitGas);
-        ExecuteWithReceiptsTracer(adapter, receiptsTracer, explicitGas);
-        Transaction omittedGas = new() { GasLimit = 500_000 };
-        adapter.PrepareForInclusionCheck(omittedGas, ulong.MaxValue);
+        Transaction explicitGas = new() { GasLimit = 80_001 };
 
-        using (Assert.EnterMultipleScope())
+        InvalidTransactionException exception = Assert.Throws<InvalidTransactionException>(
+            () => adapter.PrepareForInclusionCheck(explicitGas, ulong.MaxValue))!;
+        Assert.That(exception.Reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
+    }
+
+    // With validation, EIP-8037 reserves at most TX_MAX_GAS_LIMIT of execution gas, so a full cap left in the execution
+    // budget no longer binds the default; without validation the whole gas limit is execution gas.
+    [TestCase(20_000_000ul, true, 40_000_000ul, TestName = "Simulate adapter defaults strict gas to the state budget past a full execution cap")]
+    [TestCase(20_000_000ul, false, 20_000_000ul, TestName = "Simulate adapter defaults non-strict gas to the smaller budget")]
+    [TestCase(10_000_000ul, true, 10_000_000ul, TestName = "Simulate adapter defaults strict gas to the smaller budget below a full execution cap")]
+    public void Simulate_adapter_defaults_omitted_gas_to_block_gas_available(ulong blockGasLeft, bool validate, ulong expectedGasLimit)
+    {
+        SimulateRequestState simulateRequestState = new()
         {
-            Assert.That(simulateRequestState.BlockGasLeft, Is.Zero);
-            Assert.That(omittedGas.GasLimit, Is.Zero);
+            TotalGasLeft = 100_000_000,
+            BlockGasLeft = blockGasLeft,
+            Validate = validate,
+        };
+        simulateRequestState.Calls = [new() { HadGasLimitInRequest = false, Transaction = new Transaction() }];
+
+        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
+        adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Amsterdam.Instance, UInt256.Zero));
+        Transaction omittedGas = new();
+        adapter.PrepareForInclusionCheck(omittedGas, 40_000_000);
+
+        Assert.That(omittedGas.GasLimit, Is.EqualTo(expectedGasLimit));
+    }
+
+    // Two empty unsigned frames reserve about 612,950 execution and 600,000 state gas: both fit a 1,000,000-gas
+    // block although their summed gas limit (1,200,000) does not.
+    [TestCase(300_000ul, false, TestName = "Simulate adapter admits a frame transaction whose reservations fit the block")]
+    [TestCase(500_000ul, true, TestName = "Simulate adapter rejects a frame transaction whose execution reservation exceeds the block")]
+    public void Simulate_adapter_checks_frame_transactions_by_their_block_gas_reservations(ulong frameExecutionGas, bool expectRejected)
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 10_000_000,
+            BlockGasLeft = 1_000_000,
+            Validate = true,
+        };
+        simulateRequestState.Calls = [new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 2 * (frameExecutionGas + 300_000), Transaction = new Transaction() }];
+
+        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
+        adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Eip8141Prototype.Instance, UInt256.Zero));
+        Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).WithSenderAddress(TestItem.AddressA).TestObject;
+        frameTx.Frames =
+        [
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, frameExecutionGas, 300_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, frameExecutionGas, 300_000, UInt256.Zero, default)
+        ];
+        frameTx.GasLimit = 2 * (frameExecutionGas + 300_000);
+
+        if (expectRejected)
+        {
+            TransactionResult reason = Assert.Throws<InvalidTransactionException>(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000))!.Reason;
+            Assert.That(reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
+            Assert.That(reason.ErrorDescription, Does.EndWith("remaining: 1000000, required: 1012950"));
+        }
+        else
+        {
+            Assert.DoesNotThrow(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000));
         }
     }
+
+    [Test]
+    public void Simulate_adapter_leaves_a_frame_transaction_without_computable_reservations_to_the_processor()
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 10_000_000,
+            BlockGasLeft = 1_000_000,
+            Validate = true,
+        };
+        simulateRequestState.Calls = [new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 1_000_000, Transaction = new Transaction() }];
+
+        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
+        adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Eip8141Prototype.Instance, UInt256.Zero));
+        Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).WithSenderAddress(TestItem.AddressA).WithGasLimit(1_000_000).TestObject;
+        frameTx.Frames =
+        [
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, ulong.MaxValue, 0, UInt256.Zero, default),
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, 1, 0, UInt256.Zero, default)
+        ];
+
+        Assert.DoesNotThrow(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000));
+    }
+
+    private static IEnumerable<TestCaseData> OverrideRoutingCases()
+    {
+        foreach (OverrideCall call in Enum.GetValues<OverrideCall>())
+        {
+            foreach (OverrideInput input in Enum.GetValues<OverrideInput>())
+            {
+                if (call != OverrideCall.EstimateFrameGas || input != OverrideInput.BlobFeeArgument)
+                    yield return new TestCaseData(call, input);
+            }
+        }
+    }
+
+    public enum OverrideCall { Call, EstimateGas, EstimateFrameGas }
+    public enum OverrideInput { None, Empty, Number, PrevRandao, Time, GasLimit, FeeRecipient, BaseFeePerGas, BlobBaseFee, State, BlobFeeArgument }
 }

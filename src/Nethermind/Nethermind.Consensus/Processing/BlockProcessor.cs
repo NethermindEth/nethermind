@@ -57,11 +57,10 @@ public partial class BlockProcessor(
     private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() =>
         new(
             beaconBlockRootHandler,
-            blockHashStore,
             balManager
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
-        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, stateProvider));
+        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private ISystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -163,8 +162,7 @@ public partial class BlockProcessor(
         BlockHeader header = block.Header;
 
         // EIP-7668: set before tracing so receipts are built with the zero-length bloom instead of computing one.
-        // Genesis keeps the bloom it was declared with.
-        if (spec.IsEip7668Enabled && !block.IsGenesis) header.Bloom = Bloom.ZeroLength;
+        if (spec.IsEip7668Enabled) header.Bloom = Bloom.ZeroLength;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
@@ -177,10 +175,6 @@ public partial class BlockProcessor(
         _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))
-        {
-            _systemContractHandler.InstallPredeploys(spec);
-        }
         CommitState(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
@@ -203,12 +197,18 @@ public partial class BlockProcessor(
     protected TxReceipt[] FinalizeBlock<TComputesCommitments>(Block block, IBlockTracer blockTracer, IReleaseSpec spec, TxReceipt[] receipts)
         where TComputesCommitments : struct, IFlag
     {
+        // EIP-8116: execution relies on running totals, so convert to per-transaction gas once before the receipts root.
+        if (spec.IsEip8116Enabled)
+        {
+            receipts.SetEip8116GasUsed();
+        }
+
         BlockHeader header = block.Header;
 
         using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         (Bloom BlockBloom, Hash256 ReceiptsRoot) receiptResults = default;
         // EIP-7668: ProcessBlock set the zero-length header bloom and the receipts were built with it, so no blooms are computed.
-        bool bloomsRemoved = spec.IsEip7668Enabled && !block.IsGenesis;
+        bool bloomsRemoved = spec.IsEip7668Enabled;
         bool inBackground = TComputesCommitments.IsActive && ShouldCalculateReceiptsInBackground(receipts);
         // Receipts are immutable apart from their blooms now; overlap with the first state commit too.
         using ParallelUnbalancedWork.BackgroundWork? bloomWork = inBackground && !bloomsRemoved ? StartBloomComputation(receipts) : null;

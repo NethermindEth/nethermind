@@ -21,8 +21,6 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
     // FIELD_ELEMENTS_PER_BLOB and BLS_MODULUS as padded 32 byte big endian values
     private static readonly byte[] _successResult = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 0, 115, 237, 167, 83, 41, 157, 125, 72, 51, 57, 216, 8, 9, 161, 216, 5, 83, 189, 164, 2, 255, 254, 91, 254, 255, 255, 255, 255, 0, 0, 0, 1];
 
-    public static Address Address { get; } = Address.FromNumber(0x0a);
-
     public string Name => "KZG_POINT_EVALUATION";
 
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => 50_000UL;
@@ -33,6 +31,9 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
         inputData.Length == RequiredInputLength ? inputData : ReadOnlyMemory<byte>.Empty;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
+
+    /// <summary>Describes why a proof whose commitment matches the versioned hash failed to verify.</summary>
+    private static partial string DescribeFailedVerification(ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> proof);
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -49,10 +50,11 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
         ReadOnlySpan<byte> proof = inputSpan[144..192];
         Span<byte> hash = stackalloc byte[32];
 
-        bool success = KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash) &&
-            hash.SequenceEqual(versionedHash) &&
-            KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
+        if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash) || !hash.SequenceEqual(versionedHash))
+            return Errors.MismatchedVersionedHash;
 
-        return success ? _successResult : Errors.Failed;
+        return KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof)
+            ? _successResult
+            : DescribeFailedVerification(z, y, commitment, proof);
     }
 }

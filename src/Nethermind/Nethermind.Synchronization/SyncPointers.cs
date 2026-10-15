@@ -4,7 +4,6 @@
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -39,7 +38,7 @@ public class SyncPointers : ISyncPointers
             _lowestInsertedReceiptBlock = value;
             if (value.HasValue)
             {
-                _defaultReceiptDbColumn.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
+                _defaultReceiptDbColumn.Set(PersistentReceiptStorage.LowestInsertedReceiptBlockKey, Rlp.Encode(value.Value).Bytes);
             }
         }
     }
@@ -75,7 +74,7 @@ public class SyncPointers : ISyncPointers
             MigrateLegacyLowestInsertedBodyNumber(blocksDb);
         }
 
-        byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
+        byte[] lowestBytes = _defaultReceiptDbColumn.Get(PersistentReceiptStorage.LowestInsertedReceiptBlockKey);
         _lowestInsertedReceiptBlock = lowestBytes is null ? (ulong?)null : new RlpReader(lowestBytes).DecodeULong();
 
         _lowestInsertedBlockAccessListBlock =
