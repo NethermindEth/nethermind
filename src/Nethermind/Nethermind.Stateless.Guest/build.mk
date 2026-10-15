@@ -25,7 +25,7 @@ GUEST_EXTLIB ?= lib$(GUEST_LIBC)
 # .NET 11, not 10: both pass the soft-float suite, but 11 is the line it is
 # maintained on. It costs ~2.6% more SP1 cycles and ~2.5% more ZisK steps over
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:2ee8a26047fb6a14aa3d7d1c1dcc61eb15a9c9f1@sha256:300eac310141ebaabb75bebe3ea0472e605bb96111debdab02b7b05a6bcb628e
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:07740486775be81201b33eba9848db052eacaf2b@sha256:8b4dfe69d409541940e74c2775f2c23d4440f16e0a239e93ceaf47e070296de5
 
 # Every target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
@@ -65,6 +65,11 @@ GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SRC_DIR)/Program.cs
 # Pinned rather than derived: with more than one source bflat names the output
 # after the first, which is the shared one.
 GUEST_OUT := -o $(SRC_DIR)/Program
+
+# Every guest applies the shared substitutions; one that has its own substitutions.xml
+# applies that on top.
+GUEST_SUBSTITUTIONS := --substitution $(SHARED_SRC_DIR)/substitutions.xml \
+  $(if $(wildcard $(GUEST_DIR)/substitutions.xml),--substitution $(SRC_DIR)/substitutions.xml)
 
 # The managed closure. BIN_DIR is the guest's own artifacts directory, bound in
 # by its build target.
@@ -129,7 +134,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--no-pthread \
 		--no-globalization \
 		--nostdlibrefs \
-		--substitution $(SRC_DIR)/substitutions.xml \
+		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \

@@ -29,7 +29,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
         if (TryGetCodeOverride(codeSource, vmSpec, out CodeInfo? result))
         {
-            return !result.IsEmpty &&
+            return vmSpec.IsEip7702Enabled &&
+                   !result.IsEmpty &&
                    ICodeInfoRepository.TryGetDelegatedAddress(result.CodeSpan, out delegationAddress) &&
                    followDelegation
                 ? GetDelegatedCodeInfo(delegationAddress, vmSpec)

@@ -18,7 +18,7 @@ GUEST_OBJECTS := jump_dest.o
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
-ZISK_IMAGE ?= nethermindeth/zisk:1.3.1-alpha@sha256:992e95afa5e7096c7365c85114ae9222e485d485acec709b4309d2e407fa01b6
+ZISK_IMAGE ?= nethermindeth/zisk:1.3.2-alpha@sha256:31a0c7f9de175765e7e81da719bdc2409060de8d23ec8683672d7ee22b798a3f
 
 run:
 	@$(REQUIRE_INPUT)
