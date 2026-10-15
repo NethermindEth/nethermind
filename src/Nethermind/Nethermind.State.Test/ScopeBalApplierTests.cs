@@ -23,6 +23,7 @@ public class ScopeBalApplierTests
     [TestCase(15, -1)]
     [TestCase(0, 7)]
     [TestCase(0, 0)]
+    [TestCase(-1, 7)]
     public void ApplyBal_DisposesEveryStorageBatchWhenWorkerFails(int failingIndex, int failingDisposeIndex)
     {
         const int count = 16;
@@ -34,6 +35,7 @@ public class ScopeBalApplierTests
         int[]? disposedAtParent = null;
         int[] disposed = new int[count];
         InvalidOperationException writeFailure = new("storage write failed");
+        InvalidOperationException disposeFailure = new("storage dispose failed");
         IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider.IWorldStateWriteBatch parent = Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>();
         scope.StartWriteBatch(count).Returns(parent);
@@ -67,7 +69,7 @@ public class ScopeBalApplierTests
             child.When(x => x.Dispose()).Do(_ =>
             {
                 Interlocked.Increment(ref disposed[index]);
-                if (index == failingDisposeIndex) throw new InvalidOperationException("storage dispose failed");
+                if (index == failingDisposeIndex) throw disposeFailure;
             });
         }
         parent.When(x => x.Set(Arg.Any<Address>(), Arg.Any<Account?>())).Do(_ =>
@@ -87,8 +89,9 @@ public class ScopeBalApplierTests
         parent.Received(1).Dispose();
         using (Assert.EnterMultipleScope())
         {
-            // A secondary disposal failure must not replace or wrap the original, so callers can still catch its type.
-            Assert.That(failure, Is.SameAs(writeFailure));
+            // A secondary disposal failure must not replace or wrap the original, so callers can still catch its type;
+            // a dispose failing after its writes succeeded is itself the original.
+            Assert.That(failure, Is.SameAs(failingIndex >= 0 ? writeFailure : disposeFailure));
             Assert.That(ownerViolations, Is.Zero);
             Assert.That(activeAtParentDispose, Is.Zero, "all workers must have joined before parent disposal");
             Assert.That(disposedAtParent, Is.All.EqualTo(1), "every staged batch must be disposed before its parent");
