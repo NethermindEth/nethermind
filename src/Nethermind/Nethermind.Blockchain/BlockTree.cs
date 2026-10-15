@@ -442,6 +442,13 @@ namespace Nethermind.Blockchain
                 // below the head that Suggest callers work near, while below-cutoff payloads arrive through Insert.
                 if (block is not null)
                 {
+                    // The header too: a crash can lose a block's deferred header after its chain level is written.
+                    // Queued ahead of the body, as below.
+                    if (_headerStore.Get(header.Hash, shouldCache: false, blockNumber: header.Number) is null)
+                    {
+                        _headerStore.InsertDeferred(header);
+                    }
+
                     if (!_blockStore.HasBlock(header.Number, header.Hash))
                     {
                         _blockStore.InsertDeferred(block);
@@ -468,22 +475,30 @@ namespace Nethermind.Blockchain
 
             SetTotalDifficulty(header);
 
+            if (block is not null && block.Hash is null)
+            {
+                throw new InvalidOperationException("An attempt to suggest block with a null hash.");
+            }
+
+            // A known block may still lack its header: the chain level that makes it known is written at once, while
+            // its deferred header is lost in a crash before the write. Suggesting the block again writes the header,
+            // as the already-known path above writes a missing body.
+            if (!isKnown || (block is not null && _headerStore.Get(header.Hash, shouldCache: false, blockNumber: header.Number) is null))
+            {
+                // Deferred with the body: the engine API path waits for neither database write. Queued ahead of it, as
+                // the deferred writer runs its queue in order: a crash between the two writes then leaves a header
+                // without its body, which the block tree loads as before, never a body without its header, which it
+                // takes for corruption.
+                if (block is not null) _headerStore.InsertDeferred(header);
+                else _headerStore.Insert(header);
+            }
+
             if (block is not null)
             {
-                if (block.Hash is null)
-                {
-                    throw new InvalidOperationException("An attempt to suggest block with a null hash.");
-                }
-
                 // Body and BAL persistence defer off the engine API path; visibility stays synchronous via
                 // each store's pending overlay, and the live block's BAL is freed synchronously as before.
                 _blockStore.InsertDeferred(block);
                 _balStore.InsertFromBlockDeferred(block);
-            }
-
-            if (!isKnown)
-            {
-                _headerStore.Insert(header);
             }
 
             if (!isKnown || fillBeaconBlock)

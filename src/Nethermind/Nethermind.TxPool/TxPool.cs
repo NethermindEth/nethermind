@@ -350,7 +350,7 @@ namespace Nethermind.TxPool
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
                 new FrameTxSimulationBudgetFilter(frameTxPrefixSimulator, _logger), // before FrameTxSignatureFilter: no recoveries for a transaction the spent budget will defer anyway
-                new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve recovery per signature, up to the decoder's 1024, so let the cheap filters reject first
+                new FrameTxSignatureFilter(_specProvider, ecdsa, _logger, _headInfo), // last: elliptic-curve work per signature, up to what FrameTxVerifyGasFilter allows, so let the cheap filters reject first
             ];
 
             if (incomingTxFilters is not null)
@@ -1062,7 +1062,7 @@ namespace Nethermind.TxPool
                     {
                         continue;
                     }
-                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, out _, reAddedFromReorg: true);
                 }
 
                 if (_blobReorgsSupportEnabled
@@ -1083,7 +1083,7 @@ namespace Nethermind.TxPool
 
                             blobTx.SenderAddress = senderAddress;
                         }
-                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, out _, reAddedFromReorg: true);
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
@@ -1749,7 +1749,7 @@ namespace Nethermind.TxPool
             return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle);
         }
 
-        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle)
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle, bool reAddedFromReorg = false)
         {
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
             if (!canRecycle)
@@ -1806,7 +1806,7 @@ namespace Nethermind.TxPool
                 IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
                 // Observation and insertion share the head lock so an A -> B -> A transition cannot cross a validation publish unseen.
                 ObserveHeadSpec(headSpec);
-                state = new(tx, _accounts, headSpec);
+                state = new(tx, _accounts, headSpec) { ReAddedFromReorg = reAddedFromReorg };
                 accepted = FilterTransactions(tx, handlingOptions, ref state, ref canRecycle);
                 if (accepted)
                 {
@@ -1854,12 +1854,12 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitReadLock();
             }
 
-            if (state.FrameSimulationYielded && _retryCache.TryDefer(tx.Hash!))
+            if (state.FrameValidationYielded && _retryCache.TryDefer(tx.Hash!))
             {
                 _hashCache.DeleteFromCurrentBlock(tx.Hash!);
             }
             // A yielded push stays known, so resends buy no validation, and waits for an announcement to refetch it.
-            else if (!(state.FrameSimulationYielded && _retryCache.TryAwaitAnnouncement(tx.Hash!))
+            else if (!(state.FrameValidationYielded && _retryCache.TryAwaitAnnouncement(tx.Hash!))
                 && accepted != AcceptTxResult.Invalid
                 && accepted != AcceptTxResult.InvalidBlobProofs
                 && !(accepted == AcceptTxResult.AlreadyKnown && _retryCache.IsAwaitingAnnouncement(tx.Hash!)))

@@ -67,6 +67,8 @@ public class FrameTxBlockReceiptsTests
                 "block header GasUsed must equal the cumulative receipt gas (production/processing parity)");
             Assert.That(block.Transactions[0].BlockGasUsed, Is.EqualTo((ulong)receipt.GasUsed),
                 "frame tx must report block gas via Transaction.BlockGasUsed for parallel block validation");
+            Assert.That(block.Transactions[0].SpentGas, Is.EqualTo((ulong)receipt.GasUsed),
+                "frame tx must report its receipt gas via Transaction.SpentGas, which eth_simulateV1 charges to the request gas cap");
         }
 
         // The frame-aware wire encoding must produce a computable receipts root.
