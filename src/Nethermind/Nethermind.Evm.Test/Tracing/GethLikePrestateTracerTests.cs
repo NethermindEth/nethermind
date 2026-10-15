@@ -105,8 +105,10 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>As in geth, an operation error ends only the failing operation: the caller that survives it is
+    /// still captured, opcode by opcode, without the failing operation's capture flags leaking into it.</summary>
     [Test]
-    public void SetOperationStack_WhenAnOperationHasErrored_CapturesNothingMore([Values] bool errored)
+    public void SetOperationStack_AfterAnOperationHasErrored_KeepsCapturing([Values] bool errored)
     {
         using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(),
             Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
@@ -117,10 +119,15 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         if (errored)
         {
             tracer.ReportOperationError(EvmExceptionType.OutOfGas);
-            // The frame that halted unwinds, but its caller keeps executing unrelated opcodes
-            tracer.StartOperation(1, Instruction.ADD, 100, environment);
         }
 
+        // The frame that halted unwinds, but its caller keeps executing: an unrelated opcode captures nothing
+        tracer.StartOperation(1, Instruction.ADD, 100, environment);
+        bool tracingStackOnAdd = tracer.IsTracingStack;
+
+        // while a later SLOAD of the caller is still captured
+        tracer.StartOperation(2, Instruction.SLOAD, 100, environment);
+        bool tracingStackOnSLoad = tracer.IsTracingStack;
         tracer.SetOperationStack(new TraceStack(new byte[EvmStack.WordSize]));
 
         NativePrestateTracerAccount account =
@@ -128,8 +135,9 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracer.IsTracingStack, Is.EqualTo(!errored));
-            Assert.That(account.Storage?.Count ?? 0, Is.EqualTo(errored ? 0 : 1));
+            Assert.That(tracingStackOnAdd, Is.False);
+            Assert.That(tracingStackOnSLoad, Is.True);
+            Assert.That(account.Storage?.Count ?? 0, Is.EqualTo(1));
         }
     }
 
@@ -544,7 +552,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     /// exceptionally (or a CALL that fails its balance pre-check) leaves the rest of the caller traced: the accounts
     /// and slots it touches afterwards show in pre and, when they change, in post.</summary>
     [Test]
-    public void Test_PrestateTrace_AfterAbortedChild_TracesTheCallerToTheEnd([Values] ChildOutcome outcome, [Values] bool diffMode)
+    public void Test_PrestateTrace_AfterAbortedChild_TracesTheCallerToTheEnd([Values] ChildOutcome outcome, [Values] bool diffMode, [Values] bool wrapped)
     {
         Address child = TestItem.AddressF;
         Address payee = TestItem.AddressE;
@@ -577,7 +585,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(diffMode ? DiffMode : PrestateMode), Hash256.Zero,
             TestItem.AddressA, TestItem.AddressB, Address.Zero);
-        object result = ExecutePrestate(tracer, Prepare.EvmCode.Call(caller, 80_000).Done, wrapped: false).CustomTracerResult!.Value;
+        object result = ExecutePrestate(tracer, Prepare.EvmCode.Call(caller, 80_000).Done, wrapped).CustomTracerResult!.Value;
 
         using (Assert.EnterMultipleScope())
         {
