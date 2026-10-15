@@ -673,6 +673,22 @@ public class GCKeeperTests
         }
     }
 
+    // A host with 67,416,633,344 bytes: the runtime records a 70% load as (ulong)(0.70 * total) bytes and reports the
+    // 90% high memory load threshold as (ulong)(0.90 * total) bytes (gc.cpp GCHeap::GetMemoryInfo). Red at 6e61ee48b1:
+    // the derived total is one byte short and the byte comparison reads the recorded 70% as just below 70%.
+    [Test]
+    public async Task Load_recorded_at_exactly_the_threshold_percent_decommits()
+    {
+        GcMemoryLoad load = GcMemoryLoad.FromRecorded(47_191_643_340, 60_674_970_009, new Dictionary<string, object> { ["GCHighMemPercent"] = 90L });
+        IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = load.MemoryLoadBytes, TotalMemoryBytes = load.TotalMemoryBytes };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        Assert.That(runtime.Collections, Is.EqualTo(new[] { Decommit }), $"total {load.TotalMemoryBytes}");
+    }
+
     /// <summary>A strategy written against <see cref="IGCStrategy"/> before it had the memory-pressure members.</summary>
     private sealed class CadenceOnlyStrategy(int collectionsPerDecommit) : IGCStrategy
     {

@@ -64,6 +64,16 @@ public class GcRegionRuntimeTests
     private static long ReadContainerMemoryLimit()
     {
         const string memoryMax = "/sys/fs/cgroup/memory.max";
-        return OperatingSystem.IsLinux() && File.Exists(memoryMax) && long.TryParse(File.ReadAllText(memoryMax).Trim(), out long bytes) ? bytes : 0;
+        if (!OperatingSystem.IsLinux() || !File.Exists(memoryMax) || !long.TryParse(File.ReadAllText(memoryMax).Trim(), out long bytes)) return 0;
+
+        // The runtime caps a container limit at physical memory (cgroup.cpp: GetRestrictedPhysicalMemoryLimit).
+        foreach (string line in File.ReadLines("/proc/meminfo"))
+        {
+            if (line.StartsWith("MemTotal:", StringComparison.Ordinal))
+            {
+                return Math.Min(bytes, long.Parse(line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[1]) * 1024);
+            }
+        }
+        return bytes;
     }
 }
