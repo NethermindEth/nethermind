@@ -22,7 +22,8 @@ namespace Nethermind.Consensus.Processing;
 /// run again on the values the earlier footprints leave. Block processing reports the writes of the transactions it
 /// executes, which take the place of what their footprints predicted.
 /// </remarks>
-internal sealed class BlockFootprints(Block block)
+/// <param name="refreshWorkers">The workers that refresh the block's footprints side by side.</param>
+internal sealed class BlockFootprints(Block block, int refreshWorkers = 1)
 {
     /// <summary>
     /// Footprints indexed for one slot's writes, and for its reads. Past it, a slot's writes are no longer tracked and the
@@ -33,7 +34,7 @@ internal sealed class BlockFootprints(Block block)
     /// <summary>Refreshes one block may run.</summary>
     internal const int MaxRefreshesPerBlock = 128;
 
-    // Writes times effects past which block processing wakes the refresh worker rather than compare: comparing would
+    // Writes times effects past which block processing wakes a refresh worker rather than compare: comparing would
     // cost more than the wake.
     private const int MaxComparisons = 256;
 
@@ -47,15 +48,19 @@ internal sealed class BlockFootprints(Block block)
     private readonly Indexed[] _indexed = new Indexed[block.Transactions.Length];
     private readonly bool[] _executed = new bool[block.Transactions.Length];
     private readonly ulong[] _invalidated = new ulong[(block.Transactions.Length + 63) >> 6];
+    // The take of the refresh each position last stored the footprint of; 0 while none has.
+    private readonly int[] _storedTakes = new int[block.Transactions.Length];
     private int _invalidatedCount;
     private int _untrackedCount;
     private int _refreshesRun;
+    private int _takes;
     private int _writesVersion;
     private int _visit;
 
-    // Written by block processing, applied by the refresh worker, so block processing never takes the lock.
+    // Written by block processing, applied by the refresh workers, so block processing never takes the lock.
     private readonly ConcurrentQueue<(int Position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes)> _reported = new();
     private readonly SemaphoreSlim _changed = new(0);
+    private readonly int _refreshWorkers = Math.Max(1, refreshWorkers);
     private volatile bool _warmPassEnded;
     private volatile bool _waitsForBlockProcessing = true;
 
@@ -86,10 +91,29 @@ internal sealed class BlockFootprints(Block block)
     public TransactionFootprint? Get(int index) => Volatile.Read(ref _footprints[index]);
 
     /// <param name="seededAt">For a refreshed footprint, the <see cref="WritesVersion"/> its run was seeded at.</param>
-    public void Store(int index, TransactionFootprint footprint, int seededAt = -1)
+    /// <param name="take">For a refreshed footprint, the take of the refresh from <see cref="TryTakeInvalidated"/>.</param>
+    /// <returns>False when a refresh of the position taken later has stored its footprint already; nothing is stored then.</returns>
+    public bool Store(int index, TransactionFootprint footprint, int seededAt = -1, int take = 0)
     {
-        Volatile.Write(ref _footprints[index], footprint);
-        Index(index, footprint, seededAt);
+        bool invalidated;
+        lock (_lock)
+        {
+            if (take != 0)
+            {
+                // A position invalidated again while it is refreshed can be taken and refreshed again side by side: the
+                // run taken first, seeded on the older values, must not replace what the run taken later stored.
+                if (take < _storedTakes[index]) return false;
+                _storedTakes[index] = take;
+            }
+
+            // Stored and indexed under one lock, so two stores of a position cannot leave block processing one footprint
+            // and the index another.
+            Volatile.Write(ref _footprints[index], footprint);
+            invalidated = Index(index, footprint, seededAt);
+        }
+
+        if (invalidated) _changed.Release();
+        return true;
     }
 
     /// <summary>Changes whenever writes the footprints leave are replaced.</summary>
@@ -143,7 +167,12 @@ internal sealed class BlockFootprints(Block block)
     }
 
     /// <summary>Takes the first invalidated position after <paramref name="after"/>, dropping the ones before it.</summary>
-    public bool TryTakeInvalidated(int after, out int position)
+    /// <remarks>
+    /// With more than one refresh worker, a take that leaves invalidated positions wakes another worker, which takes the
+    /// first one left: the workers refresh side by side, nearest to block processing first.
+    /// </remarks>
+    /// <param name="take">Orders the block's refreshes: a refresh taken later has a larger one.</param>
+    public bool TryTakeInvalidated(int after, out int position, out int take)
     {
         lock (_lock)
         {
@@ -159,19 +188,34 @@ internal sealed class BlockFootprints(Block block)
                     position = (word << 6) + BitOperations.TrailingZeroCount(_invalidated[word]);
                     _invalidated[word] &= _invalidated[word] - 1;
                     _invalidatedCount--;
+                    take = ++_takes;
+                    if (_refreshWorkers > 1 && _invalidatedCount > 0) WakeAnother();
                     return true;
                 }
             }
         }
 
         position = -1;
+        take = 0;
         return false;
     }
 
-    /// <summary>Counts a refresh that runs; once the block has run its refreshes, no more are taken.</summary>
-    public void CountRefresh()
+    // Keeps no more wakes than there are other workers: more would only wake them again once everything is taken.
+    private void WakeAnother()
     {
-        lock (_lock) _refreshesRun++;
+        if (_changed.CurrentCount < _refreshWorkers - 1) _changed.Release();
+    }
+
+    /// <summary>Counts a refresh that runs; false once the block has run its refreshes, when it must not run.</summary>
+    /// <remarks>Workers that took their positions while the block had refreshes left can come to count them after it has none.</remarks>
+    public bool TryCountRefresh()
+    {
+        lock (_lock)
+        {
+            if (_refreshesRun >= MaxRefreshesPerBlock) return false;
+            _refreshesRun++;
+            return true;
+        }
     }
 
     /// <summary>Whether a refresh or a write block processing reported is waiting.</summary>
@@ -186,20 +230,22 @@ internal sealed class BlockFootprints(Block block)
 
     public bool WarmPassEnded => _warmPassEnded;
 
+    /// <remarks>Wakes every refresh worker, as each checks whether it is done.</remarks>
     public void EndWarmPass()
     {
         _warmPassEnded = true;
-        _changed.Release();
+        _changed.Release(_refreshWorkers);
     }
 
-    /// <summary>Whether the refresh worker waits for the writes block processing reports once it has nothing left.</summary>
+    /// <summary>Whether the refresh workers wait for the writes block processing reports once they have nothing left.</summary>
     public bool WaitsForBlockProcessing => _waitsForBlockProcessing;
 
-    /// <summary>For a pass waited on before block processing: the refresh worker ends once it has nothing left.</summary>
+    /// <summary>For a pass waited on before block processing: each refresh worker ends once it has nothing left.</summary>
+    /// <remarks>Wakes every refresh worker, as each checks whether it is done.</remarks>
     public void StopWaitingForBlockProcessing()
     {
         _waitsForBlockProcessing = false;
-        _changed.Release();
+        _changed.Release(_refreshWorkers);
     }
 
     /// <summary>
@@ -208,7 +254,7 @@ internal sealed class BlockFootprints(Block block)
     /// </summary>
     public void WaitForWork(CancellationToken token) => _changed.Wait(token);
 
-    /// <summary>For tests: the wakes the refresh worker has not taken.</summary>
+    /// <summary>For tests: the wakes the refresh workers have not taken.</summary>
     internal int PendingWakes => _changed.CurrentCount;
 
     /// <summary>
@@ -216,7 +262,7 @@ internal sealed class BlockFootprints(Block block)
     /// empty when it wrote none.
     /// </summary>
     /// <remarks>
-    /// Writes its footprint predicted invalidate nothing, so they wait for the refresh worker's next wake: waking a
+    /// Writes its footprint predicted invalidate nothing, so they wait for a refresh worker's next wake: waking a
     /// blocked worker costs block processing microseconds.
     /// </remarks>
     public void QueueExecuted(int position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes)
@@ -255,6 +301,11 @@ internal sealed class BlockFootprints(Block block)
     }
 
     /// <summary>Puts the writes block processing reported in place of what their footprints predicted, in the order it executed them.</summary>
+    /// <remarks>
+    /// Refresh workers that apply them side by side can put two transactions' writes in the other order. That leaves the
+    /// same writes, and every footprint they leave invalidated is invalidated either way: each write checks the readers
+    /// after it against what the block then leaves before them.
+    /// </remarks>
     public void ApplyExecuted()
     {
         while (_reported.TryDequeue(out (int Position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes) executed))
@@ -277,33 +328,29 @@ internal sealed class BlockFootprints(Block block)
         if (invalidated) _changed.Release();
     }
 
-    private void Index(int position, TransactionFootprint footprint, int seededAt)
+    // Under the lock; whether it invalidated a footprint.
+    private bool Index(int position, TransactionFootprint footprint, int seededAt)
     {
-        bool invalidated;
-        lock (_lock)
+        // A run that ends after block processing executed its transaction does not replace the writes it made.
+        if (_executed[position]) return false;
+        // With no write replaced since the refresh seeded the slots the footprint before it read, a refreshed run
+        // that read one of them at another value than its seed changed it itself first (a creation clears the
+        // storage), and running it again reads the same.
+        TransactionFootprint? seeded = seededAt == _writesVersion ? _indexed[position].Footprint : null;
+        bool invalidated = Replace(position, new Indexed(footprint, default));
+
+        ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;
+        bool outdated = false;
+        for (int i = 0; i < reads.Length; i++)
         {
-            // A run that ends after block processing executed its transaction does not replace the writes it made.
-            if (_executed[position]) return;
-            // With no write replaced since the refresh seeded the slots the footprint before it read, a refreshed run
-            // that read one of them at another value than its seed changed it itself first (a creation clears the
-            // storage), and running it again reads the same.
-            TransactionFootprint? seeded = seededAt == _writesVersion ? _indexed[position].Footprint : null;
-            invalidated = Replace(position, new Indexed(footprint, default));
-
-            ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;
-            bool outdated = false;
-            for (int i = 0; i < reads.Length; i++)
-            {
-                ref Slot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, reads[i].Cell, out _);
-                if (slot.Untracked) continue;
-                outdated |= ValueBefore(in slot.Writers, position) is { } value && value != reads[i].Value && (seeded is null || !Reads(seeded, reads[i].Cell));
-                if (slot.Readers.Count < MaxIndexedPerSlot) slot.Readers.Add(new Entry(position, i));
-            }
-
-            if (outdated) invalidated |= Invalidate(position);
+            ref Slot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, reads[i].Cell, out _);
+            if (slot.Untracked) continue;
+            outdated |= ValueBefore(in slot.Writers, position) is { } value && value != reads[i].Value && (seeded is null || !Reads(seeded, reads[i].Cell));
+            if (slot.Readers.Count < MaxIndexedPerSlot) slot.Readers.Add(new Entry(position, i));
         }
 
-        if (invalidated) _changed.Release();
+        if (outdated) invalidated |= Invalidate(position);
+        return invalidated;
     }
 
     // Puts what the position now writes, from a refreshed footprint or the transaction executed there, in place of what

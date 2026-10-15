@@ -45,11 +45,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
 
-[TestFixtureSource(nameof(Forks))]
-public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase(spec)
+[TestFixtureSource(nameof(Fixtures))]
+public class PrewarmerHandoffTests(IReleaseSpec spec, int refreshWorkers) : PrewarmerHandoffTestBase(spec, refreshWorkers)
 {
-    // Shanghai still deletes a self-destructed account; Cancun only does for one created in the same transaction.
-    private static readonly IReleaseSpec[] Forks = [Osaka.Instance, Shanghai.Instance];
+    // Shanghai still deletes a self-destructed account; Cancun only does for one created in the same transaction. Each
+    // fork runs with the one refresh worker of the default and with several side by side.
+    private static readonly TestFixtureData[] Fixtures =
+    [
+        .. new IReleaseSpec[] { Osaka.Instance, Shanghai.Instance }.SelectMany(static fork =>
+            new[] { 1, 2, 4 }.Select(workers => new TestFixtureData(fork, workers)))
+    ];
 
     [Test]
     public void A_block_of_mixed_transactions_ends_in_the_state_and_receipts_of_executing_it()
@@ -467,8 +472,9 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
-    public void Footprints_block_processing_invalidates_while_warming_are_refreshed_and_taken_over([Values] bool writes)
+    public void Footprints_block_processing_invalidates_while_warming_are_refreshed_and_taken_over([Values] bool writes, [Values(1, 2, 4)] int workers)
     {
+        UseRefreshWorkers(workers);
         UInt256 paidTo;
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
         using (worldState.BeginScope(Parent)) paidTo = worldState.GetBalance(TestItem.AddressC);
@@ -511,7 +517,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         StorageCell another = new(TestItem.AddressC, 2 * 0x4e4d);
         footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
         footprints.Store(2, Footprint(txs[2], reads: [(cell, 0x4e4d)]));
-        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False);
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.False);
 
         (StorageCell Cell, UInt256 Value)[] writes = writesAnother ? [(another, 0x4e4d)] : [];
         if (executed)
@@ -527,7 +533,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         using (Assert.EnterMultipleScope())
         {
             Assert.That(footprints.ValueBefore(cell, 2), Is.Null);
-            Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.True);
+            Assert.That(footprints.TryTakeInvalidated(-1, out int position, out _), Is.True);
             Assert.That(position, Is.EqualTo(2));
         }
     }
@@ -539,13 +545,13 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         StorageCell cell = new(TestItem.AddressC, 0x4e4d);
         footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
         footprints.Store(1, Footprint(txs[1], reads: [(cell, UInt256.Zero)]));
-        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.True);
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.True);
 
         int seededAt = footprints.WritesVersion;
         if (writeChanges) footprints.Store(0, Footprint(txs[0], writes: [(cell, 2 * 0x4e4d)]));
         footprints.Store(1, Footprint(txs[1], reads: [(cell, UInt256.Zero)]), seededAt);
 
-        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.EqualTo(writeChanges));
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.EqualTo(writeChanges));
     }
 
     [Test]
@@ -560,13 +566,13 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.True);
+            Assert.That(footprints.TryTakeInvalidated(-1, out int position, out _), Is.True);
             Assert.That(position, Is.EqualTo(readers));
         }
     }
 
     [Test]
-    public void A_refresh_that_fails_leaves_the_block_its_other_refreshes()
+    public void A_refresh_that_fails_leaves_the_block_its_other_refreshes([Values(1, 2)] int workers)
     {
         PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
         StrongBox<int> seeds = new();
@@ -578,7 +584,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             ProcessingScope.Resolve<NodeStorageCache>(),
             caches,
             LimboLogs.Instance,
-            handoff: true);
+            handoff: true,
+            refreshWorkers: workers);
 
         RunPreWarmCaches(preWarmer, BuildBlock(
             Call(TestItem.PrivateKeyA, 0, Counter),
@@ -591,6 +598,138 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             Assert.That(seeds.Value, Is.GreaterThan(1), "a refresh seeded after the one that failed");
             Assert.That(footprints.Get(1)!.Refreshed || footprints.Get(2)!.Refreshed, Is.True);
         }
+    }
+
+    [Test]
+    public void A_refresh_overtaken_by_a_later_one_of_its_transaction_leaves_what_the_later_one_stored([Values] bool executed)
+    {
+        SeedGate gate = new();
+        using BlockCachePreWarmer preWarmer = HoldingPreWarmer(gate, workers: 2);
+        // The second call reads the counter the first one writes, so it is refreshed.
+        Block block = BuildBlock(Call(TestItem.PrivateKeyA, 0, Counter), Call(TestItem.PrivateKeyB, 0, Counter));
+        StorageCell counted = new(Counter, 0);
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        gate.Arm(holds: 1);
+        using (worldState.BeginScope(Parent))
+        {
+            using PrewarmingSession session = (PrewarmingSession)preWarmer.PreWarmCaches(block, Parent, Spec)!;
+            BlockFootprints footprints = preWarmer.Footprints!;
+            TransactionFootprint? later = null;
+            try
+            {
+                // The worker refreshing the second call is held as it seeds the counter with the first call's write.
+                Assert.That(SpinWait.SpinUntil(() => gate.Held == 1, WaitLimit), Is.True, "no refresh started");
+                if (executed)
+                {
+                    // Block processing executes the second call into a write of its own, which the other worker applies.
+                    footprints.QueueExecuted(1, new[] { (counted, (UInt256)0x4e4d) });
+                    Assert.That(SpinWait.SpinUntil(() => footprints.ValueBefore(counted, 2) == (UInt256)0x4e4d, WaitLimit), Is.True,
+                        "the executed writes were not applied");
+                }
+                else
+                {
+                    // The first call's footprint comes to write another value, which invalidates the second call again: the
+                    // other worker takes it and refreshes it on that value.
+                    footprints.Store(0, Footprint(block.Transactions[0], writes: [(counted, 0x4e4d)]));
+                    Assert.That(SpinWait.SpinUntil(() => footprints.Get(1) is { Refreshed: true } footprint && ReadOf(footprint, counted) == (UInt256)0x4e4d, WaitLimit),
+                        Is.True, "the other worker did not refresh the call");
+                    later = footprints.Get(1);
+                }
+            }
+            finally
+            {
+                gate.Open();
+            }
+
+            // The held run goes on with the value it was seeded with; the pass then ends with what is left.
+            session.WaitForCompletion();
+
+            using (Assert.EnterMultipleScope())
+            {
+                if (executed)
+                {
+                    Assert.That(footprints.ValueBefore(counted, 2), Is.EqualTo((UInt256)0x4e4d), "the executed writes were replaced");
+                }
+                else
+                {
+                    Assert.That(footprints.Get(1), Is.SameAs(later), "the earlier refresh replaced the later one");
+                    // Turned away, the earlier refresh invalidates nothing to run again.
+                    Assert.That(footprints.RefreshesRun, Is.EqualTo(2));
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void Refresh_workers_all_end_with_the_session_of_their_block_and_change_nothing_after_it([Values(1, 2, 4)] int workers)
+    {
+        SeedGate gate = new();
+        using BlockCachePreWarmer preWarmer = HoldingPreWarmer(gate, workers);
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        List<(BlockFootprints Footprints, (int RefreshesRun, int WritesVersion) Ended)> blocks = [];
+        for (int i = 0; i < 3; i++)
+        {
+            // A heavy sender's calls are warmed apart on the parent state, so every one after the first read the counter
+            // at another value than the one before leaves: a refresh for every worker to be held in.
+            Block block = BuildBlock(Parent, 30_000_000 - (ulong)i,
+                [.. Enumerable.Range(0, workers + 2).Select(static nonce => Call(TestItem.PrivateKeyA, (ulong)nonce, Counter, gasLimit: 2_000_000))]);
+            gate.Arm(holds: workers);
+            using (worldState.BeginScope(Parent))
+            {
+                IDisposable session = preWarmer.PreWarmCaches(block, Parent, Spec)!;
+                BlockFootprints footprints = preWarmer.Footprints!;
+                Task? ending = null;
+                try
+                {
+                    Assert.That(SpinWait.SpinUntil(() => gate.Held == workers, WaitLimit), Is.True, "not every worker started refreshing");
+                    // Block processing ends the session while every worker is refreshing; it must wait for each one.
+                    ending = Task.Run(session.Dispose);
+                    for (int held = workers; held > 0; held--)
+                    {
+                        Assert.That(ending.Wait(TimeSpan.FromMilliseconds(100)), Is.False, "the session ended while a refresh worker was running");
+                        gate.ReleaseOne();
+                        Assert.That(SpinWait.SpinUntil(() => gate.Held < held, WaitLimit), Is.True, "the released worker stayed held");
+                    }
+
+                    Assert.That(ending.Wait(WaitLimit), Is.True, "the session did not end");
+                }
+                finally
+                {
+                    gate.Open();
+                    // Ended whatever happened, so no worker outlives the test.
+                    if (ending is null) session.Dispose();
+                }
+
+                blocks.Add((footprints, (footprints.RefreshesRun, footprints.WritesVersion)));
+            }
+        }
+
+        // Nothing changed a block's footprints once its session had ended, while the blocks after it were warmed.
+        Assert.That(blocks.Select(static block => (block.Footprints.RefreshesRun, block.Footprints.WritesVersion)), Is.EqualTo(blocks.Select(static block => block.Ended)));
+    }
+
+    /// <summary>A prewarmer whose refreshes seed their slots through <paramref name="gate"/>.</summary>
+    private BlockCachePreWarmer HoldingPreWarmer(SeedGate gate, int workers)
+    {
+        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
+        return new(
+            new OuterDecoratedEnvs(ProcessingScope.Resolve<PrewarmerEnvFactory>(), caches, state => new HeldSeeds(state, gate)),
+            minPoolSize: 4,
+            // A thread for every refresh worker, one for the warm pass and the one coordinating it.
+            concurrency: workers + 2,
+            parallelExecutionBatchRead: true,
+            ProcessingScope.Resolve<NodeStorageCache>(),
+            caches,
+            LimboLogs.Instance,
+            handoff: true,
+            refreshWorkers: workers);
+    }
+
+    /// <summary>Builds the container again, its prewarmer with <paramref name="workers"/> refresh workers.</summary>
+    private void UseRefreshWorkers(int workers)
+    {
+        TearDown();
+        Initialize(handoff: true, workers);
     }
 
     [Test]
@@ -712,10 +851,11 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
-    public void A_session_whose_refresh_worker_is_never_woken_by_block_processing_still_ends()
+    public void A_session_whose_refresh_worker_is_never_woken_by_block_processing_still_ends([Values(1, 2, 4)] int workers)
     {
-        // The executed call's writes are the ones its footprint predicted, so block processing leaves the blocked worker
-        // asleep; ending the session must still release it.
+        UseRefreshWorkers(workers);
+        // The executed call's writes are the ones its footprint predicted, so block processing leaves the blocked workers
+        // asleep; ending the session must still release them.
         Block block = BuildBlock(
             Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
             Call(TestItem.PrivateKeyB, 0, Guarded),
@@ -813,10 +953,10 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         footprints.Store(2, Footprint(txs[2], reads: [(cell, 0x4e4d)]));
 
         footprints.QueueExecuted(0, new[] { (cell, sameValue ? (UInt256)0x4e4d : 2 * 0x4e4d) });
-        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False, "queued writes count once they are applied");
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.False, "queued writes count once they are applied");
         footprints.ApplyExecuted();
 
-        Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.EqualTo(!sameValue));
+        Assert.That(footprints.TryTakeInvalidated(-1, out int position, out _), Is.EqualTo(!sameValue));
         if (!sameValue) Assert.That(position, Is.EqualTo(2));
     }
 
@@ -833,7 +973,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.True);
+            Assert.That(footprints.TryTakeInvalidated(-1, out int position, out _), Is.True);
             Assert.That(position, Is.EqualTo(1));
             Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)(2 * 0x4e4d)));
         }
@@ -850,9 +990,9 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(footprints.TryTakeInvalidated(1, out int position), Is.True);
+            Assert.That(footprints.TryTakeInvalidated(1, out int position, out _), Is.True);
             Assert.That(position, Is.EqualTo(2));
-            Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False);
+            Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.False);
         }
     }
 
@@ -868,7 +1008,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False);
+            Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.False);
             Assert.That(footprints.ReadsUntrackedSlot(reader), Is.True);
             Assert.That(footprints.ValueBefore(cell, writers), Is.Null);
         }
@@ -888,7 +1028,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.True);
+            Assert.That(footprints.TryTakeInvalidated(-1, out int position, out _), Is.True);
             Assert.That(position, Is.EqualTo(readers));
             Assert.That(footprints.ReadsUntrackedSlot(last), Is.False);
         }
@@ -904,9 +1044,9 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         for (int i = 1; i <= readers; i++) footprints.Store(i, Footprint(txs[i], reads: [(new StorageCell(TestItem.AddressC, (UInt256)(i - 1)), UInt256.Zero)]));
 
         int taken = 0;
-        while (footprints.TryTakeInvalidated(-1, out _))
+        while (footprints.TryTakeInvalidated(-1, out _, out _))
         {
-            if (taken++ >= notRun) footprints.CountRefresh();
+            if (taken++ >= notRun) footprints.TryCountRefresh();
         }
 
         using (Assert.EnterMultipleScope())
@@ -916,11 +1056,130 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
-    private static (BlockFootprints Footprints, Transaction[] Transactions) Footprints(int count)
+    [Test]
+    public void Refreshes_taken_side_by_side_run_no_more_than_the_blocks_refreshes()
+    {
+        int readers = BlockFootprints.MaxRefreshesPerBlock + 1;
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(readers + 1, refreshWorkers: 2);
+        footprints.Store(0, Footprint(txs[0], writes: [.. Enumerable.Range(0, readers).Select(static i => (new StorageCell(TestItem.AddressC, (UInt256)i), (UInt256)0x4e4d))]));
+        for (int i = 1; i <= readers; i++) footprints.Store(i, Footprint(txs[i], reads: [(new StorageCell(TestItem.AddressC, (UInt256)(i - 1)), UInt256.Zero)]));
+        for (int i = 1; i < BlockFootprints.MaxRefreshesPerBlock; i++)
+        {
+            footprints.TryTakeInvalidated(-1, out _, out _);
+            footprints.TryCountRefresh();
+        }
+
+        // With one refresh left, two workers take a position each; the second to count its refresh must not run it.
+        bool firstTaken = footprints.TryTakeInvalidated(-1, out _, out _);
+        bool secondTaken = footprints.TryTakeInvalidated(-1, out _, out _);
+        bool firstRuns = footprints.TryCountRefresh();
+        bool secondRuns = footprints.TryCountRefresh();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((firstTaken, secondTaken), Is.EqualTo((true, true)));
+            Assert.That((firstRuns, secondRuns), Is.EqualTo((true, false)));
+            Assert.That(footprints.RefreshesRun, Is.EqualTo(BlockFootprints.MaxRefreshesPerBlock));
+        }
+    }
+
+    [Test]
+    public void Invalidated_positions_are_taken_nearest_to_block_processing_first()
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(8, refreshWorkers: 2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        foreach (int reader in new[] { 6, 2, 4 }) footprints.Store(reader, Footprint(txs[reader], reads: [(cell, UInt256.Zero)]));
+
+        List<int> positions = [];
+        List<int> takes = [];
+        while (footprints.TryTakeInvalidated(-1, out int position, out int take))
+        {
+            positions.Add(position);
+            takes.Add(take);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(positions, Is.EqualTo(new[] { 2, 4, 6 }));
+            Assert.That(takes, Is.Ordered.Ascending);
+            Assert.That(takes, Is.Unique);
+        }
+    }
+
+    [Test]
+    public void A_refresh_taken_before_a_later_one_of_its_position_does_not_replace_what_the_later_one_stored([Values] bool laterStoresFirst)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(3, refreshWorkers: 2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        footprints.Store(2, Footprint(txs[2], reads: [(cell, UInt256.Zero)]));
+
+        // A worker takes the reader; the write before it changes, so another worker takes it again and runs it alongside.
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out int earlier), Is.True);
+        int earlierSeededAt = footprints.WritesVersion;
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 2 * 0x4e4d)]));
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out int later), Is.True);
+        int laterSeededAt = footprints.WritesVersion;
+
+        TransactionFootprint stale = Footprint(txs[2], reads: [(cell, 0x4e4d)]);
+        TransactionFootprint fresh = Footprint(txs[2], reads: [(cell, 2 * 0x4e4d)]);
+        bool staleStored;
+        if (laterStoresFirst)
+        {
+            footprints.Store(2, fresh, laterSeededAt, later);
+            staleStored = footprints.Store(2, stale, earlierSeededAt, earlier);
+        }
+        else
+        {
+            staleStored = footprints.Store(2, stale, earlierSeededAt, earlier);
+            footprints.Store(2, fresh, laterSeededAt, later);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(later, Is.GreaterThan(earlier));
+            Assert.That(footprints.Get(2), Is.SameAs(fresh));
+            Assert.That(staleStored, Is.EqualTo(!laterStoresFirst));
+            // Turned away, the stale run invalidates nothing; stored first, it leaves a refresh that finds nothing moved.
+            Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.EqualTo(!laterStoresFirst));
+        }
+    }
+
+    [Test]
+    public void A_take_that_leaves_positions_wakes_another_worker_and_the_end_of_the_pass_wakes_them_all([Values(1, 2, 4)] int workers)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(4, refreshWorkers: workers);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        footprints.Store(2, Footprint(txs[2], reads: [(cell, UInt256.Zero)]));
+        footprints.Store(3, Footprint(txs[3], reads: [(cell, UInt256.Zero)]));
+        // The worker the invalidations woke.
+        while (footprints.PendingWakes > 0) footprints.WaitForWork(CancellationToken.None);
+
+        footprints.TryTakeInvalidated(-1, out _, out _);
+        int leftOne = footprints.PendingWakes;
+        footprints.TryTakeInvalidated(-1, out _, out _);
+        int leftNone = footprints.PendingWakes;
+        footprints.EndWarmPass();
+        int passEnded = footprints.PendingWakes;
+        footprints.StopWaitingForBlockProcessing();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leftOne, Is.EqualTo(workers > 1 ? 1 : 0), "another worker takes the position left");
+            Assert.That(leftNone, Is.EqualTo(leftOne), "no position is left to take");
+            // Each worker checks whether it is done.
+            Assert.That(passEnded - leftNone, Is.EqualTo(workers));
+            Assert.That(footprints.PendingWakes - passEnded, Is.EqualTo(workers));
+        }
+    }
+
+    private static (BlockFootprints Footprints, Transaction[] Transactions) Footprints(int count, int refreshWorkers = 1)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++) txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        return (new BlockFootprints(Build.A.Block.WithTransactions(txs).TestObject), txs);
+        return (new BlockFootprints(Build.A.Block.WithTransactions(txs).TestObject, refreshWorkers), txs);
     }
 
     private static UInt256? ReadOf(TransactionFootprint footprint, in StorageCell cell)
@@ -1269,9 +1528,83 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             base.Set(in storageCell, in newValue);
         }
     }
+
+    private static readonly TimeSpan WaitLimit = TimeSpan.FromSeconds(10);
+
+    /// <summary>A scope's world state that has the refreshes seeding a slot through it wait at the gate.</summary>
+    private sealed class HeldSeeds(IWorldState state, SeedGate gate) : WorldStateDecorator(state)
+    {
+        public override void Set(in StorageCell storageCell, in UInt256 newValue)
+        {
+            gate.Hold();
+            base.Set(in storageCell, in newValue);
+        }
+    }
+
+    /// <summary>Holds the first seeds of the refreshes after it is armed, until they are let go one by one or all at once.</summary>
+    private sealed class SeedGate
+    {
+        private readonly object _gate = new();
+        private int _holds;
+        private int _seeds;
+        private int _held;
+        private int _released;
+        private bool _open;
+
+        public int Held
+        {
+            get
+            {
+                lock (_gate) return _held;
+            }
+        }
+
+        public void Arm(int holds)
+        {
+            lock (_gate)
+            {
+                _holds = holds;
+                _seeds = 0;
+                _released = 0;
+                _open = false;
+            }
+        }
+
+        public void Hold()
+        {
+            lock (_gate)
+            {
+                if (_open || ++_seeds > _holds) return;
+                _held++;
+                // Bounded, so a test that fails leaves no worker held for good.
+                while (!_open && _released == 0 && Monitor.Wait(_gate, WaitLimit)) { }
+                if (_released > 0) _released--;
+                _held--;
+            }
+        }
+
+        public void ReleaseOne()
+        {
+            lock (_gate)
+            {
+                _released++;
+                Monitor.PulseAll(_gate);
+            }
+        }
+
+        public void Open()
+        {
+            lock (_gate)
+            {
+                _open = true;
+                Monitor.PulseAll(_gate);
+            }
+        }
+    }
 }
 
-public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
+/// <param name="refreshWorkers">The refresh workers of the prewarmer the container builds.</param>
+public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec, int refreshWorkers = 1)
 {
     protected IReleaseSpec Spec { get; } = spec;
 
@@ -1349,15 +1682,19 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     [SetUp]
     public void Setup() => Initialize(handoff: true);
 
-    protected void Initialize(bool handoff)
+    /// <param name="workers">The refresh workers; the fixture's when not given.</param>
+    protected void Initialize(bool handoff, int? workers = null)
     {
+        int refreshing = workers ?? refreshWorkers;
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new BlocksConfig
             {
                 PreWarming = PreWarmMode.Block,
-                PreWarmStateConcurrency = 3,
+                // Room for every refresh worker beside the one coordinating the pass.
+                PreWarmStateConcurrency = Math.Max(3, refreshing + 1),
                 ProcessingCores = ProcessingCores.All,
-                PreWarmHandoff = handoff
+                PreWarmHandoff = handoff,
+                PreWarmRefreshWorkers = refreshing
             }))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Spec))
             .AddSingleton<IStateHeaderProvider>(new Parents(_headers))

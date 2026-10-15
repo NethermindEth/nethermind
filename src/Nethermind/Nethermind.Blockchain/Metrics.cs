@@ -77,25 +77,30 @@ public static class Metrics
     [Description("Transactions executed after their pre-warm run failed to apply")]
     public static long PrewarmHandoffFailures { get; set; }
 
+    // The refresh counters are fields: the block's refresh workers count them side by side.
     [CounterMetric]
     [Description("Pre-warm runs taken to be refreshed because an earlier transaction leaves a slot they read at another value")]
-    public static long PrewarmRefreshes { get; set; }
+    public static long PrewarmRefreshes;
 
     [CounterMetric]
-    [Description("Refreshes not run: a slot the run read is not tracked, or none of them moved")]
-    public static long PrewarmRefreshesSkipped { get; set; }
+    [Description("Refreshes not run: a slot the run read is not tracked, none of them moved, or the block has run its refreshes")]
+    public static long PrewarmRefreshesSkipped;
 
     [CounterMetric]
     [Description("Refreshes stopped because block processing reached their transaction")]
-    public static long PrewarmRefreshesCancelled { get; set; }
+    public static long PrewarmRefreshesCancelled;
 
     [CounterMetric]
     [Description("Refreshes whose run left no footprint")]
-    public static long PrewarmRefreshesFailed { get; set; }
+    public static long PrewarmRefreshesFailed;
 
     [CounterMetric]
     [Description("Refreshed pre-warm runs stored for block processing to take over")]
-    public static long PrewarmRefreshesStored { get; set; }
+    public static long PrewarmRefreshesStored;
+
+    [CounterMetric]
+    [Description("Refreshed pre-warm runs not stored because a refresh of the same transaction taken later stored first")]
+    public static long PrewarmRefreshesSuperseded;
 
     [CounterMetric]
     [Description("Transactions block processing took over from a refreshed pre-warm run")]
