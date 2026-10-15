@@ -170,6 +170,29 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
+    public void Retry_requests_a_hash_whether_or_not_a_delivery_consumed_its_announced_shape([Values] bool delivered)
+    {
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).SignedAndResolved().TestObject;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { tx.GetLength() },
+            new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        if (delivered)
+        {
+            using PooledTransactionsMessage txsMsg = new(LastPooledRequestId(), new(new ArrayPoolList<Transaction>(1) { tx }));
+            HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+        }
+        _session.ClearReceivedCalls();
+
+        _handler.HandleMessages([tx.Hash!.ValueHash256]);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == tx.Hash));
+    }
+
+    [Test]
     public void Should_accept_full_blob_tx_with_announced_network_size()
     {
         RecreateHandlerWithBlobSupport();

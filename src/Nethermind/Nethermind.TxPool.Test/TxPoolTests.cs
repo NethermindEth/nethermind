@@ -2663,11 +2663,9 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             _ = AddTransactionToPool();
-            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.HeadNumber.Returns(peerHeadNumber);
-            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            RecordingTxPoolPeer txPoolPeer = new(TestItem.PublicKeyA, peerHeadNumber);
             _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received(expectedAnnouncements).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            Assert.That(txPoolPeer.BatchCount(sendFullTx: false), Is.EqualTo(expectedAnnouncements));
         }
 
         [TestCase(12_000_000UL, 0, TestName = "should_not_notify_added_peer_at_the_tip_while_syncing")]
@@ -2683,12 +2681,11 @@ namespace Nethermind.TxPool.Test
         public void should_notify_peer_only_once()
         {
             _txPool = CreatePool();
-            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            RecordingTxPoolPeer txPoolPeer = new(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             _ = AddTransactionToPool();
-            Assert.That(() => txPoolPeer.ReceivedCallsMatching(p => p.SendNewTransaction(Arg.Any<Transaction>())), Is.True.After(500, 10));
-            txPoolPeer.DidNotReceive().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            Assert.That(() => txPoolPeer.BatchCount(sendFullTx: true), Is.Not.Zero.After(500, 10));
+            Assert.That(txPoolPeer.BatchCount(sendFullTx: false), Is.Zero);
         }
 
         [TestCase(true, TestName = "should_send_to_peers_full_newly_added_local_tx")]
