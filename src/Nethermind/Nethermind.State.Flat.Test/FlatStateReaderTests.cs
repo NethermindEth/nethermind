@@ -25,7 +25,7 @@ public class FlatStateReaderTests
     private static readonly FlatDbConfig _smallTrieCacheConfig = new() { TrieCacheMemoryBudget = MemorySizes.MiB };
 
     private static FlatStateReader CreateReader(IFlatDbManager manager, ITrieNodeCache? trieNodeCache = null) =>
-        new(new MemDb(), manager, trieNodeCache ?? new TrieNodeCache(_smallTrieCacheConfig, LimboLogs.Instance), NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
+        new(new MemDb(), manager, trieNodeCache ?? new TrieNodeCache(_smallTrieCacheConfig), NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [
@@ -58,7 +58,7 @@ public class FlatStateReaderTests
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        TrieNodeCache trieNodeCache = new(_smallTrieCacheConfig, LimboLogs.Instance);
+        TrieNodeCache trieNodeCache = new(_smallTrieCacheConfig);
         if (rootsInTrieNodeCache) trieReader.AddRootsTo(trieNodeCache);
         FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader), trieNodeCache);
 
@@ -124,16 +124,9 @@ public class FlatStateReaderTests
         public void AddRootsTo(TrieNodeCache trieNodeCache)
         {
             TransientResource transientResource = new ResourcePool(_smallTrieCacheConfig).GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-            transientResource.Nodes.Set(null, TreePath.Empty, ResolvedNode(stateRootRlp));
-            transientResource.Nodes.Set(addressHash, TreePath.Empty, ResolvedNode(storageRootRlp));
+            transientResource.WarmedNodes.TryInsert(null, TreePath.Empty, ValueKeccak.Compute(stateRootRlp), stateRootRlp, out _);
+            transientResource.WarmedNodes.TryInsert(addressHash, TreePath.Empty, ValueKeccak.Compute(storageRootRlp), storageRootRlp, out _);
             trieNodeCache.Add(transientResource);
-        }
-
-        private static TrieNode ResolvedNode(byte[] rlp)
-        {
-            TrieNode node = new(NodeType.Unknown, Keccak.Compute(rlp), rlp);
-            node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
-            return node;
         }
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)

@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -44,9 +43,9 @@ public class SnapshotBundleWarmerTests
 
     private sealed class NullTrieNodeCache : ITrieNodeCache
     {
-        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+        public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
         {
-            node = null;
+            record = default;
             return false;
         }
 
@@ -401,6 +400,43 @@ public class SnapshotBundleWarmerTests
             int before = reader.Reads;
             foreach (ValueHash256 key in keys) bundle.WarmUp(address, preBlockRoot, key);
             return reader.Reads - before;
+        }
+    }
+
+    // A node a warm-up fetched for one block is promoted to the cache when the block's transient retires, so the next block's
+    // warm-ups and bulk sets read it from the cache instead of persistence.
+    [Test]
+    public void Warmed_records_are_promoted_and_the_next_block_reads_them_from_the_cache_without_persistence([Values] bool storage)
+    {
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        byte[] rootRlp = FlatTestHelpers.LeafRlp(0x80);
+        (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(rootRlp);
+        NodeReader reader = new(persisted);
+        TrieNodeCache cache = new(new FlatDbConfig());
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool, reader), cache, _log, _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        bundle.WarmUp(address, root, ValueKeccak.Zero);
+        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
+        try
+        {
+            cache.Add(retired!);
+        }
+        finally
+        {
+            snapshot?.Dispose();
+            retired?.ReleaseLease();
+        }
+
+        int readsInFirstBlock = reader.Reads;
+        bundle.WarmUp(address, root, ValueKeccak.Zero);
+        bool loaded = bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, out NodeRecordRef record);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readsInFirstBlock, Is.EqualTo(1));
+            Assert.That(reader.Reads, Is.EqualTo(readsInFirstBlock));
+            Assert.That(loaded, Is.True);
+            Assert.That(record.Rlp.ToArray(), Is.EqualTo(rootRlp));
         }
     }
 

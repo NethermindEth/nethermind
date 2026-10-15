@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -12,8 +13,8 @@ internal class ReadOnlyStateTrieStoreAdapter(ReadOnlySnapshotBundle bundle, ITri
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        if (trieNodeCache is not null && trieNodeCache.TryGet(null, path, hash, out TrieNode? node)) return node;
-        return bundle.TryFindStateNodes(path, hash, out node) ? node : new TrieNode(NodeType.Unknown, hash);
+        if (trieNodeCache is not null && trieNodeCache.TryGet(null, path, hash.ValueHash256, out NodeRecordRef record)) return record.ToTrieNode();
+        return bundle.TryFindStateNodes(path, hash, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadStateRlp(path, hash, flags);
@@ -36,8 +37,8 @@ internal class ReadOnlyStorageTrieStoreAdapter(
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
-        if (trieNodeCache is not null && trieNodeCache.TryGet(addressHash, path, hash, out TrieNode? node)) return node;
-        return bundle.TryFindStorageNodes(addressHash, path, hash, out node) ? node : new TrieNode(NodeType.Unknown, hash);
+        if (trieNodeCache is not null && trieNodeCache.TryGet(addressHash, path, hash.ValueHash256, out NodeRecordRef record)) return record.ToTrieNode();
+        return bundle.TryFindStorageNodes(addressHash, path, hash, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);

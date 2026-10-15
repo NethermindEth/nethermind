@@ -1,203 +1,70 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
-using System.Runtime.CompilerServices;
-using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
+using Nethermind.Trie.NodeLog;
 
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// A specialized <see cref="TrieNode"/> cache. It uses a sharded array of <see cref="TrieNode"/> as the cache with the
-/// hashcode of the path mapping to the array position directly. If a collision happen, it just replace the old entry.
-/// When trying to get the node, the node hash must be checked to ensure the right node is the one fetched.
-/// The use of sharding is so that when memory target is exceeded, whole shard which is grouped by tree path is cleared.
-/// This improve block cache hit rate as trie nodes of similar subtree tend to be clustered together.
+/// A cache of the trie nodes warmed by earlier blocks, as hash-verified node records keyed by node position.
 /// </summary>
-public sealed class TrieNodeCache : ITrieNodeCache
+/// <remarks>
+/// The records live in 256 shards, each a direct-mapped <see cref="RecordTable"/> holding an equal share of the memory budget,
+/// so a collision replaces the older record and a lookup checks the record's hash. A record holds its node key but not its path,
+/// so the shard is picked by node key bits that neither the slot index nor the signature of a shard's table uses.
+/// A shard whose arena is full is replaced by an empty one instead of being reset: its arrays are never reused, so a reader
+/// still holding one of its records keeps reading the same bytes. A budget of zero caches nothing.
+/// </remarks>
+public sealed class TrieNodeCache(IFlatDbConfig flatDbConfig) : ITrieNodeCache
 {
-    private const int EstimatedSizePerNode = 700;
-    private const double UtilRatio = 0.25;
     private const int ShardCount = 256;
+    private const int ShardKeyShift = 24;
+    private const int AverageRecordBytes = 350;
+    private const double UtilRatio = 0.25;
+    private const int MinSlotsPerShard = 16;
 
-    private readonly ILogger _logger;
-    private readonly TrieNode?[][] _cacheShards;
-    private readonly long[] _shardMemoryUsages;
-    private readonly long _maxCacheMemoryThreshold;
-    private readonly int _bucketSize;
-    private readonly int _bucketMask;
+    private readonly RecordTable?[] _shards = new RecordTable?[ShardCount];
+    private readonly long _shardMemoryBudget = (long)(flatDbConfig.TrieCacheMemoryBudget / ShardCount);
+    private readonly int _slotsPerShard = (int)BitOperations.RoundUpToPowerOf2(
+        (uint)Math.Max(MinSlotsPerShard, flatDbConfig.TrieCacheMemoryBudget / AverageRecordBytes / UtilRatio / ShardCount));
 
-    private int _nextShardToClear = 0;
-
-    public TrieNodeCache(IFlatDbConfig flatDbConfig, ILogManager logManager)
+    public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
     {
-        _logger = logManager.GetClassLogger<TrieNodeCache>();
+        RecordTable? shard = Volatile.Read(ref _shards[ShardOf(NodeRecord.NodeKey(address, path))]);
+        if (shard is not null) return shard.TryGet(address, path, hash, out record);
 
-        long maxCacheMemoryThreshold = (long)flatDbConfig.TrieCacheMemoryBudget;
-        long totalNodeCount = (maxCacheMemoryThreshold / EstimatedSizePerNode);
-
-        int targetBucketSize = (int)((totalNodeCount / UtilRatio) / ShardCount);
-        _bucketSize = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(16, targetBucketSize));
-        _bucketMask = _bucketSize - 1;
-
-        _cacheShards = new TrieNode[ShardCount][];
-        for (int i = 0; i < ShardCount; i++)
-        {
-            _cacheShards[i] = new TrieNode[_bucketSize];
-        }
-
-        _shardMemoryUsages = new long[ShardCount];
-        _maxCacheMemoryThreshold = maxCacheMemoryThreshold;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (int, int) GetShardAndHashCode(Hash256? address, in TreePath path)
-    {
-        int h1;
-
-        int shardIdx = path.Path.Bytes[0];
-        if (address is not null)
-        {
-            // Add address byte so that the root nodes of storage does not all sit in a single shard
-            shardIdx += address.Bytes[0];
-            shardIdx %= 256;
-            h1 = address.GetHashCode();
-        }
-        else
-        {
-            h1 = 0;
-        }
-
-        int h2 = path.GetHashCode();
-
-        // Simple XOR is often enough and faster than HashCode.Combine for this use case
-        int hashCode = (h1 ^ h2) & int.MaxValue;
-
-        return (shardIdx, hashCode);
-    }
-
-    public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        (int shardIdx, int hashCode) = GetShardAndHashCode(address, in path);
-        int bucketIdx = hashCode & _bucketMask;
-
-        TrieNode? maybeNode = _cacheShards[shardIdx][bucketIdx];
-        if (maybeNode is not null && maybeNode.Keccak == hash)
-        {
-            node = maybeNode;
-            return true;
-        }
-
-        node = null;
+        record = default;
         return false;
     }
 
+    /// <summary>Copies the records warmed by a retired block into the cache, once no warm-up can still be writing them.</summary>
     public void Add(TransientResource transientResource)
     {
         transientResource.WaitForExclusiveLease();
+        if (_shardMemoryBudget == 0) return;
 
-        if (_maxCacheMemoryThreshold == 0)
-        {
-            for (int i = 0; i < ShardCount; i++)
-            {
-                (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
-                for (int j = 0; j < shard.Length; j++)
-                {
-                    if (shard[j].node is { } newNode && !newNode.IsWarmerOwned) newNode.PrunePersistedRecursively(1);
+        using ArrayPoolList<NodeRecordRef> warmed = new(transientResource.WarmedNodes.Count);
+        transientResource.WarmedNodes.CopyAllTo(warmed);
+        if (warmed.Count == 0) return;
 
-                }
-            }
-            return;
-        }
+        int[] shardStarts = new int[ShardCount + 1];
+        foreach (NodeRecordRef record in warmed.AsSpan()) shardStarts[ShardOf(record) + 1]++;
+        for (int shard = 1; shard <= ShardCount; shard++) shardStarts[shard] += shardStarts[shard - 1];
 
-        void AddToCacheWithHashCode(int shardIdx, int hashCode, TrieNode newNode)
-        {
-            int bucketIdx = hashCode & _bucketMask;
-            newNode.PrunePersistedRecursively(1);
-            Interlocked.Add(ref _shardMemoryUsages[shardIdx], newNode.GetMemorySize(false));
+        int[] nextPositions = shardStarts[..ShardCount];
+        using ArrayPoolList<NodeRecordRef> byShard = new(warmed.Count, warmed.Count);
+        foreach (NodeRecordRef record in warmed.AsSpan()) byShard[nextPositions[ShardOf(record)]++] = record;
 
-            TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], newNode);
-            if (oldNode is not null)
-            {
-                long oldMemory = oldNode.GetMemorySize(false);
-                oldNode.PrunePersistedRecursively(1);
+        Parallel.For(0, ShardCount, shard => AddToShard(shard, byShard.AsSpan()[shardStarts[shard]..shardStarts[shard + 1]]));
 
-                Interlocked.Add(ref _shardMemoryUsages[shardIdx], -oldMemory);
-            }
-        }
-
-        static TrieNode? TryMaterializeResolvedWarmerNode(TrieNode source)
-        {
-            if (source.NodeType == NodeType.Unknown) return null;
-
-            CappedArray<byte> fullRlp = source.FullRlp;
-            if (fullRlp.IsNull) return null;
-
-            Hash256? keccak = source.Keccak;
-            // A warmer can race a writer, so reverify the bytes before promoting them to the shared cache.
-            if (keccak is not null && ValueKeccak.Compute(fullRlp.AsSpan()) != keccak) return null;
-
-            TrieNode detached = keccak is null
-                ? new TrieNode(NodeType.Unknown, fullRlp)
-                : new TrieNode(NodeType.Unknown, keccak, fullRlp);
-            TreePath path = TreePath.Empty;
-
-            return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
-        }
-
-        Parallel.For(0, ShardCount, (i) =>
-        {
-            (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
-            for (int j = 0; j < shard.Length; j++)
-            {
-                if (shard[j].node is not { } source) continue;
-
-                TrieNode? newNode = source.IsWarmerOwned ? TryMaterializeResolvedWarmerNode(source)
-                    : source.IsHashOnlyPlaceholder() ? null
-                    : source;
-                if (newNode is not null)
-                {
-                    AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
-                }
-            }
-        });
-
-        long currentTotalMemory = 0;
-        for (int i = 0; i < ShardCount; i++) currentTotalMemory += _shardMemoryUsages[i];
-
-        long prevMemory = currentTotalMemory;
-        bool wasPruned = false;
-
-        while (currentTotalMemory > _maxCacheMemoryThreshold)
-        {
-            wasPruned = true;
-            int shardToClear = _nextShardToClear;
-
-            // Prune any remaining reference
-            for (int i = 0; i < _bucketSize; i++)
-            {
-                _cacheShards[shardToClear][i]?.PrunePersistedRecursively(1);
-            }
-
-            // Clear the shard
-            Array.Clear(_cacheShards[shardToClear]);
-
-            // Reset shard memory
-            long freedMemory = Interlocked.Exchange(ref _shardMemoryUsages[shardToClear], 0);
-            currentTotalMemory -= freedMemory;
-
-            _nextShardToClear = (_nextShardToClear + 1) & 255; // Fast modulo 256
-        }
-
-        if (wasPruned && _logger.IsTrace) _logger.Trace($"Pruning trie cache from {prevMemory} to {currentTotalMemory}");
-
-        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = currentTotalMemory;
+        long memoryUsed = 0;
+        foreach (RecordTable? shard in _shards) memoryUsed += shard?.ArenaBytes ?? 0;
+        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = memoryUsed;
     }
 
     /// <summary>
@@ -205,123 +72,31 @@ public sealed class TrieNodeCache : ITrieNodeCache
     /// </summary>
     public void Clear()
     {
-        for (int i = 0; i < ShardCount; i++)
-        {
-            for (int j = 0; j < _bucketSize; j++)
-            {
-                _cacheShards[i][j]?.PrunePersistedRecursively(1);
-            }
-            Array.Clear(_cacheShards[i]);
-            Interlocked.Exchange(ref _shardMemoryUsages[i], 0);
-        }
-        _nextShardToClear = 0;
+        Array.Clear(_shards);
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = 0;
     }
 
-    /// <summary>
-    /// Small cached for use in <see cref="TransientResource"/>. Its also sharded with the same shard mechanics so that
-    /// when adding to trie node cache can be done in parallel.
-    /// </summary>
-    public class ChildCache
+    private static int ShardOf(ulong nodeKey) => (int)(nodeKey >> ShardKeyShift) & (ShardCount - 1);
+
+    private static int ShardOf(in NodeRecordRef record) => ShardOf(record.View.NodeKey);
+
+    private void AddToShard(int shardIndex, ReadOnlySpan<NodeRecordRef> records)
     {
-        private readonly (int hashCode, TrieNode? node)[][] _shards;
-        private int _count = 0;
-        private int _mask;
-        private int _shardSize;
-
-        public int Count => _count;
-        public int Capacity => _shards.Length * _shardSize;
-        public (int hashCode, TrieNode? node)[][] Shards => _shards;
-
-        public ChildCache(int size)
+        RecordTable shard = _shards[shardIndex] ?? ReplaceShard(shardIndex);
+        foreach (NodeRecordRef record in records)
         {
-            int powerOfTwoSize = (int)BitOperations.RoundUpToPowerOf2((uint)(size + ShardCount - 1) / ShardCount);
-            _shards = new (int, TrieNode?)[ShardCount][];
-            _mask = powerOfTwoSize - 1;
-            _shardSize = powerOfTwoSize;
-            CreateCacheArray(_shardSize);
+            // A record that does not fit an empty shard is skipped rather than replacing the shard for nothing.
+            if (shard.TryAdd(record.Span, out _) || shard.ArenaBytes == 0) continue;
+
+            shard = ReplaceShard(shardIndex);
+            shard.TryAdd(record.Span, out _);
         }
+    }
 
-        private void CreateCacheArray(int size)
-        {
-            for (int i = 0; i < ShardCount; i++) _shards[i] = new (int, TrieNode?)[size];
-        }
-
-        public void Reset()
-        {
-            // Every write counts, so a cache no trie node was loaded into (most read-only calls) has nothing to clear.
-            if (_count == 0) return;
-
-            if (_count / UtilRatio > ShardCount * _shardSize)
-            {
-                int newTarget = (int)(_count / UtilRatio);
-                int powerOfTwoSize = (int)BitOperations.RoundUpToPowerOf2((uint)(newTarget + ShardCount - 1) / ShardCount);
-                _shardSize = powerOfTwoSize;
-                CreateCacheArray(_shardSize);
-                _mask = powerOfTwoSize - 1;
-            }
-            else
-            {
-                for (int i = 0; i < ShardCount; i++)
-                {
-                    Array.Clear(_shards[i], 0, _shards[i].Length);
-                }
-            }
-
-            _count = 0;
-        }
-
-        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-        {
-            (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
-            int idx = hashCode & _mask;
-            (int hashCode, TrieNode? node) entry = _shards[shardIdx][idx]; // Copy struct once
-
-            if (entry.hashCode != hashCode)
-            {
-                node = null;
-                return false;
-            }
-
-            TrieNode? maybeNode = entry.node; // Store it to prevent concurrency issue
-            if (maybeNode is null || maybeNode.Keccak != hash)
-            {
-                node = null;
-                return false;
-            }
-
-            node = maybeNode;
-            return true;
-        }
-
-        public void Set(Hash256? address, in TreePath path, TrieNode node)
-        {
-            (int shard, int hashCode) = GetShardAndHashCode(address, path);
-            int idx = hashCode & _mask;
-
-            _count++; // Track count
-
-            _shards[shard][idx] = (hashCode, node);
-        }
-
-        public TrieNode GetOrAdd(Hash256? address, in TreePath path, TrieNode trieNode)
-        {
-            (int shard, int hashCode) = GetShardAndHashCode(address, path);
-            int idx = hashCode & _mask;
-
-            ref (int hashCode, TrieNode? node) entry = ref _shards[shard][idx];
-            TrieNode? maybeNode = entry.node; // Store it to prevent concurrency issue
-            if (maybeNode is not null)
-            {
-                if (maybeNode.Keccak == trieNode.Keccak) return maybeNode;
-            }
-            else
-            {
-                _count++; // Track count
-            }
-
-            entry = (hashCode, trieNode);
-            return trieNode;
-        }
+    private RecordTable ReplaceShard(int shardIndex)
+    {
+        RecordTable shard = new(_slotsPerShard, _shardMemoryBudget);
+        Volatile.Write(ref _shards[shardIndex], shard);
+        return shard;
     }
 }

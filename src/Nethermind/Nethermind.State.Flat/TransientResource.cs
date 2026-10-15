@@ -1,17 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
-using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -33,8 +30,8 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     private ResourcePool.Usage _returnUsage;
 
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
-    public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
     internal readonly WarmedNodes WarmedNodes = new(size.NodesCacheSize);
+    private int _nodesCacheSize = size.NodesCacheSize;
 
     internal void OnRented(IResourcePool pool, ResourcePool.Usage usage)
     {
@@ -81,13 +78,11 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         }
     }
 
-    public Size GetSize() => new(PrewarmedAddresses.Capacity, Nodes.Capacity);
-
-    public int CachedNodes => Nodes.Count;
+    public Size GetSize() => new(PrewarmedAddresses.Capacity, _nodesCacheSize);
 
     public void Reset()
     {
-        Nodes.Reset();
+        _nodesCacheSize = Math.Max(_nodesCacheSize, WarmedNodes.Count);
         WarmedNodes.Reset();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
@@ -134,12 +129,4 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     }
 
     public void Dispose() => PrewarmedAddresses.Dispose();
-
-    public bool TryGetStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(null, path, hash, out node);
-
-    public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
-
-    public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
-
-    public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node) => Nodes.Set(address, path, node);
 }

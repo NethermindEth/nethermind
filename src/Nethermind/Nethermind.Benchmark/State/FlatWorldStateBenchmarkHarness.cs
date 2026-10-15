@@ -10,6 +10,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 
 namespace Nethermind.Benchmarks.State;
@@ -66,9 +67,9 @@ internal sealed class NoTieredCompilationAttribute : JobMutatorConfigBaseAttribu
 /// <summary>Trie node cache that never caches — these benchmarks don't measure caching.</summary>
 internal sealed class NullTrieNodeCache : ITrieNodeCache
 {
-    public bool TryGet(Hash256 address, in TreePath path, Hash256 hash, out TrieNode node)
+    public bool TryGet(Hash256 address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
     {
-        node = null;
+        record = default;
         return false;
     }
 

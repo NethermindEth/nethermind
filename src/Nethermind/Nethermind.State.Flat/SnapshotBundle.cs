@@ -200,10 +200,6 @@ public sealed class SnapshotBundle : IDisposable
             node = _trieNodeLog!.GetRecord(pointer).ToTrieNode();
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node) && node.NodeType != NodeType.Unknown)
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
         else if (DoFindStateNodeExternal(path, hash, out node))
         {
         }
@@ -248,12 +244,6 @@ public sealed class SnapshotBundle : IDisposable
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
-        if (_trieNodeCache.TryGet(null, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
         HashedKey<TreePath> key = new(path);
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -262,6 +252,13 @@ public sealed class SnapshotBundle : IDisposable
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 return true;
             }
+        }
+
+        if (_trieNodeCache.TryGet(null, path, hash.ValueHash256, out NodeRecordRef record))
+        {
+            node = record.ToTrieNode();
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
         }
 
         return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
@@ -277,11 +274,6 @@ public sealed class SnapshotBundle : IDisposable
         if (_trieChanged && _changedStorageNodes.TryGetValue(key, out ulong pointer))
         {
             node = _trieNodeLog!.GetRecord(pointer).ToTrieNode();
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node)
-                 && node.NodeType != NodeType.Unknown)
-        {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
@@ -301,12 +293,6 @@ public sealed class SnapshotBundle : IDisposable
     // check for slightly improved latency.
     private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
     {
-        if (_trieNodeCache.TryGet(address, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
         HashedKey<(Hash256, TreePath)> key = new((address, path));
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -315,6 +301,13 @@ public sealed class SnapshotBundle : IDisposable
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 return true;
             }
+        }
+
+        if (_trieNodeCache.TryGet(address, path, hash.ValueHash256, out NodeRecordRef record))
+        {
+            node = record.ToTrieNode();
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
         }
 
         return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
@@ -362,9 +355,9 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <summary>Loads the record of a trie node the trie node log does not hold, for a bulk set or point read.</summary>
     /// <remarks>
-    /// Tries the nodes warmed for this block, then persistence, whose node is verified against <paramref name="hash"/> and
-    /// added to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot are in the log, which
-    /// their retains keep readable, so they are looked up by path only as a last resort that counts
+    /// Tries the nodes warmed for this block, then the trie node cache, then persistence, whose node is verified against
+    /// <paramref name="hash"/> and added to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
+    /// are in the log, which their retains keep readable, so they are looked up by path only as a last resort that counts
     /// <see cref="Metrics.TrieNodeLogFallbackReads"/>.
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
@@ -373,7 +366,9 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         WarmedNodes warmed = _transientResource.WarmedNodes;
-        if (warmed.TryGet(address, path, hash, out record) || TryInsertPersistedRecord(warmed, address, path, hash, out record)) return true;
+        if (warmed.TryGet(address, path, hash, out record)
+            || _trieNodeCache.TryGet(address, path, hash, out record)
+            || TryInsertPersistedRecord(warmed, address, path, hash, out record)) return true;
 
         if (!TryFindInMemoryRecord(_snapshots, address, path, hash, out record)
             && !TryFindInMemoryRecord(_readOnlySnapshotBundle.InMemorySnapshots, address, path, hash, out record)) return false;
@@ -390,9 +385,9 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node log does not hold, for this block's bulk sets.</summary>
     /// <remarks>
-    /// Reads only the warmed nodes and persistence, never this bundle's changes or snapshots, which the owner recycles while a
-    /// warm-up runs. The transient resource holding the warmed nodes is leased for the walk, so retiring it waits for the walk to
-    /// end. Does nothing once the bundle is being torn down.
+    /// Reads only the warmed nodes, the trie node cache and persistence, never this bundle's changes or snapshots, which the owner
+    /// recycles while a warm-up runs. The transient resource holding the warmed nodes is leased for the walk, so retiring it waits
+    /// for the walk to end. Does nothing once the bundle is being torn down.
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="root">The trie's root before the block, as <see cref="LogBulkSet.ResolveRoot"/> returns it.</param>
@@ -437,11 +432,12 @@ public sealed class SnapshotBundle : IDisposable
         return false;
     }
 
-    /// <summary>The node source of a warm-up: the nodes already warmed, then the verified persisted node, which it warms.</summary>
+    /// <summary>The node source of a warm-up: the nodes already warmed, then the trie node cache, then the verified persisted node, which it warms.</summary>
     private sealed class WarmUpRecordSource(SnapshotBundle bundle, TransientResource transientResource, Hash256? address) : INodeRecordSource
     {
         public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
             transientResource.WarmedNodes.TryGet(address, path, hash, out record)
+            || bundle._trieNodeCache.TryGet(address, path, hash, out record)
             || bundle.TryInsertPersistedRecord(transientResource.WarmedNodes, address, path, hash, out record);
     }
 

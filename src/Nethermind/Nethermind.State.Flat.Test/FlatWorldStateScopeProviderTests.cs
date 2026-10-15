@@ -996,10 +996,13 @@ public class FlatWorldStateScopeProviderTests
         [Values(0, 20)] int blocksBetweenCommits,
         [Values] bool deferStorageTrieCommit,
         // 512 crosses the bulk set's parallel threshold.
-        [Values(48, 512)] int slotsPerContract)
+        [Values(48, 512)] int slotsPerContract,
+        [Values] bool trieNodeCacheEnabled)
     {
         const int contractCount = 8;
-        using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatDbConfig config = new() { DeferStorageTrieCommit = deferStorageTrieCommit };
+        if (!trieNodeCacheEnabled) config.TrieCacheMemoryBudget = 0;
+        using TestContext ctx = new(config: config);
         FlatWorldStateScope scope = ctx.Scope;
         Account baseAccount = new(1, 1);
         ctx.PersistenceReader.GetAccount(Arg.Any<Address>()).Returns(baseAccount);
