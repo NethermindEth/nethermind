@@ -213,7 +213,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             MergeForkIdTransition = parameters.MergeForkIdTransition,
             TerminalTotalDifficulty = parameters.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = parameters.TerminalPoWBlockNumber,
-            BlobSchedule = parameters.BlobSchedule,
+            BlobSchedule = CollapseBlobSchedule(parameters.BlobSchedule),
 
             Eip7594TransitionTimestamp = parameters.Eip7594TransitionTimestamp,
             Eip7939TransitionTimestamp = parameters.Eip7939TransitionTimestamp,
@@ -242,6 +242,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7843TransitionTimestamp = parameters.Eip7843TransitionTimestamp,
             Eip7954TransitionTimestamp = parameters.Eip7954TransitionTimestamp,
             Eip2780TransitionTimestamp = parameters.Eip2780TransitionTimestamp,
+            Eip5920TransitionTimestamp = parameters.Eip5920TransitionTimestamp,
             Eip8116TransitionTimestamp = parameters.Eip8116TransitionTimestamp,
             Eip8360TransitionTimestamp = parameters.Eip8360TransitionTimestamp,
             Eip3298TransitionTimestamp = parameters.Eip3298TransitionTimestamp,
@@ -272,6 +273,19 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         chainSpec.Parameters.Eip2565Transition ??= GetTransitionIfInnerPathExists("modexp", "price.modexp2565");
 
         Eip4844Constants.OverrideIfAny(chainSpec.Parameters.Eip4844MinBlobGasPrice);
+    }
+
+    /// <summary>Keeps the last listed settings for each timestamp, so forks that activate together apply the latest fork's limits.</summary>
+    private static SortedSet<BlobScheduleSettings> CollapseBlobSchedule(List<BlobScheduleSettings>? blobSchedule)
+    {
+        SortedSet<BlobScheduleSettings> collapsed = [];
+        foreach (BlobScheduleSettings settings in blobSchedule ?? [])
+        {
+            collapsed.Remove(settings);
+            collapsed.Add(settings);
+        }
+
+        return collapsed;
     }
 
     internal static TValue? LoadDependentParam<TTransition, TValue>(
