@@ -76,7 +76,7 @@ namespace Nethermind.Config
 
         public bool PreWarmHandoff { get; set; } = true;
 
-        public int PreWarmRefreshWorkers { get; set; } = 1;
+        public int PreWarmRefreshWorkers { get; set; } = 4;
 
         public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
 
