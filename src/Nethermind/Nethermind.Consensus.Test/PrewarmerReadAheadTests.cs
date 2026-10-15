@@ -332,6 +332,38 @@ public class PrewarmerReadAheadTests
         }
     }
 
+    /// <summary>
+    /// In a session, the read-ahead of a sender's second claim is seeded with the counter block processing reported its
+    /// first claim left, and finds the range that counter points at.
+    /// </summary>
+    [Test]
+    public void A_read_ahead_is_seeded_with_what_block_processing_reported_writing()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, coldReads: 1, handoff: true);
+        Block block = BuildBlock(BatchClaim(TestItem.PrivateKeyA, 0, 6), BatchClaim(TestItem.PrivateKeyA, 1, 6), Transfer(TestItem.PrivateKeyB, 0));
+        UInt256 moved = ColdTailContracts.BatchCounter + 6;
+        using IDisposable session = OpenSession(preWarmer, block);
+        BlockFootprints? footprints = preWarmer.Footprints;
+        Assert.That(footprints, Is.Not.Null, "precondition: the block takes block processing's writes");
+        _caches.StorageCache.Clear();
+
+        preWarmer.OnBeforeTxExecution();
+        preWarmer.ReportExecutedWrites(new[] { (new StorageCell(ColdTailContracts.Batch, 0), moved) });
+        footprints!.ApplyExecuted();
+        preWarmer.OnBeforeTxExecution();
+        _caches.ReportConsumerColdRead();
+        bool idle = SpinWait.SpinUntil(() => preWarmer.ReadAheadsRunning == 0, Timeout);
+
+        bool found = _caches.StorageCache.TryGetValue(ColdTailContracts.BatchSlot(moved, 5), out UInt256 value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preWarmer.ReadAheadsStarted, Is.EqualTo(1), "precondition: block processing's read started the read-ahead");
+            Assert.That(idle, Is.True);
+            Assert.That(found, Is.True, "the range the reported counter points at is found");
+            if (found) Assert.That(value, Is.EqualTo(UInt256.Zero), "at its parent value");
+        }
+    }
+
     [Test]
     public void The_sessions_end_stops_and_joins_its_read_ahead()
     {
@@ -579,7 +611,7 @@ public class PrewarmerReadAheadTests
     }
 
     private BlockCachePreWarmer CreatePreWarmer(bool readAhead, int coldReads = 0, IPooledObjectPolicy<IPrewarmerEnv>? policy = null,
-        int concurrency = 2, ISenderRecoveryTracker? senderRecovery = null) =>
+        int concurrency = 2, ISenderRecoveryTracker? senderRecovery = null, bool handoff = false) =>
         new(policy ?? new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(_scope.Resolve<PrewarmerEnvFactory>(), _caches),
             minPoolSize: 4,
             concurrency: concurrency,
@@ -588,6 +620,7 @@ public class PrewarmerReadAheadTests
             _caches,
             LimboLogs.Instance,
             senderRecovery: senderRecovery,
+            handoff: handoff,
             readAhead: readAhead,
             readAheadColdReads: coldReads);
 
