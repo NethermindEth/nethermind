@@ -49,6 +49,136 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceBlock_opcode_timeout_phase(
+        [Values("bad", "valid", "empty", "unmatched")] string scenario, [Values] bool streaming)
+    {
+        using Context context = await Context.Create();
+        Block block = scenario == "empty"
+            ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        Dictionary<string, object> options = new()
+        {
+            ["timeout"] = scenario == "valid" ? "5s" : "bad",
+            ["streamMode"] = streaming
+        };
+        if (scenario == "unmatched") options["txHash"] = TestItem.KeccakD;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", Rlp.Encode(block).ToString(), options);
+        JToken json = JToken.Parse(response);
+        if (scenario == "bad")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot parse 'bad' as a duration"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
+        else
+        {
+            Assert.That(json["error"], Is.Null, response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(scenario == "valid" ? block.Transactions.Length : 0), response);
+            for (int i = 0; i < traces.Count; i++)
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+        }
+    }
+
+    [TestCase("genesis", false, false)]
+    [TestCase("genesis", true, false)]
+    [TestCase("genesis", false, true)]
+    [TestCase("decode", false, false)]
+    [TestCase("decode", true, false)]
+    [TestCase("empty", false, false)]
+    [TestCase("empty", true, false)]
+    public async Task Debug_traceBlock_genesis_precedes_replay(string scenario, bool streaming, bool native)
+    {
+        using Context context = await Context.Create();
+        Block block = scenario == "genesis"
+            ? context.Blockchain.BlockTree.FindBlock(context.Blockchain.BlockTree.Genesis!.Hash!)!
+            : await context.Blockchain.AddBlock();
+        string input = scenario == "decode" ? "0xc0" : Rlp.Encode(block).ToString();
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", input,
+            new { timeout = "5s", streamMode = streaming, tracer = native ? NativeNoopTracer.NoopTracer : null });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (scenario == "empty")
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((json["result"] as JArray)?.Count, Is.Zero, response);
+            }
+            else
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That(json["result"], Is.Null, response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain(scenario == "genesis" ? "genesis is not traceable" : "decoding block RLP"), response);
+            }
+        }
+    }
+
+    [TestCase("decode")]
+    [TestCase("genesis")]
+    [TestCase("empty")]
+    [TestCase("native")]
+    [TestCase("config")]
+    [TestCase("config-valid-timeout")]
+    [TestCase("native-valid-timeout")]
+    [TestCase("type")]
+    [TestCase("oversized")]
+    [TestCase("extension")]
+    public async Task Debug_traceBlock_semantic_timeout_phase(string scenario)
+    {
+        using Context context = await Context.Create();
+        Block block = scenario switch
+        {
+            "genesis" => context.Blockchain.BlockTree.FindBlock(context.Blockchain.BlockTree.Genesis!.Hash!)!,
+            "empty" => await context.Blockchain.AddBlock(),
+            _ => await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain))
+        };
+        bool invalidConfig = scenario is "config" or "config-valid-timeout";
+        object timeout = scenario switch
+        {
+            "type" => 7,
+            "oversized" => new string('x', 65),
+            "config-valid-timeout" or "native-valid-timeout" => "5s",
+            _ => "bad"
+        };
+        Dictionary<string, object> options = new()
+        {
+            ["tracer"] = invalidConfig ? "prestateTracer" : NativeNoopTracer.NoopTracer,
+            ["timeout"] = timeout
+        };
+        if (invalidConfig) options["tracerConfig"] = new { diffMode = Array.Empty<int>() };
+        string input = scenario == "decode" ? "0xc0" : Rlp.Encode(block).ToString();
+        string method = scenario == "extension" ? "debug_traceTransactionInBlockByHash" : "debug_traceBlock";
+        object[] parameters = scenario == "extension" ? [input, block.Transactions[0].Hash!, options] : [input, options];
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        if (scenario is "empty" or "native-valid-timeout")
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(block.Transactions.Length), response);
+            return;
+        }
+        int expectedCode = invalidConfig || scenario is "type" or "oversized" or "extension"
+            ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput;
+        string? diagnostic = scenario switch
+        {
+            "decode" => "decoding block RLP",
+            "genesis" => "genesis is not traceable",
+            "native" => "Cannot parse 'bad' as a duration",
+            "config" or "config-valid-timeout" => "Cannot convert",
+            _ => null
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+            Assert.That(json["result"], Is.Null, response);
+            if (diagnostic is not null) Assert.That(json["error"]?.ToString(), Does.Contain(diagnostic), response);
+        }
+    }
+
     [TestCase(false, "\"bad\"", "lookup")]
     [TestCase(false, "\"5s\"", "lookup")]
     [TestCase(true, "\"bad\"", "constructor")]
