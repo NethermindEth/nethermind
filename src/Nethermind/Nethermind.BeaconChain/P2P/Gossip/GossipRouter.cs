@@ -144,11 +144,12 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>The most decoded bytes of envelopes for unseen blocks raised to the import pipeline and not yet taken from its queue or refused by it.</summary>
     /// <remarks>
     /// The pubsub verdict of such an envelope is given at once, so no pending-validation bound holds it while it waits in the import queue.
-    /// The pipeline ends the charge when it takes the envelope from its queue; <see cref="UnseenBlockEnvelopeSlots"/> only frees a charge it never ends.
+    /// The pipeline ends the charge when it takes the envelope from its queue, and a charge whose verdict is still pending never expires;
+    /// <see cref="UnseenBlockEnvelopeSlots"/> only frees a charge whose verdict ended without giving it back.
     /// </remarks>
     internal const long UnseenBlockEnvelopeBytes = 64 * 1024 * 1024;
 
-    /// <summary>The slots after the current one after which a charge on <see cref="UnseenBlockEnvelopeBytes"/> expires if the import pipeline has not ended it.</summary>
+    /// <summary>The slots after the one it was taken in after which a charge on <see cref="UnseenBlockEnvelopeBytes"/> expires once its verdict has ended without giving it back.</summary>
     internal const ulong UnseenBlockEnvelopeSlots = 16;
 
     private readonly ILogger _logger = logManager.GetClassLogger<GossipRouter>();
@@ -635,8 +636,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
         // A consumer that refuses the message for local load leaves no id in the pubsub router, so a later copy is checked again.
         Action releaseSeen = () => seenMessages.Delete(seenKey);
-        Action? releaseCharge = null;
-        if (verdict is { UnseenBlock: true } && (releaseCharge = _unseenBlockEnvelopes.TryCharge(payload!.Length, slotClock.CurrentSlot)) is null)
+        SlotExpiringByteBudget.Charge? charge = null;
+        if (verdict is { UnseenBlock: true } && (charge = _unseenBlockEnvelopes.TryCharge(payload!.Length, slotClock.CurrentSlot)) is null)
         {
             releaseSeen();
             releaseClaim?.Invoke(value);
@@ -663,9 +664,10 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             bool refused = false;
             GossipVerdict consumed = GossipVerdict.Local();
             consumed.ReleaseOnThrottle(() => refused = true);
-            if (releaseCharge is not null)
+            if (charge is not null)
             {
-                consumed.ReleaseOnEnd(releaseCharge);
+                charge.Bind(consumed);
+                consumed.ReleaseOnEnd(charge.Release);
             }
 
             Raise(raise, value, consumed);

@@ -542,7 +542,7 @@ public partial class GossipRouterTests
 
     // gloas/p2p-interface.md execution_payload: an envelope for an unseen block MAY be queued; its queue must stay bounded while the import waits.
     [Test]
-    public void Envelopes_for_unseen_blocks_are_throttled_past_their_byte_budget_until_it_frees()
+    public void Envelopes_for_unseen_blocks_are_throttled_past_their_byte_budget_until_the_import_pipeline_ends_their_verdicts()
     {
         EnvelopeFixture fixture = new(withStore: true);
         ulong laterSlot = EnvelopeFixture.WallSlot + GossipRouter.UnseenBlockEnvelopeSlots + 1;
@@ -556,9 +556,11 @@ public partial class GossipRouterTests
 
         int fits = (int)(GossipRouter.UnseenBlockEnvelopeBytes / SignedExecutionPayloadEnvelope.GetLength(Unseen(0)));
         int refusals = 1;
+        List<GossipVerdict> queued = [];
         fixture.Router.ExecutionPayloadEnvelopeReceived += (_, verdict) =>
         {
             if (refusals-- > 0) verdict.Complete(MessageValidity.Throttled);
+            else queued.Add(verdict);
         };
         MessageValidity refused = fixture.Handle(Unseen(fits + 1));
         MessageValidity[] filling = [.. Enumerable.Range(0, fits).Select(index => fixture.Handle(Unseen(index)))];
@@ -567,7 +569,9 @@ public partial class GossipRouterTests
         MessageValidity heldBlock = fixture.Handle(fixture.Envelope());
         int raisedWhileFull = fixture.Raised;
         fixture.Timestamper.Set(SepoliaSlotStart(laterSlot).AddSeconds(6));
-        MessageValidity afterExpiry = fixture.Handle(Unseen(fits, laterSlot));
+        MessageValidity whileQueued = fixture.Handle(Unseen(fits, laterSlot));
+        foreach (GossipVerdict verdict in queued) verdict.Complete(MessageValidity.Ignored);
+        MessageValidity afterDrain = fixture.Handle(Unseen(fits, laterSlot));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(refused, Is.EqualTo(MessageValidity.Ignored));
@@ -575,7 +579,22 @@ public partial class GossipRouterTests
         Assert.That((overBudget, copy), Is.EqualTo((MessageValidity.Throttled, MessageValidity.Throttled)), "past the budget an envelope is throttled and its id not cached");
         Assert.That(heldBlock, Is.EqualTo(MessageValidity.Ignored));
         Assert.That(raisedWhileFull, Is.EqualTo(fits + 2), "an envelope for a held block is not held to the budget");
-        Assert.That((afterExpiry, fixture.Raised), Is.EqualTo((MessageValidity.Ignored, fits + 3)), "the budget frees once its charges expire");
+        Assert.That(whileQueued, Is.EqualTo(MessageValidity.Throttled), "a charge whose envelope still waits in the import queue never expires");
+        Assert.That((afterDrain, fixture.Raised), Is.EqualTo((MessageValidity.Ignored, fits + 3)), "the budget frees once the import pipeline ends the verdicts");
+    }
+
+    [Test]
+    public void Unseen_block_envelope_charge_expires_only_after_its_verdict_ends_without_giving_it_back([Values] bool verdictEnded)
+    {
+        SlotExpiringByteBudget budget = new(maxBytes: 10, lifetimeSlots: 2);
+        GossipVerdict verdict = GossipVerdict.Local();
+        budget.TryCharge(10, currentSlot: 1)!.Bind(verdict);
+        if (verdictEnded) verdict.Complete(MessageValidity.Ignored);
+
+        bool beforeLifetime = budget.TryCharge(10, currentSlot: 3) is not null;
+        bool afterLifetime = budget.TryCharge(10, currentSlot: 4) is not null;
+
+        Assert.That((beforeLifetime, afterLifetime), Is.EqualTo((false, verdictEnded)));
     }
 
     [Test]
