@@ -38,18 +38,7 @@ public class EngineTests
         BlockHeader anchor = chain.BlockTree.Head!.Header;
         await chain.BuildSomeBlocks(3);
         Hash256 head = chain.BlockTree.Head!.Hash!;
-        IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
-        // Like the execution layer's handler, a requested head other than the current one is forced to be the head.
-        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> MoveHead(ForkchoiceStateV1 state)
-        {
-            chain.BlockTree.TryUpdateMainChain(chain.BlockTree.FindHeader(state.HeadBlockHash)!, wereProcessed: true, forceUpdateHeadBlock: true);
-            return Task.FromResult(ForkchoiceUpdatedV1Result.Valid(null, state.HeadBlockHash));
-        }
-        inner.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(call => MoveHead(call.Arg<ForkchoiceStateV1>()));
-        inner.engine_forkchoiceUpdatedV4(default!, default, default).ReturnsForAnyArgs(call => MoveHead(call.Arg<ForkchoiceStateV1>()));
-        EngineDriver driver = new(CreateDetector(inner, out _), LimboLogs.Instance,
-            new SlotClock(TestEngineDriver.Spec, Timestamper.Default), TestEngineDriver.Spec,
-            new TestEngineDriver.FixedCustodySource(null), chain.BlockTree);
+        (EngineDriver driver, IEngineRpcModule inner) = HeadMovingDriver(chain, Timestamper.Default);
 
         PayloadStatusV1 result = await driver.ForkchoiceUpdated(anchor.Hash!, anchor.Hash!, anchor.Hash!);
         for (ulong number = anchor.Number + 1; number <= anchor.Number + (ulong)importedPastAnchor; number++)
@@ -61,6 +50,41 @@ public class EngineTests
         Assert.That(result.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(head));
         Assert.That(inner.ReceivedCalls(), importedPastAnchor == 0 ? Is.Empty : Is.Not.Empty, "only the first update at the anchor is answered without the engine");
+    }
+
+    [Test]
+    public async Task Canonical_ancestor_head_replaces_the_execution_head_only_while_more_than_a_slot_behind_the_wall_clock([Values] bool catchingUp)
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+        BlockHeader anchor = chain.BlockTree.Head!.Header;
+        await chain.BuildSomeBlocks(3);
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        BlockHeader parent = chain.BlockTree.FindHeader(head.ParentHash!)!;
+        ulong parentSlot = TestEngineDriver.Spec.GetSlotAtTime(parent.Timestamp);
+        ulong wallSlot = parentSlot + (catchingUp ? 2UL : 1UL);
+        ManualTimestamper wallClock = new(DateTime.UnixEpoch.AddSeconds(TestEngineDriver.Spec.GenesisTime + wallSlot * TestEngineDriver.Spec.SecondsPerSlot));
+        (EngineDriver driver, _) = HeadMovingDriver(chain, wallClock);
+
+        await driver.ForkchoiceUpdated(parent.Hash!, anchor.Hash!, anchor.Hash!);
+
+        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(catchingUp ? head.Hash : parent.Hash), "a reorg to the parent at the wall slot reaches the execution layer at once");
+    }
+
+    // Like the execution layer's handler, a requested head other than the current one is forced to be the head.
+    private static (EngineDriver Driver, IEngineRpcModule Inner) HeadMovingDriver(BasicTestBlockchain chain, ITimestamper timestamper)
+    {
+        IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> MoveHead(ForkchoiceStateV1 state)
+        {
+            chain.BlockTree.TryUpdateMainChain(chain.BlockTree.FindHeader(state.HeadBlockHash)!, wereProcessed: true, forceUpdateHeadBlock: true);
+            return Task.FromResult(ForkchoiceUpdatedV1Result.Valid(null, state.HeadBlockHash));
+        }
+        inner.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(call => MoveHead(call.Arg<ForkchoiceStateV1>()));
+        inner.engine_forkchoiceUpdatedV4(default!, default, default).ReturnsForAnyArgs(call => MoveHead(call.Arg<ForkchoiceStateV1>()));
+        EngineDriver driver = new(CreateDetector(inner, out _), LimboLogs.Instance,
+            new SlotClock(TestEngineDriver.Spec, timestamper), TestEngineDriver.Spec,
+            new TestEngineDriver.FixedCustodySource(null), chain.BlockTree);
+        return (driver, inner);
     }
 
     [Test]
