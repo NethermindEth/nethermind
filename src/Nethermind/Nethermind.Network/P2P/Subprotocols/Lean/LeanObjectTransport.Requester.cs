@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
@@ -145,7 +146,7 @@ public sealed partial class LeanObjectTransport
             {
                 if ((assembly.Waiters.Count > 0) != waited || assembly.Dropped || assembly.Queued || assembly.IsComplete
                     || assembly.Sources.Count == 0) continue;
-                if (!waited && BufferedBytes > LeanLimits.MaxIncompleteBytes - LeanProtocol.MaxCreditBytes) return;
+                if (!waited && assembly.RetrievalBytes == 0 && BufferedBytes > LeanLimits.MaxIncompleteBytes - LeanProtocol.MaxCreditBytes) continue;
                 ScheduleAssembly(assembly, outbox, now);
             }
         }
@@ -168,7 +169,20 @@ public sealed partial class LeanObjectTransport
             }
         }
         if (assembly.CurrentSource is not { } source) return;
-        while (source.CanRequest(now) && source.ChargedBytes <= LeanLimits.MaxPeerBytes - LeanProtocol.MaxCreditBytes)
+        if (assembly.RetrievalBytes == 0)
+        {
+            long bodyBytes = (long)assembly.Descriptor.ByteLength;
+            long workingBytes = assembly.Descriptor.Kind == LeanProtocol.KindWrapper
+                ? Math.Min(bodyBytes, Eip8288Constants.MaxAggregateProofBytes
+                    + (long)Eip8288Constants.MaxLeanSigDepsPerWrapper * Eip8288Constants.LeanSphincsWitnessBytes)
+                : 0;
+            long reserved = bodyBytes + workingBytes;
+            if (reserved > LeanLimits.MaxIncompleteBytes - BufferedBytes || reserved > LeanLimits.MaxPeerBytes - source.ChargedBytes) return;
+            assembly.RetrievalBytes = reserved;
+            _incompleteBytes += reserved;
+            source.ChargedBytes += reserved;
+        }
+        while (source.CanRequest(now))
         {
             List<int> indices = [];
             for (int index = 0; index < assembly.Chunks.Length && indices.Count < LeanProtocol.MaxChunksPerRequest; index++)
@@ -247,15 +261,8 @@ public sealed partial class LeanObjectTransport
                 Violation(peer, $"Conflicting chunk {index} of {assembly.Descriptor}", outbox);
             return;
         }
-        if (assembly.Body is null)
-        {
-            long bytes = (long)assembly.Descriptor.ByteLength;
-            if (bytes > LeanLimits.MaxIncompleteBytes - BufferedBytes || bytes > LeanLimits.MaxPeerBytes - peer.ChargedBytes) return;
-            // Announcements allocate only metadata; the first credited chunk reserves one owned reassembly buffer.
-            _incompleteBytes += bytes;
-            peer.ChargedBytes += bytes;
-            assembly.Body = new byte[bytes];
-        }
+        // Retrieval reserves body and decoder capacity; allocation waits for the first credited chunk.
+        assembly.Body ??= new byte[assembly.Descriptor.ByteLength];
         chunk.Data.CopyTo(assembly.Body.AsSpan(offset));
         assembly.Chunks[index] = true;
         assembly.Received++;
@@ -502,12 +509,13 @@ public sealed partial class LeanObjectTransport
 
     private void ReleaseChunks(LeanAssembly assembly, bool releaseMetadata = true)
     {
-        if (!assembly.Queued && assembly.Body is not null)
+        if (!assembly.Queued && assembly.RetrievalBytes != 0)
         {
-            long bytes = (long)assembly.Descriptor.ByteLength;
+            long bytes = assembly.RetrievalBytes;
             _incompleteBytes -= bytes;
             if (assembly.CurrentSource is { } source) { source.ChargedBytes -= bytes; PruneNode(source.Node); }
             assembly.Body = null;
+            assembly.RetrievalBytes = 0;
         }
         Array.Clear(assembly.Chunks);
         if (!releaseMetadata || assembly.MetadataReleased) return;
