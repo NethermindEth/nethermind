@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -62,6 +63,34 @@ namespace Nethermind.Core.Test.Encoding
             {
                 Assert.That(storageRoot, Is.EqualTo(TestItem.KeccakB));
                 Assert.That(ctx.Position, Is.GreaterThan(positionBeforeStorageRoot));
+            }
+        }
+
+        [Test]
+        public void List_length_must_match_the_fields([Values(-1, 0, 1)] int lengthDelta, [Values] bool asStruct)
+        {
+            Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
+            AccountDecoder decoder = new();
+            // The trailing empty string becomes an extra item once the list claims one more byte.
+            byte[] bytes = [.. decoder.EncodeAsBytes(account), Rlp.EmptyByteArrayByte];
+            (int prefixLength, _) = new RlpReader(bytes).PeekPrefixAndContentLength();
+            bytes[prefixLength - 1] = (byte)(bytes[prefixLength - 1] + lengthDelta);
+
+            Action decode = asStruct
+                ? () => decoder.TryDecodeStruct(bytes, out _)
+                : () =>
+                {
+                    RlpReader ctx = new(bytes);
+                    decoder.Decode(ref ctx);
+                };
+
+            if (lengthDelta == 0)
+            {
+                Assert.That(decode, Throws.Nothing);
+            }
+            else
+            {
+                Assert.That(decode, Throws.TypeOf<RlpException>());
             }
         }
 
