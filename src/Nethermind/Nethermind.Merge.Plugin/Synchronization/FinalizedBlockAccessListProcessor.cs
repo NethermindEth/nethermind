@@ -20,6 +20,7 @@ public sealed class FinalizedBlockAccessListProcessor(
     FinalizedBlockAccessListPolicy policy,
     IWorldState state,
     IReceiptStorage receiptStorage,
+    IReceiptsRecovery receiptsRecovery,
     ILogManager logManager) : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FinalizedBlockAccessListProcessor>();
@@ -47,12 +48,17 @@ public sealed class FinalizedBlockAccessListProcessor(
         // Queued processing attaches a stored list only when it matches the header's commitment.
         if (block.BlockAccessList is not { } list) return Execute("no verified block access list");
 
+        // Applying the list skips the post-execution item limit check, so a list over the limit is executed instead.
+        if (Eip7928Constants.ExceedsItemLimit(list.ItemCount, block.GasLimit)) return Execute("block access list over the item limit");
+
         TxReceipt[] receipts = [];
         if (block.Transactions.Length > 0)
         {
             // The downloader stores receipts only after checking them against the receipts root.
             if (!receiptStorage.HasBlock(block.Number, block.Hash!)) return Execute("no receipts");
             receipts = receiptStorage.Get(block);
+            // The downloader stored them before senders were recovered, and a cached copy is served as stored.
+            receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: true);
         }
 
         // No transactions run, so background work such as prewarming can stop before the writes are applied.

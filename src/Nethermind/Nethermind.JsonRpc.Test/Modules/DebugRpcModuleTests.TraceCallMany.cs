@@ -242,7 +242,7 @@ public partial class DebugRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { bundle }, "latest");
 
-        Assert.That(response, Does.Contain(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction));
+        Assert.That(response, Does.Contain(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes));
     }
 
     [Test]

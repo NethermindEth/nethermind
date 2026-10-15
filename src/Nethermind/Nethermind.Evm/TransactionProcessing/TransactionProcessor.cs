@@ -99,24 +99,6 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundResult.Invalid(TransactionResult.ErrorType.StateGasInvariantViolated.WithDetail(message));
         }
 
-        /// <summary>Per-transaction snapshot of the <see cref="ITxTracer"/> flags the processor branches on.</summary>
-        /// <remarks>A tracer's flags are fixed for the transaction it traces, yet each read is an interface call, two
-        /// through a forwarding tracer such as the block receipts tracer. The flags are copied, not the tracer,
-        /// so the snapshot does not keep the tracer alive while a pooled processor sits idle.
-        /// <see cref="ITxTracer.IsTracing"/> is left out: it combines most other flags and is read only on halt paths.</remarks>
-        private protected readonly struct TracerFlags(ITxTracer tracer)
-        {
-            public readonly bool IsTracingState = tracer.IsTracingState;
-            public readonly bool IsTracingReceipt = tracer.IsTracingReceipt;
-            public readonly bool IsCollectingLogs = tracer.IsCollectingLogs;
-            public readonly bool IsTracingLogs = tracer.IsTracingLogs;
-            public readonly bool IsTracingInstructions = tracer.IsTracingInstructions;
-            public readonly bool IsTracingMemory = tracer.IsTracingMemory;
-            public readonly bool IsTracingAccess = tracer.IsTracingAccess;
-            public readonly bool IsTracingRefunds = tracer.IsTracingRefunds;
-            public readonly bool IsTracingActions = tracer.IsTracingActions;
-        }
-
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
         {
             // Build-up rounds (!commit) span the whole block: later txs may redeploy this address,

@@ -99,9 +99,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
             long startTimestamp = Stopwatch.GetTimestamp();
-            Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-            if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, new SharedCancellationTokenSource(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken)));
+            Block? emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
+            if (_logger.IsInfo && emptyBlock is not null) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock!, DateTimeOffset.UtcNow, default, new SharedCancellationTokenSource(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken)));
         }
         else if (_logger.IsInfo)
         {
@@ -115,12 +115,12 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         void LogMultiStartRequest(string payloadId, ulong number) => _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
     }
 
-    protected virtual Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    protected virtual Block? ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
-        Block emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock).Result!;
+        Block? emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock).Result;
 
         if (isTrace) TraceAfter(payloadId, emptyBlock);
         return emptyBlock;
@@ -131,7 +131,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceAfter(string payloadId, Block emptyBlock)
+        void TraceAfter(string payloadId, Block? emptyBlock)
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
