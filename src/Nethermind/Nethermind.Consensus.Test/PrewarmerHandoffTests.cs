@@ -1495,10 +1495,12 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     }
 
     /// <param name="adapter">The adapter that hands off; without one the block is executed.</param>
-    protected Run Process(Block block, PrewarmerTxAdapter? adapter, BlockHeader? parent = null, IBlockTracer? otherTracer = null)
+    /// <param name="beforeTransaction">Called before the transaction at each index.</param>
+    protected Run Process(Block block, PrewarmerTxAdapter? adapter, BlockHeader? parent = null, IBlockTracer? otherTracer = null,
+        Action<int>? beforeTransaction = null)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
-        using (worldState.BeginScope(parent ?? Parent)) return ProcessInScope(block, adapter, otherTracer);
+        using (worldState.BeginScope(parent ?? Parent)) return ProcessInScope(block, adapter, otherTracer, beforeTransaction);
     }
 
     /// <summary>

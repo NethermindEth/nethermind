@@ -107,6 +107,7 @@ namespace Nethermind.Consensus.Processing
         /// </remarks>
         public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec)
         {
+            HandoffDiag.PayloadTimes? diagTimes = HandoffDiag.Payload(blockHash); // BENCH ONLY
             ParallelUnbalancedWork.WorkerGroup? group = ParallelUnbalancedWork.GetCurrentGroup();
             if (group?.Concurrency == 1) return;
             if (txs.Length == 0 || AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
@@ -117,7 +118,10 @@ namespace Nethermind.Consensus.Processing
             if (current is not null && !current.IsCompleted && current.BlockHash == blockHash)
                 return;
 
-            Recovery recovery = new(this, blockHash, txs, releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2));
+            Recovery recovery = new(this, blockHash, txs, releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2))
+            {
+                DiagTimes = diagTimes // BENCH ONLY
+            };
             Volatile.Write(ref _current, recovery);
             try
             {
@@ -270,6 +274,9 @@ namespace Nethermind.Consensus.Processing
 
             public Hash256 BlockHash => blockHash;
             public Transaction[] Transactions => txs;
+
+            /// <summary>BENCH ONLY: when this recovery ran, for HandoffDiag.</summary>
+            public HandoffDiag.PayloadTimes? DiagTimes { get; init; }
             public bool IsCompleted => _completed;
             public int Recovered => Volatile.Read(ref _recovered);
 
@@ -283,6 +290,7 @@ namespace Nethermind.Consensus.Processing
 
             void IThreadPoolWorkItem.Execute()
             {
+                DiagTimes?.RecoveryStarted(); // BENCH ONLY
                 try
                 {
                     using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
@@ -311,6 +319,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 finally
                 {
+                    DiagTimes?.RecoveryEnded(); // BENCH ONLY
                     lock (_gate)
                     {
                         _completed = true;

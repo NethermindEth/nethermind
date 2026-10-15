@@ -31,6 +31,9 @@ internal sealed class MempoolFootprints(BlockHeader head)
 
     private readonly ConcurrentDictionary<Hash256, Entry> _entries = new();
     private int _count;
+    // BENCH ONLY (bench/handoff-diag2): the last end state of the pass's run of each hash, for HandoffDiag.
+    private readonly ConcurrentDictionary<Hash256, ushort> _diagRuns = new();
+    private int _diagRunCount;
 
     /// <summary>The coinbase of the headers the runs are recorded on.</summary>
     public Address Coinbase { get; } = new(RandomNumberGenerator.GetBytes(Address.Size));
@@ -62,6 +65,7 @@ internal sealed class MempoolFootprints(BlockHeader head)
         for (int i = 0; i < transactions.Length; i++)
         {
             Transaction tx = transactions[i];
+            if (!tx.IsHashCalculated) footprints.Diag.SeedHash(tx); // BENCH ONLY
             // A recorded run's transaction was recordable, and the block's has its hash, so its content and sender.
             if (tx.Hash is not { } hash || !_entries.TryGetValue(hash, out Entry entry)) continue;
             if (ForBlock(in entry, tx, header, spec, coinbase) is not { } footprint)
@@ -77,6 +81,28 @@ internal sealed class MempoolFootprints(BlockHeader head)
         }
 
         return seeded;
+    }
+
+    /// <summary>BENCH ONLY: how the pass's run of <paramref name="tx"/> ended.</summary>
+    internal void DiagRunEnded(Transaction tx, HandoffDiag.WarmState state, byte reason)
+    {
+        if (tx.Hash is not { } hash) return;
+        ushort run = (ushort)(((byte)state << 8) | reason);
+        if (_diagRuns.ContainsKey(hash)) _diagRuns[hash] = run;
+        else if (Volatile.Read(ref _diagRunCount) < MaxEntries && _diagRuns.TryAdd(hash, run)) Interlocked.Increment(ref _diagRunCount);
+    }
+
+    /// <summary>BENCH ONLY: 1 when the pass did not run <paramref name="hash"/>, else 2 plus the end state of its last run.</summary>
+    internal byte DiagRun(Hash256 hash, out byte reason)
+    {
+        if (_diagRuns.TryGetValue(hash, out ushort run))
+        {
+            reason = (byte)run;
+            return (byte)((run >> 8) + 2);
+        }
+
+        reason = 0;
+        return 1;
     }
 
     private TransactionFootprint? ForBlock(in Entry entry, Transaction tx, BlockHeader header, IReleaseSpec spec, Address coinbase) =>

@@ -26,8 +26,9 @@ namespace Nethermind.Consensus.Processing;
 /// Every main-thread call is guarded: a fault is counted and printed, never thrown.
 /// On while the per-transaction slow-block log is (Blocks.SlowBlockPerTxThresholdMs >= 0), unless BENCH_HANDOFF_DIAG=0.
 /// BENCH_HANDOFF_DIAG_FAIL=1 throws inside the guarded recording and the report of every 50th block, to exercise those paths.
+/// Iteration 2 (bench/handoff-diag2) adds the block's startup timeline and per-transaction warm runs; see HandoffDiag.Timeline.cs.
 /// </remarks>
-internal static class HandoffDiag
+internal static partial class HandoffDiag
 {
     public static readonly bool Enabled = Environment.GetEnvironmentVariable("BENCH_HANDOFF_DIAG") != "0";
     private static readonly bool FailTest = Environment.GetEnvironmentVariable("BENCH_HANDOFF_DIAG_FAIL") == "1";
@@ -81,7 +82,11 @@ internal static class HandoffDiag
     public static void Prepare(Block block)
     {
         if (!Enabled) return;
-        _current = new BlockRecords(block.Transactions, Stopwatch.GetTimestamp(), FailTest && _blocks++ % 50 == 0);
+        long start = Stopwatch.GetTimestamp();
+        BlockRecords records = new(block.Transactions, start, FailTest && _blocks++ % 50 == 0);
+        _current = records;
+        Link(records, block);
+        records.PrepareTicks = Stopwatch.GetTimestamp() - start;
     }
 
     /// <summary>Hands the block's records to the slow-block report; the next block starts new ones.</summary>
@@ -120,7 +125,7 @@ internal static class HandoffDiag
         }
         catch (Exception ex)
         {
-            Fault(snapshot, ex);
+            Fault(snapshot, ex, "arrive");
         }
     }
 
@@ -151,10 +156,11 @@ internal static class HandoffDiag
             }
 
             if (outcome == Outcome.Rejected && footprint is not null) EvaluateFailures(ref record, footprint, state);
+            StartCounting(ref record);
         }
         catch (Exception ex)
         {
-            Fault(snapshot, ex);
+            Fault(snapshot, ex, "not_taken");
         }
         finally
         {
@@ -175,10 +181,11 @@ internal static class HandoffDiag
         return writes;
     }
 
-    private static void Fault(BlockRecords snapshot, Exception ex)
+    private static void Fault(BlockRecords snapshot, Exception ex, string hook)
     {
         snapshot.Errors++;
         snapshot.LastError ??= $"{ex.GetType().Name}: {ex.Message}";
+        snapshot.FaultHooks = snapshot.FaultHooks is null ? hook : $"{snapshot.FaultHooks},{hook}";
     }
 
     private static void Capture(ref TxRecord record, BlockFootprints footprints, int position, long now)
@@ -198,6 +205,7 @@ internal static class HandoffDiag
         record.Pending = footprints.DiagIsPending(position);
         record.PendingCount = footprints.DiagPendingCount;
         record.Queued = Volatile.Read(ref positions.Queued);
+        record.Active = positions.ActiveWorkers is { } active ? active() + 1 : 0; // diag2
     }
 
     // Matches without its early exit: the first account and the first slot that no longer hold, and how many do not.
@@ -253,6 +261,7 @@ internal static class HandoffDiag
         {
             if (snapshot.FailTest && index == 2) throw new InvalidOperationException("BENCH_HANDOFF_DIAG_FAIL report");
             WriteRecord(writer, snapshot, index, coinbase);
+            WriteRuns(writer, snapshot, index);
         }
         catch (Exception ex)
         {
@@ -485,6 +494,7 @@ internal static class HandoffDiag
             snapshot.LastReportError ??= $"{ex.GetType().Name}: {ex.Message}";
         }
 
+        WriteTimeline(writer, snapshot);
         writer.WriteNumber("diag_errors", snapshot.Errors);
         if (snapshot.LastError is not null) writer.WriteString("diag_error", snapshot.LastError);
         writer.WriteNumber("report_errors", snapshot.ReportErrors);
@@ -637,6 +647,16 @@ internal static class HandoffDiag
         public StorageCell FailSlot;
         public short FailedAccounts;
         public short FailedSlots;
+        // diag2: the main thread's own execution (opcodes, SLOADs and backing-store reads), and the warm workers active on arrival plus one.
+        public bool Counting;
+        public bool Counted;
+        public long MainOps;
+        public long MainSLoad;
+        public long ColdStart;
+        public long ColdStorageStart;
+        public int MainCold;
+        public int MainColdStorage;
+        public int Active;
     }
 
     /// <summary>The records of one block.</summary>
@@ -652,26 +672,51 @@ internal static class HandoffDiag
         public string? LastError;
         public int ReportErrors;
         public string? LastReportError;
+        // diag2
+        public long PrepareTicks;
+        public string? FaultHooks;
+        public bool MainEndFaulted;
     }
 
     /// <summary>The per-position states of one block's footprints, written by the warm and refresh threads.</summary>
-    internal sealed class Positions(int count)
+    internal sealed partial class Positions(Transaction[] transactions)
     {
-        public readonly byte[] Warm = new byte[count];
-        public readonly byte[] WarmReason = new byte[count];
-        public readonly long[] WarmStart = new long[count];
-        public readonly byte[] Refresh = new byte[count];
-        public readonly short[] Refreshes = new short[count];
-        public readonly long[] RefreshStart = new long[count];
-        public readonly long[] RefreshTicks = new long[count];
-        public readonly short[] Invalidations = new short[count];
-        public readonly int[] InvalidatedAtMain = new int[count];
-        public readonly long[] InvalidatedAt = new long[count];
-        public readonly short[] Drops = new short[count];
-        public readonly bool[] ReaderOverflow = new bool[count];
-        public readonly bool[] Discovery = new bool[count];
-        public readonly byte[] Mempool = new byte[count];
-        public readonly TransactionFootprint?[] BeforeRefresh = new TransactionFootprint?[count];
+        public readonly Transaction[] Transactions = transactions;
+
+        public readonly byte[] Warm = new byte[transactions.Length];
+        public readonly byte[] WarmReason = new byte[transactions.Length];
+        public readonly long[] WarmStart = new long[transactions.Length];
+        public readonly byte[] Refresh = new byte[transactions.Length];
+        public readonly short[] Refreshes = new short[transactions.Length];
+        public readonly long[] RefreshStart = new long[transactions.Length];
+        public readonly long[] RefreshTicks = new long[transactions.Length];
+        public readonly short[] Invalidations = new short[transactions.Length];
+        public readonly int[] InvalidatedAtMain = new int[transactions.Length];
+        public readonly long[] InvalidatedAt = new long[transactions.Length];
+        public readonly short[] Drops = new short[transactions.Length];
+        public readonly bool[] ReaderOverflow = new bool[transactions.Length];
+        public readonly bool[] Discovery = new bool[transactions.Length];
+        public readonly byte[] Mempool = new byte[transactions.Length];
+        public readonly TransactionFootprint?[] BeforeRefresh = new TransactionFootprint?[transactions.Length];
+        // diag2, see HandoffDiag.Timeline.cs: Stopwatch ticks (0 when not reached), counts, and +1-coded indices (0 when unset).
+        public readonly long[] RunStart = new long[transactions.Length];
+        public readonly long[] RunEnd = new long[transactions.Length];
+        public readonly long[] ClaimedAt = new long[transactions.Length];
+        public readonly long[] ColdStart = new long[transactions.Length];
+        public readonly long[] ColdStorageStart = new long[transactions.Length];
+        public readonly int[] RunCold = new int[transactions.Length];
+        public readonly int[] RunColdStorage = new int[transactions.Length];
+        public readonly long[] RunOps = new long[transactions.Length];
+        public readonly long[] RunSLoad = new long[transactions.Length];
+        public readonly bool[] RunCountsPartial = new bool[transactions.Length];
+        public readonly byte[] Kind = new byte[transactions.Length];
+        public readonly int[] Rank = new int[transactions.Length];
+        public readonly short[] Slot = new short[transactions.Length];
+        public readonly byte[] Pool = new byte[transactions.Length];
+        public readonly byte[] MempoolRun = new byte[transactions.Length];
+        public readonly byte[] MempoolRunReason = new byte[transactions.Length];
+        public readonly long[] WorkerStart = new long[MaxSlots];
+        public readonly bool FailTest = NextFailTest();
         public IBlockProcessingProgress? Progress;
         public int Queued;
         public int QueueMax;
@@ -690,6 +735,7 @@ internal static class HandoffDiag
         {
             if ((uint)position >= (uint)Warm.Length) return;
             WarmReason[position] = reason;
+            RunEnded(position); // diag2
             Volatile.Write(ref Warm[position], (byte)state);
         }
 

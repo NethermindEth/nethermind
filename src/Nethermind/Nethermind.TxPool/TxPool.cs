@@ -57,6 +57,12 @@ namespace Nethermind.TxPool
         private readonly TxBroadcaster _broadcaster;
 
         private readonly TxDistinctSortedPool _transactions;
+
+        /// <summary>
+        /// BENCH ONLY (bench/handoff-diag2): whether the newest pool holds a non-blob transaction as pending, for the
+        /// prewarm handoff diagnostic; called off the block-processing thread.
+        /// </summary>
+        public static Func<Hash256, bool>? DiagIsPending { get; private set; }
         private readonly BlobTxDistinctSortedPool _blobTransactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
@@ -238,6 +244,8 @@ namespace Nethermind.TxPool
             TxPoolHeadChanged += _broadcaster.OnNewHead;
 
             _transactions = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
+            TxDistinctSortedPool pending = _transactions;
+            DiagIsPending = hash => pending.ContainsKey(hash.ValueHash256); // BENCH ONLY
             _transactions.Inserted += OnInsertedTx;
             _transactions.Removed += OnRemovedTx;
 

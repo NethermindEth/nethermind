@@ -54,7 +54,7 @@ internal sealed class BlockFootprints(Block block)
     private int _visit;
 
     /// <summary>BENCH ONLY: per-position states for <see cref="HandoffDiag"/>.</summary>
-    internal readonly HandoffDiag.Positions Diag = new(block.Transactions.Length);
+    internal readonly HandoffDiag.Positions Diag = new(block.Transactions);
 
     /// <summary>BENCH ONLY: whether the position waits for a refresh; read without the lock.</summary>
     internal bool DiagIsPending(int position) =>

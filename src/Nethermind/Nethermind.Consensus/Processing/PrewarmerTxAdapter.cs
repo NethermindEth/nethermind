@@ -55,7 +55,9 @@ public class PrewarmerTxAdapter(
                 footprint, preWarmer.Footprints, worldState);
 
             // What the transaction writes goes to the block's footprints, so those that read it are refreshed on those values.
-            if (prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites) return ExecuteReportingWrites(transaction, txTracer, committed);
+            // BENCH ONLY: HandoffDiag.Ran passes the result through.
+            if (prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites) return HandoffDiag.Ran(ExecuteReportingWrites(transaction, txTracer, committed));
+            return HandoffDiag.Ran(baseAdapter.Execute(transaction, txTracer)); // BENCH ONLY: HandoffDiag.Ran passes the result through
         }
 
         return baseAdapter.Execute(transaction, txTracer);

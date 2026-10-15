@@ -62,6 +62,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private readonly BlockCodeCache? _blockCodeCache;
     private readonly bool _handoff;
     private BlockFootprints? _footprints;
+    // BENCH ONLY: when PreWarmCaches was entered, for HandoffDiag; the processing thread only.
+    private long _diagPrewarmAt;
 
     private const int MaxDiscoveryCandidates = 16;
     private const int MaxDiscoveryRounds = 6;
@@ -160,6 +162,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     public IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
+        _diagPrewarmAt = Stopwatch.GetTimestamp(); // BENCH ONLY
         Volatile.Write(ref _footprints, null);
         // Join ahead of the gate: the session's spec comes from a synthetic next-block header, so it can enable warming
         // for a spec this block disables (a fork boundary), and no pass may run into execution.
@@ -222,6 +225,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (footprints is not null)
             {
                 footprints.Diag.Progress = this; // BENCH ONLY
+                HandoffDiag.Publish(footprints, suggestedBlock.Hash, _diagPrewarmAt); // BENCH ONLY
+                addressWarmer.Diag = footprints.Diag; // BENCH ONLY
                 blockState.Footprints = footprints;
                 Volatile.Write(ref _footprints, footprints);
             }
@@ -232,14 +237,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             blockState.UpFrontDiscovery = discoveryCandidates;
             session.Start(() =>
             {
+                footprints?.Diag.SessionStarted(); // BENCH ONLY
                 if (seeded is not null) Seed(recorded!, suggestedBlock, spec, footprints!, seeded);
                 // The coordinator owns the caller slot; all nested fan-outs share the remaining workers.
                 using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
                 using ParallelUnbalancedWork.BackgroundWork addressWork = ParallelUnbalancedWork.BackgroundFor(
                     0, 1, HelperOptions, _ => ((IThreadPoolWorkItem)addressWarmer).Execute());
                 using ParallelUnbalancedWork.BackgroundWork? discoveryWork = discoveryCandidates is null ? null
-                    : ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions,
-                        _ => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, spec, recovery, token));
+                    : ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions, _ =>
+                    {
+                        footprints?.Diag.DiscoveryStarted(); // BENCH ONLY
+                        DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, spec, recovery, token);
+                        footprints?.Diag.DiscoveryEnded(); // BENCH ONLY
+                    });
                 try
                 {
                     PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
@@ -277,6 +287,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     private void Seed(MempoolFootprints recorded, Block block, IReleaseSpec spec, BlockFootprints footprints, HashSet<Hash256> seeded)
     {
+        footprints.Diag.SeedStarted(); // BENCH ONLY
         try
         {
             if (recorded.Seed(block, spec, footprints) is not { } stored) return;
@@ -286,6 +297,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         catch (Exception ex)
         {
             _logger.DebugError($"Error taking the mempool footprints for block {block.Number}", ex);
+        }
+        finally
+        {
+            // BENCH ONLY
+            footprints.Diag.SeedEnded(seeded.Count);
+            footprints.Diag.QueueLookups(recorded);
         }
     }
 
@@ -1273,7 +1290,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     }
                     ArrayPoolList<(int Index, Transaction Tx)> single = scratch.RentList();
                     single.Add(item);
-                    result.Add(new WarmupJob(single, item.Tx.GasLimit));
+                    result.Add(new WarmupJob(single, item.Tx.GasLimit) { Split = true }); // BENCH ONLY: Split
                 }
                 scratch.ReturnList(group);
             }
@@ -1385,6 +1402,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         public int LastIndex => Transactions[^1].Index;
         public bool IsHoisted => GasEstimate > SplitSenderGroupGasThreshold;
+
+        /// <summary>BENCH ONLY: a singleton split from a heavy sender group, for HandoffDiag.</summary>
+        public bool Split { get; init; }
     }
 
     private static bool AllSpeculativelyWarmed(ArrayPoolList<(int Index, Transaction Tx)> group, ISet<Hash256> warmed)
@@ -1406,12 +1426,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         CancellationTxTracer tracer,
         CancellationToken cancellationToken)
     {
+        blockState.Footprints?.Diag.RunStarted(txIndex); // BENCH ONLY
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
             if (blockState.PreWarmer.MainThreadTxIndex >= txIndex)
             {
-                blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.SkippedStarted); // BENCH ONLY
+                DiagEnded(blockState, txIndex, tx, HandoffDiag.WarmState.SkippedStarted); // BENCH ONLY
                 return;
             }
 
@@ -1442,7 +1463,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 result = recorded
                     ? WarmupWithFootprint(scope, tx, txIndex, blockState, recorder!, tracer, cancellationToken)
                     : scope.TransactionProcessor.Warmup(tx, tracer);
-                if (!recorded) blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Plain); // BENCH ONLY
+                if (!recorded) DiagEnded(blockState, txIndex, tx, HandoffDiag.WarmState.Plain); // BENCH ONLY
             }
             finally
             {
@@ -1454,16 +1475,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
             // Ignore, regular tx processing exceptions
-            blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Error); // BENCH ONLY
+            DiagEnded(blockState, txIndex, tx, HandoffDiag.WarmState.Error); // BENCH ONLY
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // The pass ended mid-transaction; the caller disposes the scope without running anything else on it.
-            blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Cancelled); // BENCH ONLY
+            DiagEnded(blockState, txIndex, tx, HandoffDiag.WarmState.Cancelled); // BENCH ONLY
         }
         catch (Exception ex)
         {
-            blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Error); // BENCH ONLY
+            DiagEnded(blockState, txIndex, tx, HandoffDiag.WarmState.Error); // BENCH ONLY
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
         }
     }
@@ -1487,23 +1508,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
                 ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
+            DiagCounts(blockState, txIndex, recorder, cut: false); // BENCH ONLY
             if (result && recorder.Finish(tx, in result) is { } footprint)
             {
                 if (blockState.Footprints is { } footprints) footprints.Store(txIndex, footprint);
                 else blockState.Recording!.Record(footprint, blockState.Block.Header, blockState.Spec);
-                blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Stored); // BENCH ONLY
+                DiagEnded(blockState, txIndex, tx, HandoffDiag.WarmState.Stored); // BENCH ONLY
             }
             else
             {
                 // BENCH ONLY
-                blockState.Footprints?.Diag.WarmEnded(txIndex, result ? HandoffDiag.WarmState.NoFootprint : HandoffDiag.WarmState.Failed,
+                DiagEnded(blockState, txIndex, tx, result ? HandoffDiag.WarmState.NoFootprint : HandoffDiag.WarmState.Failed,
                     result ? recorder.DiagReason : (byte)result.Error);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            DiagCounts(blockState, txIndex, recorder, cut: true); // BENCH ONLY
             recorder.Discard();
-            blockState.Footprints?.Diag.WarmEnded(txIndex, HandoffDiag.WarmState.Cut); // BENCH ONLY
+            DiagEnded(blockState, txIndex, tx, HandoffDiag.WarmState.Cut); // BENCH ONLY
             return TransactionResult.Ok;
         }
         finally
@@ -1515,6 +1538,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         return result.Error is TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance or TransactionResult.ErrorType.InsufficientSenderBalance
             ? scope.TransactionProcessor.Warmup(tx, tracer)
             : result;
+    }
+
+    // BENCH ONLY: a warm run's end, into the block's positions or the mempool pass's runs.
+    private static void DiagEnded(BlockState blockState, int txIndex, Transaction tx, HandoffDiag.WarmState state, byte reason = 0)
+    {
+        if (blockState.Footprints is { } footprints) footprints.Diag.WarmEnded(txIndex, state, reason);
+        else blockState.Recording?.DiagRunEnded(tx, state, reason);
+    }
+
+    // BENCH ONLY: a recorded warm run's opcodes and SLOADs.
+    private static void DiagCounts(BlockState blockState, int txIndex, FootprintRecorder recorder, bool cut)
+    {
+        if (blockState.Footprints is not { } footprints) return;
+        (long ops, long sload) = recorder.DiagCounts(cut);
+        footprints.Diag.RunCounts(txIndex, ops, sload, cut);
     }
 
     /// <summary>
@@ -1756,6 +1794,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         public bool HasBal => Bal is not null;
 
+        /// <summary>BENCH ONLY: the block's positions, for HandoffDiag's timeline.</summary>
+        public HandoffDiag.Positions? Diag { get; set; }
+
         /// <summary>The coinbase whose account is warmed; the block's unless set.</summary>
         public Address? Beneficiary { get; set; } = block.Header.GasBeneficiary;
 
@@ -1769,6 +1810,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         void IThreadPoolWorkItem.Execute()
         {
+            Diag?.AddressesStarted(); // BENCH ONLY
             try
             {
                 if (parallelOptions.CancellationToken.IsCancellationRequested) return;
@@ -1780,6 +1822,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             }
             finally
             {
+                Diag?.AddressesEnded(); // BENCH ONLY
                 _doneEvent.Set();
             }
         }
@@ -1864,7 +1907,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         },
                         WarmingState<(Block, int, int)>.FinallyAction);
 
-                    if (warmCalldataAddresses) WarmCalldataAddresses(parallelOptions, block, envPool);
+                    if (warmCalldataAddresses)
+                    {
+                        Diag?.CalldataStarted(); // BENCH ONLY
+                        WarmCalldataAddresses(parallelOptions, block, envPool);
+                        Diag?.CalldataEnded(); // BENCH ONLY
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -2145,12 +2193,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         private int _active;
         private int _helpers;
         private bool _initialWorkersComplete = true;
+        // BENCH ONLY: the fan-out's active workers, for HandoffDiag.
+        private readonly Func<int> _diagActive;
 
         public WarmupQueue(BlockCachePreWarmer preWarmer)
         {
             PreWarmer = preWarmer;
             _runWorker = RunWorker;
             _workersCompleted = WorkersCompleted;
+            _diagActive = () => Volatile.Read(ref _active); // BENCH ONLY
         }
 
         /// <summary><c>true</c> when the caller now owns the queue; it is handed back by <see cref="Unload"/>.</summary>
@@ -2173,12 +2224,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             _waiter = 0;
             _active = 0;
             _helpers = 0;
+            HandoffDiag.Positions? diag = blockState.Footprints?.Diag; // BENCH ONLY
+            diag?.LoadStarted(); // BENCH ONLY
             GroupTransactionsBySender(blockState.Block, maxDegree, _speculativelyWarmed, claimed, _scratch);
-            return _scratch.Jobs.Count + CountUnclaimed(claimed.AsSpan(0, txCount));
+            int unclaimed = CountUnclaimed(claimed.AsSpan(0, txCount));
+            diag?.Loaded(_scratch.Jobs, txCount, unclaimed, _diagActive); // BENCH ONLY
+            return _scratch.Jobs.Count + unclaimed;
         }
 
         public void RunWorkers(int count)
         {
+            BlockState.Footprints?.Diag.WorkersQueued(count); // BENCH ONLY
             if (count == 1)
             {
                 RunWorker(0);
@@ -2284,6 +2340,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             Address? sender = null;
             Address? passedOver = null;
             readyElsewhere = 0;
+            HandoffDiag.Positions? diag = BlockState.Footprints?.Diag; // BENCH ONLY
+            long diagNow = 0; // BENCH ONLY
             for (int i = FirstUnclaimed(); i < _txCount; i++)
             {
                 if (claimed[i] != 0) continue;
@@ -2311,6 +2369,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
                 sender ??= txSender;
                 run.Add((i, tx));
+                diag?.Claimed(i, ref diagNow); // BENCH ONLY
             }
 
             return run.Count > 0;
@@ -2563,6 +2622,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // Reused for every late run this worker claims, so claiming allocates nothing per job.
         private readonly ArrayPoolList<(int Index, Transaction Tx)> _run = new(4);
         private IPrewarmerEnv? _env;
+        // BENCH ONLY: the slot this worker drains, or its helper number, for HandoffDiag.
+        private int _diagSlot;
 
         /// <summary>Link of the queue's parked list; owned by the queue.</summary>
         public TxWarmupWorker? NextParked;
@@ -2596,12 +2657,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             queue.Enter();
             try
             {
+                // BENCH ONLY
+                _diagSlot = slot;
+                queue.BlockState.Footprints?.Diag.WorkerStarted(slot);
                 CancellationToken token = queue.Token;
                 while (!token.IsCancellationRequested && queue.TryTakeJob(far, out WarmupJob job))
                 {
                     Warm(job.Transactions.AsSpan(), job.LastIndex);
                 }
 
+                queue.BlockState.Footprints?.Diag.JobsRanOut(); // BENCH ONLY
                 // The jobs are all handed out: the refresh worker takes what this worker leaves idle.
                 preWarmer.StartRefreshing(queue.BlockState);
 
@@ -2646,6 +2711,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 try
                 {
                     Attach();
+                    _diagSlot = _queue.BlockState.Footprints?.Diag.HelperStarted() ?? HandoffDiag.HelperSlotBase; // BENCH ONLY
                     while (!token.IsCancellationRequested && WarmLate()) { }
                 }
                 finally
@@ -2696,10 +2762,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             scope.TransactionProcessor.SetBlockExecutionContext(context);
             CancellationTxTracer tracer = _queue.Tracer;
             FootprintRecorder? recorder = _env.Recorder;
+            HandoffDiag.Positions? diag = blockState.Footprints?.Diag; // BENCH ONLY
 
             foreach ((int txIndex, Transaction tx) in transactions)
             {
                 if (token.IsCancellationRequested) return;
+                diag?.Ran(txIndex, _diagSlot); // BENCH ONLY
                 WarmupSingleTransaction(scope, tx, txIndex, blockState, recorder, tracer, token);
             }
         }

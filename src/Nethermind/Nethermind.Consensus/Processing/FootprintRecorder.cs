@@ -31,6 +31,13 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     internal byte DiagReason { get; private set; }
 
+    /// <summary>
+    /// BENCH ONLY (bench/handoff-diag2): the run's opcodes and SLOADs. A run <paramref name="cut"/> part way never flushed its
+    /// counts, so they are read off the VM: its SLOADs are exact, its opcodes miss the frame segment in progress.
+    /// </summary>
+    internal (long Ops, long SLoad) DiagCounts(bool cut) =>
+        cut && Machine is { } machine ? (machine.OpCodeCount, machine.MetricsCounters.SLoad) : (_counts.Value.OpCodes, _counts.Value.Counters.SLoad);
+
     private void Opaque(byte reason)
     {
         _opaque = true;

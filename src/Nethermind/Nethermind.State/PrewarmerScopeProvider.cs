@@ -305,6 +305,7 @@ public class PrewarmerScopeProvider(
             else
             {
                 account = GetFromBaseTree(in addressAsKey);
+                ColdReadWatch.DiagAccountRead(); // BENCH ONLY
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
                 if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
@@ -563,6 +564,7 @@ public class PrewarmerScopeProvider(
             // fully-cold reads. Populator probes are excluded — they miss by design while filling.
             if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
             else ColdReadWatch.Read();
+            ColdReadWatch.DiagStorageRead(); // BENCH ONLY
 
             baseStorageTree.Get(storageCell.Index, out value);
         }

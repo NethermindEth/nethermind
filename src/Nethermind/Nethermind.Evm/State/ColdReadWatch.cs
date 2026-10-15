@@ -28,6 +28,25 @@ public static class ColdReadWatch
     [ThreadStatic] private static IColdReadHandler? t_handler;
     [ThreadStatic] private static int t_index;
     [ThreadStatic] private static object? t_item;
+    // BENCH ONLY (bench/handoff-diag2): every backing-store read through a prewarm scope provider on this thread, for HandoffDiag.
+    [ThreadStatic] private static long t_diagReads;
+    [ThreadStatic] private static long t_diagStorageReads;
+
+    /// <summary>BENCH ONLY: this thread's backing-store account and storage reads so far.</summary>
+    public static long DiagReads => t_diagReads;
+
+    /// <summary>BENCH ONLY: this thread's backing-store storage reads so far.</summary>
+    public static long DiagStorageReads => t_diagStorageReads;
+
+    /// <summary>BENCH ONLY: one backing-store account read on this thread.</summary>
+    public static void DiagAccountRead() => t_diagReads++;
+
+    /// <summary>BENCH ONLY: one backing-store storage read on this thread.</summary>
+    public static void DiagStorageRead()
+    {
+        t_diagReads++;
+        t_diagStorageReads++;
+    }
 
     /// <summary>Starts counting this thread's cold reads; the read that reaches <paramref name="threshold"/> tells <paramref name="handler"/>.</summary>
     public static void Arm(int threshold, IColdReadHandler handler, int index, object? item)
