@@ -161,6 +161,38 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Envelopes, Is.EqualTo(new[] { TestItem.KeccakA }));
     }
 
+    // gloas/p2p-interface.md execution_payload: an envelope for an unseen block MAY be queued; the bytes queued behind a busy worker stay bounded however long it takes.
+    [Test]
+    public async Task Gossip_envelopes_for_unseen_blocks_stay_throttled_while_the_worker_holds_them_and_are_admitted_once_it_drains()
+    {
+        ulong wallSlot = FirstGloasSlot + 1;
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + wallSlot * Sepolia.SecondsPerSlot).AddSeconds(6));
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, timestamper), LimboLogs.Instance);
+        Harness harness = CreateHarness(router: router);
+        harness.Orchestrator.RouteGossipEvents();
+        int sent = 0;
+        MessageValidity SendUnseen()
+        {
+            SignedExecutionPayloadEnvelope envelope = EnvelopeFor(Keccak.Compute($"unseen block {sent++}"), wallSlot);
+            envelope.Message!.Payload!.BlockAccessList = new byte[8 * 1024 * 1024];
+            return router.HandleExecutionPayloadEnvelope(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope)));
+        }
+
+        MessageValidity validity;
+        while ((validity = SendUnseen()) == MessageValidity.Ignored) { }
+        (int queued, int admitted) = (harness.Orchestrator.QueuedWorkCount, sent - 1);
+        wallSlot += 3;
+        timestamper.Set(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + wallSlot * Sepolia.SecondsPerSlot).AddSeconds(6));
+        MessageValidity whileHeld = SendUnseen();
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        MessageValidity afterDrain = SendUnseen();
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((validity, queued), Is.EqualTo((MessageValidity.Throttled, admitted)), "fixture: the budget fills with envelopes the blocked worker holds");
+        Assert.That(whileHeld, Is.EqualTo(MessageValidity.Throttled), "slots passing do not free bytes the worker still holds");
+        Assert.That(afterDrain, Is.EqualTo(MessageValidity.Ignored), "the worker frees the bytes once it takes the envelopes");
+    }
+
     [Test]
     public async Task Envelope_before_its_block_imports_once_the_block_imports_and_is_not_redelivered()
     {

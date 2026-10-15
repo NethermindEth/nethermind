@@ -1977,6 +1977,12 @@ public sealed class BeaconSyncOrchestrator(
 
     private async Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeItemAsync(EnvelopeItem item, CancellationToken token)
     {
+        // Ends the router's byte charge on an envelope for an unseen block: from here it imports, is refused, or parks under this worker's own bound.
+        if (item is GossipEnvelopeItem { Verdict: { IsLocal: true } local })
+        {
+            local.Complete(MessageValidity.Ignored);
+        }
+
         if (item is GossipEnvelopeItem { Verdict: { IsCompleted: false, IsLocal: false } verdict })
         {
             // gloas/p2p-interface.md execution_payload: [REJECT] the signature is valid for the builder (or self-building proposer) of the block it

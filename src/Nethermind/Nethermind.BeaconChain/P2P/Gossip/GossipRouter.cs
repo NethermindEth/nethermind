@@ -135,15 +135,15 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>The most stored blocks decoded per slot to read the slot of the held, uncached block a payload attestation votes on.</summary>
     internal const int PtcBlockSlotReadsPerSlot = 16;
 
-    /// <summary>The most decoded bytes of envelopes for unseen blocks raised to the import pipeline and not yet expired or refused by it.</summary>
+    /// <summary>The most decoded bytes of envelopes for unseen blocks raised to the import pipeline and not yet taken from its queue or refused by it.</summary>
     /// <remarks>
     /// The pubsub verdict of such an envelope is given at once, so no pending-validation bound holds it while it waits in the import queue.
-    /// A charge expires after <see cref="UnseenBlockEnvelopeSlots"/> slots, the window in which the pipeline keeps it for its block.
+    /// The pipeline ends the charge when it takes the envelope from its queue; <see cref="UnseenBlockEnvelopeSlots"/> only frees a charge it never ends.
     /// </remarks>
     internal const long UnseenBlockEnvelopeBytes = 64 * 1024 * 1024;
 
-    /// <summary>The slots after the current one for which an envelope for an unseen block holds its charge on <see cref="UnseenBlockEnvelopeBytes"/>.</summary>
-    internal const ulong UnseenBlockEnvelopeSlots = 2;
+    /// <summary>The slots after the current one after which a charge on <see cref="UnseenBlockEnvelopeBytes"/> expires if the import pipeline has not ended it.</summary>
+    internal const ulong UnseenBlockEnvelopeSlots = 16;
 
     private readonly ILogger _logger = logManager.GetClassLogger<GossipRouter>();
     private readonly LruKeyCache<ValueHash256> _seenMessages = new(SeenCacheSize, "beacon gossip seen messages");
