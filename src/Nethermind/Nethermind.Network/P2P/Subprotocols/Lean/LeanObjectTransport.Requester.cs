@@ -177,7 +177,9 @@ public sealed partial class LeanObjectTransport
                     + (long)Eip8288Constants.MaxLeanSigDepsPerWrapper * Eip8288Constants.LeanSphincsWitnessBytes)
                 : 0;
             long reserved = bodyBytes + workingBytes;
-            if (reserved > LeanLimits.MaxIncompleteBytes - BufferedBytes || reserved > LeanLimits.MaxPeerBytes - source.ChargedBytes) return;
+            // Keep room for transport frames and their decode scratch so reserved bodies can still make progress.
+            if (reserved > LeanLimits.MaxIncompleteBytes - BufferedBytes - LeanProtocol.MaxCreditBytes
+                || reserved > LeanLimits.MaxPeerBytes - source.ChargedBytes - 4 * LeanProtocol.MaxMessageBytes) return;
             assembly.RetrievalBytes = reserved;
             _incompleteBytes += reserved;
             source.ChargedBytes += reserved;
