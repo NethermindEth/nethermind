@@ -3,17 +3,21 @@
 
 using Autofac;
 using Google.Protobuf;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
+using Snappier;
+using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
@@ -103,6 +107,36 @@ public partial class GossipRouterTests
         Assert.That(columns, Is.All.EqualTo(MessageValidity.Deferred));
         Assert.That(block, Is.EqualTo(MessageValidity.Deferred));
         Assert.That(fixture.Validation.Pending, Is.EqualTo(1), "parked columns do not consume block reservations");
+    }
+
+    // gloas/p2p-interface.md data_column_sidecar: a sidecar whose block is unseen MAY be queued; the queue must not starve other peers' columns.
+    [Test]
+    public async Task Columns_parked_by_one_peer_leave_room_for_another_peers_column()
+    {
+        const int share = ColumnGossipRouter.PendingGloasVerdictsPerSource;
+        await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: share, maxPendingBytes: 1 << 24, TimeSpan.FromSeconds(30), gloasColumns: true);
+        byte[] digest = ForkDigest.Compute(Sepolia, Sepolia.GetEpoch(GloasColumnSlot));
+        Message Column(ulong index, Hash256 root) => new()
+        {
+            Topic = GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(index)),
+            Data = ByteString.CopyFrom(Snappy.CompressToArray(DataColumnSidecarGloas.Encode(DataColumnSidecarGloasTestFixture.BuildSidecar(index, GloasColumnSlot, root)))),
+        };
+
+        List<(MessageValidity Verified, Task Validation)> parked = [];
+        for (ulong index = 0; index <= share; index++)
+        {
+            Message column = Column(index, Keccak.Compute($"unseen block {index}"));
+            MessageValidity verified = fixture.Validation.Verify(fixture.Sender, column);
+            parked.Add((verified, verified == MessageValidity.Deferred ? fixture.Validation.ValidateAsync(fixture.Sender, column) : Task.CompletedTask));
+        }
+
+        MessageValidity neighbor = fixture.Validation.Verify(fixture.Neighbor, Column(share + 1, Keccak.Compute("another unseen block")));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(parked.Select(static entry => entry.Verified), Is.All.EqualTo(MessageValidity.Deferred), "a parked column gives back its reservation");
+        Assert.That(parked.Select(static entry => entry.Validation.IsCompleted), Is.EqualTo(Enumerable.Repeat(false, share).Append(true)), "the peer's column past its share is not parked");
+        Assert.That(neighbor, Is.EqualTo(MessageValidity.Deferred), "another peer's column is still validated");
+        Assert.That(fixture.Validation.PendingColumns, Is.EqualTo(1));
     }
 
     [Test]
@@ -256,6 +290,7 @@ public partial class GossipRouterTests
         Assert.That(routing.Mesh[topic], Does.Contain(neighbor), "a peer that did not deliver the invalid message keeps its score");
     }
 
+    private static readonly ulong GloasColumnSlot = FirstGloasSlot + 1;
     private static readonly string BlockTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
 
     private sealed class DeferredFixture(IContainer container, PubsubRouter pubsub, GossipRouter router, DeferredGossipValidation validation, List<GossipVerdict> raised,
@@ -269,7 +304,7 @@ public partial class GossipRouterTests
         public PeerId Neighbor { get; } = neighbor.Peer;
 
         public static async Task<DeferredFixture> Create(int maxPending, long maxPendingBytes, TimeSpan timeout, string protocol = PubsubRouter.GossipsubProtocolVersionV11, int maxPendingVotes = 1024,
-            TimeProvider? time = null)
+            TimeProvider? time = null, bool gloasColumns = false)
         {
             IContainer container = BeaconChainTestContainer.Builder().Build();
             PubsubSettings settings;
@@ -283,7 +318,18 @@ public partial class GossipRouterTests
             GossipRouter router = new(Spec, clock, LimboLogs.Instance);
             List<GossipVerdict> raised = [];
             router.BeaconBlockReceived += (_, verdict) => raised.Add(verdict);
-            DeferredGossipValidation validation = new(pubsub, new GossipMessageValidator(router, new ColumnGossipRouter(Spec, clock, LimboLogs.Instance), Spec, clock),
+            GossipMessageValidator validator = new(router, new ColumnGossipRouter(Spec, clock, LimboLogs.Instance), Spec, clock);
+            if (gloasColumns)
+            {
+                // No store holds a block, so every Gloas sidecar for the current slot is parked.
+                SlotClock gloasClock = new(Sepolia, new ManualTimestamper(SepoliaSlotStart(GloasColumnSlot).AddSeconds(6)));
+                ColumnGossipRouter columns = new(Sepolia, gloasClock, LimboLogs.Instance);
+                columns.Start(_ => new GossipDigestWindowTests.SilentTopic(), ForkDigest.Compute(Sepolia, Sepolia.GetEpoch(GloasColumnSlot)),
+                    [.. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static subnet => (ulong)subnet)]);
+                validator = new(new GossipRouter(Sepolia, gloasClock, LimboLogs.Instance), columns, Sepolia, gloasClock);
+            }
+
+            DeferredGossipValidation validation = new(pubsub, validator,
                 maxPending, maxPendingBytes, maxPendingVotes, timeout, LimboLogs.Instance.GetClassLogger<GossipRouterTests>(), CancellationToken.None, time);
             pubsub.VerifyMessage = validation.Verify;
             pubsub.OnDeferredMessage = validation.ValidateAsync;

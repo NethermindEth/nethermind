@@ -152,6 +152,9 @@ public sealed class ColumnGossipRouter(
     /// <summary>The most queued sidecars retried per slot, each retry costing at most one KZG batch that no penalty bounds.</summary>
     internal const int ParkedRetriesPerSlot = ParkedColumnCacheSize * KzgBatchesPerColumn;
 
+    /// <summary>The most Gloas sidecars of one delivering peer whose pubsub verdict waits for their unseen block, across its subnets.</summary>
+    internal const int PendingGloasVerdictsPerSource = 8;
+
     /// <summary>The most distinct signed headers a (slot, proposer_index) may run KZG work under.</summary>
     /// <remarks>
     /// An honest proposer signs one header; two prove equivocation. Additional signed headers
@@ -1175,8 +1178,8 @@ public sealed class ColumnGossipRouter(
     /// block is retrieved") when it is for the current or next slot, the only slots the future-slot IGNORE lets through.
     /// </summary>
     /// <remarks>
-    /// Pending gossip retains its delivering peer and verdict until validation or pubsub expiry, bounded per peer/subnet,
-    /// (root, column) and globally. Candidates without a pubsub verdict remain available only for local data recovery.
+    /// Pending gossip retains its delivering peer and verdict until validation or pubsub expiry, bounded per peer/subnet, per peer,
+    /// (root, column) and globally, and gives up its pending-validation reservation. Candidates without a pubsub verdict remain available only for local data recovery.
     /// </remarks>
     private MessageValidity Park(DataColumnSidecarGloas sidecar, ColumnGossipDropReason reason, ulong subnet, GossipVerdict? verdict, PeerId? source)
     {
@@ -1195,9 +1198,10 @@ public sealed class ColumnGossipRouter(
             if (verdict.IsCompleted || _pendingGloasVerdicts.Count >= DataColumnSidecarPool.MaxPendingGloasSidecars)
                 return Drop(reason, MessageValidity.Ignored);
             int sameKey = 0;
+            int sameSource = 0;
             foreach ((DataColumnSidecarGloas candidate, PendingGloasVerdict pending) in _pendingGloasVerdicts)
             {
-                if (pending.Source == source && pending.Subnet == subnet)
+                if (pending.Source == source && (pending.Subnet == subnet || ++sameSource >= PendingGloasVerdictsPerSource))
                     return Drop(reason, MessageValidity.Ignored);
                 if (candidate.BeaconBlockRoot == sidecar.BeaconBlockRoot && candidate.Index == sidecar.Index) sameKey++;
             }
@@ -1216,6 +1220,7 @@ public sealed class ColumnGossipRouter(
             verdict.ReleaseOnEnd(() => RemovePendingGloas(sidecar));
         }
         verdict.HandOff();
+        verdict.EndHoldEarly();
         return MessageValidity.Ignored;
     }
 

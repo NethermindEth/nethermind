@@ -21,7 +21,7 @@ public sealed class GossipVerdict
     public static readonly GossipVerdict None = new(null, null);
 
     private readonly Func<MessageValidity, bool>? _complete;
-    private readonly Action? _onEnd;
+    private Action? _onEnd;
     private readonly bool _local;
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Action? _releaseOnEnd;
@@ -79,6 +79,9 @@ public sealed class GossipVerdict
 
         release();
     }
+
+    /// <summary>Runs the end action given at construction now instead of when the verdict ends, for a consumer that holds the verdict under bounds of its own.</summary>
+    internal void EndHoldEarly() => Interlocked.Exchange(ref _onEnd, null)?.Invoke();
 
     /// <summary>Records that a consumer took the verdict over.</summary>
     internal void HandOff()
@@ -168,7 +171,7 @@ public sealed class GossipVerdict
         {
             try
             {
-                _onEnd?.Invoke();
+                Interlocked.Exchange(ref _onEnd, null)?.Invoke();
             }
             finally
             {

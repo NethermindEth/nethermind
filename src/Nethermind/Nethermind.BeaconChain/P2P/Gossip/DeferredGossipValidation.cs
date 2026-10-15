@@ -24,7 +24,8 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// messages from one delivering peer, a new message is <see cref="MessageValidity.Throttled"/>: the router caches no id for it, so a
 /// later copy is checked, and charges its sender nothing. Aggregates and payload attestations are held to their own bound of
 /// <paramref name="maxPendingVotes"/> instead, the import worker's vote queue, so their volume cannot take the room of a block.
-/// Columns have a separate count and byte budget of the same size as the main budget, including parked unseen-block verdicts.
+/// Columns have a separate count and byte budget of the same size as the main budget; a column parked for its unseen block leaves it,
+/// held to the parking bounds of <see cref="ColumnGossipRouter"/> instead.
 /// A verdict not given within <paramref name="timeout"/> is abandoned, which the router treats the same way.
 /// </para>
 /// <para>
@@ -67,6 +68,8 @@ internal sealed class DeferredGossipValidation(
     internal long PendingBytes => Interlocked.Read(ref _pendingBytes);
     /// <summary>The votes deferred for validation whose verdict is not given yet.</summary>
     internal int PendingVotes => Volatile.Read(ref _pendingVotes);
+    /// <summary>The columns deferred for validation whose verdict is not given yet and that are not parked.</summary>
+    internal int PendingColumns => Volatile.Read(ref _pendingColumns);
     /// <summary>The most messages other than votes and columns from one delivering peer that may await a verdict at once.</summary>
     internal int MaxPendingPerSource => _maxPendingPerSource;
 
