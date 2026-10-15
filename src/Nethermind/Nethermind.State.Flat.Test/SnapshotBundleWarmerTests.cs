@@ -165,18 +165,22 @@ public class SnapshotBundleWarmerTests
         }
     }
 
+    private static readonly (string PersistedRlpHex, bool RequestPersistedHash)[] MismatchingOrInvalidNodes =
+    [
+        (FlatTestHelpers.LeafRlpA, false),
+        ("c28001", true),
+        ("f8", true),
+    ];
+
     // The persistence read is path-keyed, so it can return another node or invalid bytes; neither may be warmed.
-    [TestCase(false, FlatTestHelpers.LeafRlpA, false)]
-    [TestCase(true, FlatTestHelpers.LeafRlpA, false)]
-    [TestCase(false, "c28001", true)]
-    [TestCase(true, "c28001", true)]
-    [TestCase(false, "f8", true)]
-    [TestCase(true, "f8", true)]
-    public void Warm_up_does_not_warm_a_mismatching_or_invalid_node(bool storage, string persistedRlpHex, bool requestPersistedHash)
+    [Test]
+    public void Warm_up_does_not_warm_a_mismatching_or_invalid_node(
+        [Values] bool storage,
+        [ValueSource(nameof(MismatchingOrInvalidNodes))] (string PersistedRlpHex, bool RequestPersistedHash) persisted)
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
-        byte[] persistedRlp = Bytes.FromHexString(persistedRlpHex);
-        TrieRoot root = new(requestPersistedHash ? ValueKeccak.Compute(persistedRlp) : TestItem.KeccakB.ValueHash256, 0);
+        byte[] persistedRlp = Bytes.FromHexString(persisted.PersistedRlpHex);
+        TrieRoot root = new(persisted.RequestPersistedHash ? ValueKeccak.Compute(persistedRlp) : TestItem.KeccakB.ValueHash256, 0);
         NodeReader reader = new(new Dictionary<TreePath, byte[]> { [TreePath.Empty] = persistedRlp });
         using SnapshotBundle bundle = NewBundle(reader);
 

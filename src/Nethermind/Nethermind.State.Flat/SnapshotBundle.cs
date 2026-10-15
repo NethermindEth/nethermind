@@ -334,22 +334,6 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
-    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadStateRlp{TArg}(in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
-    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
-    {
-        GuardDispose();
-
-        return _readOnlySnapshotBundle.TryLoadStateRlp(path, flags, action, arg);
-    }
-
-    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadStorageRlp{TArg}(Hash256, in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
-    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
-    {
-        GuardDispose();
-
-        return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, flags, action, arg);
-    }
-
     /// <summary>Makes the nodes a bulk set wrote to the state trie readable from this bundle, in write order.</summary>
     internal void PublishLoggedStateNodes(WrittenNodes written)
     {
