@@ -81,7 +81,8 @@ public class EngineTests
         inner.engine_forkchoiceUpdatedV4(default!, default, default).ReturnsForAnyArgs(call => MoveHead(call.Arg<ForkchoiceStateV1>()));
         EngineDriver driver = new(CreateDetector(inner, out _), LimboLogs.Instance,
             new SlotClock(TestEngineDriver.Spec, Timestamper.Default), TestEngineDriver.Spec,
-            new TestEngineDriver.FixedCustodySource(null), chain.BlockTree) { IsCatchingUp = () => catchingUp };
+            new TestEngineDriver.FixedCustodySource(null), chain.BlockTree)
+        { IsCatchingUp = () => catchingUp };
         return (driver, inner);
     }
 
