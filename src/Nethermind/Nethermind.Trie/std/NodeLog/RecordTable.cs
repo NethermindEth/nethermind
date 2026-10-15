@@ -87,7 +87,7 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
                 if (Matches(added.View, nodeKey, view.Hash)) return true;
             }
 
-            int alignedLength = (record.Length + NodeRecord.RecordAlignment - 1) & -NodeRecord.RecordAlignment;
+            int alignedLength = NodeRecord.AlignedLength(record.Length);
             if (!TryReserve(alignedLength, out uint position))
             {
                 added = default;

@@ -97,7 +97,7 @@ internal class WarmedNodesTests
     {
         const int lastChunkBytes = 1000;
         RecordTable table = new(1024, ChunkBytes + lastChunkBytes + NodeRecord.RecordAlignment - 1);
-        int alignedRecordLength = (Record(Path(0), TrieNodeLogTests.Leaf(0, 400)).Length + NodeRecord.RecordAlignment - 1) & -NodeRecord.RecordAlignment;
+        int alignedRecordLength = NodeRecord.AlignedLength(Record(Path(0), TrieNodeLogTests.Leaf(0, 400)).Length);
         int fittingRecordCount = ChunkBytes / alignedRecordLength + lastChunkBytes / alignedRecordLength;
 
         bool allAdded = Enumerable.Range(0, fittingRecordCount).All(i => table.TryAdd(null, Path(i), Record(Path(i), TrieNodeLogTests.Leaf(i, 400)), out _));

@@ -27,7 +27,7 @@ public sealed partial class TrieNodeLog
     private const int LiveGenerations = 8;
     private const int MaxGenerations = 4096;
     private const ulong GenerationSlotMask = MaxGenerations - 1;
-    private const int OffsetBits = 32;
+    internal const int OffsetBits = 32;
 
     private readonly Lock _lock = new();
     private readonly Generation?[] _generations = new Generation?[MaxGenerations];
@@ -134,14 +134,12 @@ public sealed partial class TrieNodeLog
         if (!NodeRecord.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
 
         int length = NodeRecord.Length(BitOperations.PopCount(hashMask), rlp.Length);
-        ulong pointer = Reserve(AlignedLength(length), out byte[] buffer, out int offset);
+        ulong pointer = Reserve(NodeRecord.AlignedLength(length), out byte[] buffer, out int offset);
         ulong nodeKey = NodeRecord.NodeKey(address, path);
         NodeRecord.WriteFromRlp(rlp, kind, hashMask, hash, nodeKey, buffer.AsSpan(offset, length));
         FindBloom(pointer)?.Insert(nodeKey);
         return pointer;
     }
-
-    private static int AlignedLength(int length) => (length + NodeRecord.RecordAlignment - 1) & -NodeRecord.RecordAlignment;
 
     private void Rotate(ulong fullGeneration, int length)
     {

@@ -63,6 +63,8 @@ internal static class NodeRecord
 
     public static int Length(int hashChildCount, int rlpLength) => HeaderLength + PointerLength * hashChildCount + rlpLength;
 
+    public static int AlignedLength(int length) => (length + RecordAlignment - 1) & -RecordAlignment;
+
     /// <summary>A well-mixed 64-bit key of a node position, which identifies the records of one trie path.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     public static ulong NodeKey(Hash256? address, in TreePath path)

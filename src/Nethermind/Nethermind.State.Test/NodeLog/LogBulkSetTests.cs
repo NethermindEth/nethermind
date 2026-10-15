@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -23,6 +24,7 @@ internal class LogBulkSetTests
 
     private static readonly byte[] ExistingValue = Bytes.FromHexString("0x7777777777777777777777777777777777777777777777777777777777777777");
     private static readonly byte[] NewValue = Bytes.FromHexString("0x010203");
+    private static readonly byte[] FillerValue = Enumerable.Repeat((byte)0x77, 1000).ToArray();
 
     public static IEnumerable<TestCaseData> PatriciaTreeCases()
     {
@@ -189,6 +191,46 @@ internal class LogBulkSetTests
             int before = source.FetchCount;
             LogBulkSet.WarmUp(walkedLog, source, address, walkedRoot, key.ValueHash256);
             return source.FetchCount - before;
+        }
+    }
+
+    [Test]
+    public void Compaction_drops_rewritten_paths_and_keeps_unchanged_subtrees_reachable_by_pointer()
+    {
+        const ulong compressedBudget = 1UL << 20;
+        const int fillerBatch = 16;
+        TrieNodeLog log = new(compressedBudget, SmallGenerationBytes);
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), null);
+        List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(100, seed: 5);
+        using WrittenNodes written = new();
+        using WrittenNodes rewriteWritten = new();
+        using WrittenNodes fillerWritten = new();
+        TrieRoot root = BulkSet(log, source, null, TrieRoot.Empty, items, written, canParallelize: false);
+        (TreePath Path, ulong Pointer)[] nodes = written.AsSpan().ToArray();
+        ulong newestTrieGeneration = nodes.Max(node => TrieNodeLogTests.GenerationOf(node.Pointer));
+        FillUntil(newestTrieGeneration + 1);
+        TrieRoot newRoot = BulkSet(log, source, null, root, [(items[0].key, NewValue)], rewriteWritten, canParallelize: false);
+        // Few large filler leaves per generation keep false positives out of the blooms the dropped trie is compacted against.
+        FillUntil(newestTrieGeneration + TrieNodeLogTests.LiveGenerations);
+        Assert.That(() => log.TryLocate(root.Pointer, out _), Is.False.After(TrieNodeLogTests.CompactionTimeoutMilliseconds, TrieNodeLogTests.PollingMilliseconds),
+            "the generations of the trie are compacted");
+
+        HashSet<TreePath> rewrittenPaths = [.. rewriteWritten.AsSpan().ToArray().Select(node => node.Path)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TrieNodeLogTests.GenerationOf(newRoot.Pointer), Is.GreaterThan(newestTrieGeneration), "generation of the rewrite");
+            Assert.That(nodes.Select(node => log.TryLocate(node.Pointer, out _)), Is.EqualTo(nodes.Select(node => !rewrittenPaths.Contains(node.Path))), "records resolve unless their path was rewritten");
+            Assert.That(items.Select(item => LogBulkSet.TryGet(log, source, null, newRoot, item.key.ValueHash256)), Is.EqualTo(items.Select((item, index) => index == 0 ? NewValue : item.value)), "values");
+            Assert.That(source.FetchCount, Is.Zero, "nodes read from the log");
+        }
+
+        void FillUntil(ulong generation)
+        {
+            while (fillerWritten.Count == 0 || TrieNodeLogTests.GenerationOf(fillerWritten.AsSpan()[^1].Pointer) < generation)
+            {
+                List<(Hash256 key, byte[] value)> filler = [.. Enumerable.Range(fillerWritten.Count, fillerBatch).Select(seed => (Keccak.Compute(BitConverter.GetBytes(seed)), FillerValue))];
+                BulkSet(log, source, TestItem.KeccakA, TrieRoot.Empty, filler, fillerWritten, canParallelize: false);
+            }
         }
     }
 

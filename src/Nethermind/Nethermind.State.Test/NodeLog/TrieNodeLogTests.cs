@@ -17,9 +17,9 @@ namespace Nethermind.Store.Test.NodeLog;
 internal class TrieNodeLogTests
 {
     private const int GenerationBytes = 64 * 1024;
-    private const int LiveGenerations = 8;
-    private const int CompactionTimeoutMilliseconds = 10_000;
-    private const int PollingMilliseconds = 10;
+    internal const int LiveGenerations = 8;
+    internal const int CompactionTimeoutMilliseconds = 10_000;
+    internal const int PollingMilliseconds = 10;
 
     [Test]
     public void Records_resolve_in_place_until_their_generation_drops()
@@ -207,7 +207,7 @@ internal class TrieNodeLogTests
 
     private static Hash256 ConcurrentAddress(int thread) => thread % 2 == 0 ? null : Keccak.Compute(BitConverter.GetBytes(thread));
 
-    private static ulong GenerationOf(ulong pointer) => pointer >> 32;
+    internal static ulong GenerationOf(ulong pointer) => pointer >> 32;
 
     private static ValueHash256 Root(int seed) => ValueKeccak.Compute(BitConverter.GetBytes(seed));
 

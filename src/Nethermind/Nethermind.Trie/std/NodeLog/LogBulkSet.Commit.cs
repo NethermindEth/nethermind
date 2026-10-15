@@ -112,7 +112,7 @@ internal static partial class LogBulkSet
                 hashed[hashedCount] = index;
                 recordStarts[hashedCount] = totalLength;
                 messages[hashedCount] = (0, rlpLength);
-                totalLength += AlignedLength(NodeRecord.Length(HashChildCount(ref node), rlpLength));
+                totalLength += NodeRecord.AlignedLength(NodeRecord.Length(HashChildCount(ref node), rlpLength));
                 hashedCount++;
             }
 
@@ -218,7 +218,5 @@ internal static partial class LogBulkSet
 
             return count;
         }
-
-        private static int AlignedLength(int length) => (length + NodeRecord.RecordAlignment - 1) & -NodeRecord.RecordAlignment;
     }
 }

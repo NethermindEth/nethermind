@@ -102,7 +102,7 @@ public sealed partial class TrieNodeLog
             else if (length == NodeRecord.HeaderLength) break;
             else lastOffsetByNodeKey[BinaryPrimitives.ReadUInt64LittleEndian(record[NodeRecord.NodeKeyOffset..])] = offset;
 
-            offset += AlignedLength(length);
+            offset += NodeRecord.AlignedLength(length);
         }
 
         foreach ((ulong nodeKey, int offset) in lastOffsetByNodeKey)

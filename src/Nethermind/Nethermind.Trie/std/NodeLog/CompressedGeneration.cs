@@ -26,7 +26,7 @@ internal sealed class CompressedGeneration
         int length = 0;
         foreach (int offset in keptOffsets)
         {
-            length += AlignedLength(NodeRecord.Length(generation.AsSpan(offset)));
+            length += NodeRecord.AlignedLength(NodeRecord.Length(generation.AsSpan(offset)));
         }
 
         _records = new byte[length];
@@ -36,13 +36,13 @@ internal sealed class CompressedGeneration
         foreach (int offset in keptOffsets)
         {
             ReadOnlySpan<byte> record = generation.AsSpan(offset, NodeRecord.Length(generation.AsSpan(offset)));
-            ulong pointer = generationId << 32 | (uint)offset;
+            ulong pointer = generationId << TrieNodeLog.OffsetBits | (uint)offset;
             ulong index = Index(pointer);
             while (_table[index].Pointer != 0) index = (index + 1) & _tableMask;
 
             _table[index] = (pointer, copied);
             record.CopyTo(_records.AsSpan(copied));
-            copied += AlignedLength(record.Length);
+            copied += NodeRecord.AlignedLength(record.Length);
         }
     }
 
@@ -64,6 +64,4 @@ internal sealed class CompressedGeneration
     }
 
     private ulong Index(ulong pointer) => (pointer * 0x9E3779B97F4A7C15 >> 32) & _tableMask;
-
-    private static int AlignedLength(int length) => (length + NodeRecord.RecordAlignment - 1) & -NodeRecord.RecordAlignment;
 }
