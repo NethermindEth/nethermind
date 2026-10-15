@@ -123,12 +123,14 @@ public static class ScopeBalApplier
         private void Apply(int index)
         {
             ref (IWorldStateScopeProvider.IStorageWriteBatch? Batch, ReadOnlySlotChanges[] Changes) work = ref _batches.GetRef(index);
-            using IWorldStateScopeProvider.IStorageWriteBatch batch = work.Batch!;
-            work.Batch = null;
+            IWorldStateScopeProvider.IStorageWriteBatch batch = work.Batch!;
             foreach (ReadOnlySlotChanges changes in work.Changes)
             {
                 if (changes.Changes.Length > 0) batch.Set(changes.Key, changes.Changes[^1].Value);
             }
+            // Claimed only once its writes succeed: a failed batch is left to Dispose, so its own disposal cannot mask the failure.
+            work.Batch = null;
+            batch.Dispose();
         }
 
         /// <remarks>

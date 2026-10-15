@@ -18,12 +18,14 @@ namespace Nethermind.Store.Test;
 
 public class ScopeBalApplierTests
 {
-    [TestCase(0, false)]
-    [TestCase(15, false)]
-    [TestCase(0, true)]
-    public void ApplyBal_DisposesEveryStorageBatchWhenWorkerFails(int failingIndex, bool disposalAlsoFails)
+    [TestCase(0, -1)]
+    [TestCase(15, -1)]
+    [TestCase(0, 7)]
+    [TestCase(0, 0)]
+    public void ApplyBal_DisposesEveryStorageBatchWhenWorkerFails(int failingIndex, int failingDisposeIndex)
     {
         const int count = 16;
+        bool disposalAlsoFails = failingDisposeIndex >= 0;
         int caller = Environment.CurrentManagedThreadId;
         int active = 0;
         int ownerViolations = 0;
@@ -64,7 +66,7 @@ public class ScopeBalApplierTests
             child.When(x => x.Dispose()).Do(_ =>
             {
                 Interlocked.Increment(ref disposed[index]);
-                if (disposalAlsoFails && index == 7) throw new InvalidOperationException("storage dispose failed");
+                if (index == failingDisposeIndex) throw new InvalidOperationException("storage dispose failed");
             });
         }
         parent.When(x => x.Set(Arg.Any<Address>(), Arg.Any<Account?>())).Do(_ =>
@@ -78,7 +80,7 @@ public class ScopeBalApplierTests
         });
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(changes).TestObject;
 
-        // The largest batch fails first on a single worker, leaving batch 7 for exceptional cleanup.
+        // The largest batch fails first on a single worker, leaving it and the unclaimed batches for exceptional cleanup.
         using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(disposalAlsoFails ? 1 : Environment.ProcessorCount);
         Exception? failure = Assert.Catch(() => ScopeBalApplier.Apply(scope, bal));
         parent.Received(1).Dispose();
