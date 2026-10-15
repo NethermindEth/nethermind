@@ -64,7 +64,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Lean;
 /// </para>
 /// <para>
 /// Coordination is through files in the run directory: the node writes <c>ready.N</c> once all its peers passed Status,
-/// waits for <c>start</c> (a CLOCK_MONOTONIC nanosecond timestamp), writes <c>done.N</c> when it holds every object, keeps
+/// waits for <c>start</c> (a Unix nanosecond timestamp), writes <c>done.N</c> when it holds every object, keeps
 /// serving until <c>stop</c>, then writes <c>result.N.json</c> with per-object timestamps and resource counters.
 /// </para>
 /// </remarks>
@@ -117,7 +117,7 @@ public class LeanNetBenchNode
         {
             imported[o.Header!.Hash!] = o.Header;
             // Block import with the proof attached: the transport stores and announces the sidecar.
-            lock (importLock) node.Tree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(o.Header, new BlockBody([], [], null, o.Proof))));
+            lock (importLock) node.Tree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(o.Header, new BlockBody(o.Transactions, [], null, o.Proof))));
         }
 
         BenchObject[] objects = [.. Enumerable.Range(0, config.Objects).Select(i => BenchObject.Create(config.Kind, i, config.ProofBytes, config.TransactionsPerObject))];
@@ -236,7 +236,7 @@ public class LeanNetBenchNode
         async Task FetchSidecar(BenchObject o)
         {
             await WaitUntil(Release(o.Index));
-            RecursiveStark? proof = await node.Transport.TryGetAsync(new Block(o.Header!, new BlockBody()), deadline.Token);
+            RecursiveStark? proof = await node.Transport.TryGetAsync(new Block(o.Header!, new BlockBody(o.Transactions, [], null)), deadline.Token);
             if (proof is null) return;
             Complete(o.Index);
             // Import verifies the proof before the block, and so its sidecar, is served onward.
@@ -420,11 +420,13 @@ public class LeanNetBenchNode
                 {
                     byte[] proof = new byte[proofBytes];
                     new Random(1000 + index).NextBytes(proof);
-                    BlockHeader header = LeanTransportTests.ProofHeader(proof, new Hash256(ValueKeccak.Compute(BitConverter.GetBytes(index))), (ulong)index + 1);
+                    Transaction transaction = FrameTransaction(index + 1);
+                    Hash256 depsHash = new(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction)));
+                    BlockHeader header = LeanTransportTests.ProofHeader(proof, depsHash, (ulong)index + 1);
                     byte[] body = LeanRlp.EncodeList(LeanRlp.EncodeBytes(proof));
                     LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
                         LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256), body);
-                    return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = descriptor, Header = header, Proof = proof };
+                    return new BenchObject { Index = index, Kind = (byte)kind, Body = body, Descriptor = descriptor, Header = header, Proof = proof, Transactions = [transaction] };
                 }
                 default:
                     throw new ArgumentException($"kind {kind}");
