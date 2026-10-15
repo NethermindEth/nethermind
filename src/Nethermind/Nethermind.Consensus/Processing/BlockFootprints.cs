@@ -22,7 +22,11 @@ namespace Nethermind.Consensus.Processing;
 /// run again on the values the earlier footprints leave. Block processing reports the writes of the transactions it
 /// executes, which take the place of what their footprints predicted.
 /// </remarks>
-internal sealed class BlockFootprints(Block block)
+/// <param name="seedsAlongsideWarms">
+/// Whether footprints are seeded while warm runs store theirs: every store then writes its footprint under the lock it
+/// indexes it under, so the footprint at a position is always the one indexed for it.
+/// </param>
+internal sealed class BlockFootprints(Block block, bool seedsAlongsideWarms = false)
 {
     /// <summary>
     /// Footprints indexed for one slot's writes, and for its reads. Past it, a slot's writes are no longer tracked and the
@@ -88,8 +92,38 @@ internal sealed class BlockFootprints(Block block)
     /// <param name="seededAt">For a refreshed footprint, the <see cref="WritesVersion"/> its run was seeded at.</param>
     public void Store(int index, TransactionFootprint footprint, int seededAt = -1)
     {
+        if (seedsAlongsideWarms)
+        {
+            StoreLocked(index, footprint, seededAt, onlyIfEmpty: false);
+            return;
+        }
+
         Volatile.Write(ref _footprints[index], footprint);
         Index(index, footprint, seededAt);
+    }
+
+    /// <summary>Stores <paramref name="footprint"/> unless a footprint is already stored at <paramref name="index"/>.</summary>
+    /// <returns>Whether it was stored.</returns>
+    public bool TryStoreIfEmpty(int index, TransactionFootprint footprint) => StoreLocked(index, footprint, -1, onlyIfEmpty: true);
+
+    private bool StoreLocked(int index, TransactionFootprint footprint, int seededAt, bool onlyIfEmpty)
+    {
+        bool invalidated;
+        lock (_lock)
+        {
+            if (onlyIfEmpty && _footprints[index] is not null) return false;
+            Volatile.Write(ref _footprints[index], footprint);
+            invalidated = IndexLocked(index, footprint, seededAt);
+        }
+
+        if (invalidated) _changed.Release();
+        return true;
+    }
+
+    /// <summary>For tests: the footprint indexed at <paramref name="index"/>, or null when none is or the writes block processing reported are.</summary>
+    internal TransactionFootprint? IndexedAt(int index)
+    {
+        lock (_lock) return _indexed[index].Footprint;
     }
 
     /// <summary>Changes whenever writes the footprints leave are replaced.</summary>
@@ -282,28 +316,35 @@ internal sealed class BlockFootprints(Block block)
         bool invalidated;
         lock (_lock)
         {
-            // A run that ends after block processing executed its transaction does not replace the writes it made.
-            if (_executed[position]) return;
-            // With no write replaced since the refresh seeded the slots the footprint before it read, a refreshed run
-            // that read one of them at another value than its seed changed it itself first (a creation clears the
-            // storage), and running it again reads the same.
-            TransactionFootprint? seeded = seededAt == _writesVersion ? _indexed[position].Footprint : null;
-            invalidated = Replace(position, new Indexed(footprint, default));
-
-            ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;
-            bool outdated = false;
-            for (int i = 0; i < reads.Length; i++)
-            {
-                ref Slot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, reads[i].Cell, out _);
-                if (slot.Untracked) continue;
-                outdated |= ValueBefore(in slot.Writers, position) is { } value && value != reads[i].Value && (seeded is null || !Reads(seeded, reads[i].Cell));
-                if (slot.Readers.Count < MaxIndexedPerSlot) slot.Readers.Add(new Entry(position, i));
-            }
-
-            if (outdated) invalidated |= Invalidate(position);
+            invalidated = IndexLocked(position, footprint, seededAt);
         }
 
         if (invalidated) _changed.Release();
+    }
+
+    /// <returns>Whether a footprint was invalidated.</returns>
+    private bool IndexLocked(int position, TransactionFootprint footprint, int seededAt)
+    {
+        // A run that ends after block processing executed its transaction does not replace the writes it made.
+        if (_executed[position]) return false;
+        // With no write replaced since the refresh seeded the slots the footprint before it read, a refreshed run
+        // that read one of them at another value than its seed changed it itself first (a creation clears the
+        // storage), and running it again reads the same.
+        TransactionFootprint? seeded = seededAt == _writesVersion ? _indexed[position].Footprint : null;
+        bool invalidated = Replace(position, new Indexed(footprint, default));
+
+        ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;
+        bool outdated = false;
+        for (int i = 0; i < reads.Length; i++)
+        {
+            ref Slot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, reads[i].Cell, out _);
+            if (slot.Untracked) continue;
+            outdated |= ValueBefore(in slot.Writers, position) is { } value && value != reads[i].Value && (seeded is null || !Reads(seeded, reads[i].Cell));
+            if (slot.Readers.Count < MaxIndexedPerSlot) slot.Readers.Add(new Entry(position, i));
+        }
+
+        if (outdated) invalidated |= Invalidate(position);
+        return invalidated;
     }
 
     // Puts what the position now writes, from a refreshed footprint or the transaction executed there, in place of what
