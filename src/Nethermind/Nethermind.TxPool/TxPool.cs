@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -73,6 +74,7 @@ namespace Nethermind.TxPool
         private readonly DelegationCache _pendingDelegations;
         private readonly PayerExposureCache _payerExposure = new();
         private readonly PendingPaymasterCache _pendingPaymasters = new();
+        private readonly PendingCodeDependencyCache _codeDependencies = new();
         private readonly SenderWidthCache _senderWidth;
         private readonly SenderWidthCache _paymasterWidth;
         private readonly SenderAdmissionGates _senderAdmissionGates = new();
@@ -344,8 +346,10 @@ namespace Nethermind.TxPool
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new KeyedNonceFilter(chainHeadInfoProvider.ReadOnlyStateProvider, txPoolConfig, _transactions, _blobTransactions), // the three above skip keyed sets, this one owns them
+                new UnderpricedReplacementFilter(_transactions, _blobTransactions), // before the filters that recover signatures
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
+                new FrameTxSimulationBudgetFilter(frameTxPrefixSimulator, _logger), // before FrameTxSignatureFilter: no recoveries for a transaction the spent budget will defer anyway
                 new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve recovery per signature, up to the decoder's 1024, so let the cheap filters reject first
             ];
 
@@ -366,7 +370,7 @@ namespace Nethermind.TxPool
             postHashFilters.Add(new FrameTxPayerFilter(_logger));
 
             // EIP-8141: after FrameTxPayerFilter, so the natively-resolved fast path bypasses it.
-            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger, _headInfo));
+            postHashFilters.Add(new FrameTxSimulationFilter(frameTxPrefixSimulator, _logger, _headInfo, _codeDependencies, _txPoolConfig.FrameTxMaxPendingPerDelegatingCode));
 
             // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
             // second registration would reserve every frame tx's cost twice.
@@ -637,6 +641,7 @@ namespace Nethermind.TxPool
             if (args.Value.SupportsFrames)
             {
                 _frameDependencies.Remove(args.Value.Hash!.ValueHash256);
+                _codeDependencies.Release(args.Value.Hash!.ValueHash256);
                 if (_txPoolConfig.FrameTxWidthEnabled)
                 {
                     _senderBaselines.TryRemove(new KeyValuePair<AddressAsKey, ValueHash256>(args.Value.SenderAddress!, args.Value.Hash!.ValueHash256));
@@ -668,7 +673,9 @@ namespace Nethermind.TxPool
         /// paymaster cap even when no payer was resolved.
         /// Two kinds of dependency sit outside the set (EIP8141-GAP): helper contracts an opaque prefix reaches
         /// through <c>CALL*</c>, so a code change at one does not trigger revalidation; and block context it
-        /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe.
+        /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe. The exception is a helper
+        /// whose code can change under EIP-8298 by delegating, which admission records and this indexes; a
+        /// record restored without simulation carries none.
         /// A persistent blob pool holds a frameless light record, which is indexed all the same: the set is
         /// addresses that record carries, and <see cref="RevalidateFrameTransactions"/> reloads the prefix
         /// from blob storage. Skipping it would exempt every blob-carrying frame transaction from revalidation.
@@ -688,12 +695,14 @@ namespace Nethermind.TxPool
             // A delegated sender runs the delegate's code, so that account is a dependency too; the sender's
             // own code hash only pins the designation.
             Address? delegated = resolveDelegation ? DelegationTargetOf(tx.SenderAddress!) : null;
-            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (hasDistinctPaymaster ? 1 : 0) + (delegated is not null ? 1 : 0)];
+            FrameTxCodeDependency[] codeDependencies = _codeDependencies.Get(tx.Hash!.ValueHash256);
+            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (hasDistinctPaymaster ? 1 : 0) + (delegated is not null ? 1 : 0) + codeDependencies.Length];
             int next = 0;
             accounts[next++] = tx.SenderAddress!;
             if (hasDistinctPayer) accounts[next++] = payer!;
             if (hasDistinctPaymaster) accounts[next++] = paymaster!;
-            if (delegated is not null) accounts[next] = delegated;
+            if (delegated is not null) accounts[next++] = delegated;
+            foreach (FrameTxCodeDependency dependency in codeDependencies) accounts[next++] = dependency.Account;
 
             if (onlyIfTracked) _frameDependencies.Update(tx.Hash!.ValueHash256, accounts);
             else _frameDependencies.Set(tx.Hash!.ValueHash256, accounts);
@@ -1628,6 +1637,13 @@ namespace Nethermind.TxPool
                         return simulated.Indeterminate;
                     }
                     payer = simulated.Payer;
+                    // EIP-8298: the prefix may now rely on different mutable code, re-judged against the cap.
+                    if (!_codeDependencies.TryUpdate(tx.Hash!.ValueHash256, simulated.CodeDependencies, _txPoolConfig.FrameTxMaxPendingPerDelegatingCode, out bool added)) return false;
+                    // An eviction that landed before the entry was added has already released, so release again.
+                    if (added && !_transactions.ContainsKey(tx.Hash!.ValueHash256) && !_blobTransactions.ContainsKey(tx.Hash!.ValueHash256))
+                    {
+                        _codeDependencies.Release(tx.Hash!.ValueHash256);
+                    }
                     break;
             }
 
@@ -1803,6 +1819,10 @@ namespace Nethermind.TxPool
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
                     }
+                    else if (accepted == AcceptTxResult.InvalidBlobProofs && tx.Hash is not null)
+                    {
+                        _hashCache.SetInvalidBlobProofs(tx.Hash);
+                    }
 
                     Metrics.PendingTransactionsDiscarded++;
                     PooledBlobBuffers.Return(tx);
@@ -1817,6 +1837,8 @@ namespace Nethermind.TxPool
                 {
                     _pendingPaymasters.Decrement(paymaster);
                 }
+
+                if (state.CodeDependenciesReserved) _codeDependencies.Release(tx.Hash!.ValueHash256);
 
                 if (state.PayerExposureReserved)
                 {
@@ -2048,8 +2070,15 @@ namespace Nethermind.TxPool
                     ReleaseFrameTxReservations(tx);
                 }
 
+                // Pooled, the entry is released on Removed; a self-evicting insert already released it there.
+                if (state.CodeDependenciesReserved && !relevantPool.ContainsKey(tx.Hash!.ValueHash256))
+                {
+                    _codeDependencies.Release(tx.Hash!.ValueHash256);
+                }
+
                 // Settled either way by here, so the caller's own release must not run again.
                 state.PaymasterReserved = false;
+                state.CodeDependenciesReserved = false;
                 state.PayerExposureReserved = false;
             }
         }
@@ -3033,6 +3062,8 @@ namespace Nethermind.TxPool
         public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash);
 
         public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.DeleteFromCurrentBlock(hash);
+
+        public bool ForgetInvalidBlobProofs(Hash256 hash) => _hashCache.TryDeleteInvalidBlobProofs(hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;

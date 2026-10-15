@@ -10,6 +10,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -178,6 +179,32 @@ namespace Nethermind.Config.Test
                 Assert.That(keys, Does.Contain("Network.DiscoveryPort"));
                 Assert.That(errors, Has.Some.Matches<(Type, Exception)>(static x => x.Item1 == typeof(IJsonRpcConfig)));
             }
+        }
+
+        [TestCase("KeyStore", "TestNodeKey", ExpectedResult = null)]
+        [TestCase("KeyStoreConfig", "TestNodeKey", ExpectedResult = null)]
+        [TestCase("KEYSTORECONFIG", "testnodekey", ExpectedResult = null)]
+        [TestCase("", "KeyStore.TestNodeKey", ExpectedResult = null)] // args source key when the category is empty
+        [TestCase("", "KEYSTORECONFIG_TESTNODEKEY", ExpectedResult = null)] // env source variable when the category is empty
+        [TestCase("", "KeyStore.Cipher", ExpectedResult = null)] // not a config property, even though the args source has the key
+        [TestCase("KeyStore", "Cipher", ExpectedResult = "aes-128-ctr")]
+        [TestCase("", "Config", ExpectedResult = "custom.json")]
+        public object? Raw_value_is_returned_only_for_non_sensitive_config_items(string category, string name)
+        {
+            IEnvironment environment = Substitute.For<IEnvironment>();
+            environment.GetEnvironmentVariable("NETHERMIND_KEYSTORECONFIG_TESTNODEKEY").Returns("hunter2");
+
+            ConfigProvider provider = new();
+            provider.AddSource(new ArgsConfigSource(new Dictionary<string, string>
+            {
+                ["KeyStore.TestNodeKey"] = "hunter2",
+                ["KeyStore.Cipher"] = "aes-128-ctr",
+                ["Config"] = "custom.json"
+            }));
+            provider.AddSource(new EnvConfigSource(environment));
+            provider.Initialize();
+
+            return provider.GetRawValue(category, name);
         }
 
         private static IConfigProvider Provider(params (string Key, string Value)[] overrides)

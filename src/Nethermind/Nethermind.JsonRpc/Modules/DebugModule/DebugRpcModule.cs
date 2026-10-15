@@ -80,10 +80,15 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
-        TryGetHeaderAndCheckState(blockHash!, out ResultWrapper<GethLikeTxTrace>? headerError);
+        BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<GethLikeTxTrace>? headerError);
         if (headerError is not null)
         {
             return headerError;
+        }
+
+        if (CheckTraceBaseState<GethLikeTxTrace>(header) is { } stateError)
+        {
+            return stateError;
         }
 
         if (CanStreamStructLogs(options))
@@ -131,7 +136,9 @@ public class DebugRpcModule(
             }
         }
 
-        Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
+        // The call converts against the fork it runs in, which a block override can change.
+        IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
+        Result<Transaction> txResult = call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -458,6 +465,8 @@ public class DebugRpcModule(
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
+
+        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
         if (CanStreamStructLogs(options))
         {
@@ -864,7 +873,8 @@ public class DebugRpcModule(
                 timeoutCts,
                 _logger)
             {
-                Spec = specProvider.GetSpec(header)
+                // Bundles without their own block overrides run on the header with the trace options' overrides applied.
+                Spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header)
             };
         }
         catch

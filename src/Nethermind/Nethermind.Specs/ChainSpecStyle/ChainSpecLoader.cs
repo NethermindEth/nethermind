@@ -194,8 +194,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                                                  Eip1559Constants.DefaultBaseFeeMaxChangeDenominator,
 
             Eip6110TransitionTimestamp = parameters.Eip6110TransitionTimestamp,
-            DepositContractAddress = LoadDependentParam(parameters.Eip6110TransitionTimestamp, parameters.DepositContractAddress,
-                () => parameters.ChainId == BlockchainIds.Mainnet ? Eip6110Constants.MainnetDepositContractAddress : null),
             Eip7002TransitionTimestamp = parameters.Eip7002TransitionTimestamp,
             Eip7623Transition = parameters.Eip7623Transition,
             Eip7623TransitionTimestamp = parameters.Eip7623TransitionTimestamp,
@@ -239,17 +237,25 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8250TransitionTimestamp = parameters.Eip8250TransitionTimestamp,
             Eip8272TransitionTimestamp = parameters.Eip8272TransitionTimestamp,
             Eip7906TransitionTimestamp = parameters.Eip7906TransitionTimestamp,
+            Eip8151TransitionTimestamp = parameters.Eip8151TransitionTimestamp,
             Eip7979TransitionTimestamp = parameters.Eip7979TransitionTimestamp,
             Eip7843TransitionTimestamp = parameters.Eip7843TransitionTimestamp,
             Eip7954TransitionTimestamp = parameters.Eip7954TransitionTimestamp,
             Eip2780TransitionTimestamp = parameters.Eip2780TransitionTimestamp,
+            Eip5920TransitionTimestamp = parameters.Eip5920TransitionTimestamp,
+            Eip8116TransitionTimestamp = parameters.Eip8116TransitionTimestamp,
+            Eip8360TransitionTimestamp = parameters.Eip8360TransitionTimestamp,
             Eip3298TransitionTimestamp = parameters.Eip3298TransitionTimestamp,
             Eip8131TransitionTimestamp = parameters.Eip8131TransitionTimestamp,
             Eip8279TransitionTimestamp = parameters.Eip8279TransitionTimestamp,
             Eip7805TransitionTimestamp = parameters.Eip7805TransitionTimestamp,
+            Eip8298TransitionTimestamp = parameters.Eip8298TransitionTimestamp,
         };
 
         chainSpec.Parameters.ExpandAll(parameters);
+        // Resolved after ExpandAll so a fork label (e.g. "prague") that enables EIP-6110 still gets the dependent address.
+        chainSpec.Parameters.DepositContractAddress = LoadDependentParam(chainSpec.Parameters.Eip6110TransitionTimestamp, parameters.DepositContractAddress,
+            () => parameters.ChainId == BlockchainIds.Mainnet ? Eip6110Constants.MainnetDepositContractAddress : null);
         ValidateParams(chainSpec.Parameters);
 
         // Pre-Shanghai EIPs that are part of the genesis baseline for chains without explicit

@@ -21,12 +21,18 @@ namespace Nethermind.TxPool
     internal class HashCache
     {
         private const int SafeCapacity = 1024 * 16;
+        private const int InvalidBlobProofsCapacity = 1024;
 
         private readonly AssociativeKeyCache<ValueHash256> _longTermCache = new(
             MemoryAllowance.TxHashCacheSize);
 
         private readonly AssociativeKeyCache<ValueHash256> _currentBlockCache = new(
             SafeCapacity);
+
+        // Current-block hashes whose verdict was InvalidBlobProofs: the hash does not cover the sidecar,
+        // so only these may be forgotten for another copy to be judged.
+        private readonly AssociativeKeyCache<ValueHash256> _invalidBlobProofsCache = new(
+            InvalidBlobProofsCapacity);
 
         public bool Get(Hash256 hash) => Get(in hash.ValueHash256);
 
@@ -51,13 +57,26 @@ namespace Nethermind.TxPool
             _longTermCache.Delete(in valueHash);
         }
 
-        public void DeleteFromCurrentBlock(Hash256 hash)
+        public void DeleteFromCurrentBlock(Hash256 hash) => DeleteFromCurrentBlock(in hash.ValueHash256);
+
+        public void DeleteFromCurrentBlock(in ValueHash256 hash)
         {
-            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
-            _currentBlockCache.Delete(in valueHash);
+            _invalidBlobProofsCache.Delete(in hash);
+            _currentBlockCache.Delete(in hash);
         }
 
-        public void DeleteFromCurrentBlock(in ValueHash256 hash) => _currentBlockCache.Delete(in hash);
+        public void SetInvalidBlobProofs(Hash256 hash) => _invalidBlobProofsCache.Set(in hash.ValueHash256);
+
+        /// <summary>
+        /// Deletes <paramref name="hash"/> from the current block cache only when its verdict was InvalidBlobProofs.
+        /// </summary>
+        public bool TryDeleteInvalidBlobProofs(Hash256 hash)
+        {
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
+            if (!_invalidBlobProofsCache.Delete(in valueHash)) return false;
+            _currentBlockCache.Delete(in valueHash);
+            return true;
+        }
 
         public void Delete(Hash256 hash)
         {
@@ -66,7 +85,11 @@ namespace Nethermind.TxPool
             _currentBlockCache.Delete(in valueHash);
         }
 
-        public void ClearCurrentBlockCache() => _currentBlockCache.Clear();
+        public void ClearCurrentBlockCache()
+        {
+            _invalidBlobProofsCache.Clear();
+            _currentBlockCache.Clear();
+        }
 
         /// <summary>
         /// Clears both long-term and current block caches.
@@ -74,6 +97,7 @@ namespace Nethermind.TxPool
         public void ClearAll()
         {
             _longTermCache.Clear();
+            _invalidBlobProofsCache.Clear();
             _currentBlockCache.Clear();
         }
     }
