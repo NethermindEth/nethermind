@@ -197,7 +197,7 @@ internal static class ForkChoiceStepDriver
     private static void InvalidateBackToLatestValidHash(ForkChoiceRunner runner, Hash256 parentRoot, Hash256? latestValidHash)
     {
         if (latestValidHash is not null && runner.ContainsBlock(parentRoot) && runner.GetExecutionBlockHash(parentRoot) != latestValidHash)
-            runner.OnInvalidExecutionPayload(parentRoot, latestValidHash);
+            runner.InvalidateExecutionChain(parentRoot, payloadHash: null, latestValidHash);
     }
 
     private static DataColumnSidecar[] LoadDataColumnSidecars(string casePath, YamlSequenceNode columns)
@@ -257,6 +257,38 @@ internal static class ForkChoiceStepDriver
     private static void RunChecksStep(YamlMappingNode checks, ForkChoiceRunner runner, int stepIndex)
     {
         RunFastConfirmationChecks(checks, runner, stepIndex);
+        foreach (string key in Keys(checks))
+        {
+            switch (key)
+            {
+                case "get_proposer_head":
+                case "time":
+                case "genesis_time":
+                case "head":
+                case "justified_checkpoint":
+                case "finalized_checkpoint":
+                case "proposer_boost_root":
+                case "previous_epoch_observed_justified_checkpoint":
+                case "current_epoch_observed_justified_checkpoint":
+                case "previous_epoch_greatest_unrealized_checkpoint":
+                case "previous_slot_head":
+                case "current_slot_head":
+                case "confirmed_root":
+                case "safe_execution_block_hash":
+                    break;
+                case "viable_for_head_roots_and_weights":
+                    TryGetChild(checks, key, out YamlNode? viableNode);
+                    (Hash256 Root, ulong Weight)[] expected = [.. ((YamlSequenceNode)viableNode!).Children.Cast<YamlMappingNode>()
+                        .Select(static node => (new Hash256(GetScalar(node, "root")), ulong.Parse(GetScalar(node, "weight"))))];
+                    (Hash256 Root, ulong Weight)[] actual = [.. runner.GetViableHeadNodes().Select(node => (node.Root, runner.GetWeight(node)))];
+                    Assert.That(actual, Is.EquivalentTo(expected), $"step {stepIndex}: checks.{key}");
+                    break;
+                default:
+                    Assert.Fail($"step {stepIndex}: unknown check '{key}'");
+                    break;
+            }
+        }
+
 
         if (TryGetScalar(checks, "get_proposer_head", out string? proposerHeadRoot))
             AssertEqual(stepIndex, "get_proposer_head", new Hash256(proposerHeadRoot!), runner.GetProposerHead(runner.GetHead(), runner.CurrentSlot));

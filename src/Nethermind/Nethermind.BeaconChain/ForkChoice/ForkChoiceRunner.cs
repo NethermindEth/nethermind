@@ -476,6 +476,21 @@ public sealed class ForkChoiceRunner
         }
     }
 
+    private void PruneRecentCheckpointCache<TValue>(Dictionary<CheckpointRef, TValue> cache, ulong oldestEpoch)
+    {
+        List<CheckpointRef>? stale = null;
+        foreach (CheckpointRef checkpoint in cache.Keys)
+        {
+            if (checkpoint.Epoch < oldestEpoch && checkpoint != _store.JustifiedCheckpoint
+                && checkpoint != FastConfirmation.PreviousEpochObservedJustifiedCheckpoint
+                && checkpoint != FastConfirmation.CurrentEpochObservedJustifiedCheckpoint
+                && checkpoint != FastConfirmation.PreviousEpochGreatestUnrealizedCheckpoint)
+                (stale ??= []).Add(checkpoint);
+        }
+        if (stale is not null)
+            foreach (CheckpointRef checkpoint in stale) cache.Remove(checkpoint);
+    }
+
     /// <summary>
     /// The spec's <c>on_tick</c>: advances the store to <paramref name="time"/> (seconds), resetting
     /// the proposer boost and pulling up unrealized checkpoints at every slot/epoch boundary
@@ -493,6 +508,9 @@ public sealed class ForkChoiceRunner
         _store.OnTick((timeMilliseconds - GenesisTime * 1000) / (_spec.SecondsPerSlot * 1000));
         DequeueAttestations();
         PruneVoteStates();
+        ulong oldestEpoch = _store.CurrentEpoch > 0 ? _store.CurrentEpoch - 1 : 0;
+        PruneRecentCheckpointCache(_checkpointStates, oldestEpoch);
+        PruneRecentCheckpointCache(_justifiedBalances, oldestEpoch);
         ApplyDeferredBodyVotes();
         _lastHeadRoot = null;
     }
@@ -709,7 +727,7 @@ public sealed class ForkChoiceRunner
         {
             RequireCachedKeys(state, validatorIndices);
             IndexedPayloadAttestation indexed = new() { AttestingIndices = validatorIndices, Data = data, Signature = signature };
-            if (!GloasBlockProcessing.IsValidIndexedPayloadAttestation(gloasState, indexed, _pubkeys, verifySignature))
+            if (!GloasBlockProcessing.IsValidIndexedPayloadAttestation(gloasState, indexed, _pubkeys, verifySignature: false))
                 throw new ForkChoiceException($"Payload attestation for {root} at slot {data.Slot} has invalid indices or signature");
         }
 
@@ -1508,17 +1526,6 @@ public sealed class ForkChoiceRunner
 
     /// <summary>Marks the payload of <paramref name="blockRoot"/> (and hence of all its ancestors) execution-valid.</summary>
     public void OnValidExecutionPayload(Hash256 blockRoot) => _protoArray.ProcessExecutionPayloadValidation(blockRoot);
-
-    /// <summary>Invalidates the payload of <paramref name="blockRoot"/> and, when <paramref name="latestValidHash"/> identifies a known ancestor, everything between them, plus all descendants.</summary>
-    public void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash = null)
-    {
-        _lastHeadRoot = null;
-        _protoArray.ProcessExecutionPayloadInvalidation(
-            latestValidHash is null
-                ? InvalidationOperation.InvalidateOne(blockRoot)
-                : InvalidationOperation.InvalidateMany(blockRoot, alwaysInvalidateHead: true, latestValidHash),
-            _store.FinalizedCheckpoint);
-    }
 
     /// <summary>
     /// Applies an engine INVALID verdict on the payload <paramref name="payloadHash"/> of the chain ending at <paramref name="chainRoot"/>:

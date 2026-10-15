@@ -536,7 +536,7 @@ public partial class BeaconSyncOrchestratorTests
         await s.Gossip(0);
         for (int i = 0; i < PendingQueueCapacity; i++)
         {
-            ForkedSignedBeaconBlock filler = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(s[2].Slot + 1 + (ulong)i, TestItem.Keccaks[i]));
+            ForkedSignedBeaconBlock filler = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(s[2].Slot + 1 + (ulong)i, s.Root(0)));
             await s.Sync.ProcessGossipBlockAsync(filler, CancellationToken.None);
         }
 

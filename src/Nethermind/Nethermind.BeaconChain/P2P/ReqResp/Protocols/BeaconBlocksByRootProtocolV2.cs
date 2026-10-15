@@ -57,6 +57,8 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
         await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
+            using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, 139, "Too many concurrent requests", refusal.Token);
             return;
         }
 
@@ -74,6 +76,8 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
             {
                 throw new Eth2ReqRespException($"Malformed blocks-by-root request: {e.Message}");
             }
+
+            ChargeRequest(context, (ulong)(request.Roots?.Length ?? 0), MaxRequestBlocks);
 
             foreach (Hash256 root in request.Roots ?? [])
             {

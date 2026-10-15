@@ -168,6 +168,26 @@ public class BeaconDiscoveryTests
     }
 
     [Test]
+    public void Discovery_does_not_dial_private_ipv6_addresses([Values("::1", "fd00::1", "fe80::1", "::", "ff02::1")] string address,
+        [Values] bool primaryIsPublic)
+    {
+        NodeRecord record = new();
+        if (primaryIsPublic)
+        {
+            record.SetEntry(new IpEntry(PublicIp));
+            record.SetEntry(new TcpEntry(9000));
+        }
+        record.SetEntry(new Ip6Entry(IPAddress.Parse(address)));
+        record.SetEntry(new Tcp6Entry(8551));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+        bool accepted = BeaconDiscovery.TryCreateCandidate(record, CurrentDigest, null, out BeaconPeerCandidate? candidate);
+        Assert.That(accepted, Is.EqualTo(primaryIsPublic));
+        if (accepted) Assert.That(candidate!.Addresses, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public void Next_fork_mismatch_changes_preference_without_rejecting_a_current_peer([Values] bool matching)
     {
         BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, 9000, 9001, TestForkId, 4, matching ? NextDigest : ForeignDigest);

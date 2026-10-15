@@ -96,29 +96,34 @@ public static partial class EpochProcessing
             state.Eth1DataVotes = [];
     }
 
-    private static partial Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators)
+    private static partial Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators, PendingDeposit[] deposits)
     {
         Dictionary<BlsPublicKey, int> pubkeyToIndex = [];
+        int count = Math.Min(deposits.Length, (int)Presets.MaxPendingDepositsPerEpoch);
+        for (int i = 0; i < count; i++) pubkeyToIndex.TryAdd(deposits[i].Pubkey, -1);
         for (int i = 0; i < validators.Length; i++)
-        {
-            pubkeyToIndex.TryAdd(validators[i].Pubkey, i);
-        }
+            if (pubkeyToIndex.TryGetValue(validators[i].Pubkey, out int index) && index < 0)
+                pubkeyToIndex[validators[i].Pubkey] = i;
 
         return pubkeyToIndex;
     }
 
     /// <summary>Electra <c>apply_pending_deposit</c>: top up a known validator or, after proof of possession, add a new one.</summary>
-    private static partial void ApplyPendingDeposit(ForkState state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex, EpochCache cache)
+    private static partial void ApplyPendingDeposit(ForkState state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex, List<Validator> addedValidators, List<ulong> addedBalances, EpochCache cache)
     {
-        if (pubkeyToIndex.TryGetValue(deposit.Pubkey, out int index))
+        if (pubkeyToIndex.TryGetValue(deposit.Pubkey, out int index) && index >= 0)
         {
-            state.IncreaseBalance(index, deposit.Amount);
+            if (index < state.Validators!.Length)
+                state.IncreaseBalance(index, deposit.Amount);
+            else
+                addedBalances[index - state.Validators.Length] += deposit.Amount;
         }
         // Verify the deposit signature (proof of possession) which is not checked by the deposit contract.
         else if (DepositSignatureVerifier.IsValid(cache.ResolveSigningSpec(state.GenesisValidatorsRoot!), deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
         {
-            pubkeyToIndex.TryAdd(deposit.Pubkey, state.Validators!.Length);
-            state.AddValidatorToRegistry(deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount);
+            pubkeyToIndex[deposit.Pubkey] = state.Validators!.Length + addedValidators.Count;
+            addedValidators.Add(BeaconStateMutators.GetValidatorFromDeposit(deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount));
+            addedBalances.Add(deposit.Amount);
         }
     }
 
@@ -213,7 +218,7 @@ public static partial class EpochProcessing
         ProcessSyncCommitteeUpdates(state);
         ProcessProposerLookahead(state);
 #if GLOAS
-        ProcessPtcWindow(state);
+        ProcessPtcWindow(state, cache);
 #endif
     }
 
@@ -319,6 +324,8 @@ public static partial class EpochProcessing
         ulong processedAmount = 0;
         int nextDepositIndex = 0;
         List<PendingDeposit> depositsToPostpone = [];
+        List<Validator> addedValidators = [];
+        List<ulong> addedBalances = [];
         bool isChurnLimitReached = false;
         ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(state.FinalizedCheckpoint!.Epoch);
 
@@ -344,10 +351,10 @@ public static partial class EpochProcessing
 
             bool isValidatorExited = false;
             bool isValidatorWithdrawn = false;
-            pubkeyToIndex ??= IndexPubkeys(state.Validators!);
-            if (pubkeyToIndex.TryGetValue(deposit.Pubkey, out int validatorIndex))
+            pubkeyToIndex ??= IndexPubkeys(state.Validators!, pendingDeposits);
+            if (pubkeyToIndex.TryGetValue(deposit.Pubkey, out int validatorIndex) && validatorIndex >= 0)
             {
-                Validator validator = state.Validators![validatorIndex];
+                Validator validator = validatorIndex < state.Validators!.Length ? state.Validators[validatorIndex] : addedValidators[validatorIndex - state.Validators.Length];
                 isValidatorExited = validator.ExitEpoch < Presets.FarFutureEpoch;
                 isValidatorWithdrawn = validator.WithdrawableEpoch < nextEpoch;
             }
@@ -357,7 +364,7 @@ public static partial class EpochProcessing
 #if !GLOAS
                 // Deposited balance will never become active. Increase balance but do not consume churn.
 #endif
-                ApplyPendingDeposit(state, deposit, pubkeyToIndex, cache);
+                ApplyPendingDeposit(state, deposit, pubkeyToIndex, addedValidators, addedBalances, cache);
             }
             else if (isValidatorExited)
             {
@@ -378,7 +385,7 @@ public static partial class EpochProcessing
                 // Consume churn and apply the deposit.
 #endif
                 processedAmount += deposit.Amount;
-                ApplyPendingDeposit(state, deposit, pubkeyToIndex, cache);
+                ApplyPendingDeposit(state, deposit, pubkeyToIndex, addedValidators, addedBalances, cache);
             }
 
 #if !GLOAS
@@ -387,6 +394,14 @@ public static partial class EpochProcessing
             nextDepositIndex++;
         }
 
+        if (addedValidators.Count > 0)
+        {
+            state.Validators = [.. state.Validators!, .. addedValidators];
+            state.Balances = [.. state.Balances!, .. addedBalances];
+            state.PreviousEpochParticipation = [.. state.PreviousEpochParticipation!, .. new byte[addedValidators.Count]];
+            state.CurrentEpochParticipation = [.. state.CurrentEpochParticipation!, .. new byte[addedValidators.Count]];
+            state.InactivityScores = [.. state.InactivityScores!, .. new ulong[addedValidators.Count]];
+        }
         state.PendingDeposits = [.. pendingDeposits[nextDepositIndex..], .. depositsToPostpone];
 #if !GLOAS
 

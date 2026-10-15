@@ -493,6 +493,13 @@ public sealed class ColumnBackfill(
                 claims.Add((peer, askFrom, replyLast, replyRoots));
             }
 
+            if (!byRoot.ContainsKey(parent) && replyRoots.Count > 0 && replyLast < until - 1)
+            {
+                kept = byRoot;
+                askFrom = replyLast + 1;
+                continue;
+            }
+
             int stored = 0;
             ulong lowestLinked = until;
             while (byRoot.Remove(parent, out ForkedSignedBeaconBlock? next))

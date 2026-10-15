@@ -489,7 +489,7 @@ public class BlockImporterTests
             : Throws.Nothing;
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
-        Assert.That(() => importer.OnInvalidExecutionPayload(chain.BlockRoot, null), invalidation,
+        Assert.That(() => importer.OnForkchoiceUpdated(chain.BlockRoot, chain.Block.Message!.Body!.ExecutionPayload!.BlockHash!, new PayloadStatusV1 { Status = PayloadStatus.Invalid }), invalidation,
             "a block admitted as valid is sealed against invalidation; one admitted optimistically must stay invalidatable");
     }
 
@@ -529,7 +529,7 @@ public class BlockImporterTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable));
-        Assert.That(engine.HasAnsweredNewPayload, Is.False, "the engine must not be consulted for a block that cannot be recorded anyway");
+        Assert.That(engine.PayloadSubmitted, Is.False, "the engine must not be consulted for a block that cannot be recorded anyway");
     }
 
     [Test]
@@ -620,7 +620,7 @@ public class BlockImporterTests
         Assert.That(importer.Import(invalid.Block, invalid.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
         Assert.That(importer.Import(invalidChild.Block, invalidChild.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
 
-        importer.OnInvalidExecutionPayload(invalid.Root, null);
+        importer.OnForkchoiceUpdated(invalid.Root, invalid.Block.Message!.Body!.ExecutionPayload!.BlockHash!, new PayloadStatusV1 { Status = PayloadStatus.Invalid });
         Hash256 head = importer.ComputeHead().HeadRoot;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -1025,7 +1025,7 @@ public class BlockImporterTests
         UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
         UnsignedChain.ChainBlock child = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0xa2);
         Assert.That(importer.Import(parent.Block, parent.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
-        importer.OnInvalidExecutionPayload(parent.Root, null);
+        importer.OnForkchoiceUpdated(parent.Root, parent.Block.Message!.Body!.ExecutionPayload!.BlockHash!, new PayloadStatusV1 { Status = PayloadStatus.Invalid });
 
         BlockImportResult result = importer.Import(child.Block, child.Root, verifySignatures: false);
 
@@ -1033,6 +1033,41 @@ public class BlockImporterTests
         Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
         Assert.That(warnings.Messages, Has.Some.Contains("before its state transition").And.Contains("has an invalid execution payload"));
         Assert.That(failed.Contains(child.Root), Is.True, "column gossip must reject a sidecar whose parent the importer refused");
+    }
+
+    [Test]
+    public void Invalid_replay_preserves_the_parent_state_for_a_valid_sibling()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        UnsignedChain.ChainBlock refused = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x74);
+        UnsignedChain.ChainBlock sibling = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x75);
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(),
+            engine: new ScriptedPayloadEngine(ExecutionStatus.Invalid, ExecutionStatus.Valid));
+        importer.OnSlotTick(1);
+
+        Assert.That(importer.Import(refused.Block, refused.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(importer.Import(sibling.Block, sibling.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+    }
+
+    [Test]
+    public void Finalization_prunes_side_branches_stored_before_restart()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        UnsignedChain.ChainBlock canonical = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x74);
+        UnsignedChain.ChainBlock orphan = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x75);
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db, chain.Spec);
+        store.PutBlock(orphan.Root, orphan.Block);
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), store: store);
+        importer.OnSlotTick(1);
+        Assert.That(importer.Import(canonical.Block, canonical.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        store.SetCanonicalRoot(1, canonical.Root);
+
+        importer.OnFinalized(new CheckpointRef(0, canonical.Root));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(store.HasBlock(orphan.Root), Is.False);
+        Assert.That(store.HasBlock(canonical.Root), Is.True);
     }
 
     [Test]
@@ -1173,8 +1208,8 @@ public class BlockImporterTests
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, failedBlocks: failed);
         UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
         Assert.That(importer.Import(first.Block, first.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
-        // A trusted import runs in place on the anchor state object, so this edits the importer's post-state of the first block too.
-        foreach (BeaconStateFulu state in (BeaconStateFulu[])[chain.Anchor.AnchorState, first.PostState])
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        foreach (BeaconStateFulu state in (BeaconStateFulu[])[states.LineageState!, first.PostState])
         {
             // process_slot would otherwise seal the edited state's root into the header, and the child's parent root would miss the first block.
             state.LatestBlockHeader!.StateRoot = first.Block.Message!.StateRoot;
@@ -1483,15 +1518,16 @@ public class BlockImporterTests
     }
 
     [Test]
-    public async Task Gossip_block_with_unavailable_public_keys_does_not_charge_the_delivering_peer()
+    public async Task Gossip_block_rebuilds_missing_public_keys_before_verification()
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
         FailedBlockRoots failed = new();
         BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), failedBlocks: failed);
         chain.Pubkeys.Build([]);
         await BeaconSyncOrchestratorTests.AssertBlockVerdictAsync(importer, new ForkedSignedBeaconBlock.OfFulu(chain.Block),
-            Snappy.CompressToArray(SignedBeaconBlock.Encode(chain.Block)), MessageValidity.Ignored);
-        Assert.That(failed.Contains(chain.BlockRoot), Is.False, "a local cache failure must not convict later gossip naming this block");
+            Snappy.CompressToArray(SignedBeaconBlock.Encode(chain.Block)), MessageValidity.Accepted);
+        Assert.That(failed.Contains(chain.BlockRoot), Is.False);
+        Assert.That(chain.Pubkeys.Count, Is.EqualTo(chain.AnchorState.Validators!.Length));
     }
 
     [Test]
@@ -1936,14 +1972,14 @@ public class BlockImporterTests
     internal class ValidPayloadEngine(Action? onPayload = null) : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload { get; protected set; }
+        public bool PayloadSubmitted { get; protected set; }
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
             Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
 
         public virtual ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
-            HasAnsweredNewPayload = true;
+            PayloadSubmitted = true;
             onPayload?.Invoke();
             return ExecutionStatus.Valid;
         }
@@ -1968,7 +2004,7 @@ public class BlockImporterTests
 
         public override ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
-            HasAnsweredNewPayload = true;
+            PayloadSubmitted = true;
             return _call < verdicts.Length
                 ? verdicts[_call++]
                 : throw new InvalidOperationException($"The engine was called {_call + 1} times but only {verdicts.Length} verdicts were scripted");

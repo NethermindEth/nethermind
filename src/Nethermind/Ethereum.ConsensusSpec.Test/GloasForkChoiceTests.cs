@@ -37,6 +37,22 @@ public class GloasForkChoiceTests
     public void Fast_confirmation_vector(ForkChoiceCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("fast_confirmation", "gloas", testCase.Preset, testCase.VectorName, () => Run(testCase));
 
+    [Test]
+    public void Every_fast_confirmation_handler_has_vectors()
+    {
+        List<ForkChoiceCase> cases = FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Minimal, FastConfirmationCases, static () => []);
+        Assert.That(cases.Select(HandlerOf).Distinct(), Is.EquivalentTo(new[]
+        {
+            "basic", "current_epoch", "empty_slots", "ffg", "is_one_confirmed", "previous_epoch",
+            "reconfirmation", "restart_gu", "revert_finality", "variables",
+        }));
+    }
+
+    [Test]
+    public void Every_fast_confirmation_handler_runs_a_vector() =>
+        FuluDriverSupport.AssertEveryKeyRunsSomeVector(
+            FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Minimal, FastConfirmationCases, static () => []), HandlerOf, Run);
+
     private static IEnumerable<TestCaseData> FastConfirmationCases() =>
         FuluDriverSupport.RelativeCases(ConsensusPreset.Minimal, ["gloas"], "fast_confirmation", "steps.yaml",
             static (p, fork, path, name) => new ForkChoiceCase(p.ToString(), path, name));

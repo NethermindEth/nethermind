@@ -36,8 +36,8 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<DataColumnSidecarPool>();
 
     private readonly Lock _servedLock = new();
-    private readonly SlotOrderedSidecars<DataColumnSidecar> _byRootAndColumn = new(capacity);
-    private readonly SlotOrderedSidecars<DataColumnSidecarGloas> _gloasByRootAndColumn = new(capacity);
+    private readonly SlotOrderedSidecars<DataColumnSidecar> _byRootAndColumn = new(store is null ? capacity : Math.Min(capacity, 512), store is null);
+    private readonly SlotOrderedSidecars<DataColumnSidecarGloas> _gloasByRootAndColumn = new(store is null ? capacity : Math.Min(capacity, 512), store is null);
     private ulong? _firstGivenSlot;
     private ulong _seededFloor;
     private ulong _writeFailedBelow;
@@ -711,6 +711,9 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
             lock (_servedLock)
             {
                 _prunedFloor = Math.Max(_prunedFloor, retainedFrom);
+                ulong memoryFloor = clock.CurrentSlot > 64 ? clock.CurrentSlot - 64 : 0;
+                _byRootAndColumn.PruneBefore(memoryFloor);
+                _gloasByRootAndColumn.PruneBefore(memoryFloor);
             }
 
             store.PruneDataColumnSidecars((ulong)epoch, status is null ? 0 : BeaconStateAccessors.ComputeStartSlotAtEpoch(status.CurrentStatus.FinalizedEpoch));
@@ -883,12 +886,12 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
     /// The retained set is what <see cref="IncompleteBelow"/> describes. The recent set holds a sidecar the retained set
     /// refuses, so a verified range-synced column below every held slot is still found when its block is imported.
     /// </remarks>
-    private sealed class SlotOrderedSidecars<TSidecar>(int capacity) where TSidecar : class
+    private sealed class SlotOrderedSidecars<TSidecar>(int capacity, bool keepRecent) where TSidecar : class
     {
         private readonly int _capacity = capacity >= 1 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "The pool must hold at least one sidecar");
         private readonly Dictionary<(Hash256 BlockRoot, ulong Column), (TSidecar Sidecar, ulong Slot, LinkedListNode<(Hash256 BlockRoot, ulong Column)> Node)> _entries = [];
         private readonly SortedDictionary<ulong, LinkedList<(Hash256 BlockRoot, ulong Column)>> _keysBySlot = [];
-        private readonly LruCache<(Hash256 BlockRoot, ulong Column), TSidecar> _recent = new(capacity, "recent data column sidecars");
+        private readonly LruCache<(Hash256 BlockRoot, ulong Column), TSidecar>? _recent = keepRecent ? new(capacity, "recent data column sidecars") : null;
 
         /// <summary>One past the highest slot that lost or was refused a retained sidecar; every slot from here up is retained completely.</summary>
         public ulong IncompleteBelow { get; private set; }
@@ -896,7 +899,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
 
         public void Set((Hash256 BlockRoot, ulong Column) key, ulong slot, TSidecar sidecar)
         {
-            _recent.Set(key, sidecar);
+            _recent?.Set(key, sidecar);
             if (_entries.TryGetValue(key, out (TSidecar Sidecar, ulong Slot, LinkedListNode<(Hash256 BlockRoot, ulong Column)> Node) held))
             {
                 if (held.Slot == slot)
@@ -931,7 +934,19 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
                 return true;
             }
 
-            return _recent.TryGet(key, out sidecar!) && sidecar is not null;
+            sidecar = null;
+            return _recent?.TryGet(key, out sidecar!) == true && sidecar is not null;
+        }
+
+        public void PruneBefore(ulong slot)
+        {
+            while (_keysBySlot.Count > 0)
+            {
+                using IEnumerator<KeyValuePair<ulong, LinkedList<(Hash256 BlockRoot, ulong Column)>>> entries = _keysBySlot.GetEnumerator();
+                entries.MoveNext();
+                if (entries.Current.Key >= slot) break;
+                Remove(entries.Current.Value.First!.Value, entries.Current.Key);
+            }
         }
 
         // A slot below the lowest held one would itself be the next eviction, so it is refused instead of displacing a higher slot.

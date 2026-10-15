@@ -920,7 +920,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             // [IGNORE] the block is unseen (MAY queue): the envelope still imports, but is never accepted as its block rules did not run. A pre-Gloas
             // payload slot is dropped instead; a held Gloas block reaches the slot-match REJECT.
             case EnvelopeBlockLookup.NotHeld:
-                return SignedBeaconBlockCodec.IsGloasSlot(payload.SlotNumber, spec) ? Verdict.Settle(MessageValidity.Ignored) : Verdict.Ignore(GossipDropReason.InvalidField);
+                return SignedBeaconBlockCodec.IsGloasSlot(payload.SlotNumber, spec)
+                    && payload.SlotNumber >= slotClock.CurrentSlot && payload.SlotNumber - slotClock.CurrentSlot <= 1
+                    ? Verdict.Settle(MessageValidity.Ignored) : Verdict.Ignore(GossipDropReason.InvalidField);
             case EnvelopeBlockLookup.BudgetSpent:
                 return Verdict.Ignore(GossipDropReason.StoreDecodeBudgetSpent);
         }

@@ -5,7 +5,6 @@ using System.Collections;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
-using Ethereum.Test.Base;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
@@ -181,13 +180,7 @@ public class GloasContainerTests
 
     private static void AssertNamedFixture<T>(string caseName, string expectedRoot) where T : class, ISszCodec<T>
     {
-        // Later releases changed these random inputs; retain the original named-field and root oracles.
-        string root = TestFixtureDownloader.EnsureDownloaded("GloasFiveMainnet", "https://github.com/ethereum/consensus-specs/releases/download/{0}/{1}",
-            "v1.7.0-alpha.13", "mainnet.tar.gz", static path => path.Contains("/gloas/ssz_static/") &&
-                (path.Contains("/SignedExecutionPayloadBid/ssz_random/case_3/") || path.Contains("/ExecutionPayloadEnvelope/ssz_random/case_4/") ||
-                 path.Contains("/SignedExecutionPayloadEnvelope/ssz_random/case_3/") || path.Contains("/PayloadAttestation/ssz_random/case_2/") ||
-                 path.Contains("/IndexedPayloadAttestation/ssz_random/case_4/")), "gloas-five-alpha13");
-        string path = Path.Combine(root, "tests", "mainnet", "gloas", "ssz_static", typeof(T).Name, "ssz_random", caseName);
+        string path = Path.Combine(TestContext.CurrentContext.TestDirectory, "Fixtures", "Gloas", typeof(T).Name, caseName);
         using StreamReader reader = new(Path.Combine(path, "value.yaml"));
         YamlStream yaml = [];
         yaml.Load(reader);

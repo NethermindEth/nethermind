@@ -33,6 +33,9 @@ public enum ExecutionPayloadEnvelopeImportResult
     /// </summary>
     UnknownBlock,
 
+    /// <summary>The known block's post-state cannot be regenerated yet; retry under the next slot's budget.</summary>
+    StateUnavailable,
+
     /// <summary>The blob data the block's committed bid names is not (yet) available; retry once it is held.</summary>
     DataUnavailable,
 
@@ -92,8 +95,11 @@ public sealed class ExecutionPayloadEnvelopeImporter(
 
     /// <summary>Verifies <paramref name="signedEnvelope"/> against the post-state of the block it names and returns the verdict.</summary>
     /// <exception cref="InvalidOperationException">The engine notifier returned no verdict (<see cref="ExecutionStatus.Irrelevant"/>), which is a local fault and not a rejection.</exception>
-    public ExecutionPayloadEnvelopeImportResult Import(SignedExecutionPayloadEnvelope signedEnvelope)
+    public ExecutionPayloadEnvelopeImportResult Import(SignedExecutionPayloadEnvelope signedEnvelope) => Import(signedEnvelope, out _);
+
+    internal ExecutionPayloadEnvelopeImportResult Import(SignedExecutionPayloadEnvelope signedEnvelope, out (ExecutionStatus? Status, Hash256? LatestValidHash) executionVerdict)
     {
+        executionVerdict = default;
         Hash256? blockRoot = signedEnvelope.Message!.BeaconBlockRoot;
         if (blockRoot is null)
         {
@@ -135,6 +141,7 @@ public sealed class ExecutionPayloadEnvelopeImporter(
         }
         catch (BeaconStateException e)
         {
+            executionVerdict = (verdict.Status, verdict.LatestValidHash);
             return Reject($"envelope for beacon block {blockRoot}: {e.Message}");
         }
 
@@ -193,13 +200,18 @@ public sealed class ExecutionPayloadEnvelopeImporter(
     private sealed class EnvelopeVerdict(INewPayloadNotifier engine) : INewPayloadNotifier
     {
         public ExecutionStatus? Status { get; private set; }
+        public Hash256? LatestValidHash { get; private set; }
 
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) =>
             throw new InvalidOperationException("An execution payload envelope is never notified through a block body");
 
         public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests)
         {
-            ExecutionStatus status = engine.NotifyNewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests);
+            Hash256? latestValidHash = null;
+            ExecutionStatus status = engine is IEngineDriver driver
+                ? driver.NotifyNewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests, out latestValidHash)
+                : engine.NotifyNewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests);
+            LatestValidHash = latestValidHash;
             Status = status;
             return status;
         }

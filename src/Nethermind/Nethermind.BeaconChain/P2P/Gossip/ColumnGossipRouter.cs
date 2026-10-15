@@ -3,6 +3,7 @@
 
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
@@ -79,7 +80,7 @@ public enum ColumnGossipDropReason
     /// <summary>A Fulu sidecar of a header this node has not imported whose branch or slot the published proposer lookahead does not cover.</summary>
     ProposerNotVerifiable,
 
-    /// <summary>A Fulu sidecar for a (block root, index) that already ran <see cref="ColumnGossipRouter.KzgBatchesPerColumn"/> KZG batches.</summary>
+    /// <summary>A Fulu sidecar for a (block root, index, delivering peer) that already ran <see cref="ColumnGossipRouter.KzgBatchesPerColumn"/> KZG batches.</summary>
     KzgBatchLimit,
 
     /// <summary>A Fulu sidecar whose block's parent, or a Gloas sidecar whose block, the importer refused for failing validation.</summary>
@@ -100,7 +101,7 @@ public enum ColumnGossipDropReason
 /// the parent checks fork choice can answer and its proposer signature against <paramref name="pubkeys"/>, all before
 /// any KZG work; one whose branch or slot the lookahead does not cover is dropped as the spec's IGNORE without KZG
 /// work and, when its signature verified, queued until the next snapshot or lookahead is published. A sidecar that passes every check
-/// is <see cref="MessageValidity.Accepted"/>. A slot not above a held parent's is rejected first, from the store. KZG work per (block root, index)
+/// is <see cref="MessageValidity.Accepted"/>. A slot not above a held parent's is rejected first, from the store. KZG work per (block root, index, delivering peer)
 /// stops after <see cref="KzgBatchesPerColumn"/> batches, since every column of a block carries the same header.
 /// <para>
 /// A Gloas sidecar (gloas/p2p-interface.md) needs no state: its block is read from <paramref name="store"/>, which holds only
@@ -131,6 +132,8 @@ public sealed class ColumnGossipRouter(
     ProposerLookaheadHolder? proposerLookahead = null,
     FailedBlockRoots? failedBlocks = null)
 {
+    private readonly ConditionalWeakTable<DataColumnSidecar, PeerId> _sources = new();
+
     private const int SeenCacheSize = 4096;
     internal const int GloasBlockCacheSize = 64;
     internal const int NonGloasBlockCacheSize = 4096;
@@ -138,10 +141,9 @@ public sealed class ColumnGossipRouter(
     private const int VerifiedColumnCacheSize = 1 << 14;
     private const int HeaderSignatureCacheSize = 1024;
 
-    // Holds every (root, index) that can reach KZG in the slot window, two roots per slot over 34 slots and 128 columns, so eviction never resets a live count.
     private const int KzgBatchCacheSize = 1 << 14;
 
-    // Two blocks' worth of every column; each key holds at most KzgBatchesPerColumn sidecars.
+    // Two blocks' worth of every column, with bounded copies per delivering peer and per key.
     private const int ParkedColumnCacheSize = 2 * Eip7594DasConstants.NumberOfColumns;
 
     /// <summary>The most (block root, index) keys one proposer_index may hold in the queue, so a single key holder cannot evict every honest column.</summary>
@@ -154,11 +156,10 @@ public sealed class ColumnGossipRouter(
     /// </remarks>
     internal const int SignedHeadersPerProposal = 2;
 
-    /// <summary>The most KZG batches run for one (block root, index); later copies are dropped without KZG work.</summary>
+    /// <summary>The most KZG batches run for one (block root, index, delivering peer); later copies are dropped without KZG work.</summary>
     /// <remarks>
     /// Shared headers and inclusion proofs let anyone submit altered-cell copies. REJECT penalizes only
-    /// the delivering peer (<see cref="GossipScoring"/>), which a new peer id escapes. Honest copies
-    /// within the bound still verify; later copies are refused.
+    /// the delivering peer (<see cref="GossipScoring"/>), which a new peer id escapes. Other peers retain their own verification budget.
     /// </remarks>
     internal const int KzgBatchesPerColumn = 2;
 
@@ -198,7 +199,7 @@ public sealed class ColumnGossipRouter(
     private readonly LruCache<Hash256, HeaderSignatureCheck> _headerSignatures = new(HeaderSignatureCacheSize, "beacon column gossip header signatures");
     private readonly LruCache<(ulong Slot, ulong ProposerIndex), Hash256[]> _signedHeaderRoots = new(SeenCacheSize, "beacon column gossip signed headers");
     private readonly Lock _signedHeaderRootsLock = new();
-    private readonly LruCache<(Hash256 BlockRoot, ulong Index), int> _kzgBatchesByColumn = new(KzgBatchCacheSize, "beacon column gossip kzg batches");
+    private readonly LruCache<(Hash256 BlockRoot, ulong Index, PeerId? Source), int> _kzgBatchesByColumn = new(KzgBatchCacheSize, "beacon column gossip kzg batches");
     private readonly Lock _kzgBatchesLock = new();
 
     // Signed sidecars whose expected proposer the published snapshot and lookahead cannot verify yet.
@@ -359,10 +360,10 @@ public sealed class ColumnGossipRouter(
             return Drop(snappy == SnappyDecodeResult.Oversized ? ColumnGossipDropReason.Oversized : ColumnGossipDropReason.InvalidSnappy, MessageValidity.Rejected);
         }
 
-        return gloasTopic ? HandleGloas(subnetId, payload!, verdict, source) : HandleFulu(subnetId, payload!);
+        return gloasTopic ? HandleGloas(subnetId, payload!, verdict, source) : HandleFulu(subnetId, payload!, source);
     }
 
-    private MessageValidity HandleFulu(ulong subnetId, byte[] payload)
+    private MessageValidity HandleFulu(ulong subnetId, byte[] payload, PeerId? source)
     {
         RetryParked();
 
@@ -377,6 +378,7 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.InvalidSsz, MessageValidity.Rejected);
         }
 
+        if (source is not null) _sources.Add(sidecar, source);
         return ValidateFulu(subnetId, sidecar);
     }
 
@@ -547,6 +549,11 @@ public sealed class ColumnGossipRouter(
         if (snapshot is not null && header.ParentRoot is { } parentRoot)
         {
             snapshot.Nodes.TryGetValue(parentRoot, out parent);
+        }
+
+        if (!signatureVerifiedAtImport && forkChoice is not null && parent is null)
+        {
+            return Drop(ColumnGossipDropReason.UnknownBlock, MessageValidity.Ignored);
         }
 
         bool rejectable = parent is not null || forkChoice is null;
@@ -812,7 +819,7 @@ public sealed class ColumnGossipRouter(
         }
     }
 
-    /// <summary>Queues a signed sidecar whose expected proposer cannot be verified yet, keeping at most <see cref="KzgBatchesPerColumn"/> copies per (block root, index).</summary>
+    /// <summary>Queues a signed sidecar whose expected proposer cannot be verified yet, keeping at most <see cref="KzgBatchesPerColumn"/> copies per (block root, index, delivering peer).</summary>
     /// <remarks>More copies could never reach KZG, since a verified copy ends the column's KZG work and failures are bounded.</remarks>
     private void ParkUnverifiable(DataColumnSidecar sidecar, Hash256 blockRoot)
     {
@@ -825,7 +832,15 @@ public sealed class ColumnGossipRouter(
                 return;
             }
 
-            if (copies.Length < KzgBatchesPerColumn)
+            _sources.TryGetValue(sidecar, out PeerId? source);
+            int fromSource = 0;
+            foreach (DataColumnSidecar copy in copies)
+            {
+                _sources.TryGetValue(copy, out PeerId? copySource);
+                if (Equals(source, copySource)) fromSource++;
+            }
+
+            if (fromSource < KzgBatchesPerColumn && copies.Length < 16)
             {
                 _parkedColumns.Set(key, [.. copies, sidecar]);
             }
@@ -922,12 +937,13 @@ public sealed class ColumnGossipRouter(
     private bool IsColumnVerified(Hash256 blockRoot, ulong index) =>
         _verifiedColumns.Get((blockRoot, index)) || (pool is not null && pool.TryGet(blockRoot, index, out _));
 
-    /// <summary>Runs <c>verify_data_column_sidecar_kzg_proofs</c> unless <see cref="KzgBatchesPerColumn"/> batches already ran for the sidecar's (block root, index).</summary>
+    /// <summary>Runs <c>verify_data_column_sidecar_kzg_proofs</c> unless <see cref="KzgBatchesPerColumn"/> batches already ran for the sidecar's (block root, index, delivering peer).</summary>
     /// <returns><c>null</c> when the proofs verify; otherwise why the sidecar is dropped.</returns>
     /// <remarks>A copy that verifies is held, so later copies of its column never reach this; only failures use up the bound.</remarks>
     private ColumnGossipDropReason? VerifyKzgProofs(DataColumnSidecar sidecar, Hash256 blockRoot)
     {
-        (Hash256, ulong) key = (blockRoot, sidecar.Index);
+        _sources.TryGetValue(sidecar, out PeerId? source);
+        (Hash256, ulong, PeerId?) key = (blockRoot, sidecar.Index, source);
 
         // Counted before the batch runs, so concurrent copies never run more batches than the bound.
         lock (_kzgBatchesLock)
@@ -1043,8 +1059,19 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.FailedStructure, MessageValidity.Rejected);
         }
 
+        if (status is not null && sidecar.Slot <= BeaconStateAccessors.ComputeStartSlotAtEpoch(status.CurrentStatus.FinalizedEpoch))
+        {
+            return Drop(ColumnGossipDropReason.BeforeFinalized, MessageValidity.Ignored);
+        }
+
+        ulong currentSlot = slotClock.CurrentSlot;
+        if (currentSlot > spec.SlotsPerEpoch && sidecar.Slot < currentSlot - spec.SlotsPerEpoch)
+        {
+            return Drop(ColumnGossipDropReason.StaleSlot, MessageValidity.Ignored);
+        }
+
         // [IGNORE] first sidecar for the tuple (beacon_block_root, index).
-        if (_seenGloasSidecars.Get((blockRoot, sidecar.Index)))
+        if (_seenGloasSidecars.Get((blockRoot, sidecar.Index)) || pool?.TryGetGloas(blockRoot, sidecar.Index, out _) == true)
         {
             return Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
         }

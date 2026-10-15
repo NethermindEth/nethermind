@@ -8,14 +8,13 @@ namespace Nethermind.BeaconChain.Test.P2P;
 
 public class PeerFailureClassifierTests
 {
-    [TestCase("Channel closed", PeerFailureReason.SessionClosed)]
-    [TestCase("CHANNEL CLOSED by remote", PeerFailureReason.SessionClosed)]
-    [TestCase("Session is no longer tracked by the libp2p layer", PeerFailureReason.SessionClosed)]
-    [TestCase("One or more errors occurred. (Channel closed)", PeerFailureReason.SessionClosed)]
-    [TestCase("Peer responded with error code 3: pruned", PeerFailureReason.RequestFailed)]
-    [TestCase("", PeerFailureReason.RequestFailed)]
-    public void Classifies_by_the_failure_message(string message, PeerFailureReason expected) =>
-        Assert.That(PeerFailureClassifier.Classify(new Exception(message)), Is.EqualTo(expected));
+    [Test]
+    public void Peer_error_text_cannot_claim_a_closed_session([Values("Channel closed", "session limit", "pruned")] string message) =>
+        Assert.That(PeerFailureClassifier.Classify(new Nethermind.BeaconChain.P2P.ReqResp.Eth2ReqRespException(message)), Is.EqualTo(PeerFailureReason.RequestFailed));
+
+    [Test]
+    public void A_closed_session_is_classified_by_its_type() =>
+        Assert.That(PeerFailureClassifier.Classify(new PeerSessionClosedException("disconnected")), Is.EqualTo(PeerFailureReason.SessionClosed));
 
     public enum Reply { None, PartialBlocks, PartialSidecars }
 
@@ -31,8 +30,7 @@ public class PeerFailureClassifierTests
             _ => throw new ArgumentOutOfRangeException(nameof(reply)),
         };
 
-        PeerFailureReason expected = sessionClosed ? PeerFailureReason.SessionClosed
-            : notBlamed ? PeerFailureReason.RequestNotBlamed : PeerFailureReason.RequestFailed;
+        PeerFailureReason expected = notBlamed ? PeerFailureReason.RequestNotBlamed : PeerFailureReason.RequestFailed;
         Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(expected));
     }
 }

@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
@@ -54,9 +55,10 @@ public sealed class BeaconApiHost(
     public async Task StartAsync(CancellationToken token)
     {
         StateRequestLimiter stateLimiter = _stateLimiter = new StateRequestLimiter(apiConfig);
-        WebApplicationBuilder builder = WebApplication.CreateBuilder();
+        WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
         builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls($"http://{apiConfig.Host}:{apiConfig.Port}");
+        builder.WebHost.UseKestrelCore().UseUrls($"http://{apiConfig.Host}:{apiConfig.Port}");
+        builder.Services.AddRoutingCore();
 
         WebApplication app = builder.Build();
         app.Use(stateLimiter.InvokeAsync);
@@ -85,7 +87,8 @@ public sealed class BeaconApiHost(
         {
             try
             {
-                await app.StopAsync();
+                using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(5));
+                await app.StopAsync(deadline.Token);
             }
             catch (Exception e)
             {
@@ -102,6 +105,7 @@ public sealed class BeaconApiHost(
         }
 
         await _exitRegistration.DisposeAsync();
+        await StopAsync();
 
         WebApplication? app = Volatile.Read(ref _app);
         if (app is not null)

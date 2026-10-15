@@ -8,6 +8,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
 
@@ -43,6 +45,8 @@ internal sealed class StateRequestLimiter : IDisposable
     private readonly TimeSpan _responseTimeout;
     private readonly TimeSpan _idleTimeout;
     private readonly ConcurrencyLimiter _inFlight;
+    private readonly ConcurrencyLimiter _downloadInFlight;
+    private readonly PartitionedRateLimiter<HttpContext> _downloadInFlightPerClient;
     private readonly PartitionedRateLimiter<HttpContext> _inFlightPerClient;
     private readonly PartitionedRateLimiter<HttpContext>? _downloadsPerClient;
 
@@ -74,6 +78,10 @@ internal sealed class StateRequestLimiter : IDisposable
             ClientKey(c.Connection.RemoteIpAddress),
             _ => new ConcurrencyLimiterOptions { PermitLimit = perClient, QueueLimit = 0 }));
 
+        _downloadInFlight = new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = _maxConcurrent, QueueLimit = 0 });
+        _downloadInFlightPerClient = PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetConcurrencyLimiter(
+            ClientKey(c.Connection.RemoteIpAddress),
+            _ => new ConcurrencyLimiterOptions { PermitLimit = perClient, QueueLimit = 0 }));
         int perMinute = config.StateDownloadsPerMinutePerClient;
         if (perMinute > 0)
         {
@@ -101,7 +109,7 @@ internal sealed class StateRequestLimiter : IDisposable
         }
 
         // Taken first, so a request refused as busy never spends the client's download budget.
-        using RateLimitLease lease = _inFlight.AttemptAcquire();
+        using RateLimitLease lease = (download ? _downloadInFlight : _inFlight).AttemptAcquire();
         if (!lease.IsAcquired)
         {
             await ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable,
@@ -109,7 +117,7 @@ internal sealed class StateRequestLimiter : IDisposable
             return;
         }
 
-        using RateLimitLease ownLease = _inFlightPerClient.AttemptAcquire(c);
+        using RateLimitLease ownLease = (download ? _downloadInFlightPerClient : _inFlightPerClient).AttemptAcquire(c);
         if (!ownLease.IsAcquired)
         {
             await ApiErrors.Write(c, StatusCodes.Status429TooManyRequests,
@@ -132,11 +140,17 @@ internal sealed class StateRequestLimiter : IDisposable
             }
         }
 
+        bool http1 = HttpProtocol.IsHttp10(c.Request.Protocol) || HttpProtocol.IsHttp11(c.Request.Protocol);
+        if (http1 && c.Features.Get<IHttpMinResponseDataRateFeature>() is { } responseRate)
+            responseRate.MinDataRate = new MinDataRate(64 * 1024, TimeSpan.FromSeconds(10));
+        if (http1 && c.Features.Get<IHttpMinRequestBodyDataRateFeature>() is { } requestRate)
+            requestRate.MinDataRate = new MinDataRate(1024, TimeSpan.FromSeconds(10));
+
         CancellationToken clientAborted = c.RequestAborted;
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(clientAborted);
         deadline.CancelAfter(_responseTimeout);
         // Armed by the first write: loading a state before it is the node's own time, bounded by the total cap.
-        using CancellationTokenSource idle = new(Timeout.InfiniteTimeSpan);
+        using CancellationTokenSource idle = new(HttpMethods.IsPost(c.Request.Method) ? _idleTimeout : Timeout.InfiniteTimeSpan);
         using CancellationTokenRegistration idleExpiry = idle.Token.Register(static state => ((CancellationTokenSource)state!).Cancel(), deadline);
         // Endpoints observe RequestAborted, and Abort fails a write blocked on a reader that stopped reading.
         c.RequestAborted = deadline.Token;
@@ -240,6 +254,8 @@ internal sealed class StateRequestLimiter : IDisposable
 
     public void Dispose()
     {
+        _downloadInFlight.Dispose();
+        _downloadInFlightPerClient.Dispose();
         _inFlight.Dispose();
         _inFlightPerClient.Dispose();
         _downloadsPerClient?.Dispose();

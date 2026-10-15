@@ -1,0 +1,1 @@
+Five named-field SSZ vectors from ethereum/consensus-specs v1.7.0-alpha.13 mainnet.tar.gz, tests/mainnet/gloas/ssz_static. Retained to preserve the independent field and root oracles when later releases regenerate random fixtures. Source: https://github.com/ethereum/consensus-specs/releases/tag/v1.7.0-alpha.13

@@ -152,10 +152,11 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
     internal sealed class EnvelopeEngine : IEngineDriver
     {
         public ExecutionStatus EnvelopeVerdict { get; set; } = ExecutionStatus.Valid;
+        public Hash256? LatestValidHash { get; set; }
         public int EnvelopeCalls { get; private set; }
         public List<(Hash256 Head, Hash256 Safe, Hash256 Finalized)> FcuCalls { get; } = [];
         public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload { get; private set; }
+        public bool PayloadSubmitted { get; private set; }
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
         {
@@ -165,7 +166,7 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
 
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
-            HasAnsweredNewPayload = true;
+            PayloadSubmitted = true;
             return ExecutionStatus.Valid;
         }
 
@@ -173,6 +174,12 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
         {
             EnvelopeCalls++;
             return EnvelopeVerdict;
+        }
+
+        public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests, out Hash256? latestValidHash)
+        {
+            latestValidHash = LatestValidHash;
+            return NotifyNewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests);
         }
     }
 }

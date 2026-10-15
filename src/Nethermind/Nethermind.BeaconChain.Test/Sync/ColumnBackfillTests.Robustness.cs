@@ -355,6 +355,22 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
+    public async Task A_successful_limited_reply_is_joined_with_the_next_peers_suffix(CancellationToken token)
+    {
+        await using HistoryFixture p = HistoryFixture.Build([2, 5], 7);
+        StubPeer limited = new("limited", p.HeadSlot, (start, count) => p.Range(start, count).Take(1).ToArray());
+        StubPeer honest = p.Honest("honest");
+        Task run = p.Start(token, limited, honest);
+        await p.UntilFloor(0, token);
+        await run.WaitAsync(token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(limited.Reports, Is.Empty);
+        Assert.That(honest.Reports, Is.Empty);
+        Assert.That(limited.RootBlockRequests + honest.RootBlockRequests, Is.Zero);
+    }
+
+    [Test]
     public async Task A_forged_cut_reply_under_empty_slots_is_asked_for_again_and_its_peer_penalized(CancellationToken token)
     {
         await using HistoryFixture p = HistoryFixture.Build([2], 5);

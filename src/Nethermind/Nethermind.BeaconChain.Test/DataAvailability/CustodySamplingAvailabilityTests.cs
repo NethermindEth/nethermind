@@ -69,17 +69,20 @@ public class CustodySamplingAvailabilityTests
         Assert.That(columns.Requested, Has.Count.EqualTo(custody.SampledColumns.Count), "each column is retrieved and verified once, although it may sit in both sets");
     }
 
-    [TestCase(false, TestName = "Unavailable_when_one_custody_column_is_missing")]
-    [TestCase(true, TestName = "Unavailable_when_one_sampled_only_column_is_missing")]
-    public void Unavailable_when_one_required_column_is_missing(bool sampledOnly)
+    [Test]
+    public void Unavailable_when_one_required_column_is_missing([Values] bool sampledOnly, [Values] bool tamperedFirst)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
         ulong missing = sampledOnly ? custody.SampledColumns.First(c => !custody.CustodyColumns.Contains(c)) : custody.CustodyColumns[^1];
-        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != missing)), chain.ClockAtEpoch(0));
+        if (tamperedFirst) TamperCell(chain.Columns[(int)custody.CustodyColumns[0]]);
+        RecordingColumnSource columns = new(chain, custody.SampledColumns.Where(c => c != missing));
+        CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), columns, chain.ClockAtEpoch(0));
 
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False,
             sampledOnly ? "das-core: sampling succeeds only if every selected column is retrieved" : null);
+        Assert.That(columns.Requested.Select(r => r.Column), Does.Contain(missing), "presence is checked before cryptographic verification of the first column");
     }
 
     [Test]
@@ -87,10 +90,7 @@ public class CustodySamplingAvailabilityTests
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
-        DataColumnSidecar tampered = chain.Columns[(int)custody.SampledColumns[0]];
-        byte[] cell = tampered.Column![0].AsSpan().ToArray();
-        cell[^1] ^= 0x01;
-        tampered.Column[0] = SszBlobCell.FromSpan(cell);
+        TamperCell(chain.Columns[(int)custody.SampledColumns[0]]);
         CustodySamplingAvailability rule = new(new TestEngineDriver.FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False, "the source only says it holds a column; the rule must still prove it");
@@ -173,6 +173,13 @@ public class CustodySamplingAvailabilityTests
     }
 
     private static IEnumerable<ulong> All() => Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(c => (ulong)c);
+
+    private static void TamperCell(DataColumnSidecar sidecar)
+    {
+        byte[] cell = sidecar.Column![0].AsSpan().ToArray();
+        cell[^1] ^= 0x01;
+        sidecar.Column[0] = SszBlobCell.FromSpan(cell);
+    }
 
     private sealed class RecordingRule : IDataAvailabilityRule
     {

@@ -351,10 +351,11 @@ public class ForkChoiceRunnerGloasHeadTests
         GloasForkChoiceHarness.Block first = harness.First;
         harness.TickTo(first.Slot + 2);
         harness.Import(first);
-        GloasForkChoiceHarness.Block child = harness.Child(first, first.Slot + 1, full: false, 0xC1);
+        harness.Runner.OnExecutionPayloadVerified(first.Root);
+        GloasForkChoiceHarness.Block child = harness.Child(first, first.Slot + 1, full: true, 0xC1);
         harness.Import(child);
 
-        harness.Runner.OnInvalidExecutionPayload(child.Root);
+        harness.Runner.InvalidateExecutionChain(first.Root, first.BidBlockHash, latestValidHash: null);
 
         Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(new ForkChoiceNode(first.Root, ForkChoicePayloadStatus.Empty)));
     }

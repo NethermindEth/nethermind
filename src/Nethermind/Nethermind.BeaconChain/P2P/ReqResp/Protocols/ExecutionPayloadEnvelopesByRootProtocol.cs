@@ -53,6 +53,8 @@ public sealed class ExecutionPayloadEnvelopesByRootProtocol(BeaconChainSpec spec
         await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
+            using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, 139, "Too many concurrent requests", refusal.Token);
             return;
         }
 
@@ -70,6 +72,8 @@ public sealed class ExecutionPayloadEnvelopesByRootProtocol(BeaconChainSpec spec
             {
                 throw new Eth2ReqRespException($"Malformed execution-payload-envelopes-by-root request: {e.Message}");
             }
+
+            ChargeRequest(context, (ulong)(request.Roots?.Length ?? 0), MaxRequestPayloads);
 
             foreach (Hash256 root in request.Roots ?? [])
             {

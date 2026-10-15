@@ -6,22 +6,21 @@ using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>Maps a failed request's exception to the <see cref="PeerFailureReason"/> the peer is reported under.</summary>
-/// <remarks>
-/// A dead session must be reported as <see cref="PeerFailureReason.SessionClosed"/>, or the peer manager keeps
-/// the zombie on a failure budget it can never work off; libp2p only surfaces that state through the message text.
-/// </remarks>
 internal static class PeerFailureClassifier
 {
     public static PeerFailureReason Classify(Exception e)
     {
-        if (e.Message.Contains("Channel closed", StringComparison.OrdinalIgnoreCase) || e.Message.Contains("session", StringComparison.OrdinalIgnoreCase))
+        if (e is AggregateException aggregate) e = aggregate.Flatten().InnerExceptions[0];
+        Exception cause = e is PartialBlocksException or PartialSidecarsException ? e.InnerException ?? e : e;
+        if (cause is PeerSessionClosedException or Nethermind.Libp2p.Core.Exceptions.ChannelClosedException)
         {
             return PeerFailureReason.SessionClosed;
         }
 
-        Exception cause = e is PartialBlocksException or PartialSidecarsException ? e.InnerException ?? e : e;
         return cause is ReqRespTimeoutException { NotBlamed: true }
             ? PeerFailureReason.RequestNotBlamed
             : PeerFailureReason.RequestFailed;
     }
 }
+
+internal sealed class PeerSessionClosedException(string message, Exception? cause = null) : System.IO.IOException(message, cause);

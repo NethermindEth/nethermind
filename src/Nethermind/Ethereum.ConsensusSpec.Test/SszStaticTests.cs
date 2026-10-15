@@ -223,7 +223,7 @@ public class SszStaticTests
     [Test]
     public void Every_fork_and_registered_container_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
-        List<SszStaticCase> cases = FuluDriverSupport.TestedCases<SszStaticCase>(preset, MinimalCases, MainnetCases);
+        List<SszStaticCase> cases = FuluDriverSupport.TestedCases<SszStaticCase>(preset, MinimalCases, MainnetCases, crossPreset: true);
         HashSet<string> enumerated = [.. cases.Select(static testCase => PairKey(testCase.Fork, testCase.ContainerName))];
         List<(string Fork, string Container)> registered = [.. Registry.SelectMany(static byName => byName.Value.Keys.Select(fork => (fork, byName.Key)))];
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -234,7 +234,7 @@ public class SszStaticTests
     [Test]
     public void Every_container_without_a_model_is_pinned_with_a_reason([Values] ConsensusPreset preset)
     {
-        List<SszStaticCase> cases = FuluDriverSupport.TestedCases<SszStaticCase>(preset, MinimalCases, MainnetCases);
+        List<SszStaticCase> cases = FuluDriverSupport.TestedCases<SszStaticCase>(preset, MinimalCases, MainnetCases, crossPreset: true);
         List<(string Fork, string Container)> unmodeled = [.. cases
             .Select(static testCase => (testCase.Fork, Container: testCase.ContainerName))
             .Distinct()
@@ -246,7 +246,7 @@ public class SszStaticTests
     [Test]
     public void Every_registered_container_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            [.. FuluDriverSupport.TestedCases<SszStaticCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases)
+            [.. FuluDriverSupport.TestedCases<SszStaticCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases, crossPreset: true)
                 .Where(static testCase => Registry.TryGetValue(testCase.ContainerName, out IReadOnlyDictionary<string, Entry>? byFork) && byFork.ContainsKey(testCase.Fork))],
             static testCase => PairKey(testCase.Fork, testCase.ContainerName),
             Run);
@@ -255,12 +255,12 @@ public class SszStaticTests
     {
 #if MINIMAL_PRESET
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            [.. FuluDriverSupport.TestedCases<SszStaticCase>(ConsensusPreset.Minimal, MinimalCases, MainnetCases)
+            [.. FuluDriverSupport.TestedCases<SszStaticCase>(ConsensusPreset.Minimal, MinimalCases, MainnetCases, crossPreset: true)
                 .Where(static testCase => Registry.TryGetValue(testCase.ContainerName, out IReadOnlyDictionary<string, Entry>? byFork)
                     && byFork.TryGetValue(testCase.Fork, out Entry entry) && entry.PresetDependent)],
             static testCase => PairKey(testCase.Fork, testCase.ContainerName), Run);
 #else
-        List<SszStaticCase> minimal = FuluDriverSupport.TestedCases<SszStaticCase>(ConsensusPreset.Minimal, MinimalCases, static () => []);
+        List<SszStaticCase> minimal = FuluDriverSupport.TestedCases<SszStaticCase>(ConsensusPreset.Minimal, MinimalCases, static () => [], crossPreset: true);
         List<string> decodable = [];
         foreach (IGrouping<(string Fork, string ContainerName), SszStaticCase> pair in minimal.GroupBy(static c => (c.Fork, c.ContainerName)))
         {
@@ -316,7 +316,7 @@ public class SszStaticTests
 
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
     {
-        if (!FuluDriverSupport.Enumerates(preset))
+        if (!FuluDriverSupport.Enumerates(preset, crossPreset: true))
             yield break;
         string root = ConsensusSpecArchive.GetRoot(preset);
         string sszStaticGlobRoot = Path.Combine(root, "tests", ConsensusSpecArchive.PresetDirName(preset));
@@ -326,7 +326,7 @@ public class SszStaticTests
         IEnumerable<string> forks = Directory.GetDirectories(sszStaticGlobRoot).Select(Path.GetFileName)!;
         foreach (TestCaseData testCase in FuluDriverSupport.HandlerCases(preset, forks, "ssz_static", "serialized.ssz_snappy",
                      static (p, fork, container, path, name) => new SszStaticCase(p.ToString(), fork, container, path, name),
-                     strictHandlerDirectory: true, relativeNames: true))
+                     strictHandlerDirectory: true, relativeNames: true, crossPreset: true))
             yield return testCase;
     }
 }

@@ -293,8 +293,8 @@ internal sealed class FastConfirmation(
                 for (int i = 0; i < source.Balances.Length; i++)
                 {
                     if (!source.Slashed[i] && source.Balances[i] != 0 && !rule.Equivocators.Contains((ulong)i)
-                        && rule.Tree.LatestVote((ulong)i) is VoteTracker vote && rule.Tree.ContainsBlock(vote.NextRoot)
-                        && rule.Checkpoint(vote.NextRoot, vote.NextEpoch) == target)
+                        && rule.Tree.LatestVote((ulong)i) is VoteTracker vote && vote.NextEpoch == rule.Store.CurrentEpoch
+                        && rule.Tree.ContainsBlock(vote.NextRoot) && rule.Checkpoint(vote.NextRoot, vote.NextEpoch) == target)
                         support += source.Balances[i];
                 }
                 ulong start = rule.Store.CurrentEpoch * rule.Spec.SlotsPerEpoch;

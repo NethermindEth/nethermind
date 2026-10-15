@@ -7,11 +7,14 @@ using System.Net.Http;
 using System.Text.Json;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 
 namespace Nethermind.BeaconChain.Test.Api;
@@ -21,6 +24,76 @@ public class BeaconApiHeadSnapshotTests
     private const ulong Slot = 412_500 * 32 + 7;
 
     private static readonly Hash256 Head = BeaconApiTestHost.TestRoot(0x71);
+
+    [Test]
+    public async Task Fixed_state_fields_do_not_read_later_state_chunks(
+        [Values("fork", "finality_checkpoints", "randao")] string endpoint)
+    {
+        TestMemColumnsDb<BeaconChainDbColumns> db = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, db: db);
+        byte[] encoded = BeaconStateFulu.Encode(BeaconApiTestHost.RichState(host.Spec, Slot));
+        Array.Resize(ref encoded, 5 * 1024 * 1024);
+        host.Store.PutState(Head, encoded);
+        host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, Hash256.Zero));
+        host.SetStatus(Head, Hash256.Zero, 0);
+        TestMemDb states = (TestMemDb)db.GetColumnDb(BeaconChainDbColumns.States);
+        Dictionary<byte[], byte[]> stored = states.GetAll().ToDictionary(entry => entry.Key, entry => entry.Value, Bytes.EqualityComparer);
+        states.ReadFunc = key =>
+        {
+            Assert.That(key.Length == Hash256.Size || key[^1] == 0, Is.True, "only the manifest and first state chunk may be read");
+            return stored.GetValueOrDefault(key)!;
+        };
+
+        using HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/beacon/states/head/{endpoint}");
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Host_ignores_ambient_kestrel_endpoints()
+    {
+        const string key = "Kestrel__Endpoints__Unexpected__Url";
+        string? previous = Environment.GetEnvironmentVariable(key);
+        try
+        {
+            Environment.SetEnvironmentVariable(key, "http://127.0.0.1:not-a-port");
+            await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet);
+            using HttpResponseMessage response = await host.Client.GetAsync("/eth/v1/node/version");
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(key, previous);
+        }
+    }
+
+    [Test]
+    public async Task Host_shutdown_cancels_an_open_event_stream()
+    {
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet);
+        using HttpResponseMessage response = await host.Client.GetAsync("/eth/v1/events?topics=head", HttpCompletionOption.ResponseHeadersRead);
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        await host.Host.StopAsync().WaitAsync(TimeSpan.FromSeconds(3));
+    }
+
+    [Test]
+    public async Task Head_state_routes_read_the_snapshot_without_a_persisted_state(
+        [Values("fork", "finality_checkpoints", "randao", "validators")] string endpoint)
+    {
+        HeadSnapshotHolder snapshots = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
+        BeaconStateFulu state = BeaconApiTestHost.RichState(host.Spec, Slot);
+        host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, Hash256.Zero));
+        snapshots.Current = new HeadSnapshot(new StatusMessageV2 { HeadRoot = Head, HeadSlot = Slot, FinalizedRoot = Hash256.Zero }, null, Hash256.Zero, true)
+        {
+            State = new ForkedBeaconState.OfFulu(state),
+        };
+
+        using HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/beacon/states/head/{endpoint}");
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(host.Store.TryGetState(Head, out _), Is.False);
+    }
 
     private static readonly string[] EnvelopeRoutes =
     [

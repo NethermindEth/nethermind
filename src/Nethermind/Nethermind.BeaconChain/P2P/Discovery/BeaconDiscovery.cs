@@ -84,6 +84,7 @@ public sealed class BeaconDiscovery(
     private CancellationTokenSource? _runCts;
     private Task _runTask = Task.CompletedTask;
     private bool _stopped;
+    private bool _allowNonRoutable;
 
     private ulong[] _wantedColumns = [];
     private TaskCompletionSource _custodiansRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -136,6 +137,7 @@ public sealed class BeaconDiscovery(
             _runCts = CancellationTokenSource.CreateLinkedTokenSource(token);
             IIPResolver.NethermindIp ip = await ipResolver.Resolve(token);
             IPAddress? advertised = AdvertisedAddress(ip);
+            _allowNonRoutable = advertised?.IsLoopbackOrPrivateOrLinkLocal == true;
             if (advertised is null && _logger.IsWarn) _logger.Warn("No external IPv4 address is known, so the beacon chain ENR advertises no endpoint and peers cannot dial this node.");
             DiscoveryV5Transport transport = CreateDiscv5Services(advertised);
             IDatagramSocket socket = _connections!.Bind(
@@ -338,7 +340,7 @@ public sealed class BeaconDiscovery(
         }
     }
 
-    internal static bool TryCreateCandidate(NodeRecord record, byte[] currentForkDigest, byte[]? nextForkDigest, [NotNullWhen(true)] out BeaconPeerCandidate? candidate, EnrForkId? localForkId = null)
+    internal static bool TryCreateCandidate(NodeRecord record, byte[] currentForkDigest, byte[]? nextForkDigest, [NotNullWhen(true)] out BeaconPeerCandidate? candidate, EnrForkId? localForkId = null, bool allowNonRoutable = false)
     {
         candidate = null;
         if (!TryGetForkId(record, out EnrForkId? forkId))
@@ -353,7 +355,7 @@ public sealed class BeaconDiscovery(
         }
 
         CompressedPublicKey? publicKey = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
-        if (!record.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint) || publicKey is null)
+        if (!record.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint) || publicKey is null || !IsDialable(tcpEndpoint.Address, allowNonRoutable))
         {
             return false;
         }
@@ -361,7 +363,7 @@ public sealed class BeaconDiscovery(
         string peerId = DerivePeerId(publicKey);
         string ipProtocol = tcpEndpoint.AddressFamily == AddressFamily.InterNetworkV6 ? "ip6" : "ip4";
         List<string> addresses = [$"/{ipProtocol}/{tcpEndpoint.Address}/tcp/{tcpEndpoint.Port}/p2p/{peerId}"];
-        if (tcpEndpoint.AddressFamily == AddressFamily.InterNetwork && record.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? ipv6))
+        if (tcpEndpoint.AddressFamily == AddressFamily.InterNetwork && record.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? ipv6) && IsDialable(ipv6.Address, allowNonRoutable))
         {
             addresses.Add($"/ip6/{ipv6.Address}/tcp/{ipv6.Port}/p2p/{peerId}");
         }
@@ -378,6 +380,11 @@ public sealed class BeaconDiscovery(
         };
         return true;
     }
+
+    private static bool IsDialable(IPAddress address, bool allowNonRoutable) =>
+        !IPAddress.Any.Equals(address) && !IPAddress.IPv6Any.Equals(address) && !IPAddress.Broadcast.Equals(address)
+        && !address.IsMulticast && !address.IsSpecialUseAddress
+        && (allowNonRoutable || !address.IsLoopbackOrPrivateOrLinkLocal);
 
     /// <summary>Derives the libp2p peer id from a compressed secp256k1 public key.</summary>
     internal static string DerivePeerId(CompressedPublicKey publicKey)
@@ -476,7 +483,7 @@ public sealed class BeaconDiscovery(
         try
         {
             (byte[] currentDigest, byte[]? nextDigest, EnrForkId localForkId) = AcceptedForkDigests();
-            return TryCreateCandidate(record, currentDigest, nextDigest, out BeaconPeerCandidate? candidate, localForkId) ? SelectDialableAddress(candidate) : null;
+            return TryCreateCandidate(record, currentDigest, nextDigest, out BeaconPeerCandidate? candidate, localForkId, _allowNonRoutable) ? SelectDialableAddress(candidate) : null;
         }
         catch (Exception e)
         {

@@ -91,6 +91,7 @@ public class DataColumnSidecarsReqRespTests
         new("Sidecars serve past the block request slot limit", Count: BlocksProtocolBase.MaxRequestBlocks + 1, HeldCount: BlocksProtocolBase.MaxRequestBlocks + 1, RepeatSidecar: true),
         new("An unbounded requested count still serves past the block limit", Count: ulong.MaxValue, HeldCount: BlocksProtocolBase.MaxRequestBlocks + 1, RepeatSidecar: true),
         new("A held sidecar beyond the slot walk is resource unavailable", Count: DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars + 1, HeldOffset: (int)DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars, HeldCount: 1, Unavailable: true),
+        new("Requested columns share the slot walk budget", Count: 129, Columns: [.. Enumerable.Range(0, 128).Select(static i => (ulong)i)], HeldOffset: 128, HeldCount: 1, Unavailable: true),
         new("Inside serve range from one slot below complete columns", StartOffset: -1, ClockSlot: ServeRangeClock(1), Unavailable: true, CheckFailureMetric: true),
         new("Inside serve range at the single slot below complete columns", Count: 1, StartOffset: -1, ClockSlot: ServeRangeClock(1), Unavailable: true, CheckFailureMetric: true),
         new("Inside serve range from the first complete slot", ClockSlot: ServeRangeClock(1)),

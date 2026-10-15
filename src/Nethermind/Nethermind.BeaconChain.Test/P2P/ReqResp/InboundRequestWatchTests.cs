@@ -390,7 +390,7 @@ public class InboundRequestWatchTests
         }
 
         await listening.WaitAsync(token);
-        Assert.That(received, Is.EqualTo(Enumerable.Range(2, Math.Min(blockCount, 129)).SelectMany(offset => columns.Select(column => (start + (ulong)offset, column)))));
+        Assert.That(received, Is.EqualTo(Enumerable.Range(2, Math.Min(blockCount, 127)).SelectMany(offset => columns.Select(column => (start + (ulong)offset, column)))));
     }
 
     private static long InvalidMessageCount() =>

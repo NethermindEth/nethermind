@@ -47,7 +47,7 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
         ProtocolRef[] appSelector = [Get<MultistreamProtocol>()];
         Connect([tcp], [Get<MultistreamProtocol>()], [Get<NoiseProtocol>()], [Get<MultistreamProtocol>()], [Get<YamuxProtocol>()], appSelector);
 
-        List<ProtocolRef> apps = [Get<IdentifyProtocol>(), Get<IdentifyPushProtocol>(), Get<PingProtocol>(), .. additionalProtocols];
+        List<ProtocolRef> apps = [Get<BoundedIdentifyProtocol>(), Get<IdentifyPushProtocol>(), Get<PingProtocol>(), .. additionalProtocols];
         if (_pubsub)
         {
             apps.AddRange([Get<GossipsubProtocolV13>(), Get<GossipsubProtocolV12>(), Get<GossipsubProtocolV11>(), Get<GossipsubProtocol>(), Get<FloodsubProtocol>()]);
@@ -93,6 +93,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         private const int MaxDialAddresses = 16;
 
         private readonly IDnsLookup _dnsLookup;
+        private readonly ILogger? _resolutionLogger;
         private int _disposed;
 
         public IdentifyingPeer(Identity identity, PeerStore peerStore, IProtocolStackSettings settings, IdentifyNotifier notifier, ILoggerFactory? loggerFactory,
@@ -100,11 +101,24 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
             : base(identity, peerStore, settings, loggerFactory: loggerFactory)
         {
             _dnsLookup = dnsLookup;
+            _resolutionLogger = loggerFactory?.CreateLogger<Libp2pStackPeerFactory>();
             notifier.TrackChanges(this);
             Sessions.CollectionChanged += CloseAfterDisposal;
         }
 
-        protected override Task ConnectedTo(ISession session, bool isDialer) => session.DialAsync<IdentifyProtocol>();
+        protected override async Task ConnectedTo(ISession session, bool isDialer)
+        {
+            using CancellationTokenSource timeout = new(BoundedIdentifyProtocol.ReadTimeout);
+            try
+            {
+                await session.DialAsync<BoundedIdentifyProtocol>(timeout.Token);
+            }
+            catch
+            {
+                await session.DisconnectAsync();
+                throw;
+            }
+        }
 
         Task<ISession> ILocalPeer.DialAsync(Multiaddress addr, CancellationToken token) => DialTcpAsync(addr.GetPeerId(), [addr], token);
 
@@ -189,6 +203,7 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                 }
                 catch (Exception e) when (e is not OutOfMemoryException)
                 {
+                    _resolutionLogger?.LogDebug(e, "Failed to resolve {Address}", addr);
                 }
             }
 

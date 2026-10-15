@@ -54,6 +54,8 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
         await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
+            using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, 139, "Too many concurrent requests", refusal.Token);
             return;
         }
 
@@ -72,6 +74,8 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
             {
                 throw new Eth2ReqRespException("Blocks-by-range request count must be positive");
             }
+
+            ChargeRequest(context, Math.Min(request.Count, MaxRequestBlocks), MaxRequestBlocks);
 
             // BeaconBlocksByRange: a peer unable to reply SHOULD answer ResourceUnavailable; an empty reply would claim the slots are empty.
             if (!store.TryGetEarliestBlockSlot(out ulong earliestSlot) || request.StartSlot < Math.Min(earliestSlot, store.BackfilledBlockFloor ?? earliestSlot))

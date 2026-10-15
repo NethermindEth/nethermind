@@ -77,7 +77,6 @@ public sealed class BlockImporter : IBlockImporter
     /// <summary>Null until the first index update, so a restart reconciles the index even when the head is still the anchor.</summary>
     private Hash256? _canonicalHead;
     private ulong _canonicalIndexTopSlot;
-    private ulong _lastSnapshotEpoch;
 
     /// <summary>The last Gloas block imported; only its children may reuse <see cref="_gloasLineageCache"/>, which refuses a memo built on another branch.</summary>
     private Hash256? _gloasLineageRoot;
@@ -149,7 +148,6 @@ public sealed class BlockImporter : IBlockImporter
             case (ForkedBeaconState.OfFulu { State: BeaconStateFulu fuluState }, ForkedSignedBeaconBlock.OfFulu { Block: SignedBeaconBlock fuluBlock }):
                 _states = new PostStateCache(store, spec, anchorRoot, fuluState, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
                 _runner = new ForkChoiceRunner(spec, fuluState, fuluBlock.Message!, _states, pubkeys, _states, logManager);
-                _lastSnapshotEpoch = fuluState.GetCurrentEpoch();
                 _fuluProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, fuluState.Fork!.CurrentVersion!, fuluState.GenesisValidatorsRoot!);
                 _gloasProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, spec.GloasForkVersion, fuluState.GenesisValidatorsRoot!);
                 break;
@@ -158,25 +156,34 @@ public sealed class BlockImporter : IBlockImporter
                 _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
                 _states.PinGloas(anchorRoot, gloasState);
                 _runner = new ForkChoiceRunner(spec, gloasState, gloasBlock.Message!, _states, pubkeys, _states, logManager);
-                _lastSnapshotEpoch = gloasState.GetCurrentEpoch();
                 _gloasProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, gloasState.Fork!.CurrentVersion!, gloasState.GenesisValidatorsRoot!);
                 break;
             default:
                 throw new ArgumentException($"The anchor state at slot {anchorState.Slot} is a {anchorState.Fork} state, but its block at slot {anchorBlock.Slot} is a {anchorBlock.GetType().Name} block", nameof(anchorBlock));
         }
 
+        foreach ((Hash256 root, ulong slot) in store.StoredBlocksForPruning(anchorBlock.Slot))
+        {
+            _unfinalized[root] = slot;
+        }
+
         _envelopes = new ExecutionPayloadEnvelopeImporter(_states, engine, pubkeys, isEnvelopeDataAvailable, logManager, () => _gloasLineageCache.Hasher);
         store.SetCanonicalRoot(anchorBlock.Slot, anchorRoot);
+        PruneStore(anchorBlock.Slot);
         // A restart must clear what the previous run indexed above the head it replays up to.
         _canonicalIndexTopSlot = Math.Max(anchorBlock.Slot, store.GetCanonicalIndexTopSlot() ?? 0);
     }
+
+    internal ForkedBeaconState? CloneStateForApi(Hash256 root) => IsGloasBlock(root)
+        ? _states.GetGloasBlockState(root) is { } gloas ? new ForkedBeaconState.OfGloas(gloas.Clone()) : null
+        : _states.GetHeldBlockState(root) is { } fulu ? new ForkedBeaconState.OfFulu(fulu.Clone()) : null;
 
     /// <inheritdoc/>
     public bool IsKnown(Hash256 blockRoot) => _runner.ContainsBlock(blockRoot);
 
     bool IBlockImporter.IsHeadStale => _runner.IsHeadStale;
 
-    /// <summary>The block whose post-state a Fulu child imports onto without a state copy; for tests.</summary>
+    /// <summary>The root of the live Fulu lineage state; for tests.</summary>
     internal Hash256? LineageRoot => _states.LineageRoot;
     private bool IsGloasBlock(Hash256 blockRoot) => _runner.GetBlockSlot(blockRoot) is ulong slot && SignedBeaconBlockCodec.IsGloasSlot(slot, _spec);
     private Hash256 GetJustifiedRoot() => _runner.JustifiedCheckpoint.Root;
@@ -459,14 +466,9 @@ public sealed class BlockImporter : IBlockImporter
         EpochCache cache;
         if (onLineage)
         {
-            // Untrusted blocks run on a clone so an invalid block cannot corrupt the live lineage
-            // state; trusted replays were validated before persisting and apply in place.
-            state = verifySignatures ? parentState.Clone() : parentState;
+            // Replay can now receive an INVALID execution verdict; preserve the parent until admission succeeds.
+            state = parentState.Clone();
             cache = _lineageCache;
-            if (!verifySignatures && (crossesEpoch || _lineageBlockStartsEpoch))
-            {
-                _states.Retain(parentRoot, parentState.Clone(), parentIsCheckpoint);
-            }
         }
         else
         {
@@ -479,13 +481,6 @@ public sealed class BlockImporter : IBlockImporter
         _engine.CurrentBlock = signedBlock;
         try
         {
-            // In-place transitions must obtain newPayload before mutation: an advanced LatestBlockHeader would reject a retry.
-            // Cloned transitions can abort safely, so their hook preserves untrusted-block validation order.
-            if (ReferenceEquals(state, parentState) && onLineage)
-            {
-                verdict.Prime(block.Body!);
-            }
-
             StateTransition.StateTransition.Apply(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures);
         }
         catch (EngineUnavailableException e)
@@ -547,7 +542,7 @@ public sealed class BlockImporter : IBlockImporter
 
         if (onLineage)
         {
-            if (verifySignatures && (crossesEpoch || _lineageBlockStartsEpoch))
+            if (crossesEpoch || _lineageBlockStartsEpoch)
             {
                 // The pre-clone original is the parent post-state, retained as-is.
                 _states.Retain(parentRoot, parentState, parentIsCheckpoint);
@@ -555,7 +550,6 @@ public sealed class BlockImporter : IBlockImporter
 
             _states.SetLineage(blockRoot, state);
             _lineageBlockStartsEpoch = crossesEpoch;
-            MaybeSnapshotState(blockRoot, state, blockEpoch);
         }
         else
         {
@@ -906,9 +900,29 @@ public sealed class BlockImporter : IBlockImporter
             {
                 return ExecutionPayloadEnvelopeImportResult.AlreadyKnown;
             }
+
+            if (SignedBeaconBlockCodec.IsGloasSlot(slot, _spec) && _states.GetGloasBlockState(blockRoot) is null)
+            {
+                ulong currentSlot = _clock.CurrentSlot;
+                if (currentSlot != _regenerationSlot)
+                {
+                    _regenerationSlot = currentSlot;
+                    _regenerationsThisSlot = 0;
+                    _byRootRegenerationsThisSlot = 0;
+                }
+                if (_byRootRegenerationsThisSlot >= MaxByRootRegenerationsPerSlot)
+                    return ExecutionPayloadEnvelopeImportResult.StateUnavailable;
+                _byRootRegenerationsThisSlot++;
+                if (_states.GetOrRegenerateGloasBlockState(blockRoot) is null)
+                    return ExecutionPayloadEnvelopeImportResult.StateUnavailable;
+            }
         }
 
-        ExecutionPayloadEnvelopeImportResult result = _envelopes.Import(envelope);
+        ExecutionPayloadEnvelopeImportResult result = _envelopes.Import(envelope, out (ExecutionStatus? Status, Hash256? LatestValidHash) verdict);
+        if (verdict.Status == ExecutionStatus.Invalid)
+        {
+            _runner.InvalidateExecutionChain(blockRoot!, envelope.Message.Payload!.BlockHash, verdict.LatestValidHash);
+        }
         if (result is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic)
         {
             bool valid = false;
@@ -1038,10 +1052,6 @@ public sealed class BlockImporter : IBlockImporter
             _store.SetExecutionPayloadValid(payloadRoot);
     }
 
-    /// <summary>Invalidates <paramref name="blockRoot"/> and its descendants, and the blocks back to <paramref name="latestValidHash"/> when it names a known ancestor.</summary>
-    internal void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash) =>
-        _runner.OnInvalidExecutionPayload(blockRoot, latestValidHash);
-
     /// <inheritdoc/>
     public void OnFinalized(CheckpointRef finalized)
     {
@@ -1084,11 +1094,9 @@ public sealed class BlockImporter : IBlockImporter
     {
         _store.PutState(root, stateSsz);
         _store.SetAnchor(root, slot);
-        // TryLoad requires an exact registry-length match against the anchor state, so only
-        // persist when the cache has not yet been extended past the finalized registry.
-        if (_pubkeys.Count == validatorCount)
+        if (_pubkeys.Count >= validatorCount)
         {
-            _pubkeys.Persist(_store);
+            _pubkeys.Persist(_store, validatorCount);
         }
     }
 
@@ -1397,18 +1405,6 @@ public sealed class BlockImporter : IBlockImporter
         _canonicalIndexTopSlot = topSlot;
     }
 
-    private void MaybeSnapshotState(Hash256 blockRoot, BeaconStateFulu state, ulong blockEpoch)
-    {
-        if (blockEpoch < _lastSnapshotEpoch + (ulong)_config.StateSnapshotIntervalEpochs)
-        {
-            return;
-        }
-
-        _store.PutState(blockRoot, BeaconStateFulu.Encode(state));
-        _lastSnapshotEpoch = blockEpoch;
-        if (_logger.IsDebug) _logger.Debug($"Persisted beacon state snapshot at epoch {blockEpoch} ({blockRoot})");
-    }
-
     private void PruneStore(ulong finalizedSlot)
     {
         List<Hash256>? finalizedRoots = null;
@@ -1442,30 +1438,14 @@ public sealed class BlockImporter : IBlockImporter
     /// <summary>Captures one import's execution verdict. A shared notifier field could substitute another caller's VALID verdict for SYNCING, which fork choice cannot later invalidate; per-import ownership prevents that race.</summary>
     private sealed class ImportVerdict(IEngineDriver engine) : INewPayloadNotifier
     {
-        private BeaconBlockBody? _primed;
-
         /// <summary>The verdict for this import, optimistic until the hook produces one.</summary>
         public ExecutionStatus Status { get; private set; } = ExecutionStatus.Optimistic;
         public Hash256? LatestValidHash { get; private set; }
 
-        /// <summary>Obtains the verdict for <paramref name="body"/> ahead of the transition that will consume it.</summary>
-        /// <remarks>The hook is served this verdict rather than calling the engine a second time.</remarks>
-        /// <exception cref="EngineUnavailableException">The execution layer returned no verdict.</exception>
-        public void Prime(BeaconBlockBody body)
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
             Status = engine.NotifyNewPayload(body, out Hash256? latestValidHash);
             LatestValidHash = latestValidHash;
-            _primed = body;
-        }
-
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
-        {
-            if (!ReferenceEquals(body, _primed))
-            {
-                Status = engine.NotifyNewPayload(body, out Hash256? latestValidHash);
-                LatestValidHash = latestValidHash;
-            }
-
             return Status;
         }
 

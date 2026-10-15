@@ -3,6 +3,7 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using Google.Protobuf;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Libp2p;
 using Snappier;
@@ -12,6 +13,19 @@ namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 public class Eth2MessageIdTests
 {
     private const string Topic = "/eth2/8c9f62fe/beacon_block/ssz_snappy";
+
+    [Test]
+    public void Immutable_payload_ids_are_cached_per_topic()
+    {
+        ByteString payload = ByteString.CopyFrom(Snappy.CompressToArray(new byte[1024]));
+        byte[] id = Eth2MessageId.Compute(Topic, payload);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eth2MessageId.Compute(Topic, payload), Is.SameAs(id));
+            Assert.That(Eth2MessageId.Compute(Topic + "other", payload), Is.Not.EqualTo(id));
+            Assert.That(id, Is.EqualTo(Eth2MessageId.Compute(Topic, payload.Span)));
+        }
+    }
 
     // Expected ids hand-derived with Python (hashlib + manually encoded snappy block framing):
     // SHA256(domain ++ uint64_le(38) ++ topic ++ payload)[:20] where payload is the snappy

@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Microsoft.AspNetCore.Http;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
@@ -44,10 +48,16 @@ internal static class StateIdResolver
             return false;
         }
 
-        if (!ctx.Store.TryGetState(root!, out byte[]? ssz))
+        byte[]? ssz = root == ctx.StatusSource.CurrentStatus.HeadRoot ? ctx.HeadState switch
+        {
+            ForkedBeaconState.OfFulu fulu => BeaconStateFulu.Encode(fulu.State),
+            ForkedBeaconState.OfGloas gloas => BeaconStateGloas.Encode(gloas.State),
+            _ => null,
+        } : null;
+        if (ssz is null && !ctx.Store.TryGetState(root!, out ssz))
         {
             errorStatus = StatusCodes.Status404NotFound;
-            errorMessage = $"No state is persisted for '{stateId}' ({root}): this node only retains states at finalization or on the periodic snapshot interval.";
+            errorMessage = $"No state is persisted for '{stateId}' ({root}): this node retains persisted states at finalization.";
             return false;
         }
 
@@ -55,9 +65,68 @@ internal static class StateIdResolver
         return true;
     }
 
+    internal static bool TryResolvePrefix(BeaconApiContext ctx, string stateId, bool forkOnly, out ResolvedState resolved, out int errorStatus, out string? errorMessage, bool includeRandao = false)
+    {
+        resolved = default;
+        if (!TryResolveRoot(ctx, stateId, out Hash256? root, out errorStatus, out errorMessage)) return false;
+        if (root == ctx.StatusSource.CurrentStatus.HeadRoot && ctx.HeadState is not null)
+            return TryResolve(ctx, stateId, out resolved, out errorStatus, out errorMessage);
+
+        const int forkOffset = 48;
+        int randaoOffset = checked(176 + 64 * (int)Presets.SlotsPerHistoricalRoot + 96);
+        int checkpointOffset = checked(randaoOffset + 32 * (int)Presets.EpochsPerHistoricalVector + 8 * (int)Presets.EpochsPerSlashingsVector + 9);
+        int length = forkOnly ? 176 : checkpointOffset + 120;
+        if (!ctx.Store.TryGetStatePrefix(root!, length, out byte[]? prefix))
+        {
+            if (ctx.Store.TryGetStatePrefix(root!, 48, out byte[]? headerBytes)
+                && ctx.Spec.GetEpoch(BinaryPrimitives.ReadUInt64LittleEndian(headerBytes.AsSpan(40))) < ctx.Spec.ElectraForkEpoch)
+                throw new UnsupportedForkException(new NotSupportedException("State predates Electra."));
+            errorStatus = StatusCodes.Status404NotFound;
+            errorMessage = $"No state is retained for '{stateId}'.";
+            return false;
+        }
+        ReadOnlySpan<byte> bytes = prefix;
+        ulong slot = BinaryPrimitives.ReadUInt64LittleEndian(bytes[40..]);
+        ulong epoch = ctx.Spec.GetEpoch(slot);
+        if (epoch < ctx.Spec.ElectraForkEpoch)
+            throw new UnsupportedForkException(new NotSupportedException("State predates Electra."));
+        Fork.Decode(bytes.Slice(forkOffset, 16), out Fork fork);
+        BeaconBlockHeader.Decode(bytes.Slice(64, 112), out BeaconBlockHeader header);
+        BeaconStateElectra state = new() { Slot = slot, Fork = fork, LatestBlockHeader = header };
+        if (!forkOnly)
+        {
+            if (includeRandao)
+            {
+                state.RandaoMixes = new Hash256[Presets.EpochsPerHistoricalVector];
+                for (int i = 0; i < state.RandaoMixes.Length; i++)
+                    state.RandaoMixes[i] = new Hash256(bytes.Slice(randaoOffset + i * 32, 32));
+            }
+            Checkpoint.Decode(bytes.Slice(checkpointOffset, 40), out Checkpoint previous);
+            Checkpoint.Decode(bytes.Slice(checkpointOffset + 40, 40), out Checkpoint current);
+            Checkpoint.Decode(bytes.Slice(checkpointOffset + 80, 40), out Checkpoint finalized);
+            state.PreviousJustifiedCheckpoint = previous;
+            state.CurrentJustifiedCheckpoint = current;
+            state.FinalizedCheckpoint = finalized;
+        }
+        resolved = new ResolvedState(root!, ApiState.Of(epoch >= ctx.Spec.GloasForkEpoch ? BeaconFork.Gloas : epoch >= ctx.Spec.FuluForkEpoch ? BeaconFork.Fulu : BeaconFork.Electra, state));
+        return true;
+    }
+
     public static bool TryResolve(BeaconApiContext ctx, string stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage)
     {
         resolved = default;
+        if (!TryResolveRoot(ctx, stateId, out Hash256? root, out errorStatus, out errorMessage)) return false;
+        if (root == ctx.StatusSource.CurrentStatus.HeadRoot && ctx.HeadState is { } head)
+        {
+            ApiState current = head switch
+            {
+                ForkedBeaconState.OfFulu fulu => ApiState.Of(BeaconFork.Fulu, fulu.State),
+                ForkedBeaconState.OfGloas gloas => ApiState.Of(gloas.State),
+                _ => throw new NotSupportedException(),
+            };
+            resolved = new ResolvedState(root!, current);
+            return true;
+        }
         if (!TryResolveRaw(ctx, stateId, out ResolvedRawState raw, out errorStatus, out errorMessage))
         {
             return false;

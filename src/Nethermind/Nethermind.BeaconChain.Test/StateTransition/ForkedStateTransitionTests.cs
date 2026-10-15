@@ -17,6 +17,45 @@ public class ForkedStateTransitionTests
 {
     private static readonly byte[] GloasVersion = Bytes.FromHexString("0x07000000");
 
+    [Test]
+    public void Signature_cache_includes_validators_registered_while_advancing_slots([Values] bool gloas)
+    {
+        PendingDeposit deposit = GloasTestFixtures.NewValidatorDeposit(300, GloasTestFixtures.Gwei, 0);
+        ForkedBeaconState state;
+        PubkeyCache pubkeys = new();
+        ForkedSignedBeaconBlock block;
+        int originalCount;
+        if (gloas)
+        {
+            BeaconStateGloas pre = GloasTestFixtures.CreateGloasState(out _, out _);
+            pubkeys = GloasTestFixtures.InstallRealValidatorKeys(pre);
+            originalCount = pre.Validators!.Length;
+            pre.PendingDeposits = [deposit];
+            state = new ForkedBeaconState.OfGloas(pre);
+            SignedBeaconBlockGloas signedBlock = SignedBeaconBlockBuilders.CreateMinimalGloasBlock(2 * Presets.SlotsPerEpoch);
+            signedBlock.Message!.ProposerIndex = (ulong)originalCount;
+            block = new ForkedSignedBeaconBlock.OfGloas(signedBlock);
+        }
+        else
+        {
+            BeaconStateFulu pre = GloasTestFixtures.CreateFuluState(8);
+            GloasTestFixtures.InstallValidatorKeys(pre.Validators!, 8);
+            pubkeys.Build(pre.Validators!);
+            originalCount = pre.Validators!.Length;
+            pre.PendingDeposits = [deposit];
+            state = new ForkedBeaconState.OfFulu(pre);
+            SignedBeaconBlock signedBlock = SignedBeaconBlockBuilders.CreateMinimalBlock(Presets.SlotsPerEpoch);
+            signedBlock.Message!.ProposerIndex = (ulong)originalCount;
+            block = new ForkedSignedBeaconBlock.OfFulu(signedBlock);
+        }
+
+        Assert.That(() => ForkedStateTransition.Apply(state, block, new EpochCache(), pubkeys,
+            new TestEngineDriver.BodyOnlyNotifier(), SyntheticSpec(gloas ? 0UL : ulong.MaxValue), validateResult: false),
+            Throws.TypeOf<ProposerSignatureException>());
+        Assert.That(pubkeys.Count, Is.EqualTo(originalCount + 1));
+        Assert.That(pubkeys.GetPublicKey(originalCount).Compress(), Is.EqualTo(deposit.Pubkey.Bytes.ToArray()));
+    }
+
     // The deliberately wrong parent root identifies the real Fulu pipeline by its specific refusal.
     [Test]
     public void Apply_delegates_into_the_real_fulu_pipeline_when_the_target_fork_is_still_fulu()

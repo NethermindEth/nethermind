@@ -12,6 +12,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Api;
@@ -42,8 +43,10 @@ internal sealed record BeaconApiContext(
 {
     /// <summary>Captures one get_head view for all reads in a request (fork-choice.md).</summary>
     public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead(), ForkChoiceSnapshot = ForkChoiceSnapshots?.Current };
+    internal ForkedBeaconState? HeadState => (StatusSource as FrozenHead)?.State;
     public ForkChoiceSnapshot? ForkChoiceSnapshot { get; private init; }
     /// <summary>Bounds the blob rebuilds of this host's getBlobs requests that run at once; a request past it is refused, never queued.</summary>
+    public EventsEndpoint.EventCache Events { get; } = new();
     public ConcurrencyLimiter BlobRebuilds { get; } = new(new ConcurrencyLimiterOptions { PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds, QueueLimit = 0 });
 
     /// <summary>Freezes the published get_head view, or the startup status before publication (fork-choice.md).</summary>
@@ -60,6 +63,7 @@ internal sealed record BeaconApiContext(
 
     private sealed class FrozenHead(HeadSnapshot snapshot) : IBeaconChainStatusSource
     {
+        internal ForkedBeaconState? State => snapshot.State;
         public StatusMessageV2 CurrentStatus => snapshot.Status;
         public Hash256 JustifiedRoot => snapshot.JustifiedRoot;
         public bool ExecutionInSync => snapshot.ExecutionInSync;

@@ -110,6 +110,9 @@ public sealed class CommitteeCacheLru(int capacity = CommitteeCacheLru.DefaultCa
     public CommitteeCache GetOrBuild(BeaconStateGloas state, ulong epoch) =>
         TryGet(epoch, state.GetShufflingDecisionRoot(epoch)) ?? Add(epoch, state.GetShufflingDecisionRoot(epoch), CommitteeCache.Build(state, epoch));
 
+    internal CommitteeCache GetOrBuild(BeaconStateGloas state, ulong epoch, Hash256 decisionRoot) =>
+        TryGet(epoch, decisionRoot) ?? Add(epoch, decisionRoot, CommitteeCache.Build(state, epoch));
+
     private CommitteeCache? TryGet(ulong epoch, Hash256 decisionRoot)
     {
         for (int i = 0; i < _entries.Count; i++)

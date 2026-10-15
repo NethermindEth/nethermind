@@ -3,6 +3,7 @@
 
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.BeaconChain.StateTransition;
 
 namespace Nethermind.BeaconChain.Sync;
 
@@ -11,13 +12,17 @@ namespace Nethermind.BeaconChain.Sync;
 /// <param name="FullHeadRoot">The FULL head root, otherwise null (gloas/fork-choice.md get_head).</param>
 /// <param name="JustifiedRoot">The head computation's justified checkpoint root.</param>
 /// <param name="ExecutionInSync">Whether the execution layer confirmed the head VALID.</param>
-public sealed record HeadSnapshot(StatusMessageV2 Status, Hash256? FullHeadRoot, Hash256 JustifiedRoot, bool ExecutionInSync);
+public sealed record HeadSnapshot(StatusMessageV2 Status, Hash256? FullHeadRoot, Hash256 JustifiedRoot, bool ExecutionInSync)
+{
+    internal ForkedBeaconState? State { get; init; }
+}
 
 /// <summary>Publishes one completed get_head view to other threads (fork-choice.md).</summary>
 /// <remarks><see cref="Current"/> stays <c>null</c> until the orchestrator is initialized.</remarks>
 public sealed class HeadSnapshotHolder
 {
     private HeadSnapshot? _current;
+    internal bool CaptureState { get; set; }
 
     public HeadSnapshot? Current
     {

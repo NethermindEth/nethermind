@@ -81,6 +81,20 @@ public class CachedHasherTests
         state.PreviousEpochParticipation![count - 1] |= 0b110;
         AssertRootsMatch(hasher, state, "participation edits");
 
+        state.PendingDeposits = (PendingDeposit[])[new PendingDeposit { Amount = 1 }, new PendingDeposit { Amount = 2 }];
+        state.PendingPartialWithdrawals = (PendingPartialWithdrawal[])[new PendingPartialWithdrawal { Amount = 3 }, new PendingPartialWithdrawal { Amount = 4 }];
+        state.PendingConsolidations = (PendingConsolidation[])[new PendingConsolidation { SourceIndex = 1 }, new PendingConsolidation { SourceIndex = 2 }];
+        AssertRootsMatch(hasher, state, "pending queues appended");
+        AssertRootsMatch(hasher, state, "unchanged pending queues");
+        state.PendingDeposits = ((PendingDeposit[])state.PendingDeposits)[1..];
+        state.PendingPartialWithdrawals = ((PendingPartialWithdrawal[])state.PendingPartialWithdrawals)[1..];
+        state.PendingConsolidations = ((PendingConsolidation[])state.PendingConsolidations)[1..];
+        AssertRootsMatch(hasher, state, "pending queues shifted");
+        state.PendingDeposits = Array.Empty<PendingDeposit>();
+        state.PendingPartialWithdrawals = Array.Empty<PendingPartialWithdrawal>();
+        state.PendingConsolidations = Array.Empty<PendingConsolidation>();
+        AssertRootsMatch(hasher, state, "pending queues emptied");
+
         PayloadTimelinessCommittee[]? window = null;
         if (gloas)
         {

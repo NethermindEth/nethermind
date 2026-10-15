@@ -17,6 +17,19 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 public class GloasSeedAndEpochCacheTests
 {
     [Test]
+    public void Ptc_lookahead_shuffle_is_reused_after_the_epoch_boundary()
+    {
+        BeaconStateGloas state = GloasTestFixtures.CreateGloasState(out _, out _);
+        state.Slot = 2 * Presets.SlotsPerEpoch - 1;
+        state.BlockRoots![(int)(state.Slot % Presets.SlotsPerHistoricalRoot)] = FromFirstByte(0xA7);
+        ulong epoch = state.GetCurrentEpoch() + Presets.MinSeedLookahead + 1;
+        EpochCache cache = new();
+        CommitteeCache before = cache.GetNextPtcCommittees(state, epoch);
+        state.Slot++;
+        Assert.That(cache.GetCommitteeCache(state, epoch), Is.SameAs(before));
+    }
+
+    [Test]
     public void GetSeed_for_gloas_refuses_an_epoch_whose_mix_is_outside_the_window_instead_of_wrapping()
     {
         ulong currentEpoch = Presets.EpochsPerHistoricalVector + 100;

@@ -245,6 +245,11 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
             Assert.That(finalized.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(optimistic));
         }
         Assert.That(EventsEndpoint.CreateHeadEvent(ctx, headRoot, start)?.EpochTransition, Is.False);
+        EventsEndpoint.EventCache cache = new();
+        EventsEndpoint.HeadEventDto? cached = cache.Head(ctx, headRoot, start - 1);
+        host.Store.DeleteBlock(previous);
+        host.Store.DeleteBlock(current);
+        Assert.That(cache.Head(ctx, headRoot, start - 1), Is.EqualTo(cached), "another subscriber reuses the computed dependent roots");
     }
 
     /// <summary>RFC 9110 section 12.5.1 assigns quality using the most specific matching range.</summary>

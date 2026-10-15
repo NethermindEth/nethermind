@@ -24,6 +24,22 @@ public class ForkChoiceTests
     public void Fast_confirmation_vector(ForkChoiceCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("fast_confirmation", "fulu", testCase.Preset, testCase.VectorName, () => Run(testCase));
 
+    [Test]
+    public void Every_fast_confirmation_handler_has_vectors()
+    {
+        List<ForkChoiceCase> cases = FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Minimal, FastConfirmationCases, static () => []);
+        Assert.That(cases.Select(HandlerOf).Distinct(), Is.EquivalentTo(new[]
+        {
+            "basic", "current_epoch", "empty_slots", "ffg", "is_one_confirmed", "previous_epoch",
+            "reconfirmation", "restart_gu", "revert_finality", "variables",
+        }));
+    }
+
+    [Test]
+    public void Every_fast_confirmation_handler_runs_a_vector() =>
+        FuluDriverSupport.AssertEveryKeyRunsSomeVector(
+            FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Minimal, FastConfirmationCases, static () => []), HandlerOf, Run);
+
     private static IEnumerable<TestCaseData> FastConfirmationCases() =>
         FuluDriverSupport.RelativeCases(ConsensusPreset.Minimal, ["fulu"], "fast_confirmation", "steps.yaml",
             static (p, fork, path, name) => new ForkChoiceCase(p.ToString(), path, name));
@@ -48,6 +64,16 @@ public class ForkChoiceTests
     private const string FabricationSource = "get_proposer_head/pyspec_tests/basic_is_parent_root";
 
     private static readonly ulong TickAtBlockSlot = (Presets.SlotsPerEpoch + 1) * Presets.SecondsPerSlot;
+
+    [Test]
+    public void Unknown_checks_and_incorrect_viable_weights_fail([Values] bool unknown)
+    {
+        if (FuluDriverSupport.CompiledPreset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
+            Assert.Ignore("mainnet vectors are opt-in");
+        BeaconBlock.Decode(ReadFabricationBlock("anchor_block"), out BeaconBlock anchor);
+        string check = unknown ? "unknown_check: 0" : $"viable_for_head_roots_and_weights: [{{root: '{SszRoots.HashTreeRoot(anchor)}', weight: 1}}]";
+        Assert.That(() => RunFabricatedCase(true, [$"{{checks: {{{check}}}}}"]), Throws.TypeOf<AssertionException>());
+    }
 
     /// <summary>Pins optimistic-only body replay for an EL-INVALID refused block (pyspec helpers/fork_choice.py).</summary>
     /// <remarks>Both paths exclude the invalidated block and refuse its child (specs/bellatrix/optimistic-sync.md).</remarks>

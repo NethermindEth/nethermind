@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
@@ -25,7 +26,7 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// Gloas changes neither das-core nor <c>MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS</c>.
 /// </para>
 /// <para>
-/// Every sidecar is re-verified at every check, so a pool entry never counts on trust. The first pending
+/// Cryptographic verification is cached per immutable sidecar and bid commitments. The first pending
 /// candidate that verifies against the bid and names the bid's slot is moved into the served map, and
 /// candidates that fail are discarded. Fails closed while the node's
 /// identity is unknown. The window is read from <paramref name="clock"/> at every check.
@@ -33,6 +34,8 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// </remarks>
 public sealed class GloasCustodySamplingAvailability(INodeColumnCustodySource custodySource, DataColumnSidecarPool pool, SlotClock clock, BeaconChainSpec spec)
 {
+    private readonly ConditionalWeakTable<DataColumnSidecarGloas, SszKzgCommitment[]> _verified = new();
+
     /// <summary>Whether the blob data of <paramref name="bid"/>, committed by the block at <paramref name="blockRoot"/>, is available to this node.</summary>
     /// <param name="blockRoot">The <c>beacon_block_root</c> the envelope names.</param>
     /// <param name="bid">The bid that block committed; its <c>slot</c> is the block's slot (<c>process_execution_payload_bid</c>).</param>
@@ -44,6 +47,11 @@ public sealed class GloasCustodySamplingAvailability(INodeColumnCustodySource cu
         if (spec.GetEpoch(bid.Slot) < DataAvailabilityBoundary.Compute(clock.CurrentEpoch, spec)) return true;
 
         if (custodySource.Current is not { } custody) return false;
+
+        foreach (ulong column in custody.SampledColumns)
+        {
+            if (!pool.TryGetGloas(blockRoot, column, out _) && pool.GetPendingGloas(blockRoot, column).Length == 0) return false;
+        }
 
         // The custody and sample sets overlap; verify each column once per check, not once per set.
         Dictionary<ulong, bool> verified = [];
@@ -67,10 +75,19 @@ public sealed class GloasCustodySamplingAvailability(INodeColumnCustodySource cu
         return DataAvailabilitySampling.IsSampleAvailable(custody.SampledColumns, IsHeldAndVerified);
     }
 
+    private bool Verify(DataColumnSidecarGloas sidecar, SszKzgCommitment[] commitments)
+    {
+        if (_verified.TryGetValue(sidecar, out SszKzgCommitment[]? verified)
+            && verified.AsSpan().SequenceEqual(commitments)) return true;
+        if (!DataColumnSidecarVerifier.VerifyKzgProofs(sidecar, commitments)) return false;
+        _verified.AddOrUpdate(sidecar, (SszKzgCommitment[])commitments.Clone());
+        return true;
+    }
+
     private bool IsVerifiedColumn(Hash256 blockRoot, ulong blockSlot, ulong column, SszKzgCommitment[] blobCommitments)
     {
         if (pool.TryGetGloas(blockRoot, column, out DataColumnSidecarGloas? held)
-            && DataColumnSidecarVerifier.VerifyKzgProofs(held, blobCommitments))
+            && held.Slot == blockSlot && held.Index == column && Verify(held, blobCommitments))
         {
             return true;
         }
@@ -78,7 +95,7 @@ public sealed class GloasCustodySamplingAvailability(INodeColumnCustodySource cu
         // KZG does not bind the slot; a pending sidecar arrived before its block, so gossip's sidecar.slot == block.slot check has not run.
         foreach (DataColumnSidecarGloas pending in pool.GetPendingGloas(blockRoot, column))
         {
-            if (pending.Slot == blockSlot && DataColumnSidecarVerifier.VerifyKzgProofs(pending, blobCommitments))
+            if (pending.Slot == blockSlot && pending.Index == column && Verify(pending, blobCommitments))
             {
                 pool.AddGloas(pending);
                 return true;

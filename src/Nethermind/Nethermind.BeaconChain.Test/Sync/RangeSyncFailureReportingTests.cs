@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
@@ -38,9 +37,9 @@ public class RangeSyncFailureReportingTests
         RangeSyncTests.StubPeer badPeer = CreatePeer("bad", headSlot: TargetSlot + 1, (startSlot, count) => behavior switch
         {
             BadPeerBehavior.RequestTimesOut => throw new TimeoutException("request timed out"),
-            BadPeerBehavior.SessionIsGone => throw new IOException("Channel closed"),
+            BadPeerBehavior.SessionIsGone => throw new PeerSessionClosedException("Channel closed"),
             BadPeerBehavior.SessionIsGoneAfterABlock => throw new PartialBlocksException(
-                new IOException("peer disconnected after 1 s: its libp2p session closed", new OperationCanceledException()),
+                new PeerSessionClosedException("peer disconnected after 1 s: its libp2p session closed", new OperationCanceledException()),
                 [new ForkedSignedBeaconBlock.OfFulu(chain.First(b => b.Message!.Slot >= startSlot))]),
             _ => [TestChain.CreateBlock(startSlot, parentRoot: Hash256.Zero), .. chain.Skip(1)],
         });
