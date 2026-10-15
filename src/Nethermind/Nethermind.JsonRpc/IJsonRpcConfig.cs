@@ -65,6 +65,13 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
     bool RestrictIpcSocketPermissions { get; set; }
 
+    /// <summary>
+    /// Gets or sets the JSON-RPC namespaces enabled over IPC. Defaults to <see langword="null"/>;
+    /// a null or empty array uses <see cref="EnabledModules"/>.
+    /// </summary>
+    [ConfigItem(Description = "An array of JSON-RPC namespaces to enable over the IPC socket, for instance `[engine,eth]`. If not set or empty, the IPC socket uses `JsonRpc.EnabledModules`.")]
+    string[]? IpcEnabledModules { get; set; }
+
     [ConfigItem(
         Description = """
             An array of JSON-RPC namespaces to enable. For instance, `[debug,eth]`.
@@ -116,7 +123,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "Data/jsonrpc.filter")]
     string CallsFilterFilePath { get; set; }
 
-    [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
+    [ConfigItem(Description = "The max length of an HTTP request body or a WebSocket message, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
     [ConfigItem(
@@ -138,6 +145,11 @@ public interface IJsonRpcConfig : IConfig
         Description = "The max response body size, in bytes, for streamed `eth_getLogs` and `eth_getFilterLogs` JSON-RPC responses. Ignored unless `EnableLogsStreamMode` is enabled. `null` to use `MaxBatchResponseBodySize`.",
         DefaultValue = "null")]
     public long? MaxLogsResponseBodySize { get; set; }
+
+    [ConfigItem(
+        Description = "The max opcode log size, in bytes, per transaction of a `debug_trace*` or `debug_simulateV1` trace held in memory rather than streamed. Larger or unlimited `limit` trace options are lowered to it. `0` or negative to lift the limit.",
+        DefaultValue = "268435456")]
+    public long MaxBufferedTraceLogSize { get; set; }
 
     [ConfigItem(
         Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors capped at 16.")]
@@ -222,10 +234,10 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
 
-    [ConfigItem(Description = "Concurrency level of websocket connection.", DefaultValue = "1")]
+    [ConfigItem(Description = "The number of requests one public WebSocket connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Connections that are authenticated or enable the Engine module always process their requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int WebSocketsProcessingConcurrency { get; set; }
 
-    [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
+    [ConfigItem(Description = "The number of requests one IPC connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. When `JsonRpc.EnabledModules` includes the Engine module, IPC always processes its requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int IpcProcessingConcurrency { get; set; }
 
     [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "true")]

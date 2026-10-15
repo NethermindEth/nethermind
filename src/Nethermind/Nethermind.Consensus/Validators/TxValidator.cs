@@ -96,7 +96,6 @@ public sealed class TxValidator : ITxValidator
             // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
             FrameTxFieldsTxValidator.Instance,
             FrameTxNonceKeysTxValidator.Instance,
-            FrameTxEnvelopeTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
             MempoolBlobTxValidator.Instance
         ]));
@@ -227,20 +226,9 @@ public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool>? validate = 
         IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        !(validate?.Invoke(releaseSpec) ?? IsEnabled(transaction.Type, releaseSpec))
+        !(validate?.Invoke(releaseSpec) ?? releaseSpec.IsTxTypeEnabled(transaction.Type))
             ? TxErrorMessages.InvalidTxType(releaseSpec.Name)
             : ValidationResult.Success;
-
-    private static bool IsEnabled(TxType type, IReleaseSpec releaseSpec) => type switch
-    {
-        TxType.AccessList => releaseSpec.IsEip2930Enabled,
-        TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
-        TxType.Blob => releaseSpec.IsEip4844Enabled,
-        TxType.SetCode => releaseSpec.IsEip7702Enabled,
-        // Without this arm a pooled frame transaction is the one type that survives a head not enabling EIP-8141.
-        TxType.FrameTx => releaseSpec.IsEip8141Enabled,
-        _ => true,
-    };
 }
 
 public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator
@@ -395,23 +383,6 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
             ? ValidationResult.Success
             : FrameTxValidation.MalformedNonceKeySet;
     }
-}
-
-/// <summary>Admits the frame-transaction envelope extensions only on forks that define them.</summary>
-/// <remarks>The RLP decoder tells the envelope shapes apart without fork context, so the fork gate lives here.
-/// The reference cap is not re-checked: <see cref="FrameTxFieldsTxValidator"/> also sits in the frame-transaction
-/// composite and enforces it through <see cref="FrameTxValidation.IsWellFormed"/>, on decoder-built and
-/// caller-built transactions alike. A transaction admitted after EIP-8272 is invalid on a head below it, so this
-/// also runs in <see cref="HeadTxValidator"/> to evict it at the transition.</remarks>
-public sealed class FrameTxEnvelopeTxValidator : ITxValidator
-{
-    public static readonly FrameTxEnvelopeTxValidator Instance = new();
-    private FrameTxEnvelopeTxValidator() { }
-
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.RecentRootReferences is null || releaseSpec.IsEip8272Enabled
-            ? ValidationResult.Success
-            : FrameTxValidation.RecentRootReferencesNotEnabled;
 }
 
 public sealed class ContractSizeTxValidator : ITxValidator

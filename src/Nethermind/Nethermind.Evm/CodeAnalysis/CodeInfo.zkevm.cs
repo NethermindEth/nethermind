@@ -4,11 +4,15 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
 {
+    public static CodeInfo Empty => field ??= new CodeInfo(_emptyAnalyzer);
+    private static JumpDestinationAnalyzer _emptyAnalyzer => field ??= new JumpDestinationAnalyzer(new CodeInfo(), skipAnalysis: true);
+
     private ReadOnlyMemory<byte> _code;
 
     /// <remarks>
@@ -45,7 +49,7 @@ public sealed partial class CodeInfo
     {
         long[] bitmap = JumpDestinationAnalyzer.CreateBitmap(CodeLength);
         // STOP-first code halts before any jump, so it is not worth analyzing.
-        if (ZiskJumpDestFlag.IsActive && CodeLength != 0 && _code.Span[0] != (byte)Instruction.STOP) AnalyzeWithPrecompile(bitmap);
+        if (ZiskFlag.IsActive && CodeLength != 0 && _code.Span[0] != (byte)Instruction.STOP) AnalyzeWithPrecompile(bitmap);
         return bitmap;
     }
 

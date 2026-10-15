@@ -714,8 +714,6 @@ public partial struct EvmPooledMemory
         ((newActiveWords * newActiveWords) >> 9) -
         ((activeWords * activeWords) >> 9);
 
-    private static readonly TraceMemory EmptyTraceMemory = new(0, default);
-
     [MethodImpl(MethodImplOptions.NoInlining)]
     public TraceMemory GetTrace()
     {
@@ -826,9 +824,6 @@ public partial struct EvmPooledMemory
 
     private const int MinRentSize = 1_024;
     private const int InlineZeroChunk = 256;
-    // Above this, a cache miss rents from the shared pool instead of allocating (pow2 sizes from
-    // here up are LOH-sized).
-    private const int MaxNewAllocLength = 1 << 16;
     // Buffers up to this stay in the per-thread cache. Frames zero-extend their buffer on growth
     // (RentSlow), and a buffer that round-tripped through the shared pool between frames comes
     // back cold and coherence-invalidated under concurrent load — so those zeroing stores stall.
@@ -902,50 +897,6 @@ public partial struct EvmPooledMemory
         }
     }
 
-#if ZK_EVM
-    private static byte[] RentLarge(int minLength, out ulong initializedSize)
-    {
-        byte[] array = SafeArrayPool<byte>.Shared.Rent(minLength, out bool isFresh);
-        initializedSize = isFresh ? (ulong)array.Length : 0;
-        return array;
-    }
-
-    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
-#else
-    private const int MaxSharedArrayLength = 1 << 20;
-    // Buffers above this limit are allocated directly and are never returned to a pool.
-    private const int MaxLargePooledArrayLength = 1 << 22;
-    private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
-        System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
-
-    private static byte[] RentLarge(int minLength, out ulong initializedSize)
-    {
-        if (minLength > MaxLargePooledArrayLength)
-        {
-            byte[] fresh = new byte[ArrayPoolUtilities.GetPowerOfTwoCapacity(minLength)];
-            initializedSize = (ulong)fresh.Length;
-            return fresh;
-        }
-
-        initializedSize = 0;
-        return minLength > MaxSharedArrayLength
-            ? _largeArrayPool.Rent(minLength)
-            : SafeArrayPool<byte>.Shared.Rent(minLength);
-    }
-
-    private static void ReturnLarge(byte[] array)
-    {
-        if (array.Length > MaxLargePooledArrayLength)
-        {
-            return;
-        }
-
-        if (array.Length > MaxSharedArrayLength)
-            _largeArrayPool.Return(array);
-        else
-            SafeArrayPool<byte>.Shared.Return(array);
-    }
-#endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow(ulong requiredEnd)

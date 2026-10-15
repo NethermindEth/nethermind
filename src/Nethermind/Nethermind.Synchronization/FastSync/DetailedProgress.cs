@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (logger.IsInfo)
                 {
-                    string phase = _isSnapHealing ? "State Heal (Phase 2)" : "State Sync ";
+                    string phase = _isSnapHealing ? "State Sync (Phase 2 of 2, healing)" : "State Sync ";
                     string stateSyncReport = logger.IsDebug ?
                         $"{phase} {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}" :
                         $"{phase} {dataSizeInfo} branch {branchProgress.Progress:P2} | acc {SavedAccounts} | nodes {SavedNodesCount}";
