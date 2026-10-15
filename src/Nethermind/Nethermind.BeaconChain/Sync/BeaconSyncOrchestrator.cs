@@ -234,6 +234,10 @@ public sealed class BeaconSyncOrchestrator(
     private bool _elInSync;
 
     private (ForkchoiceHashes Hashes, long SentAtMs, PayloadStatusV1 Status)? _lastForkchoice;
+    private ulong _forkchoiceHeadSlot;
+
+    /// <summary>Whether the consensus head last sent to the execution layer is more than a slot behind the wall clock.</summary>
+    internal bool IsForkchoiceHeadCatchingUp => slotClock.CurrentSlot > Volatile.Read(ref _forkchoiceHeadSlot) + 1;
 
     /// <summary>How often an unchanged <c>forkchoiceUpdated</c> is still sent; well inside the EL's default 300 s CL liveness window.</summary>
     internal static readonly TimeSpan ForkchoiceResendInterval = TimeSpan.FromSeconds(60);
@@ -489,6 +493,7 @@ public sealed class BeaconSyncOrchestrator(
 
         importer.OnSlotTick(slotClock.CurrentSlot);
         statusHolder.EarliestAvailableSlotSource = EarliestAvailableSlot;
+        if (engine is EngineDriver driver) driver.IsCatchingUp = () => IsForkchoiceHeadCatchingUp;
         StatusMessageV2 anchorStatus = new()
         {
             ForkDigest = _currentDigest,
@@ -2789,6 +2794,7 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         PayloadStatusV1 status;
+        Volatile.Write(ref _forkchoiceHeadSlot, head.HeadSlot);
         try
         {
             status = await engine.ForkchoiceUpdated(sent.Head, sent.Safe, sent.Finalized).WaitAsync(token);

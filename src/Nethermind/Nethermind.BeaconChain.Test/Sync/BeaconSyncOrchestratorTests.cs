@@ -1385,6 +1385,19 @@ public partial class BeaconSyncOrchestratorTests
         await orchestrator.RunWorkerAsync(token);
     }
 
+    [Test]
+    public async Task Execution_layer_sees_a_head_as_catching_up_only_when_the_consensus_head_sent_is_more_than_a_slot_behind([Values(0, 1, 2)] int slotsBehind)
+    {
+        Harness harness = CreateHarness();
+        bool? catchingUpAtSend = null;
+        harness.Engine.OnCall = () => catchingUpAtSend = harness.Orchestrator.IsForkchoiceHeadCatchingUp;
+        harness.Importer.Head = CreateHead(TestItem.KeccakB, WallSlot - (ulong)slotsBehind, finalizedEpoch: 3);
+
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        Assert.That(catchingUpAtSend, Is.EqualTo(slotsBehind > 1), "the head being sent decides, not the one published before it");
+    }
+
     private static Harness CreateHarness(
         ulong anchorSlot = AnchorSlot,
         ulong wallSlot = WallSlot,

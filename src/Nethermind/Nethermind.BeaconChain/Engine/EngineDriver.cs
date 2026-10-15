@@ -38,6 +38,9 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     private Task? _pendingForkchoice;
     private bool _hasSentForkchoice;
 
+    /// <summary>Whether the consensus head being sent is more than a slot behind the wall clock; unset, no head is taken as catching up.</summary>
+    internal Func<bool>? IsCatchingUp { get; set; }
+
     /// <summary>Whether the most recent engine call returned a verdict.</summary>
     public bool IsAvailable => _isAvailable;
     /// <summary>How long a caller waits for a forkchoice update before it counts as unavailable.</summary>
@@ -83,8 +86,8 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// part of this call, and the execution layer accepts V4 for a head of either fork when no attributes
     /// are present. While the node identity is unknown the custody columns are <c>null</c>, which
     /// execution-apis amsterdam.md defines as a CL that provides no custody services.
-    /// While catching up, a head more than one slot behind the wall clock that is a main-chain ancestor of the execution layer's head is sent as
-    /// that head, with the requested safe and finalized blocks; a recent ancestor, such as a reorg to the parent or an EMPTY Gloas head, is sent as is.
+    /// While <see cref="IsCatchingUp"/>, a head that is a main-chain ancestor of the execution layer's head is sent as that head, with the requested
+    /// safe and finalized blocks; at the tip such a head, such as a reorg to the parent or an EMPTY Gloas head's older payload, is sent as is.
     /// </remarks>
     /// <exception cref="EngineUnavailableException">The call produced no status; a failure is not SYNCING.</exception>
     public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
@@ -101,7 +104,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             }
 
             // execution-apis paris.md engine_forkchoiceUpdatedV1: the EL may stay ahead of a VALID ancestor head, so it is not rewound to one.
-            if (clock.CurrentSlot > spec.GetSlotAtTime(requestedHead.Timestamp) + 1
+            if (IsCatchingUp?.Invoke() == true
                 && blockTree.FindHeader(finalizedExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is { } finalized && finalized.Number <= currentHead.Number)
             {
                 if (_logger.IsDebug) _logger.Debug($"Forkchoice head {requestedHead.Number} ({headExecHash.ToShortString()}) is a canonical ancestor of execution head {currentHead.Number}; keeping the execution head");

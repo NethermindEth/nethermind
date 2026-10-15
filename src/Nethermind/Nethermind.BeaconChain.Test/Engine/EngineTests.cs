@@ -38,7 +38,7 @@ public class EngineTests
         BlockHeader anchor = chain.BlockTree.Head!.Header;
         await chain.BuildSomeBlocks(3);
         Hash256 head = chain.BlockTree.Head!.Hash!;
-        (EngineDriver driver, IEngineRpcModule inner) = HeadMovingDriver(chain, Timestamper.Default);
+        (EngineDriver driver, IEngineRpcModule inner) = HeadMovingDriver(chain, catchingUp: true);
 
         PayloadStatusV1 result = await driver.ForkchoiceUpdated(anchor.Hash!, anchor.Hash!, anchor.Hash!);
         for (ulong number = anchor.Number + 1; number <= anchor.Number + (ulong)importedPastAnchor; number++)
@@ -53,25 +53,23 @@ public class EngineTests
     }
 
     [Test]
-    public async Task Canonical_ancestor_head_replaces_the_execution_head_only_while_more_than_a_slot_behind_the_wall_clock([Values] bool catchingUp)
+    public async Task Canonical_ancestor_head_replaces_the_execution_head_only_while_the_consensus_head_catches_up([Values] bool catchingUp)
     {
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
         BlockHeader anchor = chain.BlockTree.Head!.Header;
         await chain.BuildSomeBlocks(3);
         BlockHeader head = chain.BlockTree.Head!.Header;
         BlockHeader parent = chain.BlockTree.FindHeader(head.ParentHash!)!;
-        ulong parentSlot = TestEngineDriver.Spec.GetSlotAtTime(parent.Timestamp);
-        ulong wallSlot = parentSlot + (catchingUp ? 2UL : 1UL);
-        ManualTimestamper wallClock = new(DateTime.UnixEpoch.AddSeconds(TestEngineDriver.Spec.GenesisTime + wallSlot * TestEngineDriver.Spec.SecondsPerSlot));
-        (EngineDriver driver, _) = HeadMovingDriver(chain, wallClock);
+        // The parent's payload is slots older than the wall clock, as is an EMPTY Gloas head's at the tip.
+        (EngineDriver driver, _) = HeadMovingDriver(chain, catchingUp);
 
         await driver.ForkchoiceUpdated(parent.Hash!, anchor.Hash!, anchor.Hash!);
 
-        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(catchingUp ? head.Hash : parent.Hash), "a reorg to the parent at the wall slot reaches the execution layer at once");
+        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(catchingUp ? head.Hash : parent.Hash), "a head at the tip reaches the execution layer whatever its payload's age");
     }
 
     // Like the execution layer's handler, a requested head other than the current one is forced to be the head.
-    private static (EngineDriver Driver, IEngineRpcModule Inner) HeadMovingDriver(BasicTestBlockchain chain, ITimestamper timestamper)
+    private static (EngineDriver Driver, IEngineRpcModule Inner) HeadMovingDriver(BasicTestBlockchain chain, bool catchingUp)
     {
         IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> MoveHead(ForkchoiceStateV1 state)
@@ -82,8 +80,8 @@ public class EngineTests
         inner.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(call => MoveHead(call.Arg<ForkchoiceStateV1>()));
         inner.engine_forkchoiceUpdatedV4(default!, default, default).ReturnsForAnyArgs(call => MoveHead(call.Arg<ForkchoiceStateV1>()));
         EngineDriver driver = new(CreateDetector(inner, out _), LimboLogs.Instance,
-            new SlotClock(TestEngineDriver.Spec, timestamper), TestEngineDriver.Spec,
-            new TestEngineDriver.FixedCustodySource(null), chain.BlockTree);
+            new SlotClock(TestEngineDriver.Spec, Timestamper.Default), TestEngineDriver.Spec,
+            new TestEngineDriver.FixedCustodySource(null), chain.BlockTree) { IsCatchingUp = () => catchingUp };
         return (driver, inner);
     }
 
