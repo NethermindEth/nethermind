@@ -559,7 +559,7 @@ public class PrewarmerScopeProvider(
             baseStorageTree.HintSet(in index, in value);
         }
 
-        // Inlined, as it was before block processing's reads were reported: the report only adds a test of the observer.
+        // Inlined into Get, so a miss makes no call: the JIT does not inline a method this size on its own.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
         {
