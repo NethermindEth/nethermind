@@ -38,10 +38,17 @@ public class GuestReceiptEncodingTests
     /// which measures neither through the one-pass length nor into a buffer sized by it.
     /// </remarks>
     private static byte[] EncodeGeneric(TxReceipt receipt, RlpBehaviors behaviors)
-    {
         IByteBuffer buffer = Unpooled.Buffer();
-        ByteBufferRlpWriter writer = new(buffer);
-        Decoder.Encode(ref writer, receipt, behaviors);
+        try
+        {
+            ByteBufferRlpWriter writer = new(buffer);
+            Decoder.Encode(ref writer, receipt, behaviors);
+            return buffer.ReadAllBytesAsArray();
+        }
+        finally
+        {
+            buffer.Release();
+        }
         return buffer.ReadAllBytesAsArray();
     }
 
