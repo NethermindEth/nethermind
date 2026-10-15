@@ -49,6 +49,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
     private readonly Dictionary<ValueHash256, RecursiveStark> _produced = [];
     private readonly Queue<ValueHash256> _producedOrder = [];
     private readonly Queue<LeanAssembly> _validation = [];
+    private readonly SemaphoreSlim _verification = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
     private readonly ITimer _timer;
     private TaskCompletionSource _hintSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -59,7 +60,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
     private long _incompleteBytes;
     private long _completionBytes;
     private int _pendingValidations;
-    private bool _validating;
+    private int _validationWorkers;
     private bool _disposed;
     private long _lastStats;
     private readonly LeanStats _stats = new();
@@ -86,6 +87,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
 
     internal int PeerCount { get { lock (_gate) return _peers.Count; } }
     internal int AssemblyCount { get { lock (_gate) return _assemblies.Count; } }
+    internal int QueuedValidations { get { lock (_gate) return _pendingValidations; } }
     internal int StoredObjects { get { lock (_gate) return _store.Count; } }
     internal long IncompleteBytes { get { lock (_gate) return _incompleteBytes; } }
     private long BufferedBytes => _incompleteBytes + _completionBytes;
@@ -280,6 +282,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
                 Drop(assembly);
             }
             _assemblies.Clear();
+            if (_validationWorkers == 0) _verification.Dispose();
         }
         _wrappers.WrapperValidated -= OnWrapperValidated;
         _blockTree.NewHeadBlock -= OnNewHead;

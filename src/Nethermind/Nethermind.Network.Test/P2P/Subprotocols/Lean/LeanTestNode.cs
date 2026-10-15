@@ -28,21 +28,36 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Lean;
 /// <summary>Accepts every proof, optionally blocking or rejecting recursive STARK checks.</summary>
 internal sealed class LeanTestVerifier : ILeanProofVerifier
 {
+    private int _active;
+    private int _calls;
+    private int _maxActive;
+
     public bool Valid { get; set; } = true;
     public Exception? AvailabilityError { get; set; }
     public Exception? VerificationError { get; set; }
     public ManualResetEventSlim? Gate { get; set; }
     public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public int Calls => Volatile.Read(ref _calls);
+    public int MaxActive => Volatile.Read(ref _maxActive);
     public void EnsureAvailable() { if (AvailabilityError is { } error) throw error; }
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
 
     public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
-        if (VerificationError is { } error) throw error;
-        Entered.TrySetResult();
-        Gate?.Wait(TimeSpan.FromSeconds(10));
-        return Valid;
+        Interlocked.Increment(ref _calls);
+        int active = Interlocked.Increment(ref _active);
+        int previous;
+        do { previous = Volatile.Read(ref _maxActive); }
+        while (active > previous && Interlocked.CompareExchange(ref _maxActive, active, previous) != previous);
+        try
+        {
+            if (VerificationError is { } error) throw error;
+            Entered.TrySetResult();
+            Gate?.Wait(TimeSpan.FromSeconds(10));
+            return Valid;
+        }
+        finally { Interlocked.Decrement(ref _active); }
     }
 
     public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [1];
@@ -54,6 +69,7 @@ internal sealed class FakeLink(string name = "peer") : ILeanLink
     private readonly List<LeanMessage> _sent = [];
     private readonly List<ChunkMessage> _chunks = [];
     private readonly List<string> _penalties = [];
+    private int _recoveryCalls;
 
     public Func<ChunkMessage, CancellationToken, ValueTask<bool>>? OnChunk { get; set; }
 
@@ -63,14 +79,16 @@ internal sealed class FakeLink(string name = "peer") : ILeanLink
     public PublicKey NodeKey { get; } = new PrivateKey(Nethermind.Core.Crypto.ValueKeccak.Compute(name).ToByteArray()).PublicKey;
     public bool HasTransactionRecovery { get; set; } = true;
     public Func<ValueHash256[], Transaction[]>? OnRecover { get; set; }
-    public int RecoveryCalls { get; private set; }
-    public Task<Transaction[]> RecoverTransactionsAsync(ValueHash256[] hashes, Func<int, bool> reserve, CancellationToken token)
+    public Func<ValueHash256[], CancellationToken, Task<Transaction[]>>? OnRecoverAsync { get; set; }
+    public int RecoveryCalls => Volatile.Read(ref _recoveryCalls);
+    public async Task<Transaction[]> RecoverTransactionsAsync(ValueHash256[] hashes, Func<int, bool> reserve, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        RecoveryCalls++;
-        Transaction[] transactions = OnRecover?.Invoke(hashes) ?? [];
+        Interlocked.Increment(ref _recoveryCalls);
+        Transaction[] transactions = OnRecoverAsync is { } recover
+            ? await recover(hashes, token) : OnRecover?.Invoke(hashes) ?? [];
         int bytes = transactions.Sum(transaction => LeanTestObjects.Envelope(transaction).Length);
-        return Task.FromResult(reserve(bytes) ? transactions : []);
+        return reserve(bytes) ? transactions : [];
     }
 
     public void Send(LeanMessage message)
