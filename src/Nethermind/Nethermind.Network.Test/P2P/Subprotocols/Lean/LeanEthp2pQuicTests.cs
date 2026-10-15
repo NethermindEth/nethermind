@@ -293,6 +293,8 @@ public class LeanEthp2pQuicTests
         }
 
         await using QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA);
+        RegisterRecovery(a, b);
+        RegisterRecovery(b, a);
         Assert.That(await a.Host.DialAsync(b.Record, CancellationToken.None), Is.Not.Null);
         await Until(() => b.Node.Transport.PeerCount == 1, "the listener still accepting");
     }
@@ -314,6 +316,11 @@ public class LeanEthp2pQuicTests
         await using QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA);
         await using QuicNode c = await QuicNode.Start(TestItem.PrivateKeyC);
         await using QuicNode d = await QuicNode.Start(TestItem.PrivateKeyD);
+        foreach (QuicNode peer in new[] { a, c, d })
+        {
+            RegisterRecovery(peer, b);
+            RegisterRecovery(b, peer);
+        }
 
         Assert.That(await a.Host.DialAsync(b.Record, CancellationToken.None), Is.Not.Null);
         await Until(() => b.Host.ConnectionCount == 1, "a in the free slot");
@@ -377,6 +384,8 @@ public class LeanEthp2pQuicTests
     {
         await using QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA);
         await using QuicNode b = await QuicNode.Start(TestItem.PrivateKeyB);
+        RegisterRecovery(a, b);
+        RegisterRecovery(b, a);
 
         await Task.WhenAll(a.Host.DialAsync(b.Record, CancellationToken.None), b.Host.DialAsync(a.Record, CancellationToken.None));
 
