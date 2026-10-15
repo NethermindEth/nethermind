@@ -214,26 +214,40 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Envelopes, signed == false ? Is.Empty : Has.Count.EqualTo(1), "a badly signed envelope is not imported");
     }
 
+    public enum EnvelopeVerdictState
+    {
+        Pending,
+        AbandonedWhileQueued,
+        GivenByRouter,
+    }
+
     [Test]
-    public async Task Gossip_envelopes_for_known_blocks_whose_state_is_not_held_trigger_no_regeneration()
+    public async Task Gossip_envelopes_for_known_blocks_whose_state_is_not_held_trigger_no_regeneration([Values] EnvelopeVerdictState state)
     {
         const int forgeries = 128;
         Harness harness = CreateHarness();
         harness.Importer.EnvelopeSignature = null;
+        harness.Importer.EnvelopeResult = ExecutionPayloadEnvelopeImportResult.StateUnavailable;
         List<MessageValidity> given = [];
         for (int i = 0; i < forgeries; i++)
         {
             Hash256 evictedRoot = Keccak.Compute($"evicted {i}");
             harness.Importer.Known.Add(evictedRoot);
-            GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
+            GossipVerdict verdict = state == EnvelopeVerdictState.GivenByRouter ? GossipVerdict.Local() : new(validity => { given.Add(validity); return true; }, null);
+            if (state == EnvelopeVerdictState.AbandonedWhileQueued)
+            {
+                verdict.Abandon();
+            }
+
             Assert.That(harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipEnvelopeItem(EnvelopeFor(evictedRoot, EnvelopeBlockSlot), verdict)), Is.True);
         }
 
         await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(harness.Importer.Envelopes, Is.Empty, "the import of an evicted block's envelope regenerates its state, which an unverified gossip envelope must not buy");
-        Assert.That(given, Has.Count.EqualTo(forgeries).And.All.EqualTo(MessageValidity.Ignored));
+        Assert.That(harness.Importer.Envelopes, Is.Empty, "the import of an evicted block's envelope regenerates its state, which an unverified gossip envelope must not buy, now or from a retry");
+        Assert.That(given, state == EnvelopeVerdictState.Pending ? Has.Count.EqualTo(forgeries).And.All.EqualTo(MessageValidity.Ignored) : Is.Empty);
     }
 
     [Test]

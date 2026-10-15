@@ -1983,8 +1983,11 @@ public sealed class BeaconSyncOrchestrator(
             local.Complete(MessageValidity.Ignored);
         }
 
-        if (item is GossipEnvelopeItem { Verdict: { IsCompleted: false, IsLocal: false } verdict })
+        if (item is GossipEnvelopeItem gossip)
         {
+            // A verdict abandoned while queued is not given; the envelope is still gossip-sourced and unverified.
+            GossipVerdict? verdict = gossip.Verdict is { IsCompleted: false } pending ? pending : null;
+
             // gloas/p2p-interface.md execution_payload: [REJECT] the signature is valid for the builder (or self-building proposer) of the block it
             // names, after the block-seen IGNORE; the payload's execution is not a gossip rule, so the envelope is accepted before the engine call.
             bool? signed;
@@ -1995,26 +1998,26 @@ public sealed class BeaconSyncOrchestrator(
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error($"Checking the gossip envelope for beacon block {item.Envelope.Message?.BeaconBlockRoot} failed", e);
-                verdict.Complete(MessageValidity.Throttled);
+                verdict?.Complete(MessageValidity.Throttled);
                 return null;
             }
 
             if (signed == false)
             {
-                verdict.Complete(MessageValidity.Rejected);
+                verdict?.Complete(MessageValidity.Rejected);
                 return null;
             }
 
             // An unverified gossip envelope must not buy the regeneration of an evicted state; by-root recovery still imports the payload a child needs.
             if (signed is null && item.Envelope.Message?.BeaconBlockRoot is { } evictedRoot && _importer!.IsKnown(evictedRoot))
             {
-                verdict.Complete(MessageValidity.Ignored);
+                verdict?.Complete(MessageValidity.Ignored);
                 return null;
             }
 
             // [IGNORE] a later envelope for a (block root, builder index) that already has a valid one; claimed before any data or engine wait.
             ExecutionPayloadEnvelope message = item.Envelope.Message!;
-            verdict.Complete(signed == true && gossipRouter.MarkEnvelopeSeen(message.BeaconBlockRoot!, message.BuilderIndex) ? MessageValidity.Accepted : MessageValidity.Ignored);
+            verdict?.Complete(signed == true && gossipRouter.MarkEnvelopeSeen(message.BeaconBlockRoot!, message.BuilderIndex) ? MessageValidity.Accepted : MessageValidity.Ignored);
         }
 
         return await ImportEnvelopeAsync(item.Envelope, token, item.Source);
