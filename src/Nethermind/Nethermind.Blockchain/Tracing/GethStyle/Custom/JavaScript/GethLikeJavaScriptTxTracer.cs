@@ -76,6 +76,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
 
         }
 
+        Engine.CurrentEngine = _engine;
         _tracer = engine.CreateTracer(options.Tracer);
         try
         {
@@ -484,6 +485,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     {
         // A failed JS hook must not abort canonical execution or corrupt later transactions' prestate.
         if (_traceError is not null) return null;
+        Engine.CurrentEngine = _engine;
         bool observedNullThrow = false;
         try
         {

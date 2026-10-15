@@ -599,7 +599,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
         GethTraceOptions options = GethTraceOptions.Default with
         {
             Tracer = NativePrestateTracer.PrestateTracer,
-            TracerConfig = JsonSerializer.Deserialize<JsonElement>(diffMode ? """{"diffMode":true}""" : """{"diffMode":false}""")
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>(diffMode ? """{"diffMode":true}""" : """{"diffMode":false,"includeEmpty":true}""")
         };
         using NativePrestateTracer tracer = new(TestState, options, tx.Hash, Sender, Factory, block.Beneficiary, tx);
 
