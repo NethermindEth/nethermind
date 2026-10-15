@@ -111,6 +111,11 @@ public static unsafe partial class Bytes
         else Unsafe.InitBlockUnaligned(destination, value, checked((uint)length));
     }
 
+    /// <summary>Compares <paramref name="length"/> bytes at <paramref name="a"/> with those at <paramref name="b"/>, as C's <c>memcmp</c>.</summary>
+    /// <remarks>Only where <see cref="ZiskFlag"/> is on, whose runtime turns <c>memcmp</c> into a DMA precompile.</remarks>
+    [DllImport("__Internal", EntryPoint = "memcmp", ExactSpelling = true), SuppressGCTransition]
+    internal static extern int Memcmp(void* a, void* b, nuint length);
+
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowDestinationTooShort() => throw new ArgumentException("Destination is too short.", "destination");
 

@@ -110,39 +110,46 @@ public sealed partial class KeccakHash
     private static unsafe ValueHash256 ComputeHash256(byte* data, nuint length)
     {
         Unsafe.SkipInit(out KeccakState stateBuffer);
-        Span<ulong> state = stateBuffer;
-        ref ulong lane = ref MemoryMarshal.GetReference(state);
+        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        Sponge(ref lane, data, length);
+        return Unsafe.As<ulong, ValueHash256>(ref lane);
+    }
 
+    /// <summary>Absorbs and pads the <paramref name="length"/> bytes at <paramref name="data"/> into a state of
+    /// uninitialized lanes, leaving their digest in its first four lanes.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void Sponge(ref ulong lane, byte* data, nuint length)
+    {
         if (length == Hash532InputLength)
         {
             // A full branch node, the most common input of both the witness load and the trie commit:
             // spelled out, it skips the block loop, and its constant tail folds the lane dispatch away.
             ZeroCapacity(ref lane);
             CopyFirstBlock(ref lane, data);
-            KeccakF(state);
+            Accelerators.KeccakF(ref lane);
             AbsorbBlock(ref lane, data + HASH_DATA_AREA, intoZeroState: false);
-            KeccakF(state);
+            Accelerators.KeccakF(ref lane);
             AbsorbBlock(ref lane, data + 2 * HASH_DATA_AREA, intoZeroState: false);
-            KeccakF(state);
+            Accelerators.KeccakF(ref lane);
             AbsorbPaddedTail(ref lane, data + 3 * HASH_DATA_AREA, Hash532InputLength - 3 * HASH_DATA_AREA);
         }
         else if (length >= HASH_DATA_AREA)
         {
+            // Bounded by the end rather than a remaining length, which the JIT spilled around every permutation.
+            byte* end = data + length;
             ZeroCapacity(ref lane);
             CopyFirstBlock(ref lane, data);
-            KeccakF(state);
+            Accelerators.KeccakF(ref lane);
             data += HASH_DATA_AREA;
-            length -= HASH_DATA_AREA;
 
-            while (length >= HASH_DATA_AREA)
+            while ((nuint)(end - data) >= HASH_DATA_AREA)
             {
                 AbsorbBlock(ref lane, data, intoZeroState: false);
-                KeccakF(state);
+                Accelerators.KeccakF(ref lane);
                 data += HASH_DATA_AREA;
-                length -= HASH_DATA_AREA;
             }
 
-            AbsorbPaddedTail(ref lane, data, length);
+            AbsorbPaddedTail(ref lane, data, (nuint)(end - data));
         }
         else if (length == 32)
         {
@@ -167,14 +174,15 @@ public sealed partial class KeccakHash
         }
 
         Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
-        KeccakF(state);
-        return Unsafe.As<ulong, ValueHash256>(ref lane);
+        Accelerators.KeccakF(ref lane);
     }
 
     /// <summary>Leading rate blocks of a full branch whose sponge states <see cref="ComputeHash256OfWitnessNodes"/> keeps.</summary>
     private const int RetainedBlocks = Hash532InputLength / HASH_DATA_AREA;
     private const int RetainedLanes = RetainedBlocks * STATE_LANES;
     private const int FullBranchTailLength = Hash532InputLength - RetainedBlocks * HASH_DATA_AREA;
+    private const int RateLanes = HASH_DATA_AREA / sizeof(ulong);
+    private const int CapacityBytes = (STATE_LANES - RateLanes) * sizeof(ulong);
 
     /// <summary>The witness nodes <see cref="ComputeHash256OfWitnessNodes"/> keyed last, and what it kept of them.</summary>
     /// <remarks>A class of its own, with no initializer, so each access is a plain load or store rather than a
@@ -206,12 +214,25 @@ public sealed partial class KeccakHash
             ulong* states = (ulong*)NativeMemory.Alloc((nuint)count, RetainedLanes * sizeof(ulong));
             ref byte[] firstNode = ref MemoryMarshal.GetArrayDataReference(nodes);
             ref ValueHash256 firstHash = ref MemoryMarshal.GetReference(hashes);
+            Unsafe.SkipInit(out KeccakState stateBuffer);
+            ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
             for (nint i = 0; i < count; i++)
             {
                 byte[] node = Unsafe.Add(ref firstNode, i);
-                Unsafe.Add(ref firstHash, i) = node.Length == Hash532InputLength
-                    ? ComputeHash532Retaining(node, ref states[i * RetainedLanes])
-                    : ComputeHash256(node);
+                ref ValueHash256 hash = ref Unsafe.Add(ref firstHash, i);
+                // Each digest goes straight into its slot: a returned one was copied there through two temporaries.
+                if (node.Length == Hash532InputLength)
+                {
+                    ComputeHash532Retaining(node, ref states[i * RetainedLanes], ref hash);
+                    continue;
+                }
+
+                fixed (byte* data = node)
+                {
+                    Sponge(ref lane, data, (nuint)node.Length);
+                }
+
+                hash = Unsafe.As<ulong, ValueHash256>(ref lane);
             }
 
             ulong* released = WitnessNodes.States;
@@ -291,10 +312,10 @@ public sealed partial class KeccakHash
         return Unsafe.As<ulong, ValueHash256>(ref lane);
     }
 
-    /// <summary>Hashes a full branch, leaving the state after each of its leading rate blocks in <paramref name="retained"/>.</summary>
+    /// <summary>Hashes a full branch into <paramref name="hash"/>, leaving the state after each of its leading rate blocks in <paramref name="retained"/>.</summary>
     /// <param name="retained">Lane 0 of <see cref="RetainedBlocks"/> consecutive states.</param>
     [SkipLocalsInit]
-    private static unsafe ValueHash256 ComputeHash532Retaining(byte[] node, ref ulong retained)
+    private static unsafe void ComputeHash532Retaining(byte[] node, ref ulong retained, ref ValueHash256 hash)
     {
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
@@ -315,15 +336,17 @@ public sealed partial class KeccakHash
 
         Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
         Accelerators.KeccakF(ref lane);
-        return Unsafe.As<ulong, ValueHash256>(ref lane);
+        hash = Unsafe.As<ulong, ValueHash256>(ref lane);
     }
 
     /// <summary>Whether the rate blocks at <paramref name="a"/> and <paramref name="b"/> are equal.</summary>
-    /// <remarks>Lane by lane, unrolled: corelib's <c>SequenceEqual</c> has no vector width on riscv64 and pays a loop
-    /// and a call for the same word compares.</remarks>
+    /// <remarks>Where <see cref="ZiskFlag"/> is on this is the zkVM's DMA <c>memcmp</c>, a few steps where the lane
+    /// compares take fifty-one. Elsewhere it goes lane by lane, unrolled: corelib's <c>SequenceEqual</c> has no vector
+    /// width on riscv64 and pays a loop and a call for the same word compares.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe bool BlockEquals(byte* a, byte* b) =>
-        LaneEquals(a, b, 0) && LaneEquals(a, b, 1) && LaneEquals(a, b, 2) && LaneEquals(a, b, 3)
+    private static unsafe bool BlockEquals(byte* a, byte* b) => ZiskFlag.IsActive
+        ? Bytes.Memcmp(a, b, HASH_DATA_AREA) == 0
+        : LaneEquals(a, b, 0) && LaneEquals(a, b, 1) && LaneEquals(a, b, 2) && LaneEquals(a, b, 3)
         && LaneEquals(a, b, 4) && LaneEquals(a, b, 5) && LaneEquals(a, b, 6) && LaneEquals(a, b, 7)
         && LaneEquals(a, b, 8) && LaneEquals(a, b, 9) && LaneEquals(a, b, 10) && LaneEquals(a, b, 11)
         && LaneEquals(a, b, 12) && LaneEquals(a, b, 13) && LaneEquals(a, b, 14) && LaneEquals(a, b, 15)
@@ -333,9 +356,16 @@ public sealed partial class KeccakHash
     private static unsafe bool LaneEquals(byte* a, byte* b, nuint index) =>
         Unsafe.ReadUnaligned<ulong>(a + index * sizeof(ulong)) == Unsafe.ReadUnaligned<ulong>(b + index * sizeof(ulong));
 
+    /// <remarks>Where <see cref="ZiskFlag"/> is on this is one DMA <c>memset</c> rather than eight stores.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ZeroCapacity(ref ulong lane)
+    private static unsafe void ZeroCapacity(ref ulong lane)
     {
+        if (ZiskFlag.IsActive)
+        {
+            Bytes.Memset(Unsafe.AsPointer(ref Unsafe.Add(ref lane, RateLanes)), 0, CapacityBytes);
+            return;
+        }
+
         Unsafe.Add(ref lane, 17) = 0;
         Unsafe.Add(ref lane, 18) = 0;
         Unsafe.Add(ref lane, 19) = 0;
@@ -414,9 +444,16 @@ public sealed partial class KeccakHash
     private static unsafe void AbsorbLaneFrom(ref ulong lane, ref ulong source, byte* data, nuint index) =>
         Unsafe.Add(ref lane, index) = Unsafe.Add(ref source, index) ^ Unsafe.ReadUnaligned<ulong>(data + index * sizeof(ulong));
 
+    /// <remarks>Where <see cref="ZiskFlag"/> is on this is one DMA <c>memmove</c> rather than eight loads and stores.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void CopyCapacity(ref ulong lane, ref ulong source)
+    private static unsafe void CopyCapacity(ref ulong lane, ref ulong source)
     {
+        if (ZiskFlag.IsActive)
+        {
+            Bytes.Memmove(Unsafe.AsPointer(ref Unsafe.Add(ref lane, RateLanes)), Unsafe.AsPointer(ref Unsafe.Add(ref source, RateLanes)), CapacityBytes);
+            return;
+        }
+
         Unsafe.Add(ref lane, 17) = Unsafe.Add(ref source, 17);
         Unsafe.Add(ref lane, 18) = Unsafe.Add(ref source, 18);
         Unsafe.Add(ref lane, 19) = Unsafe.Add(ref source, 19);
