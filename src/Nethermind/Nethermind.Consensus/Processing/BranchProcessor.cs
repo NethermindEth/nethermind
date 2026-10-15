@@ -141,6 +141,10 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
+                // Bench harness, not for merge: block processing waits for the warm pass, so every eligible transaction
+                // is taken over from a stored or refreshed footprint.
+                (prewarming as PrewarmingSession)?.WaitForCompletion();
+
                 ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
                     ? options
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
