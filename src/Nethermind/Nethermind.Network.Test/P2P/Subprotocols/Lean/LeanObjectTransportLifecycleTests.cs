@@ -6,8 +6,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Lean;
+using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Lean.LeanTestObjects;
 
@@ -222,6 +225,57 @@ public class LeanObjectTransportLifecycleTests
         finally { gate.Set(); }
     }
 
+    [Test]
+    public async Task Recovery_timeout_is_a_local_failure_and_a_closed_source_does_not_tombstone_the_object()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        logger.IsInfo.Returns(true);
+        using LeanTestNode node = new(logManager: new OneLoggerLogManager(new(logger)));
+        TaskCompletionSource recovering = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int entered = 0;
+        async Task<Transaction[]> HoldReply(ValueHash256[] _, CancellationToken token)
+        {
+            if (Interlocked.Increment(ref entered) == 2) recovering.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return [];
+        }
+        Transaction closedTransaction = FrameTransaction(191), timedOutTransaction = FrameTransaction(192);
+        byte[] closedBody = Wrapper(4096, true, closedTransaction), timedOutBody = Wrapper(4097, true, timedOutTransaction);
+        LeanDescriptor closedDescriptor = Describe(closedBody), timedOutDescriptor = Describe(timedOutBody);
+        FakeLink closedLink = new("independent-ETH") { OnRecoverAsync = HoldReply };
+        FakeLink timedOutLink = new("silent-ETH") { OnRecoverAsync = HoldReply };
+        LeanPeer closedPeer = node.Connect(closedLink), timedOutPeer = node.Connect(timedOutLink);
+        node.Transport.OnAnnounce(closedPeer, new([closedDescriptor]));
+        node.Transport.OnAnnounce(timedOutPeer, new([timedOutDescriptor]));
+        Serve(node, closedPeer, closedLink, closedDescriptor, closedBody);
+        Serve(node, timedOutPeer, timedOutLink, timedOutDescriptor, timedOutBody);
+        await recovering.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        node.Transport.Remove(closedPeer);
+        Assert.That(node.Transport.CompletionBytes, Is.GreaterThan(0), "closing QUIC does not complete its independent ETH request");
+        await Until(() => node.Transport.AssemblyCount == 0 && node.Transport.CompletionBytes == 0, TimeSpan.FromSeconds(25));
+        node.Tick(TimeSpan.FromSeconds(30));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.IsTombstoned(closedDescriptor.ObjectId), Is.False);
+            Assert.That(node.Transport.IsTombstoned(timedOutDescriptor.ObjectId), Is.True, "an open source's unresolved wrapper uses normal local-failure retry policy");
+            Assert.That(closedPeer.ChargedBytes, Is.Zero);
+            Assert.That(timedOutPeer.ChargedBytes, Is.Zero);
+            Assert.That(closedLink.Penalties, Is.Empty);
+            Assert.That(timedOutLink.Penalties, Is.Empty);
+        }
+        logger.DidNotReceive().Warn(Arg.Any<string>());
+        logger.Received().Info(Arg.Is<string>(message => message.Contains("local failures 2, expired 0")));
+
+        FakeLink healthy = new("retry-independent-ETH") { OnRecover = _ => [closedTransaction] };
+        LeanPeer source = node.Connect(healthy);
+        node.Transport.OnAnnounce(source, new([closedDescriptor]));
+        Serve(node, source, healthy, closedDescriptor, closedBody);
+        await Until(() => node.Transport.IsStored(closedDescriptor.ObjectId) && node.Transport.CompletionBytes == 0);
+        Assert.That(healthy.Penalties, Is.Empty);
+    }
+
     private static void Serve(LeanTestNode node, LeanPeer peer, FakeLink link, LeanDescriptor descriptor, byte[] body)
     {
         GetChunksMessage request = link.Sent<GetChunksMessage>().Single(request => request.ObjectId == descriptor.ObjectId);
@@ -230,9 +284,9 @@ public class LeanObjectTransportLifecycleTests
         node.Transport.OnComplete(peer, new(request.RequestId, descriptor.ObjectId, LeanCompleteStatus.Served));
     }
 
-    private static async Task Until(Func<bool> condition)
+    private static async Task Until(Func<bool> condition, TimeSpan? timeout = null)
     {
-        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
-        while (!condition()) await Task.Delay(10, timeout.Token);
+        using CancellationTokenSource cancellation = new(timeout ?? TimeSpan.FromSeconds(10));
+        while (!condition()) await Task.Delay(10, cancellation.Token);
     }
 }
