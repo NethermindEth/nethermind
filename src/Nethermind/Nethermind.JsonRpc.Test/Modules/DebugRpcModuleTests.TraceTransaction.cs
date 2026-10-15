@@ -28,6 +28,142 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [TestCase("valid")]
+    [TestCase("bad")]
+    [TestCase("prefix-error")]
+    public async Task Debug_traceTransaction_validates_timeout_after_prefix_before_stream_commit(string scenario)
+    {
+        bool invalidTimeout = scenario != "valid";
+        ExecutionCount counter = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter>(
+                (_, inner) => new BudgetCountingAdapter(inner, counter)));
+        ulong nonce = chain.ReadOnlyState.GetNonce(TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i).WithValue(1)
+                .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        System.IO.Pipelines.Pipe pipe = new(new System.IO.Pipelines.PipeOptions(pauseWriterThreshold: 0));
+        counter.Enabled = true;
+        List<Hash256> executed = [];
+        counter.OnExecute = transaction =>
+        {
+            executed.Add(transaction.Hash!);
+            Assert.That(pipe.Writer.UnflushedBytes, Is.Zero, "no transport bytes during prefix/target Execute");
+            if (scenario == "prefix-error") throw new InvalidOperationException("prefix failure");
+        };
+        try
+        {
+            using JsonRpcResponse response = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_traceTransaction",
+                transactions[1].Hash!, new { timeout = invalidTimeout ? "bad" : "5s", streamMode = true });
+            await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, Nethermind.Serialization.Json.EthereumJsonSerializer.JsonOptions,
+                System.Threading.CancellationToken.None);
+            await pipe.Writer.CompleteAsync();
+            System.IO.Pipelines.ReadResult read = await pipe.Reader.ReadAsync();
+            string json = System.Text.Encoding.UTF8.GetString(System.Buffers.BuffersExtensions.ToArray(read.Buffer));
+            JObject parsed = JObject.Parse(json);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(counter.Calls, Is.EqualTo(invalidTimeout ? 1 : 2), "prefix once, target only for valid timeout, no suffix");
+                Assert.That(executed, Is.EqualTo(invalidTimeout
+                    ? new[] { transactions[0].Hash! }
+                    : new[] { transactions[0].Hash!, transactions[1].Hash! }));
+                Assert.That(parsed["id"]!.Value<int>(), Is.EqualTo(67));
+                if (scenario == "prefix-error")
+                {
+                    Assert.That(parsed["error"], Is.Null);
+                    Assert.That(parsed["result"]?["failed"]?.Value<bool>(), Is.True);
+                    Assert.That(parsed["result"]?["error"]?.Value<string>(), Does.Contain("prefix failure"));
+                    Assert.That(parsed["result"]?["errorCode"]?.Value<int>(), Is.EqualTo(-32603));
+                }
+                else if (invalidTimeout)
+                {
+                    Assert.That(parsed["result"], Is.Null);
+                    Assert.That(parsed["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000));
+                    Assert.That(parsed["error"]?["message"]?.Value<string>(), Does.Contain("Cannot parse 'bad'"));
+                }
+                else
+                {
+                    Assert.That(parsed["error"], Is.Null);
+                    Assert.That(parsed["result"]?.ToString(Newtonsoft.Json.Formatting.None),
+                        Is.EqualTo("{\"structLogs\":[],\"gas\":21000,\"failed\":false,\"returnValue\":\"0x\"}"));
+                }
+            }
+        }
+        finally
+        {
+            await pipe.Writer.CompleteAsync();
+            await pipe.Reader.CompleteAsync();
+        }
+    }
+
+    [TestCase("unknown")]
+    [TestCase("native")]
+    [TestCase("config")]
+    [TestCase("config-valid-timeout")]
+    [TestCase("native-valid-timeout")]
+    [TestCase("type")]
+    [TestCase("oversized")]
+    [TestCase("extension")]
+    public async Task Debug_traceTransaction_semantic_timeout_phase(string scenario)
+    {
+        using Context context = await Context.Create();
+        Transaction transaction = await AddBlockWithTransfer(context);
+        bool invalidConfig = scenario is "config" or "config-valid-timeout";
+        object timeout = scenario switch
+        {
+            "type" => 7,
+            "oversized" => new string('x', 65),
+            "config-valid-timeout" or "native-valid-timeout" => "5s",
+            _ => "bad"
+        };
+        Dictionary<string, object> options = new()
+        {
+            ["tracer"] = invalidConfig ? "prestateTracer" : NativeNoopTracer.NoopTracer,
+            ["timeout"] = timeout
+        };
+        if (invalidConfig) options["tracerConfig"] = new { diffMode = Array.Empty<int>() };
+        Hash256 hash = scenario == "unknown" ? TestItem.KeccakD : transaction.Hash!;
+        string method = scenario == "extension" ? "debug_traceTransactionInBlockByHash" : "debug_traceTransaction";
+        object[] parameters = scenario == "extension"
+            ? [Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString(), hash, options]
+            : [hash, options];
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        if (scenario == "native-valid-timeout")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That(json["result"], Is.EqualTo(new JObject()).Using(JToken.EqualityComparer), response);
+            }
+            return;
+        }
+        int expectedCode = scenario switch
+        {
+            "unknown" => ErrorCodes.ResourceNotFound,
+            "native" => ErrorCodes.InvalidInput,
+            _ => ErrorCodes.InvalidParams
+        };
+        string? diagnostic = scenario switch
+        {
+            "unknown" => "transaction not found",
+            "native" => "Cannot parse 'bad' as a duration",
+            "config" or "config-valid-timeout" => "Cannot convert",
+            _ => null
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+            Assert.That(json["result"], Is.Null, response);
+            if (diagnostic is not null) Assert.That(json["error"]?.ToString(), Does.Contain(diagnostic), response);
+        }
+    }
+
     [TestCase(null)]
     [TestCase("missingTracer")]
     public async Task Debug_traceTransaction_unknown_hash_returns_geth_error_before_tracer_validation(string? tracer)
