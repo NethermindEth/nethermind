@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -22,7 +21,6 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
