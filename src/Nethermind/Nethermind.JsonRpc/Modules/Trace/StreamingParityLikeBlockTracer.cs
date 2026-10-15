@@ -232,14 +232,8 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     private void EmitReplayEnvelopeTail(ParityLikeTxTrace trace) =>
         ParityReplayEnvelopeWriter.WriteTail(_writer, trace, _includeTxHash, _jsonOptions);
 
-    private void EmitStoreItems(ParityLikeTxTrace trace)
-    {
-        foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
-        {
-            if (_storeFilter is not null && !_storeFilter.ShouldUseTxTrace(item.Action)) continue;
-            TypeInfoJsonSerializer.Serialize(_writer, item, _jsonOptions);
-        }
-    }
+    private void EmitStoreItems(ParityLikeTxTrace trace) =>
+        ParityTxTraceFromStore.Write(_writer, trace, _storeFilter, _jsonOptions);
 
     private void FlushPipe()
     {
