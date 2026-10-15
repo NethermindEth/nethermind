@@ -248,7 +248,8 @@ internal sealed class StateRequestLimiter : IDisposable
 
     /// <summary>Which limiter pool a route under <c>/eth/v1/beacon/states</c> belongs to.</summary>
     /// <remarks>
-    /// <c>root</c> reads the block's <c>state_root</c>, <c>fork</c> a 176-byte prefix, and the small lists of <c>head</c> come from the head clone, so they hold no state-sized memory and are exempt.
+    /// <c>root</c> reads the block's <c>state_root</c> and <c>fork</c> a 176-byte prefix, so they hold no state-sized memory and are exempt.
+    /// The <c>head</c> lists (<c>pending_deposits</c>, <c>pending_partial_withdrawals</c>, <c>pending_consolidations</c>, <c>proposer_lookahead</c>) allocate the whole selected list per SSZ response, so they stay in the query pool.
     /// <c>finality_checkpoints</c> and <c>randao</c> read a persisted prefix of about 2.7 MB on mainnet, so they stay in the query pool.
     /// The registry-sized routes materialize every validator, so they share the download pool and its per-minute cap, and a slow reader of one never holds a query permit.
     /// </remarks>
@@ -261,13 +262,6 @@ internal sealed class StateRequestLimiter : IDisposable
         ReadOnlySpan<char> name = route[(leaf + 1)..];
         if (name.Equals("root", StringComparison.OrdinalIgnoreCase)
             || name.Equals("fork", StringComparison.OrdinalIgnoreCase))
-            return StateRouteKind.Exempt;
-
-        if (route[1..leaf].Equals("head", StringComparison.Ordinal)
-            && (name.Equals("pending_deposits", StringComparison.OrdinalIgnoreCase)
-                || name.Equals("pending_partial_withdrawals", StringComparison.OrdinalIgnoreCase)
-                || name.Equals("pending_consolidations", StringComparison.OrdinalIgnoreCase)
-                || name.Equals("proposer_lookahead", StringComparison.OrdinalIgnoreCase)))
             return StateRouteKind.Exempt;
 
         return name.Equals("validators", StringComparison.OrdinalIgnoreCase)
