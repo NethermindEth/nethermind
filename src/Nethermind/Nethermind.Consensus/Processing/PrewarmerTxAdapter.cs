@@ -11,6 +11,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using EvmMetrics = Nethermind.Evm.Metrics;
 
@@ -47,7 +48,7 @@ public class PrewarmerTxAdapter(
             }
 
             // What the transaction writes goes to the block's footprints, so those that read it are refreshed on those values.
-            if (prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites) return ExecuteReportingWrites(transaction, txTracer, committed);
+            if (prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites) return ExecuteReportingWrites(transaction, txTracer, committed, footprint);
         }
 
         return baseAdapter.Execute(transaction, txTracer);
@@ -62,17 +63,21 @@ public class PrewarmerTxAdapter(
         if (_logger.IsDebug) _logger.Debug($"Executing transaction {tx.Hash}, its pre-warm footprint failed to apply: {ex}");
     }
 
-    private TransactionResult ExecuteReportingWrites(Transaction transaction, ITxTracer txTracer, CommittedStorageWrites committed)
+    private TransactionResult ExecuteReportingWrites(Transaction transaction, ITxTracer txTracer, CommittedStorageWrites committed, TransactionFootprint? footprint)
     {
         committed.Begin();
+        bool executed = false;
         try
         {
-            return baseAdapter.Execute(transaction, txTracer);
+            TransactionResult result = baseAdapter.Execute(transaction, txTracer);
+            executed = true;
+            return result;
         }
         finally
         {
             // Reported also when there are none: the writes its footprint predicted were not made.
-            preWarmer.ReportExecutedWrites(committed.End());
+            ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes = committed.End();
+            preWarmer.ReportExecutedWrites(writes, executed ? preWarmer.CollectExecutedAccounts(transaction, footprint, worldState) : null);
         }
     }
 

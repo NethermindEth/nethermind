@@ -245,9 +245,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
                     if (footprints is not null)
                     {
-                        footprints.EndWarmPass();
-                        // A block whose workers never ran out of jobs starts its refresh worker here.
+                        // The warm runs are all done: the refresh workers take every warm worker's place.
                         StartRefreshing(blockState);
+                        footprints.EndWarmPass();
                     }
 
                     discoveryWork?.WaitForCompletion();
@@ -1491,62 +1491,74 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             recorder.Stop();
         }
 
-        // A sender the parent state cannot fund fails before anything runs; warm it as before.
-        return result.Error is TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance or TransactionResult.ErrorType.InsufficientSenderBalance
-            ? scope.TransactionProcessor.Warmup(tx, tracer)
-            : result;
+        // A sender the parent state cannot fund fails before anything runs; warm it as before, and run it again once an
+        // earlier transaction funds it.
+        if (result.Error is TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance or TransactionResult.ErrorType.InsufficientSenderBalance)
+        {
+            blockState.Footprints?.MarkUnfunded(txIndex);
+            return scope.TransactionProcessor.Warmup(tx, tracer);
+        }
+
+        return result;
     }
 
     /// <summary>
-    /// Starts the block's refresh worker once its warm pass has handed out every job, so the refreshes take the capacity
-    /// the pass leaves idle rather than a share of the pass.
+    /// Starts the block's refresh workers once its warm pass is done, one for each warm worker, so the refreshes take the
+    /// capacity the pass leaves.
     /// </summary>
     private void StartRefreshing(BlockState blockState)
     {
         if (blockState.Footprints is not { } footprints || blockState.Token.IsCancellationRequested || !blockState.TryClaimRefreshing()) return;
         CancellationToken token = blockState.Token;
-        blockState.SetRefreshing(ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions, _ => RefreshInvalidated(blockState, footprints, token)));
+        int workers = Math.Max(1, _concurrencyLevel);
+        footprints.SetWorkers(workers);
+        ParallelOptions options = new() { MaxDegreeOfParallelism = workers, CancellationToken = token };
+        blockState.SetRefreshing(ParallelUnbalancedWork.BackgroundFor(0, workers, options, worker => RefreshInvalidated(blockState, footprints, worker == 0, token)));
     }
 
     /// <summary>
     /// Refreshes the footprints the block's earlier transactions invalidate, nearest to block processing first, and takes
     /// the writes block processing reports, until block processing starts the block's last transaction.
     /// </summary>
-    private void RefreshInvalidated(BlockState blockState, BlockFootprints footprints, CancellationToken token)
+    /// <param name="polls">
+    /// Whether this worker also watches block processing's progress, so the refreshes it leaves outside the window are
+    /// taken as it nears them.
+    /// </param>
+    private void RefreshInvalidated(BlockState blockState, BlockFootprints footprints, bool polls, CancellationToken token)
     {
+        IPrewarmerEnv? env = null;
         try
         {
             while (!token.IsCancellationRequested)
             {
                 footprints.ApplyExecuted();
+                int processing = MainThreadTxIndex;
                 // The next transaction is the one block processing reaches next; it is left to execution.
-                if (footprints.TryTakeInvalidated(MainThreadTxIndex + 1, out int position))
+                int limit = footprints.Windowed ? processing + 2 + BlockFootprints.RefreshWindow : int.MaxValue;
+                if (footprints.TryTakeInvalidated(processing + 1, limit, out int position))
                 {
-                    // Held only while there are refreshes to run.
-                    IPrewarmerEnv env = _envPool.Get();
-                    try
-                    {
-                        do
-                        {
-                            Refresh(env, blockState, footprints, position, token);
-                            if (token.IsCancellationRequested) return;
-                            footprints.ApplyExecuted();
-                        }
-                        while (footprints.TryTakeInvalidated(MainThreadTxIndex + 1, out position));
-                    }
-                    finally
-                    {
-                        _envPool.Return(env);
-                    }
+                    // Another worker takes the next one.
+                    if (footprints.HasInvalidated) footprints.Wake();
+                    env ??= _envPool.Get();
+                    Refresh(env, blockState, footprints, position, token);
+                    continue;
                 }
 
-                int processing = MainThreadTxIndex;
-                // Checked only when the worker wakes: block processing moving on signals nothing, so after the last report
-                // the worker waits for the session to end, holding no env.
+                // The refreshes the warm pass left are done; from now on only those near block processing are taken.
+                if (footprints.WarmPassEnded) footprints.EnterWindow();
+                // Held only while there are refreshes to run.
+                if (env is not null)
+                {
+                    _envPool.Return(env);
+                    env = null;
+                }
+
+                // Checked only when the worker wakes: after the last report the worker waits for the session to end.
                 if (processing >= footprints.Count - 1) return;
                 // A pass waited on before block processing ends with what it has refreshed.
                 if (processing < 0 && !footprints.WaitsForBlockProcessing && footprints.WarmPassEnded && !footprints.HasWork) return;
-                footprints.WaitForWork(token);
+                if (polls && footprints.HasInvalidated) footprints.WaitForWork(1, token);
+                else footprints.WaitForWork(token);
             }
         }
         catch (OperationCanceledException)
@@ -1557,41 +1569,59 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             _logger.DebugError("Error refreshing invalidated footprints", ex);
         }
+        finally
+        {
+            if (env is not null) _envPool.Return(env);
+        }
     }
 
-    /// <summary>Runs the transaction at <paramref name="position"/> again on the slot values the footprints before it leave.</summary>
+    /// <summary>
+    /// Runs the transaction at <paramref name="position"/> again on the state the transactions before it leave: its
+    /// accounts as the footprints before it change them, or as block processing reported them, and its slots at the
+    /// values they leave.
+    /// </summary>
     private static void Refresh(IPrewarmerEnv env, BlockState blockState, BlockFootprints footprints, int position, CancellationToken token)
     {
         Blockchain.Metrics.PrewarmRefreshes++;
-        if (footprints.Get(position) is not { } invalidated || env.Recorder is not { } recorder || footprints.ReadsUntrackedSlot(invalidated))
+        TransactionFootprint? invalidated = footprints.Get(position);
+        if (env.Recorder is not { } recorder
+            || (invalidated is null ? !footprints.IsUnfunded(position) : footprints.ReadsUntrackedSlot(invalidated)))
         {
             Blockchain.Metrics.PrewarmRefreshesSkipped++;
             return;
         }
 
-        Transaction tx = invalidated.Transaction;
+        Transaction tx = invalidated?.Transaction ?? blockState.Block.Transactions[position];
         BlockHeader header = blockState.Block.Header;
+        IReleaseSpec spec = blockState.Spec;
         using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(header);
-        scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, blockState.Spec));
+        scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         IWorldState state = scope.WorldState;
         bool running = false;
         try
         {
             int seededAt = footprints.WritesVersion;
             bool moved = false;
-            foreach (ref readonly SlotPrecondition slot in invalidated.Slots)
+            // Accounts first: creating or deleting one resets its storage.
+            if (invalidated is null)
             {
-                if (footprints.ValueBefore(in slot.Cell, position) is { } value)
+                moved |= footprints.SeedAccount(state, spec, tx.SenderAddress!, position);
+                if (tx.To is { } to) footprints.SeedAccount(state, spec, to, position);
+            }
+            else
+            {
+                foreach (ref readonly AccountPrecondition account in invalidated.Accounts)
                 {
-                    moved |= value != slot.Value;
-                    state.Set(in slot.Cell, in value);
+                    if (account.Fields != AccountFields.None) footprints.SeedAccount(state, spec, account.Address, position);
                 }
-                else if (!moved)
+
+                foreach (ref readonly SlotPrecondition slot in invalidated.Slots)
                 {
-                    // No footprint before it writes the slot, which is at its parent value; the run may have read another.
-                    state.Get(in slot.Cell, out UInt256 parent);
-                    moved = parent != slot.Value;
+                    if (footprints.ValueBefore(in slot.Cell, position) is { } value) state.Set(in slot.Cell, in value);
                 }
+
+                // Unchanged when the footprint still holds on the state the transactions before it leave.
+                moved = !invalidated.Matches(state);
             }
 
             if (!moved)
@@ -1641,8 +1671,47 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     }
 
     /// <summary>Hands the storage writes of the transaction block processing just executed to the block's footprints; empty when it wrote none.</summary>
-    internal void ReportExecutedWrites(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes) =>
-        Volatile.Read(ref _footprints)?.QueueExecuted(_mainThreadTxIndex, writes);
+    internal void ReportExecutedWrites(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes, ExecutedAccount[]? accounts = null) =>
+        Volatile.Read(ref _footprints)?.QueueExecuted(_mainThreadTxIndex, writes, accounts);
+
+    /// <summary>
+    /// The accounts the transaction block processing just executed may have changed that a later transaction depends on,
+    /// as it left them: its sender, its recipient and the accounts its footprint changes.
+    /// </summary>
+    internal ExecutedAccount[]? CollectExecutedAccounts(Transaction tx, TransactionFootprint? footprint, IWorldState state)
+    {
+        if (Volatile.Read(ref _footprints) is not { } footprints) return null;
+        int position = _mainThreadTxIndex;
+        ExecutedAccount[]? accounts = null;
+        int count = 0;
+        Add(tx.SenderAddress);
+        Add(tx.To);
+        if (footprint is not null)
+        {
+            foreach (ref readonly StateEffect effect in footprint.Effects)
+            {
+                if (effect.Kind != EffectKind.SetStorage) Add(effect.Address);
+            }
+        }
+
+        return accounts is null ? null : count == accounts.Length ? accounts : accounts[..count];
+
+        void Add(Address? address)
+        {
+            if (address is null || !footprints.WatchesAccount(address, position)) return;
+            for (int i = 0; i < count; i++)
+            {
+                if (accounts![i].Address == address) return;
+            }
+
+            accounts ??= new ExecutedAccount[4];
+            if (count == accounts.Length) Array.Resize(ref accounts, count * 2);
+            bool exists = state.AccountExists(address);
+            accounts[count++] = exists
+                ? new ExecutedAccount(address, true, state.GetNonce(address), state.GetBalance(address))
+                : new ExecutedAccount(address, false, 0, default);
+        }
+    }
 
     /// <summary>Whether the block's footprints take the writes of the transactions block processing executes.</summary>
     internal bool TakesExecutedWrites => Volatile.Read(ref _footprints) is not null;
@@ -2571,9 +2640,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 {
                     Warm(job.Transactions.AsSpan(), job.LastIndex);
                 }
-
-                // The jobs are all handed out: the refresh worker takes what this worker leaves idle.
-                preWarmer.StartRefreshing(queue.BlockState);
 
                 if (far) return;
 
