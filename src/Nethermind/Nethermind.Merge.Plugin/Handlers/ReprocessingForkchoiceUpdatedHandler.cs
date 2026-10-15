@@ -33,7 +33,7 @@ internal sealed class ReprocessingForkchoiceUpdatedHandler(
     IReceiptConfig receiptConfig,
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
-    private readonly ProcessingOptions _processingOptions = NewPayloadHandler.GetProcessingOptions(receiptConfig);
+    private readonly ProcessingOptions _processingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
     private readonly ILogger _logger = logManager.GetClassLogger<ReprocessingForkchoiceUpdatedHandler>();
     private Task _reprocessing = Task.CompletedTask;
 
@@ -50,12 +50,13 @@ internal sealed class ReprocessingForkchoiceUpdatedHandler(
 
     private void TryReprocess(Hash256 headHash)
     {
-        Block? head = blockTree.FindBlock(headHash, BlockTreeLookupOptions.None);
-        if (head?.ParentHash is null
-            || blockTree.GetInfo(head.Number, headHash).Info is not { WasProcessed: false, IsBeaconInfo: false }
-            || blockTree.FindHeader(head.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, head.Number - 1) is not { } parent
+        // FindBlock goes last: without block info it would create the level.
+        if (blockTree.FindHeader(headHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not { ParentHash: not null } header
+            || blockTree.GetInfo(header.Number, headHash).Info is not { WasProcessed: false, IsBeaconInfo: false }
+            || blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number - 1) is not { } parent
             || !blockTree.WasProcessed(parent.Number, parent.GetOrCalculateHash())
-            || !stateReader.HasStateForBlock(parent))
+            || !stateReader.HasStateForBlock(parent)
+            || blockTree.FindBlock(headHash, BlockTreeLookupOptions.None, header.Number) is not { } head)
         {
             return;
         }
