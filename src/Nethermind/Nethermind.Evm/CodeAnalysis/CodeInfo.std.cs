@@ -10,6 +10,17 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
 {
+    public static CodeInfo Empty { get; }
+    // Empty code sentinel
+    private static readonly JumpDestinationAnalyzer _emptyAnalyzer;
+
+    static CodeInfo()
+    {
+        CodeInfo stub = new(); // allocate without analyzer
+        _emptyAnalyzer = new JumpDestinationAnalyzer(stub, skipAnalysis: true);
+        Empty = new CodeInfo(_emptyAnalyzer);
+    }
+
     // Until first execution, the caller's code: its array when that holds exactly the code, otherwise its
     // memory boxed. After it, the padded copy. One reference, so replacing it cannot tear a reader's view.
     private object _code = Array.Empty<byte>();

@@ -153,7 +153,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];
 
-                env.SimulateRequestState.SetTxsWithExplicitGas(calls);
+                env.SimulateRequestState.Calls = calls;
 
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
@@ -286,7 +286,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         BlockHeader result = parent.CreateSimulatedChild(parent.Timestamp + blocksConfig.SecondsPerSlot);
 
-        if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
+        // EIP-3675: post-merge blocks have zero difficulty, so a child of one is post-merge too. The merge block number
+        // alone is not enough: a node that synced past the merge never records the terminal block, leaving it unknown
+        // on chains whose chainspec does not pin it (Gnosis, Chiado). A post-merge child misclassified as pre-merge
+        // would run consensus rules the chain dropped at the merge, like AuRa's block gas limit contract check.
+        if (parent.Difficulty.IsZero || (ForkActivation)result.Number >= specProvider.MergeBlockNumber)
         {
             result.IsPostMerge = true;
         }

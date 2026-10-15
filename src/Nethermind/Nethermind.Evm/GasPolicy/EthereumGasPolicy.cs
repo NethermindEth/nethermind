@@ -349,11 +349,9 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         where Eip3860 : struct, IFlag
         where Eip8038 : struct, IFlag
     {
-        ulong baseCost = Eip8038.IsActive ? Eip8038Constants.CreateAccess
-            : Eip8037.IsActive ? GasCostOf.CreateExecution : GasCostOf.Create;
+        ulong baseCost = CreateGasCost.Base<TOpCreate>(Eip8038.IsActive, Eip8037.IsActive);
         ulong initCodeWordCost = Eip3860.IsActive ? GasCostOf.InitCodeWord * initCodeWords : 0;
-        ulong create2HashCost = typeof(TOpCreate) == typeof(EvmInstructions.OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
-        return UpdateGas(ref gas, baseCost + initCodeWordCost + create2HashCost);
+        return UpdateGas(ref gas, baseCost + initCodeWordCost + CreateGasCost.InitCodeHashing<TOpCreate>(initCodeWords));
     }
 
     private interface IStorageMode
@@ -796,7 +794,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in EthereumGasPolicy intrinsicGas, IReleaseSpec spec, out EthereumGasPolicy available)
+    public static bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in EthereumGasPolicy intrinsicGas, IReleaseSpec spec, out EthereumGasPolicy available, bool capExecutionGas = true)
     {
         ulong intrinsicTotal = intrinsicGas.Value + (ulong)intrinsicGas.StateReservoir;
         if (gasLimit < intrinsicTotal)
@@ -808,7 +806,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ulong evmGas = gasLimit - intrinsicTotal;
         ulong reservoir = 0;
 
-        if (spec.IsEip8037Enabled)
+        if (spec.IsEip8037Enabled && capExecutionGas)
         {
             // EIP-8037: cap gas_left at TX_MAX_GAS_LIMIT - intrinsic_execution, overflow goes to reservoir
             ulong maxGasLeft = Eip7825Constants.DefaultTxGasLimitCap.SaturatingSub(intrinsicGas.Value);

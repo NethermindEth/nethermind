@@ -65,6 +65,13 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
     bool RestrictIpcSocketPermissions { get; set; }
 
+    /// <summary>
+    /// Gets or sets the JSON-RPC namespaces enabled over IPC. Defaults to <see langword="null"/>;
+    /// a null or empty array uses <see cref="EnabledModules"/>.
+    /// </summary>
+    [ConfigItem(Description = "An array of JSON-RPC namespaces to enable over the IPC socket, for instance `[engine,eth]`. If not set or empty, the IPC socket uses `JsonRpc.EnabledModules`.")]
+    string[]? IpcEnabledModules { get; set; }
+
     [ConfigItem(
         Description = """
             An array of JSON-RPC namespaces to enable. For instance, `[debug,eth]`.
@@ -116,7 +123,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "Data/jsonrpc.filter")]
     string CallsFilterFilePath { get; set; }
 
-    [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
+    [ConfigItem(Description = "The max length of an HTTP request body or a WebSocket message, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
     [ConfigItem(

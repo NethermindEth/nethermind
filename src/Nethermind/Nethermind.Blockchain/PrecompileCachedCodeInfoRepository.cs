@@ -82,6 +82,9 @@ public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         _baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
 
+    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        _baseCodeInfoRepository.InsertTransientCode(code, codeOwner, spec);
+
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         _baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
 
