@@ -8,6 +8,8 @@ namespace Nethermind.Trie;
 
 public static partial class HexPrefix
 {
+    private static readonly byte[][] SingleNibblePaths = CreateSingleNibblePaths();
+    private static readonly byte[][] DoubleNibblePaths = CreateDoubleNibblePaths();
     private static readonly byte[][] TripleNibblePaths = CreateTripleNibblePaths();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
