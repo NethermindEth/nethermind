@@ -230,6 +230,11 @@ namespace Nethermind.Core
         public bool SeekTo(ReadOnlySpan<byte> key);
     }
 
+    public interface IRebindableSortedView : ISeekableSortedView
+    {
+        bool TryResetBounds(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+    }
+
     [Flags]
     public enum ReadFlags
     {

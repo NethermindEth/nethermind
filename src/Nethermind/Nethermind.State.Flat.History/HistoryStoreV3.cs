@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db;
 
@@ -46,7 +47,14 @@ internal sealed class HistoryStoreV3
     /// <summary>The recorded change nearest above <paramref name="block"/>. -1 when none is recorded - this store
     /// makes no claim about the live value. 0 for an empty pre-value, otherwise the bytes written.</summary>
     [SkipLocalsInit]
-    public int TryGetValueBeforeNextChange(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong nextChangeBlock)
+    public int TryGetValueBeforeNextChange(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong nextChangeBlock,
+        ReadScope? scope = null, long generation = 0) => scope is null
+        ? Read(block, flatKey, outBuffer, out nextChangeBlock, null, generation)
+        : scope.Read(this, block, flatKey, outBuffer, out nextChangeBlock, generation);
+
+    [SkipLocalsInit]
+    private int Read(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong nextChangeBlock,
+        ReadScope? scope, long generation)
     {
         nextChangeBlock = 0;
 
@@ -60,7 +68,8 @@ internal sealed class HistoryStoreV3
         flatKey.CopyTo(upperBound);
         upperBound[flatKey.Length..].Fill(0xFF);
 
-        using ISortedView view = _history.GetViewBetween(seekKey, upperBound);
+        using ISortedView? ownedView = scope is null ? _history.GetViewBetween(seekKey, upperBound) : null;
+        ISortedView view = ownedView ?? scope!.GetView(_history, seekKey, upperBound, generation);
         if (!view.MoveNext()) return -1;
 
         ReadOnlySpan<byte> foundKey = view.CurrentKey;
@@ -77,6 +86,46 @@ internal sealed class HistoryStoreV3
 
         value.CopyTo(outBuffer);
         return value.Length;
+    }
+
+    internal sealed class ReadScope : IDisposable
+    {
+        private readonly Lock _lock = new();
+        private ISortedView? _view;
+        private long _generation;
+        private bool _disposed;
+
+        internal int Read(HistoryStoreV3 store, ulong block, ReadOnlySpan<byte> flatKey, Span<byte> output,
+            out ulong nextChangeBlock, long generation)
+        {
+            lock (_lock)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                return store.Read(block, flatKey, output, out nextChangeBlock, this, generation);
+            }
+        }
+
+        internal ISortedView GetView(ISortedKeyValueStore history, ReadOnlySpan<byte> lower, ReadOnlySpan<byte> upper, long generation)
+        {
+            if (_generation == generation && _view is IRebindableSortedView reusable && reusable.TryResetBounds(lower, upper)) return _view;
+
+            _view?.Dispose();
+            _view = null;
+            _view = history.GetViewBetween(lower, upper);
+            _generation = generation;
+            return _view;
+        }
+
+        public void Dispose()
+        {
+            lock (_lock)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _view?.Dispose();
+                _view = null;
+            }
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
+using Nethermind.Core.Test.IO;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 using Nethermind.Core.Test;
 using Nethermind.Db;
 using NUnit.Framework;
@@ -118,6 +123,35 @@ public class HistoryStoreV3Tests
             Span<byte> buffer = stackalloc byte[64];
             _store.TryGetValueBeforeNextChange(5, KeyA, buffer, out _);
         }, Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void ReadScope_WhenCaptureGenerationChanges_RefreshesTheSnapshot([Values] bool flush)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        DbConfig config = new();
+        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false);
+        using DbOnTheRocks db = new(directory.Path, new DbSettings("Blocks", "history"), config, factory, LimboLogs.Instance);
+        HistoryStoreV3 store = new(db);
+        using (IWriteBatch batch = db.StartWriteBatch()) store.RecordPreValue(20, KeyA, [0xAA], batch);
+        if (flush) db.Flush();
+        using HistoryStoreV3.ReadScope scope = new();
+        Span<byte> output = stackalloc byte[64];
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyA, output, out _, scope, generation: 0), Is.EqualTo(1));
+        Assert.That(output[0], Is.EqualTo(0xAA));
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out _, scope, generation: 0), Is.EqualTo(-1));
+
+        using (IWriteBatch batch = db.StartWriteBatch()) store.RecordPreValue(25, KeyB, [0xBB], batch);
+        if (flush) db.Flush();
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out _, scope, generation: 0), Is.EqualTo(-1));
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out ulong next, scope, generation: 1), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(output[0], Is.EqualTo(0xBB));
+            Assert.That(next, Is.EqualTo(25UL));
+        }
+        scope.Dispose();
+        Assert.That(() => store.TryGetValueBeforeNextChange(5, KeyA, new byte[64], out _, scope, generation: 1), Throws.TypeOf<ObjectDisposedException>());
     }
 
     private void Record(ulong block, ReadOnlySpan<byte> flatKey, ReadOnlySpan<byte> valueBeforeChange)

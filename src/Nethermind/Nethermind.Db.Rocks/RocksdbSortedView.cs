@@ -7,11 +7,25 @@ using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
 
-internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : ISeekableSortedView
+internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions, DbOnTheRocks database,
+    ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey) : IRebindableSortedView
 {
     private readonly Iterator _iterator = iterator;
     private readonly ReadOptions _readOptions = readOptions;
+    private readonly int _lowerCapacity = firstKey.Length;
+    private readonly int _upperCapacity = lastKey.Length;
+    private readonly bool _totalOrder = database.CrossesPrefixBucket(firstKey, lastKey);
     private bool _started = false;
+
+    public bool TryResetBounds(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+    {
+        if (firstKeyInclusive.Length > _lowerCapacity || lastKeyExclusive.Length > _upperCapacity
+            || (!_totalOrder && database.CrossesPrefixBucket(firstKeyInclusive, lastKeyExclusive))) return false;
+
+        _readOptions.UpdateIterateBounds(firstKeyInclusive, lastKeyExclusive);
+        _started = false;
+        return true;
+    }
 
     // The read options own the iterate-bound buffers, so the iterator must go first.
     public void Dispose()

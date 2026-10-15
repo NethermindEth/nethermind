@@ -121,6 +121,6 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        return new RocksdbSortedView(iterator, readOptions);
+        return new RocksdbSortedView(iterator, readOptions, _mainDb, firstKey, lastKey);
     }
 }
