@@ -908,6 +908,7 @@ public class TxBroadcasterTests
         Transaction[] gossipable = transactions.Where(static tx => tx.Nonce % 2 == 0).ToArray();
         using (Assert.EnterMultipleScope())
         {
+            gossipPolicy.Received(transactions.Length).ShouldGossipTransaction(Arg.Any<Transaction>());
             foreach (RecordingTxPoolPeer peer in peers)
             {
                 Assert.That(peer.Batches.Select(static batch => batch.SendFullTx), Is.All.False);
