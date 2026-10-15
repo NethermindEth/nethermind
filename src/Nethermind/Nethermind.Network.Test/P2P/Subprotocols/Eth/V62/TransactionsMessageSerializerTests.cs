@@ -265,7 +265,22 @@ public class TransactionsMessageSerializerTests
     [Test]
     public void Skips_the_transactions_a_known_filter_settles_and_never_offers_it_a_blob_transaction()
     {
-        List<Transaction> sent = GetTransactions().ElementAt(1).ToList();
+        List<Transaction> sent =
+        [
+            .. GetTransactions().ElementAt(1),
+            Build.A.Transaction
+                .WithType(TxType.SetCode)
+                .WithAuthorizationCodeIfAuthorizationListTx()
+                .WithTo(TestItem.AddressA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
+                .TestObject,
+            // Above the decoder's 32 KB threshold for deferring the hash.
+            Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithData(new byte[40_000])
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
+                .TestObject,
+        ];
         Transaction[] hashable = sent.Where(static tx => !tx.SupportsBlobs).ToArray();
         RecordingKnownFilter filter = new([hashable[0].Hash!, hashable[2].Hash!]);
         using TransactionsMessage message = new(sent.ToPooledList());

@@ -136,7 +136,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                             continue;
                         }
 
-                        Transaction tx = TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers);
+                        Transaction tx = TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers | RlpBehaviors.ExcludeHashes);
                         tx.Hash = new Hash256(in hash);
                         result.Add(tx);
                         continue;
