@@ -28,8 +28,8 @@ internal sealed partial class PersistentStorageProvider
     public void SetBackendScope(IWorldStateScopeProvider.IScope? scope)
     {
         _currentScope = scope;
-        // A list that has not grown is kept: the pool shared by every provider serves only a few overlapping scopes, so
-        // handing it back makes concurrent ones, the prewarmer's, allocate their own.
+        // A list within RetainedPendingCapacity is kept: the pool shared by every provider serves only a few overlapping
+        // scopes, so handing it back makes concurrent ones, the prewarmer's, allocate their own.
         if (scope is null && _pendingOriginalValues is { Capacity: > RetainedPendingCapacity })
         {
             _pendingOriginalValues.Dispose();

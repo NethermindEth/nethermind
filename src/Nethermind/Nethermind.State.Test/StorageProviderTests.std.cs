@@ -56,7 +56,7 @@ public partial class StorageProviderTests
     }
 
     [Test]
-    public void EndScope_GrownPendingBuffer_ReleasesBuffer([Values(1, PersistentStorageProvider.RetainedPendingCapacity + 1)] int slotCount)
+    public void EndScope_PendingBuffer_ReleasedOnlyWhenGrown([Values(1, PersistentStorageProvider.RetainedPendingCapacity + 1)] int slotCount)
     {
         using Context ctx = new(UseFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
