@@ -192,7 +192,7 @@ namespace Nethermind.Trie
         /// rate blocks; see <see cref="KeccakHash.ComputeHash256OfEdited"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
-            rlp.Length >= KeccakHash.MinResumableLength
+            KeccakHash.IsResumable(rlp.Length)
                 ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag))
                 : Nethermind.Core.Crypto.Keccak.Compute(rlp);
 

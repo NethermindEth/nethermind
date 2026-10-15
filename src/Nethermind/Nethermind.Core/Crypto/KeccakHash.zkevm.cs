@@ -177,8 +177,14 @@ public sealed partial class KeccakHash
     private const int RetainedLanes = RetainedBlocks * STATE_LANES;
     private const int FullBranchTailLength = Hash532InputLength - RetainedBlocks * HASH_DATA_AREA;
 
-    /// <summary>The shortest input <see cref="ComputeHash256OfEdited"/> can resume, one with a whole leading rate block.</summary>
-    internal const int MinResumableLength = HASH_DATA_AREA;
+    /// <summary>Whether <see cref="ComputeHash256OfWitnessNodes"/> keeps the states of a node of <paramref name="length"/>
+    /// bytes, so that <see cref="ComputeHash256OfEdited"/> can resume it.</summary>
+    /// <remarks>A full branch always. A shorter one of at least two whole rate blocks only on ZisK, where the state copies
+    /// keeping them costs are DMA moves: lane by lane, on SP1, they cost more than the permutations they save. A branch of
+    /// a single whole block is edited too rarely to repay them anywhere.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsResumable(int length) =>
+        length == Hash532InputLength || ZiskFlag.IsActive && length >= 2 * HASH_DATA_AREA;
 
     /// <summary>The witness nodes <see cref="ComputeHash256OfWitnessNodes"/> keyed last, and what it kept of them.</summary>
     /// <remarks>A class of its own, with no initializer, so each access is a plain load or store rather than a
@@ -214,7 +220,7 @@ public sealed partial class KeccakHash
             {
                 byte[] node = Unsafe.Add(ref firstNode, i);
                 Unsafe.Add(ref firstHash, i) = node.Length == Hash532InputLength ? ComputeHash532Retaining(node, ref states[i * RetainedLanes])
-                    : node.Length >= MinResumableLength ? ComputeHashRetaining(node, ref states[i * RetainedLanes])
+                    : IsResumable(node.Length) ? ComputeHashRetaining(node, ref states[i * RetainedLanes])
                     : ComputeHash256(node);
             }
 
@@ -235,7 +241,7 @@ public sealed partial class KeccakHash
     internal static nint LoadedWitnessNode() => WitnessNodes.Loaded;
 
     /// <summary>Computes the Keccak-256 digest of a node re-encoded from <paramref name="previous"/>.</summary>
-    /// <param name="input">The re-encoded node, at least <see cref="MinResumableLength"/> bytes.</param>
+    /// <param name="input">The re-encoded node, of a length <see cref="IsResumable"/> accepts.</param>
     /// <param name="previous">The encoding <paramref name="input"/> was re-encoded from.</param>
     /// <param name="tag">What <see cref="LoadedWitnessNode"/> returned when <paramref name="previous"/> was loaded.</param>
     /// <remarks>Starts after the leading rate blocks <paramref name="input"/> shares with <paramref name="previous"/>,
@@ -245,7 +251,7 @@ public sealed partial class KeccakHash
     [SkipLocalsInit]
     internal static unsafe ValueHash256 ComputeHash256OfEdited(ReadOnlySpan<byte> input, byte[]? previous, nint tag)
     {
-        Debug.Assert(input.Length >= MinResumableLength);
+        Debug.Assert(IsResumable(input.Length));
         byte[][]? nodes = WitnessNodes.Nodes;
         nuint index = (nuint)(tag - 1);
         if (nodes is null || index >= (nuint)WitnessNodes.Count || !ReferenceEquals(nodes[index], previous)
@@ -331,7 +337,7 @@ public sealed partial class KeccakHash
 
     /// <summary>Hashes a node of another length than a full branch, leaving the state after each of its leading whole
     /// rate blocks, up to <see cref="RetainedBlocks"/> of them, in <paramref name="retained"/>.</summary>
-    /// <param name="node">The node, at least <see cref="MinResumableLength"/> bytes.</param>
+    /// <param name="node">The node, of a length <see cref="IsResumable"/> accepts.</param>
     /// <param name="retained">Lane 0 of <see cref="RetainedBlocks"/> consecutive states.</param>
     [SkipLocalsInit]
     private static unsafe ValueHash256 ComputeHashRetaining(byte[] node, ref ulong retained)
