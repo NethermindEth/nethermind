@@ -1978,6 +1978,13 @@ public sealed class BeaconSyncOrchestrator(
                 return null;
             }
 
+            // An unverified gossip envelope must not buy the regeneration of an evicted state; by-root recovery still imports the payload a child needs.
+            if (signed is null && item.Envelope.Message?.BeaconBlockRoot is { } evictedRoot && _importer!.IsKnown(evictedRoot))
+            {
+                verdict.Complete(MessageValidity.Ignored);
+                return null;
+            }
+
             // [IGNORE] a later envelope for a (block root, builder index) that already has a valid one; claimed before any data or engine wait.
             ExecutionPayloadEnvelope message = item.Envelope.Message!;
             verdict.Complete(signed == true && gossipRouter.MarkEnvelopeSeen(message.BeaconBlockRoot!, message.BuilderIndex) ? MessageValidity.Accepted : MessageValidity.Ignored);

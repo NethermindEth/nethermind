@@ -194,6 +194,28 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task Gossip_envelopes_for_known_blocks_whose_state_is_not_held_trigger_no_regeneration()
+    {
+        const int forgeries = 128;
+        Harness harness = CreateHarness();
+        harness.Importer.EnvelopeSignature = null;
+        List<MessageValidity> given = [];
+        for (int i = 0; i < forgeries; i++)
+        {
+            Hash256 evictedRoot = Keccak.Compute($"evicted {i}");
+            harness.Importer.Known.Add(evictedRoot);
+            GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
+            Assert.That(harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipEnvelopeItem(EnvelopeFor(evictedRoot, EnvelopeBlockSlot), verdict)), Is.True);
+        }
+
+        await CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Envelopes, Is.Empty, "the import of an evicted block's envelope regenerates its state, which an unverified gossip envelope must not buy");
+        Assert.That(given, Has.Count.EqualTo(forgeries).And.All.EqualTo(MessageValidity.Ignored));
+    }
+
+    [Test]
     public async Task Second_signed_gossip_envelope_for_a_block_and_builder_is_ignored()
     {
         Harness harness = CreateHarness();
