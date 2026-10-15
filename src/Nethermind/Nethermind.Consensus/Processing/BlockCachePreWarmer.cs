@@ -245,9 +245,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
                     if (footprints is not null)
                     {
-                        // The warm runs are all done: the refresh workers take every warm worker's place.
-                        StartRefreshing(blockState);
                         footprints.EndWarmPass();
+                        // A block whose workers never ran out of jobs starts its refresh worker here.
+                        StartRefreshing(blockState);
                     }
 
                     discoveryWork?.WaitForCompletion();
@@ -1510,7 +1510,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     {
         if (blockState.Footprints is not { } footprints || blockState.Token.IsCancellationRequested || !blockState.TryClaimRefreshing()) return;
         CancellationToken token = blockState.Token;
-        int workers = Math.Max(1, _concurrencyLevel);
+        // One worker, started as soon as the warm pass has handed out its jobs.
+        const int workers = 1;
         footprints.SetWorkers(workers);
         ParallelOptions options = new() { MaxDegreeOfParallelism = workers, CancellationToken = token };
         blockState.SetRefreshing(ParallelUnbalancedWork.BackgroundFor(0, workers, options, worker => RefreshInvalidated(blockState, footprints, worker == 0, token)));
@@ -1545,7 +1546,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 }
 
                 // The refreshes the warm pass left are done; from now on only those near block processing are taken.
-                if (footprints.WarmPassEnded) footprints.EnterWindow();
+                // No window: every refresh ahead of block processing is taken.
                 // Held only while there are refreshes to run.
                 if (env is not null)
                 {
@@ -2640,6 +2641,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 {
                     Warm(job.Transactions.AsSpan(), job.LastIndex);
                 }
+
+                // The jobs are all handed out: the refresh worker takes what this worker leaves idle.
+                preWarmer.StartRefreshing(queue.BlockState);
 
                 if (far) return;
 
