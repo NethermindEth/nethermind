@@ -204,7 +204,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
             new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, @this.LogManager),
             @this.FeeHistoryOracle ??
-            new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
+            new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider, @this.RpcConfig),
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.BlocksConfig.SecondsPerSlot,
@@ -237,7 +237,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxSealer = new TxSealer(txSigner, Timestamper);
             TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(SpecProvider.ChainId));
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
-            FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
+            FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider, RpcConfig);
 
             ProtocolsManager = new ProtocolsManager(
                 Substitute.For<ISyncPeerPool>(),
