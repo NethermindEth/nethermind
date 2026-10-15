@@ -18,6 +18,14 @@ GUEST_OBJECTS := jump_dest.o
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
+# A larger inlining budget and inlinee size limits (values in hex): code size costs
+# a zkVM next to nothing. Measured flat on SP1 and OpenVM, so only this guest sets them.
+OPT_FLAGS += \
+	--codegenopt JitInlineBudget=100 \
+	--codegenopt JitExtDefaultPolicyMaxIL=400 \
+	--codegenopt JitExtDefaultPolicyMaxILRoot=800 \
+	--codegenopt JitExtDefaultPolicyMaxBB=40
+
 ZISK_IMAGE ?= nethermindeth/zisk:1.3.2-alpha@sha256:31a0c7f9de175765e7e81da719bdc2409060de8d23ec8683672d7ee22b798a3f
 
 run:

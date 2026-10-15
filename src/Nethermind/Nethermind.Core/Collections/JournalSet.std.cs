@@ -28,4 +28,6 @@ public sealed partial class JournalSet<T> where T : notnull, IEquatable<T>
 
         _items.Clear();
     }
+
+    private partial void Truncate(int count) => CollectionsMarshal.SetCount(_items, count);
 }
