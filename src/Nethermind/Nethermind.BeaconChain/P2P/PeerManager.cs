@@ -141,8 +141,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly ConcurrentDictionary<PeerId, ManagedPeer> _admittedById = new();
     // Reserved peers whose own status request passed our checks, written under _admissionLock; the reservations bound them.
     private readonly ConcurrentDictionary<PeerId, string> _statusPassedReserved = new();
-    // A status request can arrive before this node reserves the session; only a hint, taken up by the reservation.
-    private readonly LruCache<string, PeerId> _statusPassedUnreserved = new(256, "beacon status passed before reservation");
+    // A status request can arrive before this node reserves the session; only a hint, taken up by a reservation made within StatusHintLifetime.
+    private readonly LruCache<string, (PeerId PeerId, long Ticks)> _statusPassedUnreserved = new(256, "beacon status passed before reservation");
+    // The session's identify answer, which its reservation waits for, is bounded by the same time.
+    private static readonly TimeSpan StatusHintLifetime = IdentifyAgentVersionProbe.ReadTimeout;
 
     /// <summary>Admission identity for directory entries and peer-id deduplication; ENR is known only for discovery dials.</summary>
     private readonly record struct Reservation(string PeerId, PeerDirection Direction, string? Enr);
@@ -866,6 +868,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         string id = peerId.ToString();
         lock (_admissionLock)
         {
+            // A peer in the pool asks again for status; a hint from it would outlive its session.
+            if (_admittedById.ContainsKey(peerId))
+            {
+                return;
+            }
+
             foreach (KeyValuePair<string, Reservation> reservation in _dialing)
             {
                 if (reservation.Value.PeerId == id)
@@ -875,7 +883,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 }
             }
 
-            _statusPassedUnreserved.Set(id, peerId);
+            _statusPassedUnreserved.Set(id, (peerId, _timestamper.UtcNowOffset.UtcTicks));
         }
     }
 
@@ -883,9 +891,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private void Reserve(string address, Reservation reservation)
     {
         _dialing[address] = reservation;
-        if (_statusPassedUnreserved.TryRemove(reservation.PeerId, out PeerId? passed))
+        if (_statusPassedUnreserved.TryRemove(reservation.PeerId, out (PeerId PeerId, long Ticks) passed)
+            && _timestamper.UtcNowOffset.UtcTicks - passed.Ticks <= StatusHintLifetime.Ticks)
         {
-            _statusPassedReserved[passed] = reservation.PeerId;
+            _statusPassedReserved[passed.PeerId] = reservation.PeerId;
         }
     }
 
@@ -1420,7 +1429,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         lock (_admissionLock)
         {
             _peers[address] = peer;
-            if (BeaconP2P.RemotePeerIdOf(session) is { } admittedId) _admittedById[admittedId] = peer;
+            if (peer.RemotePeerId is { } admittedId) _admittedById[admittedId] = peer;
             Metrics.BeaconChainPeerCount = _peers.Count;
         }
 
@@ -1794,7 +1803,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     private void ForgetAdmitted(ManagedPeer peer)
     {
-        if (BeaconP2P.RemotePeerIdOf(peer.Session) is { } peerId)
+        if (peer.RemotePeerId is { } peerId)
         {
             _admittedById.TryRemove(new KeyValuePair<PeerId, ManagedPeer>(peerId, peer));
         }
@@ -2131,7 +2140,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             peer.SetStatus(status, _timestamper.UtcNowOffset.UtcTicks);
         }
         _peers[address] = peer;
-        if (BeaconP2P.RemotePeerIdOf(session) is { } admittedId) _admittedById[admittedId] = peer;
+        if (peer.RemotePeerId is { } admittedId) _admittedById[admittedId] = peer;
         if (removeWhenSessionCloses)
         {
             RemoveWhenSessionCloses(peer);
@@ -2157,6 +2166,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             Reserve(address, new Reservation(ExtractPeerId(address), PeerDirection.Outbound, enr));
         }
     }
+
+    /// <summary>Internal so a test can end a reservation it made with <see cref="ReserveDialingForTest"/> as an admission outcome would.</summary>
+    internal void ReleaseReservationForTest(string address) => ReleaseReservation(address);
 
     /// <summary>Peer-id ban and disconnect history retained across <see cref="ManagedPeer"/> sessions.</summary>
     private sealed class BanRecord(long sequence)
@@ -2209,6 +2221,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         public ISession Session { get; } = session;
         /// <summary>The outbound dial that admitted this peer; <c>null</c> for a session the remote opened.</summary>
         public DialRecord? Dial { get; init; }
+        /// <summary>The peer id the session's handshake established, read while the session is open so its removal finds the same key.</summary>
+        public PeerId? RemotePeerId { get; } = BeaconP2P.RemotePeerIdOf(session);
         /// <summary>The session's verified identify answer, which a session the remote opened keeps only here.</summary>
         public IdentifyAgentVersionProbe.Answer? Identify { get; init; }
         public StatusMessageV2? Status => _status;

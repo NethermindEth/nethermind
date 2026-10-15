@@ -386,9 +386,24 @@ public class PeerBandTests
             if (weDial) Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True);
             else await PeerSessionNodes.DialAsync(remote.P2P, local.P2P, token);
             await WaitUntilAsync(() => manager.PeerCount == 1 && local.P2P.HasGossipChannel(remoteId), token, "the admitted peer got no gossip channel from its identify answer");
+            bool admitted = manager.IsAdmitted(remoteId);
+            // A peer in the pool asks for status again from time to time.
+            manager.OnInboundStatus(remoteId, local.StatusHolder.CurrentStatus);
             Assert.That(local.P2P.TryGetEstablishedSession(remoteId, out ISession? session), Is.True);
             await session!.DisconnectAsync();
             await WaitUntilAsync(() => manager.PeerCount == 0, token, "the closed session was not removed");
+            // The dial that admitted the peer may still look at its closing session once more.
+            await WaitUntilAsync(() => !manager.IsAdmitted(remoteId), token, "a peer that left the pool kept its data access");
+            string reconnect = $"/ip4/127.0.0.2/tcp/9000/p2p/{remoteId}";
+            manager.ReserveDialingForTest(reconnect);
+            bool admittedOnReconnect = manager.IsAdmitted(remoteId);
+            manager.ReleaseReservationForTest(reconnect);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(admitted, Is.True, "a peer in the pool may make data requests");
+                Assert.That(admittedOnReconnect, Is.False, "a status from the closed session gives the next one nothing");
+            }
 
             Assert.That(local.P2P.IsInPeerStoreForTest(remoteId), Is.EqualTo(staticPeers),
                 "the peer store never forgets an entry, so only a bounded set of peers, never any key that completes a handshake, may add one");
@@ -397,29 +412,23 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task A_peer_whose_status_passed_our_checks_is_served_blocks_before_our_status_request_to_it_returns([Values] bool sameNetwork, CancellationToken token)
+    public async Task A_peer_whose_status_passed_our_checks_is_served_blocks_before_our_status_request_to_it_returns([Values] PendingStatus outcome, CancellationToken token)
     {
         PeerManager? manager = null;
         Node local = CreateNode(peerPool: new Lazy<IBeaconSyncPeerPool>(() => manager!));
         SetMatchingStatus(local);
-        StatusMessageV2 ours = local.StatusHolder.CurrentStatus;
-        StatusMessageV2 sent = new()
-        {
-            ForkDigest = sameNetwork ? ours.ForkDigest : [9, 9, 9, 9],
-            FinalizedRoot = ours.FinalizedRoot,
-            FinalizedEpoch = ours.FinalizedEpoch,
-            HeadRoot = ours.HeadRoot,
-            HeadSlot = ours.HeadSlot,
-            EarliestAvailableSlot = ours.EarliestAvailableSlot,
-        };
+        bool sameNetwork = outcome != PendingStatus.OnAnotherChain;
+        StatusMessageV2 sent = StatusOn(local.StatusHolder.CurrentStatus, sameNetwork);
+        StatusMessageV2 answered = StatusOn(local.StatusHolder.CurrentStatus, outcome == PendingStatus.OnOurChain);
         // The remote answers this node's status request only once released, so that admission stays pending.
         AsyncLocal<bool> sending = new();
         using ManualResetEventSlim release = new();
         bool holding = false;
         Node remote = CreateNode(new ScriptedStatusSource(_ =>
         {
-            if (Volatile.Read(ref holding) && !sending.Value) release.Wait(TimeSpan.FromSeconds(30));
-            return sent;
+            if (!Volatile.Read(ref holding) || sending.Value) return sent;
+            release.Wait(TimeSpan.FromSeconds(30));
+            return answered;
         }));
         await using PeerHostScope nodes = new(local.P2P, remote.P2P);
         try
@@ -443,10 +452,18 @@ public class PeerBandTests
                 answer = e.ResponseCode;
             }
 
-            using IDisposable assertionScope = Assert.EnterMultipleScope();
-            Assert.That(answer, sameNetwork ? Is.Not.EqualTo(139) : Is.EqualTo(139),
-                sameNetwork ? "a peer on our chain is served while this node still waits for its status" : "a status on another chain does not open the data protocols");
-            Assert.That(manager.PeerCount, Is.Zero, "fixture: this node's own status request has not returned");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(answer, sameNetwork ? Is.Not.EqualTo(139) : Is.EqualTo(139),
+                    sameNetwork ? "a peer on our chain is served while this node still waits for its status" : "a status on another chain does not open the data protocols");
+                Assert.That(manager.PeerCount, Is.Zero, "fixture: this node's own status request has not returned");
+            }
+
+            if (outcome == PendingStatus.RefusedByOurStatusRequest)
+            {
+                release.Set();
+                await WaitUntilAsync(() => !manager.IsAdmitted(remote.P2P.LocalPeerId!), token, "a peer this node refused after asking its status kept its data access");
+            }
         }
         finally
         {
@@ -454,31 +471,48 @@ public class PeerBandTests
         }
     }
 
-    [Test]
-    public void A_status_that_passed_before_the_admission_was_reserved_opens_the_data_protocols_once_it_is([Values] bool sameNetwork)
+    public enum PendingStatus { OnOurChain, OnAnotherChain, RefusedByOurStatusRequest }
+
+    public enum StatusPass { BeforeReservation, AfterReservation, OnAnotherChain, StaleBeforeReservation }
+
+    [TestCase(StatusPass.BeforeReservation, true)]
+    [TestCase(StatusPass.AfterReservation, true)]
+    [TestCase(StatusPass.OnAnotherChain, false)]
+    [TestCase(StatusPass.StaleBeforeReservation, false)]
+    public void A_status_that_passed_our_checks_opens_the_data_protocols_only_while_the_admission_is_pending(StatusPass pass, bool opens)
     {
         Node node = CreateNode();
         SetMatchingStatus(node);
-        PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
-        StatusMessageV2 ours = node.StatusHolder.CurrentStatus;
-        StatusMessageV2 sent = new()
-        {
-            ForkDigest = sameNetwork ? ours.ForkDigest : [9, 9, 9, 9],
-            FinalizedRoot = ours.FinalizedRoot,
-            FinalizedEpoch = ours.FinalizedEpoch,
-            HeadRoot = ours.HeadRoot,
-            HeadSlot = ours.HeadSlot,
-        };
+        ManualTimestamper time = new();
+        PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: time);
+        StatusMessageV2 sent = StatusOn(node.StatusHolder.CurrentStatus, pass != StatusPass.OnAnotherChain);
         PeerId remote = new Identity().PeerId;
+        string address = $"/ip4/1.2.3.4/tcp/9000/p2p/{remote}";
 
-        manager.OnInboundStatus(remote, sent);
+        if (pass != StatusPass.AfterReservation) manager.OnInboundStatus(remote, sent);
+        // A session waits at most this long for its identify answer, and so for its reservation.
+        if (pass == StatusPass.StaleBeforeReservation) time.Add(IdentifyAgentVersionProbe.ReadTimeout + TimeSpan.FromSeconds(1));
         bool beforeReservation = manager.IsAdmitted(remote);
-        manager.ReserveDialingForTest($"/ip4/1.2.3.4/tcp/9000/p2p/{remote}");
+        manager.ReserveDialingForTest(address);
+        if (pass == StatusPass.AfterReservation) manager.OnInboundStatus(remote, sent);
+        bool reserved = manager.IsAdmitted(remote);
+        manager.ReleaseReservationForTest(address);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(beforeReservation, Is.False, "a status alone, with no admission pending, opens nothing");
-        Assert.That(manager.IsAdmitted(remote), Is.EqualTo(sameNetwork), "the reservation takes up a status that passed our checks before it");
+        Assert.That(reserved, Is.EqualTo(opens), "only a recent status on our chain opens the data protocols to a pending admission");
+        Assert.That(manager.IsAdmitted(remote), Is.False, "an admission that ends without the peer in the pool takes the access back");
     }
+
+    private static StatusMessageV2 StatusOn(StatusMessageV2 ours, bool ourChain) => new()
+    {
+        ForkDigest = ourChain ? ours.ForkDigest : [9, 9, 9, 9],
+        FinalizedRoot = ours.FinalizedRoot,
+        FinalizedEpoch = ours.FinalizedEpoch,
+        HeadRoot = ours.HeadRoot,
+        HeadSlot = ours.HeadSlot,
+        EarliestAvailableSlot = ours.EarliestAvailableSlot,
+    };
 
     [TestCase(false, TestName = "Maintenance_round_trims_the_worst_peer_once_over_the_high_watermark")]
     [TestCase(true, TestName = "A_static_peer_that_connected_to_us_first_is_still_exempt_from_trimming")]
