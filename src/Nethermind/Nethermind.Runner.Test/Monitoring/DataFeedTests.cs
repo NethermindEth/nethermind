@@ -271,7 +271,7 @@ public class DataFeedTests
             // The in-memory response writes complete synchronously, so the feed has subscribed before returning.
             Assert.That(_feed.IsCompleted, Is.False, "the feed ended before a processed event reached it");
             _processingStats.NewProcessingStatistics += Raise.Event<EventHandler<BlockStatistics>>(this, new BlockStatistics());
-            await ResponseBody.ProcessedWritten.Task.WaitAsync(cancellationToken);
+            await ResponseBody.ProcessedWritten.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
         }
     }
 
