@@ -170,6 +170,25 @@ public class GloasBlockImporterTests
     }
 
     [Test]
+    public void Invalid_envelope_copy_without_latest_valid_hash_does_not_block_the_honest_envelope()
+    {
+        SignedGloasChain.EnvelopeEngine engine = new() { EnvelopeVerdict = ExecutionStatus.Invalid, LatestValidHash = null };
+        BlockImporter importer = _chain.CreateImporter(engine);
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
+        SignedGloasChain.Block child = _chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+
+        ExecutionPayloadEnvelopeImportResult forged = importer.ImportEnvelope(first.Envelope);
+        engine.EnvelopeVerdict = ExecutionStatus.Valid;
+        ExecutionPayloadEnvelopeImportResult honest = importer.ImportEnvelope(first.Envelope);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forged, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Invalid));
+        Assert.That(honest, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported),
+            "the payload verified by the honest envelope must be recorded, so the full child follows it");
+    }
+
+    [Test]
     public void Envelope_already_verified_or_for_an_unknown_block_never_reaches_the_engine()
     {
         SignedGloasChain.EnvelopeEngine engine = new();

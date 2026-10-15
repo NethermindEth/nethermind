@@ -919,7 +919,8 @@ public sealed class BlockImporter : IBlockImporter
         }
 
         ExecutionPayloadEnvelopeImportResult result = _envelopes.Import(envelope, out (ExecutionStatus? Status, Hash256? LatestValidHash) verdict);
-        if (verdict.Status == ExecutionStatus.Invalid)
+        // specs/bellatrix/optimistic-sync.md: a null latest valid hash names only this payload, so a forged copy must not mark the committed block hash.
+        if (verdict is { Status: ExecutionStatus.Invalid, LatestValidHash: not null })
         {
             _runner.InvalidateExecutionChain(blockRoot!, envelope.Message.Payload!.BlockHash, verdict.LatestValidHash);
         }
