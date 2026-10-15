@@ -207,22 +207,35 @@ public partial class GossipRouterTests
     }
 
     [Test]
-    public void Forged_payload_attestations_from_fresh_peers_raise_at_most_the_slot_cap()
+    public void Forged_payload_attestations_from_one_peer_leave_every_ptc_member_a_raise_for_another_and_fresh_peers_stay_capped()
     {
-        const int peers = 4;
-        const int votesPerPeer = 1024;
+        const int ptcSize = (int)Nethermind.BeaconChain.Spec.Presets.PtcSize;
         (GossipRouter router, _) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000, holdBlock: true);
+        router.RequiresPtc = true;
+        router.SetPtc(PtcSlot, [.. Enumerable.Range(0, ptcSize).Select(member => (ulong)member)]);
         int raised = 0;
         router.PayloadAttestationMessageReceived += (_, _) => raised++;
-
-        for (int peer = 0; peer < peers; peer++)
+        PeerId NewPeer() => new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+        void Vote(PeerId peer, byte seed)
         {
-            PeerId fresh = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
-            for (ulong validator = 0; validator < votesPerPeer; validator++)
-                Handle(router, PtcVote(PtcBlockRoot, PtcSlot, validator, signatureSeed: (byte)(peer + 1)), fresh);
+            for (ulong member = 0; member < ptcSize; member++)
+                Handle(router, PtcVote(PtcBlockRoot, PtcSlot, member, signatureSeed: seed), peer);
         }
 
-        Assert.That(raised, Is.EqualTo(GossipRouter.PayloadAttestationRaisesPerSlot), "every peer is new, so only the slot cap bounds the verifies");
+        PeerId flooder = NewPeer();
+        for (byte seed = 1; seed <= GossipRouter.PayloadAttestationVerifyAttempts; seed++)
+            Vote(flooder, seed);
+        int flooded = raised;
+        Vote(NewPeer(), seed: 100);
+        int honest = raised - flooded;
+        for (byte seed = 101; seed < 110; seed++)
+            Vote(NewPeer(), seed);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(flooded, Is.EqualTo(ptcSize * GossipRouter.PayloadAttestationVerifyAttempts), "fixture: the flood spends all of its peer's attempts");
+        Assert.That(honest, Is.EqualTo(ptcSize), "a flood by one peer must not spend another peer's vote for the same member");
+        Assert.That(raised, Is.EqualTo(ptcSize * GossipRouter.PayloadAttestationRaisesPerValidator), "fresh peers buy no more verifies than the per-member cap");
+        Assert.That(router.GetDropCount(GossipDropReason.PayloadAttestationVerifiesSpent), Is.GreaterThan(0));
     }
 
     [Test]
@@ -364,8 +377,7 @@ public partial class GossipRouterTests
         router.MarkPayloadAttestationVerified(genuine);
         raised = 0;
 
-        // The genuine vote and the new validator's first vote take the rest of the slot's raises.
-        const int flood = GossipRouter.PayloadAttestationRaisesPerSlot - 2;
+        const int flood = 3 * GossipRouter.PayloadAttestationPairsPerSlot;
         for (ulong index = 1000; index < 1000 + flood; index++)
         {
             Handle(router, PtcVote(PtcBlockRoot, PtcSlot, index, signatureSeed: 2));
@@ -385,8 +397,9 @@ public partial class GossipRouterTests
         Assert.That(router.IsPayloadAttestationVerified(genuine), Is.True);
     }
 
-    [Test]
-    public void Payload_attestation_pair_with_spent_attempts_does_not_reopen_after_a_full_cache_of_newer_pairs([Values(-1, 0)] int newerPairsPastCapacity)
+    [TestCase(-1, 0)]
+    [TestCase(0, 1)]
+    public void Payload_attestation_pair_with_spent_attempts_reopens_only_after_a_full_cache_of_newer_pairs(int newerPairsPastCapacity, int expectedRaised)
     {
         (GossipRouter router, _) = CreatePtcRouter(PtcSlot, millisecondsIntoSlot: 9000, holdBlock: true);
         int raised = 0;
@@ -405,7 +418,7 @@ public partial class GossipRouterTests
         raised = 0;
         Handle(router, PtcVote(PtcBlockRoot, PtcSlot, PtcValidator, signatureSeed: 100));
 
-        Assert.That(raised, Is.Zero);
+        Assert.That(raised, Is.EqualTo(expectedRaised));
     }
 
     /// <summary>
@@ -573,9 +586,9 @@ public partial class GossipRouterTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((first, replay), Is.EqualTo((MessageValidity.Ignored, MessageValidity.Ignored)));
-        Assert.That(votes, Is.EqualTo(GossipRouter.PayloadAttestationRaisesPerSlot), "fixture: the slot's votes were raised up to its cap");
+        Assert.That(votes, Is.EqualTo(2 * GossipRouter.SeenCacheSize), "fixture: every vote was new");
         Assert.That(slashings, Is.EqualTo(1), "the replayed slashing is still known by its message id");
-        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1 + 2 * GossipRouter.SeenCacheSize - GossipRouter.PayloadAttestationRaisesPerSlot));
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
     }
 
     private static MessageValidity Handle(GossipRouter router, PayloadAttestationMessage vote, PeerId? source = null) =>

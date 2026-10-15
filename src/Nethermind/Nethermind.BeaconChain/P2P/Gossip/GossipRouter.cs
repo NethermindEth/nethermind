@@ -60,6 +60,9 @@ public enum GossipDropReason
 
     /// <summary>A voted block that is neither stored nor known to have failed validation.</summary>
     UnknownBlock,
+
+    /// <summary>A payload attestation for a validator whose unverified votes in its slot have spent their signature checks.</summary>
+    PayloadAttestationVerifiesSpent,
 }
 
 /// <summary>
@@ -113,9 +116,12 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>The most (peer, validator) pairs whose verify attempts are counted per slot; the least recently claimed one is evicted past it.</summary>
     internal const int PayloadAttestationPairsPerSlot = (int)Presets.PtcSize * PayloadAttestationVerifyAttempts;
 
-    /// <summary>The most payload attestations raised for fork choice to verify per slot from all peers while none of their pairs has verified.</summary>
-    /// <remarks>The per-peer attempts let each new peer id buy more BLS verifies on the import worker; this bounds them all.</remarks>
-    internal const int PayloadAttestationRaisesPerSlot = (int)Presets.PtcSize * PayloadAttestationVerifyAttempts;
+    /// <summary>The most payload attestations raised for fork choice to verify per (slot, validator) from all peers while none has verified.</summary>
+    /// <remarks>
+    /// The per-peer attempts let each new peer id buy more BLS verifies on the import worker; this bounds them per PTC member. It is twice one peer's
+    /// attempts, so a peer that spends all of its attempts on forged votes still leaves another peer's vote for the same member a raise.
+    /// </remarks>
+    internal const int PayloadAttestationRaisesPerValidator = 2 * PayloadAttestationVerifyAttempts;
     private const int MaxDeferredMessages = 64;
 
     /// <summary>The most stored blocks decoded per slot for envelopes whose block is not cached and not canonical at a recent slot.</summary>
@@ -348,9 +354,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 return;
             }
 
-            if (slot.Raised > 0)
+            if (slot.Validators.TryGet(vote.ValidatorIndex, out PayloadAttestationPair? validator) && validator.Attempts > 0)
             {
-                slot.Raised--;
+                validator.Attempts--;
             }
 
             if (slot.Pairs.TryGet((source, vote.ValidatorIndex), out PayloadAttestationPair? pair) && pair.Attempts > 0)
@@ -560,7 +566,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <remarks>
     /// The spec IGNOREs a repeat only after a valid vote, but the signature cannot be checked here and each forged vote under a PTC
     /// member's index would cost fork choice a BLS verify: a pair from each peer is raised at most <see cref="PayloadAttestationVerifyAttempts"/> times
-    /// until <see cref="MarkPayloadAttestationVerified"/> records a vote that verified, and a slot's votes at most <see cref="PayloadAttestationRaisesPerSlot"/> times.
+    /// until <see cref="MarkPayloadAttestationVerified"/> records a vote that verified, and a (slot, validator) pair from all peers at most <see cref="PayloadAttestationRaisesPerValidator"/> times.
     /// </remarks>
     private MessageValidity HandlePayloadAttestationMessage(byte[] message, GossipVerdict verdict, PeerId? source)
     {
@@ -1062,9 +1068,15 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 }
             }
 
-            if (slot.Raised >= PayloadAttestationRaisesPerSlot)
+            if (!slot.Validators.TryGet(vote.ValidatorIndex, out PayloadAttestationPair? validator))
             {
-                return Verdict.Ignore(GossipDropReason.Duplicate);
+                validator = new PayloadAttestationPair();
+                slot.Validators.Set(vote.ValidatorIndex, validator);
+            }
+
+            if (validator.Attempts >= PayloadAttestationRaisesPerValidator)
+            {
+                return Verdict.Ignore(GossipDropReason.PayloadAttestationVerifiesSpent);
             }
 
             if (!slot.Pairs.TryGet((source, vote.ValidatorIndex), out PayloadAttestationPair? pair))
@@ -1079,7 +1091,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             }
 
             pair.Attempts++;
-            slot.Raised++;
+            validator.Attempts++;
             return null;
         }
     }
@@ -1287,7 +1299,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         // The PTC of the slot from the head state; null while unknown.
         public HashSet<ulong>? Members;
 
-        public int Raised;
+        // With RequiresPtc set only PTC members are counted, far fewer than the cache holds.
+        public readonly LruCache<ulong, PayloadAttestationPair> Validators = new(PayloadAttestationPairsPerSlot, "beacon gossip payload attestation validators");
 
         // Peer churn may reopen a spent budget, but must not grow retained state without bound.
         public readonly LruCache<(PeerId? Peer, ulong Validator), PayloadAttestationPair> Pairs = new(PayloadAttestationPairsPerSlot, "beacon gossip payload attestations");
