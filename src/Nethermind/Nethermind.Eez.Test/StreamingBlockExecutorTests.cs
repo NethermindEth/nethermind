@@ -74,6 +74,7 @@ public class StreamingBlockExecutorTests
     [TestCase("root", TestName = "Execute_FalseAnchorRoot_IsRejected")]
     [TestCase("rlp", TestName = "Execute_InvalidRlp_IsRejected")]
     [TestCase("witness", TestName = "Execute_MissingState_IsRejected")]
+    [TestCase("partialWitness", TestName = "Execute_MissingTrieChild_IsRejected")]
     [TestCase("header", TestName = "Execute_EmptyHeader_IsRejected")]
     [TestCase("linkage", TestName = "Execute_NoncontiguousHeaders_IsRejected")]
     [TestCase("trailing", TestName = "Execute_TrailingHeaderBytes_IsRejected")]
@@ -87,6 +88,11 @@ public class StreamingBlockExecutorTests
             case "parent": block.ParentHash = ByteString.CopyFrom(new byte[32]); break;
             case "rlp": block.Rlp = ByteString.CopyFrom(new byte[] { 0xc0 }); break;
             case "witness": block.Witness.State.Clear(); break;
+            case "partialWitness":
+                for (int i = block.Witness.State.Count - 1; i >= 0; i--)
+                    if (!Keccak.Compute(block.Witness.State[i].Span).Bytes.SequenceEqual(_parent.StateRoot.Span)) block.Witness.State.RemoveAt(i);
+                Assert.That(block.Witness.State, Has.Count.EqualTo(1), "precondition: the root is present but its child proofs are missing");
+                break;
             case "header": block.Witness.Headers.Clear(); block.Witness.Headers.Add(ByteString.CopyFrom(new byte[] { 0xc0 })); break;
             case "linkage": block.Witness.Headers.Add(block.Witness.Headers[0]); break;
             case "trailing": block.Witness.Headers[0] = ByteString.CopyFrom([.. block.Witness.Headers[0].Span, 0x00]); break;

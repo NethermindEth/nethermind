@@ -12,6 +12,7 @@ using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Eez.Prove;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie;
 
 namespace Nethermind.Eez.Attester;
 
@@ -34,7 +35,7 @@ internal sealed class StreamingBlockExecutor(ISpecProvider specProvider, EezChai
             throw new RpcException(new Status(e.Failure == EezStatelessFailure.Rejected ? StatusCode.FailedPrecondition : StatusCode.Internal,
                 e.Failure == EezStatelessFailure.Rejected ? "block validation rejected" : "execution backend invariant failed"));
         }
-        catch (Exception e) when (e is WitnessValidationException or RlpException)
+        catch (Exception e) when (e is WitnessValidationException or RlpException or MissingTrieNodeException)
         {
             throw new RpcException(new Status(StatusCode.FailedPrecondition, "invalid execution witness"));
         }

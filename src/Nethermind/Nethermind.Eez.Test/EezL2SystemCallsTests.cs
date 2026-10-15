@@ -10,6 +10,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
@@ -106,7 +107,9 @@ public class EezL2SystemCallsTests
         builder.AddSingleton<IBlockValidator>(Always.Valid);
         using IContainer container = builder.Build();
         IWorldState executionState = missingProofs ? new MissingConsensusProofs(state) : state;
-        using ILifetimeScope scope = container.BeginLifetimeScope(processing => processing.AddSingleton(executionState));
+        using ILifetimeScope scope = container.BeginLifetimeScope(processing => processing
+            .AddSingleton(executionState)
+            .AddModule(container.Resolve<IBlockValidationModule[]>()));
         Block block = Build.A.Block.WithNumber(1).WithParentHash(TestItem.KeccakA).WithGasLimit(30_000_000).WithWithdrawals(0).TestObject;
         block.Header.ParentBeaconBlockRoot = Keccak.Zero;
         block.Header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
