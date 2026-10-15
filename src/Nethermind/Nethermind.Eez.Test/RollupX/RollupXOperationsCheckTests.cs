@@ -150,12 +150,16 @@ public class RollupXOperationsCheckTests
             Throws.TypeOf<OperationCanceledException>(), "cancelled settlement does not start validating operations");
 
     private static Transaction User(ulong nonce, TxType type = TxType.Legacy) =>
-        Build.A.Transaction.WithNonce(nonce).WithType(type).TestObject;
+        Build.A.Transaction.WithNonce(nonce).WithType(type).WithChainId(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
     private static OperationsRun Run(params Transaction[] transactions)
     {
         ReadOnlyMemory<byte>[] encoded = new ReadOnlyMemory<byte>[transactions.Length];
-        for (int i = 0; i < transactions.Length; i++) encoded[i] = TxDecoder.Instance.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Assert.That(transactions[i].Signature, Is.Not.Null, "precondition: ordinary DA inputs contain signed transaction envelopes");
+            encoded[i] = TxDecoder.Instance.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+        }
         return new OperationsRun(1, TestItem.AddressA, new byte[] { 0x42 }, encoded);
     }
 
