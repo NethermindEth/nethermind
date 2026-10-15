@@ -408,11 +408,15 @@ public partial class EngineModuleTests
         using (ResultWrapper<NewPayloadWithWitnessV1Result> first = await handler.HandleAsync(request))
             capturedState = first.Data.ExecutionWitness!.State.ToArray();
 
-        // The block is not in the block tree, so only the cache can supply this witness.
-        using ResultWrapper<NewPayloadWithWitnessV1Result> resent = await handler.HandleAsync(request);
+        // The block is not in the block tree, so only the cache can supply this witness; disposing one
+        // cached response must not affect the next.
+        for (int i = 0; i < 2; i++)
+        {
+            using ResultWrapper<NewPayloadWithWitnessV1Result> resent = await handler.HandleAsync(request);
 
-        Assert.That(resent.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(resent.Data.ExecutionWitness!.State.ToArray(), Is.EqualTo(capturedState));
+            Assert.That(resent.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(resent.Data.ExecutionWitness!.State.ToArray(), Is.EqualTo(capturedState));
+        }
     }
 
     private static IEnumerable<TestCaseData> NonValidOutcomes()

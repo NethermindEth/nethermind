@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -38,7 +39,7 @@ public sealed class NewPayloadWithWitnessHandler(
     private const int RecentWitnessCount = 8;
 
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<NewPayloadWithWitnessHandler>();
-    private readonly LruCache<Hash256, CachedWitness> _recentWitnesses = new(RecentWitnessCount, nameof(NewPayloadWithWitnessHandler));
+    private readonly LruCache<Hash256, Witness> _recentWitnesses = new(RecentWitnessCount, nameof(NewPayloadWithWitnessHandler));
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(ExecutionPayloadParams<ExecutionPayloadV3> request) =>
         HandleAsync(
@@ -133,11 +134,11 @@ public sealed class NewPayloadWithWitnessHandler(
     /// <returns><c>null</c> when the witness must be rebuilt but the block, its parent or the parent state is missing.</returns>
     private Witness? GetOrGenerateWitness(Hash256 blockHash, Witness? capturedWitness, string methodName)
     {
-        if (capturedWitness is null && _recentWitnesses.TryGet(blockHash, out CachedWitness? cached))
-            return cached.ToWitness();
+        if (capturedWitness is null && _recentWitnesses.TryGet(blockHash, out Witness? cached))
+            return cached;
 
         Witness? witness = capturedWitness ?? GenerateWitness(blockHash, methodName);
-        if (witness is not null) _recentWitnesses.Set(blockHash, CachedWitness.From(witness));
+        if (witness is not null) _recentWitnesses.Set(blockHash, ToUnowned(witness));
         return witness;
     }
 
@@ -162,21 +163,24 @@ public sealed class NewPayloadWithWitnessHandler(
         return scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
     }
 
-    /// <summary>A witness copy that owns no pooled buffers, so eviction needs no disposal and never races a response still serializing its own copy.</summary>
-    private sealed class CachedWitness(byte[][] codes, byte[][] state, byte[][] keys, byte[][] headers)
+    /// <summary>Copies <paramref name="witness"/> into a witness that owns no pooled buffers.</summary>
+    /// <remarks>Responses dispose their witness only after it is serialized, so a cached one must survive both
+    /// that and eviction while another response may still be reading it.</remarks>
+    private static Witness ToUnowned(Witness witness) => new()
     {
-        public static CachedWitness From(Witness witness) => new(
-            witness.Codes.AsSpan().ToArray(),
-            witness.State.AsSpan().ToArray(),
-            witness.Keys.AsSpan().ToArray(),
-            witness.Headers.AsSpan().ToArray());
+        Codes = new UnownedList(witness.Codes.AsSpan().ToArray()),
+        State = new UnownedList(witness.State.AsSpan().ToArray()),
+        Keys = new UnownedList(witness.Keys.AsSpan().ToArray()),
+        Headers = new UnownedList(witness.Headers.AsSpan().ToArray())
+    };
 
-        public Witness ToWitness() => new()
-        {
-            Codes = new ArrayPoolList<byte[]>(codes),
-            State = new ArrayPoolList<byte[]>(state),
-            Keys = new ArrayPoolList<byte[]>(keys),
-            Headers = new ArrayPoolList<byte[]>(headers)
-        };
+    private sealed class UnownedList(byte[][] items) : IOwnedReadOnlyList<byte[]>
+    {
+        public int Count => items.Length;
+        public byte[] this[int index] => items[index];
+        public ReadOnlySpan<byte[]> AsSpan() => items;
+        public IEnumerator<byte[]> GetEnumerator() => ((IEnumerable<byte[]>)items).GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => items.GetEnumerator();
+        public void Dispose() { }
     }
 }
