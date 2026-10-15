@@ -79,6 +79,7 @@ public abstract class ReqRespProtocolBase
     private readonly Lock _quotaLock = new();
     private readonly LruCache<PeerId, RequestQuota> _quotas = new(4096, "beacon reqresp peer quotas");
     private RequestQuota? _globalQuota;
+    private RequestQuota? _unattributedQuota;
     internal TimeProvider QuotaTime { get; init; } = TimeProvider.System;
     private sealed class RequestQuota(double tokens, DateTimeOffset updated)
     {
@@ -92,24 +93,41 @@ public abstract class ReqRespProtocolBase
         }
     }
 
-    /// <summary>Charges decoded work against per-peer and global ten-second token buckets before store reads.</summary>
-    protected void ChargeRequest(ISessionContext context, ulong items, ulong capacity)
+    /// <summary>Peer ceiling that sizes the global bucket, so a full honest peer set cannot drain it.</summary>
+    internal int MaxPeerCount { get; init; } = 80;
+
+    /// <summary>Charges decoded work against the per-peer ten-second token bucket and, unless <paramref name="perPeerOnly"/>, a global one.</summary>
+    protected void ChargeRequest(ISessionContext context, ulong items, ulong capacity, bool perPeerOnly = false)
     {
         items = Math.Max(1, items);
         lock (_quotaLock)
         {
             DateTimeOffset now = QuotaTime.GetUtcNow();
-            ulong globalCapacity = capacity * 8;
-            _globalQuota ??= new(globalCapacity, now);
-            _globalQuota.Refill(now, globalCapacity);
+            ulong globalCapacity = capacity * (ulong)Math.Max(1, MaxPeerCount);
+            RequestQuota? global = null;
+            if (!perPeerOnly)
+            {
+                global = _globalQuota ??= new(globalCapacity, now);
+                global.Refill(now, globalCapacity);
+            }
+
             PeerId? peer = context.State.RemotePeerId;
-            RequestQuota quota = peer is not null && _quotas.TryGet(peer, out RequestQuota? held) ? held : new(capacity, now);
+            RequestQuota quota;
+            if (peer is null)
+            {
+                quota = _unattributedQuota ??= new(capacity, now);
+            }
+            else if (!_quotas.TryGet(peer, out quota!))
+            {
+                quota = new(capacity, now);
+                _quotas.Set(peer, quota);
+            }
+
             quota.Refill(now, capacity);
-            if (peer is not null) _quotas.Set(peer, quota);
-            if (quota.Tokens < items || _globalQuota.Tokens < items)
+            if (quota.Tokens < items || global is not null && global.Tokens < items)
                 throw new Eth2ReqRespException("Request rate limit exceeded", 139);
             quota.Tokens -= items;
-            _globalQuota.Tokens -= items;
+            if (global is not null) global.Tokens -= items;
         }
     }
 
@@ -551,7 +569,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
             {
                 request = DecodeRequest(await inboundSlot.ReadRequestAsync(stream, MaxRequestSize, cts.Token));
             }
-            ChargeRequest(context, 1, 32);
+            ChargeRequest(context, 1, 32, perPeerOnly: true);
             await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, EncodeResponse(HandleRequest(request)), cts.Token);
         }
         catch (Eth2ReqRespException e)

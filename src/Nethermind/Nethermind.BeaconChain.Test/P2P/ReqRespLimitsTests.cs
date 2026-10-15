@@ -62,14 +62,59 @@ public class ReqRespLimitsTests
     }
 
     [Test]
-    public void Request_volume_is_bounded_per_peer_and_globally()
+    public void Request_volume_is_bounded_per_peer_and_across_the_peer_set()
     {
-        TestReqRespProtocol protocol = new();
+        TestReqRespProtocol protocol = new() { MaxPeerCount = 8 };
         ISessionContext first = NewPeerContext();
         protocol.Charge(first, 128);
         Assert.Throws<Eth2ReqRespException>(() => protocol.Charge(first, 128));
         for (int i = 0; i < 7; i++) protocol.Charge(NewPeerContext(), 128);
         Assert.Throws<Eth2ReqRespException>(() => protocol.Charge(NewPeerContext(), 128));
+    }
+
+    [Test]
+    public void Honest_peers_still_get_blocks_when_fewer_than_the_peer_ceiling_exhaust_their_own_quota()
+    {
+        TestReqRespProtocol protocol = new() { MaxPeerCount = 80, QuotaTime = new FixedTime() };
+        for (int i = 0; i < 8; i++) protocol.Charge(NewPeerContext(), 128);
+        Assert.DoesNotThrow(() => protocol.Charge(NewPeerContext(), 128), "eight peers at their cap must not starve a ninth");
+    }
+
+    [Test]
+    public void Sessions_without_a_peer_id_share_one_quota()
+    {
+        TestReqRespProtocol protocol = new() { QuotaTime = new FixedTime() };
+        protocol.Charge(ReqRespTestChannel.Context(), 128);
+        Assert.Throws<Eth2ReqRespException>(() => protocol.Charge(ReqRespTestChannel.Context(), 128));
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Control_requests_from_many_peers_do_not_starve_another_peer(CancellationToken token)
+    {
+        Eth2PingProtocol protocol = new(new LocalMetadataSource()) { QuotaTime = new FixedTime() };
+        for (int peer = 0; peer < 52; peer++)
+        {
+            ISessionContext context = NewPeerContext();
+            for (int i = 0; i < 5; i++)
+            {
+                Assert.That(await PingAsync(protocol, context, token), Is.EqualTo(0));
+            }
+        }
+
+        Assert.That(await PingAsync(protocol, NewPeerContext(), token), Is.EqualTo(0), "a new peer's first ping must be served after 260 requests from other peers");
+    }
+
+    private static async Task<byte?> PingAsync(Eth2PingProtocol protocol, ISessionContext context, CancellationToken token)
+    {
+        Channel channel = new();
+        Task listening = protocol.ListenAsync(channel.Reverse, context);
+        Stream stream = new ChannelStreamAdapter(channel);
+        await ReqRespFraming.WriteRequestAsync(stream, Eth2PingProtocol.EncodeUint64(0), token);
+        await channel.WriteEofAsync(token);
+        ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(stream, 0, 1024, token);
+        await listening.WaitAsync(token);
+        return chunk?.Result;
     }
 
     [Test]
@@ -729,6 +774,12 @@ public class ReqRespLimitsTests
 
         public Task<IReadOnlyList<ForkedSignedBeaconBlock>> ReadBlocksAsync(Stream response, int maxBlocks, TimeSpan? overallTimeout = null, RequestTiming? timing = null) =>
             ReadBlockChunksAsync(response, maxBlocks, ProtocolId, overallTimeout, timing);
+    }
+
+    private sealed class FixedTime : TimeProvider
+    {
+        private readonly DateTimeOffset _now = DateTimeOffset.UnixEpoch;
+        public override DateTimeOffset GetUtcNow() => _now;
     }
 
     private static ISessionContext NewPeerContext()
