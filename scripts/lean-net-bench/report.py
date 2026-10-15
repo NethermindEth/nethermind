@@ -96,14 +96,20 @@ def main():
                     label = f"{row['mode']} / {row['claims']}"
                     native.setdefault(label, []).append(row)
         if native:
-            labels = list(native)
+            preferred = ["raw-binary-tree / 1", "raw-binary-tree / 16", "raw-binary-tree / 64", "generic-single / 1", "mixed-raw / 2", "mixed-merge / 2"]
+            labels = sorted(native, key=lambda label: preferred.index(label) if label in preferred else len(preferred))
+            display = {"raw-binary-tree / 1": "SPHINCS 1", "raw-binary-tree / 16": "SPHINCS 16",
+                       "raw-binary-tree / 64": "SPHINCS 64", "generic-single / 1": "STARK 1",
+                       "mixed-raw / 2": "SPHINCS + STARK", "mixed-merge / 2": "Merge two parents"}
             fig, axes = plt.subplots(2, 1, figsize=(7, 7))
             for axis, field, scale, title, ylabel in (
-                (axes[0], "proving_ms", .001, "Cold native aggregation", "Seconds"),
+                (axes[0], "proving_ms", .001, "Native proof aggregation", "Seconds"),
                 (axes[1], "proof_bytes", 1 / 1024, "Final recursive proof size", "KiB")):
                 means = [statistics.median(float(r[field]) * scale for r in native[label]) for label in labels]
-                axis.bar(range(len(labels)), means, color="#145DA0")
-                axis.set_xticks(range(len(labels)), [label.replace(" / ", "\n") for label in labels], rotation=25, ha="right", fontsize=8)
+                errors = [[means[i] - min(float(r[field]) * scale for r in native[label]) for i, label in enumerate(labels)],
+                          [max(float(r[field]) * scale for r in native[label]) - means[i] for i, label in enumerate(labels)]]
+                axis.bar(range(len(labels)), means, yerr=errors, capsize=3, color="#145DA0")
+                axis.set_xticks(range(len(labels)), [f"{display.get(label, label)}\n(n={len(native[label])})" for label in labels], rotation=25, ha="right", fontsize=8)
                 axis.set(title=title, ylabel=ylabel)
                 axis.grid(axis="y", alpha=.18)
                 for x, value in enumerate(means):
@@ -112,7 +118,7 @@ def main():
             fig.tight_layout()
             save(fig, "native-aggregation", "Real native proofs, one worker; cold folding includes all leaves and merges. Parent-merge cases assume child proofs already exist. Fixture generation is excluded. Medians of recorded samples; these are not slot-capacity guarantees.")
             (out / "native-results.json").write_text(json.dumps(native, indent=2))
-            native_note = '<p><a href="native-results.json">Native timing rows</a>. Native results use a different host from the transport runs; compare their scope, not raw CPU costs across machines.</p>'
+            native_note = '<p><a href="native-results.json">Native timing rows</a>. Native results use an Apple M2 Max with one prover worker; managed builds overlapped part of capture. Transport runs use a different host. The STARK fixture is a trivial real program, not worst-case execution. Compare measurement scope, not raw CPU costs across machines.</p>'
 
     cells = {}
     for row in rows:

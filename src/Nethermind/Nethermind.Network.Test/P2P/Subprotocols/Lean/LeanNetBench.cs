@@ -209,9 +209,9 @@ public class LeanNetBenchNode
         async Task Originate(BenchObject o)
         {
             await WaitUntil(Release(o.Index));
+            originated[o.Index] = Now();
             if (o.Kind == LeanProtocol.KindBlockProof)
             {
-                originated[o.Index] = Now();
                 Import(o);
             }
             else
@@ -220,7 +220,6 @@ public class LeanNetBenchNode
                 while ((acceptance = await node.Wrappers.AcceptDetailedAsync(o.Body, o.Transactions.ToDictionary(t => t.Hash!.ValueHash256))).Status == ProofWrapperAcceptanceStatus.Busy)
                     await Task.Delay(1, deadline.Token);
                 if (!acceptance.HasValidProof) throw new InvalidOperationException($"object {o.Index} was refused at its origin: {acceptance.Status}");
-                originated[o.Index] = Now();
             }
             if (profile is not null && o.Kind != LeanProtocol.KindWrapper)
             {

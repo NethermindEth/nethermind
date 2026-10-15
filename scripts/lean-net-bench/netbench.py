@@ -22,6 +22,7 @@ import statistics
 import subprocess
 import sys
 import time
+import traceback
 
 PREFIX = os.environ.get("LEAN_NET_PREFIX", "lb")
 ROUTER = f"{PREFIX}-r"
@@ -193,65 +194,65 @@ def run(args):
                   "arguments": vars(args), "verification": "controlled test verifier; transport results are not native proving throughput"}
     with open(os.path.join(run_dir, "provenance.json"), "w") as f:
         json.dump(provenance, f, indent=2)
-    if args.netns:
-        setup(n)
-        shape(n, edges, args.rtt_ms, args.loss, args.rate_mbit)
-        for setting in args.sysctl:
-            for i in range(n):
-                sh(f"ip netns exec {ns(i)} sysctl -qw {setting}")
-
-    neighbours = {i: [] for i in range(n)}
-    for a, b in edges:
-        neighbours[a].append(b)
-        neighbours[b].append(a)
-    port = QUIC_PORT if args.binding == "ethp2p" else RLPX_PORT
-    genesis_ms = int(time.time() * 1000)
-
-    def address(i):
-        return (ip(i), port) if args.netns else ("127.0.0.1", port + 10 * i + 100)
-
     processes = []
-    for i in range(n):
-        config = {
-            "id": i, "binding": args.binding, "broadcast": args.broadcast, "ip": address(i)[0], "port": address(i)[1],
-            "peers": [{"id": p, "ip": address(p)[0], "port": address(p)[1]} for p in neighbours[i]],
-            "nodes": n, "kind": args.kind, "objects": args.warmup + args.objects, "warmup": args.warmup, "proofBytes": args.proof_bytes, "transactionsPerObject": args.transactions_per_object, "burst": args.burst,
-            "intervalMs": args.interval_ms, "origins": args.origins, "verifyMs": args.verify_ms, "genesisUnixMs": genesis_ms,
-            "runDir": run_dir, "timeoutSec": args.timeout
-        }
-        path = os.path.join(run_dir, f"config.{i}.json")
-        with open(path, "w") as f:
-            json.dump(config, f)
-        # Runs last seconds, so tiered recompilation would dominate their CPU; full JIT happens during warm-up instead.
-        env = dict(os.environ, LEAN_NET_CONFIG=path, DOTNET_gcServer="0", DOTNET_TieredCompilation="1" if args.tiered else "0")
-        command = [args.dotnet, "exec", args.test_dll, "--filter", "FullyQualifiedName~LeanNetBenchNode", "--no-progress",
-                   "--results-directory", os.path.join(run_dir, f"tr.{i}")]
-        if args.netns:
-            command = ["ip", "netns", "exec", ns(i)] + command
-        if args.cpus:
-            command = ["taskset", "-c", args.cpus] + command
-        log = open(os.path.join(run_dir, f"node.{i}.log"), "w")
-        processes.append((subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT), log))
-
-    def wait_files(prefix, timeout):
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if all(os.path.exists(os.path.join(run_dir, f"{prefix}.{i}")) for i in range(n)):
-                return True
-            if any(p.poll() is not None for p, _ in processes):
-                return False
-            time.sleep(0.05)
-        return False
-
-    summary = {"label": args.label, "topology": args.topology, "nodes": n, "binding": args.binding, "broadcast": args.broadcast,
-               "kind": args.kind, "objects": args.objects, "warmup": args.warmup, "proof_bytes": args.proof_bytes, "transactions_per_object": args.transactions_per_object, "burst": args.burst,
-               "interval_ms": args.interval_ms, "origins": args.origins, "verify_ms": args.verify_ms, "rtt_ms": args.rtt_ms,
-               "loss": args.loss, "rate_mbit": args.rate_mbit, "sysctl": args.sysctl, "load": open("/proc/loadavg").read().split()[:3] if os.path.exists("/proc/loadavg") else None}
-    summary["provenance"] = provenance
-    summary["run_dir"] = run_dir
-    cpu_before = cpu_after = None
-    before = after = None
     try:
+        if args.netns:
+            setup(n)
+            shape(n, edges, args.rtt_ms, args.loss, args.rate_mbit)
+            for setting in args.sysctl:
+                for i in range(n):
+                    sh(f"ip netns exec {ns(i)} sysctl -qw {setting}")
+
+        neighbours = {i: [] for i in range(n)}
+        for a, b in edges:
+            neighbours[a].append(b)
+            neighbours[b].append(a)
+        port = QUIC_PORT if args.binding == "ethp2p" else RLPX_PORT
+        genesis_ms = int(time.time() * 1000)
+
+        def address(i):
+            return (ip(i), port) if args.netns else ("127.0.0.1", port + 10 * i + 100)
+
+        for i in range(n):
+            config = {
+                "id": i, "binding": args.binding, "broadcast": args.broadcast, "ip": address(i)[0], "port": address(i)[1],
+                "peers": [{"id": p, "ip": address(p)[0], "port": address(p)[1]} for p in neighbours[i]],
+                "nodes": n, "kind": args.kind, "objects": args.warmup + args.objects, "warmup": args.warmup, "proofBytes": args.proof_bytes, "transactionsPerObject": args.transactions_per_object, "burst": args.burst,
+                "intervalMs": args.interval_ms, "origins": args.origins, "verifyMs": args.verify_ms, "genesisUnixMs": genesis_ms,
+                "runDir": run_dir, "timeoutSec": args.timeout
+            }
+            path = os.path.join(run_dir, f"config.{i}.json")
+            with open(path, "w") as f:
+                json.dump(config, f)
+            # Runs last seconds, so tiered recompilation would dominate their CPU; full JIT happens during warm-up instead.
+            env = dict(os.environ, LEAN_NET_CONFIG=path, DOTNET_gcServer="0", DOTNET_TieredCompilation="1" if args.tiered else "0")
+            command = [args.dotnet, "exec", args.test_dll, "--filter", "FullyQualifiedName~LeanNetBenchNode", "--no-progress",
+                       "--results-directory", os.path.join(run_dir, f"tr.{i}")]
+            if args.netns:
+                command = ["ip", "netns", "exec", ns(i)] + command
+            if args.cpus:
+                command = ["taskset", "-c", args.cpus] + command
+            log = open(os.path.join(run_dir, f"node.{i}.log"), "w")
+            processes.append((subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT), log))
+
+        def wait_files(prefix, timeout):
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                if all(os.path.exists(os.path.join(run_dir, f"{prefix}.{i}")) for i in range(n)):
+                    return True
+                if any(p.poll() is not None for p, _ in processes):
+                    return False
+                time.sleep(0.05)
+            return False
+
+        summary = {"label": args.label, "topology": args.topology, "nodes": n, "binding": args.binding, "broadcast": args.broadcast,
+                   "kind": args.kind, "objects": args.objects, "warmup": args.warmup, "proof_bytes": args.proof_bytes, "transactions_per_object": args.transactions_per_object, "burst": args.burst,
+                   "interval_ms": args.interval_ms, "origins": args.origins, "verify_ms": args.verify_ms, "rtt_ms": args.rtt_ms,
+                   "loss": args.loss, "rate_mbit": args.rate_mbit, "sysctl": args.sysctl, "load": open("/proc/loadavg").read().split()[:3] if os.path.exists("/proc/loadavg") else None}
+        summary["provenance"] = provenance
+        summary["run_dir"] = run_dir
+        cpu_before = cpu_after = None
+        before = after = None
         if not wait_files("ready", 120):
             summary["error"] = "nodes did not connect"
             return summary
@@ -436,7 +437,17 @@ def main():
         parser.error("broadcast requires one object per 12-second slot")
     if args.broadcast and args.kind != 2:
         parser.error("broadcast is defined only for kind 2")
-    summary = run(args)
+    try:
+        summary = run(args)
+    except Exception as error:
+        traceback.print_exc()
+        summary = {"label": args.label, "error": str(error), "binding": args.binding,
+                   "kind": args.kind, "transactions_per_object": args.transactions_per_object}
+        if args.label:
+            provenance = os.path.join(args.out, args.label, "provenance.json")
+            if os.path.exists(provenance):
+                with open(provenance) as stream:
+                    summary["provenance"] = json.load(stream)
     line = json.dumps(summary)
     print(line)
     if args.results:
