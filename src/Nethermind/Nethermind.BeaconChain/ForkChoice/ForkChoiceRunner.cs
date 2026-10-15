@@ -1063,6 +1063,13 @@ public sealed class ForkChoiceRunner
         throw new ForkChoiceException($"No held state for the block {blockRoot}");
     }
 
+    /// <summary>How many times the committee count of a gossip aggregate's epoch was computed by walking the registry.</summary>
+    internal int GossipCommitteeCountScans { get; private set; }
+    /// <summary>Registry walks a slot may spend on committee counts of epochs outside the current and previous one.</summary>
+    internal const int MaxOutOfWindowCommitteeScansPerSlot = 2;
+    private ulong _outOfWindowCommitteeScanSlot;
+    private int _outOfWindowCommitteeScans;
+
     private void CheckGossipCommitteeRange(BitArray committeeBits, ulong epoch)
     {
         int index = 0;
@@ -1081,6 +1088,20 @@ public sealed class ForkChoiceRunner
         }
         if (count < 0)
         {
+            // The sender names the epoch, so one outside the window never hits the memo; past the budget the epoch IGNORE that follows refuses it.
+            ulong currentEpoch = _store.CurrentEpoch;
+            if (epoch != currentEpoch && epoch + 1 != currentEpoch)
+            {
+                if (_outOfWindowCommitteeScanSlot != _store.CurrentSlot)
+                {
+                    _outOfWindowCommitteeScanSlot = _store.CurrentSlot;
+                    _outOfWindowCommitteeScans = 0;
+                }
+                if (_outOfWindowCommitteeScans >= MaxOutOfWindowCommitteeScansPerSlot) return;
+                _outOfWindowCommitteeScans++;
+            }
+
+            GossipCommitteeCountScans++;
             int active = 0;
             foreach (Validator validator in ValidatorsOf(state))
                 if (validator.IsActiveValidator(epoch)) active++;

@@ -1509,6 +1509,33 @@ public class BlockImporterTests
     }
 
     [Test]
+    public void Gossip_aggregates_naming_epochs_outside_the_window_walk_the_registry_at_most_the_slot_budget()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        importer.OnSlotTick(2);
+        importer.ComputeHead();
+        long refusedBefore = RefusedByForkChoice("gossip_aggregate");
+        const int aggregates = ForkChoiceRunner.MaxOutOfWindowCommitteeScansPerSlot * 4;
+
+        // The sender names the target epoch, and each unseen epoch costs a registry walk to find its committee count.
+        for (ulong epoch = 40; epoch < 40 + aggregates; epoch++)
+        {
+            Attestation vote = chain.Vote(1, chain.AnchorRoot);
+            vote.Data!.Slot = BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch);
+            vote.Data.Target!.Epoch = epoch;
+            vote.CommitteeBits![0] = false;
+            vote.CommitteeBits[5] = true;
+            importer.OnGossipAggregate(new SignedAggregateAndProof { Message = new AggregateAndProof { AggregatorIndex = 0, Aggregate = vote } });
+        }
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(RefusedByForkChoice("gossip_aggregate") - refusedBefore, Is.EqualTo(aggregates), "every aggregate is refused");
+        Assert.That(runner.GossipCommitteeCountScans, Is.EqualTo(ForkChoiceRunner.MaxOutOfWindowCommitteeScansPerSlot), "the registry walks stop at the slot budget");
+    }
+
+    [Test]
     public async Task Gossip_block_execution_verdict_does_not_charge_the_delivering_peer([Values(ExecutionStatus.Invalid, ExecutionStatus.Optimistic)] ExecutionStatus status)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
