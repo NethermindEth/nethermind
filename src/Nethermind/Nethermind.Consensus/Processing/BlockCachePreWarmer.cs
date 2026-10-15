@@ -1449,7 +1449,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // The pass ended mid-transaction; the caller disposes the scope without running anything else on it.
+            // The pass ended mid-transaction; the worker disposes the scope at park without running anything else on it.
         }
         catch (Exception ex)
         {
@@ -2244,7 +2244,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         /// A claim is never released, so plain reads are enough on this scan: a stale zero costs one failed exchange,
         /// and the exchange is what decides who owns the transaction. <see cref="WaitForArrival"/> reads the table
         /// volatile instead, because there the read is what ends a spin. The main thread's index is read once: it
-        /// only ever grows, and <see cref="TxWarmupWorker.Warm"/> re-reads it before building a scope.
+        /// only ever grows, and <see cref="TxWarmupWorker.Warm"/> re-reads it before opening a scope.
         /// </remarks>
         public bool TryClaimLate(ArrayPoolList<(int Index, Transaction Tx)> run, out int readyElsewhere)
         {
