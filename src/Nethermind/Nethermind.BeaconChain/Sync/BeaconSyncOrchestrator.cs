@@ -739,7 +739,7 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Skips a work item whose handling threw, so one fault does not stop the worker.</summary>
-    /// <remarks>A local fault is not the sender's: the item's pending gossip verdict is throttled, so the sender is not charged and the message id is not cached.</remarks>
+    /// <remarks>A local fault is not charged to the sender: the item's pending gossip verdict is ignored, which caches the message id so a copy that faults the same way is not checked again for free.</remarks>
     private void OnWorkerFault(WorkItem item, Exception e)
     {
         Interlocked.Increment(ref Metrics.WorkerFaultsCount);
@@ -755,7 +755,7 @@ public sealed class BeaconSyncOrchestrator(
             GossipEnvelopeItem envelope => envelope.Verdict,
             _ => null,
         };
-        verdict?.Complete(MessageValidity.Throttled);
+        verdict?.Complete(MessageValidity.Ignored);
     }
 
     private async Task ProcessItemCoreAsync(WorkItem item, CancellationToken token)
@@ -1109,8 +1109,8 @@ public sealed class BeaconSyncOrchestrator(
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            // A held gossip copy resumed by another work item: a local fault is not its sender's, so its message is neither charged nor cached.
-            if (_gossipVerdicts.Remove(block, out GossipVerdict? tracked)) tracked.Complete(MessageValidity.Throttled);
+            // A held gossip copy resumed by another work item: a local fault is not charged to its sender, but its id is cached so a copy that faults the same way is not checked again for free.
+            if (_gossipVerdicts.Remove(block, out GossipVerdict? tracked)) tracked.Complete(MessageValidity.Ignored);
             throw;
         }
     }
@@ -1647,26 +1647,40 @@ public sealed class BeaconSyncOrchestrator(
         {
             if (retry.Block.Slot <= finalizedSlot || IsRetryExpired(retry.QueuedAtSlot, currentSlot))
             {
-                _pendingRetry.Remove(root);
-                RemoveRetryCopies(root);
-                ReleaseImporterDeferral(root);
-                ReleaseRangeHeld(root);
-                _columnFetchRotations.Remove(root);
-                ReleaseColumnWatch(root);
-                DropPendingChildren(root, retry.Block.Slot <= finalizedSlot ? "it fell behind finality" : "its retry expired");
-                ReleaseBackfill(root);
                 if (retry.Block.Slot > finalizedSlot && _logger.IsWarn)
                     _logger.Warn($"Dropping block {root} at slot {retry.Block.Slot}: its data did not become available within {MaxPendingRetryAgeEpochs} epochs");
-                // Nothing else brings back a dropped block the head waits on: range sync re-delivers it from the head.
-                if (retry.Block.Slot > finalizedSlot && retry.Block.ParentRoot == _lastHead?.HeadRoot)
-                {
-                    ResumeRangeSyncFromHead(currentSlot);
-                }
-
+                DropPendingRetry(root, retry, retry.Block.Slot <= finalizedSlot ? "it fell behind finality" : "its retry expired", finalizedSlot, currentSlot);
                 continue;
             }
 
-            await ImportBlockAsync(retry.Block, token);
+            try
+            {
+                await ImportBlockAsync(retry.Block, token);
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                // A retry that faults would fault again every slot until it expires, so it is dropped now.
+                Interlocked.Increment(ref Metrics.WorkerFaultsCount);
+                if (_logger.IsError) _logger.Error($"Dropping block {root} at slot {retry.Block.Slot}: its retried import failed", e);
+                DropPendingRetry(root, retry, "its retried import failed", finalizedSlot, currentSlot);
+            }
+        }
+    }
+
+    private void DropPendingRetry(Hash256 root, PendingRetry retry, string cause, ulong finalizedSlot, ulong currentSlot)
+    {
+        _pendingRetry.Remove(root);
+        RemoveRetryCopies(root);
+        ReleaseImporterDeferral(root);
+        ReleaseRangeHeld(root);
+        _columnFetchRotations.Remove(root);
+        ReleaseColumnWatch(root);
+        DropPendingChildren(root, cause);
+        ReleaseBackfill(root);
+        // Nothing else brings back a dropped block the head waits on: range sync re-delivers it from the head.
+        if (retry.Block.Slot > finalizedSlot && retry.Block.ParentRoot == _lastHead?.HeadRoot)
+        {
+            ResumeRangeSyncFromHead(currentSlot);
         }
     }
 
@@ -1685,7 +1699,17 @@ public sealed class BeaconSyncOrchestrator(
 
         foreach (ParkedEnvelope parked in _pendingEnvelopeRetry.Snapshot())
         {
-            await RetryParkedEnvelopeAsync(parked, token, retryingOnColumns: false);
+            try
+            {
+                await RetryParkedEnvelopeAsync(parked, token, retryingOnColumns: false);
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                // A retry that faults would fault again every slot until it expires, so it is dropped now.
+                Interlocked.Increment(ref Metrics.WorkerFaultsCount);
+                if (_logger.IsError) _logger.Error($"Dropping the execution payload envelope for beacon block {parked.Envelope.Message?.BeaconBlockRoot}: its retried import failed", e);
+                _pendingEnvelopeRetry.Remove(parked);
+            }
         }
     }
 
@@ -2069,7 +2093,16 @@ public sealed class BeaconSyncOrchestrator(
                     otherCopyPending = childRoots[j] == childRoots[i] && !IsSameSignedBlock(children[j], child);
                 }
 
-                await ImportBlockAsync(child, token, otherCopyPending: otherCopyPending);
+                try
+                {
+                    await ImportBlockAsync(child, token, otherCopyPending: otherCopyPending);
+                }
+                catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+                {
+                    // The children are no longer held under their parent, so one that faults must not drop the rest.
+                    Interlocked.Increment(ref Metrics.WorkerFaultsCount);
+                    if (_logger.IsError) _logger.Error($"Dropping block {childRoots[i]}: its import after its parent {root} failed", e);
+                }
             }
         }
 
@@ -2108,9 +2141,9 @@ public sealed class BeaconSyncOrchestrator(
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            // A local fault is not the sender's, so the message is neither charged nor cached.
-            if (_gossipVerdicts.Remove(block, out GossipVerdict? tracked)) tracked.Complete(MessageValidity.Throttled);
-            verdict?.Complete(MessageValidity.Throttled);
+            // A local fault is not charged to the sender, but its id is cached so a copy that faults the same way is not checked again for free.
+            if (_gossipVerdicts.Remove(block, out GossipVerdict? tracked)) tracked.Complete(MessageValidity.Ignored);
+            verdict?.Complete(MessageValidity.Ignored);
             throw;
         }
     }
@@ -2818,11 +2851,6 @@ public sealed class BeaconSyncOrchestrator(
             }
         }
 
-        await DrainPendingRetriesAsync(token);
-        RecoverGloasColumns(token);
-        await DrainPendingEnvelopesAsync(token);
-        ReleaseIdleColumnWatches();
-
         ulong epoch = spec.GetEpoch(slot);
         if (_nextRotation is { } rotation && epoch >= rotation.Epoch)
         {
@@ -2838,6 +2866,11 @@ public sealed class BeaconSyncOrchestrator(
             TryStartColumnGossip();
             ReconcileGossipDigests(epoch);
         }
+
+        await DrainPendingRetriesAsync(token);
+        RecoverGloasColumns(token);
+        await DrainPendingEnvelopesAsync(token);
+        ReleaseIdleColumnWatches();
 
         if (epoch > _statusLogEpoch && _lastHead is { } head && _logger.IsInfo)
         {

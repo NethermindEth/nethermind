@@ -742,6 +742,52 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task Retry_whose_import_throws_is_dropped_after_one_tick_and_that_tick_still_rotates_the_gossip_digest()
+    {
+        const ulong Bpo2Epoch = 419_072;
+        ulong preRotationSlot = (Bpo2Epoch - 1) * Spec.SlotsPerEpoch + 2;
+        ulong anchorSlot = preRotationSlot - 10;
+        Harness harness = CreateHarness(anchorSlot: anchorSlot, wallSlot: preRotationSlot);
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(anchorSlot, anchorSlot + 1);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Orchestrator.StartGossip(_ => new FakeTopic(recordMessages: false));
+        Hash256 root = SszRoots.HashTreeRoot(chain[0].Message!);
+        harness.Importer.Unavailable.Add(root);
+        await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None);
+        int parked = harness.Orchestrator.PendingRetryBlockCount;
+        harness.Importer.Unavailable.Remove(root);
+        harness.Importer.Faulting.Add(root);
+        ulong boundarySlot = Bpo2Epoch * Spec.SlotsPerEpoch;
+
+        Assert.That(async () => await harness.Orchestrator.ProcessSlotAsync(boundarySlot, CancellationToken.None), Throws.Nothing);
+        byte[] digestAfterFault = harness.Orchestrator.CurrentGossipDigest;
+        await harness.Orchestrator.ProcessSlotAsync(boundarySlot + 1, CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(parked, Is.EqualTo(1), "fixture: the block waits for its data");
+        Assert.That(harness.Orchestrator.PendingRetryBlockCount, Is.Zero, "a retry that throws is dropped, not retried every slot");
+        Assert.That(harness.Importer.Imports.Count(import => import.Root == root), Is.EqualTo(2), "the faulting retry runs once");
+        Assert.That(digestAfterFault, Is.EqualTo(ForkDigest.Compute(Spec, Bpo2Epoch)), "a faulting retry must not skip the digest rotation of its tick");
+    }
+
+    [Test]
+    public async Task Held_child_whose_import_throws_does_not_drop_its_siblings()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
+        harness.Importer.Known.Add(anchorRoot);
+        Hash256 parentRoot = SszRoots.HashTreeRoot(chain[0].Message!);
+        SignedBeaconBlock faulting = TestChain.CreateBlock(151, parentRoot);
+        SignedBeaconBlock sibling = TestChain.CreateBlock(152, parentRoot);
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(faulting), CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(sibling), CancellationToken.None);
+        harness.Importer.Faulting.Add(SszRoots.HashTreeRoot(faulting.Message!));
+
+        Assert.That(async () => await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None), Throws.Nothing);
+        Assert.That(harness.Importer.Known, Does.Contain(SszRoots.HashTreeRoot(sibling.Message!)));
+    }
+
+    [Test]
     public async Task Gossip_block_with_unavailable_data_retries_only_while_ahead_of_finality([Values] bool finalityPassesBlock)
     {
         Harness harness = CreateHarness();
@@ -1417,6 +1463,7 @@ public partial class BeaconSyncOrchestratorTests
     {
         public HashSet<Hash256> Known { get; } = [];
         public HashSet<Hash256> Unavailable { get; } = [];
+        public HashSet<Hash256> Faulting { get; } = [];
         public HashSet<Hash256> RegenerationRefused { get; } = [];
         public HashSet<Hash256> RegenerationImpossible { get; } = [];
         public HashSet<Hash256> AdmissionRefused { get; } = [];
@@ -1470,6 +1517,7 @@ public partial class BeaconSyncOrchestratorTests
             ImportOrder.Add((false, blockRoot));
             ImportedOnPoolThread.Add(Thread.CurrentThread.IsThreadPoolThread);
             _deferred.Remove(blockRoot);
+            if (Faulting.Contains(blockRoot)) throw new InvalidOperationException("scripted fault");
             if (Known.Contains(blockRoot)) return BlockImportResult.AlreadyKnown;
             if (!Known.Contains(block.ParentRoot)) return _deferred.Contains(block.ParentRoot) ? Defer(blockRoot) : BlockImportResult.UnknownParent;
             if (AdmissionRefused.Contains(blockRoot))

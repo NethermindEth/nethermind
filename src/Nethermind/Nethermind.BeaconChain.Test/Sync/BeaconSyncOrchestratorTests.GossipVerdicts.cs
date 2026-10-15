@@ -109,14 +109,14 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(() => CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None), Throws.Nothing);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(faultingGiven, Is.EqualTo(new[] { MessageValidity.Throttled }), "a local fault neither charges the sender nor caches the message");
+        Assert.That(faultingGiven, Is.EqualTo(new[] { MessageValidity.Ignored }), "a local fault does not charge the sender, and its id is cached so the same faulting copy is not checked again");
         Assert.That(nextGiven, Is.EqualTo(new[] { MessageValidity.Accepted }), "the worker goes on with the next item");
         Assert.That(harness.Importer.Known, Does.Contain(nextRoot));
         Assert.That(Metrics.BeaconChainWorkerFaults, Is.GreaterThan(faultsBefore));
     }
 
     [Test]
-    public async Task A_held_gossip_block_whose_resumed_import_throws_is_throttled_rather_than_left_pending()
+    public async Task A_held_gossip_block_whose_resumed_import_throws_is_ignored_rather_than_left_pending()
     {
         Harness harness = CreateHarness();
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
@@ -133,7 +133,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.FetchedEnvelopeItem(EnvelopeFor(anchorRoot, EnvelopeBlockSlot), null));
         Assert.That(() => CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None), Throws.Nothing);
 
-        Assert.That(given, Is.EqualTo(new[] { MessageValidity.Throttled }), "a local fault neither charges the sender nor caches the message");
+        Assert.That(given, Is.EqualTo(new[] { MessageValidity.Ignored }), "a local fault does not charge the sender, and its id is cached so the same faulting copy is not checked again");
     }
 
     [Test]
@@ -306,7 +306,7 @@ public partial class BeaconSyncOrchestratorTests
                         Is.SameAs(failure), "a cancellation stops the worker after settling the relay verdict");
                 else
                     Assert.That(async () => await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None), Throws.Nothing, "a local fault skips the item, not the worker");
-            }, MessageValidity.Throttled);
+            }, MessageValidity.Ignored);
     }
 
     internal static async Task AssertBlockVerdictAsync(IBlockImporter importer, ForkedSignedBeaconBlock block, byte[] payload, MessageValidity expected, GossipRouter? router = null)
