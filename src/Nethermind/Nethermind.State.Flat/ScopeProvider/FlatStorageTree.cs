@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -211,8 +212,9 @@ public sealed class FlatStorageTree(
         if (previous == EarlyApplying)
         {
             _scope.CountEarlyAbandoned();
-            return null;
         }
+        return previous == EarlyIdle;
+    }
 
         if (previous != EarlyIdle) return null;
         using EarlyTrie? early = Interlocked.Exchange(ref _earlyTrie, null);
@@ -399,35 +401,69 @@ public sealed class FlatStorageTree(
     private sealed class NativeStorageWriteBatch(
         FlatStorageTree storageTree,
         int estimatedEntries,
-        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
+        Action<Address, Hash256> onRootUpdated,
+        NativeBulkSetState? prepared,
+        Dictionary<UInt256, UInt256>? earlyApplied) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         private readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _entries = new(estimatedEntries);
+        private NativeBulkSetState? _prepared = prepared;
+        private Dictionary<UInt256, UInt256>? _earlyApplied = earlyApplied;
         private bool _hasSelfDestruct;
+        private bool _hasWrites;
+        private int _reused;
+
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            _hasWrites = true;
+            storageTree.Set(index, value);
+            if (_earlyApplied is not null && _earlyApplied.Remove(index, out UInt256 applied) && applied == value)
+            {
+                _reused++;
+                return;
+            }
+            AddEntry(index, value);
+        }
 
         [SkipLocalsInit]
-        public void Set(in UInt256 index, in UInt256 value)
+        private void AddEntry(in UInt256 index, in UInt256 value)
         {
             Unsafe.SkipInit(out EvmWord word);
             bool isZero = value.IsZero;
             ValueHash256 key = default;
             StorageTree.ComputeKeyWithLookup(index, ref key);
             _entries.Add(StorageTree.CreateBulkSetEntry(key, isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word), isZero));
-            storageTree.Set(index, value);
         }
 
         public void Clear()
         {
-            if (_entries.Count > 0) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            if (_hasWrites) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            _prepared?.Dispose();
+            _prepared = null;
+            _earlyApplied = null;
             _hasSelfDestruct = true;
             storageTree.ClearStorage();
         }
 
         public void Dispose()
         {
+            using NativeBulkSetState? prepared = _prepared;
+            _prepared = null;
             using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = _entries;
-            if (entries.Count > 0) storageTree._nativeRoot = storageTree.NativeStore.BulkSet(storageTree._nativeRoot, entries.AsSpan());
+            int restored = 0;
+            if (_earlyApplied is { Count: > 0 } leftovers)
+            {
+                foreach (UInt256 slot in leftovers.Keys)
+                {
+                    storageTree.Get(slot, out UInt256 value);
+                    AddEntry(slot, value);
+                    restored++;
+                }
+            }
+            storageTree._scope.CountEarlyReconciled(_reused, restored);
+            if (prepared is not null) storageTree._nativeRoot = storageTree.NativeStore.Finish(prepared, entries.AsSpan());
+            else if (entries.Count > 0) storageTree._nativeRoot = storageTree.NativeStore.BulkSet(storageTree._nativeRoot, entries.AsSpan());
             if (!storageTree._config.DeferStorageTrieCommit) storageTree._nativeStore?.Publish();
-            if (entries.Count > 0 || _hasSelfDestruct) onRootUpdated(storageTree._address, storageTree._nativeRoot);
+            if (prepared is not null || entries.Count > 0 || _hasSelfDestruct) onRootUpdated(storageTree._address, storageTree._nativeRoot);
         }
     }
 

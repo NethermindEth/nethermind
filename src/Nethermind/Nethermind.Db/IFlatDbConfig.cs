@@ -151,7 +151,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
     bool ApplyStorageWritesOnIdleThread { get; set; }
 
-    [ConfigItem(Description = "Experimental. Update and hash the state and storage tries with the native bulk set in `libnethermind_patricia`, which must be present. Disables ApplyStorageWritesOnIdleThread and cannot be combined with VerifyWithTrie.", DefaultValue = "false")]
+    [ConfigItem(Description = "Experimental. Update and hash the state and storage tries with the native bulk set in `libnethermind_patricia`, which must be present. Cannot be combined with VerifyWithTrie.", DefaultValue = "false")]
     bool UseNativeBulkSet { get; set; }
 
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]

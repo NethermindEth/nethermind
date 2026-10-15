@@ -242,7 +242,7 @@ public sealed class SnapshotBundle : IDisposable
     // kept across SwapTransientResource) until Dispose, so the only way the acquire never succeeds is a
     // disposed bundle whose transient will not be replaced - the _isDisposed check bails there instead of
     // spinning forever (the target has no whole-bundle lease deferring that release).
-    private TransientResource? TryLeaseTransientResource()
+    internal TransientResource? TryLeaseTransientResource()
     {
         SpinWait spinWait = default;
         while (true)

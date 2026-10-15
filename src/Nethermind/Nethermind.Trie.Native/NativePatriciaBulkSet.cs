@@ -80,21 +80,13 @@ public static unsafe partial class NativePatriciaBulkSet
     public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog? log, NativeWarmedNodes? warmed, Hash256? address, in ValueHash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
     {
         long start = Stopwatch.GetTimestamp();
-        int valuesLength = 0;
-        foreach (PatriciaTree.BulkSetEntry entry in entries) valuesLength += entry.Value?.Length ?? 0;
+        int valuesLength = GetValuesLength(entries);
 
         NativeBulkSetEntry[] nativeEntries = ArrayPool<NativeBulkSetEntry>.Shared.Rent(entries.Length);
         byte[] values = ArrayPool<byte>.Shared.Rent(valuesLength);
         try
         {
-            int offset = 0;
-            for (int i = 0; i < entries.Length; i++)
-            {
-                ReadOnlySpan<byte> value = entries[i].Value;
-                value.CopyTo(values.AsSpan(offset));
-                nativeEntries[i] = new NativeBulkSetEntry(in entries[i].Path, offset, value.Length);
-                offset += value.Length;
-            }
+            PackEntries(entries, nativeEntries, values);
 
             return BulkSet(store, pending, log, warmed, address, in root, nativeEntries.AsSpan(0, entries.Length), values.AsSpan(0, valuesLength));
         }
@@ -103,6 +95,117 @@ public static unsafe partial class NativePatriciaBulkSet
             ArrayPool<NativeBulkSetEntry>.Shared.Return(nativeEntries);
             ArrayPool<byte>.Shared.Return(values);
             Metrics.AddBulkSet(Stopwatch.GetElapsedTime(start).Ticks);
+        }
+    }
+
+    /// <summary>Applies another batch to an owned trie without hashing or writing encoded nodes.</summary>
+    /// <remarks>
+    /// Entries are reordered and must have unique keys. Values and callback state are used only during the call.
+    /// Use the same log for every call on the trie, and do not reset warmed nodes during the call.
+    /// An error invalidates the trie, which must be disposed.
+    /// </remarks>
+    public static void Update(INativeNodeStore store, NativeBulkSetState trie, NativeTrieNodeLog log, NativeWarmedNodes? warmed,
+        Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values) =>
+        CallPrepared(store, trie, null, log, warmed, entries, values);
+
+    /// <summary>Applies final corrections, hashes the prepared trie into pending nodes, and returns its root hash.</summary>
+    /// <remarks>
+    /// Finishes even with no corrections. Entries are reordered and must have unique keys. The trie is invalidated on success
+    /// or failure, but must still be disposed. Do not publish pending output after a failure. Log and warmed-node lifetime
+    /// requirements are the same as for <see cref="Update(INativeNodeStore, NativeBulkSetState, NativeTrieNodeLog, NativeWarmedNodes?, Span{NativeBulkSetEntry}, ReadOnlySpan{byte})"/>.
+    /// </remarks>
+    public static Hash256 Finish(INativeNodeStore store, NativeBulkSetState trie, NativePendingNodes pending, NativeTrieNodeLog log,
+        NativeWarmedNodes? warmed, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values) =>
+        new(CallPrepared(store, trie, pending, log, warmed, entries, values));
+
+    /// <inheritdoc cref="Update(INativeNodeStore, NativeBulkSetState, NativeTrieNodeLog, NativeWarmedNodes?, Span{NativeBulkSetEntry}, ReadOnlySpan{byte})"/>
+    /// <remarks>A null or empty value deletes the key. Keys must be unique.</remarks>
+    public static void Update(INativeNodeStore store, NativeBulkSetState trie, NativeTrieNodeLog log, NativeWarmedNodes? warmed,
+        ReadOnlySpan<PatriciaTree.BulkSetEntry> entries) =>
+        CallPrepared(store, trie, null, log, warmed, entries);
+
+    /// <inheritdoc cref="Finish(INativeNodeStore, NativeBulkSetState, NativePendingNodes, NativeTrieNodeLog, NativeWarmedNodes?, Span{NativeBulkSetEntry}, ReadOnlySpan{byte})"/>
+    /// <remarks>A null or empty value deletes the key. Keys must be unique.</remarks>
+    public static Hash256 Finish(INativeNodeStore store, NativeBulkSetState trie, NativePendingNodes pending, NativeTrieNodeLog log,
+        NativeWarmedNodes? warmed, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries) =>
+        new(CallPrepared(store, trie, pending, log, warmed, entries));
+
+    private static ValueHash256 CallPrepared(INativeNodeStore store, NativeBulkSetState trie, NativePendingNodes? pending,
+        NativeTrieNodeLog log, NativeWarmedNodes? warmed, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values)
+    {
+        CallState state = new(store);
+        GCHandle handle = GCHandle.Alloc(state);
+        bool logReferenced = false;
+        bool warmedReferenced = false;
+        try
+        {
+            log.DangerousAddRef(ref logReferenced);
+            warmed?.DangerousAddRef(ref warmedReferenced);
+            ValueHash256 root = default;
+            int status;
+            long start = Stopwatch.GetTimestamp();
+            // P/Invoke holds trie and pending handles; these pins and callback context live only for this call.
+            fixed (NativeBulkSetEntry* entriesPointer = entries)
+            fixed (byte* valuesPointer = values)
+            {
+                status = pending is null
+                    ? nm_patricia_bulk_state_update(trie, entriesPointer, entries.Length, valuesPointer, values.Length,
+                        log.DangerousGetHandle(), warmedReferenced ? warmed!.DangerousGetHandle() : 0, &Fetch, (void*)GCHandle.ToIntPtr(handle))
+                    : nm_patricia_bulk_state_finish(trie, entriesPointer, entries.Length, valuesPointer, values.Length, pending,
+                        log.DangerousGetHandle(), warmedReferenced ? warmed!.DangerousGetHandle() : 0, &Fetch, (void*)GCHandle.ToIntPtr(handle), &root);
+            }
+            Metrics.AddBulkSetCall(Stopwatch.GetElapsedTime(start).Ticks, Stopwatch.GetElapsedTime(0, state.FetchTimestampTicks).Ticks);
+
+            if (state.Exception is not null) throw new InvalidOperationException("Native node store callback failed", state.Exception);
+            if (status != 0) throw new InvalidOperationException($"Native bulk set failed with status {status}");
+            return root;
+        }
+        finally
+        {
+            if (logReferenced) log.DangerousRelease();
+            if (warmedReferenced) warmed!.DangerousRelease();
+            handle.Free();
+        }
+    }
+
+    private static ValueHash256 CallPrepared(INativeNodeStore store, NativeBulkSetState trie, NativePendingNodes? pending,
+        NativeTrieNodeLog log, NativeWarmedNodes? warmed, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    {
+        long start = Stopwatch.GetTimestamp();
+        int valuesLength = GetValuesLength(entries);
+
+        NativeBulkSetEntry[] nativeEntries = ArrayPool<NativeBulkSetEntry>.Shared.Rent(entries.Length);
+        byte[] values = ArrayPool<byte>.Shared.Rent(valuesLength);
+        try
+        {
+            PackEntries(entries, nativeEntries, values);
+
+            return CallPrepared(store, trie, pending, log, warmed, nativeEntries.AsSpan(0, entries.Length), values.AsSpan(0, valuesLength));
+        }
+        finally
+        {
+            ArrayPool<NativeBulkSetEntry>.Shared.Return(nativeEntries);
+            ArrayPool<byte>.Shared.Return(values);
+            Metrics.AddBulkSet(Stopwatch.GetElapsedTime(start).Ticks);
+        }
+    }
+
+    private static int GetValuesLength(ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    {
+        int length = 0;
+        foreach (PatriciaTree.BulkSetEntry entry in entries) length += entry.Value?.Length ?? 0;
+        return length;
+    }
+
+    private static void PackEntries(ReadOnlySpan<PatriciaTree.BulkSetEntry> entries, NativeBulkSetEntry[] nativeEntries, byte[] values)
+    {
+        int offset = 0;
+        for (int i = 0; i < entries.Length; i++)
+        {
+            ReadOnlySpan<byte> value = entries[i].Value;
+            value.CopyTo(values.AsSpan(offset));
+            nativeEntries[i] = new NativeBulkSetEntry(in entries[i].Path, offset, value.Length);
+            offset += value.Length;
         }
     }
 
@@ -167,6 +270,32 @@ public static unsafe partial class NativePatriciaBulkSet
         nint log,
         nint warmed,
         ValueHash256* address,
+        delegate* unmanaged<void*, TreePath*, ValueHash256*, delegate* unmanaged<void*, byte*, int, void>, void*, int> fetch,
+        void* context,
+        ValueHash256* rootOut);
+
+    [LibraryImport(LibraryName)]
+    private static partial int nm_patricia_bulk_state_update(
+        NativeBulkSetState state,
+        NativeBulkSetEntry* entries,
+        int entryCount,
+        byte* values,
+        int valuesLength,
+        nint log,
+        nint warmed,
+        delegate* unmanaged<void*, TreePath*, ValueHash256*, delegate* unmanaged<void*, byte*, int, void>, void*, int> fetch,
+        void* context);
+
+    [LibraryImport(LibraryName)]
+    private static partial int nm_patricia_bulk_state_finish(
+        NativeBulkSetState state,
+        NativeBulkSetEntry* entries,
+        int entryCount,
+        byte* values,
+        int valuesLength,
+        NativePendingNodes pending,
+        nint log,
+        nint warmed,
         delegate* unmanaged<void*, TreePath*, ValueHash256*, delegate* unmanaged<void*, byte*, int, void>, void*, int> fetch,
         void* context,
         ValueHash256* rootOut);
