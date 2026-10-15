@@ -731,6 +731,18 @@ public class SszMiddlewareTests
     }
 
     [Test]
+    public async Task Capabilities_advertises_exactly_the_registered_blob_versions()
+    {
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/capabilities");
+        await _middleware.InvokeAsync(ctx);
+
+        using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
+        string[] advertised = response.RootElement.GetProperty("independently_versioned").GetProperty(SszRestPaths.Blobs).EnumerateArray()
+            .Select(static version => version.GetString()!).ToArray();
+        Assert.That(advertised, Is.EquivalentTo(BuildHandlers().Where(static h => h.Resource == SszRestPaths.Blobs).Select(static h => $"v{h.Version}")));
+    }
+
+    [Test]
     public async Task ClientVersion_returns_non_empty_response()
     {
         ClientVersionV1[] response = [new ClientVersionV1()];

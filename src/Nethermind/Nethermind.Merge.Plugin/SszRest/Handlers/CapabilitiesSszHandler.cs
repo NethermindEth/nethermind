@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -39,11 +40,12 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
     {
         string supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered, SszRestJsonContext.Default.IReadOnlyListString);
         string forkScopedEndpointsJson = JsonSerializer.Serialize(ForkScopedEndpointNames(), SszRestJsonContext.Default.IReadOnlyListString);
+        string blobVersionsJson = JsonSerializer.Serialize(BlobVersionNames(), SszRestJsonContext.Default.IReadOnlyListString);
 
         return Encoding.UTF8.GetBytes(
             $"{{\"supported_forks\":{supportedForksJson}," +
             $"\"fork_scoped_endpoints\":{forkScopedEndpointsJson}," +
-            $"\"independently_versioned\":{{\"{SszRestPaths.Blobs}\":[\"v1\",\"v2\",\"v3\",\"v4\"]}}," +
+            $"\"independently_versioned\":{{\"{SszRestPaths.Blobs}\":{blobVersionsJson}}}," +
             $"\"unscoped_endpoints\":[\"{SszRestPaths.Capabilities}\",\"{SszRestPaths.ClientVersion}\"]," +
             $"\"limits\":{{" +
             $"\"bodies.max_count\":{SszRestLimits.MaxBodiesRequest}," +
@@ -58,4 +60,7 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
             .Select(static endpoint => endpoint.Resource is SszRestPaths.PayloadBodiesByHash ? SszRestPaths.PayloadBodiesByRange : endpoint.Resource)
             .Distinct(StringComparer.OrdinalIgnoreCase)
     ];
+
+    private static string[] BlobVersionNames() =>
+        [.. Enumerable.Range(EngineApiVersions.GetBlobs.V1, EngineApiVersions.GetBlobs.Latest - EngineApiVersions.GetBlobs.V1 + 1).Select(static version => $"v{version}")];
 }
