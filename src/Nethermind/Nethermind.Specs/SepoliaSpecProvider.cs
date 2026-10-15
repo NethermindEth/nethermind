@@ -44,5 +44,5 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public string SealEngine => SealEngineType.Clique;
 
-    public static SepoliaSpecProvider Instance { get; } = new();
+    public static SepoliaSpecProvider Instance => field ??= new();
 }

@@ -63,13 +63,12 @@ namespace Nethermind.Consensus.Processing
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
-                int i = 0;
                 foreach (Transaction currentTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
+                    TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
                     consideredTx.Add(currentTx);
@@ -114,6 +113,7 @@ namespace Nethermind.Consensus.Processing
                 else
                 {
                     ITransactionProcessorAdapter processor = balManager.Enabled ? balManager.GetTxProcessor() : transactionProcessor;
+                    int receiptsSnapshot = receiptsTracer.TakeSnapshot();
                     TransactionResult result = processor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
@@ -124,6 +124,9 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
+                        // Drop any receipt/header gas the failed tx left behind. The processor's own running block
+                        // gas is not reset here, but the next receipt rewrites the header's gas used from receipts kept.
+                        receiptsTracer.Restore(receiptsSnapshot);
                         balManager.Rollback();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
                         EvictUnpaidFrameTx(currentTx, result);

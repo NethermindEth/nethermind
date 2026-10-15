@@ -318,7 +318,7 @@ public sealed class CommitmentEmitter : IDisposable
         _blockArena.Clear();
         _blockNodes.Clear();
         _blockChanged.Clear();
-        _blockDirtyChildren.Clear();
+        _blockChangedChildren.Clear();
         _blockStorageMaxDepth.Clear();
         _blockTrieDepths.Clear();
         _blockAdoptedTargets.Clear();

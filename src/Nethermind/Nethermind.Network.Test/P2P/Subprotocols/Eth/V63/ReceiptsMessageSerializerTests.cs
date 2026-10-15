@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -153,12 +155,25 @@ public class ReceiptsMessageSerializerTests
         Assert.That(exception?.Message, Is.EqualTo("Unexpected null array element at index 0"));
     }
 
-    [Test]
-    public void Deserialize_empty()
+    private static IEnumerable<TestCaseData> EmptyResponses()
+    {
+        yield return new TestCaseData(Array.Empty<byte>()).SetArgDisplayNames("no bytes");
+        yield return new TestCaseData(Rlp.OfEmptyList.Bytes).SetArgDisplayNames("empty list");
+    }
+
+    [TestCaseSource(nameof(EmptyResponses))]
+    public void Deserialize_empty_is_usable_after_an_earlier_one_is_disposed(byte[] bytes)
     {
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-        using ReceiptsMessage receiptsMessage = serializer.Deserialize([]);
-        Assert.That(receiptsMessage.TxReceipts, Has.Count.EqualTo(0));
+        ReceiptsMessage first = serializer.Deserialize(bytes);
+        first.Dispose();
+
+        using ReceiptsMessage second = serializer.Deserialize(bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second.TxReceipts.ToArray(), Is.Empty);
+        }
     }
 
     [Test]
