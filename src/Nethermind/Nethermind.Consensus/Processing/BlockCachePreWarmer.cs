@@ -2523,9 +2523,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     /// <summary>
     /// A transaction-warming worker, kept by its queue across blocks with the run list it claims into; it holds an
-    /// env only from rent to park. The fan-out's own workers run <see cref="Drain"/> and are parked by its loop
-    /// finalizer; a helper recruited for a wave of late senders is submitted as joinable background work and runs
-    /// <see cref="Execute"/>.
+    /// env, and the block's scope on it once it has warmed a job, only from rent to park. The fan-out's own workers
+    /// run <see cref="Drain"/> and are parked by its loop finalizer; a helper recruited for a wave of late senders is
+    /// submitted as joinable background work and runs <see cref="Execute"/>.
     /// </summary>
     private sealed class TxWarmupWorker(WarmupQueue queue) : IThreadPoolWorkItem, IDisposable
     {
@@ -2533,6 +2533,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // Reused for every late run this worker claims, so claiming allocates nothing per job.
         private readonly ArrayPoolList<(int Index, Transaction Tx)> _run = new(4);
         private IPrewarmerEnv? _env;
+        private IReadOnlyTxProcessingScope? _scope;
 
         /// <summary>Link of the queue's parked list; owned by the queue.</summary>
         public TxWarmupWorker? NextParked;
@@ -2545,7 +2546,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             IPrewarmerEnv? env = _env;
             if (env is null) return;
             _env = null;
-            _queue.PreWarmer._envPool.Return(env);
+            IReadOnlyTxProcessingScope? scope = _scope;
+            _scope = null;
+            try
+            {
+                scope?.Dispose();
+            }
+            finally
+            {
+                _queue.PreWarmer._envPool.Return(env);
+            }
         }
 
         public void Park() => _queue.Park(this);
@@ -2660,18 +2670,33 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (blockState.PreWarmer.MainThreadTxIndex >= lastIndex) return;
 
             CancellationToken token = _queue.Token;
-            // Each job builds and disposes its own scope, so no speculative state crosses jobs.
-            using IReadOnlyTxProcessingScope scope = _env!.BuildAtTarget(blockState.Block.Header);
-            BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-            scope.TransactionProcessor.SetBlockExecutionContext(context);
+            IReadOnlyTxProcessingScope scope = OpenScope(blockState);
             CancellationTxTracer tracer = _queue.Tracer;
-            FootprintRecorder? recorder = _env.Recorder;
+            FootprintRecorder? recorder = _env!.Recorder;
 
             foreach ((int txIndex, Transaction tx) in transactions)
             {
                 if (token.IsCancellationRequested) return;
                 WarmupSingleTransaction(scope, tx, txIndex, blockState, recorder, tracer, token);
             }
+        }
+
+        /// <summary>The block's scope on the env, opened by the worker's first job and reset for each one after it.</summary>
+        /// <remarks>
+        /// A warm run never commits to the scope's backend, so the reset leaves the state a new scope would: no
+        /// speculative state crosses jobs, and the worker opens one scope per block instead of one per job.
+        /// </remarks>
+        private IReadOnlyTxProcessingScope OpenScope(BlockState blockState)
+        {
+            if (_scope is { } scope)
+            {
+                scope.WorldState.Reset();
+                return scope;
+            }
+
+            scope = _env!.BuildAtTarget(blockState.Block.Header);
+            scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(blockState.Block.Header, blockState.Spec));
+            return _scope = scope;
         }
 
         public void Dispose() => _run.Dispose();
