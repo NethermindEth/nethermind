@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text;
-using DotNetty.Buffers;
-using DotNetty.Codecs.Base64;
-using DotNetty.Common.Utilities;
+using System.Buffers.Text;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 
@@ -12,11 +9,6 @@ namespace Nethermind.Network.Dns;
 
 public interface IEnrRecordParser
 {
-    /// <summary>
-    /// Parses and signature-verifies an ENR.
-    /// </summary>
-    NodeRecord ParseRecord(string nodeRecordText, IByteBuffer buffer);
-
     /// <summary>
     /// Parses and signature-verifies an ENR.
     /// </summary>
@@ -29,52 +21,14 @@ public class EnrRecordParser(INodeRecordSigner nodeRecordSigner) : IEnrRecordPar
 
     public NodeRecord ParseRecord(string nodeRecordText)
     {
-        IByteBuffer buffer = NethermindBuffers.Default.Buffer();
-        try
+        byte[] rlp = Base64Url.DecodeFromChars(nodeRecordText.AsSpan(4));
+        RlpReader ctx = new(rlp);
+        NodeRecord result = _nodeRecordSigner.Deserialize(ref ctx);
+        if (!_nodeRecordSigner.Verify(result))
         {
-            return ParseRecord(nodeRecordText, buffer);
-        }
-        finally
-        {
-            buffer.Release();
-        }
-    }
-
-    public NodeRecord ParseRecord(string nodeRecordText, IByteBuffer buffer)
-    {
-        static void AddPadding(IByteBuffer byteBuffer, ICharSequence base64)
-        {
-            if (base64[^1] != '=')
-            {
-                int mod3 = base64.Count % 4;
-                for (int i = 0; i < mod3; i++)
-                {
-                    byteBuffer.WriteString("=", Encoding.UTF8);
-                }
-            }
+            throw new RlpException("Invalid ENR signature.");
         }
 
-        buffer.Clear();
-        StringCharSequence base64Sequence = new(nodeRecordText, 4, nodeRecordText.Length - 4);
-        buffer.WriteCharSequence(base64Sequence, Encoding.UTF8);
-        AddPadding(buffer, base64Sequence);
-
-        IByteBuffer base64Buffer = Base64.Decode(buffer, Base64Dialect.URL_SAFE);
-        try
-        {
-            RlpReader ctx = new(base64Buffer.AsSpan());
-            NodeRecord result = _nodeRecordSigner.Deserialize(ref ctx);
-            base64Buffer.SetReaderIndex(base64Buffer.ReaderIndex + ctx.Position);
-            if (!_nodeRecordSigner.Verify(result))
-            {
-                throw new RlpException("Invalid ENR signature.");
-            }
-
-            return result;
-        }
-        finally
-        {
-            base64Buffer.Release();
-        }
+        return result;
     }
 }
