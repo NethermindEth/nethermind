@@ -526,6 +526,82 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    public enum ChildOutcome
+    {
+        Reverted,
+        OutOfGas,
+        InvalidOpcode,
+        StackUnderflow,
+        NotEnoughBalance
+    }
+
+    private static readonly Address ProbedAccount = new("0xbabababababababababababababababababababa");
+    private static readonly UInt256 CallerBalance = 10;
+    private static readonly UInt256 PayeeBalance = 1;
+    private static readonly UInt256 ProbedBalance = 3;
+
+    /// <summary>As in geth, whose prestate tracer skips only the opcode that fails, a child frame that halts
+    /// exceptionally (or a CALL that fails its balance pre-check) leaves the rest of the caller traced: the accounts
+    /// and slots it touches afterwards show in pre and, when they change, in post.</summary>
+    [Test]
+    public void Test_PrestateTrace_AfterAbortedChild_TracesTheCallerToTheEnd([Values] ChildOutcome outcome, [Values] bool diffMode)
+    {
+        Address child = TestItem.AddressF;
+        Address payee = TestItem.AddressE;
+        Address caller = TestItem.AddressC;
+        byte[] childCode = outcome switch
+        {
+            ChildOutcome.Reverted => Prepare.EvmCode.Revert(0, 0).Done,
+            ChildOutcome.OutOfGas => Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done,
+            ChildOutcome.InvalidOpcode => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+            ChildOutcome.StackUnderflow => Prepare.EvmCode.Op(Instruction.ADD).Done,
+            _ => Prepare.EvmCode.Op(Instruction.STOP).Done,
+        };
+        Prepare callerCode = outcome == ChildOutcome.NotEnoughBalance
+            ? Prepare.EvmCode.CallWithValue(child, 10_000, CallerBalance + 1)
+            : Prepare.EvmCode.Call(child, 10_000);
+        callerCode = callerCode.Op(Instruction.POP)
+            .CallWithValue(payee, 0, 1).Op(Instruction.POP)
+            .PushData(ProbedAccount).Op(Instruction.BALANCE).Op(Instruction.POP)
+            .PersistData("0x01", "0x07")
+            .Op(Instruction.STOP);
+
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(caller, CallerBalance);
+        TestState.InsertCode(caller, callerCode.Done, Spec);
+        TestState.Set(new StorageCell(caller, 1), 5);
+        TestState.CreateAccount(child, UInt256.Zero);
+        TestState.InsertCode(child, childCode, Spec);
+        TestState.CreateAccount(payee, PayeeBalance);
+        TestState.CreateAccount(ProbedAccount, ProbedBalance);
+
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(diffMode ? DiffMode : PrestateMode), Hash256.Zero,
+            TestItem.AddressA, TestItem.AddressB, Address.Zero);
+        object result = ExecutePrestate(tracer, Prepare.EvmCode.Call(caller, 80_000).Done, wrapped: false).CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (diffMode)
+            {
+                NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)result;
+                Assert.That(diff.pre[payee].Balance, Is.EqualTo((UInt256?)PayeeBalance));
+                Assert.That(diff.post[payee].Balance, Is.EqualTo((UInt256?)(PayeeBalance + 1)));
+                Assert.That(diff.pre[caller].Balance, Is.EqualTo((UInt256?)CallerBalance));
+                Assert.That(diff.pre[caller].Storage![1], Is.EqualTo((UInt256)5));
+                Assert.That(diff.post[caller].Balance, Is.EqualTo((UInt256?)(CallerBalance - 1)));
+                Assert.That(diff.post[caller].Storage![1], Is.EqualTo((UInt256)7));
+            }
+            else
+            {
+                Dictionary<AddressAsKey, NativePrestateTracerAccount> pre = (Dictionary<AddressAsKey, NativePrestateTracerAccount>)result;
+                Assert.That(pre.ContainsKey(child), Is.True);
+                Assert.That(pre[payee].Balance, Is.EqualTo((UInt256?)PayeeBalance));
+                Assert.That(pre[ProbedAccount].Balance, Is.EqualTo((UInt256?)ProbedBalance));
+                Assert.That(pre[caller].Storage![1], Is.EqualTo((UInt256)5));
+            }
+        }
+    }
+
     private const string ExpectedExistingAccountPrestateTrace = """
         {
           "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
