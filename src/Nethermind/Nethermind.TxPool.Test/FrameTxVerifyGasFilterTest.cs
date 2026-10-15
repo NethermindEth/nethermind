@@ -23,6 +23,14 @@ internal class FrameTxVerifyGasFilterTest
     // all depends on sender-controlled code, so the frames behind it may still run before any gas is paid.
     private static IEnumerable<TestCaseData> PrefixCases()
     {
+        static TxFrame Dependency()
+        {
+            int count = (int)(Eip8141Constants.MaxVerifyGas / Eip8288Constants.LeanSphincsVerificationGas) + 1;
+            byte[] data = new byte[count * Eip8288Constants.DependencyTripleLength];
+            for (int i = 0; i < count; i++) data[i * Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanSphincsScheme;
+            return new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data);
+        }
+
         yield return new TestCaseData(new[] { SelfVerify(1_000), Execution(3_000_000) }, AcceptTxResult.Accepted, (ulong?)ConfiguredMaxVerifyGas)
             .SetName("execution behind a recognized prefix is outside the ceiling");
         yield return new TestCaseData(new[] { ApprovingDefault(1_000), Execution(3_000_000) }, AcceptTxResult.FrameTxVerifyGasTooHigh, (ulong?)ConfiguredMaxVerifyGas)
@@ -38,6 +46,10 @@ internal class FrameTxVerifyGasFilterTest
             .SetName("the default ceiling accepts MAX_VERIFY_GAS");
         yield return new TestCaseData(new[] { SelfVerify(Eip8141Constants.MaxVerifyGas + 1) }, AcceptTxResult.FrameTxVerifyGasTooHigh, null)
             .SetName("the default ceiling rejects one gas above MAX_VERIFY_GAS");
+        yield return new TestCaseData(new[] { Dependency(), SelfVerify(1_000) }, AcceptTxResult.Accepted, null)
+            .SetName("leading dependency declarations do not consume MAX_VERIFY_GAS");
+        yield return new TestCaseData(new[] { OnlyVerify(1_000), Dependency(), Pay(TestItem.AddressB, 1_000) }, AcceptTxResult.Accepted, null)
+            .SetName("dependency declarations between approval stages do not consume MAX_VERIFY_GAS");
     }
 
     [TestCaseSource(nameof(PrefixCases))]
