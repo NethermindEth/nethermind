@@ -67,6 +67,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth;
 /// </remarks>
 [TestFixture]
 [NonParallelizable]
+[ReleaseOnly("DEBUG builds capture a stack trace per ArrayPoolList, so the allocation ceilings do not apply.")]
 public class TxGossipAllocationTests
 {
     private const int Peers = 8;
