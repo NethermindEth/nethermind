@@ -8,7 +8,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
@@ -17,6 +16,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -44,23 +44,15 @@ public partial class EngineModuleTests
         Headers = new ArrayPoolList<byte[]>(0),
     };
 
-    private sealed class WitnessHandlerBuilder
+    private static class WitnessHandlerBuilder
     {
-        public IEngineRpcModule EngineModule { get; set; }
-            = SucceedingEngineModule(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
-
-        public WitnessRendezvous Rendezvous { get; set; } = new();
-
-        public NewPayloadWithWitnessHandler Build() => CreateHandler(() => EngineModule, Rendezvous);
-
-        /// <summary>Builds a handler over an empty block tree, so it has only the witness the rendezvous captures.</summary>
-        public static NewPayloadWithWitnessHandler CreateHandler(Func<IEngineRpcModule> engineModule, WitnessRendezvous rendezvous) =>
-            new(
-                new Lazy<IEngineRpcModule>(engineModule),
-                rendezvous,
-                Substitute.For<IBlockFinder>(),
-                [],
-                new Lazy<IWitnessGeneratingBlockProcessingEnvFactory>(() => Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>()));
+        public static IContainer CreateContainer(Func<IEngineRpcModule> engineModule, WitnessRendezvous rendezvous) =>
+            new ContainerBuilder()
+                .AddModule(new TestNethermindModule(Amsterdam.Instance))
+                .AddSingleton<IEngineRpcModule>(_ => engineModule())
+                .AddSingleton<WitnessRendezvous>(rendezvous)
+                .AddSingleton<NewPayloadWithWitnessHandler>()
+                .Build();
 
         public static IEngineRpcModule SucceedingEngineModule(PayloadStatusV1 status)
         {
@@ -105,7 +97,8 @@ public partial class EngineModuleTests
             .Returns(status);
         module.ClearReceivedCalls();
 
-        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(() => module, new WitnessRendezvous());
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(() => module, new WitnessRendezvous());
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         using ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await HandleWitnessPayloadAsync(handler, version, []);
@@ -133,7 +126,8 @@ public partial class EngineModuleTests
             .Returns(status);
         module.ClearReceivedCalls();
 
-        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(() => module, new WitnessRendezvous());
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(() => module, new WitnessRendezvous());
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         using ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await HandleWitnessPayloadAsync(handler, version, null);
@@ -329,12 +323,13 @@ public partial class EngineModuleTests
         using Witness expectedWitness = MakeStubWitness();
         WitnessRendezvous rendezvous = new();
 
-        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(
             () => PublishingEngineModule(
                 rendezvous,
                 expectedWitness,
                 new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
             rendezvous);
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
@@ -349,19 +344,23 @@ public partial class EngineModuleTests
     {
         WitnessRendezvous rendezvous = new();
 
-        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(
             () => PublishingEngineModule(
                 rendezvous,
                 null,
                 new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
             rendezvous);
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
-        ResultWrapper<NewPayloadWithWitnessV1Result> result =
+        using ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
-            "a VALID response must carry a witness, so the handler fails when it cannot generate one");
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure),
+                "a VALID response must carry a witness, so the handler fails when it cannot generate one");
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     private static IEnumerable<TestCaseData> NonValidOutcomes()
@@ -382,7 +381,8 @@ public partial class EngineModuleTests
     {
         WitnessRendezvous rendezvous = new();
 
-        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(moduleFactory, rendezvous);
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(moduleFactory, rendezvous);
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
 
@@ -395,10 +395,11 @@ public partial class EngineModuleTests
     {
         WitnessRendezvous rendezvous = new();
 
-        NewPayloadWithWitnessHandler handler = WitnessHandlerBuilder.CreateHandler(
+        using IContainer container = WitnessHandlerBuilder.CreateContainer(
             () => WitnessHandlerBuilder.SucceedingEngineModule(
                 new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
             rendezvous);
+        NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         ExecutionPayloadV4 payload = new()
         {
@@ -450,12 +451,8 @@ public partial class EngineModuleTests
             "witness State must contain at least the state root proof node");
     }
 
-    [Test]
-    public async Task E2E_block_with_ETH_transfer_produces_multi_node_witness()
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
-
-        Transaction tx = Build.A.Transaction
+    private static Transaction BuildWitnessTransfer(MergeTestBlockchain chain) =>
+        Build.A.Transaction
             .WithValue(UInt256.One)
             .WithTo(TestItem.AddressB)
             .WithMaxFeePerGas(20.GWei)
@@ -463,6 +460,13 @@ public partial class EngineModuleTests
             .WithType(TxType.EIP1559)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
+
+    [Test]
+    public async Task E2E_block_with_ETH_transfer_produces_multi_node_witness()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+
+        Transaction tx = BuildWitnessTransfer(chain);
 
         using Witness witness = await ProduceWitnessedBlock(chain, tx);
 
@@ -522,14 +526,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        Transaction tx = Build.A.Transaction
-            .WithValue(UInt256.One)
-            .WithTo(TestItem.AddressB)
-            .WithMaxFeePerGas(20.GWei)
-            .WithMaxPriorityFeePerGas(1.GWei)
-            .WithType(TxType.EIP1559)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA)
-            .TestObject;
+        Transaction tx = BuildWitnessTransfer(chain);
         chain.AddTransactions(tx);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, 1);
 
