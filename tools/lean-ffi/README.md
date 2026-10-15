@@ -161,7 +161,8 @@ schemas cannot carry block or inclusion-list proofs; proof-bearing SSZ payloads 
 with `UnsupportedFork` rather than losing their proofs.
 
 Enable EIP-8141 and EIP-8288 in a development chainspec with `eip8288TransitionTimestamp`,
-or the geth genesis key `eip8288PrototypeTime`. The named `Eip8288Prototype` / `eip8288PrototypeTime` also enables master's EIP-8250 keyed
+or the geth genesis key `eip8288PrototypeTime`. EIP-7843 must be active by then (`eip7843TransitionTimestamp`, or
+`amsterdamTime` in a geth genesis); startup fails otherwise. The named `Eip8288Prototype` / `eip8288PrototypeTime` also enables master's EIP-8250 keyed
 nonces, EIP-8272 recent roots and EIP-7906 POST_TX frames. Frame transactions use explicit
 `nonce_keys`; `[0]` retains account-nonce behavior. Individual chainspec transition fields
 remain independently configurable. Recent roots follow master's older envelope-reference /

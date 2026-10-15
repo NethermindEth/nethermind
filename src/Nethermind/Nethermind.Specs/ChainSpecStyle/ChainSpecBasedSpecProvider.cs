@@ -7,7 +7,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -362,6 +364,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip7928Enabled = (chainSpec.Parameters.Eip7928TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7843Enabled = (chainSpec.Parameters.Eip7843TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            // recursive_stark follows SlotNumber positionally in the header: without EIP-7843 a null slot round-trips as 0.
+            if (releaseSpec.IsEip8288Enabled && !releaseSpec.IsEip7843Enabled)
+                throw new InvalidConfigurationException(
+                    $"EIP-8288 is active at timestamp {releaseStartTimestamp} but EIP-7843 is not; schedule {nameof(ChainParameters.Eip7843TransitionTimestamp)} at or before {nameof(ChainParameters.Eip8288TransitionTimestamp)}",
+                    ExitCodes.MissingChainspecEipConfiguration);
 
             releaseSpec.IsEip7708Enabled = (chainSpec.Parameters.Eip7708TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 

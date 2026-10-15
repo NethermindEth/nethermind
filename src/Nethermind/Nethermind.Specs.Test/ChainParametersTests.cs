@@ -45,7 +45,10 @@ public class ChainParametersTests
             ChainSpecJson test = new() { Params = new ChainSpecParamsJson() };
             jsonParamsProp.SetValue(test.Params, testValue);
             if (jsonParamsProp.Name == nameof(ChainSpecParamsJson.Eip8288TransitionTimestamp))
+            {
                 test.Params.Eip8141TransitionTimestamp = testValue;
+                test.Params.Eip7843TransitionTimestamp = testValue;
+            }
             (ChainSpecBasedSpecProvider? prov, ChainSpec? spec) = TestSpecHelper.LoadChainSpec(test);
 
             PropertyInfo? paramsProp = typeof(ChainParameters).GetProperty(jsonParamsProp.Name);

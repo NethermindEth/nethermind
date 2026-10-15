@@ -953,11 +953,25 @@ public class ChainSpecBasedSpecProviderTests
     {
         ChainSpec chainSpec = new()
         {
-            Parameters = new ChainParameters { Eip8141TransitionTimestamp = frameTime, Eip8288TransitionTimestamp = proofTime },
+            Parameters = new ChainParameters { Eip8141TransitionTimestamp = frameTime, Eip8288TransitionTimestamp = proofTime, Eip7843TransitionTimestamp = 0 },
             EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(timestamp)).IsEip8288Enabled, Is.EqualTo(enabled));
+    }
+
+    // recursive_stark follows SlotNumber positionally in the header, so EIP-8288 without EIP-7843 is a configuration error.
+    [TestCase(null)]
+    [TestCase(20UL)]
+    public void Eip8288_without_eip7843_is_rejected(ulong? slotTime)
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip8141TransitionTimestamp = 10, Eip8288TransitionTimestamp = 10, Eip7843TransitionTimestamp = slotTime },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+        InvalidConfigurationException? exception = Assert.Throws<InvalidConfigurationException>(() => _ = new ChainSpecBasedSpecProvider(chainSpec));
+        Assert.That(exception?.ExitCode, Is.EqualTo(ExitCodes.MissingChainspecEipConfiguration));
     }
 
     [Test]

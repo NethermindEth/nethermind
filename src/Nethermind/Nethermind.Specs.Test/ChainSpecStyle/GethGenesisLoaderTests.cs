@@ -332,7 +332,7 @@ public class GethGenesisLoaderTests
     [Test]
     public void Eip8288_prototype_genesis_schedules_frames_and_dependency_proofs()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"eip8288PrototypeTime\": 15");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15, \"eip8288PrototypeTime\": 15");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         using (Assert.EnterMultipleScope())
         {
