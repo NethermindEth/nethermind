@@ -72,6 +72,7 @@ internal sealed class FakeLink(string name = "peer") : ILeanLink
     private readonly List<ChunkMessage> _chunks = [];
     private readonly List<string> _penalties = [];
     private int _recoveryCalls;
+    private int _recoveryBytes;
 
     public Func<ChunkMessage, CancellationToken, ValueTask<bool>>? OnChunk { get; set; }
 
@@ -83,6 +84,7 @@ internal sealed class FakeLink(string name = "peer") : ILeanLink
     public Func<ValueHash256[], Transaction[]>? OnRecover { get; set; }
     public Func<ValueHash256[], CancellationToken, Task<Transaction[]>>? OnRecoverAsync { get; set; }
     public int RecoveryCalls => Volatile.Read(ref _recoveryCalls);
+    public int RecoveryBytes => Volatile.Read(ref _recoveryBytes);
     public async Task<Transaction[]> RecoverTransactionsAsync(ValueHash256[] hashes, Func<int, bool> reserve, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -90,7 +92,9 @@ internal sealed class FakeLink(string name = "peer") : ILeanLink
         Transaction[] transactions = OnRecoverAsync is { } recover
             ? await recover(hashes, token) : OnRecover?.Invoke(hashes) ?? [];
         int bytes = transactions.Sum(transaction => LeanTestObjects.Envelope(transaction).Length);
-        return reserve(bytes) ? transactions : [];
+        if (!reserve(bytes)) return [];
+        Interlocked.Add(ref _recoveryBytes, bytes);
+        return transactions;
     }
 
     public void Send(LeanMessage message)

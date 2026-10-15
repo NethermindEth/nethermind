@@ -467,6 +467,35 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_CalldataFloorRetainsRecursiveChargeForEveryDeclaration(
+        [Values(0, 1, 3)] int declarations, [Values] bool eip7976)
+    {
+        _spec.IsEip8288Enabled = true;
+        _spec.IsEip7623Enabled = true;
+        _spec.IsEip7976Enabled = eip7976;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        TxFrame[] frames = [SelfVerifyFrame(), new(FrameMode.Sender, FrameFlags.None, Recipient, 0, UInt256.Zero, new byte[100_000])];
+        if (declarations > 0) frames = [.. frames, DependencyFrame(declarations)];
+        Transaction tx = FrameTx(0, frames);
+        OverridableReleaseSpec withoutRecursiveCharge = new(_spec) { IsEip8288Enabled = false };
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, withoutRecursiveCharge, out _, out ulong baseFloor, out _), Is.True);
+        ulong expectedGas = baseFloor + (ulong)declarations * Eip8288Constants.LeanStarkVerificationGas;
+        UInt256 balanceBefore = _stateProvider.GetBalance(Sender);
+        TestAllTracerWithOutput tracer = new();
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedGas));
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(expectedGas));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tx.BlockGasUsed, Is.EqualTo(expectedGas));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(balanceBefore - (UInt256)expectedGas));
+        }
+    }
+
+    [Test]
     public void Execute_SelfVerifyApprovesExecutionAndPayment_ChargesPayerAndIncrementsNonce()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
