@@ -204,6 +204,18 @@ public class BeaconChainServiceStartupTests
         if (weakSubjectivity) Assert.That(resumed!.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.EqualTo(record));
     }
 
+    // A resumed anchor never uses the checkpoint URL, so neither a relative one nor a missing default may stop the run.
+    [Test]
+    public async Task A_valid_resumed_anchor_goes_on_to_start_whatever_the_checkpoint_url([Values("beacon.example/relative", "")] string checkpointSyncUrl)
+    {
+        (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas: false, nextCommittee: false, key: null, checkpointSyncUrl: checkpointSyncUrl);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(refusal, Is.Null);
+        Assert.That(errors, Is.Empty, "the run logged no error");
+        Assert.That(pubkeys, Is.EqualTo(ForkCrossingChain.Instance.AnchorState.Validators!.Length), "the run went on past the pubkey cache");
+    }
+
     [Test]
     public async Task A_checkpoint_sync_interrupted_before_its_anchor_leaves_no_weak_subjectivity_record(
         [Values(BeaconChainMetadataKeys.Anchor, BeaconChainMetadataKeys.CheckpointSyncAnchor)] string interruptedWrite)
@@ -840,7 +852,7 @@ public class BeaconChainServiceStartupTests
     }
 
     private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> ResumeAsync(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key, Hash256? genesisValidatorsRoot = null,
-        string? weakSubjectivityCheckpoint = null, Action<BeaconChainStore>? prepare = null)
+        string? weakSubjectivityCheckpoint = null, Action<BeaconChainStore>? prepare = null, string checkpointSyncUrl = "http://invalid.localhost:1")
     {
         CacheWrittenMemDb metadata = new();
         BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
@@ -867,7 +879,7 @@ public class BeaconChainServiceStartupTests
         KickEngine engine = new(pubkeyCache);
         using IContainer container = BeaconChainTestContainer.Builder().AddSingleton(GloasCheckpointFiles.Spec).AddSingleton<IEngineDriver>(engine).Build();
         prepare?.Invoke(store);
-        BeaconChainConfig config = new() { CheckpointSyncUrl = "http://invalid.localhost:1", WeakSubjectivityCheckpoint = weakSubjectivityCheckpoint };
+        BeaconChainConfig config = new() { CheckpointSyncUrl = checkpointSyncUrl, WeakSubjectivityCheckpoint = weakSubjectivityCheckpoint };
         using CheckpointSync checkpointSync = new(config, GloasCheckpointFiles.Spec, store, logManager);
         using BeaconChainService service = new(config, GloasCheckpointFiles.Spec, store, pubkeyCache, checkpointSync,
             container.Resolve<BeaconSyncOrchestrator>(), container.Resolve<ExternalClDetector>(), logManager);

@@ -95,7 +95,7 @@ public sealed class BeaconChainService(
         Task backfill = Task.CompletedTask;
         try
         {
-            if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {new Uri(checkpointSync.EffectiveCheckpointSyncUrl).GetComponents(UriComponents.SchemeAndServer, UriFormat.SafeUnescaped)}");
+            if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {checkpointSync.CheckpointSyncUrlForLog}");
             (ForkedBeaconState state, ForkedSignedBeaconBlock block, Hash256 blockRoot) = persistedAnchor ?? await CheckpointSyncAsync(token);
             Validator[] validators = state switch
             {
