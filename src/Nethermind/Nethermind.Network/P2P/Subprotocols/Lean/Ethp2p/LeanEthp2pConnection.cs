@@ -133,13 +133,18 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
     public void Close(long errorCode, string reason)
     {
         if (Interlocked.Exchange(ref _closeStarted, 1) != 0) return;
+        CloseCore(errorCode, reason);
+    }
+
+    private void CloseCore(long errorCode, string reason)
+    {
         if (_logger.IsDebug) _logger.Debug($"{Description} closing: {reason}");
         if (Volatile.Read(ref _peer) is { } peer) _transport.Remove(peer);
         _engine?.RemovePeer(this);
+        _ = CloseQuicAsync(errorCode);
         _control.Writer.TryComplete();
         _bcast.Writer.TryComplete();
         _closing.Cancel();
-        _ = CloseQuicAsync(errorCode);
     }
 
     private async Task CloseQuicAsync(long errorCode)
@@ -160,9 +165,10 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
 
     private void Violation(string reason)
     {
+        if (Interlocked.Exchange(ref _closeStarted, 1) != 0) return;
         if (_logger.IsDebug) _logger.Debug($"{Description} lean/1 violation: {reason}");
         LeanMetrics.Record(0, LeanEvent.Violation);
-        Close(LeanEthp2pProtocol.ProtocolViolationError, reason);
+        CloseCore(LeanEthp2pProtocol.ProtocolViolationError, reason);
     }
 
     void ILeanLink.Penalize(string reason) => Close(LeanEthp2pProtocol.ProtocolViolationError, reason);

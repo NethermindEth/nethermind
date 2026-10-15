@@ -47,13 +47,13 @@ public class LeanEthp2pQuicTests
 
     internal sealed class QuicNode : IAsyncDisposable
     {
-        private QuicNode(PrivateKey key, TestBroadcastProfile? profile, Action<NetworkConfig>? configure)
+        private QuicNode(PrivateKey key, TestBroadcastProfile? profile, Action<NetworkConfig>? configure, ILogManager? logManager)
         {
             Key = key;
-            Node = new LeanTestNode(manualTime: false);
+            Node = new LeanTestNode(manualTime: false, logManager: logManager);
             Config = new NetworkConfig { LocalIp = "127.0.0.1", LeanEthp2pPort = 0, LeanBindings = LeanBinding.Ethp2p, LeanCommonBinding = LeanBinding.Ethp2p };
             configure?.Invoke(Config);
-            Host = new LeanEthp2pHost(Node.Transport, Config, new InsecureProtectedPrivateKey(key), LimboLogs.Instance, Node.EthTransactions, profile);
+            Host = new LeanEthp2pHost(Node.Transport, Config, new InsecureProtectedPrivateKey(key), logManager ?? LimboLogs.Instance, Node.EthTransactions, profile);
         }
 
         public PrivateKey Key { get; }
@@ -62,9 +62,9 @@ public class LeanEthp2pQuicTests
         public LeanEthp2pHost Host { get; }
         public LeanEthp2pRecord Record => new(Key.PublicKey, Host.LocalEndPoint!);
 
-        public static async Task<QuicNode> Start(PrivateKey key, TestBroadcastProfile? profile = null, Action<NetworkConfig>? configure = null)
+        public static async Task<QuicNode> Start(PrivateKey key, TestBroadcastProfile? profile = null, Action<NetworkConfig>? configure = null, ILogManager? logManager = null)
         {
-            QuicNode node = new(key, profile, configure);
+            QuicNode node = new(key, profile, configure, logManager);
             await node.Host.StartAsync(CancellationToken.None);
             return node;
         }
@@ -164,13 +164,74 @@ public class LeanEthp2pQuicTests
     }
 
     [Test]
-    public async Task A_quic_peer_without_compatible_eth_recovery_does_not_enable_kind_one()
+    public async Task No_error_teardown_does_not_report_a_control_stream_violation([Values] bool compatibleEth)
     {
-        await using QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA);
-        await using QuicNode b = await QuicNode.Start(TestItem.PrivateKeyB);
-        Assert.That(await a.Host.DialAsync(b.Record, CancellationToken.None), Is.Not.Null);
-        await Until(() => a.Host.ConnectionCount == 0 && b.Host.ConnectionCount == 0, "incompatible Status closes this binding");
-        Assert.That(a.Node.Transport.PeerCount + b.Node.Transport.PeerCount, Is.Zero);
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        logger.When(value => value.Debug(Arg.Any<string>())).Do(call => TestContext.Progress.WriteLine($"{DateTime.UtcNow:HH:mm:ss.fff} {call.Arg<string>()}"));
+        OneLoggerLogManager logs = new(new(logger));
+        await using (QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA, logManager: logs))
+        await using (QuicNode b = await QuicNode.Start(TestItem.PrivateKeyB, logManager: logs))
+        {
+            if (compatibleEth)
+            {
+                RegisterRecovery(a, b);
+                RegisterRecovery(b, a);
+            }
+            LeanEthp2pConnection? connection = await a.Host.DialAsync(b.Record, CancellationToken.None);
+            Assert.That(connection, Is.Not.Null);
+            if (compatibleEth)
+            {
+                await Until(() => a.Node.Transport.PeerCount == 1 && b.Node.Transport.PeerCount == 1, "Status in both directions");
+                connection!.Close(LeanEthp2pProtocol.NoError, "normal shutdown regression");
+            }
+            await Until(() => a.Host.ConnectionCount == 0 && b.Host.ConnectionCount == 0, "NoError closes both bindings");
+            Assert.That(a.Node.Transport.PeerCount + b.Node.Transport.PeerCount, Is.Zero);
+        }
+        logger.Received().Debug(Arg.Is<string>(message => message.Contains(compatibleEth ? "normal shutdown regression" : "incompatible Status")));
+        logger.DidNotReceive().Debug(Arg.Is<string>(message => message.Contains("lean/1 violation:")));
+    }
+
+    [Test]
+    public async Task Control_fin_on_an_established_live_connection_is_a_protocol_violation()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        logger.When(value => value.Debug(Arg.Any<string>())).Do(call => TestContext.Progress.WriteLine($"{DateTime.UtcNow:HH:mm:ss.fff} {call.Arg<string>()}"));
+        await using QuicNode receiver = await QuicNode.Start(TestItem.PrivateKeyB, logManager: new OneLoggerLogManager(new(logger)));
+        receiver.Node.EthTransactions.Register(TestItem.PrivateKeyA.PublicKey, receiver,
+            (_, _, _) => Task.FromResult(Array.Empty<Transaction>()));
+        using X509Certificate2 certificate = LeanEthp2pIdentity.CreateCertificate(TestItem.PrivateKeyA);
+        using CancellationTokenSource deadline = new(Timeout);
+        await using QuicConnection client = await QuicConnection.ConnectAsync(
+            RawClient(receiver.Host.LocalEndPoint!, LeanEthp2pProtocol.Alpn, certificate), deadline.Token);
+        await using QuicStream control = await client.OpenOutboundStreamAsync(QuicStreamType.Unidirectional, deadline.Token);
+        await control.WriteAsync((byte[])[LeanEthp2pProtocol.ControlStream,
+            .. LeanEthp2pProtocol.Frame(LeanMessageCode.Status, LeanEthp2pProtocol.Encode(LeanTestNode.Status()))], deadline.Token);
+        await Until(() => receiver.Node.Transport.PeerCount == 1, "the live authenticated binding");
+        await using QuicStream first = await client.AcceptInboundStreamAsync(deadline.Token);
+        await using QuicStream second = await client.AcceptInboundStreamAsync(deadline.Token);
+        QuicStream[] incoming = [first, second];
+        byte[] selectors = new byte[incoming.Length];
+        for (int i = 0; i < incoming.Length; i++)
+        {
+            await incoming[i].ReadExactlyAsync(selectors.AsMemory(i, 1), deadline.Token);
+            if (selectors[i] == LeanEthp2pProtocol.ControlStream)
+            {
+                byte[] messageId = new byte[1];
+                await incoming[i].ReadExactlyAsync(messageId, deadline.Token);
+                Assert.That(messageId[0], Is.EqualTo(LeanMessageCode.Status));
+            }
+            await ReadEnvelope(incoming[i], deadline.Token);
+        }
+        Assert.That(selectors, Is.EquivalentTo((byte[])[LeanEthp2pProtocol.ControlStream, LeanEthp2pProtocol.BcastStream]));
+
+        control.CompleteWrites();
+        QuicException? violation = Assert.ThrowsAsync<QuicException>(async () =>
+            await client.AcceptInboundStreamAsync(deadline.Token));
+        Assert.That(violation!.ApplicationErrorCode, Is.EqualTo(LeanEthp2pProtocol.ProtocolViolationError));
+        await Until(() => receiver.Host.ConnectionCount == 0, "the protocol violation closes the binding");
+        logger.Received().Debug(Arg.Is<string>(message => message.Contains("lean/1 violation: control stream closed")));
     }
 
     [Test]
