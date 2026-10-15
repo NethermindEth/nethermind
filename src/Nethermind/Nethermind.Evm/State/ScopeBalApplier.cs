@@ -8,6 +8,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.State;
 
@@ -18,7 +19,8 @@ public static class ScopeBalApplier
 {
     /// <inheritdoc cref="IWorldStateScopeProvider.IScope.ApplyBal"/>
     /// <param name="scope">The scope to write into.</param>
-    public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal)
+    /// <param name="logManager">Reports disposal failures swallowed after a failed apply.</param>
+    public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal, ILogManager logManager)
     {
         IWorldStateScopeProvider.ICodeSetter? codeSetter = null;
         // Clones deploying the same code in one block would otherwise all write it: ContainsCode only sees persisted code.
@@ -29,7 +31,7 @@ public static class ScopeBalApplier
             {
                 using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(bal.AccountChanges.Count);
                 // Declared after the parent batch so unclaimed storage batches are disposed before it.
-                using StorageBatches storageBatches = new();
+                using StorageBatches storageBatches = new(logManager);
                 foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                 {
                     if (!accountChanges.HasStateChanges) continue;
@@ -92,7 +94,7 @@ public static class ScopeBalApplier
         }
     }
 
-    private sealed class StorageBatches : IDisposable
+    private sealed class StorageBatches(ILogManager logManager) : IDisposable
     {
         private const int MinParallelBatches = 3;
         private readonly ArrayPoolList<(IWorldStateScopeProvider.IStorageWriteBatch? Batch, ReadOnlySlotChanges[] Changes)> _batches = new(0);
@@ -143,7 +145,12 @@ public static class ScopeBalApplier
             foreach ((IWorldStateScopeProvider.IStorageWriteBatch? batch, _) in _batches.AsSpan())
             {
                 try { batch?.Dispose(); }
-                catch (Exception) { /* Secondary to the failure being propagated. */ }
+                catch (Exception e)
+                {
+                    // Secondary to the failure being propagated.
+                    ILogger logger = logManager.GetClassLogger(typeof(ScopeBalApplier));
+                    if (logger.IsDebug) logger.Debug($"Swallowed storage batch disposal failure after a failed BAL apply: {e}");
+                }
             }
             _batches.Dispose();
         }
