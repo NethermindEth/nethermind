@@ -704,16 +704,17 @@ public static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionReturn<TGasPolicy>(
+    public static EvmExceptionType InstructionReturn<TGasPolicy, TTracingInst>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
     {
         // Pop memory position and length for the return data.
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingInstructions)
+        if (DispatchFlags.ConstTracing && TTracingInst.IsActive)
             vm.TraceMemoryOperationGasCost(in position, in length);
 
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
