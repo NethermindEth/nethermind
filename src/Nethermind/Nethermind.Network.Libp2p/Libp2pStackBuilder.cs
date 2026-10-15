@@ -47,7 +47,8 @@ public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
         ProtocolRef[] appSelector = [Get<MultistreamProtocol>()];
         Connect([tcp], [Get<MultistreamProtocol>()], [Get<NoiseProtocol>()], [Get<MultistreamProtocol>()], [Get<YamuxProtocol>()], appSelector);
 
-        List<ProtocolRef> apps = [Get<BoundedIdentifyProtocol>(), Get<IdentifyPushProtocol>(), Get<PingProtocol>(), .. additionalProtocols];
+        // The library push only dials (its notifier looks it up by type); a push the remote sends reaches the bounded listener, which comes first.
+        List<ProtocolRef> apps = [Get<BoundedIdentifyProtocol>(), Get<BoundedIdentifyPushProtocol>(), Get<IdentifyPushProtocol>(), Get<PingProtocol>(), .. additionalProtocols];
         if (_pubsub)
         {
             apps.AddRange([Get<GossipsubProtocolV13>(), Get<GossipsubProtocolV12>(), Get<GossipsubProtocolV11>(), Get<GossipsubProtocol>(), Get<FloodsubProtocol>()]);

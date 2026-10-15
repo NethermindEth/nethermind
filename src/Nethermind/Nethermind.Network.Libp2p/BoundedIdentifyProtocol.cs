@@ -27,7 +27,11 @@ public sealed class BoundedIdentifyProtocol(IProtocolStackSettings stack, PeerSt
     internal const int MaxStoredProtocolIdBytes = 128;
     public string Id => ((IProtocol)_identify).Id;
 
-    public async Task DialAsync(IChannel downChannel, ISessionContext context)
+    public async Task DialAsync(IChannel downChannel, ISessionContext context) =>
+        Apply(await ReadMessageAsync(downChannel), context.State, settings ?? new IdentifyProtocolSettings(), peerStore);
+
+    /// <summary>Reads one length-prefixed identify message of at most <see cref="MaxMessageSize"/> bytes within <see cref="ReadTimeout"/>.</summary>
+    internal static async Task<IdentifyMessage> ReadMessageAsync(IChannel downChannel)
     {
         using CancellationTokenSource cts = new(ReadTimeout);
         int length = await downChannel.ReadVarintAsync(cts.Token);
@@ -42,8 +46,7 @@ public sealed class BoundedIdentifyProtocol(IProtocolStackSettings stack, PeerSt
             throw new PeerConnectionException($"Identify answer of {(uint)length} bytes exceeds {MaxMessageSize}");
         }
 
-        IdentifyMessage message = IdentifyMessage.Parser.ParseFrom(await downChannel.ReadAsync(length, ReadBlockingMode.WaitAll, cts.Token).OrThrow());
-        Apply(message, context.State, settings ?? new IdentifyProtocolSettings(), peerStore);
+        return IdentifyMessage.Parser.ParseFrom(await downChannel.ReadAsync(length, ReadBlockingMode.WaitAll, cts.Token).OrThrow());
     }
 
     public Task ListenAsync(IChannel downChannel, ISessionContext context) => ((ISessionListenerProtocol)_identify).ListenAsync(downChannel, context);

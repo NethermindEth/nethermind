@@ -24,6 +24,7 @@ namespace Nethermind.BeaconChain.Test.P2P;
 public class IdentifyTests
 {
     private const string IdentifyProtocolId = "/ipfs/id/1.0.0";
+    private const string IdentifyPushProtocolId = "/ipfs/id/push/1.0.0";
     private const string ServerAgent = "test-server/identify-1.0.0";
 
     public enum Answer
@@ -34,6 +35,13 @@ public class IdentifyTests
         NoRecord,
         NoAgentVersion,
         MalformedRecord,
+    }
+
+    public enum IdentifyReader
+    {
+        BeaconProbe,
+        SharedDial,
+        SharedPushListener,
     }
 
     [Test]
@@ -51,6 +59,7 @@ public class IdentifyTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(advertised.Count(static id => id == IdentifyProtocolId), Is.EqualTo(1), "identify is listed once even though the agent probe shares its id");
+        Assert.That(advertised.Count(static id => id == IdentifyPushProtocolId), Is.EqualTo(1), "identify push is listed once even though the bounded listener shares its id");
         Assert.That(advertised, Does.Contain("/eth2/beacon_chain/req/status/2/ssz_snappy"), "the rest of the stack is still advertised");
         Assert.That(info.AgentVersion, Is.EqualTo(BeaconP2P.ClientAgentVersion), "the agent string a peer reads is the one the API reports");
     }
@@ -238,14 +247,18 @@ public class IdentifyTests
     [Test]
     public async Task An_identify_answer_is_refused_from_a_declared_length_past_the_bound(
         [Values(IdentifyAgentVersionProbe.MaxMessageSize, IdentifyAgentVersionProbe.MaxMessageSize + 1, 256 * 1024 * 1024)] int declared,
-        [Values] bool sharedStack)
+        [Values] IdentifyReader reader)
     {
         TimeSpan bound = TimeSpan.FromSeconds(10);
         Channel channel = new();
         IdentifyAgentVersionProbe probe = new(null!, new IdentifyProtocolSettings());
 
-        Task read = (sharedStack ? new BoundedIdentifyProtocol(null!, new PeerStore()).DialAsync(channel, null!)
-            : probe.DialAsync(channel, null!, null)).WaitAsync(bound);
+        Task read = (reader switch
+        {
+            IdentifyReader.SharedDial => new BoundedIdentifyProtocol(null!, new PeerStore()).DialAsync(channel, null!),
+            IdentifyReader.SharedPushListener => new BoundedIdentifyPushProtocol(new PeerStore()).ListenAsync(channel, null!),
+            _ => probe.DialAsync(channel, null!, null),
+        }).WaitAsync(bound);
         await channel.Reverse.WriteVarintAsync(declared).AsTask().WaitAsync(bound);
         await channel.Reverse.WriteEofAsync().AsTask().WaitAsync(bound);
 
@@ -256,6 +269,34 @@ public class IdentifyTests
         else
         {
             await Assert.ThrowsAsync<ChannelClosedException>(() => read, "a length within the bound goes on to read the body");
+        }
+    }
+
+    [Test]
+    public async Task An_identify_push_updates_only_a_peer_already_in_the_peer_store([Values] bool known)
+    {
+        TimeSpan bound = TimeSpan.FromSeconds(10);
+        Identity remote = new(privateKey: null, KeyType.Secp256K1);
+        PeerStore peerStore = new();
+        if (known)
+        {
+            peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols = ["/stored"];
+        }
+
+        ISessionContext context = Substitute.For<ISessionContext>();
+        context.State.Returns(SessionWith(remote));
+        Channel channel = new();
+        Task listen = new BoundedIdentifyPushProtocol(peerStore).ListenAsync(channel, context).WaitAsync(bound);
+        await channel.Reverse.WriteSizeAndProtobufAsync(AnswerOf(remote, remote, 1, "/pushed")).AsTask().WaitAsync(bound);
+        await listen;
+
+        if (known)
+        {
+            Assert.That(peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols, Is.EqualTo(new[] { "/pushed" }));
+        }
+        else
+        {
+            Assert.That(peerStore.TryGetPeerInfo(remote.PeerId, out _), Is.False, "the peer store never forgets an entry, so a push must not add one");
         }
     }
 
