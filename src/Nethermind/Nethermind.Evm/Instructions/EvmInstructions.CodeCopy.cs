@@ -137,9 +137,22 @@ public static partial class EvmInstructions
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
+        if (traceError) TraceCopyMemoryError(vm, in destOffset, in size);
         return EvmExceptionType.OutOfGas;
     AccessViolation:
+        if (traceError) TraceCopyMemoryError(vm, in destOffset, in size);
         return EvmExceptionType.AccessViolation;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCopyMemoryError<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in UInt256 offset, in UInt256 length)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        // Geth sizes memory before dynamic gas and return-data bounds checks.
+        if (!TryGetTraceMemorySize(in offset, in length, out ulong size))
+            vm.TraceActionErrorDetails("gas uint64 overflow");
+        else if (size > 0x1FFFFFFFE0UL)
+            vm.TraceActionErrorDetails("out of gas: gas uint64 overflow");
     }
 
     /// <summary>
