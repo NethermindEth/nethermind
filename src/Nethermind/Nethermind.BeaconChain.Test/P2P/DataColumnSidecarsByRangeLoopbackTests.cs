@@ -58,7 +58,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
 
         ISession toServer = await PeerSessionNodes.DialAsync(client, server, token);
 
-        Exception? error = Assert.CatchAsync(async () => await client.RequestDataColumnSidecarsByRangeAsync(toServer, slot - 1, 2, [column], token));
+        Exception? error = await Assert.CatchAsync(async () => await client.RequestDataColumnSidecarsByRangeAsync(toServer, slot - 1, 2, [column], token));
 
         Eth2ReqRespException? reqResp = error is AggregateException aggregate ? aggregate.InnerExceptions.OfType<Eth2ReqRespException>().SingleOrDefault() : error as Eth2ReqRespException;
         Assert.That(reqResp?.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable));
@@ -116,7 +116,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
         });
         await using BeaconP2P client = CreateHost(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new DataColumnSidecarPool());
 
-        PartialSidecarsException? partial = Assert.CatchAsync<PartialSidecarsException>(async () => await client.RequestDataColumnSidecarsByRangeAsync(session, 5, 1, [3, 4], default));
+        PartialSidecarsException? partial = await Assert.CatchAsync<PartialSidecarsException>(async () => await client.RequestDataColumnSidecarsByRangeAsync(session, 5, 1, [3, 4], default));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(partial!.Received, Is.EqualTo(new[] { delivered }));
@@ -136,7 +136,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
         Assert.That(DataColumnSidecarsByRangeProtocol.ResponseBudget(16, 8), Is.GreaterThan(TimeSpan.FromSeconds(30)));
 
         long startedAt = Stopwatch.GetTimestamp();
-        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await client.RequestDataColumnSidecarsByRangeAsync(session, 100, 16, [0, 1, 2, 3, 4, 5, 6, 7], token));
+        ReqRespTimeoutException? cut = await Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await client.RequestDataColumnSidecarsByRangeAsync(session, 100, 16, [0, 1, 2, 3, 4, 5, 6, 7], token));
         Assert.That(cut!.Message, Does.Match(@"^timed out after [23](\.\d)? s: the request budget ran out$"), "the failure names the bound that fired");
 
         Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(16)), "cut well before the 16 s minimum of any scaled budget");
@@ -179,7 +179,7 @@ public class DataColumnSidecarsByRangeLoopbackTests
         });
         await using BeaconP2P client = CreateHost(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new DataColumnSidecarPool());
 
-        Exception? thrown = Assert.CatchAsync<Exception>(async () => await client.RequestDataColumnSidecarsByRangeAsync(session, 5, 1, [3], shutdown.Token));
+        Exception? thrown = await Assert.CatchAsync<Exception>(async () => await client.RequestDataColumnSidecarsByRangeAsync(session, 5, 1, [3], shutdown.Token));
 
         Assert.That(thrown, Is.InstanceOf<OperationCanceledException>());
     }

@@ -50,7 +50,7 @@ public class CheckpointSyncHttpTests
         CheckpointSync sync = container.Resolve<CheckpointSync>();
         if (invalidPostState || conflictingCheckpoint == true)
         {
-            Assert.ThrowsAsync<System.IO.InvalidDataException>(() => sync.RunAsync(CancellationToken.None));
+            await Assert.ThrowsAsync<System.IO.InvalidDataException>(() => sync.RunAsync(CancellationToken.None));
             Assert.That(store.TryGetAnchor(out _, out _), Is.False);
             return;
         }
@@ -78,7 +78,7 @@ public class CheckpointSyncHttpTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = provider.Urls.First(), CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
 
-        System.IO.InvalidDataException refusal = Assert.ThrowsAsync<System.IO.InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+        System.IO.InvalidDataException refusal = (await Assert.ThrowsAsync<System.IO.InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
 
         Assert.That(refusal.Message, Does.Contain(files.PostStateFile));
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
@@ -143,7 +143,7 @@ public class CheckpointSyncHttpTests
             MaxBodyBytes = stateSsz.Length,
         };
 
-        System.IO.InvalidDataException refusal = Assert.ThrowsAsync<System.IO.InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+        System.IO.InvalidDataException refusal = (await Assert.ThrowsAsync<System.IO.InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
         Assert.That(refusal.Message, Does.Contain("byte limit"));
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
@@ -175,7 +175,7 @@ public class CheckpointSyncHttpTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointSyncUrl = provider.Urls.First() }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
 
-        NotSupportedException ex = Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None))!;
+        NotSupportedException ex = (await Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None)))!;
 
         Assert.That(ex.Message, Does.Contain("'heze'"));
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);

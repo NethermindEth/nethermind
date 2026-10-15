@@ -50,7 +50,7 @@ public class BlocksProtocolForkDecodeTests
             stream, ReqRespFraming.ResponseCode.Success, ForkDigest.Compute(Sepolia, otherForkEpoch), SignedBeaconBlockCodec.Encode(block, Sepolia), default);
         stream.Position = 0;
 
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => new TestBlocksProtocol(Sepolia).ReadBlocksAsync(stream, maxBlocks: 1))!;
+        Eth2ReqRespException thrown = (await Assert.ThrowsAsync<Eth2ReqRespException>(() => new TestBlocksProtocol(Sepolia).ReadBlocksAsync(stream, maxBlocks: 1)))!;
 
         Assert.That(thrown.Message, Does.Contain("context bytes"));
     }

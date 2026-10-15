@@ -67,7 +67,7 @@ public class CanonicalIndexReorgServingTests
 
         IReadOnlyList<ForkedSignedBeaconBlock> served = await ServeAsync(
             protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = anchorSlot, Count = 3, Step = 1 })));
-        Eth2ReqRespException? refused = Assert.ThrowsAsync<Eth2ReqRespException>(() => ServeAsync(
+        Eth2ReqRespException? refused = await Assert.ThrowsAsync<Eth2ReqRespException>(() => ServeAsync(
             protocol, (channel, context) => protocol.DialAsync(channel, context, new BeaconBlocksByRangeDial(new BeaconBlocksByRangeRequest { StartSlot = anchorSlot - 1, Count = 3, Step = 1 }))));
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -91,7 +91,7 @@ public class CanonicalIndexReorgServingTests
 
         if (belowFloor)
         {
-            Eth2ReqRespException? refused = Assert.ThrowsAsync<Eth2ReqRespException>(() => ServeAsync(
+            Eth2ReqRespException? refused = await Assert.ThrowsAsync<Eth2ReqRespException>(() => ServeAsync(
                 protocol, (channel, context) => protocol.DialAsync(channel, context, request)));
             Assert.That(refused!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable));
         }

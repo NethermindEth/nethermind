@@ -72,16 +72,16 @@ public class ReqRespFramingTests
     }
 
     [Test]
-    public void Rejects_overflowing_tenth_varint_byte([Values(2, 127, 128, 255)] byte last, [Values] bool response)
+    public async Task Rejects_overflowing_tenth_varint_byte([Values(2, 127, 128, 255)] byte last, [Values] bool response)
     {
         byte[] prefix = [0x88, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, last];
         byte[] framed = Bytes.FromHexString(PingRequestWire)[1..];
         using MemoryStream input = new(response ? [0, .. prefix, .. framed] : [.. prefix, .. framed]);
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(async () =>
+        Eth2ReqRespException thrown = (await Assert.ThrowsAsync<Eth2ReqRespException>(async () =>
         {
             if (response) await ReqRespFraming.ReadResponseChunkAsync(input, 0, 8, default);
             else await ReqRespFraming.ReadRequestAsync(input, 8, default);
-        })!;
+        }))!;
         Assert.That(thrown.Message, Does.Contain("overflows Uint64"));
     }
 
@@ -97,10 +97,10 @@ public class ReqRespFramingTests
     [TestCase("0x08010c00000175de410100000000000000", 8, Description = "data frame before stream identifier")]
     [TestCase("0x08ff060000734e61507059010c00000176de410100000000000000", 8, Description = "data frame with a bad CRC")]
     [TestCase("0x80808080808080808080808001", 8, Description = "varint longer than 10 bytes")]
-    public void Rejects_truncated_oversized_and_malformed_requests(string wireHex, int maxSize)
+    public async Task Rejects_truncated_oversized_and_malformed_requests(string wireHex, int maxSize)
     {
         using MemoryStream stream = new(Bytes.FromHexString(wireHex));
-        Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize, default));
+        await Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize, default));
     }
 
     // SSZ of an empty list is zero bytes; any snappy framing that decodes to no data is legal for it.
@@ -145,12 +145,12 @@ public class ReqRespFramingTests
     public async Task Zero_length_request_is_read_as_empty_only_where_the_type_allows_it(string wireHex, bool malformed)
     {
         using MemoryStream strict = new(Bytes.FromHexString(wireHex));
-        Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(strict, maxSize: 8, default), "a type with a nonzero minimum size");
+        await Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(strict, maxSize: 8, default), "a type with a nonzero minimum size");
 
         using MemoryStream list = new(Bytes.FromHexString(wireHex));
         if (malformed)
         {
-            Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(list, maxSize: 8, default, allowEmpty: true));
+            await Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(list, maxSize: 8, default, allowEmpty: true));
         }
         else
         {
@@ -200,7 +200,7 @@ public class ReqRespFramingTests
 
     // Repeated stream identifiers produce no payload. Stopping before input EOF proves the compressed-size bound terminates the read.
     [Test]
-    public void Rejects_endless_stream_identifier_frames_before_exhausting_input()
+    public async Task Rejects_endless_stream_identifier_frames_before_exhausting_input()
     {
         byte[] streamIdentifierFrame = Bytes.FromHexString("0xff060000734e61507059");
         using MemoryStream stream = new();
@@ -212,7 +212,7 @@ public class ReqRespFramingTests
 
         stream.Position = 0;
 
-        Eth2ReqRespException exception = Assert.ThrowsAsync<Eth2ReqRespException>(
+        Eth2ReqRespException exception = await Assert.ThrowsAsync<Eth2ReqRespException>(
             () => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default));
         Assert.That(exception.Message, Does.Contain("bound"));
         Assert.That(stream.Position, Is.LessThan(stream.Length));
@@ -220,7 +220,7 @@ public class ReqRespFramingTests
 
     [TestCase("0xff060000734e61507059", Description = "repeated stream identifiers")]
     [TestCase("0xfe030000000000", Description = "repeated padding frames")]
-    public void Rejects_endless_empty_frames_after_an_empty_request_before_exhausting_input(string repeatedFrameHex)
+    public async Task Rejects_endless_empty_frames_after_an_empty_request_before_exhausting_input(string repeatedFrameHex)
     {
         byte[] repeatedFrame = Bytes.FromHexString(repeatedFrameHex);
         using MemoryStream stream = new();
@@ -232,7 +232,7 @@ public class ReqRespFramingTests
 
         stream.Position = 0;
 
-        Eth2ReqRespException exception = Assert.ThrowsAsync<Eth2ReqRespException>(
+        Eth2ReqRespException exception = await Assert.ThrowsAsync<Eth2ReqRespException>(
             () => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default, allowEmpty: true));
         Assert.That(exception.Message, Does.Contain("bound"));
         Assert.That(stream.Position, Is.LessThan(128), "the read stops at the bound, not at the end of the input");
@@ -247,7 +247,7 @@ public class ReqRespFramingTests
         using MemoryStream stream = new(wire);
         if (rejected)
         {
-            Eth2ReqRespException exception = Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default, allowEmpty: true));
+            Eth2ReqRespException exception = await Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default, allowEmpty: true));
             Assert.That(exception.Message, Does.Contain("bound"));
         }
         else

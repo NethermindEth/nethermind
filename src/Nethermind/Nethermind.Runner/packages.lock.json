@@ -476,7 +476,7 @@
       "nethermind.beaconchain": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Crypto.Bls": "[1.1.0, )",
+          "Nethermind.Crypto.Bls": "[0.3.17.15, )",
           "Nethermind.Init": "[2.2.0-preview, )",
           "Nethermind.Logging.Microsoft": "[2.2.0-preview, )",
           "Nethermind.Merge.Plugin": "[2.2.0-preview, )",
@@ -2090,8 +2090,8 @@
     "net10.0/win-arm64": {
       "libsodium": {
         "type": "Transitive",
-        "resolved": "1.0.20",
-        "contentHash": "fMO6HpAbvLagobzBH6eU36riWF01lCAweX34D5eugqjuXA+WS5MnV1ngE+2Sw3LvGvxZlmyLp9416t57dMZ5og=="
+        "resolved": "1.0.20.1",
+        "contentHash": "pkiceEqJDQFHjbga3k/oPfTVX9g+GKJZ1VrkuiLhaymt9YNw1Dr7cX9hNuZuNaWcr9WD0moW55k4pMwzQ7JaZQ=="
       },
       "Tmds.LibC": {
         "type": "Transitive",

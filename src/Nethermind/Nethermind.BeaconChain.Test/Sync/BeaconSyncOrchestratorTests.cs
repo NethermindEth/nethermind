@@ -72,7 +72,7 @@ public partial class BeaconSyncOrchestratorTests
         {
             await stop.CancelAsync();
             reply.TrySetResult(PayloadStatusV1.Syncing);
-            Assert.CatchAsync<OperationCanceledException>(() => run);
+            await Assert.CatchAsync<OperationCanceledException>(() => run);
         }
 
         Metrics.BeaconChainHeadSlotDelay = -1;
@@ -582,8 +582,7 @@ public partial class BeaconSyncOrchestratorTests
         int cacheBuilds = 0;
         if (duringKick) harness.Engine.OnCall = cts.Cancel;
         else cts.Cancel();
-
-        Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token, () => cacheBuilds++));
+        await Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token, () => cacheBuilds++));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(duringKick ? 1 : 0));
@@ -591,7 +590,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public void Cancellation_between_head_selection_and_an_engine_call_prevents_the_call([Values] bool retry)
+    public async Task Cancellation_between_head_selection_and_an_engine_call_prevents_the_call([Values] bool retry)
     {
         Harness harness = CreateHarness();
         using CancellationTokenSource cancellation = new();
@@ -605,7 +604,7 @@ public partial class BeaconSyncOrchestratorTests
             harness.Importer.OnComputeHead = cancellation.Cancel;
         }
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => harness.Orchestrator.RunHeadStepAsync(cancellation.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => harness.Orchestrator.RunHeadStepAsync(cancellation.Token));
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(retry ? 1 : 0));
     }
 
@@ -635,7 +634,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public void Cancellation_releases_a_head_step_waiting_for_the_engine()
+    public async Task Cancellation_releases_a_head_step_waiting_for_the_engine()
     {
         Harness harness = CreateHarness();
         using CancellationTokenSource cancellation = new();
@@ -646,7 +645,7 @@ public partial class BeaconSyncOrchestratorTests
         {
             Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1));
             cancellation.Cancel();
-            Assert.CatchAsync<OperationCanceledException>(() => step.WaitAsync(TimeSpan.FromSeconds(2)));
+            await Assert.CatchAsync<OperationCanceledException>(() => step.WaitAsync(TimeSpan.FromSeconds(2)));
         }
         finally
         {
@@ -1089,8 +1088,7 @@ public partial class BeaconSyncOrchestratorTests
             duringReplay = (p2p.LocalPeerId is not null, (LocalCustody?)discovery.LocalCustody is not null);
             cts.Cancel();
         };
-
-        Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token));
+        await Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token));
 
         Assert.That(duringReplay, Is.EqualTo((true, true)), "the stored block was replayed with the host listening and discovery running");
     }

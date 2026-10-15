@@ -182,7 +182,7 @@ public class BeaconChainServiceStartupTests
     }
 
     [Test]
-    public void A_checkpoint_sync_interrupted_before_its_anchor_leaves_no_weak_subjectivity_record(
+    public async Task A_checkpoint_sync_interrupted_before_its_anchor_leaves_no_weak_subjectivity_record(
         [Values(BeaconChainMetadataKeys.Anchor, BeaconChainMetadataKeys.CheckpointSyncAnchor)] string interruptedWrite)
     {
         BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, new KeyFailingMemDb(interruptedWrite)), GloasCheckpointFiles.Spec);
@@ -190,8 +190,7 @@ public class BeaconChainServiceStartupTests
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(first.PostState, new ForkedSignedBeaconBlock.OfGloas(first.Block));
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile, WeakSubjectivityCheckpoint = $"{first.Root}:1" },
             GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
-
-        Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None));
         Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }

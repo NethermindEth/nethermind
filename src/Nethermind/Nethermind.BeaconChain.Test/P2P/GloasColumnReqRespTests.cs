@@ -63,7 +63,7 @@ public class GloasColumnReqRespTests
         };
         using MemoryStream stream = await ChunksAsync((context, payload));
 
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => new TestProtocol(Spec).ReadGloasAsync(stream, 1))!;
+        Eth2ReqRespException thrown = (await Assert.ThrowsAsync<Eth2ReqRespException>(() => new TestProtocol(Spec).ReadGloasAsync(stream, 1)))!;
         Assert.That(thrown.Message, Does.Contain(reason));
     }
 
@@ -86,7 +86,7 @@ public class GloasColumnReqRespTests
             return;
         }
 
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => new TestProtocol(spec).ReadGloasAsync(stream, 1))!;
+        Eth2ReqRespException thrown = (await Assert.ThrowsAsync<Eth2ReqRespException>(() => new TestProtocol(spec).ReadGloasAsync(stream, 1)))!;
         Assert.That(thrown.Message, Does.Contain(refusal));
     }
 
@@ -113,7 +113,7 @@ public class GloasColumnReqRespTests
         DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(9, GloasStartSlot + 1, blobCount: 1);
         using MemoryStream stream = await ChunksAsync((ContextOf(GloasStartSlot + 1), DataColumnSidecar.Encode(sidecar)));
 
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => new TestProtocol(Spec).ReadFuluAsync(stream, 1))!;
+        Eth2ReqRespException thrown = (await Assert.ThrowsAsync<Eth2ReqRespException>(() => new TestProtocol(Spec).ReadFuluAsync(stream, 1)))!;
         Assert.That(thrown.Message, Does.Contain("claims Gloas slot"));
     }
 
@@ -131,36 +131,35 @@ public class GloasColumnReqRespTests
     [TestCase(ulong.MaxValue, 3UL, TestName = "Slot before the window")]
     [TestCase(1UL, 3UL, TestName = "Slot past the window")]
     [TestCase(0UL, 7UL, TestName = "Unrequested column")]
-    public void The_Gloas_range_dial_refuses_a_sidecar_outside_the_request(ulong slotOffset, ulong column)
+    public async Task The_Gloas_range_dial_refuses_a_sidecar_outside_the_request(ulong slotOffset, ulong column)
     {
         ulong start = GloasStartSlot + 10;
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(column, unchecked(start + slotOffset));
 
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync(new() { StartSlot = start, Count = 1, Columns = [3] }, sidecar))!;
+        Eth2ReqRespException thrown = (await Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync(new() { StartSlot = start, Count = 1, Columns = [3] }, sidecar)))!;
         Assert.That(thrown.Message, Does.Contain("outside the requested range or columns"));
     }
 
     [TestCase(2UL, 2, TestName = "More chunks than count times columns")]
     [TestCase(200UL, 200, TestName = "More chunks than count times columns past MAX_REQUEST_BLOCKS_DENEB slots")]
     [TestCase(20_000UL, 16_384, TestName = "More chunks than MAX_REQUEST_DATA_COLUMN_SIDECARS")]
-    public void The_Gloas_range_dial_refuses_more_chunks_than_the_request_allows(ulong count, int allowed)
+    public async Task The_Gloas_range_dial_refuses_more_chunks_than_the_request_allows(ulong count, int allowed)
     {
         ulong start = GloasStartSlot + 10;
         DataColumnSidecarGloas[] served = [.. Enumerable.Range(0, allowed + 1).Select(i => DataColumnSidecarGloasTestFixture.BuildSidecar(3, start + (ulong)i % count))];
 
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync(new() { StartSlot = start, Count = count, Columns = [3] }, served))!;
+        Eth2ReqRespException thrown = (await Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync(new() { StartSlot = start, Count = count, Columns = [3] }, served)))!;
         Assert.That(thrown.Message, Does.Contain($"more than the requested {allowed} "));
     }
 
     [TestCase(-1L, 2UL, TestName = "Window starting before the Gloas fork")]
     [TestCase(0L, 0UL, TestName = "Empty window")]
     [TestCase(long.MinValue, 3UL, TestName = "Window past the last slot")]
-    public void The_Gloas_range_dial_refuses_a_window_not_wholly_in_Gloas_before_writing_to_the_wire(long startOffset, ulong count)
+    public async Task The_Gloas_range_dial_refuses_a_window_not_wholly_in_Gloas_before_writing_to_the_wire(long startOffset, ulong count)
     {
         ulong start = startOffset == long.MinValue ? ulong.MaxValue - 1 : (ulong)((long)GloasStartSlot + startOffset);
         DataColumnSidecarsByRangeProtocol protocol = new(Spec, new DataColumnSidecarPool(), null!);
-
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, new(new DataColumnSidecarsByRangeRequest { StartSlot = start, Count = count, Columns = [3] }, Gloas: true)));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, new(new DataColumnSidecarsByRangeRequest { StartSlot = start, Count = count, Columns = [3] }, Gloas: true)));
     }
 
     [TestCase(new ulong[] { 3, 7 }, new ulong[] { 3, 3 }, false, false, "not requested", TestName = "The_Gloas_root_dial_refuses_a_repeated_root_and_column")]
@@ -184,7 +183,7 @@ public class GloasColumnReqRespTests
         }
         else
         {
-            Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRootAsync(request, response))!;
+            Eth2ReqRespException thrown = (await Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRootAsync(request, response)))!;
             Assert.That(thrown.Message, Does.Contain(error));
         }
     }

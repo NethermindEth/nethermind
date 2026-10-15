@@ -53,7 +53,7 @@ internal static class ReqRespTestChannel
         }
 
         long before = limitFailures();
-        Eth2ReqRespException thrown = Assert.ThrowsAsync<Eth2ReqRespException>(async () => await read())!;
+        Eth2ReqRespException thrown = (await Assert.ThrowsAsync<Eth2ReqRespException>(async () => await read()))!;
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(thrown.Message, Does.Contain(maximum.ToString()));
         Assert.That(limitFailures(), Is.EqualTo(before + 1), "limit violation recorded");

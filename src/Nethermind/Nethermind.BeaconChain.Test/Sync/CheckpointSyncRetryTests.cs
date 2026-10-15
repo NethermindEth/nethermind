@@ -64,15 +64,16 @@ public class CheckpointSyncRetryTests
         {
             if (failure == DownloadFailure.RepeatedDrop)
             {
-                Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None));
+                await Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None));
                 Assert.That(store.TryGetAnchor(out _, out _), Is.False);
             }
             else if (failure == DownloadFailure.MissingEndpoint)
             {
-                HttpRequestException refusal = Assert.ThrowsAsync<HttpRequestException>(() => sync.RunAsync(CancellationToken.None))!;
+                HttpRequestException refusal = (await Assert.ThrowsAsync<HttpRequestException>(() => sync.RunAsync(CancellationToken.None)))!;
                 Assert.That(refusal.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
             }
-            else Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None));
+            else
+                await Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None));
             Assert.That(provider.StateRequests, Is.EqualTo(failure == DownloadFailure.RepeatedDrop ? 3 : 1));
             return;
         }
@@ -137,8 +138,7 @@ public class CheckpointSyncRetryTests
         }
 
         await stop.CancelAsync();
-
-        Assert.ThrowsAsync<TaskCanceledException>(() => run);
+        await Assert.ThrowsAsync<TaskCanceledException>(() => run);
     }
 
     [Test]
@@ -257,7 +257,7 @@ public class CheckpointSyncRetryTests
 
         if (belowRate)
         {
-            IOException refusal = Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None).WaitAsync(RunBound))!;
+            IOException refusal = (await Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None).WaitAsync(RunBound)))!;
             Assert.That(refusal.Message, Does.Contain("KiB/s"));
         }
         else
@@ -282,32 +282,30 @@ public class CheckpointSyncRetryTests
             BufferPool = pool,
         };
 
-        IOException refusal = Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None).WaitAsync(RunBound))!;
+        IOException refusal = (await Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None).WaitAsync(RunBound)))!;
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(refusal.Message, Does.Contain("download deadline"));
         Assert.That(pool.Outstanding, Is.Zero);
     }
 
     [Test]
-    public void An_oversized_local_state_is_refused_before_renting()
+    public async Task An_oversized_local_state_is_refused_before_renting()
     {
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(ForkCrossingChain.Instance.First.PostState, null);
         OutstandingArrayPool pool = new();
         using CheckpointSync sync = NewBodySync(pool, 16, new BeaconChainConfig { CheckpointStateFile = files.StateFile });
-
-        Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None));
         Assert.That(pool.Rented, Is.Zero);
     }
 
     [Test]
-    public void An_oversized_declared_body_is_refused_before_renting([Values(17L, 2147483648L)] long declared)
+    public async Task An_oversized_declared_body_is_refused_before_renting([Values(17L, 2147483648L)] long declared)
     {
         OutstandingArrayPool pool = new();
         using CheckpointSync sync = NewBodySync(pool, 16);
         using HttpResponseMessage response = new() { Content = new ByteArrayContent([]) };
         response.Content.Headers.ContentLength = declared;
-
-        Assert.ThrowsAsync<InvalidDataException>(() => sync.ReadResponseBodyAsync(response, 8, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => sync.ReadResponseBodyAsync(response, 8, CancellationToken.None));
         Assert.That(pool.Rented, Is.Zero);
     }
 
@@ -321,7 +319,7 @@ public class CheckpointSyncRetryTests
 
         if (bytes > 17)
         {
-            Assert.ThrowsAsync<InvalidDataException>(() => sync.ReadResponseBodyAsync(response, 1, CancellationToken.None));
+            await Assert.ThrowsAsync<InvalidDataException>(() => sync.ReadResponseBodyAsync(response, 1, CancellationToken.None));
         }
         else
         {

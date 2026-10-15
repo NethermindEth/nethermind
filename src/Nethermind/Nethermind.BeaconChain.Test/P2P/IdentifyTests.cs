@@ -225,11 +225,11 @@ public class IdentifyTests
 
         if (refused)
         {
-            Assert.ThrowsAsync<PeerConnectionException>(() => read);
+            await Assert.ThrowsAsync<PeerConnectionException>(() => read);
         }
         else
         {
-            Assert.ThrowsAsync<ChannelClosedException>(() => read, "a length within the bound goes on to read the body");
+            await Assert.ThrowsAsync<ChannelClosedException>(() => read, "a length within the bound goes on to read the body");
         }
     }
 
@@ -247,8 +247,7 @@ public class IdentifyTests
         Task read = probe.DialAsync(channel, null!, null).WaitAsync(bound);
         await channel.Reverse.WriteAsync(new ReadOnlySequence<byte>(declared)).AsTask().WaitAsync(bound);
         Task<IOResult> sent = channel.Reverse.WriteAsync(new ReadOnlySequence<byte>(body)).AsTask();
-
-        Assert.ThrowsAsync<PeerConnectionException>(() => read);
+        await Assert.ThrowsAsync<PeerConnectionException>(() => read);
         ReadResult rest = await channel.ReadAsync(body.Length).AsTask().WaitAsync(bound);
         Assert.That(rest.Data.Length, Is.EqualTo(body.Length), "the body is still pending, not buffered by the refused read");
         await sent.WaitAsync(bound);

@@ -105,7 +105,7 @@ public class CheckpointSyncTests
         {
             if (!withBlockFile)
             {
-                InvalidDataException refusal = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+                InvalidDataException refusal = (await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
                 Assert.That(refusal.Message, Does.Contain(Path.ChangeExtension(files.StateFile, ".block.ssz")));
                 Assert.That(store.TryGetAnchor(out _, out _), Is.False);
                 Assert.That(store.TryGetState(first.Root, out _), Is.False);
@@ -133,7 +133,7 @@ public class CheckpointSyncTests
     [TestCase(true, false, TestName = "A_fulu_anchor_block_under_a_gloas_state_is_refused")]
     [TestCase(false, false, TestName = "A_gloas_slot_state_carrying_the_fulu_fork_version_is_refused")]
     [TestCase(false, true, TestName = "A_gloas_slot_state_carrying_the_fulu_fork_version_is_refused_when_both_forks_activate_in_one_epoch")]
-    public void An_inconsistent_gloas_checkpoint_is_refused_before_anything_is_persisted(bool fuluAnchorBlock, bool sharedActivationEpoch)
+    public async Task An_inconsistent_gloas_checkpoint_is_refused_before_anything_is_persisted(bool fuluAnchorBlock, bool sharedActivationEpoch)
     {
         BeaconChainSpec spec = sharedActivationEpoch ? GloasCheckpointFiles.SharedActivationEpochSpec : GloasCheckpointFiles.Spec;
         BeaconStateGloas state = ForkCrossingChain.Instance.First.PostState;
@@ -147,14 +147,14 @@ public class CheckpointSyncTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, spec, store, LimboLogs.Instance);
 
-        InvalidDataException ex = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+        InvalidDataException ex = (await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
 
         Assert.That(ex.Message, Does.Contain(nameof(BeaconFork.Gloas)).And.Not.Contain("root mismatch"));
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
     [Test]
-    public void A_checkpoint_with_a_version_outside_its_fork_is_refused_without_blaming_the_database([Values] bool unknownVersion)
+    public async Task A_checkpoint_with_a_version_outside_its_fork_is_refused_without_blaming_the_database([Values] bool unknownVersion)
     {
         ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;
         BeaconStateGloas state = first.PostState.Clone();
@@ -163,7 +163,7 @@ public class CheckpointSyncTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
 
-        Exception refusal = Assert.CatchAsync(() => sync.RunAsync(CancellationToken.None))!;
+        Exception refusal = (await Assert.CatchAsync(() => sync.RunAsync(CancellationToken.None)))!;
 
         Assert.That(refusal, unknownVersion ? Is.TypeOf<NotSupportedException>() : Is.TypeOf<InvalidDataException>());
         Assert.That(refusal.Message, Does.Contain("Fix the fork configuration or use a checkpoint source of this network").And.Not.Contain("beaconChain database"));
@@ -171,7 +171,7 @@ public class CheckpointSyncTests
     }
 
     [Test]
-    public void A_checkpoint_state_that_is_not_its_blocks_post_state_is_refused_before_anything_is_persisted([Values] bool headerAfterState)
+    public async Task A_checkpoint_state_that_is_not_its_blocks_post_state_is_refused_before_anything_is_persisted([Values] bool headerAfterState)
     {
         ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;
         BeaconStateGloas forged = first.PostState.Clone();
@@ -190,7 +190,7 @@ public class CheckpointSyncTests
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile, WeakSubjectivityCheckpoint = $"{first.Root}:1" },
             GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
 
-        InvalidDataException refusal = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+        InvalidDataException refusal = (await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(refusal.Message, Does.Contain(headerAfterState ? "precedes its latest block header" : $"names state root {first.Block.Message.StateRoot}"));
@@ -201,7 +201,7 @@ public class CheckpointSyncTests
     }
 
     [Test]
-    public void A_gloas_checkpoint_from_another_network_is_refused_before_anything_is_persisted()
+    public async Task A_gloas_checkpoint_from_another_network_is_refused_before_anything_is_persisted()
     {
         BeaconStateGloas state = ForkCrossingChain.Instance.First.PostState.Clone();
         state.GenesisValidatorsRoot = GloasTestFixtures.Hash(0x5A);
@@ -209,7 +209,7 @@ public class CheckpointSyncTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
 
-        InvalidDataException ex = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+        InvalidDataException ex = (await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
 
         Assert.That(ex.Message, Does.Contain("genesis_validators_root").And.Contain("another network"));
         Assert.That(ex.Message, Does.Not.Contain("delete").IgnoreCase, "a first sync has no database to delete");
@@ -218,7 +218,7 @@ public class CheckpointSyncTests
 
     /// <summary>Pairing alone does not validate committee keys; reject infinity, off-subgroup members and wrong aggregate keys.</summary>
     [Test]
-    public void A_checkpoint_with_an_invalid_sync_committee_key_is_refused_before_anything_is_persisted(
+    public async Task A_checkpoint_with_an_invalid_sync_committee_key_is_refused_before_anything_is_persisted(
         [Values] bool gloas, [Values] bool nextCommittee, [Values] InvalidSyncCommitteeKey key)
     {
         using TempPath stateFile = TempPath.GetTempFile();
@@ -226,7 +226,7 @@ public class CheckpointSyncTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = stateFile.Path }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
 
-        InvalidDataException ex = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+        InvalidDataException ex = (await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
 
         Assert.That(ex.Message, Does.Contain(SyncCommitteeKeyAnchors.Refusal(nextCommittee, key)));
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
@@ -251,7 +251,7 @@ public class CheckpointSyncTests
     }
 
     [Test]
-    public void An_independent_checkpoint_mismatch_refuses_fresh_sync_before_persisting([Values(0UL, 1UL, 2UL, ulong.MaxValue)] ulong epoch)
+    public async Task An_independent_checkpoint_mismatch_refuses_fresh_sync_before_persisting([Values(0UL, 1UL, 2UL, ulong.MaxValue)] ulong epoch)
     {
         using GloasCheckpointFiles files = GloasCheckpointFiles.Write(ForkCrossingChain.Instance.First.PostState, null);
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
@@ -260,8 +260,7 @@ public class CheckpointSyncTests
             CheckpointStateFile = files.StateFile,
             WeakSubjectivityCheckpoint = $"{GloasTestFixtures.Hash(0x5A)}:{epoch}",
         }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
-
-        Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None));
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
         Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
     }
