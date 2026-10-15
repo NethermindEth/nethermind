@@ -280,6 +280,29 @@ public class GethGenesisLoaderTests
         }
     }
 
+    [TestCase("", null)]
+    [TestCase("\"daoForkBlock\": 1234", null)]
+    [TestCase("\"daoForkSupport\": null", null)]
+    [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": null", null)]
+    [TestCase("\"daoForkSupport\": false", null)]
+    [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": false", null)]
+    [TestCase("\"daoForkSupport\": true", null)]
+    [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": true", 1234UL)]
+    public void Dao_fork_requires_explicit_support(string configExtra, ulong? expectedBlock)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+        EthashChainSpecEngineParameters ethashParameters = chainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<EthashChainSpecEngineParameters>();
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ethashParameters.DaoHardforkTransition, Is.EqualTo(expectedBlock));
+            Assert.That(chainSpec.DaoForkBlockNumber, Is.EqualTo(expectedBlock));
+            Assert.That(provider.DaoBlockNumber, Is.EqualTo(expectedBlock));
+        }
+    }
+
     private static readonly (ulong Block, ulong Delay)[] GlacierForkCases =
     [
         (9, 9_000_000),
