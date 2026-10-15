@@ -15,10 +15,6 @@ on:
         description: Collect coverage
         required: false
         type: boolean
-      consensus-mainnet:
-        default: false
-        description: Run the full mainnet consensus-spec suite
-        type: boolean
 
 env:
   COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
@@ -44,7 +40,7 @@ jobs:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     needs: build
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.project == 'Nethermind.BeaconChain.Test' && 30 || 15 }}
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
     env:
@@ -482,9 +478,8 @@ jobs:
           - Ethereum.ConsensusSpec.Test
           - Ethereum.ConsensusSpec.Minimal.Test
     env:
-      # The mainnet preset is ~900 MB compressed and several GB extracted. Pull requests run minimal
-      # plus required mainnet cases; pushes and opted-in manual runs enumerate both full suites.
-      NETHERMIND_CONSENSUS_SPEC_MAINNET: ${{ (github.event_name == 'push' || inputs.consensus-mainnet) && '1' || '' }}
+      # Validate both compiled presets before merge, including production-only SSZ layouts.
+      NETHERMIND_CONSENSUS_SPEC_MAINNET: '1'
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
