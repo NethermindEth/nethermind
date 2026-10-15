@@ -23,6 +23,17 @@ namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
 public partial class GossipRouterTests
 {
+    [TestCase(0UL, false)]
+    [TestCase(4096UL, true)]
+    public void The_pending_byte_backstop_starts_the_host_for_any_blob_schedule(ulong maxBlobsPerBlock, bool saturated)
+    {
+        BeaconChainSpec spec = Spec with { BlobSchedule = [.. Spec.BlobSchedule, new BlobScheduleEntry(ulong.MaxValue, maxBlobsPerBlock)] };
+
+        int backstop = BeaconP2P.PendingValidationBytesBackstop(new BeaconChainConfig(), spec);
+
+        Assert.That(backstop, saturated ? Is.EqualTo(int.MaxValue) : Is.LessThan(int.MaxValue), "a backstop past int range must saturate, not fail the host's startup");
+    }
+
     // phase0 p2p-interface.md: REJECT and IGNORE are not forwarded.
     [Test]
     public async Task Deferred_block_is_sent_to_the_mesh_only_once_its_verdict_is_accepted(

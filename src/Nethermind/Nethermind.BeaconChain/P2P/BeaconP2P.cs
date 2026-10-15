@@ -194,9 +194,10 @@ public sealed class BeaconP2P : IAsyncDisposable
         checked(2 * (2 * config.GossipMaxPendingValidations + BeaconSyncOrchestrator.VoteQueueCapacity));
 
     /// <summary>The router's own bound on bytes awaiting a verdict: the node's bound, a full vote queue of the largest votes and a full set of parked Gloas sidecars, which hold no reservation, twice over.</summary>
+    /// <remarks>A parked sidecar arrived by gossip, so it is at most <see cref="Eth2MessageId.MaxGossipSize"/> whatever the blob schedule; the sum saturates at <see cref="int.MaxValue"/>.</remarks>
     internal static int PendingValidationBytesBackstop(IBeaconChainConfig config, BeaconChainSpec spec) =>
-        checked(2 * (2 * config.GossipMaxPendingValidationBytes + BeaconSyncOrchestrator.VoteQueueCapacity * DeferredGossipValidation.MaxVoteMessageBytes
-            + DataColumnSidecarPool.MaxPendingGloasSidecars * (int)DataColumnSidecarGloasSize.ComputeMax(spec)));
+        (int)Math.Min(int.MaxValue, 2 * (2L * config.GossipMaxPendingValidationBytes + (long)BeaconSyncOrchestrator.VoteQueueCapacity * DeferredGossipValidation.MaxVoteMessageBytes
+            + DataColumnSidecarPool.MaxPendingGloasSidecars * (long)Math.Min(DataColumnSidecarGloasSize.ComputeMax(spec), (ulong)Eth2MessageId.MaxGossipSize)));
 
     /// <summary>The most message ids in one IDONTWANT control entry.</summary>
     internal const int IdontwantIdsPerControl = 10;
