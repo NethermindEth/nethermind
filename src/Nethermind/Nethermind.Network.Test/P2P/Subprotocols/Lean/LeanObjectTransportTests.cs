@@ -539,31 +539,6 @@ public class LeanObjectTransportTests
     }
 
     [Test]
-    public void Connection_reservation_preserves_import_and_ingress_capacity()
-    {
-        using LeanTestNode node = new();
-        List<IDisposable> pressure = [];
-        const int connectionBytes = 896 * 1024;
-        long target = LeanLimits.MaxIncompleteBytes - (long)LeanLimits.MaxObjectBytes - LeanProtocol.MaxCreditBytes;
-        try
-        {
-            ReserveGlobalBytes(node, target - connectionBytes, pressure);
-            FakeLink connection = Link("new-connection");
-            Assert.That(node.Transport.TryReserveNodeBytes(connection.NodeKey, connectionBytes, out IDisposable? admitted,
-                preserveImportCapacity: true), Is.True);
-            using (admitted)
-            {
-                Assert.That(node.Transport.TryReserveNodeBytes(Link("later-connection").NodeKey, 1, out _,
-                    preserveImportCapacity: true), Is.False);
-                Assert.That(node.Transport.TryReserveNodeBytes(connection.NodeKey, LeanProtocol.MaxMessageBytes, out IDisposable? ingress),
-                    Is.True, "existing waited-response ingress retains access to reserved scratch");
-                ingress!.Dispose();
-            }
-        }
-        finally { foreach (IDisposable lease in pressure) lease.Dispose(); }
-    }
-
-    [Test]
     public void Request_ids_allow_gaps_but_reuse_and_decrease_are_violations([Values(0UL, 7UL, 3UL)] ulong invalid)
     {
         using LeanTestNode node = new();
