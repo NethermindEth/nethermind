@@ -71,6 +71,16 @@ public static class FrameTxTestFrames
         return entries;
     }
 
+    /// <summary>A SECP256K1 entry by <paramref name="key"/> over an explicit digest, so entries can be built
+    /// independently of each other and of the transaction's signature hash.</summary>
+    public static TxFrameSignature DigestSignature(PrivateKey key, byte fill)
+    {
+        byte[] digest = new byte[Hash256.Size];
+        digest[31] = fill;
+        byte[] raw = Secp256k1SignatureBytes(new Ecdsa().Sign(key, new ValueHash256(digest)));
+        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, raw);
+    }
+
     /// <summary>New entries with the same content, as a node holds after decoding a gossiped transaction.</summary>
     /// <remarks>An entry caches its recovered signer, so transactions sharing entries pay for each recovery only
     /// once; a measurement that charges recovery per transaction must give each one its own.</remarks>
