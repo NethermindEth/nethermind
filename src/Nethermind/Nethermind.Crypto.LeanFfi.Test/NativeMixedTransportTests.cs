@@ -109,7 +109,7 @@ public class NativeMixedTransportTests
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
         try
         {
-            Assert.That(sender.Enqueue(new ChunkMessage(1, default, 0, payload, []) { AdaptivePacketType = 1 }), Is.GreaterThan(0));
+            Assert.That(sender.Enqueue(new ChunkMessage(1, default, 0, payload) { AdaptivePacketType = 1 }), Is.GreaterThan(0));
             writable = false; // The chunk frame is outstanding at the channel's transport boundary.
             using BlockHeadersMessage headers = new(new ArrayPoolList<BlockHeader>(1) { Build.A.BlockHeader.WithNumber(42).TestObject })
             { AdaptivePacketType = 20 };
