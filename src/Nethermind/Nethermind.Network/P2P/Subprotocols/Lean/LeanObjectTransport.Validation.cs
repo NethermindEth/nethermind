@@ -52,31 +52,48 @@ public sealed partial class LeanObjectTransport
         }
         _pendingValidations++;
         _validation.Enqueue(assembly);
-        if (!_validating)
+        if (_validationWorkers < LeanProtocol.MaxRequestsPerPeer)
         {
-            _validating = true;
+            _validationWorkers++;
             _ = Task.Run(ValidateQueueAsync);
         }
     }
 
     private async Task ValidateQueueAsync()
     {
-        while (true)
+        try
         {
-            LeanAssembly? assembly;
+            while (true)
+            {
+                LeanAssembly? assembly;
+                lock (_gate)
+                {
+                    if (_disposed || !_validation.TryDequeue(out assembly)) return;
+                    // An assembly that expired while queued already released its body.
+                    if (assembly.Dropped) continue;
+                    _pendingValidations--;
+                    assembly.Started = true;
+                }
+                await ProcessAndReleaseAsync(assembly).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
             lock (_gate)
             {
-                if (_disposed || !_validation.TryDequeue(out assembly))
+                _validationWorkers--;
+                if (_disposed)
                 {
-                    _validating = false;
-                    return;
+                    // Active verifications may outlive Dispose; the last worker owns the gate's teardown.
+                    if (_validationWorkers == 0) _verification.Dispose();
                 }
-                // An assembly that expired while queued already released its body.
-                if (assembly.Dropped) continue;
-                _pendingValidations--;
-                assembly.Started = true;
+                else if (_validation.Count != 0)
+                {
+                    // Enqueue may have observed this worker just before it exited with an empty queue.
+                    _validationWorkers++;
+                    _ = Task.Run(ValidateQueueAsync);
+                }
             }
-            await ProcessAndReleaseAsync(assembly).ConfigureAwait(false);
         }
     }
 
@@ -301,10 +318,17 @@ public sealed partial class LeanObjectTransport
     private async Task<(Verdict, string?)> VerifyWithBudgetAsync(LeanAssembly assembly,
         Func<CancellationToken, Task<ProofWrapperAcceptance>> accept, CancellationToken cancellation)
     {
-        if (assembly.CompletionSource is not { Closed: false }
-            || assembly.VerificationBytes > assembly.RetrievalBytes - (long)assembly.Descriptor.ByteLength)
-            return (Verdict.Refused, "no decoder working-space budget");
-        return await AcceptWithRetryAsync(accept, cancellation).ConfigureAwait(false);
+        // Recovery may overlap across bounded workers; proof verification and admission remain serialized.
+        await _verification.WaitAsync(cancellation).ConfigureAwait(false);
+        try
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (assembly.CompletionSource is not { Closed: false }
+                || assembly.VerificationBytes > assembly.RetrievalBytes - (long)assembly.Descriptor.ByteLength)
+                return (Verdict.Refused, "no decoder working-space budget");
+            return await AcceptWithRetryAsync(accept, cancellation).ConfigureAwait(false);
+        }
+        finally { _verification.Release(); }
     }
 
     private static async Task<(Verdict, string?)> AcceptWithRetryAsync(Func<CancellationToken, Task<ProofWrapperAcceptance>> accept,
