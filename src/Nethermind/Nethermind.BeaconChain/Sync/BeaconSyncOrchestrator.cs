@@ -86,6 +86,7 @@ public sealed class BeaconSyncOrchestrator(
     private const int MaxColumnRecoveryBlocks = 32;
 
     private const int RecentEnvelopeRequestCapacity = 1024;
+    private int _activeEnvelopeFetches;
 
     internal const int WorkQueueCapacity = 512;
 
@@ -552,9 +553,20 @@ public sealed class BeaconSyncOrchestrator(
         for (ulong slot = _syncTip.Slot + 1; slot <= wallSlot; slot++)
         {
             token.ThrowIfCancellationRequested();
-            if (!store.TryGetCanonicalRoot(slot, out Hash256? root) || !store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
+            if (!store.TryGetCanonicalRoot(slot, out Hash256? root))
             {
                 continue;
+            }
+
+            ForkedSignedBeaconBlock? block;
+            try
+            {
+                if (!store.TryGetForkedBlock(root, out block)) break;
+            }
+            catch (Exception e) when (e is InvalidDataException or ArgumentException or OverflowException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot replay stored block {root} at slot {slot}; range sync will refetch it: {e.Message}");
+                break;
             }
 
             long startMs = Environment.TickCount64;
@@ -1581,7 +1593,7 @@ public sealed class BeaconSyncOrchestrator(
         ulong currentSlot = slotClock.CurrentSlot;
         bool Expired(ParkedEnvelope parked) => ((parked.Envelope.Message!.Payload?.SlotNumber ?? 0) <= finalizedSlot
             && !NeedsParentPayload(parked.Envelope.Message.BeaconBlockRoot!)) || IsRetryExpired(parked.QueuedAtSlot, currentSlot);
-        _pendingEnvelopesByBlock.RemoveWhere(Expired);
+        _pendingEnvelopesByBlock.RemoveWhere(parked => Expired(parked) || currentSlot > parked.QueuedAtSlot + 2);
         _pendingEnvelopeRetry.RemoveWhere(Expired);
 
         foreach (ParkedEnvelope parked in _pendingEnvelopeRetry.Snapshot())
@@ -1593,7 +1605,7 @@ public sealed class BeaconSyncOrchestrator(
     private async Task RetryParkedEnvelopeAsync(ParkedEnvelope parked, CancellationToken token, bool retryingOnColumns)
     {
         ExecutionPayloadEnvelopeImportResult? result = await ImportEnvelopeAsync(parked.Envelope, token, parked.Source, retryingOnColumns);
-        if (result is not (ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable))
+        if (result is not (ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable or ExecutionPayloadEnvelopeImportResult.StateUnavailable))
         {
             _pendingEnvelopeRetry.Remove(parked);
         }
@@ -1744,7 +1756,7 @@ public sealed class BeaconSyncOrchestrator(
             case ExecutionPayloadEnvelopeImportResult.UnknownBlock:
                 _pendingEnvelopesByBlock.Add(message.BeaconBlockRoot!, envelope, source, slotClock.CurrentSlot);
                 break;
-            case ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable:
+            case ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable or ExecutionPayloadEnvelopeImportResult.StateUnavailable:
                 OnEnvelopeDataUnavailable(envelope, result, retryingOnColumns, token, source);
                 break;
             case ExecutionPayloadEnvelopeImportResult.Invalid:
@@ -1830,37 +1842,53 @@ public sealed class BeaconSyncOrchestrator(
             rotation = new RangeSync.ColumnFetchRotation(slotClock);
             _envelopePeerSelections.Set(parentRoot, rotation);
         }
-        IReadOnlyList<IBeaconSyncPeer> peers = rotation.Take(peerPool.GetBestPeers(0), MaxBackfillPeersPerRequest);
-        for (int i = 0; i < peers.Count && i < MaxBackfillPeersPerRequest; i++)
+        if (Volatile.Read(ref _activeEnvelopeFetches) < MaxConcurrentAncestorFetches)
         {
-            IBeaconSyncPeer peer = peers[i];
-            IReadOnlyList<SignedExecutionPayloadEnvelope> envelopes;
-            try
-            {
-                envelopes = await peer.RequestExecutionPayloadEnvelopesByRootAsync([parentRoot], token);
-            }
-            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
-            {
-                peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Execution-payload-envelopes-by-root for {parentRoot} failed: {e.Message}");
-                continue;
-            }
+            IReadOnlyList<IBeaconSyncPeer> peers = rotation.Take(peerPool.GetBestPeers(0), MaxBackfillPeersPerRequest);
+            Interlocked.Increment(ref _activeEnvelopeFetches);
+            _ = FetchParentEnvelopesAsync(parentRoot, peers, token);
+        }
+        return false;
+    }
 
-            foreach (SignedExecutionPayloadEnvelope envelope in envelopes)
+    private async Task FetchParentEnvelopesAsync(Hash256 parentRoot, IReadOnlyList<IBeaconSyncPeer> peers, CancellationToken token)
+    {
+        try
+        {
+            for (int i = 0; i < peers.Count && i < MaxBackfillPeersPerRequest; i++)
             {
-                if (envelope.Message?.BeaconBlockRoot != parentRoot)
+                IBeaconSyncPeer peer = peers[i];
+                IReadOnlyList<SignedExecutionPayloadEnvelope> envelopes;
+                try
                 {
-                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Execution-payload-envelopes-by-root for {parentRoot} returned an envelope for another block");
+                    envelopes = await peer.RequestExecutionPayloadEnvelopesByRootAsync([parentRoot], token);
+                }
+                catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+                {
+                    peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Execution-payload-envelopes-by-root for {parentRoot} failed: {e.Message}");
                     continue;
                 }
 
-                if (IsPayloadRecorded(await ImportEnvelopeItemAsync(new FetchedEnvelopeItem(envelope, peer), token)))
+                foreach (SignedExecutionPayloadEnvelope envelope in envelopes)
                 {
-                    return true;
+                    if (envelope.Message?.BeaconBlockRoot != parentRoot)
+                    {
+                        peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Execution-payload-envelopes-by-root for {parentRoot} returned an envelope for another block");
+                        continue;
+                    }
+
+                    await _work.Writer.WriteAsync(new FetchedEnvelopeItem(envelope, peer), token);
                 }
             }
         }
-
-        return false;
+        catch (Exception e)
+        {
+            if (!token.IsCancellationRequested && _logger.IsDebug) _logger.Debug($"Parent envelope fetch for {parentRoot} ended: {e.Message}");
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeEnvelopeFetches);
+        }
     }
 
     private async Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeItemAsync(EnvelopeItem item, CancellationToken token)
@@ -2027,7 +2055,7 @@ public sealed class BeaconSyncOrchestrator(
             // block; in steady state fetch the missing ancestors by root.
             if (_syncTip.Slot + MaxBackfillDepth < slotClock.CurrentSlot)
             {
-                QueuePendingGossipBlock(block);
+                HoldRefusedBackfill(block);
             }
             else if (_ancestorFetches.Count < MaxConcurrentAncestorFetches && TryTakeBackfill(block))
             {
@@ -2538,7 +2566,15 @@ public sealed class BeaconSyncOrchestrator(
         };
         Hash256? fullHeadRoot = head.HeadPayloadFull ? head.HeadRoot : null;
         statusHolder.Publish(headStatus, fullHeadRoot);
-        if (headSnapshots is not null) headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync);
+        if (headSnapshots is not null)
+        {
+            HeadSnapshot? previousSnapshot = headSnapshots.Current;
+            ForkedBeaconState? apiState = headSnapshots.CaptureState
+                ? previousSnapshot?.Status.HeadRoot == head.HeadRoot && previousSnapshot.FullHeadRoot == fullHeadRoot && previousSnapshot.State is not null
+                    ? previousSnapshot.State : (importer as BlockImporter)?.CloneStateForApi(head.HeadRoot)
+                : null;
+            headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync) { State = apiState };
+        }
 
         // A payload attestation is accepted for the wall slot and, within the clock disparity, its neighbours.
         ulong wallSlot = slotClock.CurrentSlot;
@@ -2894,7 +2930,9 @@ public sealed class BeaconSyncOrchestrator(
             // Before the tip, so a resume that moves the tip after this read also ends this round.
             CancellationToken restart = Volatile.Read(ref _rangeSyncRestart).Token;
             Tip tip = _syncTip;
-            RangeSync.AnchorFallback? fallback = null;
+            RangeSync.AnchorFallback? fallback = store.TryGetAnchor(out Hash256? finalizedRoot, out ulong finalizedSlot) && finalizedSlot < tip.Slot
+                ? new RangeSync.AnchorFallback(finalizedRoot, finalizedSlot, () => { })
+                : null;
             if (_rangeHeld is { } held && held.Tip.Slot > tip.Slot)
             {
                 // Nothing past the held blocks can be held once the share is full, so fetching it would only repeat.
@@ -2904,8 +2942,8 @@ public sealed class BeaconSyncOrchestrator(
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Range sync round starts past the blocks held for a deferred block, at slot {held.Tip.Slot} instead of {tip.Slot}");
-                // The held blocks are not signature-checked, so a round whose first block does not link to them starts over from the tip.
-                fallback = new RangeSync.AnchorFallback(tip.Root, tip.Slot, () => { if (ReferenceEquals(_rangeHeld, held)) _rangeHeld = null; });
+                // A rejected held branch may also have an orphaned imported tip, so keep the finalized fallback when available.
+                fallback = new RangeSync.AnchorFallback(fallback?.Root ?? tip.Root, fallback?.Slot ?? tip.Slot, () => { if (ReferenceEquals(_rangeHeld, held)) _rangeHeld = null; });
                 tip = held.Tip;
             }
 
@@ -3020,6 +3058,11 @@ public sealed class BeaconSyncOrchestrator(
             bool invalid = false;
             foreach (SignedExecutionPayloadEnvelope envelope in envelopes)
             {
+                if (envelope.Message is { BeaconBlockRoot: { } otherRoot } && !indexByRoot.ContainsKey(otherRoot))
+                {
+                    continue;
+                }
+
                 if (envelope.Message is not { BeaconBlockRoot: { } root } message
                     || !indexByRoot.TryGetValue(root, out int index)
                     || !MatchesBid(message, run[index]))
@@ -3102,7 +3145,7 @@ public sealed class BeaconSyncOrchestrator(
         _newPayloadMsAtProgressLog = newPayloadMs;
     }
 
-    private sealed record ParkedEnvelope(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source, ulong QueuedAtSlot);
+    private sealed record ParkedEnvelope(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source, ulong QueuedAtSlot, int Bytes);
 
     /// <summary>Envelopes held by the block root they name, first come: at most <paramref name="perBlock"/> for one root and <paramref name="total"/> in all.</summary>
     /// <remarks>An envelope already held is not held again, so a retry keeps the slot it was first queued at. Worker-only, not thread-safe.</remarks>
@@ -3110,6 +3153,8 @@ public sealed class BeaconSyncOrchestrator(
     {
         private readonly Dictionary<Hash256, List<ParkedEnvelope>> _byBlock = [];
         private int _count;
+        private long _bytes;
+        private const int MaxBytes = 64 * 1024 * 1024;
 
         public bool Contains(Hash256 blockRoot) => _byBlock.ContainsKey(blockRoot);
 
@@ -3123,7 +3168,7 @@ public sealed class BeaconSyncOrchestrator(
                     return false;
                 }
 
-                _byBlock[blockRoot] = held = [];
+                held = [];
             }
 
             foreach (ParkedEnvelope parked in held)
@@ -3134,12 +3179,15 @@ public sealed class BeaconSyncOrchestrator(
                 }
             }
 
-            if (held.Count >= perBlock || _count >= total)
+            int bytes = SignedExecutionPayloadEnvelope.GetLength(envelope);
+            if (held.Count >= perBlock || _count >= total || bytes < 0 || bytes > MaxBytes - _bytes)
             {
                 return false;
             }
 
-            held.Add(new ParkedEnvelope(envelope, source, queuedAtSlot));
+            held.Add(new ParkedEnvelope(envelope, source, queuedAtSlot, bytes));
+            _byBlock[blockRoot] = held;
+            _bytes += bytes;
             _count++;
             return true;
         }
@@ -3153,6 +3201,7 @@ public sealed class BeaconSyncOrchestrator(
             }
 
             _count -= held.Count;
+            foreach (ParkedEnvelope parked in held) _bytes -= parked.Bytes;
             return held;
         }
 
@@ -3162,6 +3211,7 @@ public sealed class BeaconSyncOrchestrator(
             if (_byBlock.TryGetValue(blockRoot, out List<ParkedEnvelope>? held) && held.Remove(parked))
             {
                 _count--;
+                _bytes -= parked.Bytes;
                 if (held.Count == 0)
                 {
                     _byBlock.Remove(blockRoot);

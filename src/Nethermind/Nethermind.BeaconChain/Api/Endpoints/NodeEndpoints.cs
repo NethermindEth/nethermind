@@ -85,7 +85,8 @@ internal static class NodeEndpoints
         MetadataDto metadata = new(
             ctx.MetadataSource.Current.SeqNumber.ToString(),
             HexConvert.BitVectorToHex(ctx.MetadataSource.Current.Attnets!),
-            HexConvert.BitVectorToHex(ctx.MetadataSource.Current.Syncnets!));
+            HexConvert.BitVectorToHex(ctx.MetadataSource.Current.Syncnets!),
+            ctx.MetadataSource.Current.CustodyGroupCount.ToString());
 
         IdentityDto dto = new(
             peerIdString,
@@ -252,7 +253,8 @@ internal static class NodeEndpoints
     private sealed record MetadataDto(
         [property: JsonPropertyName("seq_number")] string SeqNumber,
         [property: JsonPropertyName("attnets")] string Attnets,
-        [property: JsonPropertyName("syncnets")] string Syncnets);
+        [property: JsonPropertyName("syncnets")] string Syncnets,
+        [property: JsonPropertyName("custody_group_count")] string CustodyGroupCount);
 
     private sealed record IdentityDto(
         [property: JsonPropertyName("peer_id")] string PeerId,

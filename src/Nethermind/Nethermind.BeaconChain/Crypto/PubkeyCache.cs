@@ -36,7 +36,8 @@ public class PubkeyCache
     // Held while Extend copies and replaces the verdicts, so a warm-up that ends then either sees the replacement or had its verdicts copied.
     private readonly Lock _subgroupChecksSwap = new();
 
-    public int Count { get; private set; }
+    private int _count;
+    public int Count { get => Volatile.Read(ref _count); private set => Volatile.Write(ref _count, value); }
     /// <summary>Called by <see cref="Extend"/> once the new keys are decoded, before it publishes them; lets a test place a warm-up there.</summary>
     internal Action? ExtensionDecoded { get; set; }
     /// <summary>Called by <see cref="Extend"/> inside the swap lock after copying the verdicts, before it publishes them; lets a test place a warm-up there.</summary>
@@ -49,8 +50,13 @@ public class PubkeyCache
         (delegate* unmanaged<long*, long**, nuint, void>)NativeLibrary.GetExport(NativeLibrary.Load("blst", typeof(Bls).Assembly, null), "blst_p1s_add");
 
     /// <summary>Returns the decompressed G1 point of a validator, wrapping the backing buffer without copying.</summary>
-    public G1Affine GetPublicKey(int validatorIndex) =>
-        new(_points.AsSpan(checked(validatorIndex * G1Affine.Sz), G1Affine.Sz));
+    public G1Affine GetPublicKey(int validatorIndex)
+    {
+        int count = Count;
+        long[] points = Volatile.Read(ref _points);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)validatorIndex, (uint)count);
+        return new(points.AsSpan(checked(validatorIndex * G1Affine.Sz), G1Affine.Sz));
+    }
 
     /// <summary>Returns whether a validator's cached public key is in the prime-order subgroup G1.</summary>
     /// <remarks>
@@ -76,34 +82,37 @@ public class PubkeyCache
     internal virtual void WarmSubgroupChecks(CancellationToken cancellationToken)
     {
         byte[] checks;
+        int count;
         do
         {
             // Extend stores the points before the checks, so reading them in the opposite order never pairs new checks with old points.
+            count = Count;
             checks = Volatile.Read(ref _subgroupChecks);
             long[] points = Volatile.Read(ref _points);
             WarmUpPassStarted?.Invoke();
-            BeaconParallel.For(0, Math.Min(checks.Length, points.Length / G1Affine.Sz), Math.Max(1, Environment.ProcessorCount / 2), cancellationToken, i =>
+            BeaconParallel.For(0, count, Math.Max(1, Environment.ProcessorCount / 2), cancellationToken, i =>
             {
                 if (checks[i] == 0)
                     checks[i] = new G1Affine(points.AsSpan(i * G1Affine.Sz, G1Affine.Sz)).InGroup() ? (byte)1 : (byte)2;
             });
         }
-        while (!IsCurrent(checks));
+        while (!IsCurrent(checks, count));
     }
 
-    private bool IsCurrent(byte[] checks)
+    private bool IsCurrent(byte[] checks, int count)
     {
         lock (_subgroupChecksSwap)
         {
-            return ReferenceEquals(checks, _subgroupChecks);
+            return ReferenceEquals(checks, _subgroupChecks) && count == Count;
         }
     }
 
     /// <summary>Whether a validator's subgroup check is already remembered.</summary>
     internal bool HasSubgroupCheck(int validatorIndex)
     {
-        byte[] checks = _subgroupChecks;
-        return (uint)validatorIndex < (uint)checks.Length && checks[validatorIndex] != 0;
+        int count = Count;
+        byte[] checks = Volatile.Read(ref _subgroupChecks);
+        return (uint)validatorIndex < (uint)count && checks[validatorIndex] != 0;
     }
 
     /// <summary>Returns a validator's cached public key and whether it is in the prime-order subgroup G1, which <c>KeyValidate</c> requires of every key a signature is verified under.</summary>
@@ -135,12 +144,13 @@ public class PubkeyCache
     private void CheckUncheckedInParallel(ReadOnlySpan<ulong> validatorIndices)
     {
         // Spec BLS KeyValidate: each verdict must match its point; Extend publishes points before verdicts.
+        int count = Count;
         byte[] checks = Volatile.Read(ref _subgroupChecks);
         long[] points = Volatile.Read(ref _points);
         List<int>? pending = null;
         foreach (ulong index in validatorIndices)
         {
-            if (index < (ulong)checks.Length && checks[(int)index] == 0)
+            if (index < (ulong)count && checks[(int)index] == 0)
                 (pending ??= []).Add((int)index);
         }
 
@@ -164,8 +174,8 @@ public class PubkeyCache
     public unsafe void SumPublicKeys(ReadOnlySpan<ulong> validatorIndices, Span<long> sum)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(sum.Length, Bls.P1.Sz);
-        long[] points = _points;
-        ulong count = (ulong)(points.Length / G1Affine.Sz);
+        ulong count = (ulong)Count;
+        long[] points = Volatile.Read(ref _points);
         nint[] addresses = ArrayPool<nint>.Shared.Rent(Math.Max(validatorIndices.Length, 1));
         try
         {
@@ -199,6 +209,7 @@ public class PubkeyCache
     public void Build(Validator[] validators)
     {
         _points = [];
+        _subgroupChecks = [];
         Count = 0;
         Extend(validators, 0);
     }
@@ -211,9 +222,11 @@ public class PubkeyCache
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(fromIndex, Count);
 
-        long[] points = new long[checked(validators.Length * G1Affine.Sz)];
-        _points.AsSpan(0, fromIndex * G1Affine.Sz).CopyTo(points);
-        byte[] subgroupChecks = new byte[validators.Length];
+        bool reuse = fromIndex == Count && validators.Length <= _subgroupChecks.Length;
+        int capacity = Math.Max(validators.Length, Math.Max(4, _subgroupChecks.Length * 2));
+        long[] points = reuse ? _points : new long[checked(capacity * G1Affine.Sz)];
+        if (!reuse) _points.AsSpan(0, fromIndex * G1Affine.Sz).CopyTo(points);
+        byte[] subgroupChecks = reuse ? _subgroupChecks : new byte[capacity];
 
         long firstInvalid = -1;
         BeaconParallel.For(fromIndex, validators.Length, (i, state) =>
@@ -240,9 +253,8 @@ public class PubkeyCache
             ExtensionChecksCopied?.Invoke();
             Volatile.Write(ref _points, points);
             Volatile.Write(ref _subgroupChecks, subgroupChecks);
+            Count = validators.Length;
         }
-
-        Count = validators.Length;
 
         if (!SamplesMatch(validators))
         {
@@ -251,10 +263,13 @@ public class PubkeyCache
     }
 
     /// <summary>Persists the point buffer to the store. The count entry is written last so an interrupted persist is not loadable.</summary>
-    public void Persist(BeaconChainStore store)
+    public void Persist(BeaconChainStore store, int? validatorCount = null)
     {
-        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(_points.AsSpan());
-        for (int chunk = 0; chunk * ValidatorsPerChunk < Count; chunk++)
+        int count = validatorCount ?? Count;
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(count, Count);
+        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(_points.AsSpan(0, count * G1Affine.Sz));
+        for (int chunk = 0; chunk * ValidatorsPerChunk < count; chunk++)
         {
             int offset = chunk * ValidatorsPerChunk * G1Affine.Sz * sizeof(long);
             store.PutMetadata(ChunkKey(chunk), Snappy.CompressToArray(bytes.Slice(offset, Math.Min(ValidatorsPerChunk * G1Affine.Sz * sizeof(long), bytes.Length - offset))));
@@ -262,7 +277,7 @@ public class PubkeyCache
 
         byte[] countValue = new byte[1 + sizeof(int)];
         countValue[0] = FormatVersion;
-        BinaryPrimitives.WriteInt32LittleEndian(countValue.AsSpan(1), Count);
+        BinaryPrimitives.WriteInt32LittleEndian(countValue.AsSpan(1), count);
         store.PutMetadata(CountKey, countValue);
     }
 
@@ -277,7 +292,7 @@ public class PubkeyCache
         }
 
         int count = BinaryPrimitives.ReadInt32LittleEndian(countValue.AsSpan(1));
-        if (count != validators.Length)
+        if (count < 0 || count > validators.Length)
         {
             return false;
         }
@@ -309,6 +324,8 @@ public class PubkeyCache
             return false;
         }
 
+        if (Count < validators.Length)
+            Extend(validators, Count);
         return true;
     }
 

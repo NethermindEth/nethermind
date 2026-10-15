@@ -7,8 +7,8 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// <summary>
 /// One <see cref="DataColumnSidecar"/> that <see cref="DataColumnReconstruction.TryReconstruct"/>
 /// produced but this node did not itself receive, with the pieces the P2P layer needs to treat it
-/// exactly as if it had arrived over gossip (p2p-interface.md, "distributed blob publishing"): the
-/// anti-equivocation cache key, and which subnet to publish it to if this node is subscribed there.
+/// exactly as if it had arrived over gossip (das-core.md, "Reconstruction and cross-seeding"): the
+/// anti-equivocation cache key, and which subnet to publish it to.
 /// </summary>
 /// <param name="Slot">signed_block_header.message.slot: part of the anti-equivocation tuple.</param>
 /// <param name="ProposerIndex">signed_block_header.message.proposer_index: part of the anti-equivocation tuple.</param>
@@ -17,12 +17,9 @@ namespace Nethermind.BeaconChain.DataAvailability;
 public readonly record struct ReconstructedSidecarToPublish(ulong Slot, ulong ProposerIndex, ulong Subnet, DataColumnSidecar Sidecar);
 
 /// <summary>
-/// Fulu p2p-interface.md, "distributed blob publishing": once a node reconstructs columns it did not
-/// receive, "the node MUST expose the new column as if it had received it over the network" -
-/// including the anti-equivocation cache update - and, only if it is subscribed to that column's own
-/// subnet, publish it to its mesh peers there. This project has no gossip or subscription state, so
-/// it only says which sidecars need this and with which key; the actual cache write and publish call
-/// belong to the P2P layer (see the delivering task's crossStreamRisks for the exact call).
+/// Fulu das-core.md, "Reconstruction and cross-seeding": reconstructed columns are exposed as if
+/// received over the network. The P2P layer updates its anti-equivocation cache and publishes through
+/// mesh peers on subscribed subnets or fanout peers on unsubscribed subnets.
 /// </summary>
 public static class ReconstructionBroadcast
 {

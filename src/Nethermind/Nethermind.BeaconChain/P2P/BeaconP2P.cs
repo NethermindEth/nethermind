@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
@@ -112,6 +111,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new Eth2PingProtocol(metadataSource) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new MetaDataProtocolV3(metadataSource) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new BeaconBlocksByHeadProtocolV1(spec, store, clock) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new BeaconBlocksByRootProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool, store, clock) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new DataColumnSidecarsByRootProtocol(spec, dataColumnSidecarPool) { RequestViolationSink = ReportRequestViolation })
@@ -126,6 +126,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 .AddProtocol<MetaDataProtocolV3>()
                 .AddProtocol<BeaconBlocksByRangeProtocolV2>()
                 .AddProtocol<BeaconBlocksByRootProtocolV2>()
+                .AddProtocol<BeaconBlocksByHeadProtocolV1>()
                 .AddProtocol<DataColumnSidecarsByRangeProtocol>()
                 .AddProtocol<DataColumnSidecarsByRootProtocol>()
                 .AddProtocol<ExecutionPayloadEnvelopesByRangeProtocol>()
@@ -153,7 +154,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(GossipScoring.Configure(new PubsubSettings
             {
                 DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
-                GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data.Span)),
+                GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data)),
                 Degree = 8, // D
                 LowestDegree = 6, // D_low
                 HighestDegree = 12, // D_high
@@ -188,11 +189,11 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>The router's own bound on messages awaiting a verdict: the node's bound and the vote queue, each reserved by DeferredGossipValidation, twice over.</summary>
     /// <remarks>The margin covers a message the router still holds for a moment after the node released its reservation.</remarks>
     internal static int PendingValidationMessagesBackstop(IBeaconChainConfig config) =>
-        checked(2 * (config.GossipMaxPendingValidations + BeaconSyncOrchestrator.VoteQueueCapacity));
+        checked(2 * (2 * config.GossipMaxPendingValidations + BeaconSyncOrchestrator.VoteQueueCapacity));
 
     /// <summary>The router's own bound on bytes awaiting a verdict: the node's bound and a full vote queue of the largest votes, twice over.</summary>
     internal static int PendingValidationBytesBackstop(IBeaconChainConfig config) =>
-        checked(2 * (config.GossipMaxPendingValidationBytes + BeaconSyncOrchestrator.VoteQueueCapacity * DeferredGossipValidation.MaxVoteMessageBytes));
+        checked(2 * (2 * config.GossipMaxPendingValidationBytes + BeaconSyncOrchestrator.VoteQueueCapacity * DeferredGossipValidation.MaxVoteMessageBytes));
 
     /// <summary>The most message ids in one IDONTWANT control entry.</summary>
     internal const int IdontwantIdsPerControl = 10;
@@ -674,7 +675,7 @@ public sealed class BeaconP2P : IAsyncDisposable
         if ((SessionClosedToken(session).IsCancellationRequested || session is LocalPeer.Session { ConnectionToken.IsCancellationRequested: true })
             && !IsExchangeFailure(e))
         {
-            return new IOException($"peer disconnected {after}{waitingFor}: its libp2p session closed", e);
+            return new PeerSessionClosedException($"peer disconnected {after}{waitingFor}: its libp2p session closed", e);
         }
 
         if ((e as AggregateException)?.Flatten().InnerException is TimeoutException protocolBound)

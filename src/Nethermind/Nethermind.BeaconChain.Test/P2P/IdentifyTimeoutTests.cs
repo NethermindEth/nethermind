@@ -91,7 +91,7 @@ public class IdentifyTimeoutTests
         Exception failure = dial.Exception!.InnerException!;
         string description = $"the dial failed with {failure.GetType().Name}: {failure.Message}";
         Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo("request timed out").And.Not.EqualTo(new AggregateException().Message), description);
-        Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.SessionClosed), description);
+        Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed), description);
         await WaitUntilAsync(() => node.SessionCountForTest == 0, "fixture: the closed session stayed listed", token, Within);
         await Task.Delay(IdentifyAgentVersionProbe.ReadTimeout, token);
         Assert.That(node.IdentifyTimeoutsForTest, Is.Zero, "a closed session is not counted as an identify timeout");

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
@@ -21,15 +22,16 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// <c>is_data_available</c> needs its blob sidecars, and this node has no blob sidecar source.
 /// </summary>
 /// <remarks>
-/// Every sidecar is re-verified here rather than trusted because it sits in <paramref name="columns"/>:
-/// the gossip router validates a sidecar against its own header, not against the block being
-/// imported, and a future source may be fed from unverified req/resp fetches. Fails closed while the
+/// Sidecars are bound to the block on every check; successful cryptographic verification is cached
+/// for each immutable sidecar instance. Fails closed while the
 /// node's identity is unknown (<see cref="INodeColumnCustodySource.Current"/> is <c>null</c>), since a
 /// rule that cannot say which columns it needs cannot say a block is available either. The window
 /// is read from <paramref name="clock"/> at every check because it moves with the wall clock.
 /// </remarks>
 public sealed class CustodySamplingAvailability(INodeColumnCustodySource custodySource, IDataColumnSource columns, SlotClock clock) : IDataAvailabilityRule
 {
+    private readonly ConditionalWeakTable<DataColumnSidecar, object> _verified = new();
+
     /// <inheritdoc/>
     public bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, BeaconChainSpec spec)
     {
@@ -43,25 +45,30 @@ public sealed class CustodySamplingAvailability(INodeColumnCustodySource custody
 
         if (custodySource.Current is not { } custody) return false;
 
-        // The custody and sample sets overlap; verify each column once per block, not once per set.
-        Dictionary<ulong, bool> verified = [];
-        bool IsHeldAndVerified(ulong column)
+        Dictionary<ulong, DataColumnSidecar> held = [];
+        bool Hold(ulong column)
         {
-            if (!verified.TryGetValue(column, out bool ok))
-            {
-                ok = columns.TryGetColumn(blockRoot, column, out DataColumnSidecar? sidecar)
-                    && DataColumnAvailability.IsVerifiedColumnOf(sidecar, blockRoot, blobCommitments, spec);
-                verified[column] = ok;
-            }
-
-            return ok;
+            if (held.ContainsKey(column)) return true;
+            if (!columns.TryGetColumn(blockRoot, column, out DataColumnSidecar? sidecar)) return false;
+            held[column] = sidecar;
+            return true;
         }
 
         foreach (ulong column in custody.CustodyColumns)
+            if (!Hold(column)) return false;
+        foreach (ulong column in custody.SampledColumns)
+            if (!Hold(column)) return false;
+
+        foreach ((ulong column, DataColumnSidecar sidecar) in held)
         {
-            if (!IsHeldAndVerified(column)) return false;
+            if (sidecar.Index != column || !DataColumnAvailability.MatchesBlock(sidecar, blockRoot, blobCommitments)) return false;
+            if (!_verified.TryGetValue(sidecar, out _))
+            {
+                if (!DataColumnSidecarVerifier.Verify(sidecar, spec)) return false;
+                _verified.GetOrCreateValue(sidecar);
+            }
         }
 
-        return DataAvailabilitySampling.IsSampleAvailable(custody.SampledColumns, IsHeldAndVerified);
+        return true;
     }
 }

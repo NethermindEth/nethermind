@@ -36,6 +36,52 @@ public sealed class EpochCache
     internal BeaconChainSpec ResolveSigningSpec(Hash256 genesisValidatorsRoot) =>
         SigningSpec ?? BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot);
 
+    private Validator[]? _requestValidators;
+    private readonly Dictionary<BlsPublicKey, int> _requestIndices = [];
+
+    internal void IndexRequestPubkeys(Validator[] validators, WithdrawalRequest[]? withdrawals, ConsolidationRequest[]? consolidations)
+    {
+        _requestIndices.Clear();
+        foreach (WithdrawalRequest request in withdrawals ?? []) _requestIndices.TryAdd(request.ValidatorPubkey, -1);
+        foreach (ConsolidationRequest request in consolidations ?? [])
+        {
+            _requestIndices.TryAdd(request.SourcePubkey, -1);
+            _requestIndices.TryAdd(request.TargetPubkey, -1);
+        }
+        IndexWantedPubkeys(validators);
+    }
+
+    internal void IndexDepositPubkeys(Validator[] validators, Deposit[] deposits)
+    {
+        _requestIndices.Clear();
+        foreach (Deposit deposit in deposits) _requestIndices.TryAdd(deposit.Data!.Pubkey, -1);
+        IndexWantedPubkeys(validators);
+    }
+
+    internal void RegisterDepositedValidator(Validator[] validators)
+    {
+        _requestValidators = validators;
+        _requestIndices[validators[^1].Pubkey] = validators.Length - 1;
+    }
+
+    private void IndexWantedPubkeys(Validator[] validators)
+    {
+        if (_requestIndices.Count > 0)
+            for (int i = 0; i < validators.Length; i++)
+                if (_requestIndices.TryGetValue(validators[i].Pubkey, out int index) && index < 0)
+                    _requestIndices[validators[i].Pubkey] = i;
+        _requestValidators = validators;
+    }
+
+    internal int? FindRequestValidator(Validator[] validators, BlsPublicKey pubkey)
+    {
+        if (ReferenceEquals(validators, _requestValidators) && _requestIndices.TryGetValue(pubkey, out int index))
+            return index >= 0 ? index : null;
+        for (int i = 0; i < validators.Length; i++)
+            if (validators[i].Pubkey == pubkey) return i;
+        return null;
+    }
+
     private (ulong Epoch, ulong Balance, Hash256 BoundaryRoot)? _totalActiveBalance;
     private readonly CommitteeCacheLru _committees = new();
     private (SyncCommittee Committee, int[] Indices)? _syncCommitteeIndices;
@@ -127,7 +173,7 @@ public sealed class EpochCache
         Hash256 boundaryRoot = GetEpochBoundaryRoot(state.Slot, s => state.GetBlockRootAtSlot(s));
         if (_totalActiveBalance is not { } cached || cached.Epoch != epoch)
         {
-            ulong balance = state.GetTotalBalance(state.GetActiveValidatorIndices(epoch));
+            ulong balance = GetTotalActiveBalance(state.Validators!, epoch);
             _totalActiveBalance = cached = (epoch, balance, boundaryRoot);
         }
         else if (cached.BoundaryRoot != boundaryRoot)
@@ -149,7 +195,7 @@ public sealed class EpochCache
         Hash256 boundaryRoot = GetEpochBoundaryRoot(state.Slot, s => state.GetBlockRootAtSlot(s));
         if (_totalActiveBalance is not { } cached || cached.Epoch != epoch)
         {
-            ulong balance = state.GetTotalBalance(state.GetActiveValidatorIndices(epoch));
+            ulong balance = GetTotalActiveBalance(state.Validators!, epoch);
             _totalActiveBalance = cached = (epoch, balance, boundaryRoot);
         }
         else if (cached.BoundaryRoot != boundaryRoot)
@@ -169,6 +215,9 @@ public sealed class EpochCache
     /// <summary><see cref="GetCommitteeCache(BeaconStateFulu, ulong)"/> for a post-fork <see cref="BeaconStateGloas"/>.</summary>
     public CommitteeCache GetCommitteeCache(BeaconStateGloas state, ulong epoch) => _committees.GetOrBuild(state, epoch);
 
+    internal CommitteeCache GetNextPtcCommittees(BeaconStateGloas state, ulong epoch) =>
+        _committees.GetOrBuild(state, epoch, state.BlockRoots![(int)(state.Slot % Presets.SlotsPerHistoricalRoot)]);
+
     /// <summary>
     /// The root identifying everything the epoch boundary fixed for the state's current epoch: the
     /// latest block root as of the last slot before that epoch (zero in the genesis epoch, which no
@@ -178,6 +227,15 @@ public sealed class EpochCache
     {
         ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(BeaconStateAccessors.ComputeEpochAtSlot(slot));
         return startSlot == 0 ? Hash256.Zero : blockRootAtSlot(startSlot - 1);
+    }
+
+    private static ulong GetTotalActiveBalance(Validator[] validators, ulong epoch)
+    {
+        ulong total = 0;
+        foreach (Validator validator in validators)
+            if (validator.IsActiveValidator(epoch))
+                total += validator.EffectiveBalance;
+        return Math.Max(Presets.EffectiveBalanceIncrement, total);
     }
 
     private static BeaconStateException Conflict(ulong epoch, Hash256 memoized, Hash256 requested) => new(

@@ -1045,6 +1045,47 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task Corrupt_stored_replay_stops_at_the_last_readable_block()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        (SignedBeaconBlock anchor, Hash256 root, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1, AnchorSlot + 2);
+        TestChain.Persist(store, anchor, root, chain);
+        Hash256 corrupt = new ForkedSignedBeaconBlock.OfFulu(chain[1]).ComputeMessageRoot();
+        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(corrupt.Bytes, [0xFF]);
+        Harness harness = CreateHarness(store: store);
+        harness.Importer.Known.Add(root);
+
+        await harness.Orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+
+        Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(AnchorSlot + 1));
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Range_sync_replaces_an_orphaned_replayed_tail_from_the_finalized_anchor(CancellationToken token)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] old) = TestChain.BuildLinkedChain(AnchorSlot, 101);
+        old[0].Message!.StateRoot = TestItem.KeccakA;
+        TestChain.Persist(store, anchor, anchorRoot, old);
+        (_, _, SignedBeaconBlock[] canonical) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102);
+        RangeSyncTests.StubPeer peer = new("canonical", 102, (start, count) =>
+            [.. canonical.Where(b => b.Message!.Slot >= start && b.Message.Slot < start + count).Select(b => new ForkedSignedBeaconBlock.OfFulu(b))]);
+        Harness harness = CreateHarness(store: store, wallSlot: 102, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        await harness.Orchestrator.ReplayStoredBlocksAsync(token);
+        Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(SszRoots.HashTreeRoot(old[0].Message!)));
+
+        await harness.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+
+        Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(SszRoots.HashTreeRoot(canonical[^1].Message!)));
+        Assert.That(peer.Reports, Is.Empty);
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task A_replayed_head_near_the_wall_clock_starts_gossip_once_the_libp2p_host_has_started(CancellationToken token)
     {
@@ -1492,7 +1533,7 @@ public partial class BeaconSyncOrchestratorTests
         public Exception? FcuFailure { get; set; }
         public Task<PayloadStatusV1>? FcuAnswer { get; set; }
         public Task<PayloadStatusV1>? PendingFcu { get; set; }
-        public bool HasAnsweredNewPayload => false;
+        public bool PayloadSubmitted => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
         {

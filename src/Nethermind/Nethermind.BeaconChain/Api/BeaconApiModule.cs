@@ -20,7 +20,7 @@ public class BeaconApiModule : Module
         base.Load(builder);
 
         builder
-            .AddSingleton<HeadSnapshotHolder>()
+            .AddSingleton<HeadSnapshotHolder, IBeaconApiConfig>(config => new HeadSnapshotHolder { CaptureState = config.Enabled })
             .AddStep(typeof(StartBeaconApi));
 
         builder.RegisterType<BeaconApiHost>().SingleInstance();

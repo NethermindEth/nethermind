@@ -37,14 +37,14 @@ public static partial class BlockProcessing
         && a.BodyRoot == b.BodyRoot;
 
     /// <summary>Spec <c>is_valid_switch_to_compounding_request</c>.</summary>
-    private static partial bool IsValidSwitchToCompoundingRequest(ForkState state, ConsolidationRequest request)
+    private static partial bool IsValidSwitchToCompoundingRequest(ForkState state, ConsolidationRequest request, int? sourceIndex)
     {
         if (request.SourcePubkey != request.TargetPubkey)
             return false;
-        if (FindValidatorIndex(state, request.SourcePubkey) is not int sourceIndex)
+        if (sourceIndex is null)
             return false;
 
-        Validator sourceValidator = state.Validators![sourceIndex];
+        Validator sourceValidator = state.Validators![sourceIndex.Value];
         if (!sourceValidator.WithdrawalCredentials!.Bytes[12..].SequenceEqual(request.SourceAddress!.Bytes))
             return false;
         if (!sourceValidator.HasEth1WithdrawalCredential())
@@ -158,18 +158,29 @@ public static partial class BlockProcessing
 #else
     public static partial void ProcessDepositRequest(ForkState state, DepositRequest request)
 #endif
-    {
-        if (state.DepositRequestsStartIndex == Presets.UnsetDepositRequestsStartIndex)
-            state.DepositRequestsStartIndex = request.Index;
+        => ProcessDepositRequests(state, [request]);
 
-        state.PendingDeposits = [.. state.PendingDeposits!, new PendingDeposit
+    private static partial void ProcessDepositRequests(ForkState state, DepositRequest[] requests)
+    {
+        if (requests.Length == 0) return;
+        if (state.DepositRequestsStartIndex == Presets.UnsetDepositRequestsStartIndex)
+            state.DepositRequestsStartIndex = requests[0].Index;
+        PendingDeposit[] existing = state.PendingDeposits!;
+        PendingDeposit[] deposits = new PendingDeposit[existing.Length + requests.Length];
+        existing.CopyTo(deposits, 0);
+        for (int i = 0; i < requests.Length; i++)
         {
-            Pubkey = request.Pubkey,
-            WithdrawalCredentials = request.WithdrawalCredentials,
-            Amount = request.Amount,
-            Signature = request.Signature,
-            Slot = state.Slot,
-        }];
+            DepositRequest request = requests[i];
+            deposits[existing.Length + i] = new PendingDeposit
+            {
+                Pubkey = request.Pubkey,
+                WithdrawalCredentials = request.WithdrawalCredentials,
+                Amount = request.Amount,
+                Signature = request.Signature,
+                Slot = state.Slot,
+            };
+        }
+        state.PendingDeposits = deposits;
     }
 
     /// <summary>
@@ -188,7 +199,7 @@ public static partial class BlockProcessing
         if (state.PendingPartialWithdrawals!.Length == Presets.PendingPartialWithdrawalsLimit && !isFullExitRequest)
             return;
 
-        if (FindValidatorIndex(state, request.ValidatorPubkey) is not int index)
+        if (cache.FindRequestValidator(state.Validators!, request.ValidatorPubkey) is not int index)
             return;
         Validator validator = state.Validators![index];
 
@@ -241,9 +252,10 @@ public static partial class BlockProcessing
     public static partial void ProcessConsolidationRequest(ForkState state, ConsolidationRequest request, EpochCache cache)
 #endif
     {
-        if (IsValidSwitchToCompoundingRequest(state, request))
+        int? source = cache.FindRequestValidator(state.Validators!, request.SourcePubkey);
+        if (IsValidSwitchToCompoundingRequest(state, request, source))
         {
-            SwitchToCompoundingValidator(state, FindValidatorIndex(state, request.SourcePubkey)!.Value);
+            SwitchToCompoundingValidator(state, source!.Value);
             return;
         }
 
@@ -255,9 +267,9 @@ public static partial class BlockProcessing
         if (state.GetConsolidationChurnLimit(cache) <= Presets.MinActivationBalance)
             return;
 
-        if (FindValidatorIndex(state, request.SourcePubkey) is not int sourceIndex)
+        if (source is not int sourceIndex)
             return;
-        if (FindValidatorIndex(state, request.TargetPubkey) is not int targetIndex)
+        if (cache.FindRequestValidator(state.Validators!, request.TargetPubkey) is not int targetIndex)
             return;
         Validator sourceValidator = state.Validators![sourceIndex];
         Validator targetValidator = state.Validators[targetIndex];

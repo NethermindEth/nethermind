@@ -98,7 +98,7 @@ public class RangeSyncPeerSelectionTests
         bool first = true;
         StubPeer limited = new("limited", 43, (start, count) =>
         {
-            if (first)
+            if (first || empty)
             {
                 first = false;
                 return empty ? [] : [blocks[0]];

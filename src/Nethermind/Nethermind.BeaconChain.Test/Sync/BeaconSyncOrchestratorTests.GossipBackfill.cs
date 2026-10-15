@@ -15,6 +15,17 @@ public partial class BeaconSyncOrchestratorTests
 {
     private const ulong NearHeadAnchorSlot = WallSlot - 5;
 
+    [Test]
+    public async Task Unknown_parent_flood_while_behind_keeps_room_for_range_blocks()
+    {
+        Harness harness = CreateHarness();
+        for (int i = 0; i < 200; i++)
+            await harness.Orchestrator.ProcessGossipBlockAsync(UnknownParentBlock(WallSlot, i), CancellationToken.None);
+
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.EqualTo(BeaconSyncOrchestrator.MaxHeldRefusedBackfills));
+        Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.LessThan(BeaconSyncOrchestrator.MaxRangeHeldBlocks));
+    }
+
     [TestCase(1, 1)]
     [TestCase(BeaconSyncOrchestrator.MaxBackfillsPerSlot, BeaconSyncOrchestrator.MaxBackfillsPerSlot)]
     [TestCase(40, BeaconSyncOrchestrator.MaxBackfillsPerSlot)]

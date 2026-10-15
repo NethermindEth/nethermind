@@ -54,8 +54,8 @@ public static partial class GloasEpochProcessing
     /// activation-only churn, and the Electra gate on unapplied Eth1-bridge deposits is gone.
     /// </summary>
     public static partial void ProcessPendingDeposits(BeaconStateGloas state, EpochCache cache);
-    private static partial Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators);
-    private static partial void ApplyPendingDeposit(BeaconStateGloas state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex, EpochCache cache);
+    private static partial Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators, PendingDeposit[] deposits);
+    private static partial void ApplyPendingDeposit(BeaconStateGloas state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex, List<Validator> addedValidators, List<ulong> addedBalances, EpochCache cache);
 
     /// <summary>Electra <c>process_pending_consolidations</c>, unmodified in Gloas.</summary>
     public static partial void ProcessPendingConsolidations(BeaconStateGloas state);
@@ -107,12 +107,13 @@ public static partial class GloasEpochProcessing
     public static ulong[] GetBeaconProposerIndices(BeaconStateGloas state, ulong epoch)
     {
         Validator[] validators = state.Validators!;
-        List<int> indices = [];
-        foreach (int i in state.GetActiveValidatorIndices(epoch))
-        {
-            if (!validators[i].Slashed)
-                indices.Add(i);
-        }
+        int count = 0;
+        foreach (Validator validator in validators)
+            if (!validator.Slashed && validator.IsActiveValidator(epoch)) count++;
+        int[] indices = new int[count];
+        int next = 0;
+        for (int i = 0; i < validators.Length; i++)
+            if (!validators[i].Slashed && validators[i].IsActiveValidator(epoch)) indices[next++] = i;
         Hash256 epochSeed = state.GetSeed(epoch, DomainType.BeaconProposer);
 
         Span<byte> preimage = stackalloc byte[32 + 8];
@@ -135,10 +136,10 @@ public static partial class GloasEpochProcessing
     /// the epoch <c>MIN_SEED_LOOKAHEAD + 1</c> ahead, whose seed this epoch's RANDAO just fixed.
     /// </summary>
     /// <remarks>
-    /// Bypasses <see cref="EpochCache.GetCommitteeCache(BeaconStateGloas, ulong)"/>: its LRU key is this
-    /// slot's shuffling decision root, which is not yet in <c>block_roots</c>.
+    /// Slot processing has already written this slot's decision root to <c>block_roots</c>,
+    /// so the lookahead shuffling can be reused when its epoch is reached.
     /// </remarks>
-    public static void ProcessPtcWindow(BeaconStateGloas state)
+    public static void ProcessPtcWindow(BeaconStateGloas state, EpochCache? cache = null)
     {
         PayloadTimelinessCommittee[] window = state.PtcWindow!;
         int slotsPerEpoch = (int)Presets.SlotsPerEpoch;
@@ -146,7 +147,7 @@ public static partial class GloasEpochProcessing
 
         ulong nextEpoch = state.GetCurrentEpoch() + Presets.MinSeedLookahead + 1;
         ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(nextEpoch);
-        CommitteeCache committees = CommitteeCache.Build(state, nextEpoch);
+        CommitteeCache committees = cache?.GetNextPtcCommittees(state, nextEpoch) ?? CommitteeCache.Build(state, nextEpoch);
         for (int i = 0; i < slotsPerEpoch; i++)
         {
             window[window.Length - slotsPerEpoch + i] = ComputePtc(state, committees, startSlot + (ulong)i);

@@ -44,5 +44,6 @@ internal static class ValidatorStatus
     /// <summary>Matches a beacon-api <c>status</c> query value, which may name a specific status or one of the broad groups ("pending"/"active"/"exited"/"withdrawal").</summary>
     public static bool MatchesFilter(string status, string filter) =>
         status.Equals(filter, StringComparison.Ordinal)
-        || status.StartsWith(filter + "_", StringComparison.Ordinal);
+        || (status.Length > filter.Length && status[filter.Length] == '_'
+            && status.StartsWith(filter, StringComparison.Ordinal));
 }

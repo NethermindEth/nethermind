@@ -3,6 +3,7 @@
 
 using System.Collections;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
@@ -35,48 +36,45 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
         detector.SetInner(engine);
     }
 
-    /// <summary>The inner engine, with the external-CL detection side effect applied first.</summary>
-    private IEngineRpcModule Detected
+    private async Task<ResultWrapper<T>> DetectAfter<T>(Task<ResultWrapper<T>> call)
     {
-        get
-        {
-            _detector.OnExternalEngineCall();
-            return _engine;
-        }
+        ResultWrapper<T> result = await call;
+        if (result.Result.ResultType == ResultType.Success && result.Data is not null) _detector.OnExternalEngineCall();
+        return result;
     }
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
-        => Detected.engine_newPayloadV1(executionPayload);
+        => DetectAfter(_engine.engine_newPayloadV1(executionPayload));
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload)
-        => Detected.engine_newPayloadV2(executionPayload);
+        => DetectAfter(_engine.engine_newPayloadV2(executionPayload));
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)
-        => Detected.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
+        => DetectAfter(_engine.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot));
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
-        => Detected.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+        => DetectAfter(_engine.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
-        => Detected.engine_newPayloadV5(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+        => DetectAfter(_engine.engine_newPayloadV5(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
     public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
-        => Detected.engine_newPayloadV6(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions);
+        => DetectAfter(_engine.engine_newPayloadV6(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => Detected.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
+        => DetectAfter(_engine.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => Detected.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
+        => DetectAfter(_engine.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => Detected.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
+        => DetectAfter(_engine.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
-        => Detected.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes, custodyColumns);
+        => DetectAfter(_engine.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes, custodyColumns));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV5(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
-        => Detected.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes, custodyColumns);
+        => DetectAfter(_engine.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes, custodyColumns));
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV4(ExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         => _engine.engine_newPayloadWithWitnessV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);

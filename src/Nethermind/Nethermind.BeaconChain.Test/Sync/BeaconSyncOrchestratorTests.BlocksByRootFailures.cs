@@ -18,7 +18,8 @@ public partial class BeaconSyncOrchestratorTests
     {
         (IBeaconSyncPeer peer, Harness harness, ForkedSignedBeaconBlock child) = CreateUnknownParentScenario();
         peer.RequestBlocksByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IReadOnlyList<ForkedSignedBeaconBlock>>(new Exception(failure)));
+            .Returns(Task.FromException<IReadOnlyList<ForkedSignedBeaconBlock>>(expected == PeerFailureReason.SessionClosed
+                ? new PeerSessionClosedException(failure) : new Exception(failure)));
 
         await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
 

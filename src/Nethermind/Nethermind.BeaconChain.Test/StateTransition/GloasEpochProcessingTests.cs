@@ -514,7 +514,7 @@ public class GloasEpochProcessingTests
         int registrySize = state.Validators!.Length;
         PendingDeposit signed = NewValidatorDeposit(keyIndex: 300, 32 * Gwei, BoundarySlot, genesisForkVersion: genesisVersion);
         PendingDeposit forged = NewValidatorDeposit(keyIndex: 301, 32 * Gwei, BoundarySlot, signerKeyIndex: 302, genesisForkVersion: genesisVersion);
-        state.PendingDeposits = [signed, forged];
+        state.PendingDeposits = [signed, forged, signed];
 
         if (throughEpoch)
         {
@@ -535,7 +535,7 @@ public class GloasEpochProcessingTests
         Assert.That(state.Validators![^1].Pubkey, Is.EqualTo(signed.Pubkey));
         Assert.That(state.Validators[^1].EffectiveBalance, Is.EqualTo(32 * Gwei));
         Assert.That(state.Balances, Has.Length.EqualTo(registrySize + 1));
-        Assert.That(state.Balances![^1], Is.EqualTo(32 * Gwei));
+        Assert.That(state.Balances![^1], Is.EqualTo(64 * Gwei), "the later deposit tops up the newly staged validator without changing its initial effective balance");
         Assert.That(state.PendingDeposits, Is.Empty);
     }
 

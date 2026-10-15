@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
 using Google.Protobuf;
@@ -29,6 +30,47 @@ public class ReqRespLimitsTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private static readonly TimeSpan ShortTtfbTimeout = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan ShortRespTimeout = TimeSpan.FromMilliseconds(200);
+
+    [Test]
+    public async Task Blocks_by_head_serves_the_requested_ancestry_in_reverse_order()
+    {
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, 2_001, 2_003);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        TestChain.Persist(store, anchor, anchorRoot, chain);
+        BeaconBlocksByHeadProtocolV1 protocol = new(Spec, store);
+        byte[] request = new byte[40];
+        SszRoots.HashTreeRoot(chain[^1].Message!).Bytes.CopyTo(request.AsSpan());
+        BinaryPrimitives.WriteUInt64LittleEndian(request.AsSpan(32), 2);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        List<ResponseChunk> chunks = await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync, request, timeout.Token);
+        Assert.That(chunks.Select(chunk => SignedBeaconBlockCodec.Decode(chunk.Payload, Spec).Slot), Is.EqualTo(new ulong[] { 2_003, 2_001 }));
+    }
+
+    [Test]
+    public async Task Admission_refusal_is_an_error_chunk_not_an_empty_response()
+    {
+        InvalidDecoderProtocol protocol = new();
+        ISessionContext context = NewPeerContext();
+        await using IAsyncDisposable? first = protocol.Enter(context);
+        await using IAsyncDisposable? second = protocol.Enter(context);
+        Channel channel = new();
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        Task listener = protocol.ListenAsync(channel.Reverse, context);
+        ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(new ChannelStreamAdapter(channel), 0, 1024, timeout.Token);
+        await listener.WaitAsync(timeout.Token);
+        Assert.That(chunk?.Result, Is.EqualTo(139));
+    }
+
+    [Test]
+    public void Request_volume_is_bounded_per_peer_and_globally()
+    {
+        TestReqRespProtocol protocol = new();
+        ISessionContext first = NewPeerContext();
+        protocol.Charge(first, 128);
+        Assert.Throws<Eth2ReqRespException>(() => protocol.Charge(first, 128));
+        for (int i = 0; i < 7; i++) protocol.Charge(NewPeerContext(), 128);
+        Assert.Throws<Eth2ReqRespException>(() => protocol.Charge(NewPeerContext(), 128));
+    }
 
     [Test]
     [CancelAfter(10000)]
@@ -215,6 +257,7 @@ public class ReqRespLimitsTests
 
     private sealed class InvalidDecoderProtocol : SingleChunkProtocol<byte[], ulong>
     {
+        public IAsyncDisposable? Enter(ISessionContext context) => TryEnterInbound(context, Id);
         public override string Id => "/test/invalid-decoder/1";
         protected override int MaxRequestSize => sizeof(ulong);
         protected override int MaxResponseSize => sizeof(ulong);
@@ -649,6 +692,8 @@ public class ReqRespLimitsTests
         public const string ProtocolId = "/test/reqresp-limits/1";
 
         public IAsyncDisposable? TryEnter(ISessionContext context, string protocolId) => TryEnterInbound(context, protocolId);
+
+        public void Charge(ISessionContext context, ulong items) => ChargeRequest(context, items, 128);
 
         public async Task ServeRejectedAsync(Stream stream, ISessionContext context, bool emptyRequest, CancellationToken token)
         {

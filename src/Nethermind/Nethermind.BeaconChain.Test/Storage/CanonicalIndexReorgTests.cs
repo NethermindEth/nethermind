@@ -308,7 +308,7 @@ internal sealed class CanonicalReorgFixture(UnsignedChain chain, FailableCommitC
     private sealed class ValidEngine : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload => false;
+        public bool PayloadSubmitted => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
             Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });

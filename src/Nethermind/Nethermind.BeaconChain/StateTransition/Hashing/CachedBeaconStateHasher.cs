@@ -37,7 +37,7 @@ namespace Nethermind.BeaconChain.StateTransition.Hashing;
 /// <see cref="object.ReferenceEquals"/>), balances and inactivity scores (4-ulong chunk diff),
 /// both participation lists (32-byte chunk diff), the block/state-root and RANDAO-mix vectors
 /// (per-element reference diff), and the sync committees and payload header (whole-object
-/// reference memos). The remaining ~26 small fields are re-merkleized on every call. When more
+/// reference memos), and the pending deposit, withdrawal and consolidation queues. The remaining small fields are re-merkleized on every call. When more
 /// than half of a tree's chunks are dirty (e.g. the epoch-boundary balance rewrite), the subtree
 /// is rebuilt level-by-level in parallel instead of patching paths.
 /// </para>
@@ -81,6 +81,12 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     // EIP-7495 active_fields of the Gloas BeaconState: all 46 fields are present.
     private static readonly byte[] s_gloasActiveFields = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3F];
 
+    private readonly ContainerListCache<PendingDeposit> _pendingDeposits = new(new BoundedChunkTree(27));
+    private readonly ContainerListCache<PendingDeposit> _gloasPendingDeposits = new(new ProgressiveChunkTree());
+    private readonly ContainerListCache<PendingPartialWithdrawal> _pendingPartialWithdrawals = new(new BoundedChunkTree(BitOperations.Log2((uint)Presets.PendingPartialWithdrawalsLimit)));
+    private readonly ContainerListCache<PendingPartialWithdrawal> _gloasPendingPartialWithdrawals = new(new ProgressiveChunkTree());
+    private readonly ContainerListCache<PendingConsolidation> _pendingConsolidations = new(new BoundedChunkTree(BitOperations.Log2((uint)Presets.PendingConsolidationsLimit)));
+    private readonly ContainerListCache<PendingConsolidation> _gloasPendingConsolidations = new(new ProgressiveChunkTree());
     private readonly ContainerListCache<Validator> _validators = new(new BoundedChunkTree(ValidatorsDepth));
     private readonly BasicListCache _balances = new(new BoundedChunkTree(UInt64ListDepth));
     private readonly BasicListCache _inactivityScores = new(new BoundedChunkTree(UInt64ListDepth));
@@ -150,9 +156,9 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         roots[31] = new UInt256(state.EarliestExitEpoch);
         roots[32] = new UInt256(state.ConsolidationBalanceToConsume);
         roots[33] = new UInt256(state.EarliestConsolidationEpoch);
-        PendingDeposit.MerkleizeList(state.PendingDeposits ?? [], 134_217_728, out roots[34]);
-        PendingPartialWithdrawal.MerkleizeList(state.PendingPartialWithdrawals ?? [], (ulong)Presets.PendingPartialWithdrawalsLimit, out roots[35]);
-        PendingConsolidation.MerkleizeList(state.PendingConsolidations ?? [], (ulong)Presets.PendingConsolidationsLimit, out roots[36]);
+        roots[34] = _pendingDeposits.Root(state.PendingDeposits);
+        roots[35] = _pendingPartialWithdrawals.Root(state.PendingPartialWithdrawals);
+        roots[36] = _pendingConsolidations.Root(state.PendingConsolidations);
         Merkle.Merkleize(out roots[37], MemoryMarshal.AsBytes<ulong>(state.ProposerLookahead), ProposerLookaheadChunkCount);
 
         Merkle.Merkleize(out UInt256 root, roots);
@@ -173,6 +179,9 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         // Gloas hashing does not use the Fulu-only trees; release their cached data.
         if (_fuluCachesLive)
         {
+            _pendingDeposits.Reset();
+            _pendingPartialWithdrawals.Reset();
+            _pendingConsolidations.Reset();
             _validators.Reset();
             _balances.Reset();
             _inactivityScores.Reset();
@@ -216,9 +225,9 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         roots[31] = new UInt256(state.EarliestExitEpoch);
         roots[32] = new UInt256(state.ConsolidationBalanceToConsume);
         roots[33] = new UInt256(state.EarliestConsolidationEpoch);
-        PendingDeposit.MerkleizeProgressiveList(state.PendingDeposits ?? [], out roots[34]);
-        PendingPartialWithdrawal.MerkleizeProgressiveList(state.PendingPartialWithdrawals ?? [], out roots[35]);
-        PendingConsolidation.MerkleizeProgressiveList(state.PendingConsolidations ?? [], out roots[36]);
+        roots[34] = _gloasPendingDeposits.Root(state.PendingDeposits);
+        roots[35] = _gloasPendingPartialWithdrawals.Root(state.PendingPartialWithdrawals);
+        roots[36] = _gloasPendingConsolidations.Root(state.PendingConsolidations);
         Merkle.Merkleize(out roots[37], MemoryMarshal.AsBytes<ulong>(state.ProposerLookahead), ProposerLookaheadChunkCount);
         roots[38] = _builders.Root(state.Builders);
         roots[39] = new UInt256(state.NextWithdrawalBuilderIndex);

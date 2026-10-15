@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -57,27 +58,19 @@ public class BeaconChainServiceStartupTests
     }
 
     [Test]
-    public void A_nonpositive_snapshot_interval_fails_startup([Values(0, -1, int.MinValue)] int interval)
+    public void A_failed_driver_run_cancels_its_component_token_and_requests_process_exit()
     {
-        using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { StateSnapshotIntervalEpochs = interval }).Build();
-        container.Resolve<BeaconChainStore>().SetAnchor(TestItem.KeccakA, 0);
-        Assert.That(() => container.Resolve<BeaconChainService>().Start(),
-            Throws.TypeOf<ArgumentOutOfRangeException>().With.Message.Contains(nameof(IBeaconChainConfig.StateSnapshotIntervalEpochs)));
-        Assert.That(container.Resolve<BeaconChainStore>().TryGetSchemaVersion(out _), Is.False);
-    }
-
-    [Test]
-    public async Task A_failed_driver_run_cancels_its_component_token()
-    {
-        using IContainer container = KickContainer(new KickEngine(new PubkeyCache()), new PubkeyCache()).Build();
+        IProcessExitSource exit = NSubstitute.Substitute.For<IProcessExitSource>();
+        using IContainer container = KickContainer(new KickEngine(new PubkeyCache()), new PubkeyCache()).AddSingleton(exit).Build();
         SeedAnchor(container.Resolve<BeaconChainStore>(), gloas: false, nextCommittee: false, key: null, blockStateRoot: GloasTestFixtures.Hash(0x5A));
         BeaconChainService service = container.Resolve<BeaconChainService>();
         CancellationTokenSource source = (CancellationTokenSource)typeof(BeaconChainService)
             .GetField("_cancellationTokenSource", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(service)!;
 
-        await service.Start();
+        Assert.That(async () => await service.Start(), Throws.Exception);
 
         Assert.That(source.IsCancellationRequested, Is.True);
+        NSubstitute.SubstituteExtensions.Received(exit, 1).Exit(ExitCodes.GeneralError);
     }
 
     [Test]
@@ -242,7 +235,8 @@ public class BeaconChainServiceStartupTests
         if (blockMatchesState) metadata.OnCacheWritten = service.Stop;
         else engine.OnCall = service.Stop;
 
-        await service.Start();
+        if (blockMatchesState) await service.Start();
+        else Assert.That(async () => await service.Start(), Throws.TypeOf<ForkChoiceException>());
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(engine.PubkeysHeldAtCall, blockMatchesState ? Is.EqualTo(new[] { 0 }) : Is.Empty, "the call requires a verified anchor and precedes the cache build");
@@ -270,7 +264,8 @@ public class BeaconChainServiceStartupTests
         BeaconChainService service = container.Resolve<BeaconChainService>();
         metadata.OnCacheWritten = service.Stop;
 
-        await service.Start();
+        if (blockMatchesState) await service.Start();
+        else Assert.That(async () => await service.Start(), Throws.TypeOf<InvalidDataException>());
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(engine.PubkeysHeldAtCall, blockMatchesState ? Is.EqualTo(new[] { 0 }) : Is.Empty);
@@ -460,7 +455,7 @@ public class BeaconChainServiceStartupTests
         };
         answer.SetResult(PayloadStatusV1.Syncing);
 
-        await run.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(async () => await run.WaitAsync(TimeSpan.FromSeconds(30)), Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("scripted failure"));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(pubkeyCache.ObservedCancellation, Is.True, "the warm-up was cancelled by the failure, not left to run on");
@@ -476,7 +471,7 @@ public class BeaconChainServiceStartupTests
         KickEngine engine = new(pubkeyCache);
         await using IContainer container = KickContainer(engine, pubkeyCache, config: new BeaconChainConfig { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = "http://invalid.localhost:1" }).Build();
 
-        await container.Resolve<BeaconChainService>().Start();
+        Assert.That(async () => await container.Resolve<BeaconChainService>().Start(), Throws.TypeOf<InvalidDataException>());
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(engine.PubkeysHeldAtCall, Is.Empty, "no forkchoiceUpdated");
@@ -536,7 +531,7 @@ public class BeaconChainServiceStartupTests
             StartRetryDelay = TimeSpan.FromMilliseconds(1)
         };
 
-        await service.Start().WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(async () => await service.Start().WaitAsync(TimeSpan.FromSeconds(30)), Throws.TypeOf<DirectoryNotFoundException>());
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Has.Exactly(1).Items);
@@ -591,7 +586,8 @@ public class BeaconChainServiceStartupTests
             metadata.OnCacheWritten = service.Stop;
         }
 
-        await service.Start().WaitAsync(TimeSpan.FromSeconds(60));
+        if (waitForCache) await service.Start().WaitAsync(TimeSpan.FromSeconds(60));
+        else Assert.That(async () => await service.Start().WaitAsync(TimeSpan.FromSeconds(60)), Throws.TypeOf<InvalidDataException>());
         return (logs, engine, pubkeyCache);
     }
 
@@ -793,7 +789,7 @@ public class BeaconChainServiceStartupTests
         public Task<PayloadStatusV1> Answer { get; set; } = Task.FromResult(PayloadStatusV1.Syncing);
         public TaskCompletionSource Called { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload => false;
+        public bool PayloadSubmitted => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
         {

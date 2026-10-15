@@ -160,7 +160,7 @@ public class RangeSyncColumnCustodyTests
     {
         await using Fixture fixture = Fixture.Create();
         Exception cause = sessionClosed
-            ? new System.IO.IOException("peer disconnected after 1 s: its libp2p session closed", new OperationCanceledException())
+            ? new PeerSessionClosedException("peer disconnected after 1 s: its libp2p session closed", new OperationCanceledException())
             : new TimeoutException("request timed out");
         StubPeer cutShort = fixture.FailingColumnPeer("cut-short", columns => throw new PartialSidecarsException(cause, fixture.ServeColumns(columns[..1])));
         StubPeer good = fixture.Peer("good", custody: StubPeer.AllColumns);

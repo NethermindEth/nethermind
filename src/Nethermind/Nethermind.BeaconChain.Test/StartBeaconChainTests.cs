@@ -42,7 +42,7 @@ public class StartBeaconChainTests
     private sealed class EnvelopeUnsupportedEngineDriver : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload => false;
+        public bool PayloadSubmitted => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
             throw new NotSupportedException();

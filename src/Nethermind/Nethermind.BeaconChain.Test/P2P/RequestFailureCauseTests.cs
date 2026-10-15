@@ -70,7 +70,7 @@ public class RequestFailureCauseTests
             Assert.That(failure, Is.InstanceOf<OperationCanceledException>().And.Not.InstanceOf<TimeoutException>());
         else
         {
-            Assert.That(failure, Is.TypeOf<IOException>());
+            Assert.That(failure, Is.TypeOf<PeerSessionClosedException>());
             Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(5)));
             if (end == ChannelRequestEnd.AlreadyDropped) Assert.That(failure!.Message, Does.StartWith("peer disconnected after "));
             else
@@ -199,7 +199,7 @@ public class RequestFailureCauseTests
         try
         {
             await cancelling.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
-            IOException? lost = await Assert.ThrowsAsync<IOException>(async () => await request.WaitAsync(TimeSpan.FromSeconds(5), token));
+            PeerSessionClosedException? lost = await Assert.ThrowsAsync<PeerSessionClosedException>(async () => await request.WaitAsync(TimeSpan.FromSeconds(5), token));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(lost!.Message, Does.Contain("peer disconnected"));
@@ -236,7 +236,7 @@ public class RequestFailureCauseTests
         {
             await session.DisconnectAsync();
 
-            IOException? lost = await Assert.ThrowsAsync<IOException>(async () => await queued.WaitAsync(TimeSpan.FromSeconds(2), token));
+            PeerSessionClosedException? lost = await Assert.ThrowsAsync<PeerSessionClosedException>(async () => await queued.WaitAsync(TimeSpan.FromSeconds(2), token));
 
             Assert.That(lost!.Message, Does.Contain("waiting for a request slot"));
         }

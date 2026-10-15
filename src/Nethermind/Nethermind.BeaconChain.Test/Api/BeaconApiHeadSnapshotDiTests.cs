@@ -13,12 +13,12 @@ namespace Nethermind.BeaconChain.Test.Api;
 public class BeaconApiHeadSnapshotDiTests
 {
     [Test]
-    public void Orchestrator_and_the_beacon_api_share_the_one_registered_head_snapshot_holder()
+    public void Orchestrator_and_the_beacon_api_share_the_one_registered_head_snapshot_holder([Values] bool enabled)
     {
         List<(Type Consumer, Type Dependency, object? Instance)> resolved = [];
         ContainerBuilder builder = BeaconChainTestContainer.Builder(BlockchainIds.Sepolia)
             .AddModule(new BeaconApiModule())
-            .AddSingleton<IBeaconApiConfig>(new BeaconApiConfig())
+            .AddSingleton<IBeaconApiConfig>(new BeaconApiConfig { Enabled = enabled })
             .AddSingleton(Substitute.For<IProcessExitSource>());
         using IContainer container = BeaconChainTestContainer.BuildTrackingDependencies(builder, resolved, typeof(HeadSnapshotHolder));
 
@@ -30,6 +30,7 @@ public class BeaconApiHeadSnapshotDiTests
         object?[] apiHolders = [.. resolved.Where(static r => r.Consumer == typeof(BeaconApiHost)).Select(static r => r.Instance)];
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(registered.CaptureState, Is.EqualTo(enabled));
         Assert.That(orchestratorHolders, Has.Length.EqualTo(1), "the orchestrator asks the container for the holder");
         Assert.That(orchestratorHolders, Is.All.SameAs(registered), "the orchestrator publishes to the registered holder");
         Assert.That(apiHolders, Has.Length.EqualTo(1), "the API asks the container for the holder");

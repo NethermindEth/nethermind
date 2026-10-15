@@ -28,7 +28,7 @@ namespace Nethermind.BeaconChain.Engine;
 /// <remarks>
 /// Calls go through <see cref="ExternalClDetector.InnerEngine"/> so the driver's own traffic never
 /// trips external-CL detection. The orchestrator serializes all calls (they run on the slot
-/// worker); only the last-status properties are meant to be read concurrently. A forkchoice
+/// worker); only availability is read concurrently. A forkchoice
 /// update still running past its deadline fails every later call until it finishes.
 /// </remarks>
 public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager, SlotClock clock, BeaconChainSpec spec, INodeColumnCustodySource custody, IBlockTree? blockTree = null) : IEngineDriver
@@ -36,6 +36,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     private readonly ILogger _logger = logManager.GetClassLogger<EngineDriver>();
     private volatile bool _isAvailable = true;
     private Task? _pendingForkchoice;
+    private bool _hasSentForkchoice;
 
     /// <summary>Whether the most recent engine call returned a verdict.</summary>
     public bool IsAvailable => _isAvailable;
@@ -47,18 +48,6 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// recover what the body alone does not carry — the EIP-4788 parent beacon block root.
     /// </summary>
     public SignedBeaconBlock? CurrentBlock { get; set; }
-    /// <summary>
-    /// Whether the execution layer has ever answered a <see cref="NewPayload(SignedBeaconBlock)"/>
-    /// call, including one that failed in process.
-    /// </summary>
-    /// <remarks>
-    /// A failed call counts as answered: this reports only that the path has been driven, not that
-    /// the execution layer returned a verdict.
-    /// </remarks>
-    public bool HasAnsweredNewPayload { get; private set; }
-    /// <summary>The status returned by the most recent <see cref="ForkchoiceUpdated"/> call.</summary>
-    public PayloadStatusV1? LastForkchoiceStatus { get; private set; }
-
     /// <summary>
     /// Submits the block's execution payload via <c>engine_newPayloadV4</c> and returns the
     /// execution layer's verdict (VALID/INVALID/SYNCING/ACCEPTED).
@@ -80,7 +69,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(payload, versionedHashes, message.ParentRoot, requests);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
             Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)elapsed.TotalMilliseconds);
-            return (UnwrapNewPayload(result.Result, result.Data, "newPayloadV4"), elapsed);
+            return (Unwrap(result.Result, result.Data, "newPayloadV4"), elapsed);
         }, body.Graffiti, payload.BlockNumber);
     }
 
@@ -98,6 +87,15 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// <exception cref="EngineUnavailableException">The call produced no status; a failure is not SYNCING.</exception>
     public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
     {
+        bool firstUpdate = !_hasSentForkchoice;
+        _hasSentForkchoice = true;
+        if (firstUpdate && headExecHash == safeExecHash && headExecHash == finalizedExecHash
+            && blockTree?.Head?.Header is { } currentHead
+            && blockTree.FindHeader(headExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is { } anchor
+            && anchor.Number < currentHead.Number && blockTree.IsMainChain(anchor))
+        {
+            return Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
+        }
         ulong? headNumber = _logger.IsInfo ? blockTree?.FindHeader(headExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number : null;
         return CallEngineAsync("forkchoiceUpdated", _logger.IsInfo ? $"{(headNumber is { } number ? $"{number} ({headExecHash.ToShortString()})" : headExecHash.ToShortString())}, Safe: {FormatExecutionBlock(safeExecHash)}, Finalized: {FormatExecutionBlock(finalizedExecHash)}" : null, async () =>
         {
@@ -109,7 +107,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             _ = pending.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             (PayloadStatusV1 status, TimeSpan elapsed) = await pending.WaitAsync(ForkchoiceTimeout);
-            return (LastForkchoiceStatus = status, elapsed);
+            return (status, elapsed);
         }, blockNumber: headNumber);
     }
 
@@ -192,15 +190,20 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(converted, versionedHashes, parentBeaconBlockRoot, requests);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
             Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)elapsed.TotalMilliseconds);
-            return (UnwrapNewPayload(result.Result, result.Data, "newPayloadV5"), elapsed);
+            return (Unwrap(result.Result, result.Data, "newPayloadV5"), elapsed);
         }, blockNumber: converted.BlockNumber);
     }
 
     /// <inheritdoc/>
     /// <remarks>Same mapping as the block-body overload: only INVALID rejects the envelope.</remarks>
-    public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests)
+    public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) =>
+        NotifyNewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests, out _);
+
+    /// <inheritdoc/>
+    public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests, out Hash256? latestValidHash)
     {
         PayloadStatusV1 status = NewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests).GetAwaiter().GetResult();
+        latestValidHash = status.LatestValidHash;
         return ToExecutionStatus(status.Status);
     }
 
@@ -218,21 +221,6 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         PayloadStatus.Invalid => ExecutionStatus.Invalid,
         _ => ExecutionStatus.Optimistic,
     };
-
-    /// <summary>
-    /// Unwraps a <c>newPayload</c> result and records that the execution layer answered.
-    /// </summary>
-    /// <remarks>
-    /// Both <c>newPayload</c> overloads go through here so neither can record the answer and the
-    /// other forget to; <see cref="ForkchoiceUpdated"/> deliberately does not, because a
-    /// fork-choice call that fails is not a statement about any particular block.
-    /// </remarks>
-    /// <exception cref="EngineUnavailableException">The call produced no verdict.</exception>
-    private PayloadStatusV1 UnwrapNewPayload(Result result, PayloadStatusV1? status, string method)
-    {
-        HasAnsweredNewPayload = true;
-        return Unwrap(result, status, method);
-    }
 
     /// <summary>Runs one engine call and records whether it returned a verdict.</summary>
     /// <exception cref="EngineUnavailableException">The call produced no verdict, threw, or a timed-out forkchoice update is still running.</exception>

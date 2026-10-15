@@ -11,6 +11,8 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -28,6 +30,26 @@ namespace Nethermind.BeaconChain.Test.Engine;
 public class EngineTests
 {
     private static readonly Hash256 TestHash = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+
+    [Test]
+    public async Task Initial_canonical_anchor_does_not_rewind_an_execution_head_ahead_of_it()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+        Hash256 anchor = chain.BlockTree.Head!.Hash!;
+        await chain.BuildSomeBlocks(2);
+        Hash256 head = chain.BlockTree.Head!.Hash!;
+        IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
+        EngineDriver driver = new(CreateDetector(inner, out _), LimboLogs.Instance,
+            new SlotClock(TestEngineDriver.Spec, Timestamper.Default), TestEngineDriver.Spec,
+            new TestEngineDriver.FixedCustodySource(null), chain.BlockTree);
+
+        PayloadStatusV1 result = await driver.ForkchoiceUpdated(anchor, anchor, anchor);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(head));
+        Assert.That(inner.ReceivedCalls(), Is.Empty);
+    }
 
     [Test]
     public void Payload_converter_maps_fields_versioned_hashes_and_requests([Values] bool sliced)
@@ -143,6 +165,20 @@ public class EngineTests
         Assert.That(reportedHash, Is.EqualTo(latestValidHash));
         Assert.That(forkchoiceStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
+    }
+
+    [Test]
+    public async Task A_failed_external_engine_call_does_not_stand_down_the_driver()
+    {
+        IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
+        TaskCompletionSource<ResultWrapper<ForkchoiceUpdatedV1Result>> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        inner.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(completion.Task);
+        ExternalClDetector detector = CreateDetector(inner, out ExternalClInterceptingEngineRpcModule decorator);
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> call = decorator.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(TestHash, TestHash, TestHash));
+        Assert.That(detector.IsExternalClDetected, Is.False);
+        completion.SetResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("unsupported fork"));
+        await call;
+        Assert.That(detector.IsExternalClDetected, Is.False);
     }
 
     [Test]
@@ -274,7 +310,6 @@ public class EngineTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(verdict, Is.EqualTo(expected));
-        Assert.That(driver.HasAnsweredNewPayload, Is.True);
         Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
         engine.Received(1).engine_newPayloadV5(
             Arg.Is<ExecutionPayloadV4>(p => p.BlockHash == TestHash && p.SlotNumber == 91ul && p.BlockAccessList!.Length == 3),
@@ -297,7 +332,6 @@ public class EngineTests
         Assert.That(() => driver.NotifyNewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas()),
             Throws.TypeOf<EngineUnavailableException>(),
             "a failed call is not a verdict; reporting it as SYNCING made the caller accept the block");
-        Assert.That(driver.HasAnsweredNewPayload, Is.True, "a failed call still drove the newPayload path");
         Assert.That(driver.IsAvailable, Is.False);
     }
 
@@ -320,8 +354,6 @@ public class EngineTests
         await Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(driver.LastForkchoiceStatus, Is.SameAs(PayloadStatusV1.Syncing), "a failed call must not overwrite the last status");
-        Assert.That(driver.HasAnsweredNewPayload, Is.False, "forkchoiceUpdated says nothing about whether a payload was ever submitted");
         Assert.That(driver.IsAvailable, Is.False);
     }
 

@@ -13,7 +13,7 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 public class FastConfirmationTests
 {
     [Test]
-    public void Slashed_validators_supply_no_support_but_remain_in_total_active_balance()
+    public void Slashed_or_previous_epoch_votes_supply_no_support_but_remain_in_total_active_balance([Values] bool previousEpoch)
     {
         BeaconChainSpec spec = BeaconChainSpec.Mainnet with { SlotsPerEpoch = Presets.SlotsPerEpoch };
         CheckpointRef finalized = new(1, GetRoot(1));
@@ -25,14 +25,14 @@ public class FastConfirmationTests
         ForkedBeaconState.OfFulu source = (ForkedBeaconState.OfFulu)State(spec.SlotsPerEpoch, activation: false, laterEpoch: false);
         for (ulong i = 0; i < 32; i++)
         {
-            source.State.Validators![i].Slashed = i < 24;
-            tree.ProcessAttestation(i, GetRoot(2), 1);
+            source.State.Validators![i].Slashed = !previousEpoch && i < 24;
+            tree.ProcessAttestation(i, GetRoot(2), previousEpoch ? 0UL : 1UL);
         }
         FastConfirmation rule = new(spec, store, tree, new HashSet<ulong>(), _ => source, _ => source, (_, _) => source);
 
         rule.OnSlot(GetRoot(2));
 
-        Assert.That(rule.ConfirmedRoot, Is.EqualTo(finalized.Root), "the eight unslashed votes cannot exceed a threshold based on all 32 active validators");
+        Assert.That(rule.ConfirmedRoot, Is.EqualTo(previousEpoch ? GetRoot(2) : finalized.Root));
     }
 
     [Test]

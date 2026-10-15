@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Metric;
 using Nethermind.Libp2p.Core;
 
@@ -74,6 +75,43 @@ public abstract class ReqRespProtocolBase
 
     private readonly ConcurrentDictionary<PeerId, int> _lingeringByPeer = new();
     private int _unattributedLingering;
+
+    private readonly Lock _quotaLock = new();
+    private readonly LruCache<PeerId, RequestQuota> _quotas = new(4096, "beacon reqresp peer quotas");
+    private RequestQuota? _globalQuota;
+    internal TimeProvider QuotaTime { get; init; } = TimeProvider.System;
+    private sealed class RequestQuota(double tokens, DateTimeOffset updated)
+    {
+        public double Tokens = tokens;
+        public DateTimeOffset Updated = updated;
+
+        public void Refill(DateTimeOffset now, ulong capacity)
+        {
+            Tokens = Math.Min(capacity, Tokens + Math.Max(0, (now - Updated).TotalSeconds) * capacity / 10);
+            Updated = now;
+        }
+    }
+
+    /// <summary>Charges decoded work against per-peer and global ten-second token buckets before store reads.</summary>
+    protected void ChargeRequest(ISessionContext context, ulong items, ulong capacity)
+    {
+        items = Math.Max(1, items);
+        lock (_quotaLock)
+        {
+            DateTimeOffset now = QuotaTime.GetUtcNow();
+            ulong globalCapacity = capacity * 8;
+            _globalQuota ??= new(globalCapacity, now);
+            _globalQuota.Refill(now, globalCapacity);
+            PeerId? peer = context.State.RemotePeerId;
+            RequestQuota quota = peer is not null && _quotas.TryGet(peer, out RequestQuota? held) ? held : new(capacity, now);
+            quota.Refill(now, capacity);
+            if (peer is not null) _quotas.Set(peer, quota);
+            if (quota.Tokens < items || _globalQuota.Tokens < items)
+                throw new Eth2ReqRespException("Request rate limit exceeded", 139);
+            quota.Tokens -= items;
+            _globalQuota.Tokens -= items;
+        }
+    }
 
     /// <summary>Creates a timeout source; re-arm with <see cref="CancellationTokenSource.CancelAfter(TimeSpan)"/> per chunk.</summary>
     /// <remarks>
@@ -152,7 +190,7 @@ public abstract class ReqRespProtocolBase
         Metrics.BeaconChainReqRespFailures.Increment(new ReqRespFailureKey(protocolId, reason));
 
     /// <summary>Reserves a protocol slot under MaxConcurrentRequests; dispose it after serving.</summary>
-    /// <returns>Null, recording LimitExceeded, when capped; refuse the stream without reading or writing.</returns>
+    /// <returns>Null, recording LimitExceeded, when capped; the listener responds with a rate-limit error.</returns>
     /// <remarks>Unidentified sessions share one budget so withholding identity cannot evade the cap.</remarks>
     protected InboundRequest? TryEnterInbound(ISessionContext context, string protocolId)
     {
@@ -495,6 +533,8 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
         await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
+            using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, 139, "Too many concurrent requests", refusal.Token);
             return;
         }
 
@@ -511,6 +551,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
             {
                 request = DecodeRequest(await inboundSlot.ReadRequestAsync(stream, MaxRequestSize, cts.Token));
             }
+            ChargeRequest(context, 1, 32);
             await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, EncodeResponse(HandleRequest(request)), cts.Token);
         }
         catch (Eth2ReqRespException e)

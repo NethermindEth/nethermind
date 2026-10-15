@@ -5,6 +5,8 @@ using System.Net;
 using Autofac;
 using Autofac.Core.Resolving.Pipeline;
 using Nethermind.Core;
+using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -54,8 +56,18 @@ internal static class BeaconChainTestContainer
             .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)));
         ISpecProvider specProvider = Substitute.For<ISpecProvider>(); // registered by NethermindModule in production
         specProvider.ChainId.Returns(chainId);
+        if (chainId == BlockchainIds.Sepolia)
+        {
+            BeaconChainSpec spec = BeaconChainSpec.Sepolia;
+            ulong activation = spec.GenesisTime + spec.GloasForkEpoch * spec.SlotsPerEpoch * spec.SecondsPerSlot;
+            IReleaseSpec before = Substitute.For<IReleaseSpec>();
+            IReleaseSpec after = Substitute.For<IReleaseSpec>();
+            after.BlockLevelAccessListsEnabled.Returns(true);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(call => call.Arg<ForkActivation>().Timestamp >= activation ? after : before);
+        }
         return new ContainerBuilder()
             .AddModule(new BeaconChainModule())
+            .AddSingleton<IBeaconApiConfig>(new BeaconApiConfig())
             .AddSingleton(config ?? new BeaconChainConfig())
             .AddSingleton(logManager ?? LimboLogs.Instance)
             .AddSingleton(engine ?? Substitute.For<IEngineRpcModule>()) // registered by MergePlugin in production

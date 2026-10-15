@@ -511,12 +511,15 @@ public static partial class GloasBlockProcessing
             }];
         }
 
-        foreach (DepositRequest request in requests.Deposits ?? [])
-            ProcessDepositRequest(state, request);
+        PendingDeposit[] pendingDeposits = state.PendingDeposits!;
+        state.PendingDeposits = [];
+        ProcessDepositRequests(state, requests.Deposits ?? []);
+        cache.IndexRequestPubkeys(state.Validators!, requests.Withdrawals, requests.Consolidations);
         foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
             ProcessWithdrawalRequest(state, request, cache);
         foreach (ConsolidationRequest request in requests.Consolidations ?? [])
             ProcessConsolidationRequest(state, request, cache);
+        state.PendingDeposits = state.PendingDeposits.Length == 0 ? pendingDeposits : [.. pendingDeposits, .. state.PendingDeposits];
         foreach (BuilderDepositRequest request in requests.BuilderDeposits ?? [])
             ProcessBuilderDepositRequest(state, request, cache.SigningSpec);
         foreach (BuilderExitRequest request in requests.BuilderExits ?? [])
@@ -555,7 +558,8 @@ public static partial class GloasBlockProcessing
     internal static partial void ProcessDepositRequest(BeaconStateGloas state, DepositRequest request);
     internal static partial void ProcessWithdrawalRequest(BeaconStateGloas state, WithdrawalRequest request, EpochCache cache);
     internal static partial void ProcessConsolidationRequest(BeaconStateGloas state, ConsolidationRequest request, EpochCache cache);
-    private static partial bool IsValidSwitchToCompoundingRequest(BeaconStateGloas state, ConsolidationRequest request);
+    private static partial void ProcessDepositRequests(BeaconStateGloas state, DepositRequest[] requests);
+    private static partial bool IsValidSwitchToCompoundingRequest(BeaconStateGloas state, ConsolidationRequest request, int? sourceIndex);
     private static partial void SwitchToCompoundingValidator(BeaconStateGloas state, int index);
 
     /// <summary>Spec <c>process_builder_deposit_request</c> (EIP-8282, new in Gloas).</summary>

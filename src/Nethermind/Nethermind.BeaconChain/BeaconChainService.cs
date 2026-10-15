@@ -11,6 +11,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.ServiceStopper;
@@ -38,7 +39,8 @@ public sealed class BeaconChainService(
     ILogManager logManager,
     DataColumnSidecarPool? columnPool = null,
     ProcessStallWatchdog? watchdog = null,
-    ColumnBackfill? columnBackfill = null) : IDisposable, IStoppableService
+    ColumnBackfill? columnBackfill = null,
+    IProcessExitSource? processExit = null) : IDisposable, IStoppableService
 {
     private static readonly TimeSpan DefaultStartRetryDelay = TimeSpan.FromSeconds(30);
 
@@ -56,7 +58,6 @@ public sealed class BeaconChainService(
 
     /// <summary>Checks the database schema version and any persisted anchor, then runs the driver in the background.</summary>
     /// <remarks>Does nothing, not even the schema check, once an external consensus client has been detected.</remarks>
-    /// <exception cref="ArgumentOutOfRangeException"><see cref="IBeaconChainConfig.StateSnapshotIntervalEpochs"/> is below 1.</exception>
     /// <exception cref="InvalidOperationException">The database cannot be brought to the current schema version (see <see cref="BeaconChainStore.EnsureSchemaVersion"/>), or its anchor state or block is missing; thrown before the run starts, so node startup fails.</exception>
     /// <exception cref="InvalidDataException">The persisted anchor state holds an invalid sync committee key or a malformed body, carries the fork version of another fork than its slot's, or its block is of another fork or does not hash to the anchor root, or it does not prove the configured weak subjectivity checkpoint.</exception>
     /// <exception cref="InvalidConfigurationException">The configured weak subjectivity checkpoint is malformed.</exception>
@@ -73,7 +74,6 @@ public sealed class BeaconChainService(
             return _runTask = Task.CompletedTask;
         }
 
-        ArgumentOutOfRangeException.ThrowIfLessThan(config.StateSnapshotIntervalEpochs, 1, nameof(IBeaconChainConfig.StateSnapshotIntervalEpochs));
 
         // A database or resumed anchor this build refuses leaves the execution layer without a driver, so it fails startup instead of the background run.
         _ = CheckpointSync.ParseWeakSubjectivityCheckpoint(config.WeakSubjectivityCheckpoint);
@@ -97,7 +97,7 @@ public sealed class BeaconChainService(
         Task backfill = Task.CompletedTask;
         try
         {
-            if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {checkpointSync.EffectiveCheckpointSyncUrl}");
+            if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {new Uri(checkpointSync.EffectiveCheckpointSyncUrl).GetComponents(UriComponents.SchemeAndServer, UriFormat.SafeUnescaped)}");
             (ForkedBeaconState state, ForkedSignedBeaconBlock block, Hash256 blockRoot) = persistedAnchor ?? await CheckpointSyncAsync(token);
             Validator[] validators = state switch
             {
@@ -122,7 +122,9 @@ public sealed class BeaconChainService(
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error("Embedded beacon chain driver failed.", e);
+            if (_logger.IsError) _logger.Error("Embedded beacon chain driver failed; stopping the node.", e);
+            processExit?.Exit(ExitCodes.GeneralError);
+            throw;
         }
         finally
         {

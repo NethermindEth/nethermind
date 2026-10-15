@@ -23,6 +23,7 @@ using Nethermind.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
+using Nethermind.Merge.Plugin.Data;
 using Snappier;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
@@ -36,6 +37,59 @@ public class GloasBlockImporterTests
 
     [SetUp]
     public void SetUp() => _chain = new();
+
+    [Test]
+    public void Gloas_finalization_releases_fulu_state_tiers()
+    {
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        Assert.That(states.LineageState, Is.Not.Null);
+
+        Finalize(importer, new CheckpointRef(1, first.Root));
+        importer.OnFinalized(new CheckpointRef(1, first.Root));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(states.LineageState, Is.Null);
+        Assert.That(states.LineageRoot, Is.Null);
+        Assert.That(states.GetHeldBlockState(_chain.AnchorRoot), Is.Null);
+    }
+
+    [Test]
+    public void A_late_envelope_regenerates_its_evicted_block_state()
+    {
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
+        SignedGloasChain.Block target = Import(importer, _chain.Next(first, ForkSlot + 1, full: false, 0xA2));
+        SignedGloasChain.Block tip = target;
+        for (ulong slot = ForkSlot + 2; slot < ForkSlot + 7; slot++)
+            tip = Import(importer, _chain.Next(tip, slot, full: false, (byte)slot));
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        Assert.That(states.GetGloasBlockState(target.Root), Is.Null, "the per-block tier retains only four recent states");
+
+        Assert.That(importer.ImportEnvelope(target.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+    }
+
+    [Test]
+    public void Invalid_envelope_invalidates_optimistic_ancestors_after_latest_valid_hash()
+    {
+        SignedGloasChain.EnvelopeEngine engine = new() { EnvelopeVerdict = ExecutionStatus.Optimistic };
+        ForkChoiceSnapshotHolder snapshots = new();
+        BlockImporter importer = _chain.CreateImporter(engine, snapshots: snapshots);
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
+        Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Optimistic));
+        SignedGloasChain.Block middle = Import(importer, _chain.Next(first, ForkSlot + 1, full: true, 0xA2));
+        Assert.That(importer.ImportEnvelope(middle.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Optimistic));
+        SignedGloasChain.Block last = Import(importer, _chain.Next(middle, ForkSlot + 2, full: true, 0xA3));
+        engine.EnvelopeVerdict = ExecutionStatus.Invalid;
+        engine.LatestValidHash = first.Bid.BlockHash;
+
+        Assert.That(importer.ImportEnvelope(last.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Invalid));
+        importer.ComputeHead();
+
+        Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == last.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Invalid),
+            "the last block builds on the middle payload, which lies after the latest valid hash");
+    }
 
     /// <summary>Fork upgrades alias Fulu arrays; import must copy the parent so fork choice retains its original state.</summary>
     [Test]
@@ -53,7 +107,7 @@ public class GloasBlockImporterTests
         Assert.That(importer.IsKnown(first.Root), Is.True);
         Assert.That(store.TryGetForkedBlock(first.Root, out ForkedSignedBeaconBlock? stored) ? stored : null, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
         Assert.That(SszRoots.HashTreeRoot(_chain.AnchorState), Is.EqualTo(_chain.AnchorBlock.Message!.StateRoot), "the Fulu lineage state is untouched by the crossing");
-        Assert.That(engine.HasAnsweredNewPayload, Is.False, "a Gloas block carries only a bid; its payload reaches the engine in the envelope");
+        Assert.That(engine.PayloadSubmitted, Is.False, "a Gloas block carries only a bid; its payload reaches the engine in the envelope");
     }
 
     [Test]
@@ -67,7 +121,7 @@ public class GloasBlockImporterTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
-        Assert.That(engine.HasAnsweredNewPayload, Is.False);
+        Assert.That(engine.PayloadSubmitted, Is.False);
     }
 
     [TestCase(false, ExecutionStatus.Valid, ForkSlot + 1, TestName = "Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(False,Valid)")]
@@ -161,7 +215,7 @@ public class GloasBlockImporterTests
     }
 
     [Test]
-    public void Head_hash_follows_the_payload_status_the_ptc_votes_resolve([Values] bool ptcVotedTimely)
+    public void Gossip_payload_attestations_reach_fork_choice([Values] bool ptcVotedTimely)
     {
         ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot).AddSeconds(1));
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
@@ -179,14 +233,14 @@ public class GloasBlockImporterTests
         timestamper.Set(SlotStart(_chain, ForkSlot + 1).AddSeconds(1));
         SignedGloasChain.Block boosted = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
         Import(importer, boosted);
-        importer.OnInvalidExecutionPayload(boosted.Root, latestValidHash: null);
-
         HeadView head = importer.ComputeHead();
+        ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the invalidated block leaves the tree");
+        Assert.That(head.HeadRoot, Is.EqualTo(ptcVotedTimely ? first.Root : boosted.Root));
         Assert.That(head.HeadExecutionHash, Is.EqualTo(ptcVotedTimely ? first.Bid.BlockHash : first.Bid.ParentBlockHash));
-        Assert.That(head.HeadPayloadFull, Is.EqualTo(ptcVotedTimely), "the payload status the envelope server reads is the one get_head resolved");
+        Assert.That(head.HeadPayloadFull, Is.EqualTo(ptcVotedTimely));
+        Assert.That(runner.GetPtcVotes(first.Root)!.Value.Timeliness.Count(vote => vote == true), Is.EqualTo(ptcVotedTimely ? (int)Presets.PtcSize : 0));
     }
 
     [Test]
@@ -205,13 +259,13 @@ public class GloasBlockImporterTests
         timestamper.Set(SlotStart(_chain, ForkSlot + 1).AddSeconds(1));
         SignedGloasChain.Block boosted = _chain.Next(first, ForkSlot + 1, full: false, 0xA2, payloadAttestations: inBody ? [vote] : []);
         Import(importer, boosted);
-        importer.OnInvalidExecutionPayload(boosted.Root, latestValidHash: null);
-
         HeadView head = importer.ComputeHead();
+        ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(head.HeadRoot, Is.EqualTo(first.Root), "fixture: the invalidated block leaves the tree");
+        Assert.That(head.HeadRoot, Is.EqualTo(inBody ? first.Root : boosted.Root));
         Assert.That(head.HeadExecutionHash, Is.EqualTo(inBody ? first.Bid.BlockHash : first.Bid.ParentBlockHash));
+        Assert.That(runner.GetPtcVotes(first.Root)!.Value.Timeliness.Count(recorded => recorded == true), Is.EqualTo(inBody ? (int)Presets.PtcSize : 0));
     }
 
     [Test]
@@ -623,8 +677,8 @@ public class GloasBlockImporterTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(importer.ImportEnvelope(epochStart.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "an epoch's first block");
         Assert.That(importer.ImportEnvelope(lastBeforeSkip.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the checkpoint block of the epoch whose first slot was skipped");
-        Assert.That(importer.ImportEnvelope(middle.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "a block that is no checkpoint ages out");
-        Assert.That(importer.ImportEnvelope(lastOfEpoch!.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "the parent of the next epoch's first block is no checkpoint and ages out");
+        Assert.That(importer.CloneStateForApi(middle.Root), Is.Null, "a block that is no checkpoint ages out");
+        Assert.That(importer.CloneStateForApi(lastOfEpoch!.Root), Is.Null, "the parent of the next epoch's first block is no checkpoint and ages out");
     }
 
     public enum EvictedParent
@@ -798,7 +852,7 @@ public class GloasBlockImporterTests
         Assert.That(parentsEvicted, Is.True, "fixture: every forged child names a parent whose state left every tier");
         Assert.That(results, Is.All.EqualTo(BlockImportResult.Invalid));
         Assert.That(logger.LogList, Has.None.Contains("Regenerated the post-state"));
-        Assert.That(blocks.TakeLast(2 * (int)ForkSlot).Select(b => states.GetGloasBlockState(b.Root)), Is.All.Not.Null);
+        Assert.That(blocks.TakeLast(4).Select(b => states.GetGloasBlockState(b.Root)), Is.All.Not.Null);
     }
 
     [Test]
@@ -932,7 +986,7 @@ public class GloasBlockImporterTests
         PostStateCache states = new(store, _chain.Spec, _chain.AnchorRoot, _chain.AnchorState, isGloasBlock: gloasRoots.Contains, logManager: new OneLoggerLogManager(new ILogger(logger)),
             pubkeys: pubkeys, ancestors: root => ancestry.SkipWhile(r => r != root));
         Hash256 anchorStateRoot = SszRoots.HashTreeRoot(_chain.AnchorState);
-        Hash256[] live = [.. Enumerable.Range(0, 2 * (int)ForkSlot).Select(static i => Keccak.Compute(BitConverter.GetBytes(i)))];
+        Hash256[] live = [.. Enumerable.Range(0, 4).Select(static i => Keccak.Compute(BitConverter.GetBytes(i)))];
         foreach (Hash256 root in live)
         {
             states.RetainGloas(root, blocks[0].PostState);
@@ -1443,19 +1497,20 @@ public class GloasBlockImporterTests
     }
 
     [Test]
-    public void Block_refused_by_fork_choice_leaves_no_state_behind()
+    public void Block_building_on_unverified_parent_payload_leaves_no_state_behind()
     {
         BeaconChainStore store = _chain.CreateStore();
-        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine { EnvelopeVerdict = ExecutionStatus.Optimistic }, store: store);
         SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        SignedGloasChain.Block child = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
+        SignedGloasChain.Block child = _chain.Next(first, ForkSlot + 1, full: true, 0xA2);
         Import(importer, first);
-        importer.OnInvalidExecutionPayload(first.Root, latestValidHash: null);
+        Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Optimistic));
+        importer.OnForkchoiceUpdated(first.Root, first.Bid.BlockHash!, new PayloadStatusV1 { Status = PayloadStatus.Invalid });
 
         BlockImportResult result = importer.Import(child.Forked, child.Root, verifySignatures: true);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "fixture: fork choice refuses a child of an invalid payload");
+        Assert.That(result, Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
         Assert.That(store.HasBlock(child.Root), Is.False, "the refused block is not stored");
         Assert.That(importer.IsKnown(child.Root), Is.False);
     }

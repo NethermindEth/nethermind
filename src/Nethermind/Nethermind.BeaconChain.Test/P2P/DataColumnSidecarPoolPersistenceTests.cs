@@ -36,6 +36,23 @@ public class DataColumnSidecarPoolPersistenceTests
     private static Hash256 RootOf(DataColumnSidecar sidecar) => SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!);
 
     [Test]
+    public void Persisted_columns_leave_memory_when_the_fork_stops_receiving_columns()
+    {
+        (_, BeaconChainStore store) = CreateStore();
+        ManualTimestamper time = new(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot));
+        DataColumnSidecarPool pool = new(store: store, clock: ClockAt(CurrentSlot, time));
+        DataColumnSidecar old = DataColumnSidecarTestFixture.BuildValidSidecar(5, CurrentSlot);
+        pool.Add(RootOf(old), CurrentSlot, old);
+        time.Add(TimeSpan.FromSeconds(65 * Spec.SecondsPerSlot));
+        pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(5, CurrentSlot + 65, Keccak.Compute("new fork")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.SlotIndexCount, Is.EqualTo(1));
+            Assert.That(pool.TryGet(RootOf(old), 5, out _), Is.True, "aged memory entries remain available from storage");
+        }
+    }
+
+    [Test]
     [CancelAfter(120_000)]
     public async Task Added_columns_are_served_by_root_and_by_range_after_a_restart_or_an_eviction([Values] bool restart)
     {

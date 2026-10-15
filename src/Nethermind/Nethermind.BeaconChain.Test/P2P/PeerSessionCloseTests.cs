@@ -52,7 +52,7 @@ public class PeerSessionCloseTests
 
         await session.DisconnectAsync();
         await Assert.DoesNotThrowAsync(() => replacement.WaitAsync(ReplacementBound, token), "the dial loop is let through as soon as the peer leaves, not at its next poll");
-        IOException? queued = await Assert.ThrowsAsync<IOException>(async () => await requests[2]);
+        PeerSessionClosedException? queued = await Assert.ThrowsAsync<PeerSessionClosedException>(async () => await requests[2]);
         peer.ReportFailure(PeerFailureClassifier.Classify(queued!), queued!.Message);
         await manager.HandleHealthFailureAsync(peer, queued, startedAt: 0, token);
 

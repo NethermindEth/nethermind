@@ -108,7 +108,7 @@ public class ProposerBoostDependentRootTests
         ForkChoiceRunner runner = chain.CreateRunner();
         FuluChain.Block parent = chain.ImportAt(runner, chain.AnchorRoot, 1, 0x01, ExecutionStatus.Optimistic);
         FuluChain.Block block = chain.ImportAt(runner, parent.Root, 2, 0x02, ExecutionStatus.Optimistic);
-        runner.OnInvalidExecutionPayload(parent.Root);
+        runner.InvalidateExecutionChain(parent.Root, runner.GetExecutionBlockHash(parent.Root), latestValidHash: null);
 
         Assert.DoesNotThrow(() => chain.Import(runner, block, ExecutionStatus.Optimistic));
     }
@@ -125,7 +125,7 @@ public class ProposerBoostDependentRootTests
         TickTo(runner, Presets.SlotsPerEpoch + 1);
         chain.Import(runner, child with { PostState = doctored }, ExecutionStatus.Optimistic);
         Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(justified.Root), "fixture bug: the child must justify its parent");
-        runner.OnInvalidExecutionPayload(justified.Root);
+        runner.InvalidateExecutionChain(justified.Root, runner.GetExecutionBlockHash(justified.Root), latestValidHash: null);
         FuluChain.Block block = chain.Extend(chain.AnchorRoot, Presets.SlotsPerEpoch + 2, 0x03);
         TickTo(runner, Presets.SlotsPerEpoch + 2);
         if (!timely)
@@ -151,7 +151,7 @@ public class ProposerBoostDependentRootTests
         (SignedBeaconBlockGloas block, _, BeaconStateGloas postState) = GloasBlock(chain.First.PostState.Clone(), GloasBoostSlot);
         TickTo(runner, GloasBoostSlot);
         runner.OnBlock(block, postState);
-        runner.OnInvalidExecutionPayload(chain.First.Root);
+        runner.InvalidateExecutionChain(chain.First.Root, runner.GetExecutionBlockHash(chain.First.Root), latestValidHash: null);
 
         Assert.DoesNotThrow(() => runner.OnBlock(block, postState));
     }

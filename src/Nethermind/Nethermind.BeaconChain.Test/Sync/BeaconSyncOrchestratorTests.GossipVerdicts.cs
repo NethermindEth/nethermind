@@ -295,7 +295,6 @@ public partial class BeaconSyncOrchestratorTests
         SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + slot * chain.Spec.SecondsPerSlot)));
         IEngineDriver engine = Substitute.For<IEngineDriver>();
         engine.NotifyNewPayload(Arg.Any<BeaconBlockBody>(), out Arg.Any<Hash256?>()).Returns(ExecutionStatus.Invalid);
-        engine.HasAnsweredNewPayload.Returns(true);
         BlockImporter importer = chain.CreateImporter(engine, store: store, clock: clock);
         SignedGloasChain.Block first = chain.Next(null, slot - 1, full: false, 0xA1);
         ForkedSignedBeaconBlock child = invalidImport ? chain.NextFulu(slot - 2).Forked : chain.Next(first, slot, full: false, 0xA2).Forked;

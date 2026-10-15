@@ -78,7 +78,7 @@ public class ForkChoiceRunnerReorgTests
         UnsignedChain.ChainBlock child = chain.Extend(a.Root, slot: 2, payloadHashByte: 0xc2);
         Import(runner, child, ExecutionStatus.Optimistic);
         Assert.That(runner.ProposerBoostRoot, Is.EqualTo(child.Root), "fixture bug: the child must hold the boost");
-        runner.OnInvalidExecutionPayload(child.Root);
+        runner.InvalidateExecutionChain(child.Root, runner.GetExecutionBlockHash(child.Root), latestValidHash: null);
 
         Assert.That(runner.GetProposerHead(a.Root, proposalSlot: 2), Is.EqualTo(chain.AnchorRoot));
     }
@@ -93,7 +93,7 @@ public class ForkChoiceRunnerReorgTests
         UnsignedChain.ChainBlock refused = chain.Extend(onInvalidParent ? invalid.Root : chain.AnchorRoot, slot: 2, payloadHashByte: 0xb2);
         TickTo(runner, slot: 1);
         Import(runner, invalid, ExecutionStatus.Optimistic);
-        runner.OnInvalidExecutionPayload(invalid.Root);
+        runner.InvalidateExecutionChain(invalid.Root, runner.GetExecutionBlockHash(invalid.Root), latestValidHash: null);
         TickTo(runner, slot: 2);
         Import(runner, head);
         Assert.That(() => runner.OnBlock(refused.Block, refused.PostState, onInvalidParent ? ExecutionStatus.Valid : ExecutionStatus.Irrelevant, (IReadOnlyList<DataColumnSidecar>?)null),
@@ -122,13 +122,12 @@ public class ForkChoiceRunnerReorgTests
         TickTo(runner, slot: 3);
         Import(runner, c, ExecutionStatus.Optimistic);
         Import(runner, d, ExecutionStatus.Optimistic);
-        Assert.That(() => runner.OnInvalidExecutionPayload(c.Root, runner.GetExecutionBlockHash(chain.AnchorRoot)),
-            Throws.TypeOf<ProtoArrayException>(), withAcceptedHead ? "fixture bug: the invalidation must stop at the valid A after invalidating B" : null);
+        runner.InvalidateExecutionChain(c.Root, runner.GetExecutionBlockHash(c.Root), runner.GetExecutionBlockHash(a.Root));
         TickTo(runner, slot: 4);
         if (head is not null)
             Import(runner, head);
 
-        Assert.That(() => Import(runner, refused), Throws.TypeOf<ProtoArrayException>(),
+        Assert.That(() => Import(runner, refused), Throws.TypeOf<ForkChoiceException>(),
             withAcceptedHead ? "fixture bug: E must be refused" : "fixture: the proto-array refuses E");
         if (head is not null)
         {

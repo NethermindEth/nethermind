@@ -186,7 +186,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Router.IsEnvelopeSeen(root, envelope.Message!.BuilderIndex), Is.True);
     }
 
-    [TestCase(false, TestName = "Parked_full_child_triggers_one_envelope_by_root_request_and_imports_in_the_same_pass")]
+    [TestCase(false, TestName = "Parked_full_child_imports_when_background_envelope_request_completes")]
     [TestCase(true, TestName = "Gloas_anchor_first_full_child_recovers_the_anchor_envelope_by_root")]
     public async Task Parked_full_child_recovers_its_parents_envelope_by_root(bool parentIsAnchor)
     {
@@ -202,7 +202,10 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.OnImported = (block, root) => harness.Importer.Head = CreateHead(root, block.Slot, Spec.GetEpoch(AnchorSlot));
 
         await harness.Orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(peer.RootRequests, Is.EqualTo(new[] { new[] { parentRoot } }), "one request, for the parent only");
@@ -210,6 +213,33 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Known, Does.Contain(childRoot));
         Assert.That(harness.Orchestrator.SyncTip, Is.EqualTo((childRoot, child.Slot)));
         Assert.That(harness.EnvelopePool.TryGet(parentRoot, out _), Is.True);
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task A_silent_parent_envelope_peer_does_not_block_imports_or_slot_ticks(CancellationToken token)
+    {
+        Hash256 root = AnchorRoot();
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(EnvelopeBlockSlot, root));
+        TaskCompletionSource<IReadOnlyList<SignedExecutionPayloadEnvelope>> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.Id.Returns("silent");
+        peer.HeadSlot.Returns(WallSlot);
+        peer.RequestExecutionPayloadEnvelopesByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(answer.Task);
+        Harness harness = CreateHarness(peers: [peer]);
+        harness.Importer.Known.Add(root);
+        harness.Importer.UnverifiedPayloads.Add(root);
+
+        try
+        {
+            await harness.Orchestrator.ImportBlockAsync(child, token).WaitAsync(token);
+            await harness.Orchestrator.ProcessSlotAsync(WallSlot, token).WaitAsync(token);
+            Assert.That(answer.Task.IsCompleted, Is.False);
+        }
+        finally
+        {
+            answer.TrySetResult([]);
+        }
     }
 
     [Test]
@@ -227,6 +257,8 @@ public partial class BeaconSyncOrchestratorTests
         int requestsInFirstSlot = peer.RootRequests.Count;
         harness.Timestamper.Set(SlotStart(WallSlot + 1));
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
+
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(requestsInFirstSlot, Is.EqualTo(1), "the slot tick retries the parked child without asking again");
@@ -249,6 +281,8 @@ public partial class BeaconSyncOrchestratorTests
         harness.Timestamper.Set(SlotStart(WallSlot + 1));
         await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
 
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(silent.Select(static p => p.RootRequests.Count), Is.All.EqualTo(1));
         Assert.That(silent.SelectMany(static p => p.Reports), Is.Empty);
@@ -268,6 +302,8 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.UnverifiedPayloads.Add(anchorRoot);
 
         await harness.Orchestrator.ImportBlockAsync(child, CancellationToken.None);
+
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(lying.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
@@ -290,7 +326,7 @@ public partial class BeaconSyncOrchestratorTests
         new("201-slot run splits", [new(Head: 301, Requests: [(101, 1), (301, 1)], Calls: 2)], Step: 200, AwaitPayloads: false),
         new("First signed envelope copy wins", [new(RepeatFirst: true)], AwaitPayloads: false),
         new("Off-chain payload is omitted", [new()], EmptyAt: [1], AwaitPayloads: false, Recorded: [1]),
-        new("Envelope names no block", [new([1], Failures: 1)], EmptyAt: [1], AwaitPayloads: false, Recorded: [], Fault: RangeEnvelopeFault.BlockOutsideTheRun),
+        new("Envelope names a block on another fork", [new([1])], EmptyAt: [1], AwaitPayloads: false, Recorded: [], Fault: RangeEnvelopeFault.BlockOutsideTheRun),
         new("Envelope has wrong slot", [new([1], Failures: 1)], EmptyAt: [1], AwaitPayloads: false, Recorded: [], Fault: RangeEnvelopeFault.WrongSlot),
         new("Envelope has wrong builder", [new([1], Failures: 1)], EmptyAt: [1], AwaitPayloads: false, Recorded: [], Fault: RangeEnvelopeFault.WrongBuilderIndex),
         new("Envelope has wrong payload hash", [new([1], Failures: 1)], EmptyAt: [1], AwaitPayloads: false, Recorded: [], Fault: RangeEnvelopeFault.WrongBlockHash),
@@ -714,6 +750,43 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
 
         Assert.That(harness.Importer.Envelopes.Count - beforeBlock, Is.EqualTo(expectedImports));
+    }
+
+    [Test]
+    public async Task Unknown_block_envelopes_share_a_byte_budget_and_expire_after_two_slots()
+    {
+        Harness harness = CreateHarness();
+        Hash256 anchorRoot = AnchorRoot();
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.EnvelopeVerdict = e => harness.Importer.Known.Contains(e.Message!.BeaconBlockRoot!) ? ExecutionPayloadEnvelopeImportResult.Invalid : ExecutionPayloadEnvelopeImportResult.UnknownBlock;
+        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(EnvelopeBlockSlot, anchorRoot));
+        Hash256 root = block.ComputeMessageRoot();
+        byte[] accessList = new byte[17 * 1024 * 1024];
+        for (ulong builder = 0; builder < 4; builder++)
+        {
+            SignedExecutionPayloadEnvelope envelope = EnvelopeFor(root, EnvelopeBlockSlot, builderIndex: builder);
+            envelope.Message!.Payload!.BlockAccessList = accessList;
+            await harness.Orchestrator.ImportEnvelopeAsync(envelope, CancellationToken.None);
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            SignedExecutionPayloadEnvelope rejected = EnvelopeFor(TestItem.Keccaks[i], EnvelopeBlockSlot);
+            rejected.Message!.Payload!.BlockAccessList = accessList;
+            await harness.Orchestrator.ImportEnvelopeAsync(rejected, CancellationToken.None);
+        }
+        object parking = typeof(BeaconSyncOrchestrator).GetField("_pendingEnvelopesByBlock", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(harness.Orchestrator)!;
+        System.Collections.IDictionary parkedRoots = (System.Collections.IDictionary)parking.GetType().GetField("_byBlock", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(parking)!;
+        Assert.That(parkedRoots.Count, Is.EqualTo(1), "rejected envelopes must not leave empty root entries");
+        int beforeBlock = harness.Importer.Envelopes.Count;
+        await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
+        Assert.That(harness.Importer.Envelopes.Count - beforeBlock, Is.EqualTo(3));
+
+        ForkedSignedBeaconBlock later = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(EnvelopeBlockSlot + 1, root));
+        await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(later.ComputeMessageRoot(), later.Slot), CancellationToken.None);
+        await TickAtAgeAsync(harness, 3, () => 0);
+        beforeBlock = harness.Importer.Envelopes.Count;
+        await harness.Orchestrator.ImportBlockAsync(later, CancellationToken.None);
+        Assert.That(harness.Importer.Envelopes.Count, Is.EqualTo(beforeBlock));
     }
 
     [Test]

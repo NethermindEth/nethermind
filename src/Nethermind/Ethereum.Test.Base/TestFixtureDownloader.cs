@@ -8,6 +8,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Threading;
 
 namespace Ethereum.Test.Base;
@@ -37,9 +38,11 @@ public static class TestFixtureDownloader
     /// <param name="archiveName">Archive file name (e.g. "general.tar.gz"). The directory stem is derived by stripping extensions.</param>
     /// <param name="shouldExtract">Optional filter over normalized tar paths; null extracts every entry.</param>
     /// <param name="extractionTag">Cache identity for the extraction filter; a changed tag forces re-extraction.</param>
+    /// <param name="expectedSha256">Optional pinned SHA-256 hex digest of the compressed archive.</param>
     /// <returns>The path to the extracted fixtures directory.</returns>
-    public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName, Func<string, bool>? shouldExtract = null, string? extractionTag = null)
+    public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName, Func<string, bool>? shouldExtract = null, string? extractionTag = null, string? expectedSha256 = null)
     {
+        if (expectedSha256 is not null) extractionTag = $"{extractionTag ?? version};sha256={expectedSha256}";
         string archiveStem = StripExtensions(archiveName);
         string targetDir = Path.Combine(CacheRoot, suiteName, version, archiveStem);
         string markerPath = Path.Combine(targetDir, MarkerFileName);
@@ -61,7 +64,7 @@ public static class TestFixtureDownloader
             }
 
             Console.WriteLine($"Downloading {suiteName} fixtures ({archiveName} {version})...");
-            DownloadAndExtract(urlTemplate, version, archiveName, targetDir, shouldExtract);
+            DownloadAndExtract(urlTemplate, version, archiveName, targetDir, shouldExtract, expectedSha256);
             File.WriteAllLines(markerPath, [extractionTag ?? version, .. PopulatedSubtrees(targetDir)]);
             Console.WriteLine($"{suiteName} fixtures extracted to {targetDir}");
         }
@@ -144,7 +147,7 @@ public static class TestFixtureDownloader
         return Path.GetFileNameWithoutExtension(archiveName);
     }
 
-    private static void DownloadAndExtract(string urlTemplate, string version, string archiveName, string targetDir, Func<string, bool>? shouldExtract)
+    private static void DownloadAndExtract(string urlTemplate, string version, string archiveName, string targetDir, Func<string, bool>? shouldExtract, string? expectedSha256)
     {
         // Clean up any partial extraction from a previous interrupted attempt.
         if (Directory.Exists(targetDir))
@@ -173,6 +176,7 @@ public static class TestFixtureDownloader
 
         // Tar EOF can precede gzip EOF when an archive has trailing padding.
         gzStream.CopyTo(Stream.Null);
+        contentStream.CopyTo(Stream.Null);
 
         // GZipStream can report clean EOF after a truncated download without validating the declared length.
         if (expectedLength is { } expected && contentStream.TotalBytesRead != expected)
@@ -180,6 +184,9 @@ public static class TestFixtureDownloader
             throw new IOException(
                 $"Download of '{url}' was truncated: expected {expected} bytes but the stream yielded {contentStream.TotalBytesRead} before EOF.");
         }
+
+        if (expectedSha256 is not null && !string.Equals(contentStream.Digest(), expectedSha256, StringComparison.OrdinalIgnoreCase))
+            throw new IOException($"SHA-256 mismatch for fixture archive {archiveName} ({version}).");
 
         if (!HasExtractedContent(targetDir))
         {
@@ -191,11 +198,14 @@ public static class TestFixtureDownloader
 
     private sealed class CountingStream(Stream inner) : Stream
     {
+        private readonly IncrementalHash _hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        public string Digest() => Convert.ToHexString(_hash.GetHashAndReset());
         public long TotalBytesRead { get; private set; }
 
         public override int Read(byte[] buffer, int offset, int count)
         {
             int read = inner.Read(buffer, offset, count);
+            _hash.AppendData(buffer.AsSpan(offset, read));
             TotalBytesRead += read;
             return read;
         }
@@ -203,13 +213,18 @@ public static class TestFixtureDownloader
         public override int Read(Span<byte> buffer)
         {
             int read = inner.Read(buffer);
+            _hash.AppendData(buffer[..read]);
             TotalBytesRead += read;
             return read;
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) inner.Dispose();
+            if (disposing)
+            {
+                _hash.Dispose();
+                inner.Dispose();
+            }
             base.Dispose(disposing);
         }
 

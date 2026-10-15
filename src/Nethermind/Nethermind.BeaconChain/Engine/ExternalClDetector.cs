@@ -64,12 +64,14 @@ public sealed class ExternalClDetector(
     /// <summary>Called by the decorator on every externally visible <c>newPayload</c>/<c>forkchoiceUpdated</c>.</summary>
     public void OnExternalEngineCall()
     {
-        if (Interlocked.Exchange(ref _detected, 1) != 0 || !config.DisableOnExternalCl)
+        if (Interlocked.Exchange(ref _detected, 1) != 0)
         {
             return;
         }
 
-        if (_logger.IsWarn) _logger.Warn("External consensus client detected on the engine API - disabling the embedded beacon chain driver");
-        ExternalClDetected?.Invoke();
+        if (_logger.IsWarn) _logger.Warn(config.DisableOnExternalCl
+            ? "External consensus client detected on the engine API - disabling the embedded beacon chain driver until restart"
+            : "External consensus client detected while the embedded beacon chain driver remains enabled; both clients may update the execution head");
+        if (config.DisableOnExternalCl) ExternalClDetected?.Invoke();
     }
 }

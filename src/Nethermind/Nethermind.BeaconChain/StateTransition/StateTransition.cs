@@ -40,6 +40,9 @@ public static class StateTransition
         BeaconBlock block = signedBlock.Message!;
         SlotProcessing.ProcessSlots(state, block.Slot, cache);
 
+        if (verifySignatures && state.Validators!.Length > pubkeys.Count)
+            pubkeys.Extend(state.Validators, pubkeys.Count);
+
         if (verifySignatures && !SignatureSets.VerifyProposerSignature(state, signedBlock, pubkeys))
             throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
 

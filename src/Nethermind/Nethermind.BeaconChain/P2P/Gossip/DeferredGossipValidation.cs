@@ -24,6 +24,7 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// messages from one delivering peer, a new message is <see cref="MessageValidity.Throttled"/>: the router caches no id for it, so a
 /// later copy is checked, and charges its sender nothing. Aggregates and payload attestations are held to their own bound of
 /// <paramref name="maxPendingVotes"/> instead, the import worker's vote queue, so their volume cannot take the room of a block.
+/// Columns have a separate count and byte budget of the same size as the main budget, including parked unseen-block verdicts.
 /// A verdict not given within <paramref name="timeout"/> is abandoned, which the router treats the same way.
 /// </para>
 /// <para>
@@ -57,6 +58,8 @@ internal sealed class DeferredGossipValidation(
     private int _pending;
     private long _pendingBytes;
     private int _pendingVotes;
+    private int _pendingColumns;
+    private long _pendingColumnBytes;
 
     /// <summary>The messages other than votes deferred for validation whose verdict is not given yet.</summary>
     internal int Pending => Volatile.Read(ref _pending);
@@ -79,18 +82,24 @@ internal sealed class DeferredGossipValidation(
         ReleaseExpired();
         long size = message.CalculateSize();
         bool vote = IsVote(message, size);
-        // A batched IWANT answer carries many columns from one peer; a column holds its reservation only until its checks return.
-        bool sharedBySource = !vote && !GossipMessageValidator.IsColumn(message.Topic);
+        bool column = GossipMessageValidator.IsColumn(message.Topic);
+        bool sharedBySource = !vote && !column;
         if (vote ? PendingVotes >= maxPendingVotes
+            : column ? Volatile.Read(ref _pendingColumns) >= maxPending || Interlocked.Read(ref _pendingColumnBytes) + size > maxPendingBytes
             : Pending >= maxPending || PendingBytes + size > maxPendingBytes || (sharedBySource && _pendingBySource.GetValueOrDefault(source) >= _maxPendingPerSource))
         {
             return Throttle(source, message);
         }
 
-        Reservation reservation = new(this, source, vote ? 0 : size, vote, sharedBySource, _time.GetUtcNow() + timeout + ReservationSlack);
+        Reservation reservation = new(this, source, vote ? 0 : size, vote, column, sharedBySource, _time.GetUtcNow() + timeout + ReservationSlack);
         if (vote)
         {
             Interlocked.Increment(ref _pendingVotes);
+        }
+        else if (column)
+        {
+            Interlocked.Increment(ref _pendingColumns);
+            Interlocked.Add(ref _pendingColumnBytes, size);
         }
         else
         {
@@ -160,7 +169,7 @@ internal sealed class DeferredGossipValidation(
     }
 
     /// <summary>The room <see cref="Verify"/> reserved for one deferred message, released exactly once: by its verdict, or by expiry if never dispatched.</summary>
-    private sealed class Reservation(DeferredGossipValidation owner, PeerId source, long size, bool vote, bool sharedBySource, DateTimeOffset expiresAt)
+    private sealed class Reservation(DeferredGossipValidation owner, PeerId source, long size, bool vote, bool column, bool sharedBySource, DateTimeOffset expiresAt)
     {
         private int _released;
 
@@ -176,6 +185,13 @@ internal sealed class DeferredGossipValidation(
             if (vote)
             {
                 Interlocked.Decrement(ref owner._pendingVotes);
+                return;
+            }
+
+            if (column)
+            {
+                Interlocked.Decrement(ref owner._pendingColumns);
+                Interlocked.Add(ref owner._pendingColumnBytes, -size);
                 return;
             }
 

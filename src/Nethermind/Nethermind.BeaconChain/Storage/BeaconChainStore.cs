@@ -246,6 +246,20 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return false;
     }
 
+    internal IEnumerable<(Hash256 Root, ulong Slot)> StoredBlocksForPruning(ulong finalizedSlot)
+    {
+        foreach (byte[] key in _blockIndex.GetAllKeys())
+        {
+            if (key.Length == BlockSummaryKeyLength && key[0] == BlockSummaryKeyPrefix
+                && TryDecodeBlockSummary(_blockIndex.Get(key), out StoredBlockSummary summary))
+            {
+                Hash256 root = new(key.AsSpan(1));
+                if (summary.Slot > finalizedSlot || !TryGetCanonicalRoot(summary.Slot, out Hash256? canonical) || canonical != root)
+                    yield return (root, summary.Slot);
+            }
+        }
+    }
+
     /// <summary>Reads the stored slot and bid for gloas/p2p-interface.md sidecar validation without decoding the block.</summary>
     /// <returns><c>false</c> when the block was stored before the summary index existed, or the entry is malformed; <see cref="PutBlockSummary"/> then backfills it.</returns>
     /// <remarks>Written in the same batch as the block, so a stored block has one unless it predates the index.</remarks>
@@ -597,17 +611,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             index.Remove(StateSlotIndexKey(previousSlot, blockRoot));
         }
 
-        IWriteBatch roots = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
-        RemoveStateRootIndex(roots, blockRoot);
-        if (_blocks.Get(blockRoot.Bytes) is { } compressedBlock)
-        {
-            Span<byte> prefix = stackalloc byte[StateRootOffset + Hash256.Size];
-            if (DecompressSnappyPrefix(compressedBlock, prefix, ReqRespFraming.MaxPayloadSize) == prefix.Length)
-            {
-                PutStateRootIndex(roots, blockRoot, prefix);
-            }
-        }
-
         int chunkCount = (sszBytes.Length + StateChunkSize - 1) / StateChunkSize;
         Span<byte> chunkKey = stackalloc byte[Hash256.Size + sizeof(uint)];
         blockRoot.Bytes.CopyTo(chunkKey);
@@ -675,6 +678,26 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return true;
     }
 
+    internal bool TryGetStatePrefix(Hash256 blockRoot, int length, [NotNullWhen(true)] out byte[]? prefix)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, StateChunkSize);
+        prefix = null;
+        byte[]? manifest = _states.Get(blockRoot.Bytes);
+        if (manifest is not { Length: StateManifestLength }) return false;
+        ulong totalLength = BinaryPrimitives.ReadUInt64BigEndian(manifest.AsSpan(sizeof(uint)));
+        uint chunkCount = BinaryPrimitives.ReadUInt32BigEndian(manifest);
+        if (totalLength < (ulong)length || chunkCount == 0 || (totalLength + StateChunkSize - 1) / StateChunkSize != chunkCount) return false;
+        Span<byte> key = stackalloc byte[Hash256.Size + sizeof(uint)];
+        blockRoot.Bytes.CopyTo(key);
+        key[Hash256.Size..].Clear();
+        if (_states.Get(key) is not { } compressed || Snappy.GetUncompressedLength(compressed) != (int)Math.Min((ulong)StateChunkSize, totalLength)) return false;
+        byte[] result = new byte[length];
+        if (DecompressSnappyPrefix(compressed, result, StateChunkSize) != length) return false;
+        prefix = result;
+        return true;
+    }
+
     /// <summary>Deletes the state stored under <paramref name="blockRoot"/>, manifest and chunks in one write batch; a root with no state is left alone.</summary>
     public void DeleteState(Hash256 blockRoot)
     {
@@ -686,14 +709,14 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         bool slotKnown = TryGetStateSlot(blockRoot, manifest, out ulong slot);
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
         IWriteBatch states = batch.GetColumnBatch(BeaconChainDbColumns.States);
-        RemoveState(blockRoot, manifest, states, batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex));
+        RemoveState(blockRoot, manifest, states);
         if (slotKnown)
         {
             batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex).Remove(StateSlotIndexKey(slot, blockRoot));
         }
     }
 
-    private void RemoveState(Hash256 blockRoot, byte[] manifest, IWriteBatch states, IWriteBatch roots)
+    private static void RemoveState(Hash256 blockRoot, byte[] manifest, IWriteBatch states)
     {
         // A malformed manifest names no chunks, so only the manifest goes; chunk keys the manifest does not name are never read.
         uint chunkCount = manifest.Length == StateManifestLength ? BinaryPrimitives.ReadUInt32BigEndian(manifest) : 0;
@@ -706,7 +729,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         }
 
         states.Remove(blockRoot.Bytes);
-        RemoveStateRootIndex(roots, blockRoot);
     }
 
     /// <summary>The slot recorded in the state stored under <paramref name="blockRoot"/>, read from its first chunk without decoding the state.</summary>
@@ -745,7 +767,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
     /// <summary>Queues the removal of every stored state at or below <paramref name="throughSlot"/> other than <paramref name="keepRoot"/>.</summary>
     /// <remarks>Only finalized index entries nominate states; a readable state slot must also be finalized before removal (fork-choice.md Store).</remarks>
-    private void RemoveStatesThroughSlot(ulong throughSlot, Hash256 keepRoot, IWriteBatch states, IWriteBatch index, IWriteBatch roots)
+    private void RemoveStatesThroughSlot(ulong throughSlot, Hash256 keepRoot, IWriteBatch states, IWriteBatch index)
     {
         foreach (byte[] indexKey in StateSlotIndexKeysThrough(throughSlot))
         {
@@ -759,7 +781,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
                 && TryGetStateSlot(root, manifest, out ulong slot)
                 && slot <= throughSlot)
             {
-                RemoveState(root, manifest, states, roots);
+                RemoveState(root, manifest, states);
             }
 
             index.Remove(indexKey);
@@ -1392,8 +1414,8 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// The window is <see cref="DataAvailabilityBoundary.ComputeStartSlot"/> (fulu/p2p-interface.md). The floor is raised to the window start before
     /// anything is deleted, so an interrupted prune never claims sidecars it removed. Only the stored slot bounds are visited, at most
     /// <see cref="ColumnPruneBatchSlots"/> slots per write batch, and each batch moves its bound with its deletions, so an interrupted prune
-    /// resumes where it stopped, and a call runs at most <see cref="MaxColumnPruneBatchesPerCall"/> batches of each kind. A slot with no canonical entry keeps its
-    /// sidecars; above the canonical index top the block may still be indexed, so the non-canonical pass stops there and revisits the slot next call.
+    /// resumes where it stopped, and a call runs at most <see cref="MaxColumnPruneBatchesPerCall"/> batches of each kind. Empty finalized slots below the canonical
+    /// index top lose all sidecars; above that top the block may still be indexed, so the pass revisits the slot next call.
     /// </remarks>
     /// <param name="currentEpoch">The wall-clock epoch.</param>
     /// <param name="finalizedSlot">The slot below which the canonical index is final, so a block that differs from it can never become canonical.</param>
@@ -1498,7 +1520,11 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
                     {
                         DropNonCanonicalEntries(columns, slotKey, entries, canonical, key);
                     }
-                    else if (!stalled && (canonicalTop is not { } top || slot > top))
+                    else if (canonicalTop is { } indexedTop && slot <= indexedTop)
+                    {
+                        DropNonCanonicalEntries(columns, slotKey, entries, null, key);
+                    }
+                    else if (!stalled)
                     {
                         // Above the canonical index top the block may still be indexed, so the next pass must look at this slot again.
                         stalled = true;
@@ -1519,14 +1545,14 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         }
     }
 
-    private static void DropNonCanonicalEntries(IWriteBatch columns, ReadOnlySpan<byte> slotKey, byte[] entries, Hash256 canonical, Span<byte> key)
+    private static void DropNonCanonicalEntries(IWriteBatch columns, ReadOnlySpan<byte> slotKey, byte[] entries, Hash256? canonical, Span<byte> key)
     {
         byte[] kept = new byte[entries.Length];
         int keptLength = 0;
         for (int offset = 0; offset + ColumnSlotEntryLength <= entries.Length; offset += ColumnSlotEntryLength)
         {
             ReadOnlySpan<byte> entry = entries.AsSpan(offset, ColumnSlotEntryLength);
-            if (entry[..Hash256.Size].SequenceEqual(canonical.Bytes))
+            if (canonical is not null && entry[..Hash256.Size].SequenceEqual(canonical.Bytes))
             {
                 entry.CopyTo(kept.AsSpan(keptLength));
                 keptLength += ColumnSlotEntryLength;
@@ -1709,7 +1735,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         IWriteBatch metadata = batch.GetColumnBatch(BeaconChainDbColumns.Metadata);
         metadata.Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.Anchor), value);
         metadata.Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.EarliestBlockSlot), earliest);
-        RemoveStatesThroughSlot(slot, blockRoot, batch.GetColumnBatch(BeaconChainDbColumns.States), batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex), batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex));
+        RemoveStatesThroughSlot(slot, blockRoot, batch.GetColumnBatch(BeaconChainDbColumns.States), batch.GetColumnBatch(BeaconChainDbColumns.StateSlotIndex));
     }
 
     /// <summary>The slot of the lowest anchor ever recorded: canonical blocks are stored from it on.</summary>

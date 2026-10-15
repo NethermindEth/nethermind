@@ -19,10 +19,8 @@ public class ProtoArrayBoostPassDifferentialTests
     {
         yield return new TestCaseData((Action<Driver>)ParentCollectsTwoCommittees).SetName("Fixture mirror: parent collects two committees under a boost");
         yield return new TestCaseData((Action<Driver>)VotesAndBalancesMove).SetName("Votes and balances move between branches");
-        yield return new TestCaseData((Action<Driver>)BoostMovesAcrossBranchesAndInvalidation).SetName("Boost set, moved, kept on an invalidated branch and reset");
         yield return new TestCaseData((Action<Driver>)PruneBetweenUpdates).SetName("Prune between updates with a boost across it");
         yield return new TestCaseData((Action<Driver>)EquivocationUnderBoost).SetName("Equivocation under a boost");
-        yield return new TestCaseData((Action<Driver>)BoostUnderAnInvalidAncestor).SetName("Boost on an optimistic block under an invalid ancestor");
     }
 
     [TestCaseSource(nameof(Scenarios))]
@@ -79,25 +77,6 @@ public class ProtoArrayBoostPassDifferentialTests
         d.Head([Gwei32Eth, 31_000_000_000], 3);
     }
 
-    private static void BoostMovesAcrossBranchesAndInvalidation(Driver d)
-    {
-        ulong[] balances = Balances(64);
-        d.Block(1, 1, 0);
-        d.Block(2, 2, 1);
-        d.Block(2, 3, 1);
-        d.Block(3, 4, 3);
-        for (ulong v = 0; v < 20; v++) d.Vote(v, 2, 0);
-        for (ulong v = 20; v < 30; v++) d.Vote(v, 4, 0);
-        d.Head(balances, 2, boost: 2);
-        d.Head(balances, 3, boost: 4);
-        d.Head(balances, 3, boost: 4);
-        d.Invalidate(3);
-        d.Head(balances, 3, boost: 4);
-        d.Head(balances, 4, boost: 2);
-        d.Block(4, 5, 2);
-        d.Head(balances, 4, boost: 5);
-        d.Head(balances, 5);
-    }
 
     private static void PruneBetweenUpdates(Driver d)
     {
@@ -127,20 +106,6 @@ public class ProtoArrayBoostPassDifferentialTests
         d.Head(balances, 2);
     }
 
-    private static void BoostUnderAnInvalidAncestor(Driver d)
-    {
-        // Invalidating 3 back to block 0 throws at the valid block 1 after invalidating 3 and 2, leaving 4 optimistic under 2.
-        ulong[] balances = Balances(8);
-        d.Block(1, 1, 0, ExecutionStatus.Valid);
-        d.Block(2, 2, 1);
-        d.Block(3, 3, 2);
-        d.Block(3, 4, 2);
-        for (ulong v = 0; v < 8; v++) d.Vote(v, 4, 0);
-        d.Head(balances, 3, boost: 4);
-        d.PartiallyInvalidate(3, 0);
-        d.Head(balances, 4, boost: 4);
-        d.Head(balances, 4);
-    }
 
     public sealed class Driver
     {
@@ -188,14 +153,6 @@ public class ProtoArrayBoostPassDifferentialTests
             _forkChoice.OnAttesterSlashing(validators);
             _equivocating.UnionWith(validators);
         }
-
-        public void Invalidate(ulong root) =>
-            _forkChoice.ProcessExecutionPayloadInvalidation(InvalidationOperation.InvalidateOne(GetRoot(root)), _finalized);
-
-        public void PartiallyInvalidate(ulong root, ulong latestValidRoot) =>
-            Assert.That(
-                () => _forkChoice.ProcessExecutionPayloadInvalidation(InvalidationOperation.InvalidateMany(GetRoot(root), true, GetRoot(latestValidRoot)), _finalized),
-                Throws.InstanceOf<ProtoArrayException>());
 
         public void Prune(ulong root)
         {

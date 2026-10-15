@@ -11,6 +11,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Spec;
@@ -29,6 +31,56 @@ public class StateRequestLimiterTests
     private static readonly Hash256 Root = BeaconApiTestHost.TestRoot(0x50);
     private static readonly byte[] StateBytes = CreateStateBytes();
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(20);
+
+    [Test]
+    public async Task Both_http1_versions_require_a_minimum_download_rate([Values("HTTP/1.0", "HTTP/1.1")] string protocol)
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig());
+        DefaultHttpContext request = StateRequest(Download, "192.0.2.7");
+        request.Request.Protocol = protocol;
+        ResponseRateFeature feature = new();
+        request.Features.Set<IHttpMinResponseDataRateFeature>(feature);
+        await limiter.InvokeAsync(request, _ => Task.CompletedTask);
+        Assert.That(feature.MinDataRate?.BytesPerSecond, Is.EqualTo(64 * 1024));
+    }
+
+    private sealed class ResponseRateFeature : IHttpMinResponseDataRateFeature
+    {
+        public MinDataRate? MinDataRate { get; set; }
+    }
+
+    [Test]
+    public async Task A_download_does_not_consume_the_state_query_capacity()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0 });
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task download = limiter.InvokeAsync(StateRequest(Download, "192.0.2.7"), _ => release.Task);
+        bool reached = false;
+        try
+        {
+            await limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/head/validators", "192.0.2.7"), _ =>
+            {
+                reached = true;
+                return Task.CompletedTask;
+            });
+            Assert.That(reached, Is.True);
+        }
+        finally
+        {
+            release.SetResult();
+            await download;
+        }
+    }
+
+    [Test]
+    public async Task A_stalled_post_body_expires_before_the_total_response_timeout()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateResponseTimeoutSeconds = 40, StateResponseIdleTimeoutSeconds = 1 });
+        DefaultHttpContext request = StateRequest("/eth/v1/beacon/states/head/validators", "192.0.2.7");
+        request.Request.Method = HttpMethods.Post;
+        await limiter.InvokeAsync(request, c => Task.Delay(Timeout.Infinite, c.RequestAborted)).WaitAsync(Wait);
+        Assert.That(request.RequestAborted.IsCancellationRequested, Is.True);
+    }
 
     [Test]
     public async Task State_requests_beyond_the_concurrency_bound_are_refused_with_503_while_the_bound_is_held()
@@ -56,7 +108,7 @@ public class StateRequestLimiterTests
         Assert.That(entered.Wait(Wait), Is.True, "the first request must reach the state read and hold its permit there");
 
         HttpResponseMessage[] refused = await Task.WhenAll(
-            Enumerable.Range(0, 4).Select(i => host.GetAsync(i % 2 == 0 ? Download : "/eth/v1/beacon/states/head/fork", i % 2 == 0 ? Octet : Json)));
+            Enumerable.Range(0, 4).Select(_ => host.GetAsync(Download, Octet)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -130,7 +182,7 @@ public class StateRequestLimiterTests
         };
 
         Task held = limiter.InvokeAsync(StateRequest(Download, "2001:db8::1"), hold);
-        DefaultHttpContext sameClient = StateRequest("/eth/v1/beacon/states/head/validators", "2001:db8::2");
+        DefaultHttpContext sameClient = StateRequest(Download, "2001:db8::2");
         await limiter.InvokeAsync(sameClient, _ =>
         {
             Interlocked.Increment(ref served);
@@ -361,6 +413,7 @@ public class StateRequestLimiterTests
         using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0 });
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task held = limiter.InvokeAsync(StateRequest(Download, "192.0.2.7"), _ => release.Task);
+        Task query = limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/head/validators", "192.0.2.7"), _ => release.Task);
 
         bool reached = false;
         DefaultHttpContext probe = StateRequest(path, "192.0.2.8");
@@ -371,6 +424,7 @@ public class StateRequestLimiterTests
         });
         release.SetResult();
         await held;
+        await query;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(reached, Is.EqualTo(served));

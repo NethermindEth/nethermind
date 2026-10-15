@@ -21,7 +21,7 @@ public interface IBeaconApiConfig : IConfig
     [ConfigItem(Description = "The port the Beacon API listens on.", DefaultValue = "5052")]
     int Port { get; set; }
 
-    [ConfigItem(Description = "The maximum number of Beacon API requests that read a full beacon state (the /eth/v2/debug/beacon/states routes and the /eth/v1/beacon/states routes other than /root) served at once. Requests beyond it are refused with 503, not queued, and a client address with one such request in flight is refused a second with 429.", DefaultValue = "2")]
+    [ConfigItem(Description = "The maximum concurrent Beacon API state requests in each of two independent pools: /eth/v2/debug/beacon/states downloads and /eth/v1/beacon/states queries other than /root. Each pool refuses excess requests with 503 without queuing; per-client limits return 429.", DefaultValue = "2")]
     int MaxConcurrentStateRequests { get; set; }
 
     [ConfigItem(Description = "The maximum number of /eth/v2/debug/beacon/states downloads per minute from one client address (an IPv6 client is counted by its /64 prefix). Requests beyond it are refused with 429. `0` disables the limit.", DefaultValue = "30")]
@@ -33,6 +33,6 @@ public interface IBeaconApiConfig : IConfig
     [ConfigItem(Description = "The most time, in seconds, one state request may take in total, however steadily its response is written. When it passes, the response is aborted and the request's permits are released. Set it generously: a slow but steady download of a large state must finish inside it. Must be between 1 and 4294967.", DefaultValue = "3600")]
     int StateResponseTimeoutSeconds { get; set; }
 
-    [ConfigItem(Description = "The most time, in seconds, a state request may go without its response being written: counted between written chunks (64 KiB at most) once the first chunk is written; loading a state before that is bounded only by `StateResponseTimeoutSeconds`. When it passes, the response is aborted and the request's permits are released, so a client that stopped reading cannot hold a state request slot. Must be between 1 and 4294967, and at least `StateResponseTimeoutSeconds` / 40 rounded up, so a reader steady enough to download the smallest state within the total is never cut mid-chunk.", DefaultValue = "120")]
+    [ConfigItem(Description = "The maximum idle time in seconds between response writes. POST requests are also bounded from admission through their first write. GET preparation is bounded by StateResponseTimeoutSeconds. HTTP/1.x responses additionally require 64 KiB/s after a ten-second grace period. Expiry aborts the request and releases its permits. Must be between 1 and 4294967 and large enough for one 64 KiB chunk at the total timeout's minimum throughput.", DefaultValue = "120")]
     int StateResponseIdleTimeoutSeconds { get; set; }
 }

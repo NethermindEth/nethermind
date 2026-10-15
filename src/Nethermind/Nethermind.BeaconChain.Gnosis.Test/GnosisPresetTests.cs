@@ -5,6 +5,7 @@ using System.IO;
 using Autofac;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Test;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -71,9 +72,13 @@ public class GnosisPresetTests
             JustificationBits = new System.Collections.BitArray(4),
             CurrentSyncCommittee = new() { Pubkeys = new BlsPublicKey[512] },
             NextSyncCommittee = new() { Pubkeys = new BlsPublicKey[512] },
-            ProposerLookahead = new ulong[32],
+            ProposerLookahead = Enumerable.Range(0, 32).Select(static i => (ulong)i).ToArray(),
+            Eth1DataVotes = Enumerable.Range(0, 7).Select(static i => new Eth1Data { DepositCount = (ulong)i }).ToArray(),
             LatestExecutionPayloadHeader = new(),
         };
+        Assert.That(new CachedBeaconStateHasher().HashTreeRoot(state), Is.EqualTo(new FullBeaconStateHasher().HashTreeRoot(state)));
+        // Independent SSZ calculation with 1024 Eth1 votes and 32 lookahead slots as the Gnosis limits.
+        Assert.That(new FullBeaconStateHasher().HashTreeRoot(state), Is.EqualTo(new Hash256("0x3206de7c78c5e861aec64b2bc84b30bb4edf6f27824b9f4e99f97c5b039172b8")));
         byte[] encoded = BeaconStateFulu.Encode(state);
         BeaconStateFulu.Decode(encoded, out BeaconStateFulu decoded);
         Assert.That(decoded.ProposerLookahead, Has.Length.EqualTo(32));

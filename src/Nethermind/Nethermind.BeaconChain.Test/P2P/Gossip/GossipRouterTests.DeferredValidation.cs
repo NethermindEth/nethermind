@@ -93,7 +93,7 @@ public partial class GossipRouterTests
     {
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 128, maxPendingBytes: 1 << 24, TimeSpan.FromSeconds(30));
         byte[] digest = ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot));
-        MessageValidity[] columns = [.. Enumerable.Range(0, 24).Select(subnet => fixture.Validation.Verify(fixture.Sender,
+        MessageValidity[] columns = [.. Enumerable.Range(0, 128).Select(subnet => fixture.Validation.Verify(fixture.Sender,
             new Message { Topic = GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName((ulong)subnet)), Data = ByteString.CopyFrom([(byte)subnet]) }))];
 
         MessageValidity block = fixture.Validation.Verify(fixture.Sender, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot)) });
@@ -102,6 +102,7 @@ public partial class GossipRouterTests
         Assert.That(fixture.Validation.MaxPendingPerSource, Is.LessThan(columns.Length), "fixture: more columns than the peer's share");
         Assert.That(columns, Is.All.EqualTo(MessageValidity.Deferred));
         Assert.That(block, Is.EqualTo(MessageValidity.Deferred));
+        Assert.That(fixture.Validation.Pending, Is.EqualTo(1), "parked columns do not consume block reservations");
     }
 
     [Test]
