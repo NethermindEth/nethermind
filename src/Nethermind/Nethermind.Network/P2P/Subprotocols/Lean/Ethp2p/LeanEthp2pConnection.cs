@@ -141,6 +141,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
         if (_logger.IsDebug) _logger.Debug($"{Description} closing: {reason}");
         if (Volatile.Read(ref _peer) is { } peer) _transport.Remove(peer);
         _engine?.RemovePeer(this);
+        // Queue CONNECTION_CLOSE before writer FIN/RESET_STREAM; RunAsync waits for cancellation before host disposal.
         _ = CloseQuicAsync(errorCode);
         _control.Writer.TryComplete();
         _bcast.Writer.TryComplete();
