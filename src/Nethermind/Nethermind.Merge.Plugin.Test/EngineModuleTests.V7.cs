@@ -1085,9 +1085,9 @@ public partial class EngineModuleTests
             new MergeConfig { TerminalTotalDifficulty = "0" });
         EngineRpcModule rpc = (EngineRpcModule)chain.EngineRpcModule;
         // The budget counts each list's proof length, so every list can share one buffer.
-        RecursiveStarkV1 proof = new() { StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes], DepsHash = Keccak.Zero };
+        byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
         InclusionListV1[] lists = Enumerable.Range(0, Eip7805Constants.InclusionListCommitteeSize)
-            .Select(i => new InclusionListV1 { CommitteeIndex = (ulong)i, Transactions = [], RecursiveStark = proof }).ToArray();
+            .Select(i => new InclusionListV1 { CommitteeIndex = (ulong)i, Transactions = [], StarkProof = proof }).ToArray();
         int fitting = (int)(EngineRpcModule.MaxRetainedSyncingInclusionListProofBytes
             / ((long)Eip7805Constants.InclusionListCommitteeSize * Eip8288Constants.MaxAggregateProofBytes));
         Hash256 accepted = Keccak.Compute("accepted-tip");

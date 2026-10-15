@@ -26,6 +26,28 @@ public static class Eip8288Constants
     /// bound. EIP-8288 has no block dependency quota; wrappers and inclusion-list packages within its limits but above this
     /// envelope are refused locally, never treated as invalid.</remarks>
     public const int MaxProofDependencies = 256;
+
+    /// <summary>Minimum encoded size of a frame transaction beyond its dependency triples, in bytes.</summary>
+    public const int MinFrameTransactionOverheadBytes = 52;
+
+    /// <summary>Dependencies one <c>MAX_BYTES_PER_INCLUSION_LIST</c> list can hold: 84, as each takes 96 bytes of frame data
+    /// after a frame transaction's minimum 52 further bytes.</summary>
+    public const int MaxDependenciesPerInclusionList =
+        (Eip7805Constants.MaxBytesPerInclusionList - MinFrameTransactionOverheadBytes) / DependencyTripleLength;
+
+    /// <summary>EIP-8288 floor on the aggregate circuit's per-step recursive fan-in for EIP-7805 builder liveness: the
+    /// <c>IL_COMMITTEE_SIZE</c> inclusion-list proofs plus the builder's running aggregate of its mempool wrappers.</summary>
+    /// <remarks>The pinned prototype guest folds two recursive inputs per step (see <see cref="MaxProofDependencies"/>), so the
+    /// managed aggregator reaches this fan-in through a binary tree, costing extra proving rounds on the critical path. A
+    /// conforming activation profile must accept this many inputs in one step.</remarks>
+    public const int MinRecursiveFanInPerStep = Eip7805Constants.InclusionListCommitteeSize + 1;
+
+    /// <summary>EIP-8288 floor on the aggregate circuit's per-step discard bound: the dependencies of
+    /// <c>IL_COMMITTEE_SIZE</c> full inclusion lists, 1,344, since a builder may legitimately exclude any of their
+    /// transactions.</summary>
+    /// <remarks>The pinned prototype guest discards at most <see cref="MaxProofDependencies"/> per step; the managed aggregator
+    /// prunes each child separately, so larger discard sets fold over several steps rather than in one.</remarks>
+    public const int MinDiscardsPerStep = Eip7805Constants.InclusionListCommitteeSize * MaxDependenciesPerInclusionList;
     public const int MaxGenericStarkProofs = 16;
     public const int MaxLeanStarkInstructions = 2048;
     public const int MaxInclusionListDependencyBytes = MaxProofDependencies * DependencyTripleLength;
@@ -54,9 +76,9 @@ public static class Eip8288Constants
     public const byte LeanSphincsScheme = 0x10;
     public const byte LeanStarkScheme = 0x11;
 
-    /// <summary>Whether <see cref="LeanStarkScheme"/> is in the EIP-8288 <c>enabled_schemes</c>, with <see cref="LeanSphincsScheme"/>.</summary>
-    /// <remarks>The set is fixed with <see cref="AggregatedVk"/>, whose circuit enforces it on every dependency list it reads.
-    /// The pinned circuit enables leanSTARK under its generic CPU-proof dependency profile; changing this needs a circuit and key to match.</remarks>
+    /// <summary>Whether <see cref="LeanStarkScheme"/> is in the EIP-8288 <c>ENABLED_SCHEMES</c>, with <see cref="LeanSphincsScheme"/>.</summary>
+    /// <remarks><c>ENABLED_SCHEMES</c> is a per-fork constant that the <see cref="AggregatedVk"/> circuit must accept exactly, so it
+    /// changes only with the key. The pinned circuit enables leanSTARK under its generic CPU-proof verification parameters.</remarks>
     public const bool LeanStarkSchemeEnabled = true;
 
     public const ulong LeanSphincsVerificationGas = 3_000;

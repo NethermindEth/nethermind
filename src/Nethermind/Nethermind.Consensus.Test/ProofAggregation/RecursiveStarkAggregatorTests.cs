@@ -325,6 +325,32 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
+    // EIPs#12475: builder liveness needs IL_COMMITTEE_SIZE + 1 recursive inputs per step and discards covering IL_COMMITTEE_SIZE
+    // full lists. The prototype guest folds two inputs per step, so the managed tree reaches the fan-in over several rounds.
+    [Test]
+    public void Committee_fan_in_folds_every_inclusion_list_proof_and_the_running_aggregate()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Constants.MinRecursiveFanInPerStep, Is.EqualTo(17));
+            Assert.That(Eip8288Constants.MaxDependenciesPerInclusionList, Is.EqualTo(84));
+            Assert.That(Eip8288Constants.MinDiscardsPerStep, Is.EqualTo(1_344));
+        }
+        List<RecursiveProofInput> recursive = [];
+        List<FrameDependency> deps = [];
+        for (int i = 0; i < Eip8288Constants.MinRecursiveFanInPerStep; i++)
+        {
+            FrameDependency dependency = Sphincs($"list{i}");
+            recursive.Add(new([dependency], [1]));
+            deps.Add(dependency);
+        }
+        // The last list is discarded entirely, as a builder may exclude any inclusion-list transaction.
+        FakeLeanProofVerifier verifier = new(true);
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps.GetRange(0, deps.Count - 1));
+        byte[] proof = RecursiveStarkAggregator.Prove(new() { RecursiveProofs = recursive, Discards = [deps[^1]] }, verifier, in hash);
+        Assert.That(proof, Is.EqualTo(new byte[] { 1 }));
+    }
+
     [Test]
     public void Hierarchical_children_prune_discarded_generic_claims_before_the_native_count_limit()
     {

@@ -67,11 +67,13 @@ the proof hash, and the exact dependency union. Engine payloads and payload-body
 carry `recursiveStarkProof`; an empty dependency union requires an empty proof.
 The decoded block cache skips proofs above 64 KiB. Invalid-block diagnostics retain large
 proof-bearing records in a separate eight-entry / 64 MiB tier, counting body proofs and
-inclusion-list proof/dependency buffers and returning owned copies.
+inclusion-list proof buffers and returning owned copies.
 
 A zero dependency `data_hash` resolves to the containing frame transaction's canonical
-signature hash before sorting and deduplication. Raw frame bytes remain zero for signing
-and `FRAMEDATACOPY`; wrapper and block proof statements carry the resolved dependency.
+signature hash before sorting and deduplication, for every scheme, so a zero leanSPHINCS
+message or leanSTARK `pub_input_hash` cannot be declared. Raw frame bytes remain zero for
+signing and `FRAMEDATACOPY`; wrapper, inclusion-list and block proof statements carry the
+resolved dependency.
 
 * **SPHINCS witness:** public key (32 bytes), signature (6176 bytes). As in EIP-8288, the
   dependency key is the public key itself, root then public parameter. Both the key and the
@@ -216,8 +218,8 @@ a separate 64 MiB / 1024-record LRU that cannot replace required coverage.
 
 RPC and peer ingress share one bounded native-verification gate to bound verification CPU and decoding work;
 peer ingress retries temporary contention for a bounded interval. Inclusion-list package
-submission through RPC validates a complete pool-admission package. Consensus eligibility instead filters
-entries individually, preserving ordinary and zero-dependency entries when proof coverage fails.
+submission through RPC validates a complete pool-admission package. Consensus eligibility instead
+follows each counted list's commitment, filtering only statically invalid entries.
 The Network project references the shared Consensus admission service so RPC and negotiated
 proof gossip use the same verification, pool insertion and witness-retention rules.
 
@@ -294,35 +296,45 @@ fragments of one RLPx object.
 
 ## Proof-bearing inclusion lists
 
+A signed inclusion list commits to `recursive_stark = [stark_proof_hash, deps_hash]`, or null;
+the proof itself is a separate consensus-layer object fetched by hash. Attesters verify a
+received proof with `engine_verifyInclusionListProofV1(transactions, depsHash, starkProof)`,
+which returns `{status: VALID|INVALID, validationError}`. Its `deps` is the union over the
+entries that decode and pass EIP-8141/EIP-8288 static validity; other entries contribute none.
+The proof is valid only if `deps` is nonempty, `depsHash == get_deps_hash(deps)`, and a
+nonempty proof within `MAX_AGGREGATE_PROOF_BYTES` verifies against it. Verdicts are cached
+per backend by `(keccak256(proof), deps_hash)` in a bounded 4,096-entry cache shared with
+mempool wrapper checks.
+
 With both EIP-8288 and EIP-7805 active, `engine_forkchoiceUpdatedV6` accepts
 `PayloadAttributesV6.inclusionLists` and `engine_newPayloadV7` receives separate
 `InclusionListV1` entries in strictly increasing committee-position order. Each entry carries
-`committeeIndex`, `transactions`, and nullable `recursiveStark: {starkProof, depsHash}`.
-Earlier API versions retain their existing formats. The execution client assumes that the
-consensus client supplies the authenticated lists counted by EIP-7805; it does not authenticate
-consensus-layer signatures. Proof-bearing FOCIL RLP is `[transactions, [stark_proof, deps_hash]]`.
+`committeeIndex`, `transactions`, and `starkProof`: the committed proof, or null for a null
+commitment. Earlier API versions retain their existing formats. The execution client assumes
+the consensus client supplies the lists counted by EIP-7805, including each committed list's
+proof; it does not authenticate consensus-layer signatures.
 
-Each list's `depsHash` must equal the commitment to its decoded transactions' exact dependency
-union, and its proof must verify against that statement. An empty dependency union carries an
-empty proof without a verifier call. Malformed frames are ineligible. Dependency-free
-obligations remain when that list's proof is missing or invalid; a valid independent list can
-still require the same dependency-bearing transaction. Builders and validators use the same
-per-list eligibility rules. Each build owns decoded snapshots and verified parent proofs even
-when shared witness storage is full. `getPayload` does not echo inclusion-list proofs; the
-consensus client supplies the authenticated lists to `newPayload`.
+Obligations follow from signed data alone: a committed list obligates every statically valid
+entry, a null commitment only its dependency-free entries. Request bounds (positions, sizes, a
+proof above `MAX_AGGREGATE_PROOF_BYTES`) fail the call; an undecodable entry or an unusable
+proof only affects its own list. Builders fold each committed list's proof that verifies into
+the block aggregate; a proof that is missing or does not verify removes no obligation, so a
+builder without other coverage for those entries cannot satisfy the list, a liveness failure.
+`getPayload` does not echo inclusion-list proofs.
 
-Signed consensus-layer inclusion-list gossip and an agreed construction API returning the
-proof for signing remain integration requirements. `engine_getInclusionListV1` keeps its
-existing non-frame sampling and returns transaction bytes only; it does not construct a
-proof-bearing list. These missing CL/construction pieces prevent claiming complete activation
-of the latest companion's inclusion-list protocol.
+`eth_sendProofInclusionList` remains a local mempool submission path for a self-contained
+`[transactions, [stark_proof, deps_hash]]` package; it creates no inclusion obligation.
+`engine_getInclusionListV1` keeps its existing non-frame sampling and returns transaction
+bytes only; constructing and signing a list with its proof remains a consensus-layer
+integration requirement.
 
 Legacy inclusion sources and producers without an inclusion source use mutually exclusive
 decoding fallbacks; the proof-aware source overrides that path with its prepared snapshot.
-Repeated package checks reuse a 64-entry positive-verdict cache per backend, keyed by the
-dependency commitment and proof hash, without retaining proof buffers.
-`engine_getInclusionListV1` retains its existing non-frame candidate sampling; externally
-formed proof-bearing frame inclusion lists are validated and enforced.
+
+Builder liveness needs a per-step fan-in of `IL_COMMITTEE_SIZE + 1` recursive inputs and a
+per-step discard bound of 1,344 dependencies. The pinned guest folds two recursive inputs per
+step and discards at most 256, so the managed aggregator reaches these through a binary tree,
+at the cost of extra proving rounds; a conforming activation profile must meet them in one step.
 
 The separate [frame/FOCIL PR #13590](https://github.com/NethermindEth/nethermind/pull/13590)
 adds per-includer VERIFY budgets, claimed evaluation positions and BAL replay. It overlaps

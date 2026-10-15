@@ -16,15 +16,14 @@ namespace Nethermind.Consensus.Processing;
 
 /// <inheritdoc cref="IInclusionListSatisfactionChecker"/>
 public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider, ITxValidator txValidator,
-    ILeanProofVerifier proofVerifier, ITransactionProcessor? transactionProcessor = null)
+    ITransactionProcessor? transactionProcessor = null)
     : IInclusionListSatisfactionChecker
 {
     public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState)
     {
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions,
-            worldState, spec, txValidator, suggestedBlock.InclusionLists,
-            proofVerifier, CouldAppendFrame);
+            worldState, spec, txValidator, suggestedBlock.InclusionLists, CouldAppendFrame);
 
         bool CouldAppendFrame(Transaction tx)
         {

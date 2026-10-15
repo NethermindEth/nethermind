@@ -59,7 +59,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
-    private readonly ILeanProofVerifier _proofVerifier;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
@@ -89,7 +88,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        ILogManager logManager, ILeanProofVerifier proofVerifier)
+        ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -104,7 +103,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader = stateReader;
         _specProvider = specProvider;
         _txValidator = txValidator;
-        _proofVerifier = proofVerifier ?? throw new ArgumentNullException(nameof(proofVerifier));
         _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -423,20 +421,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         fields[^1] = block.InclusionLists is null ? (byte)0 : (byte)1;
         hash.Update(fields);
         foreach (Transaction tx in block.InclusionListTransactions ?? []) hash.Update((tx.Hash ?? Keccak.Zero).Bytes);
-        // The verdict depends on how the transactions split into lists and on each list's proof.
+        // The verdict depends on how the transactions split into lists and on whether each list's commitment is null.
         foreach (CommitteeInclusionList list in block.InclusionLists ?? [])
         {
             // The committee index is below IL_COMMITTEE_SIZE, so one byte holds it.
             BinaryPrimitives.WriteInt32BigEndian(fields, list.Transactions.Length);
             fields[^1] = (byte)list.CommitteeIndex;
             hash.Update(fields);
-            fields[^1] = list.Proof is null ? (byte)0 : (byte)1;
+            fields[^1] = list.IsCommitted ? (byte)1 : (byte)0;
             hash.Update(fields[^1..]);
-            if (list.Proof is { } proof)
-            {
-                hash.Update((proof.BlockDepsHash ?? Keccak.Zero).Bytes);
-                hash.Update(ValueKeccak.Compute(proof.StarkProof ?? []).Bytes);
-            }
         }
         return hash.GenerateValueHash();
     }
@@ -497,11 +490,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         if (InclusionListValidator.IsBlockFull(block, spec)) return true;
         _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
-        ILeanProofVerifier verifier = new InclusionListProofVerifier(_proofVerifier);
         bool omittedFrame = false;
         if (spec.IsEip8288Enabled)
         {
-            inclusionList = InclusionListProofValidator.SelectEligible(inclusionList, block.InclusionLists, verifier, spec, out _);
+            inclusionList = InclusionListProofValidator.SelectEligible(inclusionList, block.InclusionLists, spec);
             HashSet<Hash256> included = [];
             foreach (Transaction tx in block.Transactions) if (tx.Hash is { } hash) included.Add(hash);
             foreach (Transaction tx in inclusionList)
@@ -510,29 +502,29 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
         bool? ordinarySatisfied = spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
-            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec, verifier)
+            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
             : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator,
-                block.InclusionLists, verifier, frameCanInclude: static _ => false);
+                block.InclusionLists, frameCanInclude: static _ => false);
         // Ordinary omissions are decidable even if another valid frame needs prefix execution.
         return ordinarySatisfied == false ? false : omittedFrame ? null : ordinarySatisfied;
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
     /// <remarks>Account reads are shared across the gas bounds.</remarks>
-    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec, ILeanProofVerifier verifier)
+    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
         state = new CachedAccountStateProvider(state);
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
         try
         {
             block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionLists, verifier, frameCanInclude: static _ => false)) return false;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionLists, frameCanInclude: static _ => false)) return false;
 
             block.Header.GasUsedPerDimension = (block.GasUsed, 0);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionLists, verifier, frameCanInclude: static _ => false)) return null;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionLists, frameCanInclude: static _ => false)) return null;
 
             block.Header.GasUsedPerDimension = (0, block.GasUsed);
-            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionLists, verifier, frameCanInclude: static _ => false) ? true : null;
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionLists, frameCanInclude: static _ => false) ? true : null;
         }
         finally
         {

@@ -443,10 +443,11 @@ public class MempoolWrapperTests
         }
     }
 
-    [TestCase(MempoolWrapper.ModeDirect, 0, MempoolWrapperValidator.EmptyAggregate)]
-    [TestCase(MempoolWrapper.ModeDirect, 1, MempoolWrapperValidator.EmptyAggregate)]
-    [TestCase(MempoolWrapper.ModeRecursive, 0, MempoolWrapperValidator.EmptyAggregate)]
-    [TestCase(MempoolWrapper.ModeRecursive, 1, MempoolWrapperValidator.EmptyAggregate)]
+    // EIPs#12473: every listed transaction declares a dependency, so deps is nonempty in both modes.
+    [TestCase(MempoolWrapper.ModeDirect, 0, MempoolWrapperValidator.TransactionWithoutDependencies)]
+    [TestCase(MempoolWrapper.ModeDirect, 1, MempoolWrapperValidator.TransactionWithoutDependencies)]
+    [TestCase(MempoolWrapper.ModeRecursive, 0, MempoolWrapperValidator.TransactionWithoutDependencies)]
+    [TestCase(MempoolWrapper.ModeRecursive, 1, MempoolWrapperValidator.TransactionWithoutDependencies)]
     public void Empty_dependency_wrappers_are_rejected_in_both_modes(byte mode, int proofBytes, string? expected)
     {
         Hash256 hash = Keccak.Compute("no-dependency-frame");
@@ -546,6 +547,93 @@ public class MempoolWrapperTests
             Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the verified claim is not verified again");
         }
+    }
+
+    // EIPs#12473: a dependency-free transaction cannot ride in a wrapper even when another listed transaction makes deps
+    // nonempty and the union is exact.
+    [Test]
+    public void Listed_transaction_without_dependencies_is_rejected([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
+    {
+        (MempoolWrapper batch, Func<Hash256, Transaction?> resolve) = Batch(mode, [[Sphincs("a")]]);
+        Hash256 dependencyFree = Keccak.Compute("dependency-free");
+        MempoolWrapper wrapper = new()
+        {
+            Transactions = ByHash([.. batch.Transactions.Select(static entry => entry.Hash!), dependencyFree]),
+            Mode = mode,
+            Deps = batch.Deps,
+            Proofs = batch.Proofs,
+            RecursiveStark = batch.RecursiveStark
+        };
+        FakeLeanProofVerifier verifier = new(true);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error,
+            hash => hash == dependencyFree ? new Transaction { Type = TxType.FrameTx, Frames = [] } : resolve(hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.TransactionWithoutDependencies));
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
+    }
+
+    // EIPs#12473: verdicts are cached by (keccak256(proof), get_deps_hash(covered)), so the same proof arriving with another
+    // or an unresolvable transaction list is not verified again, whichever verdict it had.
+    [Test]
+    public void Known_proof_verdict_is_reused_for_another_transaction_list(
+        [Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode, [Values] bool valid)
+    {
+        (MempoolWrapper first, _) = Batch(mode, [[Sphincs("a"), Sphincs("b")]]);
+        (MempoolWrapper second, _) = Batch(mode, [[Sphincs("a")], [Sphincs("b")]]);
+        FakeLeanProofVerifier verifier = new(valid);
+        bool firstValid = MempoolWrapperValidator.VerifyClaimedProofs(first, verifier, out _);
+        int calls = verifier.VerificationCalls;
+        bool secondValid = MempoolWrapperValidator.VerifyClaimedProofs(second, verifier, out _);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstValid, Is.EqualTo(valid));
+            Assert.That(secondValid, Is.EqualTo(valid));
+            Assert.That(calls, Is.EqualTo(mode == MempoolWrapper.ModeDirect && valid ? 2 : 1));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(calls));
+        }
+    }
+
+    // EIPs#12518: a zero data_hash stands for the containing transaction's signature hash for every scheme, so a mode-0
+    // witness is checked against the signature hash, not the zero placeholder.
+    [Test]
+    public void Direct_witness_for_a_zero_leanstark_data_hash_verifies_against_the_signature_hash()
+    {
+        Transaction transaction = DepTx([new FrameDependency(Eip8288Constants.LeanStarkScheme, default, TestItem.KeccakA.ValueHash256)]);
+        List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
+        Hash256 hash = Keccak.Compute("zero-data-hash");
+        MempoolWrapper wrapper = new()
+        {
+            Transactions = ByHash(hash),
+            Mode = MempoolWrapper.ModeDirect,
+            Deps = deps,
+            Proofs = [[1]]
+        };
+        ValueHash256? checkedHash = null;
+        DataHashVerifier verifier = new(dataHash => checkedHash = dataHash);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, h => h == hash ? transaction : null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.True, error);
+            Assert.That(deps.Single().DataHash, Is.EqualTo(FrameTxSigHash.ComputeValue(transaction)));
+            Assert.That(checkedHash, Is.EqualTo(FrameTxSigHash.ComputeValue(transaction)));
+        }
+    }
+
+    /// <summary>Accepts every leanSTARK witness, reporting the statement it was checked against.</summary>
+    private sealed class DataHashVerifier(Action<ValueHash256> onLeanStark) : ILeanProofVerifier
+    {
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
+        {
+            onLeanStark(dataHash);
+            return true;
+        }
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => false;
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
     }
 
     private static MempoolWrapper RoundTrip(MempoolWrapper wrapper)

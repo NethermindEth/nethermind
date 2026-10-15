@@ -73,7 +73,7 @@ public class InclusionListTxSourceTests
             {
                 CommitteeIndex = 5,
                 Transactions = [Encode(transaction)],
-                RecursiveStark = new RecursiveStarkV1 { StarkProof = [1], DepsHash = Keccak.Zero }
+                StarkProof = [1]
             }]
         };
         byte[][] list = attributes.CombinedInclusionListTransactions!;
@@ -87,7 +87,7 @@ public class InclusionListTxSourceTests
         Assert.That(block.InclusionLists, Has.Count.EqualTo(1));
         Assert.That(block.InclusionLists[0].CommitteeIndex, Is.EqualTo(5));
         Assert.That(block.InclusionLists[0].Transactions, Is.EqualTo(block.InclusionListTransactions));
-        Assert.That(block.InclusionLists[0].Proof!.StarkProof, Is.EqualTo(new byte[] { 1 }));
+        Assert.That(block.InclusionLists[0].StarkProof!, Is.EqualTo(new byte[] { 1 }));
         Assert.That(block.InclusionListProofInput, Is.Null);
     }
 
@@ -134,8 +134,8 @@ public class InclusionListTxSourceTests
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
         transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
         List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
-        RecursiveStarkV1 proof = new() { StarkProof = [1], DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)) };
-        PayloadAttributes attributes = new() { InclusionLists = [new InclusionListV1 { Transactions = [Encode(transaction)], RecursiveStark = proof }] };
+        byte[] proof = [1];
+        PayloadAttributes attributes = new() { InclusionLists = [new InclusionListV1 { Transactions = [Encode(transaction)], StarkProof = proof }] };
         byte[][] list = attributes.CombinedInclusionListTransactions!;
         source.Set(list, spec, attributes.InclusionLists);
         source.Set(list, spec, attributes.InclusionLists);
@@ -154,16 +154,17 @@ public class InclusionListTxSourceTests
             Assert.That(GetTransactions(source, attributes).Single().Nonce, Is.Zero);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
         Assert.That(store.Covers(transaction), Is.True);
-        proof.StarkProof![0] = 2;
+        proof[0] = 2;
         Assert.That(GetTransactions(source, attributes), Is.Empty);
     }
 
-    // EIPs#12475: each counted list's proof is checked on its own; the build aggregates only valid list proofs.
+    // EIPs#12475: each committed list's proof is checked on its own and the build aggregates only those that verify, while
+    // obligations follow from the commitments: an unusable proof leaves its dependency-bearing entries obligated.
     [Test]
     public void Each_list_proof_is_checked_and_aggregated_separately()
     {
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
-        FakeLeanProofVerifier verifier = new(true);
+        ProofBytesVerifier verifier = new();
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, new LeanProofStore(FrameTxSigHash.ComputeValue));
         static Transaction DependencyTx(ulong nonce, string message)
@@ -183,13 +184,13 @@ public class InclusionListTxSourceTests
         {
             InclusionLists =
             [
-                // A commitment that does not match the list's dependencies fails before any verifier call.
-                new InclusionListV1 { CommitteeIndex = 4, Transactions = [Encode(unproven)], RecursiveStark = new() { StarkProof = [1], DepsHash = Keccak.Zero } },
+                // A committed proof that fails verification is not aggregated, but its list still obligates the entry.
+                new InclusionListV1 { CommitteeIndex = 4, Transactions = [Encode(unproven)], StarkProof = [1] },
                 new InclusionListV1
                 {
                     CommitteeIndex = 11,
                     Transactions = [Encode(proven)],
-                    RecursiveStark = new() { StarkProof = [2], DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(provenDeps)) }
+                    StarkProof = [2]
                 }
             ]
         };
@@ -199,12 +200,12 @@ public class InclusionListTxSourceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(GetTransactions(source, attributes).Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 1 }));
+            Assert.That(GetTransactions(source, attributes).Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 0, 1 }));
             Assert.That(block.InclusionListTransactions, Has.Length.EqualTo(2));
             Assert.That(block.InclusionLists!.Select(static list => list.CommitteeIndex), Is.EqualTo(new ulong[] { 4, 11 }));
             Assert.That(block.InclusionListProofInput!.RecursiveProofs, Has.Count.EqualTo(1));
             Assert.That(block.InclusionListProofInput.RecursiveProofs[0].InnerDeps, Is.EqualTo(provenDeps));
-            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(2));
         }
     }
 
@@ -219,7 +220,7 @@ public class InclusionListTxSourceTests
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[96])];
         PayloadAttributes attributes = new()
         {
-            InclusionLists = [new InclusionListV1 { Transactions = [Encode(transaction)], RecursiveStark = new RecursiveStarkV1 { StarkProof = [1], DepsHash = Keccak.Zero } }]
+            InclusionLists = [new InclusionListV1 { Transactions = [Encode(transaction)], StarkProof = [1] }]
         };
         byte[][] list = attributes.CombinedInclusionListTransactions!;
         source.Set(list, spec, attributes.InclusionLists);
@@ -426,5 +427,20 @@ public class InclusionListTxSourceTests
         public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => inner.Sign(privateKey, in message);
         public PublicKey RecoverPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverPublicKey(signature, in message);
         public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverCompressedPublicKey(signature, in message);
+    }
+
+    /// <summary>Accepts only the recursive proof <c>[2]</c>.</summary>
+    private sealed class ProofBytesVerifier : ILeanProofVerifier
+    {
+        public int VerificationCalls { get; private set; }
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+        {
+            VerificationCalls++;
+            return proof is [2];
+        }
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
     }
 }

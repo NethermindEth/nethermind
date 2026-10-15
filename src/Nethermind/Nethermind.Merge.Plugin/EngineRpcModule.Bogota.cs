@@ -51,6 +51,10 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null)
         => getInclusionListTransactionsHandler.Handle(parentBlockHash);
 
+    public ResultWrapper<InclusionListProofStatusV1> engine_verifyInclusionListProofV1(byte[][] transactions, Hash256 depsHash, byte[] starkProof)
+        => verifyInclusionListProofHandler?.Handle(new VerifyInclusionListProofRequest(transactions, depsHash, starkProof))
+            ?? ResultWrapper<InclusionListProofStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
+
     public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
         => NewPayloadWithInclusionList(
             new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions),
@@ -328,7 +332,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     private static long ProofBytes(InclusionListV1[]? lists)
     {
         long bytes = 0;
-        foreach (InclusionListV1 list in lists ?? []) bytes += list.RecursiveStark?.StarkProof?.Length ?? 0;
+        foreach (InclusionListV1 list in lists ?? []) bytes += list.StarkProof?.Length ?? 0;
         return bytes;
     }
 

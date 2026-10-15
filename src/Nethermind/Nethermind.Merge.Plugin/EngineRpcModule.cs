@@ -50,7 +50,8 @@ public partial class EngineRpcModule(
     GCKeeper gcKeeper,
     IBlockProcessingQueue processingQueue,
     ILogManager logManager,
-    IBlockTree blockTree) : IEngineRpcModule
+    IBlockTree blockTree,
+    IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>? verifyInclusionListProofHandler = null) : IEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>

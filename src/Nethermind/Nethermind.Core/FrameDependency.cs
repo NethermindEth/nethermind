@@ -165,13 +165,14 @@ public static class Eip8288Dependencies
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
         => Blake2s.Compute(Serialize(Canonicalize(dependencies)));
 
-    /// <summary>Whether a dependency scheme is in the EIP-8288 <c>enabled_schemes</c>.</summary>
-    /// <remarks><see cref="Eip8288Constants.AggregatedVk"/> fixes the set, so it is also the EIP-8437 profile's scheme set.</remarks>
+    /// <summary>Whether a dependency scheme is in the EIP-8288 <c>ENABLED_SCHEMES</c>.</summary>
+    /// <remarks>The per-fork constant the <see cref="Eip8288Constants.AggregatedVk"/> circuit accepts exactly, so it is also the
+    /// EIP-8437 profile's scheme set.</remarks>
     public static bool IsAcceptedScheme(byte scheme) =>
         scheme == Eip8288Constants.LeanSphincsScheme
         || (Eip8288Constants.LeanStarkSchemeEnabled && scheme == Eip8288Constants.LeanStarkScheme);
 
-    /// <summary>Whether every dependency's scheme is in the EIP-8288 <c>enabled_schemes</c>.</summary>
+    /// <summary>Whether every dependency's scheme is in the EIP-8288 <c>ENABLED_SCHEMES</c>.</summary>
     public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)
     {
         for (int i = 0; i < dependencies.Count; i++)

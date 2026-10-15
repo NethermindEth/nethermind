@@ -42,19 +42,20 @@ public class ProofInclusionListEnforcementTests
     [TestCase("unfunded", true)]
     [TestCase("withdrawal-funded", true)]
     [TestCase("execution-gas-full", true)]
-    [TestCase("missing-proof", true)]
-    [TestCase("bad-proof", true)]
+    // EIPs#12475: obligations follow from the signed commitment alone. A null commitment obligates no dependency-bearing
+    // entry; a committed list obligates it even when its proof does not verify.
+    [TestCase("null-commitment", true)]
+    [TestCase("bad-proof", false)]
     [TestCase("full-bad-proof", true)]
-    [TestCase("wrong-commitment", true)]
     [TestCase("mixed-omit-frame", false)]
     [TestCase("mixed-omit-legacy", false)]
     [TestCase("mixed-included", true)]
     [TestCase("mixed-malformed-omit-frame", false)]
     [TestCase("mixed-malformed-omit-legacy", false)]
-    // The package must prove dependencies(transactions) exactly, so an uncovered entry invalidates its proof.
-    [TestCase("mixed-uncovered-omit-frame", true)]
+    // A proof that fails to cover an entry does not void the committed list's obligations.
+    [TestCase("mixed-uncovered-omit-frame", false)]
     [TestCase("mixed-invalid-proof-omit-legacy", false)]
-    [TestCase("mixed-invalid-proof-frame-only", true)]
+    [TestCase("mixed-invalid-proof-frame-only", false)]
     public async Task Enforces_proven_frame_prefixes_through_production_processor(string scenario, bool satisfied)
     {
         OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
@@ -187,12 +188,11 @@ public class ProofInclusionListEnforcementTests
         if (scenario == "withdrawal-funded")
             block = block.WithReplacedBody(new(block.Transactions, block.Uncles,
                 [new Withdrawal { Address = sender, AmountInGwei = 1_000_000_000 }]));
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
         List<FrameDependency> inclusionDependencies = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         byte[] inclusionProof = scenario is "bounded-proof" or "generic-compressed-union"
             ? LeanProofTestEnvelope.CreateMaximal(inclusionDependencies) : LeanProofTestEnvelope.Create(inclusionDependencies, 0);
-        block.InclusionLists = [new CommitteeInclusionList(0, block.InclusionListTransactions!, scenario == "missing-proof" ? null
-            : new RecursiveStark(generic ? inclusionProof : [1], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash)))];
+        block.InclusionLists = [new CommitteeInclusionList(0, block.InclusionListTransactions!, scenario == "null-commitment" ? null
+            : generic ? inclusionProof : [1])];
         (ulong, ulong)? originalDimensions = block.Header.GasUsedPerDimension;
         ulong originalGasUsed = block.GasUsed;
         UInt256 balance = state.GetBalance(sender);

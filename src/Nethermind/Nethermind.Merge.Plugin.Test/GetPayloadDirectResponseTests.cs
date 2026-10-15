@@ -279,7 +279,7 @@ public class GetPayloadDirectResponseTests
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
         block.StarkProof = new byte[proofLength];
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
-        if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], new RecursiveStark(new byte[proofLength], Keccak.Compute("il-deps")))];
+        if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], new byte[proofLength])];
 
         object plain = CreatePlainResult(6, block, blobsBundle, executionRequests);
         IStreamableResult direct = CreateDirectResult(6, block, blobsBundle, executionRequests);

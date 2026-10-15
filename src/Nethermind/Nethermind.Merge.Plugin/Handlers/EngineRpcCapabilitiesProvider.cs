@@ -141,6 +141,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         jsonLocal[nameof(IEngineRpcModule.engine_newPayloadV7)] = Gate(perListInclusionLists);
         jsonLocal[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV6)] = Gate(perListInclusionLists);
         jsonLocal[nameof(IEngineRpcModule.engine_newPayloadWithWitnessV7)] = Gate(perListInclusionLists);
+        jsonLocal[nameof(IEngineRpcModule.engine_verifyInclusionListProofV1)] = Gate(perListInclusionLists);
 
         json = jsonLocal;
         ssz = sszLocal;

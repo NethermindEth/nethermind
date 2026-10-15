@@ -13,9 +13,11 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// Validates an EIP-8288 mempool wrapper per the spec "Mempool Wrapper Object" rules, as carried by EIP-8437: every
 /// transaction is a frame transaction within the per-transaction limits, the dependency list is their union, mode 0 stays
 /// within the direct witness limits and verifies each witness, and mode 1 stays within <c>MAX_DEPS_PER_AGGREGATE_WRAPPER</c>,
-/// whatever the schemes, and carries one recursive STARK that verifies against <c>get_deps_hash(deps)</c>. A wrapper must have
-/// a nonempty, sorted and deduplicated dependency list.
+/// whatever the schemes, and carries one recursive STARK that verifies against <c>get_deps_hash(deps)</c>. Every listed
+/// transaction declares at least one dependency, so the sorted and deduplicated dependency list is nonempty.
 /// </summary>
+/// <remarks>Proof checks go through <see cref="ProofVerdictCache"/>, so a known proof arriving with another transaction list
+/// is not verified again.</remarks>
 public static class MempoolWrapperValidator
 {
     public const string UnknownMode = "wrapper mode must be 0 (direct) or 1 (recursive)";
@@ -33,6 +35,7 @@ public static class MempoolWrapperValidator
     public const string InvalidProof = "a wrapper dependency proof failed verification";
     public const string MissingRecursiveStark = "mode 1 wrapper must carry a recursive STARK";
     public const string DepsHashMismatch = "recursive STARK public input must equal hash(deps)";
+    public const string TransactionWithoutDependencies = "every wrapper transaction must declare at least one dependency";
 
     /// <summary>Fully validates a wrapper whose hash entries resolve through <paramref name="resolveTransaction"/>.</summary>
     /// <param name="proofsVerified">The witnesses or aggregate proof already passed <see cref="VerifyClaimedProofs"/> for these
@@ -68,15 +71,20 @@ public static class MempoolWrapperValidator
                 error = NotFrameTransaction;
                 return false;
             }
-            // Each dependency verification frame needs at least one triple with an enabled scheme, so only a transaction
-            // without such frames contributes nothing to the union (EIPs#12473).
+            // Each dependency verification frame needs at least one triple with an enabled scheme; a transaction with no
+            // dependency frame is rejected below, as wrappers list only dependency-bearing transactions.
             if (!HasWellFormedDependencyFrames(transaction))
             {
                 error = MalformedDependencyFrame;
                 return false;
             }
             // Per-transaction limits apply in both modes: a larger aggregate does not admit an individually inadmissible transaction.
-            List<FrameDependency> transactionDeps = Eip8288Dependencies.Canonicalize(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
+            List<FrameDependency> transactionDeps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
+            if (transactionDeps.Count == 0)
+            {
+                error = TransactionWithoutDependencies;
+                return false;
+            }
             (int transactionSphincs, int transactionStark) = Eip8288Dependencies.CountByScheme(transactionDeps);
             if (transactionSphincs > Eip8288Constants.MaxSigsPerTx || transactionStark > Eip8288Constants.MaxStarksPerTx)
             {
@@ -156,14 +164,7 @@ public static class MempoolWrapperValidator
 
         for (int i = 0; i < wrapper.Deps.Count; i++)
         {
-            FrameDependency dep = wrapper.Deps[i];
-            bool valid = dep.Scheme switch
-            {
-                Eip8288Constants.LeanSphincsScheme => verifier.VerifyLeanSphincs(dep.DataHash, dep.VerificationKey, proofs[i]),
-                Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dep.DataHash, dep.VerificationKey, proofs[i]),
-                _ => false,
-            };
-            if (!valid)
+            if (proofs[i] is null || !ProofVerdictCache.VerifyDirect(verifier, wrapper.Deps[i], proofs[i]))
             {
                 error = InvalidProof;
                 return false;
@@ -189,7 +190,8 @@ public static class MempoolWrapperValidator
             return false;
         }
 
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(verifier, wrapper.Deps.Count, in depsHash, recursiveStark.StarkProof))
+        if (recursiveStark.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxAggregateProofBytes }
+            || !ProofVerdictCache.VerifyRecursive(verifier, in depsHash, recursiveStark.StarkProof))
         {
             error = InvalidProof;
             return false;

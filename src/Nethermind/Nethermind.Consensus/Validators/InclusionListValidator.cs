@@ -22,10 +22,10 @@ public static class InclusionListValidator
 {
     private const int StackAllocEntries = 256;
 
-    /// <param name="lists">The counted lists with their EIP-8288 dependency proofs, or <c>null</c> when only the flattened
+    /// <param name="lists">The counted lists with their EIP-8288 commitments, or <c>null</c> when only the flattened
     /// <paramref name="il"/> was supplied, which then binds only its transactions without dependencies.</param>
     public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
-        IReadOnlyList<CommitteeInclusionList>? lists, ILeanProofVerifier verifier, Func<Transaction, bool>? frameCanInclude = null)
+        IReadOnlyList<CommitteeInclusionList>? lists, Func<Transaction, bool>? frameCanInclude = null)
     {
         if (!spec.InclusionListsEnabled) return true;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
@@ -35,7 +35,7 @@ public static class InclusionListValidator
 
         if (spec.IsEip8288Enabled)
         {
-            il = InclusionListProofValidator.SelectEligible(il, lists, verifier, spec, out _);
+            il = InclusionListProofValidator.SelectEligible(il, lists, spec);
         }
 
         // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.

@@ -247,13 +247,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         finally { Volatile.Write(ref _admissionActive, 0); }
     }
 
-    /// <summary>Verifies a proof-bearing inclusion list and admits its transactions.</summary>
+    /// <summary>Verifies a self-contained proof-bearing inclusion-list package and admits its transactions to the local pool.</summary>
+    /// <remarks>A local submission path only: it creates no inclusion obligation and is not the signed EIP-8288 FOCIL.</remarks>
     public async Task<Result<Hash256[]>> AcceptInclusionListAsync(byte[] inclusionList, CancellationToken cancellationToken = default)
         => (await AcceptInclusionListDetailedAsync(inclusionList, cancellationToken)).Result;
 
     /// <summary>Separates an invalid inclusion-list package from local and pool admission failures.</summary>
-    /// <remarks>An empty dependency set carries an empty proof and <c>get_deps_hash([])</c>, accepted without invoking the
-    /// verifier, as for a block.</remarks>
+    /// <remarks>A package needs a nonempty dependency set and a nonempty proof: a list without dependencies carries a null
+    /// commitment, and an empty proof is never a valid inclusion-list proof (EIPs#12475).</remarks>
     public async Task<ProofWrapperAcceptance> AcceptInclusionListDetailedAsync(byte[] inclusionList, CancellationToken cancellationToken = default)
     {
         if (!IsEnabled)

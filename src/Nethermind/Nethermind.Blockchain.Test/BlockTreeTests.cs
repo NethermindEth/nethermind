@@ -2969,7 +2969,7 @@ public class BlockTreeTests
             if (withInclusionProof)
             {
                 Transaction[] listTransactions = [Build.A.Transaction.TestObject];
-                invalid[i].InclusionLists = [new CommitteeInclusionList(3, listTransactions, new RecursiveStark(proof, TestItem.KeccakB))];
+                invalid[i].InclusionLists = [new CommitteeInclusionList(3, listTransactions, proof)];
                 invalid[i].InclusionListTransactions = listTransactions;
             }
             if (i == capacity) Assert.That(tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
@@ -2987,13 +2987,13 @@ public class BlockTreeTests
         {
             Assert.That(returned.InclusionListTransactions, Is.SameAs(invalid[0].InclusionListTransactions));
             Assert.That(returned.InclusionLists![0].CommitteeIndex, Is.EqualTo(3));
-            Assert.That(returned.InclusionLists[0].Proof!.StarkProof[0], Is.EqualTo(7));
-            returned.InclusionLists[0].Proof!.StarkProof[0] = 99;
+            Assert.That(returned.InclusionLists[0].StarkProof![0], Is.EqualTo(7));
+            returned.InclusionLists[0].StarkProof![0] = 99;
         }
         Block again = tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!;
         Assert.That(again.StarkProof![0], Is.EqualTo(7));
         Assert.That(tree.FindHeader(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!.RecursiveStark!.StarkProofHash, Is.EqualTo(Keccak.Compute(again.StarkProof!)));
-        if (withInclusionProof) Assert.That(again.InclusionLists![0].Proof!.StarkProof[0], Is.EqualTo(7));
+        if (withInclusionProof) Assert.That(again.InclusionLists![0].StarkProof![0], Is.EqualTo(7));
     }
 
     [Test]

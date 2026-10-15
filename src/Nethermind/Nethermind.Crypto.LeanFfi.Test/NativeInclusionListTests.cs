@@ -30,11 +30,12 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 [NonParallelizable]
 public class NativeInclusionListTests
 {
-    // The package must prove dependencies(transactions) exactly, so an uncovered entry invalidates its proof.
-    [TestCase("uncovered", true)]
-    [TestCase("malformed", false)]
-    [TestCase("bad-proof", true)]
-    public async Task Real_proof_membership_preserves_independent_inclusion_list_obligations(string scenario, bool frameSuppressed)
+    // EIPs#12475: a committed list obligates every statically valid entry, whether or not its proof verifies. A malformed
+    // entry contributes no dependencies and is not offered; an uncovered entry or a bad proof removes no obligation.
+    [TestCase("uncovered")]
+    [TestCase("malformed")]
+    [TestCase("bad-proof")]
+    public async Task Real_proof_membership_preserves_independent_inclusion_list_obligations(string scenario)
     {
         byte[] proofBytes = NativeLeanProofVerifierTests.MixedProof();
         OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
@@ -63,7 +64,7 @@ public class NativeInclusionListTests
             InclusionLists = [new InclusionListV1
             {
                 Transactions = InclusionListDecoder.Encode([ordinary, bad, covered]),
-                RecursiveStark = new RecursiveStarkV1 { StarkProof = proofBytes, DepsHash = new Hash256(commitment) }
+                StarkProof = proofBytes
             }]
         };
         InclusionListTxSource source = new(new EthereumEcdsa(chain.SpecProvider.ChainId), chain.SpecProvider,
@@ -72,8 +73,8 @@ public class NativeInclusionListTests
         BlockToProduce block = new(Build.A.BlockHeader.WithNumber(1).WithGasLimit(30_000_000).TestObject);
         source.ApplyInclusionList(block, attributes);
         Transaction[] offered = [.. source.GetTransactions(chain.BlockTree.Head!.Header, block.Header, block.GasLimit, attributes)];
-        Assert.That(offered.Select(tx => tx.Hash), frameSuppressed
-            ? Is.EqualTo(new[] { ordinary.Hash }) : Is.EquivalentTo(new[] { ordinary.Hash, covered.Hash }));
+        Assert.That(offered.Select(tx => tx.Hash), scenario == "malformed"
+            ? Is.EquivalentTo(new[] { ordinary.Hash, covered.Hash }) : Is.EquivalentTo(new[] { ordinary.Hash, covered.Hash, bad.Hash }));
         Assert.That(block.InclusionListTransactions, Has.Length.EqualTo(3));
         using (chain.MainWorldState.BeginScope(chain.BlockTree.Head!.Header))
         {

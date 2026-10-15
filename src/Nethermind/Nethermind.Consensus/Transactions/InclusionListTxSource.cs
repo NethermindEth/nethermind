@@ -111,16 +111,21 @@ public class InclusionListTxSource(
             decodedLists = new CommitteeInclusionList[lists.Length];
             for (int i = 0; i < lists.Length; i++)
                 decodedLists[i] = new CommitteeInclusionList(lists[i].CommitteeIndex,
-                    _decoder.Value.DecodeAndRecover(lists[i].Transactions!, spec), lists[i].RecursiveStark?.ToRecursiveStark());
+                    _decoder.Value.DecodeAndRecover(lists[i].Transactions!, spec), lists[i].StarkProof);
             transactions = CommitteeInclusionList.Flatten(decodedLists);
         }
         Transaction[] eligible = transactions;
         AggregationInput? proofInput = null;
         if (spec.IsEip8288Enabled)
         {
-            // Each list's proof covers only that list; a list whose proof fails still binds its dependency-free entries.
-            eligible = InclusionListProofValidator.SelectEligible(transactions, decodedLists, proofVerifier, spec,
-                out List<RecursiveProofInput> proven);
+            // Obligations follow from each list's signed commitment alone (EIPs#12475).
+            eligible = InclusionListProofValidator.SelectEligible(transactions, decodedLists, spec);
+            List<RecursiveProofInput> proven = InclusionListProofValidator.ProvenInputs(decodedLists ?? [], proofVerifier, spec,
+                out List<ulong> unusable);
+            // A committed list still obligates its dependency-bearing entries; without its proof they need other coverage,
+            // and a block that cannot cover them fails the list: a liveness failure, not an omission ground.
+            if (unusable.Count > 0 && _logger.IsWarn)
+                _logger.Warn($"Inclusion lists {string.Join(", ", unusable)} commit to proofs that do not verify; their dependency-bearing transactions stay obligated.");
             if (proven.Count > 0)
             {
                 // This private build snapshot retains coverage independently of a full shared cache.

@@ -14,14 +14,16 @@ public static class RecursiveStarkAggregator
 {
     /// <summary>Target serialized-witness size for each direct proving batch, in bytes.</summary>
     public const long MaxProductionWitnessBytes = 4 * 1024 * 1024;
+    // The pinned prototype guest folds two recursive inputs per step, below EIP-8288's IL_COMMITTEE_SIZE + 1 floor
+    // (Eip8288Constants.MinRecursiveFanInPerStep); wider sets fold over a binary tree at the cost of extra proving rounds.
     private const int MaxRecursiveChildren = 2;
     private const int DirectBatchSize = 4;
 
-    /// <summary>Runs the STARK check of a block proof, inclusion-list package or mode-1 wrapper against a dependency list.</summary>
+    /// <summary>Runs the STARK check of a block proof against its dependency list.</summary>
     /// <remarks>An empty dependency list carries an empty <c>stark_proof</c> and invokes no verifier; any other list needs
     /// a proof within <see cref="Eip8288Constants.MaxAggregateProofBytes"/>, checked before the verifier runs, that verifies
-    /// against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>. A mode-1 wrapper never has an
-    /// empty list: one with empty <c>deps</c> uses mode 0.</remarks>
+    /// against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>. Wrappers and inclusion lists never
+    /// use the empty form: their dependency sets are nonempty.</remarks>
     public static bool VerifyStarkCheck(ILeanProofVerifier verifier, int dependencyCount, in ValueHash256 depsHash, ReadOnlySpan<byte> proof)
         => dependencyCount == 0
             ? proof.IsEmpty

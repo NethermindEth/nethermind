@@ -21,6 +21,12 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null);
 
     [JsonRpcMethod(
+        Description = "Verifies a signed inclusion list's committed EIP-8288 dependency proof against its deps_hash and transactions.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<InclusionListProofStatusV1> engine_verifyInclusionListProofV1(byte[][] transactions, Hash256 depsHash, byte[] starkProof);
+
+    [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status (including inclusion-list compliance) and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
@@ -33,13 +39,13 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions);
 
     [JsonRpcMethod(
-        Description = "Verifies the payload against each counted inclusion list and its EIP-8288 dependency proof, and returns the verification status (including inclusion-list compliance) and hash of the last valid block.",
+        Description = "Verifies the payload against each counted inclusion list, whose obligations follow from its EIP-8288 commitment, and returns the verification status (including inclusion-list compliance) and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV7(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, InclusionListV1[]? inclusionLists);
 
     [JsonRpcMethod(
-        Description = "Verifies the payload against each counted inclusion list and its EIP-8288 dependency proof, and returns the verification status, hash of the last valid block, and the execution witness when the payload is valid.",
+        Description = "Verifies the payload against each counted inclusion list, whose obligations follow from its EIP-8288 commitment, and returns the verification status, hash of the last valid block, and the execution witness when the payload is valid.",
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV7(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, InclusionListV1[]? inclusionLists);

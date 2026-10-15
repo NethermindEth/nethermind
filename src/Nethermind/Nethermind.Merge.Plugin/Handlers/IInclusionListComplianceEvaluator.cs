@@ -22,6 +22,6 @@ public interface IInclusionListComplianceEvaluator
     /// <returns><c>null</c> when the block, state, or execution gas dimensions needed to judge compliance are unavailable.</returns>
     bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions);
 
-    /// <summary>Evaluates the counted lists, each with its EIP-8288 dependency proof checked by the configured verifier.</summary>
+    /// <summary>Evaluates the counted lists, each binding its dependency-bearing entries only under a non-null EIP-8288 commitment.</summary>
     bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1> lists);
 }

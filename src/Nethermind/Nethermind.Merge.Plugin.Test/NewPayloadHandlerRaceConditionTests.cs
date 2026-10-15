@@ -822,7 +822,6 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             senderRecovery ?? new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
             specProvider ?? Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
-            LimboLogs.Instance,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            LimboLogs.Instance);
     }
 }

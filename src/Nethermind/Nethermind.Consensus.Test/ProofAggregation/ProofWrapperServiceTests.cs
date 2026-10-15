@@ -1016,8 +1016,9 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // EIPs#12475: a list without dependencies carries a null commitment, so no proof, empty or not, makes a valid package.
     [Test]
-    public async Task Empty_inclusion_list_dependencies_accept_an_empty_proof_without_the_verifier([Values] bool emptyProof)
+    public async Task Empty_inclusion_list_dependencies_admit_no_proof_without_the_verifier([Values] bool emptyProof)
     {
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         byte[] package = InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
@@ -1035,8 +1036,9 @@ public class ProofWrapperServiceTests
         ProofWrapperAcceptance result = await service.AcceptInclusionListDetailedAsync(package);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.HasValidProof, Is.EqualTo(emptyProof), result.Result.Error);
-            Assert.That(published, Has.Count.EqualTo(emptyProof ? 1 : 0), "a valid empty-proof package is reported validated");
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Invalid));
+            Assert.That(result.Result.Error, Is.EqualTo(InclusionListProofValidator.EmptyDependencies));
+            Assert.That(published, Is.Empty);
             Assert.That(verifier.VerificationCalls, Is.Zero);
         }
     }

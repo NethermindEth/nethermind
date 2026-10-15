@@ -25,11 +25,11 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [TestCase("missing-proof")]
-    [TestCase("bad-proof")]
-    [TestCase("wrong-commitment")]
-    // EIPs#12475: a malformed entry or a proof whose emptiness disagrees with its deps_hash also only voids that list's
-    // dependency-bearing obligations instead of failing the request.
+    // EIPs#12475: a list's proof never affects block validity. A null commitment obligates no dependency-bearing entry; a
+    // committed list obligates it whether or not its proof verifies, and this entry, lacking a payment frame, is never
+    // appendable, so every scenario is satisfied. A malformed entry or unusable proof is scoped to its list, not the request.
+    [TestCase("null-commitment")]
+    [TestCase("unverifiable-proof")]
     [TestCase("empty-proof")]
     [TestCase("empty-transaction")]
     public async Task NewPayload_bad_inclusion_proof_does_not_invalidate_the_block(string scenario)
@@ -40,9 +40,8 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 parent = chain.BlockTree.HeadHash!;
         Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
-        InclusionListV1[] lists = [InclusionList(3, transaction, scenario is "missing-proof" or "empty-transaction" ? null
-            : new RecursiveStarkV1 { StarkProof = scenario == "empty-proof" ? [] : [2], DepsHash = scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash) })];
+        InclusionListV1[] lists = [InclusionList(3, transaction, scenario is "null-commitment" or "empty-transaction" ? null
+            : scenario == "empty-proof" ? [] : [2])];
         if (scenario == "empty-transaction") lists[0].Transactions = [.. lists[0].Transactions!, []];
         PayloadAttributes attributes = BuildPerListPayloadAttributes(lists);
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV6(new(parent, Keccak.Zero, parent), attributes);
@@ -117,7 +116,7 @@ public partial class EngineModuleTests
         }
     }
 
-    // The execution-apis style InclusionListV1 wire form: committeeIndex, transactions and recursiveStark {starkProof, depsHash}.
+    // The execution-apis style InclusionListV1 wire form: committeeIndex, transactions and starkProof (null for a null commitment).
     [TestCase("0xf", "VALID")]
     [TestCase("0x10", "-32602")]
     public async Task NewPayloadV7_reads_inclusion_lists_from_json(string committeeIndex, string expected)
@@ -131,8 +130,7 @@ public partial class EngineModuleTests
         GetPayloadV6Result produced = (await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!))).Data!;
         Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
         string encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
-        string depsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue))).ToString();
-        string lists = $$$"""[{"committeeIndex":"{{{committeeIndex}}}","transactions":["{{{encoded}}}"],"recursiveStark":{"starkProof":"0x02","depsHash":"{{{depsHash}}}"}}]""";
+        string lists = $$$"""[{"committeeIndex":"{{{committeeIndex}}}","transactions":["{{{encoded}}}"],"starkProof":"0x02"}]""";
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV7",
             JsonDocument.Parse(chain.JsonSerializer.Serialize(produced.ExecutionPayload)).RootElement,
@@ -188,11 +186,8 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV2> imported = await rpc.engine_newPayloadV7(produced.ExecutionPayload, [], Keccak.Zero, produced.ExecutionRequests, []);
         Assert.That(imported.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
-        RecursiveStarkV1? proof = scenario == "missing-proof" ? null : new()
-        {
-            StarkProof = scenario == "oversized-proof" ? new byte[Eip8288Constants.MaxAggregateProofBytes + 1] : [2],
-            DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)))
-        };
+        byte[]? proof = scenario == "missing-proof" ? null
+            : scenario == "oversized-proof" ? new byte[Eip8288Constants.MaxAggregateProofBytes + 1] : [2];
         PayloadAttributes attributes = BuildPerListPayloadAttributes([InclusionList(0, transaction, proof)],
             timestamp: produced.ExecutionPayload.Timestamp + 12, slotNumber: 2);
         Hash256 head = produced.ExecutionPayload.BlockHash;
@@ -230,12 +225,75 @@ public partial class EngineModuleTests
         source.ReceivedWithAnyArgs(scenario == "valid" ? 1 : 0).Set(default!, default!, default);
     }
 
-    private static InclusionListV1 InclusionList(ulong committeeIndex, Transaction transaction, RecursiveStarkV1? proof) => new()
+    private static InclusionListV1 InclusionList(ulong committeeIndex, Transaction transaction, byte[]? proof) => new()
     {
         CommitteeIndex = committeeIndex,
         Transactions = [TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes],
-        RecursiveStark = proof
+        StarkProof = proof
     };
+
+    // EIPs#12475: attesters verify a committed list's received proof through the EL before counting the list. deps is the
+    // union over the list's statically valid entries; a null commitment has no proof to verify.
+    [TestCase("valid", PayloadStatus.Valid, null)]
+    [TestCase("wrong-deps-hash", PayloadStatus.Invalid, null)]
+    [TestCase("invalid-proof", PayloadStatus.Invalid, null)]
+    [TestCase("empty-proof", PayloadStatus.Invalid, null)]
+    [TestCase("undecodable-entry-ignored", PayloadStatus.Valid, null)]
+    [TestCase("null-proof", null, ErrorCodes.InvalidParams)]
+    [TestCase("null-deps-hash", null, ErrorCodes.InvalidParams)]
+    [TestCase("oversized-list", null, ErrorCodes.InvalidParams)]
+    public async Task VerifyInclusionListProofV1_checks_the_commitment_against_the_list(string scenario, string? expectedStatus, int? expectedError)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(InclusionProofEngineSpec(), new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddSingleton<ILeanProofVerifier>(new EngineListProofVerifier()));
+        Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+        Hash256 depsHash = new(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)));
+        byte[][] transactions = scenario switch
+        {
+            "undecodable-entry-ignored" => [encoded, [0xc0]],
+            "oversized-list" => [new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]],
+            _ => [encoded]
+        };
+        byte[]? proof = scenario switch
+        {
+            "null-proof" => null,
+            "invalid-proof" => [2],
+            "empty-proof" => [],
+            _ => [1]
+        };
+        Hash256? commitment = scenario switch
+        {
+            "wrong-deps-hash" => Keccak.Zero,
+            "null-deps-hash" => null,
+            _ => depsHash
+        };
+
+        ResultWrapper<InclusionListProofStatusV1> result = chain.EngineRpcModule.engine_verifyInclusionListProofV1(transactions, commitment!, proof!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (expectedError is { } code)
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+                Assert.That(result.ErrorCode, Is.EqualTo(code));
+            }
+            else
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+                Assert.That(result.Data.Status, Is.EqualTo(expectedStatus));
+                Assert.That(result.Data.ValidationError is null, Is.EqualTo(expectedStatus == PayloadStatus.Valid));
+            }
+        }
+    }
+
+    [Test]
+    public async Task VerifyInclusionListProofV1_is_refused_without_eip8288()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        ResultWrapper<InclusionListProofStatusV1> result = chain.EngineRpcModule.engine_verifyInclusionListProofV1([], Keccak.Zero, [1]);
+        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+    }
 
     private PayloadAttributes BuildPerListPayloadAttributes(InclusionListV1[] lists, ulong? timestamp = null, ulong slotNumber = 1)
     {

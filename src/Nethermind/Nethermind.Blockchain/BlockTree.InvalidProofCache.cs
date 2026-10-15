@@ -78,14 +78,14 @@ public partial class BlockTree
         public static long ProofBytes(Block block)
         {
             long bytes = block.StarkProof?.Length ?? 0;
-            foreach (CommitteeInclusionList list in block.InclusionLists ?? []) bytes += list.Proof?.StarkProof.Length ?? 0;
+            foreach (CommitteeInclusionList list in block.InclusionLists ?? []) bytes += list.StarkProof?.Length ?? 0;
             return bytes;
         }
 
         private static bool HasOversizedListProof(Block block)
         {
             foreach (CommitteeInclusionList list in block.InclusionLists ?? [])
-                if ((list.Proof?.StarkProof.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes) return true;
+                if ((list.StarkProof?.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes) return true;
             return false;
         }
 
@@ -93,12 +93,10 @@ public partial class BlockTree
         {
             if (lists is null) return null;
             CommitteeInclusionList[] copy = new CommitteeInclusionList[lists.Count];
-            for (int i = 0; i < copy.Length; i++) copy[i] = new(lists[i].CommitteeIndex, lists[i].Transactions, Copy(lists[i].Proof));
+            for (int i = 0; i < copy.Length; i++)
+                copy[i] = new(lists[i].CommitteeIndex, lists[i].Transactions, (byte[]?)lists[i].StarkProof?.Clone());
             return copy;
         }
-
-        private static RecursiveStark? Copy(RecursiveStark? proof) => proof is null ? null :
-            new RecursiveStark((byte[])proof.StarkProof.Clone(), proof.BlockDepsHash);
 
         private static Block Snapshot(Block block)
         {
