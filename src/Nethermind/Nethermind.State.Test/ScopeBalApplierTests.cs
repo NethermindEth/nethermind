@@ -30,6 +30,7 @@ public class ScopeBalApplierTests
         int activeAtParentDispose = -1;
         int[]? disposedAtParent = null;
         int[] disposed = new int[count];
+        InvalidOperationException writeFailure = new("storage write failed");
         IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider.IWorldStateWriteBatch parent = Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>();
         scope.StartWriteBatch(count).Returns(parent);
@@ -56,7 +57,7 @@ public class ScopeBalApplierTests
                 try
                 {
                     Thread.Yield();
-                    if (index == failingIndex) throw new InvalidOperationException("storage write failed");
+                    if (index == failingIndex) throw writeFailure;
                 }
                 finally { Interlocked.Decrement(ref active); }
             });
@@ -83,8 +84,8 @@ public class ScopeBalApplierTests
         parent.Received(1).Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(failure!.ToString(), Does.Contain("storage write failed"));
-            if (disposalAlsoFails) Assert.That(failure.ToString(), Does.Contain("storage dispose failed"));
+            // A secondary disposal failure must not replace or wrap the original, so callers can still catch its type.
+            Assert.That(failure, Is.SameAs(writeFailure));
             Assert.That(ownerViolations, Is.Zero);
             Assert.That(activeAtParentDispose, Is.Zero, "all workers must have joined before parent disposal");
             Assert.That(disposedAtParent, Is.All.EqualTo(1), "every staged batch must be disposed before its parent");
