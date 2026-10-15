@@ -9,7 +9,8 @@
 # an unaligned source. This aligns the destination, then moves 64-bit words, merging a misaligned source
 # from the aligned words that hold it. SP1 rejects misaligned loads and stores, so every access is either a
 # byte or an aligned doubleword; reading a whole aligned word that holds a needed byte never reaches past
-# the source's last word.
+# the source's last word. __wrap_memmove relies on this copying forward and reading each source word before
+# storing over it.
     .option norvc
     .text
     .globl __wrap_memcpy
