@@ -15,6 +15,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
@@ -136,7 +137,7 @@ namespace Nethermind.Consensus.Processing
 
                 if (spec.IsEip8288Enabled && Eip8288Dependencies.RecursiveStarkGas(currentTx) != 0)
                 {
-                    List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx);
+                    List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx, FrameTxSigHash.ComputeValue);
                     BlockToProduce? producing = block as BlockToProduce;
                     LeanProofBudget budget = producing?.LeanProofBudget ?? new();
                     List<FrameDependency> missing = budget.Missing(required);

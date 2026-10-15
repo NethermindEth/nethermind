@@ -367,14 +367,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (entry.Full is null)
             {
                 hashes[i] = entry.Hash!;
-                if (ResolvePending(entry.Hash!) is { } pending) admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(pending));
+                if (ResolvePending(entry.Hash!) is { } pending) admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(pending, FrameTxSigHash.ComputeValue));
                 else firstError ??= MempoolWrapperValidator.UnknownTransaction;
                 continue;
             }
             if (entry.Full.Hash is { } existingHash && txPool.TryGetPendingTransaction(existingHash.ValueHash256, out _))
             {
                 hashes[i] = existingHash;
-                admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(entry.Full));
+                admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(entry.Full, FrameTxSigHash.ComputeValue));
                 continue;
             }
             Hash256 hash = entry.Full.Hash!;
@@ -387,7 +387,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             AcceptTxResult result = txPool.SubmitTx(entry.Full, TxHandlingOptions.PersistentBroadcast);
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
-            else admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(entry.Full));
+            else admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(entry.Full, FrameTxSigHash.ComputeValue));
         }
         return Task.FromResult(firstError is null ? Result<Hash256[]>.Success(hashes) : Result<Hash256[]>.Fail(firstError));
     }
@@ -453,7 +453,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (transactions.Count == LeanProofStore.MaxWrapperTransactions) break;
             Transaction transaction = candidates[candidateIndex];
             if (!transaction.SupportsFrames) continue;
-            List<FrameDependency> transactionDeps = Eip8288Dependencies.ForTransaction(transaction);
+            List<FrameDependency> transactionDeps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
             if (transactionDeps.Count == 0) continue;
             int encodedLength = Rlp.LengthOf(transaction.Hash);
             if (encodedLength > MaxWrapperTransactionBytes) continue;

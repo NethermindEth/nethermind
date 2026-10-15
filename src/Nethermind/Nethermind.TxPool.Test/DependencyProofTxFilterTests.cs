@@ -6,6 +6,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
@@ -18,7 +19,7 @@ public class DependencyProofTxFilterTests
     [Test]
     public void Sender_quota_rejection_releases_filter_leases_and_can_be_retried_after_removal()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency a = Dependency("a"), b = Dependency("b"), c = Dependency("c");
         byte[] proof = new byte[5 * 1024 * 1024];
         store.AddVerified([a], null, proof);

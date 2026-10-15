@@ -24,6 +24,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
@@ -34,10 +35,39 @@ namespace Nethermind.Blockchain.Test;
 public class Eip8288BlockProductionTests
 {
     [Test]
+    public async Task Zero_dependency_hash_requires_the_transaction_statement_through_pool_and_block_production()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency raw = new(Eip8288Constants.LeanSphincsScheme, default, TestItem.KeccakA.ValueHash256);
+        Transaction transaction = CreateTransaction(chain, raw, [UInt256.Zero]);
+        FrameDependency resolved = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)[0];
+        byte[] encoded = TxDecoder.Instance.Encode(transaction).Bytes;
+        proofs.AddVerified([raw], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.MissingDependencyProof));
+        proofs.AddVerified([resolved], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        Block? block = await chain.BlockProducer.BuildBlock();
+
+        Assert.That(block, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Transactions, Is.EqualTo((Transaction[])[transaction]));
+            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([resolved]))));
+            Assert.That(block.Header.RecursiveStark.BlockDepsHash, Is.Not.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([raw]))));
+            Assert.That(block.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([resolved]).ToByteArray()));
+            Assert.That(Eip8288Dependencies.ParseFrame(transaction.Frames![1]).Single(), Is.EqualTo(raw));
+            Assert.That(TxDecoder.Instance.Encode(transaction).Bytes, Is.EqualTo(encoded));
+        }
+    }
+
+    [Test]
     public async Task Background_aggregate_is_reused_by_fresh_production_scopes([Values] bool mixed)
     {
         CountingVerifier verifier = new();
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency firstDependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("background-first"), default);
         FrameDependency secondDependency = new(mixed ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme,
@@ -67,7 +97,7 @@ public class Eip8288BlockProductionTests
         {
             Assert.That(processed!.Transactions, Has.Length.EqualTo(2));
             Assert.That(processed.Header.RecursiveStark!.BlockDepsHash,
-                Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(processed))));
+                Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(processed, FrameTxSigHash.ComputeValue))));
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a fresh production scope shares the prepared statement");
         }
     }
@@ -76,7 +106,7 @@ public class Eip8288BlockProductionTests
     public async Task Rejected_optional_cache_proof_is_replaced_from_selected_witnesses()
     {
         CountingVerifier verifier = new();
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("rejected-cache"), default);
         Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
@@ -88,7 +118,7 @@ public class Eip8288BlockProductionTests
 
         Assert.That(block, Is.Not.Null);
         Assert.That(block!.Transactions, Has.Length.EqualTo(1));
-        ValueHash256 hash = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        ValueHash256 hash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
         Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, block.StarkProof), Is.True);
         Assert.That(verifier.ProofCalls, Is.EqualTo(1), "a rejected optional cache entry cannot stall fresh proving");
         Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
@@ -225,12 +255,12 @@ public class Eip8288BlockProductionTests
     public async Task Improvement_passes_reuse_verified_proofs_and_changed_dependency_sets_replace_the_cache()
     {
         CountingVerifier verifier = new();
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance))
             .AddSingleton<ILeanProofVerifier>(verifier)
             .AddSingleton(proofs));
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         TxFrame[] frames =
         [
             FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
@@ -265,7 +295,7 @@ public class Eip8288BlockProductionTests
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
             Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(2));
             Assert.That(second.StarkProof,
-                Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(second).ToByteArray()));
+                Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(second, FrameTxSigHash.ComputeValue).ToByteArray()));
         }
 
         Block? empty = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
@@ -367,7 +397,7 @@ public class Eip8288BlockProductionTests
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("detached"), default);
         proofs.AddVerified([dependency], [[1]], null);
@@ -463,7 +493,7 @@ public class Eip8288BlockProductionTests
     [Test]
     public async Task Pool_membership_pins_witnesses_through_flood_replacement_and_removal()
     {
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(new CountingVerifier(), proofs);
         FrameDependency a = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending-a"), default);
         FrameDependency b = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending-b"), default);
@@ -511,7 +541,7 @@ public class Eip8288BlockProductionTests
     {
         using CancellationTokenSource cancellation = new();
         CountingVerifier verifier = new() { OnProof = cancellation.Cancel };
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("cancelled"), default);
         proofs.AddVerified([dependency], [[1]], null);
@@ -533,8 +563,8 @@ public class Eip8288BlockProductionTests
     public async Task Plain_producing_blocks_skip_uncovered_transactions_before_execution()
     {
         CountingVerifier verifier = new();
-        using BasicTestBlockchain chain = await CreateChain(verifier, new LeanProofStore());
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        using BasicTestBlockchain chain = await CreateChain(verifier, new LeanProofStore(FrameTxSigHash.ComputeValue));
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
         Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
         Assert.That(template, Is.Not.Null);
@@ -543,7 +573,7 @@ public class Eip8288BlockProductionTests
         Block? processed = environment.ChainProcessor.Process(plain, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
         Assert.That(processed, Is.Not.Null);
         Assert.That(processed!.Transactions, Is.Empty);
-        Assert.That(Eip8288Dependencies.ForBlock(processed), Is.Empty);
+        Assert.That(Eip8288Dependencies.ForBlock(processed, FrameTxSigHash.ComputeValue), Is.Empty);
         Assert.That(processed.StarkProof, Is.Empty);
     }
 
@@ -551,7 +581,7 @@ public class Eip8288BlockProductionTests
     public async Task Owned_inclusion_list_witnesses_produce_when_the_shared_store_is_full()
     {
         CountingVerifier verifier = new();
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         byte[] witness = new byte[64 * 1024 - Eip8288Constants.DependencyTripleLength];
         for (int i = 0; i < 1024; i++)
@@ -584,7 +614,7 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(processed!.Transactions, Is.EqualTo((Transaction[])[transaction]));
-            Assert.That(Eip8288Dependencies.ForBlock(processed), Is.EqualTo((FrameDependency[])[dependency]));
+            Assert.That(Eip8288Dependencies.ForBlock(processed, FrameTxSigHash.ComputeValue), Is.EqualTo((FrameDependency[])[dependency]));
             Assert.That(processed.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency]))));
             Assert.That(processed.StarkProof, Is.EqualTo(producing.InclusionListProofInput!.RecursiveProofs[0].Proof.ToArray()));
             Assert.That(verifier.ProofCalls, Is.EqualTo(proofCallsBefore), "the unchanged verified IL statement needs no new proof");
@@ -597,9 +627,9 @@ public class Eip8288BlockProductionTests
     public async Task Proof_wrappers_preserve_independent_keyed_nonce_domains_through_production()
     {
         CountingVerifier verifier = new();
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction first = CreateTransaction(chain, dependency, [1, 7]);
         Transaction independent = CreateTransaction(chain, dependency, [9]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
@@ -625,7 +655,7 @@ public class Eip8288BlockProductionTests
     public async Task Proof_wrappers_enforce_recent_root_commitments_and_execution_slot_age(bool matchingRoot, ulong slot, int included)
     {
         CountingVerifier verifier = new();
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         ValueHash256 sourceId = RecentRootStore.SourceId(TestItem.AddressD, TestItem.KeccakA.ValueHash256);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs, builder =>
@@ -638,7 +668,7 @@ public class Eip8288BlockProductionTests
                     .PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done, spec.GenesisSpec);
                 state.RecalculateStateRoot();
             })));
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero],
             [new(sourceId, 0, matchingRoot ? root : TestItem.KeccakC.ValueHash256)],
             new(FrameMode.Sender, FrameFlags.None, TestItem.AddressD, executionGasLimit: 100_000, stateGasLimit: GasCostOf.SSetState, UInt256.Zero, default),
@@ -667,7 +697,7 @@ public class Eip8288BlockProductionTests
     public async Task Expired_recent_roots_are_rejected_before_native_wrapper_verification()
     {
         CountingVerifier verifier = new();
-        LeanProofStore proofs = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         ValueHash256 source = TestItem.KeccakA.ValueHash256;
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs, builder =>
@@ -677,7 +707,7 @@ public class Eip8288BlockProductionTests
                 state.Set(RecentRootStore.ReferenceCell(source, 0), RecentRootStore.EntryHash(source, 0, root).ToUInt256());
             })));
         await ProduceAndImport(chain, 8191);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero], [new(source, 0, root)]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
         Result<Hash256[]> accepted = await AcceptWrapper(service, EncodeWrapper(dependency, transaction), transaction);

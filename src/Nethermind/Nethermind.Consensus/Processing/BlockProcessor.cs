@@ -29,6 +29,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
@@ -211,7 +212,7 @@ public partial class BlockProcessor(
         if (spec.IsEip8288Enabled && options.ContainsFlag(ProcessingOptions.ProducingBlock))
         {
             token.ThrowIfCancellationRequested();
-            List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block);
+            List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
             (ValueHash256, ValueHash256) key = (depsHash, new ValueHash256(Eip8288Constants.AggregatedVk));
             byte[] proof;

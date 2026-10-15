@@ -655,11 +655,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 bool isDeployFrame = OpensDeployPrefix(frames, i);
                 if (frame.Mode == FrameMode.DepVerify)
                 {
-                    verifyGasUsed += frame.ExecutionGasLimit;
-                    if (verifyGasUsed > Eip8141Constants.MaxVerifyGas)
-                    {
-                        return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
-                    }
+                    // EIP-8288 declarations stay paid but perform no EVM verification work.
                     frameContext.CurrentFrameIndex = i;
                     frameContext.MarkFrameSucceeded(i);
                     frameContext.RecordFrameReceipt(i, frame.ExecutionGasLimit, 0);

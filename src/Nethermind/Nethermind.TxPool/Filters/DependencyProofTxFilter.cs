@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -16,7 +17,7 @@ internal sealed class DependencyProofTxFilter(LeanProofStore? proofStore) : IInc
         {
             if (!FrameTxValidation.IsWellFormed(tx, state.HeadSpec, out string? error))
                 return AcceptTxResult.Invalid.WithMessage(error!);
-            List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(tx);
+            List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue);
             state.ProofDependencies = dependencies;
             (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(dependencies);
             if (sphincs > Eip8288Constants.MaxSigsPerTx || stark > Eip8288Constants.MaxStarksPerTx)

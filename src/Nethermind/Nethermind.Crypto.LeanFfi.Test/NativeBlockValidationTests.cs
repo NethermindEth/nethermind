@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -51,7 +52,7 @@ public class NativeBlockValidationTests
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
         // The native backend proves the empty set as the EIP-8288 empty stark_proof; the former 12-byte envelope is rejected.
         byte[] proof = oldEnvelope
             ? [(byte)'N', (byte)'L', (byte)'R', (byte)'3', 0, 0, 0, 0, 0, 0, 0, 0]
@@ -81,7 +82,7 @@ public class NativeBlockValidationTests
         transaction.Hash = transaction.CalculateHash();
         Block block = Build.A.Block.WithParent(parent).WithTransactions(transaction).TestObject;
 
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
         byte[] proof = NativeLeanProofVerifierTests.MixedProof();
         if (tamper) proof[^1] ^= 0xFF;
         block.StarkProof = proof;

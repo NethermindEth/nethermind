@@ -37,7 +37,7 @@ public class InclusionListProofPackageTests
     {
         FakeLeanProofVerifier verifier = new(true);
         Transaction transaction = DepTx(Eip8288Constants.LeanSphincsScheme);
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
         Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _), Is.True);
         Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _), Is.True);
@@ -53,7 +53,7 @@ public class InclusionListProofPackageTests
         FakeLeanProofVerifier backend = new(valid);
         InclusionListProofVerifier verifier = new(backend);
         Transaction transaction = DepTx(Eip8288Constants.LeanSphincsScheme);
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
         for (int check = 0; check < 4; check++)
             Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _), Is.EqualTo(valid));
@@ -124,8 +124,8 @@ public class InclusionListProofPackageTests
         Transaction other = ValidDependencyFrame(ValueKeccak.Compute("other"));
         if (scenario == "malformed") other.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[1])];
         // The proof must commit to dependencies(transactions) exactly; "uncovered" proves only the first entry's.
-        List<FrameDependency> proven = Eip8288Dependencies.Canonicalize([.. Eip8288Dependencies.ForTransaction(covered),
-            .. scenario == "uncovered" ? [] : Eip8288Dependencies.ForTransaction(other)]);
+        List<FrameDependency> proven = Eip8288Dependencies.Canonicalize([.. Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue),
+            .. scenario == "uncovered" ? [] : Eip8288Dependencies.ForTransaction(other, FrameTxSigHash.ComputeValue)]);
         RecursiveStark? proof = scenario == "missing-proof" ? null : new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(proven)));
         FakeLeanProofVerifier verifier = new(scenario != "invalid-proof");
 
@@ -149,8 +149,8 @@ public class InclusionListProofPackageTests
         Transaction ordinary = new() { Hash = Keccak.Compute("ordinary") };
         Transaction shared = ValidDependencyFrame(ValueKeccak.Compute("shared"));
         Transaction onlyInvalid = ValidDependencyFrame(ValueKeccak.Compute("only-invalid"));
-        List<FrameDependency> sharedDeps = Eip8288Dependencies.ForTransaction(shared);
-        List<FrameDependency> invalidDeps = Eip8288Dependencies.Canonicalize([.. sharedDeps, .. Eip8288Dependencies.ForTransaction(onlyInvalid)]);
+        List<FrameDependency> sharedDeps = Eip8288Dependencies.ForTransaction(shared, FrameTxSigHash.ComputeValue);
+        List<FrameDependency> invalidDeps = Eip8288Dependencies.Canonicalize([.. sharedDeps, .. Eip8288Dependencies.ForTransaction(onlyInvalid, FrameTxSigHash.ComputeValue)]);
         RecursiveStark invalidProof = new([2], new Hash256(Eip8288Dependencies.ComputeDepsHash(invalidDeps)));
         RecursiveStark validProof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(sharedDeps)));
         ProofBytesVerifier verifier = new(valid: [1]);
@@ -227,7 +227,7 @@ public class InclusionListProofPackageTests
     {
         List<Transaction> txs = [DepTx(Eip8288Constants.LeanSphincsScheme), DepTx(Eip8288Constants.LeanStarkScheme)];
         List<FrameDependency> deps = [];
-        foreach (Transaction tx in txs) deps.AddRange(Eip8288Dependencies.ForTransaction(tx));
+        foreach (Transaction tx in txs) deps.AddRange(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue));
 
         InclusionListProofPackage focil = new()
         {
@@ -244,7 +244,7 @@ public class InclusionListProofPackageTests
     public void Rejects_deps_hash_mismatch(string scenario)
     {
         Transaction transaction = DepTx(Eip8288Constants.LeanSphincsScheme);
-        List<FrameDependency> superset = [.. Eip8288Dependencies.ForTransaction(transaction), .. Eip8288Dependencies.ForTransaction(DepTx(Eip8288Constants.LeanStarkScheme))];
+        List<FrameDependency> superset = [.. Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue), .. Eip8288Dependencies.ForTransaction(DepTx(Eip8288Constants.LeanStarkScheme), FrameTxSigHash.ComputeValue)];
         FakeLeanProofVerifier verifier = new(true);
         InclusionListProofPackage focil = new()
         {

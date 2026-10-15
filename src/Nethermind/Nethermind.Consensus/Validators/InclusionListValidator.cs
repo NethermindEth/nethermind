@@ -13,6 +13,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;
@@ -76,7 +77,7 @@ public static class InclusionListValidator
         }
 
         // EIP-8288: only block capacity over the final dependency union excuses an omission; local proving bounds do not.
-        HashSet<FrameDependency> dependencies = spec.IsEip8288Enabled ? [.. Eip8288Dependencies.ForBlock(block)] : [];
+        HashSet<FrameDependency> dependencies = spec.IsEip8288Enabled ? [.. Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue)] : [];
         LeanProofCapacity.AppendBudget capacity = LeanProofCapacity.CreateAppendBudget(dependencies, LeanProofCapacity.Block);
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
@@ -85,7 +86,7 @@ public static class InclusionListValidator
             if (il[i].SupportsFrames)
             {
                 if (!spec.IsEip8288Enabled || !CouldIncludeFrameTx(il[i], block, spec, txValidator)) continue;
-                List<FrameDependency> appended = Eip8288Dependencies.ForTransaction(il[i]);
+                List<FrameDependency> appended = Eip8288Dependencies.ForTransaction(il[i], FrameTxSigHash.ComputeValue);
                 if (capacity.CapacityError(appended) is null
                     && (frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
                 continue;

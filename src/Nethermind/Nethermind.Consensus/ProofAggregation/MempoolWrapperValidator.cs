@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
@@ -75,7 +76,7 @@ public static class MempoolWrapperValidator
                 return false;
             }
             // Per-transaction limits apply in both modes: a larger aggregate does not admit an individually inadmissible transaction.
-            List<FrameDependency> transactionDeps = Eip8288Dependencies.Canonicalize(Eip8288Dependencies.ForTransaction(transaction));
+            List<FrameDependency> transactionDeps = Eip8288Dependencies.Canonicalize(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
             (int transactionSphincs, int transactionStark) = Eip8288Dependencies.CountByScheme(transactionDeps);
             if (transactionSphincs > Eip8288Constants.MaxSigsPerTx || transactionStark > Eip8288Constants.MaxStarksPerTx)
             {
