@@ -63,7 +63,7 @@ public enum GossipDropReason
     UnknownBlock,
 
     /// <summary>A payload attestation from a peer that sent a vote for its slot that fork choice rejected.</summary>
-    PayloadAttestationVerifiesSpent,
+    PayloadAttestationPeerRejected,
 }
 
 /// <summary>
@@ -1092,7 +1092,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
             if (source is not null && slot.RejectedPeers.Contains(source))
             {
-                return Verdict.Ignore(GossipDropReason.PayloadAttestationVerifiesSpent);
+                return Verdict.Ignore(GossipDropReason.PayloadAttestationPeerRejected);
             }
 
             if (!slot.Pairs.TryGet((source, vote.ValidatorIndex), out PayloadAttestationPair? pair))

@@ -101,8 +101,10 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(honest, Is.All.EqualTo(MessageValidity.Ignored));
         Assert.That(verified.Where(static vote => vote.Signature!.Bytes[0] == honestSeed).Select(static vote => vote.ValidatorIndex), Is.EquivalentTo(Enumerable.Range(0, ptcSize).Select(static member => (ulong)member)),
             "every PTC member's honest vote is verified after the floods");
-        Assert.That(verified.Count(static vote => vote.Signature!.Bytes[0] != honestSeed), Is.LessThanOrEqualTo(BeaconSyncOrchestrator.VotesPerPass),
-            "a forger's rejected vote stops the verification of its other votes for the slot");
+        Assert.That(verified.Count(static vote => vote.Signature!.Bytes[0] != honestSeed), Is.EqualTo(forgers.Length),
+            "a forger's first rejected vote stops the verification of its other votes for the slot");
+        Assert.That(router.GetDropCount(GossipDropReason.PayloadAttestationPeerRejected), Is.EqualTo((long)forgers.Length * ptcSize * (GossipRouter.PayloadAttestationVerifyAttempts - 1)),
+            "a forger's votes after the rejection are not raised");
 
         static PeerId NewPeer() => new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
 
