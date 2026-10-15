@@ -17,6 +17,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -505,6 +506,14 @@ public partial class EngineModuleTests
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
         IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
         Assert.That(badBlockStore.GetAll().Single().Number, Is.EqualTo(blockNumber));
+
+        // paris.md: latestValidHash names a fully validated ancestor or is null; the unknown parent is neither.
+        ResultWrapper<PayloadStatusV1> resent = await rpc.engine_newPayloadV1(payload);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resent.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(resent.Data.LatestValidHash, Is.Null);
+        }
     }
 
     [Test]
@@ -539,6 +548,18 @@ public partial class EngineModuleTests
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
         IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
         Assert.That(badBlockStore.GetAll().Single().Number, Is.EqualTo(childNumber));
+
+        // paris.md: latestValidHash names a fully validated ancestor or is null; the parent was never executed.
+        ResultWrapper<PayloadStatusV1> resent = await rpc.engine_newPayloadV1(childPayload);
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoice = await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(childPayload.BlockHash, Keccak.Zero, Keccak.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resent.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(resent.Data.LatestValidHash, Is.Null);
+            Assert.That(forkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(forkchoice.Data.PayloadStatus.LatestValidHash, Is.Null);
+        }
     }
 
     [Test]
@@ -560,6 +581,8 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
+        // A post-merge executed parent: genesis is a terminal block and would be reported as the zero hash.
+        await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
         getPayloadResult.ReceiptsRoot = TestItem.KeccakA;
         Block? block = getPayloadResult.TryGetBlock().Data;
@@ -568,6 +591,73 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
         Assert.That(chain.BlockFinder.SearchForBlock(new BlockParameter(getPayloadResult.BlockHash)).IsError, Is.True);
+
+        // paris.md: the executed parent is the most recent fully validated ancestor, on the first answer and on a re-send.
+        ResultWrapper<PayloadStatusV1> resent = await rpc.engine_newPayloadV1(getPayloadResult);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executePayloadResult.Data.LatestValidHash, Is.EqualTo(getPayloadResult.ParentHash));
+            Assert.That(resent.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(resent.Data.LatestValidHash, Is.EqualTo(getPayloadResult.ParentHash));
+        }
+    }
+
+    [Test]
+    public async Task executePayloadV1_invalid_branch_reports_parent_validated_in_the_same_branch()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        ExecutionPayload head = ExecutionPayload.Create(chain.BlockTree.Head!);
+        ExecutionPayload[] payloads = await CreateBlockRequestBranch(chain, head, Address.Zero, 2);
+        payloads[1].ReceiptsRoot = TestItem.KeccakA;
+        Block parent = payloads[0].TryGetBlock().Data!;
+        Block invalid = payloads[1].TryGetBlock().Data!;
+        payloads[1].BlockHash = invalid.Header.Hash = invalid.Header.CalculateHash();
+        chain.BlockTree.Insert(parent, BlockTreeInsertBlockOptions.SaveHeader);
+        chain.BlockTree.Insert(invalid, BlockTreeInsertBlockOptions.SaveHeader);
+        bool parentProcessed = false;
+        chain.BranchProcessor.BlockProcessed += (_, args) => parentProcessed |= args.Block.Hash == parent.Hash;
+
+        Assert.That(() => chain.BranchProcessor.Process(chain.BlockTree.Head!.Header, [parent, invalid],
+            ProcessingOptions.EthereumMerge, NullBlockTracer.Instance),
+            Throws.InstanceOf<Nethermind.Core.Exceptions.InvalidBlockException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parentProcessed, Is.True);
+            Assert.That(chain.BlockTree.GetInfo(parent.Number, parent.Hash!).Info!.WasProcessed, Is.False);
+        }
+
+        ResultWrapper<PayloadStatusV1> resent = await chain.EngineRpcModule.engine_newPayloadV1(payloads[1]);
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoice = await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(payloads[1].BlockHash, Keccak.Zero, Keccak.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resent.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(resent.Data.LatestValidHash, Is.EqualTo(parent.Hash));
+            Assert.That(forkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(forkchoice.Data.PayloadStatus.LatestValidHash, Is.EqualTo(parent.Hash));
+        }
+    }
+
+    [Test]
+    public async Task processed_block_without_consensus_validation_is_not_a_validated_parent(
+        [Values(ProcessingOptions.NoValidation, ProcessingOptions.ReadOnlyChain)] ProcessingOptions options)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        ExecutionPayload head = ExecutionPayload.Create(chain.BlockTree.Head!);
+        ExecutionPayload[] payloads = await CreateBlockRequestBranch(chain, head, Address.Zero, 1);
+        Block parent = payloads[0].TryGetBlock().Data!;
+        chain.BlockTree.Insert(parent, BlockTreeInsertBlockOptions.SaveHeader);
+
+        chain.BranchProcessor.Process(chain.BlockTree.Head!.Header, [parent], options, NullBlockTracer.Instance);
+        IInvalidChainTracker tracker = chain.Container.Resolve<IInvalidChainTracker>();
+        tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.GetInfo(parent.Number, parent.Hash!).Info!.WasProcessed, Is.False);
+            Assert.That(tracker.IsOnKnownInvalidChain(TestItem.KeccakA, out Hash256? lastValidHash), Is.True);
+            Assert.That(lastValidHash, Is.Null);
+        }
     }
 
     [Test]
