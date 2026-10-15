@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -38,9 +39,9 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
 
     private static byte[] BuildBody()
     {
-        string supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered, SszRestJsonContext.Default.IReadOnlyListString);
-        string forkScopedEndpointsJson = JsonSerializer.Serialize(ForkScopedEndpointNames(), SszRestJsonContext.Default.IReadOnlyListString);
-        string blobVersionsJson = JsonSerializer.Serialize(BlobVersionNames(), SszRestJsonContext.Default.IReadOnlyListString);
+        string supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered, SszRestJsonContext.Default.IEnumerableString);
+        string forkScopedEndpointsJson = JsonSerializer.Serialize(ForkScopedEndpointNames(), SszRestJsonContext.Default.IEnumerableString);
+        string blobVersionsJson = JsonSerializer.Serialize(BlobVersionNames(), SszRestJsonContext.Default.IEnumerableString);
 
         return Encoding.UTF8.GetBytes(
             $"{{\"supported_forks\":{supportedForksJson}," +
@@ -54,13 +55,11 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
     }
 
     // The spec advertises POST bodies/hash and GET bodies together as one "bodies" family.
-    private static string[] ForkScopedEndpointNames() =>
-    [
-        .. SszRestPaths.ForkScopedEndpoints
+    private static IEnumerable<string> ForkScopedEndpointNames() =>
+        SszRestPaths.ForkScopedEndpoints
             .Select(static endpoint => endpoint.Resource is SszRestPaths.PayloadBodiesByHash ? SszRestPaths.PayloadBodiesByRange : endpoint.Resource)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-    ];
+            .Distinct(StringComparer.OrdinalIgnoreCase);
 
-    private static string[] BlobVersionNames() =>
-        [.. Enumerable.Range(EngineApiVersions.GetBlobs.V1, EngineApiVersions.GetBlobs.Latest - EngineApiVersions.GetBlobs.V1 + 1).Select(static version => $"v{version}")];
+    private static IEnumerable<string> BlobVersionNames() =>
+        Enumerable.Range(EngineApiVersions.GetBlobs.V1, EngineApiVersions.GetBlobs.Latest - EngineApiVersions.GetBlobs.V1 + 1).Select(static version => $"v{version}");
 }
