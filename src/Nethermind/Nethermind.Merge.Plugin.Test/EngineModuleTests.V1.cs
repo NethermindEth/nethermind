@@ -3167,11 +3167,17 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task Should_return_ClientVersionV1()
+    public async Task Should_return_ClientVersionV1([Values] bool callerVersionGiven)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ResultWrapper<ClientVersionV1[]> result = rpcModule.engine_getClientVersionV1(default);
+        ClientVersionV1 callerVersion = callerVersionGiven
+            ? new() { Code = "LH", Name = "Lighthouse", Version = "v7.0.0", Commit = "deadbeef" }
+            : default;
+
+        ResultWrapper<ClientVersionV1[]> result = rpcModule.engine_getClientVersionV1(callerVersion);
+
+        // identification.md: a single execution client answers with exactly one entry; the caller's is not echoed.
         Assert.That(result.Data, Is.EqualTo([new ClientVersionV1()]));
     }
 
