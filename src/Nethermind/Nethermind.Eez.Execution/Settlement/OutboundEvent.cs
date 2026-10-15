@@ -21,7 +21,9 @@ public readonly record struct OutboundEvent(int TransactionIndex, int LogIndex, 
     private const int Head = 4 * Word;
 
     /// <summary>Every EEZL2 log with the event's signature, in transaction and log order.</summary>
-    public static OutboundEvent[] Observe(IReadOnlyList<TxReceipt> receipts)
+    public static OutboundEvent[] Observe(IReadOnlyList<TxReceipt> receipts) => Observe(receipts, EezConstants.Eezl2Address);
+
+    internal static OutboundEvent[] Observe(IReadOnlyList<TxReceipt> receipts, Address manager)
     {
         List<OutboundEvent> events = [];
         for (int transactionIndex = 0; transactionIndex < receipts.Count; transactionIndex++)
@@ -30,7 +32,7 @@ public readonly record struct OutboundEvent(int TransactionIndex, int LogIndex, 
             for (int logIndex = 0; logs is not null && logIndex < logs.Length; logIndex++)
             {
                 LogEntry log = logs[logIndex];
-                if (log.Address == EezConstants.Eezl2Address && log.Topics is [{ } topic, ..] && topic == Signature)
+                if (log.Address == manager && log.Topics is [{ } topic, ..] && topic == Signature)
                 {
                     events.Add(Decode(transactionIndex, logIndex, log));
                 }

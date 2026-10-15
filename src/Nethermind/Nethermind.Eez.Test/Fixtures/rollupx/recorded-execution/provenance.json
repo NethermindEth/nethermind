@@ -1,0 +1,23 @@
+{
+  "repository": "eez-association/eez-rollupX",
+  "revision": "759ae5f5cbf87c16b52cedfecc05aae737e90a87",
+  "purpose": "Recorded execution and operations checks only; not streaming conformance or L1 authority",
+  "files": {
+    "baseline-lookup.json": {
+      "length": 1177868,
+      "sha256": "65720c4bc32b6469601c0f43703fe2463c69c94badd97943b9087e64bd829005"
+    },
+    "native-osaka-lookup.genesis.json": {
+      "length": 37012,
+      "sha256": "10b72a11c4e94374a6e20c0d159a5b2552849b96cfdf2101e2e31b587b7a378d"
+    },
+    "baseline-static.json": {
+      "length": 1252470,
+      "sha256": "218cff8b2cf9e5e7a2459300e2d5efc6c94e31a60d639cd638651a02242a1f1e"
+    },
+    "native-osaka-changing-static.genesis.json": {
+      "length": 37012,
+      "sha256": "e7a2c74b31ea2ede9605adcd7663b50a49b8f006be2cc67dfc3c295aad3a4802"
+    }
+  }
+}
