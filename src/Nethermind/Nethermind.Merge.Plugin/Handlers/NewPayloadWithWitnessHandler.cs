@@ -36,7 +36,9 @@ public sealed class NewPayloadWithWitnessHandler(
     IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>
 {
     /// <summary>Consensus clients resend payloads they already sent (e.g. after a restart), so recent witnesses are kept to answer those without re-executing.</summary>
-    private const int RecentWitnessCount = 8;
+    /// <remarks>Each cached witness keeps its node and code bytes alive (tens of MB for a large mainnet block), and a resend is
+    /// almost always for the head or one of the last few blocks, so the count stays small.</remarks>
+    private const int RecentWitnessCount = 4;
 
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<NewPayloadWithWitnessHandler>();
     private readonly LruCache<Hash256, Witness> _recentWitnesses = new(RecentWitnessCount, nameof(NewPayloadWithWitnessHandler));

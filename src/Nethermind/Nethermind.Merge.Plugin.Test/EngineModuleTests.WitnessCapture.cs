@@ -610,6 +610,7 @@ public partial class EngineModuleTests
             Assert.That(generated!.State.ToArray(), Is.EqualTo(captured!.State.ToArray()));
             Assert.That(generated.Codes.ToArray(), Is.EqualTo(captured.Codes.ToArray()));
             Assert.That(generated.Headers.ToArray(), Is.EqualTo(captured.Headers.ToArray()));
+            Assert.That(generated.Keys.ToArray(), Is.EqualTo(captured.Keys.ToArray()));
         }
     }
 
