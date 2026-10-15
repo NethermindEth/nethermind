@@ -26,6 +26,12 @@ public interface IGCStrategy
     /// entry with <see cref="NoGcRegionMode.Guard"/>, or 0 for the default (<see cref="GCKeeper.DefaultGuardSlack"/>).
     /// </summary>
     long NoGCRegionGuardBytes { get; }
+    /// <summary>
+    /// Gets whether a re-arm with <see cref="NoGcRegionMode.Guard"/> reserves only the large object heap's budget,
+    /// leaving gen0's budget as the post-block collection set it; a payload's own entry and the re-commit after a
+    /// decommit are unchanged.
+    /// </summary>
+    bool NoGCRegionRearmLohOnly { get; }
     /// <summary>Returns ordinary collection settings; NoGC disables scheduling and a due decommit overrides these settings.</summary>
     (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams();
 }

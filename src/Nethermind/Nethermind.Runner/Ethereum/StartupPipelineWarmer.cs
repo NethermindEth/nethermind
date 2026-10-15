@@ -247,6 +247,7 @@ internal static class StartupPipelineWarmer
                 PrioritizeBlockLatency = mergeConfig.PrioritizeBlockLatency,
                 NoGcRegionOnNewPayload = mergeConfig.NoGcRegionOnNewPayload,
                 NoGcRegionGuardMb = mergeConfig.NoGcRegionGuardMb,
+                NoGcRegionRearmLohOnly = mergeConfig.NoGcRegionRearmLohOnly,
                 CollectionsPerDecommit = mergeConfig.CollectionsPerDecommit,
                 SweepMemory = mergeConfig.SweepMemory,
                 CompactMemory = mergeConfig.CompactMemory,

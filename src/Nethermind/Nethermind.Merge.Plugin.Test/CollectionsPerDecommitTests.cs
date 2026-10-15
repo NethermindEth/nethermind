@@ -49,6 +49,27 @@ public class CollectionsPerDecommitTests
         }
     }
 
+    [TestCase(null, false)]
+    [TestCase("false", false)]
+    [TestCase("true", true)]
+    public void No_gc_region_rearm_loh_only_is_off_by_default_and_binds(string? value, bool expected)
+    {
+        ConfigProvider configProvider = new();
+        Dictionary<string, string> args = [];
+        if (value is not null) args["Merge.NoGcRegionRearmLohOnly"] = value;
+        configProvider.AddSource(new ArgsConfigSource(args));
+
+        IMergeConfig mergeConfig = configProvider.GetConfig<IMergeConfig>();
+        NoSyncGcRegionStrategy strategy = new(Substitute.For<ISyncModeSelector>(), mergeConfig);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mergeConfig.NoGcRegionRearmLohOnly, Is.EqualTo(expected));
+            Assert.That(strategy.NoGCRegionRearmLohOnly, Is.EqualTo(expected));
+            Assert.That(NoGCStrategy.Instance.NoGCRegionRearmLohOnly, Is.False);
+        }
+    }
+
     [Test]
     public void Negative_sentinel_binds_without_overflow()
     {

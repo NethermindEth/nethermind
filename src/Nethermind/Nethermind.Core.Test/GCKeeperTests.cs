@@ -539,12 +539,13 @@ public class GCKeeperTests
     private const long Mb = 1_000_000;
 
     /// <param name="level">NoGC keeps post-block collections, which run on their own, out of tests that drive them by hand.</param>
-    private static IGCStrategy ModeStrategy(NoGcRegionMode mode, long guardBytes = 0, GcLevel level = GcLevel.NoGC, int collectionsPerDecommit = -1)
+    private static IGCStrategy ModeStrategy(NoGcRegionMode mode, long guardBytes = 0, GcLevel level = GcLevel.NoGC, int collectionsPerDecommit = -1, bool rearmLohOnly = false)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
         strategy.NoGCRegionMode.Returns(mode);
         strategy.NoGCRegionGuardBytes.Returns(guardBytes);
+        strategy.NoGCRegionRearmLohOnly.Returns(rearmLohOnly);
         strategy.GetForcedGCParams().Returns((level, GcCompaction.No));
         strategy.CollectionsPerDecommit.Returns(collectionsPerDecommit);
         return strategy;
@@ -648,7 +649,46 @@ public class GCKeeperTests
         }
     }
 
-    public enum RearmCost { Fast, Slow, Collected, CollectingEntry }
+    // A re-arm that also reserves gen0's budget sets it above what the post-block collection chose, on every heap; with
+    // the switch the re-arm reserves the large object heap's budget only, and every other entry stays as it was.
+    [Test]
+    public async Task Rearm_reserves_only_the_loh_budget_when_switched_on([Values] bool lohOnly, [Values] bool afterDecommit)
+    {
+        RegionRuntime runtime = new();
+        ManualTime time = new();
+        List<IThreadPoolWorkItem> queued = [];
+        IGCStrategy strategy = ModeStrategy(NoGcRegionMode.Guard, collectionsPerDecommit: afterDecommit ? 0 : -1, rearmLohOnly: lohOnly);
+        using GCKeeper keeper = CreateModeKeeper(strategy, runtime, queued, time);
+        long rearms = Interlocked.Read(ref Metrics.NoGcRegionRearms);
+        long recommits = Interlocked.Read(ref Metrics.NoGcRegionRecommits);
+
+        // The payload enters a region of its own: nothing is armed yet.
+        using (keeper.TryStartNoGCRegion()) queued[^1].Execute();
+        time.Advance(TimeSpan.FromSeconds(1));
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        await keeper.ScheduleGCInternal(throttle: false);
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+
+        (long, long) full = (512 * Mb + 64 * Mb, 64 * Mb);
+        (long, long) throwaway = lohOnly && !afterDecommit ? (64 * Mb, 64 * Mb) : full;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.StartSizes, Is.EqualTo(new[] { full, throwaway }), "the payload's entry, then the throwaway one");
+            Assert.That(runtime.IsActive, Is.False);
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionRearms) - rearms, Is.EqualTo(afterDecommit ? 0 : 1));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionRecommits) - recommits, Is.EqualTo(afterDecommit ? 1 : 0));
+        }
+
+        // The next payload skips its entry while armed, and enters one as before once a collection disarms it.
+        int entries = queued.Count;
+        keeper.TryStartNoGCRegion().Dispose();
+        Assert.That(queued, Has.Count.EqualTo(entries), "armed: no entry");
+        runtime.RunGC();
+        using (keeper.TryStartNoGCRegion()) queued[^1].Execute();
+        Assert.That(runtime.StartSizes[^1], Is.EqualTo(full), "a payload's own entry keeps its full budget");
+    }
+
+    public enum RearmCost { Fast, Slow, Collected, CollectingEntry, BackgroundWait, BackgroundWaitAndCollected }
 
     [Test]
     public async Task Slow_or_collecting_rearm_pauses_rearms_for_25_payloads([Values] RearmCost cost)
@@ -663,24 +703,33 @@ public class GCKeeperTests
         runtime.BeforeStart = () =>
         {
             runtime.BeforeStart = null;
-            // 10 ms is not slow yet.
-            time.Advance(TimeSpan.FromMilliseconds(10) + TimeSpan.FromTicks(cost == RearmCost.Slow ? 1 : 0));
+            // 10 ms is not slow yet; waiting for a background collection already running takes long, but is not slow.
+            time.Advance(cost is RearmCost.BackgroundWait or RearmCost.BackgroundWaitAndCollected
+                ? TimeSpan.FromMilliseconds(200)
+                : TimeSpan.FromMilliseconds(10) + TimeSpan.FromTicks(cost == RearmCost.Slow ? 1 : 0));
         };
         runtime.AfterStart = () =>
         {
             runtime.AfterStart = null;
+            if (cost is RearmCost.BackgroundWait or RearmCost.BackgroundWaitAndCollected) runtime.EndBackgroundGC();
             // An entry that has to make room collects first: the index moves, and the count only once, as for any entry.
-            if (cost is RearmCost.Collected or RearmCost.CollectingEntry) runtime.RunGC(moveCount: cost == RearmCost.Collected);
+            if (cost is RearmCost.Collected or RearmCost.CollectingEntry or RearmCost.BackgroundWaitAndCollected)
+            {
+                runtime.RunGC(moveCount: cost != RearmCost.CollectingEntry);
+            }
         };
         long rearms = Interlocked.Read(ref Metrics.NoGcRegionRearms);
         long backoffs = Interlocked.Read(ref Metrics.NoGcRegionRearmBackoffs);
-        bool backsOff = cost != RearmCost.Fast;
+        long backgroundWaits = Interlocked.Read(ref Metrics.NoGcRegionRearmBackgroundWaits);
+        bool backsOff = cost is not (RearmCost.Fast or RearmCost.BackgroundWait);
 
         await Block(keeper, strategy, runtime, time);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Interlocked.Read(ref Metrics.NoGcRegionRearms) - rearms, Is.EqualTo(1));
             Assert.That(Interlocked.Read(ref Metrics.NoGcRegionRearmBackoffs) - backoffs, Is.EqualTo(backsOff ? 1 : 0));
+            // A collection that starts during the wait is the runtime's own, and the wait is then not told apart.
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionRearmBackgroundWaits) - backgroundWaits, Is.EqualTo(cost == RearmCost.BackgroundWait ? 1 : 0));
             logger.Received(backsOff ? 1 : 0).Info(Arg.Is<string>(message => message.StartsWith("No-GC region re-arm took")));
         }
 
@@ -955,6 +1004,15 @@ public class GCKeeperTests
         public int CollectionCount { get; private set; }
         public long AllocatedBytes { get; set; }
         public long LastGcIndex { get; private set; }
+        public long LastBackgroundGcIndex { get; private set; }
+        /// <summary>Every entry's (totalSize, lohSize), in order.</summary>
+        public List<(long TotalSize, long LohSize)> StartSizes { get; } = [];
+        /// <summary>A background collection that was already running ends: the index moves, the count moved when it started.</summary>
+        public void EndBackgroundGC()
+        {
+            LastBackgroundGcIndex++;
+            LastGcIndex++;
+        }
         /// <summary>A collection the runtime runs: moves the count and the index, or one of them to model when each is updated.</summary>
         public void RunGC(bool moveCount = true, bool moveIndex = true)
         {
@@ -975,6 +1033,7 @@ public class GCKeeperTests
         {
             BeforeStart?.Invoke();
             Starts++;
+            StartSizes.Add((totalSize, lohSize));
             Operations.Add("start");
             if (Throw) throw new InvalidOperationException("Another no-GC region is active.");
             // An entry moves the count and leaves the index (gc.cpp, update_collection_counts_for_no_gc).

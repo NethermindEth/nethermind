@@ -29,6 +29,8 @@ namespace Nethermind.Merge.Plugin
 
         public int NoGcRegionGuardMb { get; set; }
 
+        public bool NoGcRegionRearmLohOnly { get; set; }
+
         public GcLevel SweepMemory { get; set; } = GcLevel.Gen1;
 
         public GcCompaction CompactMemory { get; set; } = GcCompaction.No;

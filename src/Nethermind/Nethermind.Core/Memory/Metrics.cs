@@ -37,6 +37,10 @@ public static class Metrics
     public static long NoGcRegionRearmsSkippedBusy;
 
     [CounterMetric]
-    [Description("Number of no-GC region re-arms that took more than 10 ms or during which the runtime collected, each pausing re-arms for the next 25 engine_newPayload calls.")]
+    [Description("Number of no-GC region re-arms that took more than 10 ms without waiting for a background collection, or during which the runtime started a collection, each pausing re-arms for the next 25 engine_newPayload calls.")]
     public static long NoGcRegionRearmBackoffs;
+
+    [CounterMetric]
+    [Description("Number of no-GC region re-arms that waited for a background collection already running when they started; neither slow nor a collection for the back-off.")]
+    public static long NoGcRegionRearmBackgroundWaits;
 }

@@ -18,6 +18,8 @@ internal interface IGcRegionRuntime
     long AllocatedBytes { get; }
     /// <summary>The index of the last collection; a region entry collects nothing and leaves it.</summary>
     long LastGcIndex { get; }
+    /// <summary>The index of the last background collection to complete; it moves when one ends, not when one starts.</summary>
+    long LastBackgroundGcIndex { get; }
 }
 
 internal sealed class GcRegionRuntime : IGcRegionRuntime
@@ -39,4 +41,7 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
 
     // Recorded only when a collection runs (gc.cpp, do_post_gc); a region entry, which collects nothing, leaves it.
     public long LastGcIndex => System.GC.GetGCMemoryInfo(GCKind.Any).Index;
+
+    // The completed one while a background collection runs (gc.cpp, get_completed_bgc_info).
+    public long LastBackgroundGcIndex => System.GC.GetGCMemoryInfo(GCKind.Background).Index;
 }

@@ -11,5 +11,6 @@ public class NoGCStrategy : IGCStrategy
     public bool CanStartNoGCRegion() => false;
     public NoGcRegionMode NoGCRegionMode => NoGcRegionMode.Never;
     public long NoGCRegionGuardBytes => 0;
+    public bool NoGCRegionRearmLohOnly => false;
     public (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams() => (GcLevel.NoGC, GcCompaction.No);
 }

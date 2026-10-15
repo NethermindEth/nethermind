@@ -18,7 +18,8 @@ public class GCKeeper : IDisposable
     // entry after every collection had to collect itself (51 ms on average at 8 concurrent calls).
     private static readonly long QuietBytesPerSecond = 8.MB;
     // A throwaway entry right after a collection on a quiet node took 0.25 ms on a mainnet node and up to 2.8 ms in a
-    // synthetic 16-heap probe; one that has to collect first is caught by the collection check, not by this bound.
+    // synthetic 16-heap probe; one that has to collect first is caught by the collection check, not by this bound,
+    // and one that waited for a background collection already running is not held to it (see Recommit).
     private static readonly TimeSpan SlowRearm = TimeSpan.FromMilliseconds(10);
     private const int RearmBackoffPayloads = 25;
     private long _payloadsSinceDecommit;
@@ -72,7 +73,8 @@ public class GCKeeper : IDisposable
     /// <remarks>
     /// A re-arm leaves the heaps about 538 MB of gen0 and 67 MB of LOH budget, so with at most this much allocated since,
     /// a block that skips its entry still has at least about 500 MB of gen0 and 35 MB of LOH budget, even if all of it
-    /// was large objects.
+    /// was large objects. A re-arm with <see cref="IGCStrategy.NoGCRegionRearmLohOnly"/> leaves gen0 the budget the
+    /// post-block collection set and only the LOH's is refreshed.
     /// </remarks>
     internal static readonly long DefaultGuardSlack = 32.MB;
 
@@ -224,12 +226,15 @@ public class GCKeeper : IDisposable
     // Counted here rather than when queued: the runtime can still decline, and the payload can end before the entry runs.
     private static void OnRegionEntered() => Interlocked.Increment(ref Metrics.NoGcRegionEntries);
 
-    private bool TryStartRuntimeRegion()
+    private bool TryStartRuntimeRegion() => TryStartRuntimeRegion(_defaultSize);
+
+    /// <param name="totalSize">The region's budget; <see cref="_lohSize"/> of it is for the large object heap, the rest for gen0.</param>
+    private bool TryStartRuntimeRegion(long totalSize)
     {
         Interlocked.Increment(ref _ownEntriesStarted);
         try
         {
-            return _runtime.TryStart(_defaultSize, _lohSize);
+            return _runtime.TryStart(totalSize, _lohSize);
         }
         finally
         {
@@ -485,6 +490,14 @@ public class GCKeeper : IDisposable
     /// Right after a collection on a quiet node a re-arm is short; under load the entry has to collect itself, so a
     /// re-arm that takes longer than <see cref="SlowRearm"/>, or during which the runtime collected,
     /// pauses re-arms for the next <see cref="RearmBackoffPayloads"/> payloads.</para>
+    /// <para>An entry waits for a background collection already running before it suspends the runtime
+    /// (dotnet/runtime v10.0.13, gc.cpp: GCHeap::GarbageCollect, background_gc_wait), so a re-arm that only waited for
+    /// one is neither slow nor a collection; <see cref="Metrics.NoGcRegionRearmBackgroundWaits"/> counts them. Its own
+    /// suspension cannot be told apart from that wait: the runtime leaves an entry's suspension out of
+    /// GC.GetTotalPauseDuration (gc.cpp: do_post_gc runs only when a collection proceeds), so wall time is all there is.</para>
+    /// <para>With <see cref="IGCStrategy.NoGCRegionRearmLohOnly"/> a re-arm reserves only the large object heap's budget,
+    /// so gen0's stays as the post-block collection set it (gc.cpp: set_soh_allocations_for_no_gc leaves gen0 alone
+    /// when the region's SOH part is 0).</para>
     /// <para>Skipped once the next payload has cancelled the pending collection, while a region is pending or active,
     /// when the strategy disallows regions or its mode is <see cref="NoGcRegionMode.Never"/>, and on shutdown. A
     /// payload admitted meanwhile queues its entry, which waits on <see cref="_runtimeLock"/> until the throwaway
@@ -504,13 +517,15 @@ public class GCKeeper : IDisposable
 
         bool slow = false;
         bool collected = false;
+        bool waitedForBackground = false;
         TimeSpan took = TimeSpan.Zero;
         try
         {
             ProcessingSample before = SampleProcessing();
             long gcIndexBefore = _runtime.LastGcIndex;
+            long backgroundIndexBefore = _runtime.LastBackgroundGcIndex;
             long startedAt = _time.GetTimestamp();
-            if (TryStartRuntimeRegion())
+            if (TryStartRuntimeRegion(rearm && _gcStrategy.NoGCRegionRearmLohOnly ? _lohSize : _defaultSize))
             {
                 // Not a payload's entry, so NoGcRegionEntries leaves it out; it moves GC.CollectionCount as any entry
                 // does, so TryStartRuntimeRegion counts it as an own entry for payloads in processing.
@@ -520,9 +535,14 @@ public class GCKeeper : IDisposable
                 took = _time.GetElapsedTime(startedAt);
                 ProcessingSample after = SampleProcessing();
                 long gcIndex = _runtime.LastGcIndex;
-                // An entry that has to make room collects first, which moves the index as any collection does.
-                collected = gcIndex != gcIndexBefore || RuntimeCollected(before, after);
-                slow = took > SlowRearm;
+                bool started = RuntimeCollected(before, after);
+                // A background collection counts when it starts: one that ended during the entry and started no count
+                // was running before it, and the entry waited for it.
+                waitedForBackground = !started && _runtime.LastBackgroundGcIndex != backgroundIndexBefore;
+                // An entry that has to make room collects first, which moves the index as any collection does; so does
+                // the background collection it waited for, which is not counted.
+                collected = started || (gcIndex != gcIndexBefore && !waitedForBackground);
+                slow = took > SlowRearm && !waitedForBackground;
                 Volatile.Write(ref _armed, new ArmedBudget(after, gcIndex));
             }
         }
@@ -539,7 +559,13 @@ public class GCKeeper : IDisposable
             _runtimeLock.Exit();
         }
 
-        if (!rearm || !(slow || collected)) return;
+        if (!rearm) return;
+        if (waitedForBackground)
+        {
+            Interlocked.Increment(ref Metrics.NoGcRegionRearmBackgroundWaits);
+            if (_logger.IsDebug) _logger.Debug($"No-GC region re-arm waited {took.TotalMilliseconds:F2} ms for a background collection already running.");
+        }
+        if (!(slow || collected)) return;
         lock (_lock) _rearmPausePayloadsLeft = RearmBackoffPayloads;
         Interlocked.Increment(ref Metrics.NoGcRegionRearmBackoffs);
         if (_logger.IsInfo) _logger.Info($"No-GC region re-arm took {took.TotalMilliseconds:F2} ms, runtime collected during it: {collected}; re-arms paused for the next {RearmBackoffPayloads} payloads.");

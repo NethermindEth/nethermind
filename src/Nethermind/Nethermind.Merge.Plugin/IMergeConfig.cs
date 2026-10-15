@@ -50,6 +50,9 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = $"The most, in MB, that may be allocated after the no-GC region's budget was re-armed for `engine_newPayload` to skip its own entry when `{nameof(NoGcRegionOnNewPayload)}` is `{nameof(NoGcRegionMode.Guard)}`. `0` uses 32 MB.", DefaultValue = "0")]
     public int NoGcRegionGuardMb { get; set; }
 
+    [ConfigItem(Description = $"Whether the re-arm after a block with `{nameof(NoGcRegionOnNewPayload)}` set to `{nameof(NoGcRegionMode.Guard)}` reserves only the large object heap's budget (64 MB), leaving gen0's budget as the post-block collection set it. A payload's own entry is unchanged.", DefaultValue = "false", HiddenFromDocs = true)]
+    public bool NoGcRegionRearmLohOnly { get; set; }
+
     [ConfigItem(Description = "The garbage collection (GC) mode between Engine API calls.", DefaultValue = nameof(GcLevel.Gen1))]
     public GcLevel SweepMemory { get; set; }
 
