@@ -500,7 +500,17 @@ public sealed class BlockImporter : IBlockImporter
             MarkFailed(blockRoot, block.Slot, e);
             // specs/bellatrix/optimistic-sync.md: the optimistic blocks after the payload latestValidHash names are invalid too.
             if (verdict.Status == ExecutionStatus.Invalid)
-                _runner.InvalidateExecutionChain(parentRoot, payloadHash: null, verdict.LatestValidHash);
+            {
+                try
+                {
+                    _runner.InvalidateExecutionChain(parentRoot, payloadHash: null, verdict.LatestValidHash);
+                }
+                catch (ProtoArrayException invalidation)
+                {
+                    // The block is dropped either way; a latest valid hash that contradicts a VALID ancestor is the execution layer's fault, not the block's.
+                    if (_logger.IsError) _logger.Error($"Execution layer reported the payload of {blockRoot} INVALID (latest valid hash {verdict.LatestValidHash}) against a VALID ancestor; ignoring the latest valid hash: {invalidation.Message}");
+                }
+            }
             return BlockImportResult.Invalid;
         }
         finally

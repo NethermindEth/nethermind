@@ -453,6 +453,20 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public void Head_step_completes_when_the_execution_verdict_contradicts_an_earlier_one([Values(PayloadStatus.Valid, PayloadStatus.Invalid)] string status)
+    {
+        Harness harness = CreateHarness();
+        HeadView head = CreateHead(TestItem.KeccakA, 103, finalizedEpoch: 3, execHash: TestItem.KeccakB);
+        harness.Importer.Head = head;
+        harness.Importer.ForkchoiceVerdictFailure = new ProtoArrayException("Valid execution payload became invalid");
+        harness.Engine.FcuResponses.Enqueue(new PayloadStatusV1 { Status = status, LatestValidHash = Hash256.Zero });
+
+        Assert.That(() => harness.Orchestrator.RunHeadStepAsync(CancellationToken.None), Throws.Nothing, "an execution layer inconsistency must not stop the driver");
+
+        Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(head.HeadRoot), "the head step went on to advertise the head");
+    }
+
+    [Test]
     public async Task Head_step_invalidates_payload_recomputes_head_and_retries_fcu_once_on_invalid([Values(PayloadStatus.Valid, PayloadStatus.Invalid)] string retryStatus)
     {
         Harness harness = CreateHarness();
@@ -1393,6 +1407,7 @@ public partial class BeaconSyncOrchestratorTests
         public List<CheckpointRef> Finalizations { get; } = [];
         public required HeadView Head { get; set; }
         public HeadView? HeadAfterInvalidation { get; set; }
+        public Exception? ForkchoiceVerdictFailure { get; set; }
         public bool ExpectedProposer { get; set; } = true;
         public int ComputeHeadCalls { get; private set; }
         public bool IsKnown(Hash256 blockRoot) => Known.Contains(blockRoot);
@@ -1502,6 +1517,8 @@ public partial class BeaconSyncOrchestratorTests
         public void OnForkchoiceUpdated(Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)
         {
             ForkchoiceVerdicts.Add((headRoot, headExecutionHash, status.Status, status.LatestValidHash));
+            if (ForkchoiceVerdictFailure is { } failure)
+                throw failure;
             if (status.Status == PayloadStatus.Invalid)
                 Head = HeadAfterInvalidation ?? Head;
         }

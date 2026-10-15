@@ -2569,7 +2569,7 @@ public sealed class BeaconSyncOrchestrator(
             if (status?.Status == PayloadStatus.Invalid)
             {
                 if (_logger.IsWarn) _logger.Warn($"Execution layer reported head {head.HeadRoot} INVALID (latest valid hash {status.LatestValidHash}); invalidating and re-running fork choice");
-                importer.OnForkchoiceUpdated(head.HeadRoot, headExec, status);
+                ApplyForkchoiceVerdict(importer, head.HeadRoot, headExec, status);
                 head = importer.ComputeHead();
                 if (head.HeadExecutionHash is { } retryExec)
                 {
@@ -2577,7 +2577,7 @@ public sealed class BeaconSyncOrchestrator(
                     status = await ForkchoiceUpdatedAsync(head, retryExec, token);
                     if (status?.Status == PayloadStatus.Invalid)
                     {
-                        importer.OnForkchoiceUpdated(head.HeadRoot, headExec, status);
+                        ApplyForkchoiceVerdict(importer, head.HeadRoot, headExec, status);
                         head = importer.ComputeHead();
                     }
                 }
@@ -2588,7 +2588,7 @@ public sealed class BeaconSyncOrchestrator(
                 // specs/bellatrix/optimistic-sync.md: a NOT_VALIDATED head and its ancestors become VALID on the engine's answer.
                 if (status.Status == PayloadStatus.Valid)
                 {
-                    importer.OnForkchoiceUpdated(head.HeadRoot, headExec, status);
+                    ApplyForkchoiceVerdict(importer, head.HeadRoot, headExec, status);
                     head = importer.ComputeHead();
                 }
 
@@ -2659,6 +2659,19 @@ public sealed class BeaconSyncOrchestrator(
         if (!GossipStarted && p2p?.LocalPeerId is not null && head.HeadSlot + GossipStartDistanceSlots >= slotClock.CurrentSlot)
         {
             StartGossip();
+        }
+    }
+
+    /// <summary>Applies the execution layer's forkchoice verdict for <paramref name="headRoot"/> to fork choice, dropping one that contradicts an earlier verdict.</summary>
+    private void ApplyForkchoiceVerdict(IBlockImporter importer, Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)
+    {
+        try
+        {
+            importer.OnForkchoiceUpdated(headRoot, headExecutionHash, status);
+        }
+        catch (ProtoArrayException e)
+        {
+            if (_logger.IsError) _logger.Error($"Execution layer reported head {headRoot} {status.Status} (latest valid hash {status.LatestValidHash}) against an earlier verdict; ignoring it: {e.Message}");
         }
     }
 

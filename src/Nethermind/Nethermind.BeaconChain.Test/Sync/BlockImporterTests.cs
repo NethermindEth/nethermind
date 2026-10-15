@@ -1110,6 +1110,27 @@ public class BlockImporterTests
         }
     }
 
+    [Test]
+    public void Invalid_new_payload_whose_latest_valid_hash_contradicts_a_valid_parent_drops_only_the_block()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x76);
+        UnsignedChain.ChainBlock child = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0x77);
+        ForkChoiceSnapshotHolder snapshots = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), forkChoiceSnapshots: snapshots,
+            engine: new ScriptedPayloadEngine(ExecutionStatus.Valid, ExecutionStatus.Invalid) { LatestValidHash = Hash256.Zero });
+        importer.OnSlotTick(child.Block.Message!.Slot);
+        Assert.That(importer.Import(parent.Block, parent.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture: the parent is VALID");
+
+        BlockImportResult result = BlockImportResult.Imported;
+        Assert.That(() => result = importer.Import(child.Block, child.Root, verifySignatures: false), Throws.Nothing, "an execution layer inconsistency must not stop the driver");
+        importer.ComputeHead();
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == parent.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Valid));
+    }
+
     [TestCase(PayloadStatus.Valid, ExecutionStatus.Valid, ExecutionStatus.Valid)]
     [TestCase(PayloadStatus.Invalid, ExecutionStatus.Optimistic, ExecutionStatus.Invalid)]
     [TestCase(PayloadStatus.Syncing, ExecutionStatus.Optimistic, ExecutionStatus.Optimistic)]
