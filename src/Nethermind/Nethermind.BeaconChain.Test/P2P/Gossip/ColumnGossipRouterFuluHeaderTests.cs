@@ -610,6 +610,28 @@ public class ColumnGossipRouterFuluHeaderTests
         Assert.That(pool.TryGet(blockRoot, Column, out _), Is.True, "the retry pools the queued sidecar");
     }
 
+    [Test]
+    public void Forged_copies_queued_by_many_peers_run_at_most_the_retry_budget_of_KZG_batches()
+    {
+        const int forgingPeers = 8;
+        int columns = ColumnGossipRouter.ParkedRetriesPerSlot / (forgingPeers * ColumnGossipRouter.KzgBatchesPerColumn) + 1;
+        ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(OtherRoot, 0) };
+        (ColumnGossipRouter router, _, _) = Create(null, subnets: AllSubnets, lookaheads: lookaheads,
+            forkChoice: new ForkChoiceSnapshotHolder { Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true) });
+        PeerId[] peers = [.. Enumerable.Range(0, forgingPeers).Select(static _ => new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId)];
+        for (ulong column = 0; column < (ulong)columns; column++)
+        {
+            DataColumnSidecar honest = Signed(BuildValidSidecar(column, CurrentSlot), signer: 0);
+            for (int copy = 0; copy < forgingPeers * ColumnGossipRouter.KzgBatchesPerColumn; copy++)
+                router.Handle(column, gloasTopic: false, Message(Altered(honest, copy)), source: peers[copy % forgingPeers]);
+        }
+
+        lookaheads.Current = Lookahead(ParentRoot, 0);
+        router.Handle(Column, gloasTopic: false, UndecodableMessage);
+
+        Assert.That(router.KzgBatchCount, Is.EqualTo(ColumnGossipRouter.ParkedRetriesPerSlot), "copies past the budget wait for a later retry");
+    }
+
     // phase0 p2p-interface.md beacon_block: the block signing root is its header root.
     [TestCase(0, 0UL, true, MessageValidity.Accepted, 1, TestName = "Fulu_block_header_that_verifies_is_accepted_at_once")]
     [TestCase(0, 1UL, true, MessageValidity.Rejected, 0, TestName = "Fulu_block_from_an_unexpected_proposer_is_rejected")]

@@ -149,6 +149,9 @@ public sealed class ColumnGossipRouter(
     /// <summary>The most (block root, index) keys one proposer_index may hold in the queue, so a single key holder cannot evict every honest column.</summary>
     internal const int ParkedColumnsPerProposer = ParkedColumnCacheSize / 2;
 
+    /// <summary>The most queued sidecars retried per slot, each retry costing at most one KZG batch that no penalty bounds.</summary>
+    internal const int ParkedRetriesPerSlot = ParkedColumnCacheSize * KzgBatchesPerColumn;
+
     /// <summary>The most distinct signed headers a (slot, proposer_index) may run KZG work under.</summary>
     /// <remarks>
     /// An honest proposer signs one header; two prove equivocation. Additional signed headers
@@ -216,6 +219,7 @@ public sealed class ColumnGossipRouter(
 
     private readonly PerSlotBudget _storeDecodes = new(StoreDecodesPerSlot);
     private readonly PerSlotBudget _parentSlotReads = new(ParentSlotReadsPerSlot);
+    private readonly PerSlotBudget _parkedRetries = new(ParkedRetriesPerSlot);
     private readonly StoredBlockSlots? _storedBlockSlots = store is null ? null : new(store, slotClock, logManager.GetClassLogger<ColumnGossipRouter>(), "beacon column gossip parent slots");
 
     // gloas/p2p-interface.md compute_max_data_column_sidecar_size: the progressive lists carry no SSZ bound of their own.
@@ -820,7 +824,7 @@ public sealed class ColumnGossipRouter(
     }
 
     /// <summary>Queues a signed sidecar whose expected proposer cannot be verified yet, keeping at most <see cref="KzgBatchesPerColumn"/> copies per (block root, index, delivering peer).</summary>
-    /// <remarks>More copies could never reach KZG, since a verified copy ends the column's KZG work and failures are bounded.</remarks>
+    /// <remarks>Copies from many peers may share a key, so their retries are charged to <see cref="ParkedRetriesPerSlot"/>.</remarks>
     private void ParkUnverifiable(DataColumnSidecar sidecar, Hash256 blockRoot)
     {
         (Hash256, ulong) key = (blockRoot, sidecar.Index);
@@ -903,6 +907,13 @@ public sealed class ColumnGossipRouter(
             {
                 foreach (DataColumnSidecar sidecar in entry.Value)
                 {
+                    // Queued again rather than dropped, so forged copies retried first cannot spend the honest copy's turn.
+                    if (!_parkedRetries.TryTake(slotClock.CurrentSlot))
+                    {
+                        ParkUnverifiable(sidecar, entry.Key.BlockRoot);
+                        continue;
+                    }
+
                     // Its message was already Ignored, so the tuple stays unmarked for any equal copy that reaches this router.
                     if (ValidateFulu(CustodyGroups.ComputeSubnetForDataColumnSidecar(sidecar.Index), sidecar) == MessageValidity.Accepted
                         && sidecar.SignedBlockHeader?.Message is { } header)
