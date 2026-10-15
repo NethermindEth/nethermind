@@ -27,7 +27,7 @@ public class SszDecoderFuzzTests
         void Decode(byte[] ssz);
     }
 
-    private sealed class Container<T>(int iterations, Action<T>? adjust = null) : ITarget where T : class, ISszCodec<T>
+    private sealed class Container<T>(int iterations, Action<T>? adjust = null) : ITarget where T : ISszCodec<T>
     {
         public int Iterations => iterations;
         public byte[][] ValidEncodings(int seed) => SszFuzzer.ValidEncodings(seed, ValidEncodingsPerSeed, adjust);

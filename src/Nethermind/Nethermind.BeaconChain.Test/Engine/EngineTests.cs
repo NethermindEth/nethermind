@@ -11,6 +11,8 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -28,6 +30,26 @@ namespace Nethermind.BeaconChain.Test.Engine;
 public class EngineTests
 {
     private static readonly Hash256 TestHash = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+
+    [Test]
+    public async Task Initial_canonical_anchor_does_not_rewind_an_execution_head_ahead_of_it()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+        Hash256 anchor = chain.BlockTree.Head!.Hash!;
+        await chain.BuildSomeBlocks(2);
+        Hash256 head = chain.BlockTree.Head!.Hash!;
+        IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
+        EngineDriver driver = new(CreateDetector(inner, out _), LimboLogs.Instance,
+            new SlotClock(TestEngineDriver.Spec, Timestamper.Default), TestEngineDriver.Spec,
+            new TestEngineDriver.FixedCustodySource(null), chain.BlockTree);
+
+        PayloadStatusV1 result = await driver.ForkchoiceUpdated(anchor, anchor, anchor);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(head));
+        Assert.That(inner.ReceivedCalls(), Is.Empty);
+    }
 
     [Test]
     public void Payload_converter_maps_fields_versioned_hashes_and_requests([Values] bool sliced)
@@ -146,6 +168,20 @@ public class EngineTests
     }
 
     [Test]
+    public async Task A_failed_external_engine_call_does_not_stand_down_the_driver()
+    {
+        IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
+        TaskCompletionSource<ResultWrapper<ForkchoiceUpdatedV1Result>> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        inner.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(completion.Task);
+        ExternalClDetector detector = CreateDetector(inner, out ExternalClInterceptingEngineRpcModule decorator);
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> call = decorator.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(TestHash, TestHash, TestHash));
+        Assert.That(detector.IsExternalClDetected, Is.False);
+        completion.SetResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("unsupported fork"));
+        await call;
+        Assert.That(detector.IsExternalClDetected, Is.False);
+    }
+
+    [Test]
     public async Task Decorator_detects_external_engine_calls_but_not_capability_queries_or_driver_calls()
     {
         IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
@@ -243,6 +279,7 @@ public class EngineTests
         Assert.That(converted.Timestamp, Is.EqualTo(1_800_000_000));
         AssertAdditionalPayloadFields(converted, payload.GasUsed, payload.ExtraData, payload.BaseFeePerGas, payload.Withdrawals![0]);
         Assert.That(converted.Transactions, Is.EqualTo(new[] { Bytes.FromHexString("0x04cafe") }));
+        Assert.That(converted.Transactions[0], Is.SameAs(payload.Transactions[0].Bytes));
         Assert.That(converted.BlobGasUsed, Is.EqualTo(262144ul));
         Assert.That(converted.ExcessBlobGas, Is.EqualTo(393216ul));
         Assert.That(converted.BlockAccessList, Is.EqualTo(Bytes.FromHexString("0xc0ffee")), "the access list bytes must reach the execution layer unchanged");
@@ -274,7 +311,6 @@ public class EngineTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(verdict, Is.EqualTo(expected));
-        Assert.That(driver.HasAnsweredNewPayload, Is.True);
         Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
         engine.Received(1).engine_newPayloadV5(
             Arg.Is<ExecutionPayloadV4>(p => p.BlockHash == TestHash && p.SlotNumber == 91ul && p.BlockAccessList!.Length == 3),
@@ -297,7 +333,6 @@ public class EngineTests
         Assert.That(() => driver.NotifyNewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas()),
             Throws.TypeOf<EngineUnavailableException>(),
             "a failed call is not a verdict; reporting it as SYNCING made the caller accept the block");
-        Assert.That(driver.HasAnsweredNewPayload, Is.True, "a failed call still drove the newPayload path");
         Assert.That(driver.IsAvailable, Is.False);
     }
 
@@ -317,12 +352,9 @@ public class EngineTests
         await driver.ForkchoiceUpdated(TestHash, TestHash, TestHash);
         Assert.That(driver.IsAvailable, Is.True);
         engine.Configure().engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(Task.FromResult(answer));
-
-        Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash));
+        await Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(driver.LastForkchoiceStatus, Is.SameAs(PayloadStatusV1.Syncing), "a failed call must not overwrite the last status");
-        Assert.That(driver.HasAnsweredNewPayload, Is.False, "forkchoiceUpdated says nothing about whether a payload was ever submitted");
         Assert.That(driver.IsAvailable, Is.False);
     }
 
@@ -347,7 +379,7 @@ public class EngineTests
         await InvokeEngine(driver, method);
         Assert.That(driver.IsAvailable, Is.True);
         ConfigureEngine(engine, synchronous ? () => throw cause : () => Task.FromException<PayloadStatusV1>(cause));
-        EngineUnavailableException? failure = Assert.ThrowsAsync<EngineUnavailableException>(() => InvokeEngine(driver, method));
+        EngineUnavailableException? failure = await Assert.ThrowsAsync<EngineUnavailableException>(() => InvokeEngine(driver, method));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(failure!.InnerException, cancellation ? Is.InstanceOf<OperationCanceledException>() : Is.SameAs(cause));
@@ -374,7 +406,7 @@ public class EngineTests
         engine.ClearReceivedCalls();
 
         if (disableOnExternalCl)
-            Assert.ThrowsAsync<OperationCanceledException>(() => InvokeEngine(driver, method));
+            await Assert.ThrowsAsync<OperationCanceledException>(() => InvokeEngine(driver, method));
         else
             await InvokeEngine(driver, method);
 
@@ -401,15 +433,15 @@ public class EngineTests
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            EngineUnavailableException? timeout = Assert.ThrowsAsync<EngineUnavailableException>(() => call.WaitAsync(TimeSpan.FromSeconds(2)));
+            EngineUnavailableException? timeout = await Assert.ThrowsAsync<EngineUnavailableException>(() => call.WaitAsync(TimeSpan.FromSeconds(2)));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(timeout!.InnerException, Is.InstanceOf<TimeoutException>());
                 Assert.That(driver.IsAvailable, Is.False);
             }
 
-            Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash).WaitAsync(TimeSpan.FromSeconds(2)));
-            Assert.ThrowsAsync<EngineUnavailableException>(() => Task.Run(() => driver.NewPayload(CreateBlock())).WaitAsync(TimeSpan.FromSeconds(2)));
+            await Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash).WaitAsync(TimeSpan.FromSeconds(2)));
+            await Assert.ThrowsAsync<EngineUnavailableException>(() => Task.Run(() => driver.NewPayload(CreateBlock())).WaitAsync(TimeSpan.FromSeconds(2)));
             Assert.That(engine.ReceivedCalls().Count(), Is.EqualTo(1));
         }
         finally

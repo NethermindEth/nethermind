@@ -71,19 +71,16 @@ public class EngineDriverForkchoiceVersionTests
             Arg.Is<PayloadAttributes?>(a => a == null),
             Arg.Is<BitArray?>(b => custody == null ? b == null : HasExactlyColumns(b, custody.CustodyColumns)));
         await inner.DidNotReceiveWithAnyArgs().engine_forkchoiceUpdatedV3(default!, default);
-        Assert.That(driver.LastForkchoiceStatus, Is.SameAs(status), "a V4 answer is the head status the caller and the status metrics read");
     }
 
     [Test]
-    public void Forkchoice_update_rejected_by_the_execution_layer_surfaces_as_unavailable()
+    public async Task Forkchoice_update_rejected_by_the_execution_layer_surfaces_as_unavailable()
     {
         (EngineDriver driver, IEngineRpcModule inner) = Create(FirstGloasSlot, DefaultCustody());
         inner.engine_forkchoiceUpdatedV4(default!, default, default)
             .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("Custody columns must be exactly 16 bytes.", ErrorCodes.InvalidParams)));
+        await Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC));
 
-        Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC));
-
-        Assert.That(driver.LastForkchoiceStatus, Is.Null);
     }
 
     [Test]

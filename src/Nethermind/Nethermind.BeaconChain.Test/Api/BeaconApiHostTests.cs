@@ -44,7 +44,6 @@ public class BeaconApiHostTests : BeaconApiFixture
         _host.StatusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero };
         _host.StatusHolder.JustifiedRoot = Hash256.Zero;
         _host.StatusHolder.ExecutionInSync = false;
-        _engine.HasAnsweredNewPayload = false;
         _engine.IsAvailable = true;
         _host.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
     }
@@ -82,22 +81,8 @@ public class BeaconApiHostTests : BeaconApiFixture
     }
 
     [Test]
-    public async Task Syncing_does_not_infer_offline_from_missing_payload_calls()
+    public async Task Syncing_reports_the_last_engine_call_availability([Values] bool available)
     {
-        HttpResponseMessage before = await _host.Client.GetAsync("/eth/v1/node/syncing");
-        JsonDocument beforeBody = await ReadJsonAsync(before);
-        Assert.That(beforeBody.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.False);
-
-        _engine.HasAnsweredNewPayload = true;
-        HttpResponseMessage after = await _host.Client.GetAsync("/eth/v1/node/syncing");
-        JsonDocument afterBody = await ReadJsonAsync(after);
-        Assert.That(afterBody.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.False);
-    }
-
-    [Test]
-    public async Task Syncing_reports_the_last_engine_call_availability([Values] bool available, [Values] bool answeredNewPayload)
-    {
-        _engine.HasAnsweredNewPayload = answeredNewPayload;
         _engine.IsAvailable = available;
         using HttpResponseMessage response = await _host.Client.GetAsync("/eth/v1/node/syncing");
         using JsonDocument body = await ReadJsonAsync(response);
@@ -438,7 +423,7 @@ public class BeaconApiHostTests : BeaconApiFixture
         await Call();
         await AssertOffline(false);
         unavailable = true;
-        Assert.ThrowsAsync<EngineUnavailableException>(async () => await Call());
+        await Assert.ThrowsAsync<EngineUnavailableException>(async () => await Call());
         await AssertOffline(true);
         unavailable = false;
         await Call();

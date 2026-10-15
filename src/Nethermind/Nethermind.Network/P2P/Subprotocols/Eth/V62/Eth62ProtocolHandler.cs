@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -14,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
@@ -29,6 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
     {
         protected bool _statusReceived;
         private readonly TxFloodController _floodController;
+        private readonly InboundTransactionBudget _transactionBudget;
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
@@ -50,6 +53,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : base(session, serializer, statsManager, syncServer, backgroundTaskScheduler, logManager)
         {
+            _transactionBudget = new(backgroundTaskScheduler);
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
@@ -152,7 +156,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     {
                         if (IsTransactionGossipAllowed())
                         {
-                            TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
+                            if (!TryDeserializeTransactions(message, out TransactionsMessage txMsg, static txMessage => txMessage))
+                                return true;
                             ReportIn(txMsg, size);
                             Handle(txMsg);
                         }
@@ -246,8 +251,54 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NotifyProtocolInitialized(eventArgs);
         }
 
+        private protected bool TryDeserializeTransactions<T>(ZeroPacket packet, [NotNullWhen(true)] out T? message, Func<T, TransactionsMessage> getTransactions, bool pooledResponse = false)
+            where T : P2PMessage
+        {
+            message = null;
+            RlpReader ctx = new(packet.Content.AsSpan());
+            if (typeof(T) == typeof(V66.Messages.PooledTransactionsMessage))
+            {
+                ctx.ReadSequenceLength();
+                ctx.DecodeLong();
+            }
+            int transactionCount = TransactionsMessageSerializer.ReadTransactionCount(ref ctx, out _);
+            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.ReadableBytes, transactionCount);
+            if (reservation is null)
+            {
+                // Locally discarded responses cannot be judged for usefulness. As with scheduler rejection,
+                // resetting both sampling windows avoids false penalties but also discards unrelated evidence.
+                if (pooledResponse)
+                    IgnorePooledTransactionResponse();
+                ReportIn("Transaction message ignored, inbound byte budget exhausted", packet.Content.ReadableBytes);
+                return false;
+            }
+
+            try
+            {
+                message = Deserialize<T>(packet.Content);
+                TransactionsMessage transactions = getTransactions(message);
+                reservation.Attach(transactions.Transactions);
+                transactions.Transactions = reservation;
+                reservation = null;
+                return true;
+            }
+            finally
+            {
+                reservation?.Dispose();
+            }
+        }
+
         protected void Handle(TransactionsMessage msg)
         {
+            // EIP-4844: blob transactions are only announced, never broadcast.
+            if (ContainsBlobTransaction(msg.Transactions.AsSpan()))
+            {
+                ReturnUnsubmittedTransactions(msg.Transactions.AsSpan());
+                msg.Transactions.Dispose();
+                Disconnect(DisconnectReason.InvalidTxOrUncle, "blob transaction in a Transactions broadcast");
+                return;
+            }
+
             // Items the pre-decode size guard skips never reach PrepareAndSubmitTransaction,
             // so report them here to charge them against the flood controller.
             for (int i = 0; i < msg.SkippedCount; i++)
@@ -256,6 +307,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             TryScheduleTransactions(msg, _handleSlow);
+        }
+
+        private static bool ContainsBlobTransaction(ReadOnlySpan<Transaction> transactions)
+        {
+            foreach (Transaction tx in transactions)
+            {
+                if (tx.CarriesBlobs) return true;
+            }
+
+            return false;
         }
 
         private protected void HandlePooledTransactions(TransactionsMessage msg)
@@ -354,6 +415,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             if (tx.Hash is not null)
             {
                 NotifiedTransactions.Set(tx.Hash.ValueHash256);
+            }
+
+            // A blob tx hash does not cover the sidecar: if a copy with a bad sidecar was rejected first, judge this
+            // copy on its own, as the sparse path does. Done before the only submission, since a rejected owned tx
+            // has its sidecar buffers returned to the pool.
+            if (tx.SupportsBlobs && tx.Hash is { } hash)
+            {
+                _txPool.ForgetInvalidBlobProofs(hash);
             }
 
             bool canRecycle = false;

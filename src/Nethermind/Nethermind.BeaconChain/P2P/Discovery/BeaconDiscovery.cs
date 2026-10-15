@@ -7,11 +7,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Autofac;
-using DotNetty.Transport.Bootstrapping;
-using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
 using Google.Protobuf;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
@@ -34,7 +30,6 @@ using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Discv5KademliaModule = Nethermind.Network.Discovery.Discv5.Kademlia.KademliaModule;
-using IChannel = DotNetty.Transport.Channels.IChannel;
 using KeyType = Nethermind.Libp2p.Core.Dto.KeyType;
 using Libp2pPublicKey = Nethermind.Libp2p.Core.Dto.PublicKey;
 
@@ -89,13 +84,13 @@ public sealed class BeaconDiscovery(
     private IKademliaAdapter? _adapter;
     private IKademlia<PublicKey, Node>? _kademlia;
     private IKademliaNodeSource? _nodeSource;
-    private NettyDiscoveryV5Handler? _handler;
+    private DiscoveryV5Transport? _transport;
 
-    private MultithreadEventLoopGroup? _group;
-    private IChannel? _channel;
+    private DiscoveryConnectionsPool? _connections;
     private CancellationTokenSource? _runCts;
     private Task _runTask = Task.CompletedTask;
     private bool _stopped;
+    private bool _allowNonRoutable;
     private Node[] _cachedNodes = [];
     internal int CachedPeerCount => _cachedNodes.Length;
 
@@ -150,31 +145,13 @@ public sealed class BeaconDiscovery(
             _runCts = CancellationTokenSource.CreateLinkedTokenSource(token);
             IIPResolver.NethermindIp ip = await ipResolver.Resolve(token);
             IPAddress? advertised = AdvertisedAddress(ip);
+            _allowNonRoutable = advertised?.IsLoopbackOrPrivateOrLinkLocal == true;
             if (advertised is null && _logger.IsWarn) _logger.Warn("No external IPv4 address is known, so the beacon chain ENR advertises no endpoint and peers cannot dial this node.");
-            NettyDiscoveryV5Handler handler = CreateDiscv5Services(advertised);
-
-            _group = new MultithreadEventLoopGroup(1);
-            Bootstrap bootstrap = new Bootstrap()
-                .Group(_group)
-                .Option(ChannelOption.Allocator, NethermindBuffers.DiscoveryAllocator)
-                .Option(ChannelOption.RcvbufAllocator, new FixedRecvByteBufAllocator(2048 * 2));
-
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            {
-                bootstrap.ChannelFactory(static () => new SocketDatagramChannel(AddressFamily.InterNetwork));
-            }
-            else
-            {
-                bootstrap.Channel<SocketDatagramChannel>();
-            }
-
-            bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(channel =>
-            {
-                handler.InitializeChannel(channel);
-                channel.Pipeline.AddLast(handler);
-            }));
-
-            _channel = await bootstrap.BindAsync(config.Discv5Port);
+            DiscoveryV5Transport transport = CreateDiscv5Services(advertised);
+            IDatagramSocket socket = _connections!.Bind(
+                static address => new UdpDatagramSocket(new Socket(address.AddressFamily, SocketType.Dgram, ProtocolType.Udp)),
+                config.Discv5Port, transport.Receive);
+            transport.BindSocket(socket);
             _runTask = RunDiscovery(_runCts.Token);
             if (_logger.IsInfo) _logger.Info($"Beacon chain discv5 listening on UDP port {config.Discv5Port}, local ENR: {LocalNodeRecord}");
         }
@@ -184,9 +161,8 @@ public sealed class BeaconDiscovery(
             _runCts = null;
             _discv5Services = null;
             _adapter = null;
-            _handler = null;
-            _channel = null;
-            _group = null;
+            _transport = null;
+            _connections = null;
             _stopped = false;
             throw;
         }
@@ -355,15 +331,10 @@ public sealed class BeaconDiscovery(
             await _adapter.DisposeAsync();
         }
 
-        _handler?.Close();
-        if (_channel is not null)
+        _transport?.Close();
+        if (_connections is not null)
         {
-            await _channel.CloseAsync();
-        }
-
-        if (_group is not null)
-        {
-            await _group.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+            await _connections.StopAsync();
         }
     }
 
@@ -390,7 +361,7 @@ public sealed class BeaconDiscovery(
         }
     }
 
-    internal static bool TryCreateCandidate(NodeRecord record, byte[] currentForkDigest, byte[]? nextForkDigest, [NotNullWhen(true)] out BeaconPeerCandidate? candidate, EnrForkId? localForkId = null, bool quicEnabled = false)
+    internal static bool TryCreateCandidate(NodeRecord record, byte[] currentForkDigest, byte[]? nextForkDigest, [NotNullWhen(true)] out BeaconPeerCandidate? candidate, EnrForkId? localForkId = null, bool allowNonRoutable = false, bool quicEnabled = false)
     {
         candidate = null;
         if (!TryGetForkId(record, out EnrForkId? forkId))
@@ -442,12 +413,17 @@ public sealed class BeaconDiscovery(
             bool found = useQuic
                 ? record.TryGetQuicEndpoint(family, out IPEndPoint? address)
                 : record.TryGetTcpEndpoint(family, out address);
-            if (!found || address is null || !IsUsableAddress(address.Address)) return;
+            if (!found || address is null || !IsDialable(address.Address, allowNonRoutable)) return;
             string ipProtocol = family == AddressFamily.InterNetwork ? "ip4" : "ip6";
             string transport = useQuic ? $"udp/{address.Port}/quic-v1" : $"tcp/{address.Port}";
             addresses.Add($"/{ipProtocol}/{address.Address}/{transport}/p2p/{peerId}");
         }
     }
+
+    private static bool IsDialable(IPAddress address, bool allowNonRoutable) =>
+        !IPAddress.Any.Equals(address) && !IPAddress.IPv6Any.Equals(address) && !IPAddress.Broadcast.Equals(address)
+        && !address.IsMulticast && !address.IsSpecialUseAddress
+        && (allowNonRoutable || !address.IsLoopbackOrPrivateOrLinkLocal);
 
     /// <summary>Derives the libp2p peer id from a compressed secp256k1 public key.</summary>
     internal static string DerivePeerId(CompressedPublicKey publicKey)
@@ -546,7 +522,7 @@ public sealed class BeaconDiscovery(
         try
         {
             (byte[] currentDigest, byte[]? nextDigest, EnrForkId localForkId) = AcceptedForkDigests();
-            return TryCreateCandidate(record, currentDigest, nextDigest, out BeaconPeerCandidate? candidate, localForkId, config.QuicPort > 0) ? SelectDialableAddress(candidate) : null;
+            return TryCreateCandidate(record, currentDigest, nextDigest, out BeaconPeerCandidate? candidate, localForkId, _allowNonRoutable, quicEnabled: config.QuicPort > 0) ? SelectDialableAddress(candidate) : null;
         }
         catch (Exception e)
         {
@@ -681,8 +657,8 @@ public sealed class BeaconDiscovery(
                 if (records.Count >= SavedPeerCapacity || record is null) return;
                 try
                 {
-                    if (!TryCreateCandidate(record, current, next, out _, quicEnabled: config.QuicPort > 0) ||
-                        !TryCreateCachedNode(record, out _)) return;
+                    if (!TryCreateCandidate(record, current, next, out _, allowNonRoutable: _allowNonRoutable, quicEnabled: config.QuicPort > 0) ||
+                        !TryCreateCachedNode(record, _allowNonRoutable, out _)) return;
                     NetworkNode saved = new(record.ToString());
                     records.TryAdd(saved.NodeId, saved);
                 }
@@ -714,8 +690,8 @@ public sealed class BeaconDiscovery(
                 {
                     if (!saved.IsEnr || saved.NodeId == ownKey || seen.Contains(saved.NodeId)) continue;
                     NodeRecord record = NodeRecord.FromEnrString(saved.Enr!.ToString());
-                    if (!TryCreateCandidate(record, current, next, out _, quicEnabled: config.QuicPort > 0) ||
-                        !TryCreateCachedNode(record, out Node? node)) continue;
+                    if (!TryCreateCandidate(record, current, next, out _, allowNonRoutable: _allowNonRoutable, quicEnabled: config.QuicPort > 0) ||
+                        !TryCreateCachedNode(record, _allowNonRoutable, out Node? node)) continue;
                     seen.Add(saved.NodeId);
                     nodes.Add(node);
                 }
@@ -732,20 +708,16 @@ public sealed class BeaconDiscovery(
         }
     }
 
-    private static bool TryCreateCachedNode(NodeRecord record, [NotNullWhen(true)] out Node? node)
+    private static bool TryCreateCachedNode(NodeRecord record, bool allowNonRoutable, [NotNullWhen(true)] out Node? node)
     {
-        if (Node.TryFromDiscoveryEnr(record, AddressFamily.InterNetwork, out node) && IsUsableAddress(node.DiscoveryAddress.Address)) return true;
-        return Node.TryFromDiscoveryEnr(record, AddressFamily.InterNetworkV6, out node) && IsUsableAddress(node.DiscoveryAddress.Address);
+        if (Node.TryFromDiscoveryEnr(record, AddressFamily.InterNetwork, out node) && IsDialable(node.DiscoveryAddress.Address, allowNonRoutable)) return true;
+        return Node.TryFromDiscoveryEnr(record, AddressFamily.InterNetworkV6, out node) && IsDialable(node.DiscoveryAddress.Address, allowNonRoutable);
     }
-
-    private static bool IsUsableAddress(IPAddress address) =>
-        !address.Equals(IPAddress.Any) && !address.Equals(IPAddress.IPv6Any) &&
-        !address.Equals(IPAddress.Broadcast) && !address.IsMulticast;
 
     /// <summary>Builds the local ENR and the private discv5 service graph, both of which need the resolved external IP.</summary>
     /// <remarks>Internal so a test can resolve the graph without binding a socket or reaching bootnodes.</remarks>
     /// <param name="externalIp">The address the ENR advertises; <c>null</c> advertises no endpoint.</param>
-    internal NettyDiscoveryV5Handler CreateDiscv5Services(IPAddress? externalIp)
+    internal DiscoveryV5Transport CreateDiscv5Services(IPAddress? externalIp)
     {
         CryptoRandom cryptoRandom = new();
         PrivateKey? nodeKey = null;
@@ -764,6 +736,7 @@ public sealed class BeaconDiscovery(
             discv5Services = new ContainerBuilder()
                 .AddModule(new Discv5KademliaModule(currentNode, CreateBootNodes()))
                 .AddSingleton<ILogManager>(logManager)
+                .AddSingleton<DiscoveryConnectionsPool, IDiscoveryConfig, NetworkListenerState>((discoveryConfig, listenerState) => new(new ILogger(new BindRetryLogger(_logger)), discoveryConfig, listenerState))
                 .AddSingleton<IDiscoveryConfig>(new DiscoveryConfig())
                 .AddSingleton<ITimestamper>(timestamper)
                 .AddSingleton<ICryptoRandom>(cryptoRandom)
@@ -774,7 +747,7 @@ public sealed class BeaconDiscovery(
                 .AddSingleton<IForkInfo>(PermissiveForkInfo.Instance)
                 // The same resolver the local ENR was built from, so the adapter advertises that one address.
                 .AddSingleton(ipResolver)
-                .AddSingleton(new NetworkListenerState(new NetworkConfig(), ipResolver, logManager))
+                .AddSingleton(new NetworkListenerState(new NetworkConfig { LocalIp = IPAddress.Any.ToString() }, new DiscoveryListenerResolver(), logManager))
                 .Build();
         }
         catch
@@ -791,8 +764,9 @@ public sealed class BeaconDiscovery(
         _adapter = discv5Services.Resolve<IKademliaAdapter>();
         _kademlia = discv5Services.Resolve<IKademlia<PublicKey, Node>>();
         _nodeSource = discv5Services.Resolve<IKademliaNodeSource>();
-        _handler = discv5Services.Resolve<NettyDiscoveryV5Handler>();
-        return _handler;
+        _connections = discv5Services.Resolve<DiscoveryConnectionsPool>();
+        _transport = discv5Services.Resolve<DiscoveryV5Transport>();
+        return _transport;
     }
 
     /// <summary>The bootnodes discovery will dial: the config override if set, otherwise the
@@ -859,6 +833,32 @@ public sealed class BeaconDiscovery(
         byte[] value = new byte[sizeof(ulong)];
         BinaryPrimitives.WriteUInt64BigEndian(value, sequence);
         store.PutMetadata(EnrSequenceMetadataKey, value);
+    }
+
+    private sealed class DiscoveryListenerResolver : IIPResolver
+    {
+        // The CL listener binds IPv4 independently of the EL listener's configured address.
+        public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Any));
+    }
+
+    internal sealed class BindRetryLogger(ILogger logger) : InterfaceLogger
+    {
+        public bool IsInfo => logger.IsInfo;
+        public bool IsWarn => logger.IsWarn;
+        public bool IsDebug => logger.IsDebug;
+        public bool IsTrace => logger.IsTrace;
+        public bool IsError => logger.IsError;
+        public void Info(string text) => logger.Info(text);
+        public void Warn(string text) => logger.Warn(text);
+        public void Debug(string text) => logger.Debug(text);
+        public void Trace(string text) => logger.Trace(text);
+        public void Error(string text, Exception? ex = null)
+        {
+            // The orchestrator reports port conflicts once per retry without a stack trace.
+            if (ex is PortInUseException && text.StartsWith("Error when establishing discovery connection on port ", StringComparison.Ordinal)) return;
+            logger.Error(text, ex);
+        }
     }
 
     private sealed class NodeKeyWrapper(PrivateKey key) : IProtectedPrivateKey

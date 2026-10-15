@@ -245,6 +245,45 @@ public class PeerBandTests
 
     public enum CeilingAdmission { SequentialDials, ConcurrentDials, StaticReconnect, InboundSession, InboundWithFaultHistory }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_peer_reporting_a_future_head_or_finalized_epoch_is_not_admitted([Values] bool finalized, CancellationToken token)
+    {
+        Node local = CreateNode();
+        Node remote = CreateNode();
+        SetMatchingStatus(local, remote);
+        if (finalized) remote.StatusHolder.CurrentStatus.FinalizedEpoch = ulong.MaxValue;
+        else remote.StatusHolder.CurrentStatus.HeadSlot = ulong.MaxValue;
+        await using PeerHostScope hosts = new(local.P2P, remote.P2P);
+        await hosts.StartAsync(token, remote.P2P, local.P2P);
+        ManualTimestamper time = new(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + AnchorSlot * Spec.SecondsPerSlot));
+        PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: time, spec: Spec);
+        Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
+        Assert.That(manager.PeerCount, Is.Zero);
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Inbound_peers_leave_capacity_for_an_outbound_connection(CancellationToken token)
+    {
+        Node local = CreateNode();
+        Node inbound = CreateNode();
+        Node extraInbound = CreateNode();
+        Node outbound = CreateNode();
+        SetMatchingStatus(local, inbound, extraInbound, outbound);
+        local.Config.TargetPeerCount = 2;
+        local.Config.MaxPeerCount = 2;
+        await using PeerHostScope hosts = new(local.P2P, inbound.P2P, extraInbound.P2P, outbound.P2P);
+        await hosts.StartAsync(token, inbound.P2P, extraInbound.P2P, outbound.P2P, local.P2P);
+        PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+        await inbound.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+        await WaitUntilAsync(() => manager.PeerCount == 1, token, "inbound peer was not admitted");
+        await PeerSessionNodes.DialToBeRefusedAsync(extraInbound.P2P, local.P2P, token);
+        Assert.That(manager.PeerCount, Is.EqualTo(1));
+        Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(outbound.P2P), token), Is.True);
+        Assert.That(manager.PeerCount, Is.EqualTo(2));
+    }
+
     [TestCase(CeilingAdmission.SequentialDials, 2)]
     [TestCase(CeilingAdmission.ConcurrentDials, 3)]
     [TestCase(CeilingAdmission.StaticReconnect, 2)]
@@ -277,9 +316,10 @@ public class PeerBandTests
                 Assert.That(admitted.Count(static accepted => accepted), Is.EqualTo(1), "only one concurrent dial may be admitted");
                 break;
             case CeilingAdmission.StaticReconnect:
-                // Static peers are exempt from trimming, so reconnect itself must reserve capacity.
-                local.Config.StaticPeers = string.Join(",", remotes.Select(remote => LoopbackAddress(remote.P2P)));
+                Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(remotes[0].P2P), token), Is.True);
+                local.Config.StaticPeers = LoopbackAddress(remotes[^1].P2P);
                 await manager.RunMaintenanceRoundAsync(token);
+                Assert.That(manager.GetBestPeers(0).Single().Id, Is.EqualTo(LoopbackAddress(remotes[^1].P2P)));
                 break;
             default:
                 Node knocking = remotes[1];
@@ -557,10 +597,11 @@ public class PeerBandTests
 
         using CancellationTokenSource shortLived = new(TimeSpan.FromMilliseconds(300));
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, shortLived.Token);
+        await
 
-        // CatchAsync, not ThrowsAsync: Task.Delay throws the derived TaskCanceledException, and
-        // ThrowsAsync requires an exact type match.
-        Assert.CatchAsync<OperationCanceledException>(async () => await peerManager.WaitForAdmissionCapacityAsync(linked.Token),
+                // CatchAsync, not ThrowsAsync: Task.Delay throws the derived TaskCanceledException, and
+                // ThrowsAsync requires an exact type match.
+                Assert.CatchAsync<OperationCanceledException>(async () => await peerManager.WaitForAdmissionCapacityAsync(linked.Token),
             "at the target watermark the wait must not return on its own");
     }
 

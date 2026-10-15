@@ -18,6 +18,8 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
 {
     internal const int MaxUpdateBytes = 16 * 1024;
     internal const int MaxPendingUpdates = 32;
+    private const ulong SyncMessageDueBps = 3_333;
+    private const ulong SyncMessageDueBpsGloas = 2_500;
     private static readonly TimeSpan ValidationTimeout = TimeSpan.FromSeconds(10);
     private readonly TimeProvider _time = time ?? TimeProvider.System;
     private readonly Nethermind.Logging.ILogger _logger = logs.GetClassLogger<LightClientGossip>();
@@ -223,7 +225,7 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
     {
         ulong slotMs = spec.SecondsPerSlot * 1000;
         ulong basisPoints = spec.GetEpoch(signatureSlot) >= spec.GloasForkEpoch
-            ? GloasTiming.SyncMessageDueBpsGloas : GloasTiming.SyncMessageDueBps;
+            ? SyncMessageDueBpsGloas : SyncMessageDueBps;
         ulong delay = slotMs * basisPoints / Presets.BasisPoints;
         long now = _time.GetUtcNow().ToUnixTimeMilliseconds();
         if (now < 0) return false;

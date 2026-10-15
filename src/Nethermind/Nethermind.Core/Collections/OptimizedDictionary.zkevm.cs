@@ -276,8 +276,9 @@ public sealed class OptimizedDictionary<TKey, TValue> : IEnumerable<KeyValuePair
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     // Hashing through a mutable reference stops the AOT compiler copying the key, and zeroing a frame for it, first.
+    // Sign-extended rather than zero-extended: RV64 holds an int that way already, and the bucket mask never reaches bit 31.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong GetHashCode(in TKey key) => (uint)Unsafe.AsRef(in key).GetHashCode();
+    private static ulong GetHashCode(in TKey key) => (ulong)Unsafe.AsRef(in key).GetHashCode();
 
     // Called by the BCL-shaped members only: in the ref accessors it costs the guest ~50K steps a block for keys that are never null.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

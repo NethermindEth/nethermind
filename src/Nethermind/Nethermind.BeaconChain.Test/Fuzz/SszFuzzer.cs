@@ -82,7 +82,7 @@ internal static class SszFuzzer
         Assert.That(failures, Is.Empty, label);
     }
 
-    public static void RoundTrip<T>(byte[] ssz) where T : class, ISszCodec<T>
+    public static void RoundTrip<T>(byte[] ssz) where T : ISszCodec<T>
     {
         T.Decode(ssz, out T value);
         byte[] encoded = T.Encode(value);
@@ -93,7 +93,7 @@ internal static class SszFuzzer
         }
     }
 
-    public static byte[][] ValidEncodings<T>(int seed, int count, Action<T>? adjust = null) where T : class, ISszCodec<T>
+    public static byte[][] ValidEncodings<T>(int seed, int count, Action<T>? adjust = null) where T : ISszCodec<T>
     {
         SszValueGenerator generator = new(new Random(seed));
         byte[][] encodings = new byte[count][];
@@ -250,7 +250,7 @@ internal sealed class SszValueGenerator(Random random)
     private const int MaxListWords = 12;
     private const int MaxBits = 70;
 
-    public T Create<T>() where T : class => (T)CreateContainer(typeof(T));
+    public T Create<T>() => (T)CreateContainer(typeof(T));
 
     private object CreateContainer(Type type)
     {

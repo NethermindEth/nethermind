@@ -73,9 +73,8 @@ internal sealed class PostStateCache(
     /// <summary>Byte offset of <c>slot</c> in a persisted state, the same in the Fulu and Gloas layouts: <c>genesis_time</c> (8) plus <c>genesis_validators_root</c> (32).</summary>
     private const int StateSlotOffset = 40;
 
-    // Two epochs of slots: an envelope arrives within its block's slot, and a payload attestation
-    // or late envelope for a block two epochs back is already outside any window the spec honors.
-    private static readonly int RetainedGloasStateCount = 2 * (int)Presets.SlotsPerEpoch;
+    // Late envelopes regenerate from the separately retained checkpoint states.
+    private const int RetainedGloasStateCount = 4;
 
     private readonly LruCache<Hash256, BeaconStateFulu> _retained = new(RetainedStateCount, nameof(PostStateCache));
     private readonly BoundaryTier<BeaconStateFulu> _retainedBoundaries = new(store, isAboveFinalized, BeaconStateFulu.Encode, nameof(PostStateCache) + "Boundaries", (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>());
@@ -269,6 +268,11 @@ internal sealed class PostStateCache(
     /// <remarks>Also releases the outgoing justified state, which was kept only until finalization moved.</remarks>
     public void PinGloas(Hash256 blockRoot, BeaconStateGloas state)
     {
+        _retained.Clear();
+        _retainedBoundaries.Clear();
+        _regenerated.Clear();
+        LineageRoot = null;
+        LineageState = null;
         _pinnedGloasRoot = blockRoot;
         _pinnedGloasState = state;
         _previousJustifiedRoot = null;

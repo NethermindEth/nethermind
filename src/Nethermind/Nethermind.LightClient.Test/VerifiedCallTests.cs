@@ -82,7 +82,7 @@ public class VerifiedCallTests
         }
         else
         {
-            RpcException? error = Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None));
+            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_sendRawTransaction", parameters, CancellationToken.None));
             Assert.That(error!.Code, Is.EqualTo(-32003));
             Assert.That(source.Broadcasts, Is.Zero);
             if (scenario is "execution-fee" or "blob-fee" or "execution-reservation" or "state-reservation")
@@ -223,13 +223,13 @@ public class VerifiedCallTests
     }
 
     [Test]
-    public void Revert_is_an_error_with_return_data([Values("eth_call", "eth_estimateGas")] string method)
+    public async Task Revert_is_an_error_with_return_data([Values("eth_call", "eth_estimateGas")] string method)
     {
         FakeSource source = new([0x60, 0x00, 0x60, 0x00, 0xfd]);
         using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
 
-        RpcException? error = Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" }), CancellationToken.None));
 
         Assert.That(error!.Code, Is.EqualTo(3));
@@ -252,13 +252,13 @@ public class VerifiedCallTests
     }
 
     [Test]
-    public void Header_must_match_the_finalized_state_root()
+    public async Task Header_must_match_the_finalized_state_root()
     {
         FakeSource source = new([0x00]) { WrongHeaderRoot = true };
         using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
 
-        RpcException? error = Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_call",
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_call",
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" }), CancellationToken.None));
 
         Assert.That(error!.Code, Is.EqualTo(-32000));
@@ -266,14 +266,14 @@ public class VerifiedCallTests
     }
 
     [Test]
-    public void Execution_rejects_unverified_selector_before_fetch([Values("eth_call", "eth_estimateGas")] string method,
+    public async Task Execution_rejects_unverified_selector_before_fetch([Values("eth_call", "eth_estimateGas")] string method,
         [Values("latest", "pending")] string selector)
     {
         FakeSource source = new([0x00]);
         using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
 
-        RpcException? error = Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, selector }), CancellationToken.None));
 
         Assert.That(error!.Code, Is.EqualTo(-32001));
@@ -320,7 +320,7 @@ public class VerifiedCallTests
         Assert.That(source.LastCanonicalAnchor, Is.EqualTo(latest));
         Assert.That(source.LastQueriedHead!.BlockHash, Is.EqualTo(source.Head.BlockHash));
         source.CanonicalHistoricalHead = new(source.Head.Slot, source.Head.Number, Keccak.Compute("replacement optimistic ancestor"), source.Head.StateRoot);
-        RpcException? orphan = Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
+        RpcException? orphan = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, new { blockHash = source.Head.BlockHash.ToString(), requireCanonical = true } }), CancellationToken.None));
         Assert.That(orphan!.Code, Is.EqualTo(-32001));
     }

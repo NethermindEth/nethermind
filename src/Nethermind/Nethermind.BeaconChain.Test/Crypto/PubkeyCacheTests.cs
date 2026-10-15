@@ -48,6 +48,34 @@ public class PubkeyCacheTests
     }
 
     [Test]
+    public void Persisted_prefix_is_loaded_and_extended([Values(0, 1, 2)] int persistedCount)
+    {
+        Validator[] validators = [.. Enumerable.Range(0, 3).Select(static i => new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(i)) })];
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        cache.Persist(store, persistedCount);
+        PubkeyCache loaded = new();
+        Assert.That(loaded.TryLoad(store, validators), Is.True);
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(loaded.Count, Is.EqualTo(validators.Length));
+        for (int i = 0; i < validators.Length; i++)
+            Assert.That(loaded.GetPublicKey(i).Compress(), Is.EqualTo(validators[i].Pubkey.Bytes.ToArray()));
+    }
+
+    [Test]
+    public void Spare_capacity_is_not_a_cached_key()
+    {
+        PubkeyCache cache = new();
+        cache.Build([new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(0)) }]);
+        Assert.That(() => cache.GetPublicKey(1), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => cache.SumPublicKeys([1], new long[Bls.P1.Sz]), Throws.TypeOf<ArgumentOutOfRangeException>());
+        cache.WarmSubgroupChecks(CancellationToken.None);
+        Assert.That(cache.HasSubgroupCheck(1), Is.False);
+    }
+
+    [Test]
     public void Build_and_extend_throw_with_index_of_a_refused_pubkey([Values("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")] string refused, [Values] bool extend)
     {
         Validator[] validators =

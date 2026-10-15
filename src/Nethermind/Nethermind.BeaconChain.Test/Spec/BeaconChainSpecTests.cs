@@ -40,21 +40,23 @@ public class BeaconChainSpecTests
 
     // Independent sources: eth-clients/hoodi config.yaml and genesis_validators_root.txt; do not derive expectations from BeaconChainSpec.
     [Test]
-    public void Hoodi_spec_matches_its_published_network_parameters() =>
-        Assert.Multiple(() =>
-        {
-            Assert.That(BeaconChainSpec.Hoodi.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
-            Assert.That(BeaconChainSpec.Hoodi.GenesisValidatorsRoot.ToString(),
-                Is.EqualTo("0x212f13fc4df078b6cb7db228f1c8307566dcecf900867401a92023d7ba99cb5f"));
-            Assert.That(BeaconChainSpec.Hoodi.GenesisTime, Is.EqualTo(1742213400ul));
-            Assert.That(BeaconChainSpec.Hoodi.SecondsPerSlot, Is.EqualTo(12ul));
-            Assert.That(BeaconChainSpec.Hoodi.SlotsPerEpoch, Is.EqualTo(32ul));
-            Assert.That(BeaconChainSpec.Hoodi.ElectraForkEpoch, Is.EqualTo(2048ul));
-            Assert.That(BeaconChainSpec.Hoodi.FuluForkEpoch, Is.EqualTo(50688ul));
-            Assert.That(BeaconChainSpec.Hoodi.MaxBlobsPerBlockElectra, Is.EqualTo(9ul));
-            Assert.That(BeaconChainSpec.Hoodi.Forks, Has.Length.EqualTo(7));
-            Assert.That(BeaconChainSpec.Hoodi.BlobSchedule, Has.Length.EqualTo(2));
-        });
+    public void Hoodi_spec_matches_its_published_network_parameters()
+    {
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(BeaconChainSpec.Hoodi.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
+        Assert.That(BeaconChainSpec.Hoodi.GenesisValidatorsRoot.ToString(),
+            Is.EqualTo("0x212f13fc4df078b6cb7db228f1c8307566dcecf900867401a92023d7ba99cb5f"));
+        Assert.That(BeaconChainSpec.Hoodi.GenesisTime, Is.EqualTo(1742213400ul));
+        Assert.That(BeaconChainSpec.Hoodi.SecondsPerSlot, Is.EqualTo(12ul));
+        Assert.That(BeaconChainSpec.Hoodi.SlotsPerEpoch, Is.EqualTo(32ul));
+        Assert.That(BeaconChainSpec.Hoodi.ElectraForkEpoch, Is.EqualTo(2048ul));
+        Assert.That(BeaconChainSpec.Hoodi.FuluForkEpoch, Is.EqualTo(50688ul));
+        Assert.That(BeaconChainSpec.Hoodi.MaxBlobsPerBlockElectra, Is.EqualTo(9ul));
+        Assert.That(BeaconChainSpec.Hoodi.GloasForkEpoch, Is.EqualTo(132352ul));
+        Assert.That(BeaconChainSpec.Hoodi.GloasForkVersion, Is.EqualTo(new byte[] { 0x80, 0, 9, 0x10 }));
+        Assert.That(BeaconChainSpec.Hoodi.Forks, Has.Length.EqualTo(8));
+        Assert.That(BeaconChainSpec.Hoodi.BlobSchedule, Has.Length.EqualTo(2));
+    }
 
     // Independent sources: eth-clients/sepolia metadata, public beacon genesis/fork_schedule, Lighthouse/Prysm config; Gloas parameters: ethereum/pm#2205 and lodestar#10119.
     [Test]
@@ -72,7 +74,7 @@ public class BeaconChainSpecTests
             Assert.That(BeaconChainSpec.Sepolia.GloasForkEpoch, Is.EqualTo(353024ul));
             Assert.That(BeaconChainSpec.Sepolia.MaxBlobsPerBlockElectra, Is.EqualTo(9ul));
             Assert.That(BeaconChainSpec.Sepolia.Forks, Has.Length.EqualTo(8),
-                "Sepolia has a confirmed Gloas entry, unlike Mainnet and Hoodi");
+                "Sepolia has a confirmed Gloas entry");
             Assert.That(BeaconChainSpec.Sepolia.BlobSchedule, Has.Length.EqualTo(2));
         });
 

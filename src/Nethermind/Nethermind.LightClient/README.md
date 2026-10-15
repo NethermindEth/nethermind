@@ -123,7 +123,7 @@ beacon QUIC v1 on UDP 9051, and execution P2P on TCP/UDP 30307. QUIC uses
 mutually authenticated TLS 1.3 and its own stream multiplexing. Signed beacon
 ENRs advertise the separate QUIC port; discovered QUIC addresses are tried
 before TCP, with TCP fallback when QUIC cannot connect. All libp2p components
-use version 1.0.3, including its recent TLS, channel, cancellation and yamux fixes.
+use version 1.0.4, including its recent TLS, channel, cancellation and yamux fixes.
 Outbound connections to public beacon and execution peers must be
 permitted. The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can

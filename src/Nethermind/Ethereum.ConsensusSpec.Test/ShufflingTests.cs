@@ -24,7 +24,7 @@ public class ShufflingTests
     public void Vector_mainnet(ShufflingCase testCase) => Execute(testCase);
     [Test]
     public void Every_preset_has_vectors_in_the_archive([Values] ConsensusPreset preset) =>
-        Assert.That(FuluDriverSupport.TestedCases<ShufflingCase>(preset, MinimalCases, MainnetCases), Is.Not.Empty);
+        Assert.That(FuluDriverSupport.TestedCases<ShufflingCase>(preset, MinimalCases, MainnetCases, crossPreset: true), Is.Not.Empty);
 
     private static void Execute(ShufflingCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("shuffling", "phase0", testCase.Preset.ToString(), testCase.VectorName, () => Run(testCase));
@@ -54,7 +54,7 @@ public class ShufflingTests
 
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset) =>
         FuluDriverSupport.RelativeCases(preset, ["phase0"], "shuffling", "mapping.yaml",
-            static (p, fork, path, name) => new ShufflingCase(p, path, name));
+            static (p, fork, path, name) => new ShufflingCase(p, path, name), crossPreset: true);
 }
 
 public readonly record struct ShufflingCase(ConsensusPreset Preset, string CasePath, string VectorName)

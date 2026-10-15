@@ -688,7 +688,7 @@ public class DeferredBlockColumnFetchTests
         await scenario.Orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
         await scenario.Orchestrator.SettleColumnFetchesAsync(token);
 
-        Assert.That(scenario.HeldRoots, Is.All.Matches<Hash256>(root => !scenario.Importer.IsKnown(root)), "no column reached the pool, so no block imports");
+        Assert.That(scenario.HeldRoots, Is.All.Matches<Hash256>(root => root is not null && !scenario.Importer.IsKnown(root)), "no column reached the pool, so no block imports");
     }
 
     [Test]
@@ -1148,7 +1148,7 @@ public class DeferredBlockColumnFetchTests
         }
 
         await stop.CancelAsync();
-        Assert.CatchAsync<OperationCanceledException>(async () => await worker);
+        await Assert.CatchAsync<OperationCanceledException>(async () => await worker);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(subscribedWhileRunning, Is.EqualTo(1));
@@ -1346,7 +1346,7 @@ public class DeferredBlockColumnFetchTests
             _columnsHeld = root => columns.All(column => pool.TryGet(root, column, out _));
         }
 
-        public bool IsKnown(Hash256 blockRoot) => _accepted.Contains(blockRoot) || inner.IsKnown(blockRoot);
+        public bool IsKnown(Hash256? blockRoot) => blockRoot is not null && (_accepted.Contains(blockRoot) || inner.IsKnown(blockRoot));
 
         public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
         {

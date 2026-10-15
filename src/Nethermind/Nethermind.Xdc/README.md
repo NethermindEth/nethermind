@@ -368,7 +368,7 @@ exactly `eth/100`, `eth/164` and `eth/165` — one per registered handler. A pee
 
 [`XdcDiscoveryApp`](Discovery/XdcDiscoveryApp.cs) overrides the default Discv4 app: XDC does not implement the
 ENR request/response messages, so [`XdcKademliaAdapter`](Discovery/XdcKademliaAdapter.cs) disables remote ENR
-refresh and [`XdcNettyDiscoveryHandler`](Discovery/XdcNettyDiscoveryHandler.cs) plus
+refresh and [`XdcDiscoveryHandler`](Discovery/XdcDiscoveryHandler.cs) plus
 [`XdcPingMsgSerializer`](Discovery/XdcPingMsgSerializer.cs) adjust wire compatibility.
 
 ---
@@ -776,8 +776,9 @@ dotnet run --project src/Nethermind/Nethermind.Runner -c release -- --config ./x
   (`xdc.json`, `xdc-testnet.json`, …), or the embedded copy is loaded instead. `--config` needs a path
   (`./file.json`); a bare name is looked up among the built-in configs.
 - `Mining.Enabled` gates both block production and the signer — without it the node follows the chain but
-  never proposes or votes. The signing key is `KeyStore.BlockAuthorAccount` from the keystore, falling back to
-  the node key, which `KeyStore.TestNodeKey` overrides with a plaintext key (dev only; it doubles as the
+  never proposes or votes. The signing key is `KeyStore.BlockAuthorAccount` from the keystore; startup fails
+  if that key cannot be loaded. When the account is unset, the node key is used, which
+  `KeyStore.TestNodeKey` overrides with a plaintext key (dev only; it doubles as the
   node's enode key). Its address has to be in the committee for the node's blocks and votes to count.
 - Per node: `Network.Bootnodes` (running a dedicated bootnode and leaving the chainspec's `nodes` array empty
   keeps the chain description free of deployment detail — `Network.StaticPeers` works instead when there is no

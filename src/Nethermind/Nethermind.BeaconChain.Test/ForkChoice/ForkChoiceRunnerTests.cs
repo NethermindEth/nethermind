@@ -250,6 +250,29 @@ public class ForkChoiceRunnerTests
     }
 
     [Test]
+    public void Checkpoint_states_expire_without_finality()
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        ForkedBeaconState? previous = null;
+        for (ulong epoch = 1; epoch <= 5; epoch++)
+        {
+            TickToSlot(runner, epoch * Presets.SlotsPerEpoch);
+            CheckpointRef checkpoint = new(epoch, chain.AnchorRoot);
+            ForkedBeaconState current = runner.GetCheckpointState(checkpoint);
+            if (previous is not null)
+                Assert.That(runner.GetCheckpointState(new CheckpointRef(epoch - 1, chain.AnchorRoot)), Is.SameAs(previous));
+            if (epoch > 2)
+            {
+                System.Reflection.FieldInfo field = typeof(ForkChoiceRunner).GetField("_checkpointStates", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+                Dictionary<CheckpointRef, ForkedBeaconState> cache = (Dictionary<CheckpointRef, ForkedBeaconState>)field.GetValue(runner)!;
+                Assert.That(cache.Keys.Count(key => key.Epoch > 0), Is.EqualTo(2));
+            }
+            previous = current;
+        }
+        Assert.That(runner.FinalizedCheckpoint.Epoch, Is.Zero);
+    }
+
+    [Test]
     public void Checkpoint_state_takes_the_first_slot_root_from_the_block_and_hashes_later_slots_through_one_incremental_hasher([Values(1, 2, 32)] int distance)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
@@ -821,7 +844,7 @@ public class ForkChoiceRunnerTests
         runner.OnAttestation(BodyVote(chain, b, targetEpoch - 1, bSkip), isFromBlock: true, verifySignature: false);
         Hash256 headBefore = runner.GetHead();
         if (invalidPayload)
-            runner.OnInvalidExecutionPayload(a.Root);
+            runner.InvalidateExecutionChain(a.Root, runner.GetExecutionBlockHash(a.Root), latestValidHash: null);
         else
             runner.OnAttesterSlashing(chain.DoubleVote(aVoters, slot: 1, a.Root, b.Root), verifySignatures: false);
         runner.GetHead();
@@ -1368,7 +1391,7 @@ public class ForkChoiceRunnerTests
         Exception refusal = Assert.Catch(() => importChild());
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(refusal, Is.TypeOf<ForkChoiceException>().With.Message.Contains("invalid execution payload"));
+            Assert.That(refusal, Is.TypeOf<ForkChoiceException>().With.Message.Contains(gloas ? "not verified" : "invalid execution payload"));
             Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
             Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(justifiedBefore));
             Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(finalizedBefore));
@@ -1542,7 +1565,7 @@ public class ForkChoiceRunnerTests
         TickToSlot(runner, 2);
         UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xc1);
         runner.OnBlock(parent.Block, parent.PostState, ExecutionStatus.Optimistic, (IReadOnlyList<DataColumnSidecar>?)null);
-        runner.OnInvalidExecutionPayload(parent.Root);
+        runner.InvalidateExecutionChain(parent.Root, runner.GetExecutionBlockHash(parent.Root), latestValidHash: null);
 
         UnsignedChain.ChainBlock child = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0xc2);
         BeaconStateFulu doctored = child.PostState.Clone();
@@ -1556,14 +1579,16 @@ public class ForkChoiceRunnerTests
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         ForkChoiceRunner runner = TickToSlot(chain.CreateRunner(), 2 * Presets.SlotsPerEpoch);
         runner.OnBlock(chain.First.Block, chain.First.PostState);
-        runner.OnInvalidExecutionPayload(chain.First.Root);
+        runner.InvalidateExecutionChain(chain.First.Root, runner.GetExecutionBlockHash(chain.First.Root), latestValidHash: null);
 
         ForkCrossingChain.ChainBlock child = chain.Voting[0];
+        SignedBeaconBlockGloas.Decode(SignedBeaconBlockGloas.Encode(child.Block), out SignedBeaconBlockGloas fullChild);
+        fullChild.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash = runner.GetExecutionBlockHash(chain.First.Root);
         BeaconStateGloas doctored = child.PostState.Clone();
         doctored.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = chain.First.Root };
         doctored.FinalizedCheckpoint = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = chain.First.Root };
         Assert.That(child.Block.Message!.Slot, Is.EqualTo(runner.CurrentSlot), "fixture bug: the child must be timely");
-        return (runner, () => runner.OnBlock(child.Block, doctored), ForkCrossingChain.ForkEpoch);
+        return (runner, () => runner.OnBlock(fullChild, doctored), ForkCrossingChain.ForkEpoch);
     }
 
     private static void ImportGloas(ForkChoiceRunner runner, ForkCrossingChain.ChainBlock block, bool replayInFuluContainer)

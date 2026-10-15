@@ -35,7 +35,11 @@ public class BeaconDiscoveryTests
         occupied.ExclusiveAddressUse = true;
         occupied.Bind(new IPEndPoint(IPAddress.Any, 0));
         int port = ((IPEndPoint)occupied.LocalEndPoint!).Port;
-        await using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { Discv5Port = port, Bootnodes = " " }).Build();
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        logger.IsError.Returns(true);
+        CaptureLogManager logs = new(logger);
+        await using IContainer container = BeaconChainTestContainer.Builder(logManager: logs, config: new BeaconChainConfig { Discv5Port = port, Bootnodes = " " }).Build();
         BeaconDiscovery discovery = container.Resolve<BeaconDiscovery>();
         BeaconSyncOrchestrator orchestrator = container.Resolve<BeaconSyncOrchestrator>();
         orchestrator.ComponentStartRetryDelay = TimeSpan.Zero;
@@ -59,6 +63,8 @@ public class BeaconDiscoveryTests
         }, timeout.Token);
 
         Assert.That(attempts, Is.EqualTo(2));
+        logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Any<Exception?>());
+        logger.Received(1).Warn(Arg.Is<string>(message => message.StartsWith("Beacon networking startup failed:") && !message.Contains('\n')));
         Assert.That(failedRecord, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
@@ -66,6 +72,49 @@ public class BeaconDiscoveryTests
             Assert.That(discovery.LocalNodeRecord.EnrSequence, Is.GreaterThan(failedRecord.EnrSequence));
         }
         await discovery.Stop();
+        using Socket rebound = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        rebound.ExclusiveAddressUse = true;
+        Assert.DoesNotThrow(() => rebound.Bind(new IPEndPoint(IPAddress.Any, port)));
+    }
+
+    [Test]
+    public async Task Discovery_binds_ipv4_independently_of_the_execution_listener(
+        [Values("0.0.0.0", "::", "::1", "127.0.0.1")] string localAddress)
+    {
+        using Socket reservation = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        reservation.Bind(new IPEndPoint(IPAddress.Any, 0));
+        int port = ((IPEndPoint)reservation.LocalEndPoint!).Port;
+        reservation.Close();
+        IIPResolver resolver = Substitute.For<IIPResolver>();
+        resolver.Resolve(Arg.Any<CancellationToken>()).Returns(ValueTask.FromResult(
+            new IIPResolver.NethermindIp(IPAddress.Parse(localAddress), PublicIp)));
+        ContainerBuilder builder = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { Discv5Port = port, Bootnodes = " " });
+        builder.AddSingleton(resolver);
+        await using IContainer container = builder.Build();
+        BeaconDiscovery discovery = container.Resolve<BeaconDiscovery>();
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(20));
+        await discovery.Start(timeout.Token);
+
+        using Socket competing = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        competing.ExclusiveAddressUse = true;
+        Assert.Throws<SocketException>(() => competing.Bind(new IPEndPoint(IPAddress.Any, port)));
+        await discovery.Stop();
+    }
+
+    [Test]
+    public void Bind_retry_logging_preserves_unrelated_errors([Values] bool portConflict, [Values] bool binding)
+    {
+        TestErrorLogManager logs = new();
+        BeaconDiscovery.BindRetryLogger logger = new(logs.GetClassLogger<BeaconDiscovery>());
+        Exception error = portConflict ? new PortInUseException(new SocketException(), 9000) : new InvalidOperationException();
+        logger.Error(binding ? "Error when establishing discovery connection on port 9000" : "Exception when processing discovery messages", error);
+        Assert.That(logs.Errors.Count, Is.EqualTo(portConflict && binding ? 0 : 1));
+    }
+
+    private sealed class CaptureLogManager(InterfaceLogger logger) : ILogManager
+    {
+        public ILogger GetClassLogger<T>() => new(logger);
+        public ILogger GetLogger(string loggerName) => new(logger);
     }
 
     private static readonly IPAddress PublicIp = IPAddress.Parse("8.8.8.8");
@@ -370,6 +419,30 @@ public class BeaconDiscoveryTests
     }
 
     [Test]
+    public void Discovery_does_not_dial_private_ipv6_addresses([Values("::1", "fd00::1", "fe80::1", "::", "ff02::1")] string address,
+        [Values] bool primaryIsPublic, [Values] bool quicEnabled)
+    {
+        NodeRecord record = new();
+        if (primaryIsPublic)
+        {
+            record.SetEntry(new IpEntry(PublicIp));
+            record.SetEntry(new TcpEntry(9000));
+            if (quicEnabled) record.SetEntry(new QuicEntry(9002));
+        }
+        record.SetEntry(new Ip6Entry(IPAddress.Parse(address)));
+        record.SetEntry(new Tcp6Entry(8551));
+        if (quicEnabled) record.SetEntry(new Quic6Entry(8552));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+        bool accepted = BeaconDiscovery.TryCreateCandidate(record, CurrentDigest, null, out BeaconPeerCandidate? candidate, quicEnabled: quicEnabled);
+        Assert.That(accepted, Is.EqualTo(primaryIsPublic));
+        if (accepted) Assert.That(candidate!.Addresses, Is.EqualTo(quicEnabled
+            ? new[] { $"/ip4/8.8.8.8/udp/9002/quic-v1/p2p/{candidate.PeerId}", $"/ip4/8.8.8.8/tcp/9000/p2p/{candidate.PeerId}" }
+            : new[] { $"/ip4/8.8.8.8/tcp/9000/p2p/{candidate.PeerId}" }));
+    }
+
+    [Test]
     public void Next_fork_mismatch_changes_preference_without_rejecting_a_current_peer([Values] bool matching)
     {
         BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, 9000, 9001, TestForkId, 4, matching ? NextDigest : ForeignDigest);
@@ -641,10 +714,10 @@ public class BeaconDiscoveryTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         await using BeaconDiscovery discovery = new(config, BeaconChainSpec.Mainnet, store, new RangeSyncTests.FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
 
-        NettyDiscoveryV5Handler handler = discovery.CreateDiscv5Services(PublicIp);
+        DiscoveryV5Transport transport = discovery.CreateDiscv5Services(PublicIp);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(handler, Is.Not.Null);
+        Assert.That(transport, Is.Not.Null);
         Assert.That(discovery.LocalNodeRecord, Is.Not.Null);
     }
 

@@ -47,6 +47,9 @@ TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 # assembled from the .S of the same name in the guest's directory.
 GUEST_OBJECTS ?=
 
+# Linker flags a guest adds, each passed to bflat as --ldflags.
+GUEST_LDFLAGS ?=
+
 # Main, the ZkvmThrow export and the failure protocol are one file shared by all
 # three guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
 # sources, not the managed assembly, so the shared file has to be mounted and
@@ -62,6 +65,11 @@ GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SRC_DIR)/Program.cs
 # Pinned rather than derived: with more than one source bflat names the output
 # after the first, which is the shared one.
 GUEST_OUT := -o $(SRC_DIR)/Program
+
+# Every guest applies the shared substitutions; one that has its own substitutions.xml
+# applies that on top.
+GUEST_SUBSTITUTIONS := --substitution $(SHARED_SRC_DIR)/substitutions.xml \
+  $(if $(wildcard $(GUEST_DIR)/substitutions.xml),--substitution $(SRC_DIR)/substitutions.xml)
 
 # The managed closure. BIN_DIR is the guest's own artifacts directory, bound in
 # by its build target.
@@ -126,10 +134,11 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--no-pthread \
 		--no-globalization \
 		--nostdlibrefs \
-		--substitution $(SRC_DIR)/substitutions.xml \
+		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
+		$(foreach flag,$(GUEST_LDFLAGS),--ldflags=$(flag)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
 		$(GUEST_OUT) \

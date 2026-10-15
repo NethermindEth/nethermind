@@ -220,7 +220,8 @@ public class NewPooledTransactionHashesMessageSerializerTests
         for (int length = 0; length < bytes.Length; length++)
         {
             buffer.SetIndex(7, 7 + length);
-            Exception error = Assert.Catch(() => serializer.Deserialize(buffer), $"cut {length}");
+            // NUnit 5.0.0 Assert.Catch(Action, string) only matches exactly System.Exception, so pass the type explicitly
+            Exception error = Assert.Catch(typeof(Exception), () => serializer.Deserialize(buffer), $"cut {length}");
             Assert.That(error, Is.InstanceOf<RlpException>().Or.InstanceOf<IndexOutOfRangeException>()
                 .Or.InstanceOf<ArgumentOutOfRangeException>(), $"cut {length}");
             using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes);

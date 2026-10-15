@@ -82,27 +82,6 @@ public class ProtoArrayNoViableHeadTests
         Assert.That(head, Is.EqualTo(withViableSibling ? v.Root : GetRoot(0)));
     }
 
-    [Test]
-    public void Head_is_the_parent_once_each_child_is_invalidated_in_turn()
-    {
-        CheckpointRef genesis = new(0, GetRoot(0));
-        ProtoArrayForkChoice forkChoice = new(0, 0, Hash256.Zero, genesis, genesis, ExecutionStatus.Optimistic, Hash256.Zero);
-        ProtoBlock a = ChildOfAnchor(GetRoot(1), genesis);
-        ProtoBlock b = a with { Slot = 2, Root = GetRoot(2), ParentRoot = a.Root, ExecutionBlockHash = GetRoot(2) };
-        ProtoBlock c = b with { Root = GetRoot(3), ExecutionBlockHash = GetRoot(3) };
-        forkChoice.ProcessBlock(a, 2, genesis, genesis);
-        forkChoice.ProcessBlock(b, 2, genesis, genesis);
-        forkChoice.ProcessBlock(c, 2, genesis, genesis);
-        JustifiedBalances balances = JustifiedBalances.FromEffectiveBalances([1]);
-
-        Hash256 first = forkChoice.GetHead(genesis, genesis, balances, null, 2);
-        forkChoice.ProcessExecutionPayloadInvalidation(InvalidationOperation.InvalidateOne(c.Root), genesis);
-        Hash256 second = forkChoice.GetHead(genesis, genesis, balances, null, 2);
-        forkChoice.ProcessExecutionPayloadInvalidation(InvalidationOperation.InvalidateOne(b.Root), genesis);
-        Hash256 head = forkChoice.GetHead(genesis, genesis, balances, null, 2);
-
-        Assert.That((first, second, head), Is.EqualTo((c.Root, b.Root, a.Root)));
-    }
 
     [Test]
     public void Head_is_the_justified_root_when_no_node_is_viable([Values] bool withSiblings)

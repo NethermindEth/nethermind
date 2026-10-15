@@ -110,7 +110,7 @@ public class GloasForkOverrideTests
 
     [Test]
     public void Unscheduling_a_network_without_a_gloas_epoch_changes_nothing() =>
-        Assert.That(BeaconChainSpec.Hoodi.WithGloasForkOverride(Presets.FarFutureEpoch, null), Is.SameAs(BeaconChainSpec.Hoodi));
+        Assert.That(BeaconChainSpec.Mainnet.WithGloasForkOverride(Presets.FarFutureEpoch, null), Is.SameAs(BeaconChainSpec.Mainnet));
 
     [Test]
     public void No_override_returns_the_built_in_spec() =>
@@ -137,7 +137,7 @@ public class GloasForkOverrideTests
     public void An_incomplete_gloas_override_fails_where_the_network_has_no_built_in_version(ulong? epoch, string? version, string error)
     {
         InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(
-            () => BeaconChainSpec.Hoodi.WithGloasForkOverride(epoch, version))!;
+            () => BeaconChainSpec.Mainnet.WithGloasForkOverride(epoch, version))!;
 
         Assert.That(ex.Message, Does.Contain(error));
     }

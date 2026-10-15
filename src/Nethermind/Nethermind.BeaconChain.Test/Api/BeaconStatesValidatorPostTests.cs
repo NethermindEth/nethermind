@@ -15,6 +15,13 @@ namespace Nethermind.BeaconChain.Test.Api;
 
 public class BeaconStatesValidatorPostTests : BeaconApiFixture
 {
+    [Test]
+    public async Task Duplicate_get_statuses_are_rejected([Values("active,active", "active&status=active")] string statuses)
+    {
+        using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/head/validators?status={statuses}");
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+    }
+
     private const string Json = "application/json";
     private const string Octet = "application/octet-stream";
 

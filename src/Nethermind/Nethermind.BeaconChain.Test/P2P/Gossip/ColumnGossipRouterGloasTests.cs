@@ -50,6 +50,7 @@ public class ColumnGossipRouterGloasTests
         yield return Case("next slot before the clock disparity is parked", Sidecar(slot: BlockSlot + 1, root: UnknownRoot), Column, MessageValidity.Ignored, ColumnGossipDropReason.FutureSlot, Outcome.Parked);
         yield return Case("unknown block is parked", Sidecar(root: UnknownRoot), Column, MessageValidity.Ignored, ColumnGossipDropReason.UnknownBlock, Outcome.Parked);
         yield return Case("unknown block at an earlier slot is not parked", Sidecar(slot: BlockSlot - 1, root: UnknownRoot), Column, MessageValidity.Ignored, ColumnGossipDropReason.UnknownBlock, Outcome.Neither);
+        yield return Case("old sidecar is ignored before reading its block", Sidecar(slot: BlockSlot - 33), Column, MessageValidity.Ignored, ColumnGossipDropReason.StaleSlot, Outcome.Neither);
         yield return Case("unknown block with out of range index is not parked", Sidecar(index: Column + Eip7594DasConstants.DataColumnSidecarSubnetCount, root: UnknownRoot), Column, MessageValidity.Ignored, ColumnGossipDropReason.FailedStructure, Outcome.Neither);
         yield return Case("unknown block with a proof missing is not parked", Sidecar(root: UnknownRoot, mutate: static s => s.KzgProofs = s.KzgProofs![..1]), Column, MessageValidity.Ignored, ColumnGossipDropReason.FailedStructure, Outcome.Neither);
         yield return Case("pre-Gloas block root", Sidecar(root: FuluBlockRoot), Column, MessageValidity.Rejected, ColumnGossipDropReason.SlotMismatch, Outcome.Neither);
@@ -110,7 +111,7 @@ public class ColumnGossipRouterGloasTests
     {
         // Mainnet schedules 15 blobs from epoch 412672 and 21 from 419072, so 16 cells at the first fit the size bound but not the blob limit.
         BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
-        ulong wallSlot = 419_072 * mainnet.SlotsPerEpoch;
+        ulong wallSlot = 412_700 * mainnet.SlotsPerEpoch;
         (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(mainnet, wallSlot);
         DataColumnSidecarGloas sidecar = Sidecar(slot: 412_700 * mainnet.SlotsPerEpoch, root: UnknownRoot, mutate: static s => Widen(s, 16));
 

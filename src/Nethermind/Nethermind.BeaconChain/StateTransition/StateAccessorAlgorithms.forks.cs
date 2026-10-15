@@ -96,13 +96,14 @@ public static partial class BeaconStateAccessors
     public static partial int[] GetActiveValidatorIndices(this LegacyState state, ulong epoch)
     {
         Validator[] validators = state.Validators!;
-        List<int> active = new(validators.Length);
+        int count = 0;
+        foreach (Validator validator in validators)
+            if (validator.IsActiveValidator(epoch)) count++;
+        int[] active = new int[count];
+        int next = 0;
         for (int i = 0; i < validators.Length; i++)
-        {
-            if (validators[i].IsActiveValidator(epoch))
-                active.Add(i);
-        }
-        return active.ToArray();
+            if (validators[i].IsActiveValidator(epoch)) active[next++] = i;
+        return active;
     }
 
     /// <summary>Returns <c>max(EFFECTIVE_BALANCE_INCREMENT, sum of effective balances)</c> of the given validators.</summary>

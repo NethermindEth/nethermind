@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
-using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
@@ -15,22 +15,33 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// <summary>
 /// <c>/eth/v1/events</c>: server-sent events for <c>head</c> and <c>finalized_checkpoint</c>.
 /// </summary>
-/// <remarks>
-/// The driver has no publish/subscribe hook for these transitions (adding one means editing
-/// <see cref="Sync.BeaconSyncOrchestrator"/>, which is outside this change's allowed files - see the
-/// report), so this polls <see cref="IBeaconChainStatusSource.CurrentStatus"/> and emits an event
-/// whenever the observed root changes. Every emitted event still carries a real, current root/slot;
-/// it is coarser-grained (bounded by <see cref="PollInterval"/>) than a true push feed, not fabricated.
-/// </remarks>
 internal static class EventsEndpoint
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
     private static readonly string[] SupportedTopics = ["head", "finalized_checkpoint"];
 
     public static void Map(WebApplication app, BeaconApiContext ctx) =>
-        app.MapGet("/eth/v1/events", (HttpContext c) => Stream(c, ctx));
+        app.MapGet("/eth/v1/events", (HttpContext c) => Stream(c, ctx, app.Lifetime.ApplicationStopping));
 
-    private static async Task Stream(HttpContext c, BeaconApiContext ctx)
+    private static async Task Stream(HttpContext c, BeaconApiContext ctx, CancellationToken stopping)
+    {
+        if (Interlocked.Increment(ref ctx.Events.ActiveStreams) > 32)
+        {
+            Interlocked.Decrement(ref ctx.Events.ActiveStreams);
+            await ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable, "Too many event streams.", c.RequestAborted);
+            return;
+        }
+        try
+        {
+            using CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(c.RequestAborted, stopping);
+            c.RequestAborted = lifetime.Token;
+            await StreamCore(c, ctx);
+        }
+        catch (OperationCanceledException) when (stopping.IsCancellationRequested || c.RequestAborted.IsCancellationRequested) { }
+        finally { Interlocked.Decrement(ref ctx.Events.ActiveStreams); }
+    }
+
+    private static async Task StreamCore(HttpContext c, BeaconApiContext ctx)
     {
         string[] topics = c.Request.Query["topics"].ToString()
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -68,7 +79,7 @@ internal static class EventsEndpoint
                 BeaconApiContext poll = ctx.ForRequest();
                 StatusMessageV2 status = poll.StatusSource.CurrentStatus;
                 if (wantsHead && status.HeadRoot != Hash256.Zero && status.HeadRoot != lastHead
-                    && CreateHeadEvent(poll, status.HeadRoot!, lastHeadSlot) is { } headEvent)
+                    && ctx.Events.Head(poll, status.HeadRoot!, lastHeadSlot) is { } headEvent)
                 {
                     lastHead = status.HeadRoot;
                     lastHeadSlot = status.HeadSlot;
@@ -109,7 +120,13 @@ internal static class EventsEndpoint
 
     private static bool TryDependentRoot(BeaconApiContext ctx, ResolvedBlock head, ulong epoch, out Hash256? root)
     {
-        // Beacon API head event: dependent roots precede each epoch's start, with genesis on underflow.
+        if (ctx.ForkChoiceSnapshot is { } snapshot)
+        {
+            root = ProposerLookaheadSnapshot.FindDependentRoot(snapshot.Nodes, head.Root, epoch * ctx.Spec.SlotsPerEpoch);
+            foreach (ForkChoiceSnapshotNode node in snapshot.Nodes)
+                if (node.Root == root && node.Slot < epoch * ctx.Spec.SlotsPerEpoch) return true;
+        }
+        // The dependent root can predate the retained fork-choice tree.
         if (epoch == 0) return ctx.Store.TryGetCanonicalRoot(0, out root);
         ulong targetSlot = epoch * ctx.Spec.SlotsPerEpoch - 1;
         ResolvedBlock ancestor = head;
@@ -132,6 +149,33 @@ internal static class EventsEndpoint
         string json = JsonSerializer.Serialize(data, BeaconApiJson.Options);
         await c.Response.WriteAsync($"event: {eventName}\ndata: {json}\n\n", c.RequestAborted);
         await c.Response.Body.FlushAsync(c.RequestAborted);
+    }
+
+    internal sealed class EventCache
+    {
+        public int ActiveStreams;
+        private readonly Lock _lock = new();
+        private Hash256? _root;
+        private HeadEventDto? _head;
+
+        public HeadEventDto? Head(BeaconApiContext ctx, Hash256 root, ulong? previousSlot)
+        {
+            lock (_lock)
+            {
+                if (_root != root)
+                {
+                    _head = CreateHeadEvent(ctx, root, null);
+                    _root = root;
+                }
+                if (_head is not { } head) return null;
+                return head with
+                {
+                    EpochTransition = previousSlot is { } previous
+                        ? ctx.Spec.GetEpoch(ctx.StatusSource.CurrentStatus.HeadSlot) != ctx.Spec.GetEpoch(previous) : head.EpochTransition,
+                    ExecutionOptimistic = ResponseEnvelope.ExecutionOptimistic(ctx, root),
+                };
+            }
+        }
     }
 
     internal sealed record HeadEventDto(

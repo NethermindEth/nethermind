@@ -172,7 +172,7 @@ public class BeaconChainStoreDataColumnTests
         Hash256 winner = Root("winner"), lateOrphan = Root("late orphan");
         store.ApplyCanonicalIndexChanges([(slot, winner)], finalized);
         Put(store, winner, slot);
-        Put(store, winner, finalized - 1);
+        Put(store, Root("later slot"), finalized - 1);
         store.PruneDataColumnSidecars(currentEpoch, finalized);
 
         Put(store, lateOrphan, slot);
@@ -197,6 +197,8 @@ public class BeaconChainStoreDataColumnTests
 
         store.PruneDataColumnSidecars(currentEpoch, finalized);
 
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(Holds(store, Root("skipped slot")), Is.False);
         Assert.That(Holds(store, orphan), Is.False, "an empty slot below the top is settled, so the cursor moves past it");
     }
 

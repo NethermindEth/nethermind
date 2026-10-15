@@ -23,12 +23,12 @@ public class DataColumnSidecarsReqRespTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
     [Test]
-    public void Metrics_truncated_column_framing_records_one_invalid_message([Values] bool gloas)
+    public async Task Metrics_truncated_column_framing_records_one_invalid_message([Values] bool gloas)
     {
         TestDataColumnSidecarsProtocol protocol = new(Spec);
         using MemoryStream input = new(new byte[] { ReqRespFraming.ResponseCode.Success });
         long before = FailureCount(TestDataColumnSidecarsProtocol.ProtocolId, ReqRespFailureReason.InvalidMessage);
-        Assert.ThrowsAsync<Eth2ReqRespException>(() => gloas ? protocol.ReadGloasSidecarsAsync(input, 1) : protocol.ReadSidecarsAsync(input, 1));
+        await Assert.ThrowsAsync<Eth2ReqRespException>(() => gloas ? protocol.ReadGloasSidecarsAsync(input, 1) : protocol.ReadSidecarsAsync(input, 1));
         Assert.That(FailureCount(TestDataColumnSidecarsProtocol.ProtocolId, ReqRespFailureReason.InvalidMessage), Is.EqualTo(before + 1));
     }
 
@@ -61,18 +61,17 @@ public class DataColumnSidecarsReqRespTests
         await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, wrongContext, DataColumnSidecar.Encode(sidecar), default);
         stream.Position = 0;
 
-        Eth2ReqRespException ex = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.ReadSidecarsAsync(stream, 10))!;
+        Eth2ReqRespException ex = (await Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.ReadSidecarsAsync(stream, 10)))!;
         Assert.That(ex.Message, Does.Contain("context bytes"));
     }
 
     [TestCase(0)]
     [TestCase(Eip7594DasConstants.NumberOfColumns + 1)]
-    public void DialAsync_rejects_an_invalid_columns_count_before_writing_to_the_wire(int columnCount)
+    public async Task DialAsync_rejects_an_invalid_columns_count_before_writing_to_the_wire(int columnCount)
     {
         DataColumnSidecarsByRangeProtocol protocol = new(Spec, new DataColumnSidecarPool(), null!);
         DataColumnSidecarsByRangeRequest request = new() { StartSlot = 0, Count = 1, Columns = new ulong[columnCount] };
-
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, new(request, Gloas: false)));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, new(request, Gloas: false)));
     }
 
     private const ulong RangeSlot = 13_410_304;
@@ -92,6 +91,7 @@ public class DataColumnSidecarsReqRespTests
         new("Sidecars serve past the block request slot limit", Count: BlocksProtocolBase.MaxRequestBlocks + 1, HeldCount: BlocksProtocolBase.MaxRequestBlocks + 1, RepeatSidecar: true),
         new("An unbounded requested count still serves past the block limit", Count: ulong.MaxValue, HeldCount: BlocksProtocolBase.MaxRequestBlocks + 1, RepeatSidecar: true),
         new("A held sidecar beyond the slot walk is resource unavailable", Count: DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars + 1, HeldOffset: (int)DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars, HeldCount: 1, Unavailable: true),
+        new("Requested columns share the slot walk budget", Count: 129, Columns: [.. Enumerable.Range(0, 128).Select(static i => (ulong)i)], HeldOffset: 128, HeldCount: 1, Unavailable: true),
         new("Inside serve range from one slot below complete columns", StartOffset: -1, ClockSlot: ServeRangeClock(1), Unavailable: true, CheckFailureMetric: true),
         new("Inside serve range at the single slot below complete columns", Count: 1, StartOffset: -1, ClockSlot: ServeRangeClock(1), Unavailable: true, CheckFailureMetric: true),
         new("Inside serve range from the first complete slot", ClockSlot: ServeRangeClock(1)),
@@ -149,7 +149,7 @@ public class DataColumnSidecarsReqRespTests
         Task<IReadOnlyList<DataColumnSidecar>> request = RequestRangeAsync(pool, store, (ulong)((long)RangeSlot + test.StartOffset), test.Count, test.Columns ?? [5UL], clock);
         if (test.Unavailable)
         {
-            Eth2ReqRespException? refused = Assert.ThrowsAsync<Eth2ReqRespException>(async () => await request);
+            Eth2ReqRespException? refused = await Assert.ThrowsAsync<Eth2ReqRespException>(async () => await request);
             Assert.That(refused!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable));
             if (test.CheckFailureMetric) Assert.That(FailureCount(ByRangeId, ReqRespFailureReason.InvalidMessage), Is.EqualTo(invalidBefore), "an honest request for missing columns is not the requester's fault");
         }
@@ -187,12 +187,11 @@ public class DataColumnSidecarsReqRespTests
     [TestCase((int)BlocksProtocolBase.MaxRequestBlocks + 1, new ulong[] { 0 }, new ulong[] { 0 }, TestName = "DialAsync_rejects_more_identifiers_than_MaxRequestBlocks_before_writing_to_the_wire")]
     [TestCase(2, new ulong[] { 3, 5 }, new ulong[] { 3 }, TestName = "The_root_dial_refuses_a_repeated_root_and_column_before_writing_to_the_wire(True)")]
     [TestCase(1, new ulong[] { 3, 3 }, null, TestName = "The_root_dial_refuses_a_repeated_root_and_column_before_writing_to_the_wire(False)")]
-    public void The_root_dial_refuses_invalid_identifiers_before_writing_to_the_wire(int identifierCount, ulong[] firstColumns, ulong[]? laterColumns)
+    public async Task The_root_dial_refuses_invalid_identifiers_before_writing_to_the_wire(int identifierCount, ulong[] firstColumns, ulong[]? laterColumns)
     {
         DataColumnsByRootIdentifier[] request = [.. Enumerable.Range(0, identifierCount)
             .Select(i => new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = (i == 0 ? firstColumns : laterColumns!).ToArray() })];
-
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new DataColumnSidecarsByRootProtocol(Spec, new DataColumnSidecarPool()).DialAsync(null!, null!, new(request, Gloas: false)));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new DataColumnSidecarsByRootProtocol(Spec, new DataColumnSidecarPool()).DialAsync(null!, null!, new(request, Gloas: false)));
     }
 
     [Test]
@@ -203,7 +202,7 @@ public class DataColumnSidecarsReqRespTests
         byte[] cut = await EncodeChunkAsync(DataColumnSidecarTestFixture.BuildValidSidecar(3, slot: 103));
         List<DataColumnSidecar> seen = [];
 
-        Eth2ReqRespException? thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync(good, cut[..(cut.Length / 2)], seen.Add, token: token));
+        Eth2ReqRespException? thrown = await Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync(good, cut[..(cut.Length / 2)], seen.Add, token: token));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(seen.Select(Key), Is.EqualTo(good.Select(Key)), "a chunk fully read is kept when a later chunk is truncated");
@@ -219,8 +218,7 @@ public class DataColumnSidecarsReqRespTests
             ? DataColumnSidecarTestFixture.BuildValidSidecar(9, slot: 101)
             : DataColumnSidecarTestFixture.BuildValidSidecar(3, slot: 104);
         List<DataColumnSidecar> seen = [];
-
-        Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync([valid, stray], [], seen.Add, token: token));
+        await Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync([valid, stray], [], seen.Add, token: token));
 
         Assert.That(seen.Select(Key), Is.EqualTo(new[] { Key(valid) }));
     }
@@ -241,7 +239,7 @@ public class DataColumnSidecarsReqRespTests
             RespTimeout = TimeSpan.FromSeconds(2),
         };
 
-        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => DialRangeAsync(chunks, [], seen.Add, request, TimeSpan.FromMilliseconds(1_400), token, protocol));
+        ReqRespTimeoutException? cut = await Assert.ThrowsAsync<ReqRespTimeoutException>(() => DialRangeAsync(chunks, [], seen.Add, request, TimeSpan.FromMilliseconds(1_400), token, protocol));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(seen, Has.Count.EqualTo(2), "the third chunk was never read");

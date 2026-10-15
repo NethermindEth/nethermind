@@ -73,4 +73,10 @@ public class Blake2FPrecompileTests : PrecompileTests<Blake2FPrecompile, Blake2F
         "0011",
         TestName = "2-byte invalid input")]
     public void NormalizedInput_SameOutput(string input, string trailing) => RunEffectiveInputTest(input, trailing);
+
+    // The reasons go-ethereum gives for these inputs.
+    [TestCase("", "invalid input length")]
+    // final block indicator flag 2
+    [TestCase("0000000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000002", "invalid final flag")]
+    public void Rejects_input_with_the_go_ethereum_reason(string input, string error) => RunFailureTest(input, error);
 }

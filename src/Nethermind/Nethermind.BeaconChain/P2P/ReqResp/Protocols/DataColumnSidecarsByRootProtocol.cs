@@ -125,6 +125,8 @@ public sealed class DataColumnSidecarsByRootProtocol(BeaconChainSpec spec, DataC
         await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
+            using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, 139, "Too many concurrent requests", refusal.Token);
             return;
         }
 
@@ -167,6 +169,7 @@ public sealed class DataColumnSidecarsByRootProtocol(BeaconChainSpec spec, DataC
                 }
             }
 
+            ChargeRequest(context, totalRequestedColumns, MaxRequestDataColumnSidecars);
             foreach (DataColumnsByRootIdentifier identifier in identifiers)
             {
                 foreach (ulong column in identifier.Columns!)

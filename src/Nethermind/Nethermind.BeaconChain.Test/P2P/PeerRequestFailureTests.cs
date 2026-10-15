@@ -145,7 +145,7 @@ public class PeerRequestFailureTests
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
 
-        Assert.That(PeerManager.IsUnresponsiveFailure(fixture.Peer, new InvalidOperationException("Channel closed")), Is.True);
+        Assert.That(PeerManager.IsUnresponsiveFailure(fixture.Peer, new PeerSessionClosedException("Channel closed")), Is.True);
     }
 
     [Test]

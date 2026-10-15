@@ -249,7 +249,7 @@ public partial class ColumnBackfillTests
                 break;
             case BackfillReply.UnlinkedUpper:
                 Assert.That(second.RequestedRanges[0], Is.EqualTo((2UL, 2UL)));
-                Assert.That(third!.RequestedRanges[0], Is.EqualTo((2UL, 2UL)), "kept slots are not requested again");
+                Assert.That(third!.RequestedRanges[0], Is.EqualTo((3UL, 1UL)), "kept slots are not requested again");
                 break;
         }
     }

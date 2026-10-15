@@ -283,12 +283,12 @@ public class ColumnGossipRouterFuluHeaderTests
     private static IEnumerable<HeaderValidationCase> UnimportedCases()
     {
         yield return Unimported("signed header with a valid parent is consumed but not forwarded", null, 0, Ancestry.DescendsFromFinalized, MessageValidity.Ignored, 1, true, null);
-        yield return Unimported("signed header with an unseen parent is consumed but not forwarded",
-            static s => s.SignedBlockHeader!.Message!.ParentRoot = UnseenRoot, 0, Ancestry.DescendsFromFinalized, MessageValidity.Ignored, 1, true, null);
+        yield return Unimported("signed header with an unseen parent is ignored before cryptography",
+            static s => s.SignedBlockHeader!.Message!.ParentRoot = UnseenRoot, 0, Ancestry.DescendsFromFinalized, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.UnknownBlock);
         yield return Unimported("header signed by another validator than its proposer index is rejected before KZG", null, 1, Ancestry.DescendsFromFinalized, MessageValidity.Rejected, 0, false, ColumnGossipDropReason.InvalidHeaderSignature);
         yield return Unimported("unsigned header is rejected before KZG", null, Unsigned, Ancestry.DescendsFromFinalized, MessageValidity.Rejected, 0, false, ColumnGossipDropReason.InvalidHeaderSignature);
         yield return Unimported("unsigned header with an unseen parent is dropped before KZG",
-            static s => s.SignedBlockHeader!.Message!.ParentRoot = UnseenRoot, Unsigned, Ancestry.DescendsFromFinalized, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.InvalidHeaderSignature);
+            static s => s.SignedBlockHeader!.Message!.ParentRoot = UnseenRoot, Unsigned, Ancestry.DescendsFromFinalized, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.UnknownBlock);
         yield return Unimported("header with a proposer index outside the key cache is dropped before KZG",
             static s => s.SignedBlockHeader!.Message!.ProposerIndex = Validators, Unsigned, Ancestry.DescendsFromFinalized, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.UnknownProposer);
         yield return Unimported("signed header not above its parent's slot is rejected before KZG", null, 0, Ancestry.ParentAtSameSlot, MessageValidity.Rejected, 0, false, ColumnGossipDropReason.NotAboveParentSlot);
@@ -296,7 +296,7 @@ public class ColumnGossipRouterFuluHeaderTests
         yield return Unimported("tampered inclusion proof under a signed header is rejected before KZG",
             static s => s.KzgCommitmentsInclusionProof![0] = Hash256.Zero, 0, Ancestry.DescendsFromFinalized, MessageValidity.Rejected, 0, false, ColumnGossipDropReason.FailedInclusionProof);
         yield return Unimported("tampered inclusion proof with an unseen parent is dropped before KZG",
-            static s => { s.SignedBlockHeader!.Message!.ParentRoot = UnseenRoot; s.KzgCommitmentsInclusionProof![0] = Hash256.Zero; }, 0, Ancestry.DescendsFromFinalized, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.FailedInclusionProof);
+            static s => { s.SignedBlockHeader!.Message!.ParentRoot = UnseenRoot; s.KzgCommitmentsInclusionProof![0] = Hash256.Zero; }, 0, Ancestry.DescendsFromFinalized, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.UnknownBlock);
         yield return Unimported("swapped KZG proofs under a signed header are rejected",
             static s => s.KzgProofs = [s.KzgProofs![1], s.KzgProofs[0]], 0, Ancestry.DescendsFromFinalized, MessageValidity.Rejected, 1, false, ColumnGossipDropReason.FailedKzgProofs);
         yield return Unimported("tampered inclusion proof under a parent of unknown ancestry is dropped before KZG",
@@ -420,7 +420,7 @@ public class ColumnGossipRouterFuluHeaderTests
         yield return Proposer("tampered inclusion proof on a branch whose dependent root differs is rejected before KZG", epoch, OtherRoot, 0, 0, MessageValidity.Rejected, 0, false, ColumnGossipDropReason.FailedInclusionProof,
             static s => s.KzgCommitmentsInclusionProof![0] = Hash256.Zero);
         yield return Proposer("header in an epoch the lookahead does not cover is dropped before KZG", epoch - 2, ParentRoot, 0, 0, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.ProposerNotVerifiable);
-        yield return Proposer("header with an unseen parent is dropped before KZG", epoch, ParentRoot, 0, 0, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.ProposerNotVerifiable,
+        yield return Proposer("header with an unseen parent is dropped before KZG", epoch, ParentRoot, 0, 0, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.UnknownBlock,
             static s => s.SignedBlockHeader!.Message!.ParentRoot = UnseenRoot);
         yield return Proposer("header before any lookahead is published is dropped before KZG", null, ParentRoot, 0, 0, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.ProposerNotVerifiable);
         yield return Proposer("header of the expected proposer signed by another validator is rejected before KZG", epoch, ParentRoot, 0, 1, MessageValidity.Rejected, 0, false, ColumnGossipDropReason.InvalidHeaderSignature);
@@ -482,20 +482,16 @@ public class ColumnGossipRouterFuluHeaderTests
         }
 
         List<MessageValidity> altered = [.. Enumerable.Range(0, alteredBeforeHonest).Select(i => router.Handle(Column, gloasTopic: false, Message(Altered(honest, i))))];
-        MessageValidity honestVerdict = router.Handle(Column, gloasTopic: false, Message(honest));
+        PeerId honestPeer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+        MessageValidity honestVerdict = router.Handle(Column, gloasTopic: false, Message(honest), source: honestPeer);
         long batchesThroughHonest = router.KzgBatchCount;
-        bool withinBound = alteredBeforeHonest < ColumnGossipRouter.KzgBatchesPerColumn;
-        if (!withinBound)
-        {
-            pool.Add(blockRoot, CurrentSlot, honest);
-        }
 
         altered.AddRange(Enumerable.Range(alteredBeforeHonest, alteredAfterHonest).Select(i => router.Handle(Column, gloasTopic: false, Message(Altered(honest, i)))));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(altered, Is.All.Not.EqualTo(MessageValidity.Accepted));
-        Assert.That(honestVerdict, Is.EqualTo(withinBound ? MessageValidity.Accepted : MessageValidity.Ignored));
-        Assert.That(batchesThroughHonest, Is.EqualTo(withinBound ? alteredBeforeHonest + 1 : ColumnGossipRouter.KzgBatchesPerColumn));
+        Assert.That(honestVerdict, Is.EqualTo(MessageValidity.Accepted));
+        Assert.That(batchesThroughHonest, Is.EqualTo(Math.Min(alteredBeforeHonest, ColumnGossipRouter.KzgBatchesPerColumn) + 1));
         Assert.That(router.KzgBatchCount, Is.EqualTo(batchesThroughHonest), "no KZG batch once the column is held");
         Assert.That(pool.TryGet(blockRoot, Column, out DataColumnSidecar? pooled), Is.True);
         Assert.That(DataColumnSidecar.Encode(pooled!), Is.EqualTo(DataColumnSidecar.Encode(honest)), "the honest copy is pooled");
@@ -508,13 +504,13 @@ public class ColumnGossipRouterFuluHeaderTests
         LookaheadPublished,
     }
 
-    private sealed record QueuedColumnCase(string Name, Resolution Resolution = Resolution.ParentPublished,
-        bool ParentMissing = true, bool OtherBranch = false, bool WithPubkeys = true, bool ProbeBeforePublication = false,
+    private sealed record QueuedColumnCase(string Name, Resolution Resolution = Resolution.LookaheadPublished,
+        bool ParentMissing = false, bool OtherBranch = true, bool WithPubkeys = true, bool ProbeBeforePublication = false,
         int LaterPublications = 0, int AlteredCopies = 0, bool CheckMetrics = false, bool NestedMessage = false);
 
     private static readonly QueuedColumnCase[] QueuedColumnScenarios =
     [
-        new("Queued column retries when its parent is published", ProbeBeforePublication: true),
+        new("An unseen parent is ignored without signature work or parking", Resolution.ParentPublished, ParentMissing: true, ProbeBeforePublication: true),
         new("Queued column retries when its block is imported", Resolution.BlockImported, ParentMissing: false, OtherBranch: true, ProbeBeforePublication: true),
         new("Queued column retries when its lookahead is published", Resolution.LookaheadPublished, ParentMissing: false, OtherBranch: true, ProbeBeforePublication: true),
         new("Pooled retry leaves no entry for one later publication", LaterPublications: 1),
@@ -565,16 +561,18 @@ public class ColumnGossipRouterFuluHeaderTests
         }
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(verdict, Is.EqualTo(MessageValidity.Ignored));
-        Assert.That(pooledByRetry, Is.EqualTo(test.WithPubkeys));
-        Assert.That(batchesAfterRetry, Is.EqualTo(!test.WithPubkeys ? 0 : test.AlteredCopies > 0 ? ColumnGossipRouter.KzgBatchesPerColumn : 1));
+        bool queued = test.WithPubkeys && !test.ParentMissing;
+        Assert.That(pooledByRetry, Is.EqualTo(queued));
+        Assert.That(batchesAfterRetry, Is.EqualTo(!queued ? 0 : test.AlteredCopies > 0 ? ColumnGossipRouter.KzgBatchesPerColumn : 1));
         Assert.That(router.KzgBatchCount, Is.EqualTo(batchesAfterRetry));
-        if (test.WithPubkeys) Assert.That(pool.TryGet(blockRoot, Column, out DataColumnSidecar? pooled) ? DataColumnSidecar.Encode(pooled!) : null, Is.EqualTo(DataColumnSidecar.Encode(honest)));
+        if (queued) Assert.That(pool.TryGet(blockRoot, Column, out DataColumnSidecar? pooled) ? DataColumnSidecar.Encode(pooled!) : null, Is.EqualTo(DataColumnSidecar.Encode(honest)));
+        if (test.ParentMissing) Assert.That(router.HeaderSignatureVerificationCount, Is.Zero);
         if (test.ProbeBeforePublication)
         {
             Assert.That((beforePublish, pooledBeforePublish), Is.EqualTo(((MessageValidity?)MessageValidity.Rejected, false)));
-            Assert.That(raised, Is.EqualTo(1));
+            Assert.That(raised, Is.EqualTo(queued ? 1 : 0));
         }
-        if (test.ProbeBeforePublication || test.LaterPublications > 0) Assert.That(router.GetDropCount(ColumnGossipDropReason.ProposerNotVerifiable), Is.EqualTo(1));
+        if (!test.ParentMissing && (test.ProbeBeforePublication || test.LaterPublications > 0)) Assert.That(router.GetDropCount(ColumnGossipDropReason.ProposerNotVerifiable), Is.EqualTo(1));
         if (test.LaterPublications > 0 || test.AlteredCopies > 0) Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.Zero);
         if (test.CheckMetrics)
         {
@@ -790,8 +788,8 @@ public class ColumnGossipRouterFuluHeaderTests
     public void One_proposer_index_cannot_fill_the_queue_and_evict_the_columns_of_another()
     {
         const ulong flooder = 1;
-        ForkChoiceSnapshotHolder snapshots = new() { Current = Snapshot(Ancestry.BlockAndParentNotInSnapshot, parentInSnapshot: true) };
-        ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(ParentRoot, 0, Spec.GetEpoch(CurrentSlot) - 1) };
+        ForkChoiceSnapshotHolder snapshots = new() { Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true) };
+        ProposerLookaheadHolder lookaheads = new() { Current = Lookahead(OtherRoot, 0, Spec.GetEpoch(CurrentSlot) - 1) };
         (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(null, subnets: AllSubnets, lookaheads: lookaheads, forkChoice: snapshots);
         DataColumnSidecar honest = SignedSidecar();
         router.Handle(Column, gloasTopic: false, Message(honest));
@@ -810,6 +808,7 @@ public class ColumnGossipRouterFuluHeaderTests
         }
 
         snapshots.Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true);
+        lookaheads.Current = Lookahead(ParentRoot, 0, Spec.GetEpoch(CurrentSlot) - 1);
         router.Handle(Column, gloasTopic: false, UndecodableMessage);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();

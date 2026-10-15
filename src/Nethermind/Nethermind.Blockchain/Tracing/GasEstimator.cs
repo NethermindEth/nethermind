@@ -324,17 +324,29 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
                 return new Run(RunStatus.Succeeded, _tracer.GasSpent, _tracer.MaxUsedGas);
 
             bool reverted = result.EvmExceptionType == EvmExceptionType.Revert;
+            EvmExceptionType exceptionType = GetExceptionType(in result);
             return new Run(
                 RunStatus.Failed,
                 _tracer.GasSpent,
                 _tracer.MaxUsedGas,
                 result.GetErrorMessage(_tracer.Error) ?? (reverted ? ExecutionReverted : TransactionExecutionFails),
                 reverted,
-                result.EvmExceptionType == EvmExceptionType.OutOfGas && (!_tracer.TracksFrames || _tracer.TopFrameOutOfGas),
+                exceptionType == EvmExceptionType.OutOfGas && (!_tracer.TracksFrames || _tracer.TopFrameOutOfGas),
                 _tracer.ReturnValue,
-                result.EvmExceptionType,
+                exceptionType,
                 _tracer.Error);
         }
+
+        /// <summary>How a run failed, with a precompile that rejected its input told apart from running out of gas.</summary>
+        /// <remarks>
+        /// The VM halts a called precompile that rejects its input the way it halts one that runs out of gas, and
+        /// the precompile's own error, the only description an exception result carries, is what sets it apart.
+        /// More gas does not fix it, so the estimate ends with that error instead of searching for an allowance.
+        /// </remarks>
+        private static EvmExceptionType GetExceptionType(in TransactionResult result) =>
+            result.EvmExceptionType == EvmExceptionType.OutOfGas && result.ErrorDescription.Length > 0
+                ? EvmExceptionType.PrecompileFailure
+                : result.EvmExceptionType;
     }
 
     /// <summary>Output tracer that can also tell whether the outermost frame itself ran out of gas.</summary>

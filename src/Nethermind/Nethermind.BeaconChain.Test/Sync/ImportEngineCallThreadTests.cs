@@ -50,7 +50,7 @@ public class ImportEngineCallThreadTests
                 throw new TimeoutException("The test never let newPayload answer");
             }
 
-            HasAnsweredNewPayload = true;
+            PayloadSubmitted = true;
             return ExecutionStatus.Valid;
         }
     }

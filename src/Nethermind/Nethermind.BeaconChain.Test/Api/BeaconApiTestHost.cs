@@ -356,7 +356,6 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
 internal sealed class NoOpEngineDriver : IEngineDriver
 {
     public SignedBeaconBlock? CurrentBlock { get; set; }
-    public bool HasAnsweredNewPayload { get; set; }
     public bool IsAvailable { get; set; } = true;
 
     public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>

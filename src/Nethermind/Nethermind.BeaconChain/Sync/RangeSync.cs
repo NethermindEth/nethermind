@@ -80,9 +80,9 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         ulong batchSize = DefaultBatchSize;
         int peerCursor = 0;
         int consecutiveFailures = 0;
-        // Peers offered below the range whose empty answer the next batch showed was wrong, left out for the rest of the round.
+        // Peers whose empty answer the next batch contradicted, left out for the rest of the round.
         HashSet<string> behindTheirWord = [];
-        // The peer below the range whose empty answer the slots since the last verified block were skipped on, until a batch links past them.
+        // The peer whose empty answer skipped slots after the last verified block, until a batch links past them.
         IBeaconSyncPeer? skippedOnWordOf = null;
 
         while (!token.IsCancellationRequested && nextSlot <= targetHeadSlot())
@@ -165,20 +165,20 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
-            consecutiveFailures = 0;
             if (batch.Value.Blocks.Count > 0)
             {
+                consecutiveFailures = 0;
                 fallback = null;
                 skippedOnWordOf = null;
+                if (batchSize != DefaultBatchSize && _logger.IsDebug) _logger.Debug($"Restoring range sync batch size to {DefaultBatchSize} from {batchSize} after a served batch");
+                batchSize = DefaultBatchSize;
             }
-            else if (peer.HeadSlot < from)
+            else
             {
-                // Offered on a status below the range, so its empty answer may mean it is behind rather than that the slots are empty (phase0/p2p-interface.md Status).
+                // Linkage of the next reply must corroborate skipped slots, regardless of the advertised head.
                 skippedOnWordOf ??= peer;
             }
 
-            if (batchSize != DefaultBatchSize && _logger.IsDebug) _logger.Debug($"Restoring range sync batch size to {DefaultBatchSize} from {batchSize} after a served batch");
-            batchSize = DefaultBatchSize;
             await FetchColumnsForBatchAsync(batch.Value.Blocks, batch.Value.Roots, token);
             await FetchGloasColumnsForBatchAsync(batch.Value.Blocks, batch.Value.Roots, token);
             batchSource?.Invoke(peer);

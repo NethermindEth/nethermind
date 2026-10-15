@@ -39,6 +39,20 @@ public class BeaconChainPlugin(IBeaconChainConfig config) : INethermindPlugin
 
 public class BeaconChainModule : Module
 {
+    internal static void ValidateGloasSchedule(BeaconChainSpec spec, ISpecProvider execution)
+    {
+        if (spec.GloasForkEpoch == ulong.MaxValue)
+        {
+            if (execution.GetFinalSpec().IsAmsterdamEnabled)
+                throw new ArgumentException("The execution layer schedules Amsterdam but the beacon chain does not schedule Gloas.");
+            return;
+        }
+        ulong timestamp = checked(spec.GenesisTime + spec.GloasForkEpoch * spec.SlotsPerEpoch * spec.SecondsPerSlot);
+        if (!execution.GetSpec(long.MaxValue - 1, timestamp).IsAmsterdamEnabled
+            || (timestamp > 0 && execution.GetSpec(long.MaxValue - 1, timestamp - 1).IsAmsterdamEnabled))
+            throw new ArgumentException($"Gloas must activate with execution-layer Amsterdam at timestamp {timestamp}; align both fork schedules.");
+    }
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -51,7 +65,9 @@ public class BeaconChainModule : Module
             .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig>((specProvider, chainConfig) =>
             {
                 BeaconPresetSelection.Initialize(specProvider.ChainId);
-                return BeaconChainSpec.ForChainId(specProvider.ChainId).WithGloasForkOverride(chainConfig.GloasForkEpoch, chainConfig.GloasForkVersion);
+                BeaconChainSpec spec = BeaconChainSpec.ForChainId(specProvider.ChainId).WithGloasForkOverride(chainConfig.GloasForkEpoch, chainConfig.GloasForkVersion);
+                ValidateGloasSchedule(spec, specProvider);
+                return spec;
             })
             .AddSingleton<BeaconChainStore>()
             .AddSingleton<PubkeyCache>()

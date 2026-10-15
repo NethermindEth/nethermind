@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
 using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
@@ -285,7 +284,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         while (true)
         {
             Task shortfall = Volatile.Read(ref _custodyShortfall).Task;
-            if (_peers.Count + _dialing.Count < _config.TargetPeerCount || UncustodiedSampledColumns().Count > 0)
+            if (_peers.Count + _dialing.Count < _config.TargetPeerCount || OutboundCount < OutboundFloor || UncustodiedSampledColumns().Count > 0)
             {
                 return;
             }
@@ -371,7 +370,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private async Task TrimToPeerBandAsync(string[] staticAddresses, CancellationToken token)
     {
         int overflow = _peers.Count - _config.MaxPeerCount;
-        if (overflow <= 0)
+        if (overflow <= 0 && (OutboundCount >= OutboundFloor || _peers.Count <= _config.TargetPeerCount))
         {
             return;
         }
@@ -383,6 +382,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         int toDrop = Math.Min(trimmable.Count, _peers.Count - target);
         for (int i = 0; i < trimmable.Count && toDrop > 0; i++)
         {
+            if (trimmable[i].Direction == PeerDirection.Outbound && OutboundCount <= OutboundFloor) continue;
             PeerColumnCustody custody = trimmable[i].Custody;
             if (IsLastCustodian(custody, sampled, custodians))
             {
@@ -738,7 +738,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private bool IsWantedAtCurrentCount(string? enr, out PeerColumnCustody? covering)
     {
         covering = null;
-        if (_peers.Count + _dialing.Count < _config.TargetPeerCount || _localCustody.Current is null)
+        if (_peers.Count + _dialing.Count < _config.TargetPeerCount || OutboundCount < OutboundFloor || _localCustody.Current is null)
         {
             return true;
         }
@@ -750,6 +750,28 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         return covering is not null;
+    }
+
+    private int OutboundFloor => Math.Min(Math.Max(0, _config.MaxPeerCount - 1), (_config.TargetPeerCount + 4) / 5);
+
+    private int OutboundCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
+                if (peer.Value.Direction == PeerDirection.Outbound) count++;
+            foreach (KeyValuePair<string, Reservation> reservation in _dialing)
+                if (reservation.Value.Direction == PeerDirection.Outbound) count++;
+            return count;
+        }
+    }
+
+    private bool IsStaticPeer(string peerId)
+    {
+        foreach (string address in StaticPeerAddresses())
+            if (ExtractPeerId(address) == peerId) return true;
+        return false;
     }
 
     /// <summary>Atomically reserves <paramref name="address"/> below the ceiling and rejects connected or in-flight peer ids at any address.</summary>
@@ -765,7 +787,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 return false;
             }
 
-            atCeiling = _peers.Count + _dialing.Count >= _config.MaxPeerCount + (overCeiling ? 1 : 0);
+            bool trusted = IsStaticPeer(peerId);
+            int ceiling = _config.MaxPeerCount + (overCeiling || trusted ? 1 : 0);
+            if (direction == PeerDirection.Inbound && !trusted) ceiling -= OutboundFloor;
+            atCeiling = _peers.Count + _dialing.Count >= ceiling;
             if (atCeiling)
             {
                 return false;
@@ -1354,6 +1379,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         _ = KeepGossipChannelAsync(peer);
         PeerAdmitted?.Invoke(peer);
+        if (IsStaticPeer(peerId) && _peers.Count > _config.MaxPeerCount && WorstReplaceablePeer(PeerColumnCustody.None) is { } replaced)
+        {
+            await DropAsync(replaced, GoodbyeReason.TooManyPeers, "making room for a static peer", token);
+        }
         return true;
     }
 
@@ -1689,6 +1718,17 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             await DropAsync(peer, GoodbyeReason.IrrelevantNetwork, "fork digest mismatch", token);
             return false;
+        }
+
+        if (_spec is not null)
+        {
+            ulong now = (ulong)Math.Max(0, _timestamper.UtcNowOffset.ToUnixTimeSeconds());
+            ulong currentSlot = now > _spec.GenesisTime ? (now - _spec.GenesisTime) / _spec.SecondsPerSlot : 0;
+            if (status.HeadSlot > currentSlot + 1 || status.FinalizedEpoch > _spec.GetEpoch(currentSlot))
+            {
+                await DropAsync(peer, GoodbyeReason.IrrelevantNetwork, "head or finalized checkpoint is ahead of the wall clock", token);
+                return false;
+            }
         }
 
         if (ConflictsWithFinalized(status, local, _store, _spec?.SlotsPerEpoch ?? 0))
@@ -2364,7 +2404,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 if (manager._logger.IsDebug) manager._logger.Debug($"{protocol} to {Id}: requests in flight {RequestsInFlight}, slot wait {Stopwatch.GetElapsedTime(queuedAt).TotalMilliseconds:F0} ms, request not sent, {waitOutcome}");
                 if (disconnected)
                 {
-                    throw new IOException(waitOutcome, e);
+                    throw new PeerSessionClosedException(waitOutcome, e);
                 }
 
                 throw;

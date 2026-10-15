@@ -211,26 +211,27 @@ public class IdentifyTests
         Assert.That(stored.SignedPeerRecord, Is.EqualTo(replaces ? later.SignedPeerRecord : first.SignedPeerRecord));
     }
 
-    [TestCase(IdentifyAgentVersionProbe.MaxMessageSize, false)]
-    [TestCase(IdentifyAgentVersionProbe.MaxMessageSize + 1, true)]
-    [TestCase(256 * 1024 * 1024, true)]
-    public async Task An_identify_answer_is_refused_from_a_declared_length_past_the_bound(int declared, bool refused)
+    [Test]
+    public async Task An_identify_answer_is_refused_from_a_declared_length_past_the_bound(
+        [Values(IdentifyAgentVersionProbe.MaxMessageSize, IdentifyAgentVersionProbe.MaxMessageSize + 1, 256 * 1024 * 1024)] int declared,
+        [Values] bool sharedStack)
     {
         TimeSpan bound = TimeSpan.FromSeconds(10);
         Channel channel = new();
         IdentifyAgentVersionProbe probe = new(null!, new IdentifyProtocolSettings(), new PeerStore());
 
-        Task read = probe.DialAsync(channel, null!, null).WaitAsync(bound);
+        Task read = (sharedStack ? new BoundedIdentifyProtocol(null!, new PeerStore()).DialAsync(channel, null!)
+            : probe.DialAsync(channel, null!, null)).WaitAsync(bound);
         await channel.Reverse.WriteVarintAsync(declared).AsTask().WaitAsync(bound);
         await channel.Reverse.WriteEofAsync().AsTask().WaitAsync(bound);
 
-        if (refused)
+        if (declared > IdentifyAgentVersionProbe.MaxMessageSize)
         {
-            Assert.ThrowsAsync<PeerConnectionException>(() => read);
+            await Assert.ThrowsAsync<PeerConnectionException>(() => read);
         }
         else
         {
-            Assert.ThrowsAsync<ChannelClosedException>(() => read, "a length within the bound goes on to read the body");
+            await Assert.ThrowsAsync<ChannelClosedException>(() => read, "a length within the bound goes on to read the body");
         }
     }
 
@@ -248,8 +249,7 @@ public class IdentifyTests
         Task read = probe.DialAsync(channel, null!, null).WaitAsync(bound);
         await channel.Reverse.WriteAsync(new ReadOnlySequence<byte>(declared)).AsTask().WaitAsync(bound);
         Task<IOResult> sent = channel.Reverse.WriteAsync(new ReadOnlySequence<byte>(body)).AsTask();
-
-        Assert.ThrowsAsync<PeerConnectionException>(() => read);
+        await Assert.ThrowsAsync<PeerConnectionException>(() => read);
         ReadResult rest = await channel.ReadAsync(body.Length).AsTask().WaitAsync(bound);
         Assert.That(rest.Data.Length, Is.EqualTo(body.Length), "the body is still pending, not buffered by the refused read");
         await sent.WaitAsync(bound);

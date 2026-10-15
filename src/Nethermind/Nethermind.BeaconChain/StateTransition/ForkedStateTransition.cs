@@ -201,6 +201,9 @@ public static class ForkedStateTransition
         if (state.Slot < block.Slot)
             GloasSlotProcessing.ProcessSlots(state, block.Slot, cache);
 
+        if (verifySignatures && state.Validators!.Length > pubkeys.Count)
+            pubkeys.Extend(state.Validators, pubkeys.Count);
+
         if (verifySignatures && !GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, pubkeys))
             throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
 

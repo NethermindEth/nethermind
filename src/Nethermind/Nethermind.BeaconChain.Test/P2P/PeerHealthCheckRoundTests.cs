@@ -74,7 +74,7 @@ public class PeerHealthCheckRoundTests
         if (cancel)
         {
             await stop.CancelAsync();
-            Assert.CatchAsync<OperationCanceledException>(async () => await scheduled);
+            await Assert.CatchAsync<OperationCanceledException>(async () => await scheduled);
         }
         else
         {

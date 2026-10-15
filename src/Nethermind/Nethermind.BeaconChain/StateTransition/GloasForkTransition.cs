@@ -187,7 +187,13 @@ public static class GloasForkTransition
     /// </summary>
     public static void OnboardBuildersFromPendingDeposits(BeaconStateGloas state, ulong currentEpoch, BeaconChainSpec? spec = null)
     {
-        HashSet<BlsPublicKey> validatorPubkeys = state.Validators!.Select(static v => v.Pubkey).ToHashSet();
+        HashSet<BlsPublicKey> validatorPubkeys = [];
+        foreach (Validator validator in state.Validators!) validatorPubkeys.Add(validator.Pubkey);
+        HashSet<BlsPublicKey> builderPubkeys = [];
+        foreach (Builder builder in state.Builders!) builderPubkeys.Add(builder.Pubkey);
+        Dictionary<BlsPublicKey, List<PendingDeposit>> uncheckedDeposits = [];
+        HashSet<BlsPublicKey> pendingValidators = [];
+        BeaconChainSpec signingSpec = spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!);
         List<PendingDeposit> kept = [];
 
         foreach (PendingDeposit deposit in state.PendingDeposits ?? [])
@@ -199,17 +205,26 @@ public static class GloasForkTransition
                 continue;
             }
 
-            // Recomputed every iteration: applying a deposit below can add a builder to the registry.
-            HashSet<BlsPublicKey> builderPubkeys = state.Builders!.Select(static b => b.Pubkey).ToHashSet();
-
             if (!builderPubkeys.Contains(deposit.Pubkey))
             {
                 if (!IsBuilderWithdrawalCredential(deposit.WithdrawalCredentials!))
                 {
                     kept.Add(deposit);
+                    if (!uncheckedDeposits.TryGetValue(deposit.Pubkey, out List<PendingDeposit>? pending))
+                        uncheckedDeposits[deposit.Pubkey] = pending = [];
+                    pending.Add(deposit);
                     continue;
                 }
-                if (IsPendingValidator(state.GenesisValidatorsRoot!, kept, deposit.Pubkey, spec))
+                if (uncheckedDeposits.Remove(deposit.Pubkey, out List<PendingDeposit>? candidates))
+                {
+                    foreach (PendingDeposit candidate in candidates)
+                        if (DepositSignatureVerifier.IsValid(signingSpec, candidate.Pubkey, candidate.WithdrawalCredentials!, candidate.Amount, candidate.Signature))
+                        {
+                            pendingValidators.Add(deposit.Pubkey);
+                            break;
+                        }
+                }
+                if (pendingValidators.Contains(deposit.Pubkey))
                 {
                     kept.Add(deposit);
                     continue;
@@ -224,6 +239,7 @@ public static class GloasForkTransition
                     new Address(deposit.WithdrawalCredentials!.Bytes[12..]),
                     deposit.Amount,
                     deposit.Slot);
+                builderPubkeys.Add(deposit.Pubkey);
             }
             else
             {

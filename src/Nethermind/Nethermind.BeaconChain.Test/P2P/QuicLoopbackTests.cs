@@ -51,7 +51,7 @@ public class QuicLoopbackTests
         await hosts.StartAsync(token, server.P2P, client.P2P);
 
         string wrong = $"{PeerSessionNodes.LoopbackAddressText(server.P2P, withPeerId: false, quic: true)}/p2p/{new Identity().PeerId}";
-        Exception? failure = Assert.CatchAsync<Exception>(async () =>
+        Exception? failure = await Assert.CatchAsync<Exception>(async () =>
             await client.P2P.DialPeerAsync(Multiaddress.Decode(wrong), token).WaitAsync(TimeSpan.FromSeconds(15), token));
 
         using IDisposable scope = Assert.EnterMultipleScope();

@@ -75,7 +75,6 @@ public sealed record ProcessAttestation(ulong ValidatorIndex, Hash256 BlockRoot,
 
 public sealed record Prune(Hash256 FinalizedRoot, int PruneThreshold, int ExpectedLength) : Operation;
 
-public sealed record InvalidatePayload(Hash256 HeadBlockRoot, Hash256? LatestValidAncestorHash) : Operation;
 
 public sealed record AssertWeight(Hash256 BlockRoot, ulong Weight) : Operation;
 
@@ -156,13 +155,6 @@ public sealed class ForkChoiceTestDefinition
                     forkChoice.PruneThreshold = prune.PruneThreshold;
                     forkChoice.MaybePrune(prune.FinalizedRoot);
                     Assert.That(forkChoice.Count, Is.EqualTo(prune.ExpectedLength), opDescription);
-                    break;
-
-                case InvalidatePayload invalidatePayload:
-                    InvalidationOperation invalidation = invalidatePayload.LatestValidAncestorHash is { } latestValidAncestor
-                        ? InvalidationOperation.InvalidateMany(invalidatePayload.HeadBlockRoot, alwaysInvalidateHead: true, latestValidAncestor)
-                        : InvalidationOperation.InvalidateOne(invalidatePayload.HeadBlockRoot);
-                    forkChoice.ProcessExecutionPayloadInvalidation(invalidation, FinalizedCheckpoint);
                     break;
 
                 case AssertWeight assertWeight:

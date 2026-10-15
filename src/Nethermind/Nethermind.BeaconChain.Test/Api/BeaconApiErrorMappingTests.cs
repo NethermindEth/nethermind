@@ -98,8 +98,8 @@ public class BeaconApiErrorMappingTests
     }
 
     [Test]
-    public void A_handler_failure_after_the_first_flush_is_a_transport_error_not_a_well_terminated_200() =>
-        Assert.ThrowsAsync<HttpRequestException>(() => _pipelineClient.GetAsync("/test/fault-after-flush"),
+    public async Task A_handler_failure_after_the_first_flush_is_a_transport_error_not_a_well_terminated_200() =>
+        await Assert.ThrowsAsync<HttpRequestException>(() => _pipelineClient.GetAsync("/test/fault-after-flush"),
             "the client must observe a failed transfer, not a 200 with a truncated body");
 
     /// <summary>Minimal bytes for BeaconStateCodec to read a slot: it never reaches the full decode

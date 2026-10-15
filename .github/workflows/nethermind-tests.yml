@@ -15,10 +15,6 @@ on:
         description: Collect coverage
         required: false
         type: boolean
-      consensus-mainnet:
-        default: false
-        description: Run the full mainnet consensus-spec suite
-        type: boolean
 
 env:
   COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
@@ -44,7 +40,7 @@ jobs:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     needs: build
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.project == 'Nethermind.BeaconChain.Test' && 30 || 15 }}
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
     env:
@@ -97,6 +93,7 @@ jobs:
           - Nethermind.Optimism.Test
           - Nethermind.PortfolioViewer.Plugin.Test
           - Nethermind.Runner.Test
+          - Nethermind.SendPolicy.Plugin.Test
           - Nethermind.Serialization.JsonGenerator.Test
           - Nethermind.Serialization.Ssz.Test
           - Nethermind.Serialization.SszGenerator.Test
@@ -193,6 +190,9 @@ jobs:
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: windows-11-arm, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: windows-11-arm, project: Nethermind.Evm.Test, chunk: '' }
+          - { runner: windows-11-arm, project: Nethermind.Runner.Test, chunk: '' }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -484,9 +484,8 @@ jobs:
           - Ethereum.ConsensusSpec.Test
           - Ethereum.ConsensusSpec.Minimal.Test
     env:
-      # The mainnet preset is ~900 MB compressed and several GB extracted. Pull requests run minimal
-      # plus required mainnet cases; pushes and opted-in manual runs enumerate both full suites.
-      NETHERMIND_CONSENSUS_SPEC_MAINNET: ${{ (github.event_name == 'push' || inputs.consensus-mainnet) && '1' || '' }}
+      # Validate both compiled presets before merge, including production-only SSZ layouts.
+      NETHERMIND_CONSENSUS_SPEC_MAINNET: '1'
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -561,13 +560,13 @@ jobs:
         run: |
           # Intentional exclusions:
           # - Nethermind.Precompiles.Benchmark.Test: lives in Benchmarks.slnx only, not built by the test artifact
-          # - Nethermind.Core.ZkEvm.Test, Nethermind.Trie.ZkEvm.Test, Nethermind.Evm.ZkEvm.Test: run with
+          # - Nethermind.Core.ZkEvm.Test, Nethermind.Trie.ZkEvm.Test, Nethermind.State.ZkEvm.Test, Nethermind.Evm.ZkEvm.Test: run with
           #   EnableZkEvm=true in stateless-tests.yml
           # - Ethereum.Blockchain.Pyspec.Test: the fixture shards are superseded by the nethtest job
           #   (see run-nethtest.yml). The assembly also holds plain unit tests (StatelessSchemaTests)
           #   that remain unwired: test discovery loads the full pyspec fixture sets, so a matrix
           #   run exceeds the job timeout. Wiring those tests needs a project move.
-          allowlist="Nethermind.Precompiles.Benchmark.Test Nethermind.Core.ZkEvm.Test Nethermind.Trie.ZkEvm.Test Nethermind.Evm.ZkEvm.Test Ethereum.Blockchain.Pyspec.Test"
+          allowlist="Nethermind.Precompiles.Benchmark.Test Nethermind.Core.ZkEvm.Test Nethermind.Trie.ZkEvm.Test Nethermind.State.ZkEvm.Test Nethermind.Evm.ZkEvm.Test Ethereum.Blockchain.Pyspec.Test"
           missing=0
           for dir in src/Nethermind/*.Test; do
             project=$(basename "$dir")

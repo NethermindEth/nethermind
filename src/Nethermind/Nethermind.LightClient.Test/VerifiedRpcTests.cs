@@ -69,22 +69,22 @@ public class VerifiedRpcTests
         using Provider provider = new(new Account(7, 123, Keccak.EmptyTreeHash, Keccak.Compute(code)), code: tamper ? [0x60, 0x02, 0x00] : code);
 
         if (tamper)
-            AssertRpcError(provider, "eth_getCode", Parameters(AccountAddress.ToString(), "finalized"), -32000);
+            await AssertRpcErrorAsync(provider, "eth_getCode", Parameters(AccountAddress.ToString(), "finalized"), -32000);
         else
             Assert.That(await provider.Rpc.InvokeAsync("eth_getCode", Parameters(AccountAddress.ToString(), "finalized"), CancellationToken.None), Is.EqualTo("0x600100"));
         Assert.That(provider.Requests[1].Kind, Is.EqualTo("code"));
     }
 
     [Test]
-    public void Forged_account_proof_is_rejected([Values] bool omit)
+    public async Task Forged_account_proof_is_rejected([Values] bool omit)
     {
         using Provider provider = new(new Account(7, 123)) { OmitProof = omit, TamperProof = !omit };
 
-        AssertRpcError(provider, "eth_getBalance", Parameters(AccountAddress.ToString(), "finalized"), -32000);
+        await AssertRpcErrorAsync(provider, "eth_getBalance", Parameters(AccountAddress.ToString(), "finalized"), -32000);
     }
 
     [Test]
-    public void Storage_rejects_a_tampered_proof()
+    public async Task Storage_rejects_a_tampered_proof()
     {
         byte[] storageLeaf = Leaf(Keccak.Compute(((UInt256)1).ToBigEndian()), Rlp.Encode((UInt256)42).Bytes);
         using Provider provider = new(new Account(7, 123, Keccak.Compute(storageLeaf), Keccak.OfAnEmptyString), storageLeaf)
@@ -92,14 +92,14 @@ public class VerifiedRpcTests
             TamperStorageProof = true
         };
 
-        AssertRpcError(provider, "eth_getStorageAt", Parameters(AccountAddress.ToString(), "0x1", "finalized"), -32000);
+        await AssertRpcErrorAsync(provider, "eth_getStorageAt", Parameters(AccountAddress.ToString(), "0x1", "finalized"), -32000);
     }
 
     [Test]
-    public void Unverified_selectors_are_rejected_before_network([Values("pending", "safe", "earliest", "0x9", "0x0a")] string selector)
+    public async Task Unverified_selectors_are_rejected_before_network([Values("pending", "safe", "earliest", "0x9", "0x0a")] string selector)
     {
         using Provider provider = new(new Account(7, 123));
-        RpcException? exception = Assert.ThrowsAsync<RpcException>(async () => await provider.Rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), selector), CancellationToken.None));
+        RpcException? exception = await Assert.ThrowsAsync<RpcException>(async () => await provider.Rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), selector), CancellationToken.None));
 
         using (Assert.EnterMultipleScope())
         {
@@ -120,12 +120,12 @@ public class VerifiedRpcTests
     }
 
     [Test]
-    public void Latest_without_an_authenticated_optimistic_head_errors()
+    public async Task Latest_without_an_authenticated_optimistic_head_errors()
     {
         using Provider provider = new(new Account(7, 123));
         using VerifiedRpc rpc = new(provider, () => provider.Head, 1);
 
-        RpcException? error = Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_blockNumber", Parameters(), CancellationToken.None));
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_blockNumber", Parameters(), CancellationToken.None));
         Assert.That(error!.Code, Is.EqualTo(-32001));
     }
 
@@ -165,7 +165,7 @@ public class VerifiedRpcTests
     }
 
     [Test]
-    public void Stale_finality_still_rejects_finalized_and_historical_reads()
+    public async Task Stale_finality_still_rejects_finalized_and_historical_reads()
     {
         using Provider provider = new(new Account(7, 123));
         using VerifiedRpc rpc = new(provider, () => throw new RpcException(-32000, "Finality is stale."), 1,
@@ -180,7 +180,7 @@ public class VerifiedRpcTests
         ];
         foreach ((string method, JsonElement parameters) in requests)
         {
-            RpcException? error = Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method, parameters, CancellationToken.None));
+            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method, parameters, CancellationToken.None));
             Assert.That(error!.Message, Is.EqualTo("Finality is stale."), method);
         }
     }
@@ -263,17 +263,17 @@ public class VerifiedRpcTests
         }
 
         provider.Header.ReceiptsRoot = Keccak.Compute("forged receipts");
-        AssertRpcError(provider, "eth_getBlockReceipts", Parameters("finalized"), -32000);
+        await AssertRpcErrorAsync(provider, "eth_getBlockReceipts", Parameters("finalized"), -32000);
     }
 
     [Test]
-    public void Invalid_log_filters_reject_before_block_fetch()
+    public async Task Invalid_log_filters_reject_before_block_fetch()
     {
         using Provider provider = new(new Account(7, 123));
 
-        AssertRpcError(provider, "eth_getLogs", Parameters(new { blockHash = BlockHash.ToString(), fromBlock = "finalized" }), -32602);
-        AssertRpcError(provider, "eth_getLogs", Parameters(new { topics = new string[5] }), -32602);
-        AssertRpcError(provider, "eth_getLogs", Parameters(new { address = "0x12" }), -32602);
+        await AssertRpcErrorAsync(provider, "eth_getLogs", Parameters(new { blockHash = BlockHash.ToString(), fromBlock = "finalized" }), -32602);
+        await AssertRpcErrorAsync(provider, "eth_getLogs", Parameters(new { topics = new string[5] }), -32602);
+        await AssertRpcErrorAsync(provider, "eth_getLogs", Parameters(new { address = "0x12" }), -32602);
         Assert.That(provider.BlockFetches, Is.Zero);
     }
 
@@ -305,7 +305,7 @@ public class VerifiedRpcTests
 
         JsonElement one = await execution.GetLogsAsync([provider.Header], null, [], CancellationToken.None);
         Assert.That(one.GetArrayLength(), Is.EqualTo(3));
-        RpcException? error = Assert.ThrowsAsync<RpcException>(async () =>
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
             await execution.GetLogsAsync([older, provider.Header], null, [], CancellationToken.None));
         Assert.That(error!.Code, Is.EqualTo(-32005));
     }
@@ -321,15 +321,15 @@ public class VerifiedRpcTests
         try
         {
             Assert.That(provider.BlockFetches, Is.EqualTo(4));
-            RpcException? busy = Assert.ThrowsAsync<RpcException>(async () => await provider.Rpc.InvokeAsync("eth_getBlockByNumber",
+            RpcException? busy = await Assert.ThrowsAsync<RpcException>(async () => await provider.Rpc.InvokeAsync("eth_getBlockByNumber",
                 Parameters("finalized", false), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1)));
             Assert.That(busy!.Code, Is.EqualTo(-32005));
             if (cancel) cancellation.Cancel();
             else provider.BlockGate!.SetException(new InvalidDataException("Invalid authenticated peer body."));
             foreach (Task<object> task in active)
             {
-                if (cancel) Assert.CatchAsync<OperationCanceledException>(async () => await task);
-                else Assert.That(Assert.ThrowsAsync<RpcException>(async () => await task)!.Code, Is.EqualTo(-32000));
+                if (cancel) await Assert.CatchAsync<OperationCanceledException>(async () => await task);
+                else Assert.That((await Assert.ThrowsAsync<RpcException>(async () => await task))!.Code, Is.EqualTo(-32000));
             }
             provider.BlockGate = null;
             JsonElement next = (JsonElement)await provider.Rpc.InvokeAsync("eth_getBlockByNumber", Parameters("finalized", false), CancellationToken.None);
@@ -375,7 +375,7 @@ public class VerifiedRpcTests
         if (depth == 32)
             Assert.That(await provider.Rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), selector), CancellationToken.None), Is.EqualTo("0x7b"));
         else
-            AssertRpcError(provider, "eth_getBalance", Parameters(AccountAddress.ToString(), selector), -32001);
+            await AssertRpcErrorAsync(provider, "eth_getBalance", Parameters(AccountAddress.ToString(), selector), -32001);
 
         using (Assert.EnterMultipleScope())
         {
@@ -411,7 +411,7 @@ public class VerifiedRpcTests
         Assert.That(provider.LastQueriedHead!.BlockHash, Is.EqualTo(provider.HistoricalHeader!.Hash));
 
         provider.ReorgOptimisticAncestor();
-        AssertRpcError(provider, method, ParametersFor(new { blockHash = provider.HistoricalHeader.Hash!.ToString(), requireCanonical = true }), -32001);
+        await AssertRpcErrorAsync(provider, method, ParametersFor(new { blockHash = provider.HistoricalHeader.Hash!.ToString(), requireCanonical = true }), -32001);
         Assert.That(await provider.Rpc.InvokeAsync(method, ParametersFor("latest"), CancellationToken.None), Is.Not.Null,
             "Rejecting an orphan must release the historical request admission slot.");
     }
@@ -427,7 +427,7 @@ public class VerifiedRpcTests
         Assert.That(provider.LastCanonicalAnchor, Is.EqualTo(provider.LatestHead));
 
         provider.ReorgOptimisticAncestor();
-        AssertRpcError(provider, "eth_getBlockByHash", Parameters(hash.ToString(), false), -32001);
+        await AssertRpcErrorAsync(provider, "eth_getBlockByHash", Parameters(hash.ToString(), false), -32001);
     }
 
     [Test]
@@ -437,7 +437,7 @@ public class VerifiedRpcTests
         provider.HistoricalHeader = Provider.CreateHeader(provider.LatestHead!.Number - (ulong)depth, Keccak.Compute("bounded optimistic history"), provider.Head.StateRoot);
         if (depth == 32)
             Assert.That(await provider.Rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), $"0x{provider.HistoricalHeader.Number:x}"), CancellationToken.None), Is.EqualTo("0x7b"));
-        else AssertRpcError(provider, "eth_getBalance", Parameters(AccountAddress.ToString(), $"0x{provider.HistoricalHeader.Number:x}"), -32001);
+        else await AssertRpcErrorAsync(provider, "eth_getBalance", Parameters(AccountAddress.ToString(), $"0x{provider.HistoricalHeader.Number:x}"), -32001);
         Assert.That(provider.CanonicalHeaderFetches, Is.EqualTo(depth == 32 ? 1 : 0));
     }
 
@@ -478,7 +478,7 @@ public class VerifiedRpcTests
             Assert.That(requests.Skip(2).All(static request => request.IsCompleted), Is.True);
             foreach (Task<object> rejected in requests.Skip(2))
             {
-                RpcException? error = Assert.ThrowsAsync<RpcException>(async () => await rejected);
+                RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rejected);
                 Assert.That(error!.Code, Is.EqualTo(-32000));
             }
             object latest = await provider.Rpc.InvokeAsync("eth_getBalance",
@@ -509,7 +509,7 @@ public class VerifiedRpcTests
 
         Task<object> interrupted = provider.Rpc.InvokeAsync("eth_getBalance", parameters, cancellation.Token);
         cancellation.Cancel();
-        Assert.CatchAsync<OperationCanceledException>(async () => await interrupted);
+        await Assert.CatchAsync<OperationCanceledException>(async () => await interrupted);
         provider.HistoricalHeaderGate.SetResult();
 
         Task<object>[] next = [provider.Rpc.InvokeAsync("eth_getBalance", parameters, CancellationToken.None),
@@ -540,12 +540,12 @@ public class VerifiedRpcTests
     [TestCase("eth_getBalance", "[\"0x12\",\"finalized\"]", -32602)]
     [TestCase("eth_getStorageAt", "[\"0x1234567890123456789012345678901234567890\",\"0x10000000000000000000000000000000000000000000000000000000000000000\",\"finalized\"]", -32602)]
     [TestCase("eth_getBalance", "[\"0x1234567890123456789012345678901234567890\",{\"blockNumber\":\"0xa\",\"blockHash\":\"0x00\"}]", -32602)]
-    public void Invalid_requests_do_not_reach_provider(string method, string json, int error)
+    public async Task Invalid_requests_do_not_reach_provider(string method, string json, int error)
     {
         using Provider provider = new(new Account(7, 123));
         using JsonDocument parameters = JsonDocument.Parse(json);
 
-        AssertRpcError(provider, method, parameters.RootElement, error);
+        await AssertRpcErrorAsync(provider, method, parameters.RootElement, error);
         Assert.That(provider.Requests, Is.Empty);
     }
 
@@ -576,18 +576,18 @@ public class VerifiedRpcTests
     }
 
     [Test]
-    public void Cancellation_reaches_execution_fetch()
+    public async Task Cancellation_reaches_execution_fetch()
     {
         using Provider provider = new(new Account(7, 123)) { Cancel = true };
         using CancellationTokenSource cancellation = new();
         cancellation.Cancel();
 
-        Assert.CatchAsync<OperationCanceledException>(async () => await provider.Rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), "finalized"), cancellation.Token));
+        await Assert.CatchAsync<OperationCanceledException>(async () => await provider.Rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), "finalized"), cancellation.Token));
     }
 
-    private static void AssertRpcError(Provider provider, string method, JsonElement parameters, int code)
+    private static async Task AssertRpcErrorAsync(Provider provider, string method, JsonElement parameters, int code)
     {
-        RpcException? exception = Assert.ThrowsAsync<RpcException>(async () => await provider.Rpc.InvokeAsync(method, parameters, CancellationToken.None));
+        RpcException? exception = await Assert.ThrowsAsync<RpcException>(async () => await provider.Rpc.InvokeAsync(method, parameters, CancellationToken.None));
         Assert.That(exception!.Code, Is.EqualTo(code));
     }
 
@@ -609,7 +609,7 @@ public class VerifiedRpcTests
         byte[] leaf = Leaf(Keccak.Compute(key.ToBigEndian()), Rlp.Encode((UInt256)42).Bytes);
         using Provider provider = new(new Account(7, 123, Keccak.Compute(leaf), Keccak.OfAnEmptyString), leaf) { TamperProof = tamper };
         JsonElement parameters = Parameters(AccountAddress.ToString(), new[] { "0x01" }, "finalized");
-        if (tamper) { AssertRpcError(provider, "eth_getProof", parameters, -32000); return; }
+        if (tamper) { await AssertRpcErrorAsync(provider, "eth_getProof", parameters, -32000); return; }
         JsonElement result = (JsonElement)await provider.Rpc.InvokeAsync("eth_getProof", parameters, CancellationToken.None);
         byte[][] accountProof = result.GetProperty("accountProof").EnumerateArray()
             .Select(static item => Convert.FromHexString(item.GetString()!.AsSpan(2))).ToArray();
@@ -705,10 +705,10 @@ public class VerifiedRpcTests
     [TestCase("0x1", new double[] { 51, 50 })]
     [TestCase("0x1", new double[] { -1 })]
     [TestCase("0x1", new double[] { 101 })]
-    public void Invalid_fee_history_is_rejected_before_peer_requests(string count, double[] percentiles)
+    public async Task Invalid_fee_history_is_rejected_before_peer_requests(string count, double[] percentiles)
     {
         using Provider provider = new(new Account(7, 123));
-        AssertRpcError(provider, "eth_feeHistory", Parameters(count, "finalized", percentiles), -32602);
+        await AssertRpcErrorAsync(provider, "eth_feeHistory", Parameters(count, "finalized", percentiles), -32602);
         Assert.That(provider.BlockFetches, Is.Zero);
     }
 
@@ -730,7 +730,7 @@ public class VerifiedRpcTests
         }
         else
         {
-            AssertRpcError(provider, "eth_sendRawTransaction", parameters, -32003);
+            await AssertRpcErrorAsync(provider, "eth_sendRawTransaction", parameters, -32003);
             Assert.That(provider.Broadcasts, Is.Empty);
         }
     }
@@ -768,7 +768,7 @@ public class VerifiedRpcTests
         JsonElement parameters = Parameters("0x" + Convert.ToHexString(encoded).ToLowerInvariant());
         if (tamper)
         {
-            AssertRpcError(provider, "eth_sendRawTransaction", parameters, -32003);
+            await AssertRpcErrorAsync(provider, "eth_sendRawTransaction", parameters, -32003);
             Assert.That(provider.Broadcasts, Is.Empty);
         }
         else

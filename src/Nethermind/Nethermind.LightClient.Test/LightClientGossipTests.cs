@@ -164,14 +164,19 @@ public class LightClientGossipTests
         Assert.That(fixture.Gossip.Verify(null!, new Message { Topic = next, Data = ByteString.Empty }), Is.EqualTo(MessageValidity.Deferred));
     }
 
-    [TestCase(3498, false)]
-    [TestCase(3499, true)]
-    public async Task Due_time_includes_the_gossip_clock_allowance(int milliseconds, bool expected)
+    [TestCase(31ul, 3498, false)]
+    [TestCase(31ul, 3499, true)]
+    [TestCase(32ul, 2499, false)]
+    [TestCase(32ul, 2500, true)]
+    [TestCase(33ul, 2499, false)]
+    [TestCase(33ul, 2500, true)]
+    public async Task Due_time_includes_the_gossip_clock_allowance(ulong signatureSlot, int milliseconds, bool expected)
     {
-        await using Fixture fixture = new();
-        fixture.Clock.SetSlot(4, 0, milliseconds);
-        Assert.That(fixture.Gossip.IsDue(4), Is.EqualTo(expected));
-        Assert.That(fixture.Gossip.IsDue(ulong.MaxValue), Is.False);
+        ManualClock clock = new();
+        clock.SetSlot(signatureSlot, 0, milliseconds);
+        await using LightClientGossip gossip = new(ConsensusTests.Spec with { GloasForkEpoch = 1 }, LimboLogs.Instance, clock);
+        Assert.That(gossip.IsDue(signatureSlot), Is.EqualTo(expected));
+        Assert.That(gossip.IsDue(ulong.MaxValue), Is.False);
     }
 
     private static LightClientFinalityUpdate Finality(LightClientUpdate update) => new()

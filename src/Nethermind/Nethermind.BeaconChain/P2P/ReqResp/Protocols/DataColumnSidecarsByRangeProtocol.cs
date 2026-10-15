@@ -141,11 +141,14 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
+            using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
+            await ReqRespFraming.WriteErrorChunkAsync(reply, 139, "Too many concurrent requests", refusal.Token);
             return;
         }
 
         using BoundedTimeout timeout = StartBoundedTimeout(RespTimeout, MaxSidecarsResponseDuration);
         CancellationTokenSource cts = timeout.Cts;
+        int emitted = 0;
         try
         {
             byte[] requestSsz = await inboundSlot.ReadRequestAsync(reply, MaxRequestLength, cts.Token);
@@ -164,6 +167,8 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
                 throw new Eth2ReqRespException($"Request must have a positive count and 1..{Eip7594DasConstants.NumberOfColumns} columns");
             }
 
+            ChargeRequest(context, Math.Min(request.Count, MaxRequestDataColumnSidecars / (ulong)columns.Length) * (ulong)columns.Length, MaxRequestDataColumnSidecars);
+
             // fulu/p2p-interface.md: sidecars MUST be sent in (slot, column_index) order.
             ulong[] orderedColumns = [.. new SortedSet<ulong>(columns)];
             ulong count = request.Count;
@@ -181,9 +186,8 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
             }
 
             List<(ulong Slot, Hash256 Root)> sinceServed = [];
-            int emitted = 0;
             // fulu/p2p-interface.md DataColumnSidecarsByRange: bound the walk and refuse an empty reply when slots remain unread.
-            ulong walked = Math.Min(count, MaxRequestDataColumnSidecars);
+            ulong walked = Math.Min(count, MaxRequestDataColumnSidecars / (ulong)orderedColumns.Length);
             for (ulong offset = 0; offset < walked && offset <= ulong.MaxValue - request.StartSlot; offset++)
             {
                 cts.Token.ThrowIfCancellationRequested();
@@ -255,6 +259,12 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         catch (OperationCanceledException)
         {
             RecordFailure(Id, ReqRespFailureReason.Timeout);
+            if (emitted == 0)
+            {
+                using CancellationTokenSource errorTimeout = StartTimeout(TtfbTimeout);
+                await ReqRespFraming.WriteErrorChunkAsync(reply, ReqRespFraming.ResponseCode.ResourceUnavailable,
+                    "Requested column walk exceeded its deadline", errorTimeout.Token);
+            }
         }
     }
 

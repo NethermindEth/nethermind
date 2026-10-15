@@ -182,7 +182,7 @@ public class ForkDispatchTests
             return;
         }
 
-        NotSupportedException ex = Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None))!;
+        NotSupportedException ex = (await Assert.ThrowsAsync<NotSupportedException>(() => sync.RunAsync(CancellationToken.None)))!;
         Assert.That(ex.Message, Does.Contain(refusal));
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
@@ -204,7 +204,7 @@ public class ForkDispatchTests
             return;
         }
 
-        Exception ex = Assert.CatchAsync(() => sync.RunAsync(CancellationToken.None))!;
+        Exception ex = (await Assert.CatchAsync(() => sync.RunAsync(CancellationToken.None)))!;
         Assert.That(ex, Is.InstanceOf<NotSupportedException>().Or.InstanceOf<InvalidDataException>());
         Assert.That(ex.Message, Does.Contain(refusal));
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);

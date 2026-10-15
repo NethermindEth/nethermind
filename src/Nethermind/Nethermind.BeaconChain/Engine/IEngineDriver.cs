@@ -18,9 +18,6 @@ public interface IEngineDriver : INewPayloadNotifier
     /// <inheritdoc cref="EngineDriver.CurrentBlock"/>
     SignedBeaconBlock? CurrentBlock { get; set; }
 
-    /// <inheritdoc cref="EngineDriver.HasAnsweredNewPayload"/>
-    bool HasAnsweredNewPayload { get; }
-
     /// <inheritdoc cref="EngineDriver.IsAvailable"/>
     /// <remarks>Drivers that do not track call outcomes report no observed failure.</remarks>
     bool IsAvailable => true;
@@ -34,5 +31,11 @@ public interface IEngineDriver : INewPayloadNotifier
     {
         latestValidHash = null;
         return NotifyNewPayload(body);
+    }
+    /// <summary>Submits an envelope payload and returns the engine's latest valid execution ancestor.</summary>
+    ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests, out Hash256? latestValidHash)
+    {
+        latestValidHash = null;
+        return NotifyNewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests);
     }
 }

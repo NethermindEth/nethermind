@@ -172,7 +172,7 @@ public class HostTests
         }
         else
         {
-            Assert.ThrowsAsync<WebSocketException>(() => client.ConnectAsync(endpoint, timeout.Token));
+            await Assert.ThrowsAsync<WebSocketException>(() => client.ConnectAsync(endpoint, timeout.Token));
             Assert.That(client.State, Is.EqualTo(WebSocketState.Closed));
         }
     }
@@ -185,7 +185,7 @@ public class HostTests
         await using WebApplication app = CreateApp(occupying.Urls.Single());
         bool launched = false;
 
-        Assert.CatchAsync<IOException>(async () => await LightClientHost.RunAsync(app, _ =>
+        await Assert.CatchAsync<IOException>(async () => await LightClientHost.RunAsync(app, _ =>
         {
             launched = true;
             return Task.CompletedTask;

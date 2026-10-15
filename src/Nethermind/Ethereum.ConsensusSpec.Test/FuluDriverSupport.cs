@@ -41,13 +41,13 @@ public static class FuluDriverSupport
     internal static BeaconChainSpec DefaultSpec => BeaconChainSpec.Mainnet;
 #endif
 
-    internal static bool Enumerates(ConsensusPreset preset) =>
-        CompiledPreset == ConsensusPreset.Mainnet || preset == CompiledPreset;
+    internal static bool Enumerates(ConsensusPreset preset, bool crossPreset = false) =>
+        preset == CompiledPreset || (crossPreset && CompiledPreset == ConsensusPreset.Mainnet);
 
     internal static IEnumerable<TestCaseData> RelativeCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
-        Func<ConsensusPreset, string, string, string, T> createCase)
+        Func<ConsensusPreset, string, string, string, T> createCase, bool crossPreset = false)
     {
-        if (!Enumerates(preset))
+        if (!Enumerates(preset, crossPreset))
             yield break;
         foreach (string fork in forks)
         {
@@ -61,9 +61,9 @@ public static class FuluDriverSupport
     }
 
     internal static IEnumerable<TestCaseData> HandlerCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
-        Func<ConsensusPreset, string, string, string, string, T> createCase, IEnumerable<string>? handlers = null, bool strictHandlerDirectory = false, bool relativeNames = false)
+        Func<ConsensusPreset, string, string, string, string, T> createCase, IEnumerable<string>? handlers = null, bool strictHandlerDirectory = false, bool relativeNames = false, bool crossPreset = false)
     {
-        if (!Enumerates(preset))
+        if (!Enumerates(preset, crossPreset))
             yield break;
         foreach (string fork in forks)
         {
@@ -120,9 +120,9 @@ public static class FuluDriverSupport
     }
 
     /// <remarks>Ignores the calling test for the mainnet preset unless mainnet vectors are enabled, since the mainnet source is then empty by design.</remarks>
-    public static List<TCase> TestedCases<TCase>(ConsensusPreset preset, Func<IEnumerable<TestCaseData>> minimalCases, Func<IEnumerable<TestCaseData>> mainnetCases)
+    public static List<TCase> TestedCases<TCase>(ConsensusPreset preset, Func<IEnumerable<TestCaseData>> minimalCases, Func<IEnumerable<TestCaseData>> mainnetCases, bool crossPreset = false)
     {
-        if (!Enumerates(preset))
+        if (!Enumerates(preset, crossPreset))
             Assert.Ignore($"This assembly uses {CompiledPreset}.");
         if (preset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
             Assert.Ignore("mainnet vectors are opt-in (NETHERMIND_CONSENSUS_SPEC_MAINNET=1)");

@@ -54,8 +54,8 @@ public class RequestFailureCauseTests
             }
             else await session.DisconnectAsync();
         }
-        Exception? failure = request is not null ? Assert.CatchAsync(async () => await request)
-            : Assert.CatchAsync(() => end == ChannelRequestEnd.AlreadyDropped
+        Exception? failure = request is not null ? await Assert.CatchAsync(async () => await request)
+            : await Assert.CatchAsync(() => end == ChannelRequestEnd.AlreadyDropped
                 ? node.RequestBlocksByRangeAsync(session, 1, 1, token)
                 : node.RequestBlocksByRootAsync(session, [Hash256.Zero], end == ChannelRequestEnd.CallerCancellation ? stopping.Token : token, end == ChannelRequestEnd.Budget ? timing : null));
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -70,7 +70,7 @@ public class RequestFailureCauseTests
             Assert.That(failure, Is.InstanceOf<OperationCanceledException>().And.Not.InstanceOf<TimeoutException>());
         else
         {
-            Assert.That(failure, Is.TypeOf<IOException>());
+            Assert.That(failure, Is.TypeOf<PeerSessionClosedException>());
             Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(5)));
             if (end == ChannelRequestEnd.AlreadyDropped) Assert.That(failure!.Message, Does.StartWith("peer disconnected after "));
             else
@@ -89,7 +89,7 @@ public class RequestFailureCauseTests
             Task.FromException<IReadOnlyList<ForkedSignedBeaconBlock>>(new AggregateException(new TimeoutException("timed out after 10 s reading chunk 3"))));
         await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(15));
 
-        TimeoutException? cut = Assert.ThrowsAsync<TimeoutException>(() => node.RequestBlocksByRootAsync(session, [Hash256.Zero], default));
+        TimeoutException? cut = await Assert.ThrowsAsync<TimeoutException>(() => node.RequestBlocksByRootAsync(session, [Hash256.Zero], default));
 
         Assert.That(cut!.Message, Is.EqualTo("timed out after 10 s reading chunk 3"));
     }
@@ -146,7 +146,7 @@ public class RequestFailureCauseTests
             }
             Task<IReadOnlyList<DataColumnSidecar>> abandoned = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(3), stopping.Token);
             await stopping.CancelAsync();
-            Assert.CatchAsync<OperationCanceledException>(() => abandoned);
+            await Assert.CatchAsync<OperationCanceledException>(() => abandoned);
             Assert.That(PeerManager.RequestsInFlightForTest(peer), Is.EqualTo(4), "cancelled slot wait releases its count");
             Assert.That(logs.Lines.Where(static l => l.Text.Contains("request not sent, cancelled by this node")).Select(static l => l.Text), Has.Some.Contains("requests in flight 4,"));
             held.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
@@ -155,7 +155,7 @@ public class RequestFailureCauseTests
         else
         {
             await stopping.CancelAsync();
-            Assert.CatchAsync<OperationCanceledException>(() => first);
+            await Assert.CatchAsync<OperationCanceledException>(() => first);
             if (cancellation == SlotCancellation.WhileChannelOpen)
             {
                 openedBeforeReadingStopped = await EventuallyAsync(() => held.ColumnDials.Count == 3, TimeSpan.FromMilliseconds(500), token);
@@ -199,7 +199,7 @@ public class RequestFailureCauseTests
         try
         {
             await cancelling.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
-            IOException? lost = Assert.ThrowsAsync<IOException>(async () => await request.WaitAsync(TimeSpan.FromSeconds(5), token));
+            PeerSessionClosedException? lost = await Assert.ThrowsAsync<PeerSessionClosedException>(async () => await request.WaitAsync(TimeSpan.FromSeconds(5), token));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(lost!.Message, Does.Contain("peer disconnected"));
@@ -236,7 +236,7 @@ public class RequestFailureCauseTests
         {
             await session.DisconnectAsync();
 
-            IOException? lost = Assert.ThrowsAsync<IOException>(async () => await queued.WaitAsync(TimeSpan.FromSeconds(2), token));
+            PeerSessionClosedException? lost = await Assert.ThrowsAsync<PeerSessionClosedException>(async () => await queued.WaitAsync(TimeSpan.FromSeconds(2), token));
 
             Assert.That(lost!.Message, Does.Contain("waiting for a request slot"));
         }
@@ -248,7 +248,7 @@ public class RequestFailureCauseTests
             }
         }
 
-        Assert.CatchAsync<IOException>(() => Task.WhenAll(first, second, queued));
+        await Assert.CatchAsync<IOException>(() => Task.WhenAll(first, second, queued));
     }
 
     [Test]
@@ -307,13 +307,13 @@ public class RequestFailureCauseTests
         {
             Assert.That(PeerManager.RequestsInFlightForTest(silent), Is.EqualTo(2));
             silentSession.ColumnDials[0].SetCanceled();
-            ReqRespTimeoutException? exempt = Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await first.WaitAsync(token));
+            ReqRespTimeoutException? exempt = await Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await first.WaitAsync(token));
 
             Task<IReadOnlyList<DataColumnSidecar>> answered = answering.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
             answeringSession.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
             await answered.WaitAsync(token);
             silentSession.ColumnDials[1].SetCanceled();
-            ReqRespTimeoutException? blamed = Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await second.WaitAsync(token));
+            ReqRespTimeoutException? blamed = await Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await second.WaitAsync(token));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(exempt!.NotBlamed, Is.True, "no request was answered before the first timeout");
@@ -363,8 +363,8 @@ public class RequestFailureCauseTests
         IBeaconSyncPeer peer = manager.AddPeerForTest(session, PeerAddress);
 
         Exception? failure = columns
-            ? Assert.CatchAsync(async () => await peer.RequestDataColumnSidecarsByRangeAsync(5, 1, [3], token))
-            : Assert.CatchAsync(async () => await peer.RequestBlocksByRangeAsync(5, 2, token));
+            ? await Assert.CatchAsync(async () => await peer.RequestDataColumnSidecarsByRangeAsync(5, 1, [3], token))
+            : await Assert.CatchAsync(async () => await peer.RequestBlocksByRangeAsync(5, 2, token));
         peer.ReportFailure(PeerFailureClassifier.Classify(failure!), failure!.Message);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -483,13 +483,13 @@ public class RequestFailureCauseTests
 
             Task<IReadOnlyList<DataColumnSidecar>> unanswered = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(1), token);
             held.ColumnDials[1].TrySetCanceled(CancellationToken.None);
-            Assert.CatchAsync(() => unanswered);
+            await Assert.CatchAsync(() => unanswered);
 
             using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
             Task<IReadOnlyList<DataColumnSidecar>> cancelled = peer.RequestDataColumnSidecarsByRootAsync(Identifiers(2), stopping.Token);
             await stopping.CancelAsync();
             held.ColumnDials[2].TrySetCanceled(stopping.Token);
-            Assert.CatchAsync<OperationCanceledException>(() => cancelled);
+            await Assert.CatchAsync<OperationCanceledException>(() => cancelled);
         }
 
         string[] lines = [.. logs.Lines.Where(static l => l.Level == "Debug" && l.Text.StartsWith(PeerManager.RequestName.ColumnsByRoot, StringComparison.Ordinal)).Select(static l => l.Text)];

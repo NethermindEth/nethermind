@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
 using Google.Protobuf;
@@ -29,6 +30,47 @@ public class ReqRespLimitsTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private static readonly TimeSpan ShortTtfbTimeout = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan ShortRespTimeout = TimeSpan.FromMilliseconds(200);
+
+    [Test]
+    public async Task Blocks_by_head_serves_the_requested_ancestry_in_reverse_order()
+    {
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, 2_001, 2_003);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        TestChain.Persist(store, anchor, anchorRoot, chain);
+        BeaconBlocksByHeadProtocolV1 protocol = new(Spec, store);
+        byte[] request = new byte[40];
+        SszRoots.HashTreeRoot(chain[^1].Message!).Bytes.CopyTo(request.AsSpan());
+        BinaryPrimitives.WriteUInt64LittleEndian(request.AsSpan(32), 2);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        List<ResponseChunk> chunks = await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync, request, timeout.Token);
+        Assert.That(chunks.Select(chunk => SignedBeaconBlockCodec.Decode(chunk.Payload, Spec).Slot), Is.EqualTo(new ulong[] { 2_003, 2_001 }));
+    }
+
+    [Test]
+    public async Task Admission_refusal_is_an_error_chunk_not_an_empty_response()
+    {
+        InvalidDecoderProtocol protocol = new();
+        ISessionContext context = NewPeerContext();
+        await using IAsyncDisposable? first = protocol.Enter(context);
+        await using IAsyncDisposable? second = protocol.Enter(context);
+        Channel channel = new();
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        Task listener = protocol.ListenAsync(channel.Reverse, context);
+        ResponseChunk? chunk = await ReqRespFraming.ReadResponseChunkAsync(new ChannelStreamAdapter(channel), 0, 1024, timeout.Token);
+        await listener.WaitAsync(timeout.Token);
+        Assert.That(chunk?.Result, Is.EqualTo(139));
+    }
+
+    [Test]
+    public void Request_volume_is_bounded_per_peer_and_globally()
+    {
+        TestReqRespProtocol protocol = new();
+        ISessionContext first = NewPeerContext();
+        protocol.Charge(first, 128);
+        Assert.Throws<Eth2ReqRespException>(() => protocol.Charge(first, 128));
+        for (int i = 0; i < 7; i++) protocol.Charge(NewPeerContext(), 128);
+        Assert.Throws<Eth2ReqRespException>(() => protocol.Charge(NewPeerContext(), 128));
+    }
 
     [Test]
     [CancelAfter(10000)]
@@ -180,15 +222,15 @@ public class ReqRespLimitsTests
         };
         if (failure == 0)
         {
-            Assert.CatchAsync<OperationCanceledException>(Dial);
+            await Assert.CatchAsync<OperationCanceledException>(Dial);
         }
         else if (failure is 5 or 6)
         {
-            Assert.CatchAsync<IOException>(Dial);
+            await Assert.CatchAsync<IOException>(Dial);
         }
         else
         {
-            Assert.CatchAsync(Dial);
+            await Assert.CatchAsync(Dial);
         }
 
         if (protocolKind == 2)
@@ -215,6 +257,7 @@ public class ReqRespLimitsTests
 
     private sealed class InvalidDecoderProtocol : SingleChunkProtocol<byte[], ulong>
     {
+        public IAsyncDisposable? Enter(ISessionContext context) => TryEnterInbound(context, Id);
         public override string Id => "/test/invalid-decoder/1";
         protected override int MaxRequestSize => sizeof(ulong);
         protected override int MaxResponseSize => sizeof(ulong);
@@ -226,12 +269,12 @@ public class ReqRespLimitsTests
     }
 
     [Test]
-    public void Metrics_truncated_block_framing_records_one_invalid_message()
+    public async Task Metrics_truncated_block_framing_records_one_invalid_message()
     {
         TestBlocksProtocol protocol = new(Spec);
         using MemoryStream input = new(new byte[] { ReqRespFraming.ResponseCode.Success });
         long before = FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.InvalidMessage);
-        Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.ReadBlocksAsync(input, 1));
+        await Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.ReadBlocksAsync(input, 1));
         Assert.That(FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.InvalidMessage), Is.EqualTo(before + 1));
     }
 
@@ -310,7 +353,7 @@ public class ReqRespLimitsTests
         {
             BeaconBlocksByRangeRequest request = new() { StartSlot = fault == RangeReplyFault.OutOfRange ? 3_001UL : 3_000UL, Count = 2, Step = 1 };
             BeaconBlocksByRangeDial dial = fault == RangeReplyFault.TooManyChunks ? new(request) : new(request, block => handed.Add(block.Slot));
-            Eth2ReqRespException rejected = Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.DialAsync(channel, null!, dial).WaitAsync(token))!;
+            Eth2ReqRespException rejected = (await Assert.ThrowsAsync<Eth2ReqRespException>(() => protocol.DialAsync(channel, null!, dial).WaitAsync(token)))!;
             using (Assert.EnterMultipleScope())
             {
                 if (fault == RangeReplyFault.TooManyChunks)
@@ -366,7 +409,7 @@ public class ReqRespLimitsTests
         {
             Task<IReadOnlyList<ForkedSignedBeaconBlock>> request = session.DialAsync<RangeRequester, BeaconBlocksByRangeRequest, IReadOnlyList<ForkedSignedBeaconBlock>>(
                 new BeaconBlocksByRangeRequest { StartSlot = 3_000, Count = 2, Step = 1 }, token);
-            Exception failure = Assert.CatchAsync(() => request.WaitAsync(token))!;
+            Exception failure = (await Assert.CatchAsync(() => request.WaitAsync(token)))!;
             Eth2ReqRespException rejected = (failure as AggregateException)?.InnerExceptions.OfType<Eth2ReqRespException>().Single() ?? (Eth2ReqRespException)failure;
             using (Assert.EnterMultipleScope())
             {
@@ -386,15 +429,16 @@ public class ReqRespLimitsTests
     }
 
     [Test]
-    public void Read_response_chunk_abandons_a_stream_that_stalls_past_the_caller_deadline()
+    public async Task Read_response_chunk_abandons_a_stream_that_stalls_past_the_caller_deadline()
     {
         using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(20));
         using DrippingStream stream = new([[]], Timeout.InfiniteTimeSpan);
 
         Stopwatch stopwatch = Stopwatch.StartNew();
-        // A caller-supplied token that is never honored would hang this call forever instead of
-        // throwing quickly, so this pins that ReadResponseChunkAsync actually observes it.
-        Assert.CatchAsync<OperationCanceledException>(() => ReqRespFraming.ReadResponseChunkAsync(stream, 0, 8, cts.Token));
+        await
+                // A caller-supplied token that is never honored would hang this call forever instead of
+                // throwing quickly, so this pins that ReadResponseChunkAsync actually observes it.
+                Assert.CatchAsync<OperationCanceledException>(() => ReqRespFraming.ReadResponseChunkAsync(stream, 0, 8, cts.Token));
         Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "abandoned promptly rather than hanging");
     }
 
@@ -413,7 +457,7 @@ public class ReqRespLimitsTests
         using DrippingStream stream = new(wireChunks, TimeSpan.FromMilliseconds(20));
         long before = FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.Timeout);
 
-        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() =>
+        ReqRespTimeoutException? cut = await Assert.ThrowsAsync<ReqRespTimeoutException>(() =>
             protocol.ReadBlocksAsync(stream, blockCount, TimeSpan.FromMilliseconds(80)));
         Assert.That(FailureCount(TestBlocksProtocol.ProtocolId, ReqRespFailureReason.Timeout), Is.EqualTo(before + 1), "timeout recorded");
         Assert.That(cut!.Message, Does.Match(@"^timed out after 0\.1 s, the bound for the whole response, with \d chunks read$"));
@@ -429,18 +473,18 @@ public class ReqRespLimitsTests
 
         await using DrippingStream response = new(wireChunks, TimeSpan.FromMilliseconds(delayBeforeEachChunkMs));
 
-        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => protocol.ReadBlocksAsync(response, blocks));
+        ReqRespTimeoutException? cut = await Assert.ThrowsAsync<ReqRespTimeoutException>(() => protocol.ReadBlocksAsync(response, blocks));
 
         Assert.That(cut!.Message, Is.EqualTo(expected));
     }
 
     [Test]
     [CancelAfter(60_000)]
-    public void A_request_the_peer_never_reads_times_out_naming_the_write()
+    public async Task A_request_the_peer_never_reads_times_out_naming_the_write()
     {
         BeaconBlocksByRootProtocolV2 protocol = new(Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>())) { RespTimeout = ShortRespTimeout };
 
-        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => protocol.DialAsync(new Channel(), NewPeerContext(), [Hash256.Zero]));
+        ReqRespTimeoutException? cut = await Assert.ThrowsAsync<ReqRespTimeoutException>(() => protocol.DialAsync(new Channel(), NewPeerContext(), [Hash256.Zero]));
 
         Assert.That(cut!.Message, Is.EqualTo("timed out after 0.2 s writing the request"));
     }
@@ -461,7 +505,7 @@ public class ReqRespLimitsTests
 
         string id = metadata ? metadataProtocol.Id : protocol.Id;
         long before = FailureCount(id, ReqRespFailureReason.Timeout);
-        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => metadata
+        ReqRespTimeoutException? cut = await Assert.ThrowsAsync<ReqRespTimeoutException>(() => metadata
             ? metadataProtocol.DialAsync(channel, NewPeerContext(), new(0))
             : protocol.DialAsync(channel, NewPeerContext(), new(7)));
 
@@ -555,11 +599,11 @@ public class ReqRespLimitsTests
     }
 
     [Test]
-    public void Every_response_reader_names_its_overall_bound([Values] ResponseKind kind)
+    public async Task Every_response_reader_names_its_overall_bound([Values] ResponseKind kind)
     {
         using DrippingStream response = new([[]], Timeout.InfiniteTimeSpan);
         TimeSpan bound = TimeSpan.FromMilliseconds(80);
-        ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => kind switch
+        ReqRespTimeoutException? cut = await Assert.ThrowsAsync<ReqRespTimeoutException>(() => kind switch
         {
             ResponseKind.Blocks => new TestBlocksProtocol(Spec).ReadBlocksAsync(response, 1, bound),
             ResponseKind.FuluColumns => new TestColumnsProtocol(Spec).ReadAsync(response, bound, gloas: false),
@@ -648,6 +692,8 @@ public class ReqRespLimitsTests
         public const string ProtocolId = "/test/reqresp-limits/1";
 
         public IAsyncDisposable? TryEnter(ISessionContext context, string protocolId) => TryEnterInbound(context, protocolId);
+
+        public void Charge(ISessionContext context, ulong items) => ChargeRequest(context, items, 128);
 
         public async Task ServeRejectedAsync(Stream stream, ISessionContext context, bool emptyRequest, CancellationToken token)
         {

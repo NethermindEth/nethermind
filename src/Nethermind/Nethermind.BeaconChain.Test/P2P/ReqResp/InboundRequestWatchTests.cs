@@ -120,7 +120,7 @@ public class InboundRequestWatchTests
             }
 
             Task overBudget = Task.WhenAll(lingering.Skip(ProbeProtocol.LingerBudget));
-            Assert.DoesNotThrowAsync(() => overBudget.WaitAsync(TimeSpan.FromSeconds(5), token), "a listener over the budget returns at once");
+            await Assert.DoesNotThrowAsync(() => overBudget.WaitAsync(TimeSpan.FromSeconds(5), token), "a listener over the budget returns at once");
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(lingering.Take(ProbeProtocol.LingerBudget).Count(static t => !t.IsCompleted), Is.EqualTo(ProbeProtocol.LingerBudget), "the listeners within the budget still wait for the requester");
@@ -137,15 +137,14 @@ public class InboundRequestWatchTests
     }
 
     [Test]
-    public void A_pending_read_on_a_libp2p_channel_ends_when_its_token_is_cancelled()
+    public async Task A_pending_read_on_a_libp2p_channel_ends_when_its_token_is_cancelled()
     {
         using ChannelStreamAdapter stream = new(new Channel());
         using CancellationTokenSource served = new();
         Task<int> read = stream.ReadAsync(new byte[1], served.Token).AsTask();
 
         served.Cancel();
-
-        Assert.CatchAsync<OperationCanceledException>(() => read.WaitAsync(TimeSpan.FromSeconds(5)));
+        await Assert.CatchAsync<OperationCanceledException>(() => read.WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     [Test]
@@ -391,7 +390,7 @@ public class InboundRequestWatchTests
         }
 
         await listening.WaitAsync(token);
-        Assert.That(received, Is.EqualTo(Enumerable.Range(2, Math.Min(blockCount, 129)).SelectMany(offset => columns.Select(column => (start + (ulong)offset, column)))));
+        Assert.That(received, Is.EqualTo(Enumerable.Range(2, Math.Min(blockCount, 127)).SelectMany(offset => columns.Select(column => (start + (ulong)offset, column)))));
     }
 
     private static long InvalidMessageCount() =>

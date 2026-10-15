@@ -165,9 +165,8 @@ public partial class BeaconSyncOrchestratorTests
         ulong atStartup = statusHolder.CurrentStatus.EarliestAvailableSlot;
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
         ulong afterHeadStep = statusHolder.CurrentStatus.EarliestAvailableSlot;
-
-        Assert.DoesNotThrowAsync(() => RequestOneSlotByRangeAsync(pool, slotClock, atStartup), "at startup");
-        Assert.DoesNotThrowAsync(() => RequestOneSlotByRangeAsync(pool, slotClock, afterHeadStep), "after the head step");
+        await Assert.DoesNotThrowAsync(() => RequestOneSlotByRangeAsync(pool, slotClock, atStartup), "at startup");
+        await Assert.DoesNotThrowAsync(() => RequestOneSlotByRangeAsync(pool, slotClock, afterHeadStep), "after the head step");
     }
 
     [Test]

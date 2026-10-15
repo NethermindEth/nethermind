@@ -50,7 +50,7 @@ public static partial class BeaconStateMutators
     }
 
     /// <summary>Spec <c>get_validator_from_deposit</c> (Electra).</summary>
-    private static Validator GetValidatorFromDeposit(BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount)
+    internal static Validator GetValidatorFromDeposit(BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount)
     {
         Validator validator = new()
         {

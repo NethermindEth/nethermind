@@ -131,8 +131,8 @@ public class BeaconChainStoreStateSlotIndexTests
         {
             Assert.That(store.HasBlock(blockRoot), Is.True);
             Assert.That(store.TryGetBlockSlot(blockRoot, out ulong blockSlot) ? blockSlot : ulong.MaxValue, Is.EqualTo(10ul));
-            Assert.That(db.GetColumnDb(BeaconChainDbColumns.BlockIndex).KeyExists(forward), Is.False);
-            Assert.That(db.GetColumnDb(BeaconChainDbColumns.BlockIndex).KeyExists(reverse), Is.False);
+            Assert.That(db.GetColumnDb(BeaconChainDbColumns.BlockIndex).KeyExists(forward), Is.True);
+            Assert.That(db.GetColumnDb(BeaconChainDbColumns.BlockIndex).KeyExists(reverse), Is.True);
             Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.Zero);
         }
 

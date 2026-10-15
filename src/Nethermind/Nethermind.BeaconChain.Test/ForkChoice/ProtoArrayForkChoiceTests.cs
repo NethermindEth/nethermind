@@ -16,9 +16,6 @@ public class ProtoArrayForkChoiceTests
         yield return new TestCaseData(VotesTestDefinition.Get()).SetName("votes");
         yield return new TestCaseData(FfgUpdatesTestDefinition.GetCase01()).SetName("ffg_case_01");
         yield return new TestCaseData(FfgUpdatesTestDefinition.GetCase02()).SetName("ffg_case_02");
-        yield return new TestCaseData(ExecutionStatusTestDefinition.Get01()).SetName("execution_status_01");
-        yield return new TestCaseData(ExecutionStatusTestDefinition.Get02()).SetName("execution_status_02");
-        yield return new TestCaseData(ExecutionStatusTestDefinition.Get03()).SetName("execution_status_03");
     }
 
     [TestCaseSource(nameof(Suites))]

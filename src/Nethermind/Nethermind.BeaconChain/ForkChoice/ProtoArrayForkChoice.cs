@@ -163,9 +163,6 @@ public sealed class ProtoArrayForkChoice
     /// <inheritdoc cref="ProtoArray.PropagateExecutionValidation(Hash256)"/>
     public void ProcessExecutionPayloadValidation(Hash256 blockRoot) => _protoArray.PropagateExecutionValidation(blockRoot);
 
-    /// <inheritdoc cref="ProtoArray.InvalidateBlock"/>
-    public void ProcessExecutionPayloadInvalidation(InvalidationOperation op, CheckpointRef finalizedCheckpoint) =>
-        _protoArray.InvalidateBlock(op, finalizedCheckpoint);
 
     /// <inheritdoc cref="ProtoArray.Prune"/>
     public void MaybePrune(Hash256 finalizedRoot) => _protoArray.Prune(finalizedRoot);

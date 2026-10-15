@@ -72,7 +72,7 @@ public partial class BeaconSyncOrchestratorTests
         {
             await stop.CancelAsync();
             reply.TrySetResult(PayloadStatusV1.Syncing);
-            Assert.CatchAsync<OperationCanceledException>(() => run);
+            await Assert.CatchAsync<OperationCanceledException>(() => run);
         }
 
         Metrics.BeaconChainHeadSlotDelay = -1;
@@ -309,7 +309,7 @@ public partial class BeaconSyncOrchestratorTests
 
     [Test]
     [CancelAfter(30_000)]
-    public async Task RangeSync_restarts_from_the_imported_tip_and_blames_only_the_invalid_blocks_supplier([Values] bool gloas, [Values] bool activeRound, [Values] RangeRejection rejection, CancellationToken token)
+    public async Task RangeSync_restarts_from_the_imported_tip_and_blames_only_the_invalid_blocks_supplier([Values] bool gloas, [Values] bool activeRound, [Values] RangeRejection rejection, [Values] bool localAdmission, CancellationToken token)
     {
         ulong target = activeRound ? WallSlot : 103;
         ulong[] slots = [.. Enumerable.Range(101, (int)(target - AnchorSlot)).Select(static slot => (ulong)slot)];
@@ -355,9 +355,10 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.Known.Add(anchorRoot);
         Hash256 firstRoot = first.ComputeMessageRoot();
         Hash256 forgedRoot = forged.ComputeMessageRoot();
+        HashSet<Hash256> refused = localAdmission ? harness.Importer.AdmissionRefused : harness.Importer.Forged;
         if (rejection == RangeRejection.AtImport)
         {
-            harness.Importer.Forged.Add(forgedRoot);
+            refused.Add(forgedRoot);
         }
         else if (rejection == RangeRejection.FutureOnRetry)
         {
@@ -375,7 +376,7 @@ public partial class BeaconSyncOrchestratorTests
         if (rejection != RangeRejection.AtImport)
         {
             harness.Importer.Unavailable.Remove(firstRoot);
-            harness.Importer.Forged.Add(forgedRoot);
+            refused.Add(forgedRoot);
             await harness.Orchestrator.ProcessSlotAsync(target, token);
         }
 
@@ -390,7 +391,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(honest.Reports, Is.Empty);
         Assert.That(harness.Importer.Known, Does.Not.Contain(forgedRoot));
         Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(target));
-        Assert.That(supplier.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+        Assert.That(supplier.Reports, localAdmission ? Is.Empty : Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
         if (rejection == RangeRejection.AtImport)
         {
             Assert.That(harness.Importer.Imports.Any(i => i.Root == second.ComputeMessageRoot()), Is.False, "the rejected block's queued child is dropped unseen");
@@ -582,8 +583,7 @@ public partial class BeaconSyncOrchestratorTests
         int cacheBuilds = 0;
         if (duringKick) harness.Engine.OnCall = cts.Cancel;
         else cts.Cancel();
-
-        Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token, () => cacheBuilds++));
+        await Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token, () => cacheBuilds++));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(duringKick ? 1 : 0));
@@ -591,7 +591,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public void Cancellation_between_head_selection_and_an_engine_call_prevents_the_call([Values] bool retry)
+    public async Task Cancellation_between_head_selection_and_an_engine_call_prevents_the_call([Values] bool retry)
     {
         Harness harness = CreateHarness();
         using CancellationTokenSource cancellation = new();
@@ -605,7 +605,7 @@ public partial class BeaconSyncOrchestratorTests
             harness.Importer.OnComputeHead = cancellation.Cancel;
         }
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => harness.Orchestrator.RunHeadStepAsync(cancellation.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => harness.Orchestrator.RunHeadStepAsync(cancellation.Token));
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(retry ? 1 : 0));
     }
 
@@ -635,7 +635,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public void Cancellation_releases_a_head_step_waiting_for_the_engine()
+    public async Task Cancellation_releases_a_head_step_waiting_for_the_engine()
     {
         Harness harness = CreateHarness();
         using CancellationTokenSource cancellation = new();
@@ -646,7 +646,7 @@ public partial class BeaconSyncOrchestratorTests
         {
             Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1));
             cancellation.Cancel();
-            Assert.CatchAsync<OperationCanceledException>(() => step.WaitAsync(TimeSpan.FromSeconds(2)));
+            await Assert.CatchAsync<OperationCanceledException>(() => step.WaitAsync(TimeSpan.FromSeconds(2)));
         }
         finally
         {
@@ -1046,6 +1046,47 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task Corrupt_stored_replay_stops_at_the_last_readable_block()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        (SignedBeaconBlock anchor, Hash256 root, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1, AnchorSlot + 2);
+        TestChain.Persist(store, anchor, root, chain);
+        Hash256 corrupt = new ForkedSignedBeaconBlock.OfFulu(chain[1]).ComputeMessageRoot();
+        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(corrupt.Bytes, [0xFF]);
+        Harness harness = CreateHarness(store: store);
+        harness.Importer.Known.Add(root);
+
+        await harness.Orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+
+        Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(AnchorSlot + 1));
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Range_sync_replaces_an_orphaned_replayed_tail_from_the_finalized_anchor(CancellationToken token)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] old) = TestChain.BuildLinkedChain(AnchorSlot, 101);
+        old[0].Message!.StateRoot = TestItem.KeccakA;
+        TestChain.Persist(store, anchor, anchorRoot, old);
+        (_, _, SignedBeaconBlock[] canonical) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102);
+        RangeSyncTests.StubPeer peer = new("canonical", 102, (start, count) =>
+            [.. canonical.Where(b => b.Message!.Slot >= start && b.Message.Slot < start + count).Select(b => new ForkedSignedBeaconBlock.OfFulu(b))]);
+        Harness harness = CreateHarness(store: store, wallSlot: 102, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        await harness.Orchestrator.ReplayStoredBlocksAsync(token);
+        Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(SszRoots.HashTreeRoot(old[0].Message!)));
+
+        await harness.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+
+        Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(SszRoots.HashTreeRoot(canonical[^1].Message!)));
+        Assert.That(peer.Reports, Is.Empty);
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task A_replayed_head_near_the_wall_clock_starts_gossip_once_the_libp2p_host_has_started(CancellationToken token)
     {
@@ -1089,8 +1130,7 @@ public partial class BeaconSyncOrchestratorTests
             duringReplay = (p2p.LocalPeerId is not null, (LocalCustody?)discovery.LocalCustody is not null);
             cts.Cancel();
         };
-
-        Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token));
+        await Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token));
 
         Assert.That(duringReplay, Is.EqualTo((true, true)), "the stored block was replayed with the host listening and discovery running");
     }
@@ -1494,7 +1534,7 @@ public partial class BeaconSyncOrchestratorTests
         public Exception? FcuFailure { get; set; }
         public Task<PayloadStatusV1>? FcuAnswer { get; set; }
         public Task<PayloadStatusV1>? PendingFcu { get; set; }
-        public bool HasAnsweredNewPayload => false;
+        public bool PayloadSubmitted => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
         {

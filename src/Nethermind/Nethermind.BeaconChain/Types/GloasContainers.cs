@@ -172,7 +172,7 @@ public partial class SignedExecutionPayloadBid
 /// <c>isCollectionItself</c> omits the container offset within <see cref="ExecutionPayloadGloas.Transactions"/>.
 /// </remarks>
 [SszContainer(isCollectionItself: true)]
-public partial class TransactionGloas
+public partial struct TransactionGloas
 {
     [SszProgressiveList]
     public byte[]? Bytes { get; set; }

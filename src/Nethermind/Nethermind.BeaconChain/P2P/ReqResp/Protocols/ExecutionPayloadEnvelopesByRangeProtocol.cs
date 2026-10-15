@@ -53,6 +53,8 @@ public sealed class ExecutionPayloadEnvelopesByRangeProtocol(BeaconChainSpec spe
         await using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
+            using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, 139, "Too many concurrent requests", refusal.Token);
             return;
         }
 
@@ -71,6 +73,8 @@ public sealed class ExecutionPayloadEnvelopesByRangeProtocol(BeaconChainSpec spe
             {
                 throw new Eth2ReqRespException("Execution-payload-envelopes-by-range request count must be positive");
             }
+
+            ChargeRequest(context, Math.Min(request.Count, MaxRequestPayloads), MaxRequestPayloads);
 
             foreach (SignedExecutionPayloadEnvelope envelope in pool.GetCanonical(request.StartSlot, Math.Min(request.Count, MaxRequestPayloads)))
             {

@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using Google.Protobuf;
 using Snappier;
 
 namespace Nethermind.Network.Libp2p;
@@ -48,10 +52,34 @@ public static class Eth2MessageId
     private static ReadOnlySpan<byte> MessageDomainValidSnappy => [0x01, 0x00, 0x00, 0x00];
     private static ReadOnlySpan<byte> MessageDomainInvalidSnappy => [0x00, 0x00, 0x00, 0x00];
 
-    public static byte[] Compute(string topic, ReadOnlySpan<byte> data) =>
-        TryDecompress(data, MaxGossipSize, out byte[]? decompressed) == SnappyDecodeResult.Decoded
-            ? Hash(MessageDomainValidSnappy, topic, decompressed)
-            : Hash(MessageDomainInvalidSnappy, topic, data);
+    private static readonly ConditionalWeakTable<ByteString, ConcurrentDictionary<string, byte[]>> MessageIds = [];
+
+    /// <summary>Computes an id once per immutable payload and topic, including when pubsub clones the message.</summary>
+    public static byte[] Compute(string topic, ByteString data) =>
+        MessageIds.GetOrCreateValue(data).GetOrAdd(topic, key => Compute(key, data.Span));
+
+    public static byte[] Compute(string topic, ReadOnlySpan<byte> data)
+    {
+        byte[]? rented = null;
+        try
+        {
+            int length = Snappy.GetUncompressedLength(data);
+            if ((uint)length <= MaxGossipSize && length <= data.Length * MaxSnappyExpansion)
+            {
+                rented = ArrayPool<byte>.Shared.Rent(length);
+                Snappy.Decompress(data, rented.AsSpan(0, length));
+                byte[] id = Hash(MessageDomainValidSnappy, topic, rented.AsSpan(0, length));
+                ArrayPool<byte>.Shared.Return(rented);
+                return id;
+            }
+        }
+        catch (Exception e) when (e is InvalidDataException or ArgumentException)
+        {
+            if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+        }
+
+        return Hash(MessageDomainInvalidSnappy, topic, data);
+    }
 
     /// <summary>The spec <c>max_compressed_len(n)</c>: the worst-case snappy-compressed size of a payload of <paramref name="maxUncompressed"/> bytes.</summary>
     /// <remarks>phase0 p2p-interface.md computes <c>32 + n + n // 6</c>; the result is clamped to <see cref="int.MaxValue"/>.</remarks>

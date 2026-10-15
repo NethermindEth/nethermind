@@ -91,6 +91,11 @@ public class ConfigProvider : IConfigProvider
 
     public object? GetRawValue(string category, string name)
     {
+        if (!IsReadable(category, name))
+        {
+            return null;
+        }
+
         for (int i = 0; i < _configSource.Count; i++)
         {
             (bool isSet, string? str) = _configSource[i].GetRawValue(category, name);
@@ -104,6 +109,52 @@ public class ConfigProvider : IConfigProvider
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
             ?.GetValue(value) : null;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="category"/> and <paramref name="name"/> resolve to a property declared on a
+    /// discovered config interface that is not flagged <see cref="ConfigItemAttribute.IsSensitive"/>.
+    /// </summary>
+    /// <remarks>
+    /// Sources build their lookup key from both parts (<c>Category.Name</c>, <c>NETHERMIND_CATEGORY_NAME</c>),
+    /// so a split that does not resolve to a property (e.g. an empty category with <c>KeyStore.TestNodeKey</c>
+    /// as the name) can still reach a sensitive value and is rejected.
+    /// </remarks>
+    private static bool IsReadable(string? category, string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+
+        bool found = false;
+        foreach ((Type configType, _) in ConfigTypesFromAssembly)
+        {
+            if (!IsCategory(configType, category)) continue;
+
+            PropertyInfo? property = configType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (property is null) continue;
+
+            if (property.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true) return false;
+
+            found = true;
+        }
+
+        return found;
+    }
+
+    private static bool IsCategory(Type configType, string? category)
+    {
+        string? typeCategory = ConfigExtensions.GetCategoryName(configType);
+        if (typeCategory is null || string.IsNullOrEmpty(category))
+        {
+            return typeCategory is null && string.IsNullOrEmpty(category);
+        }
+
+        ReadOnlySpan<char> requested = category.AsSpan();
+        if (requested.EndsWith("Config", StringComparison.OrdinalIgnoreCase))
+        {
+            requested = requested[..^"Config".Length];
+        }
+
+        return requested.Equals(typeCategory, StringComparison.OrdinalIgnoreCase);
     }
 
     public void AddSource(IConfigSource configSource) => _configSource.Add(configSource);

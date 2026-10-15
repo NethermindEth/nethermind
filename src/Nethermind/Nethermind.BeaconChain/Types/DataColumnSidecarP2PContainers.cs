@@ -40,7 +40,7 @@ public sealed record ForkedDataColumnSidecars(IReadOnlyList<DataColumnSidecar> F
 
 /// <summary>Fulu req/resp <c>DataColumnsByRootIdentifiers</c>: bare SSZ list, <c>LIMIT = MAX_REQUEST_BLOCKS_DENEB</c> (p2p-interface.md).</summary>
 [SszContainer(isCollectionItself: true)]
-public partial class DataColumnSidecarsByRootRequest
+public partial struct DataColumnSidecarsByRootRequest
 {
     [SszList(128)] // MAX_REQUEST_BLOCKS_DENEB
     public DataColumnsByRootIdentifier[]? Identifiers { get; set; }

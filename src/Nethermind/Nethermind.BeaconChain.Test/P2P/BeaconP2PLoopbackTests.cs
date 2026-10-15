@@ -258,8 +258,7 @@ public class BeaconP2PLoopbackTests
         }).Build();
         BeaconP2P p2p = container.Resolve<BeaconP2P>();
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(20));
-
-        Assert.CatchAsync<Exception>(() => p2p.StartAsync(timeout.Token));
+        await Assert.CatchAsync<Exception>(() => p2p.StartAsync(timeout.Token));
         Assert.That(p2p.ListenAddresses, Is.Empty);
         Assert.That(p2p.LocalPeerForTest, Is.Null, "a failed bind disposes the peer before retrying");
         occupied.Stop();
@@ -476,7 +475,7 @@ public class BeaconP2PLoopbackTests
         });
         Node node = CreateNode();
         await using PeerHostScope hosts = new(node.P2P);
-        Exception? thrown = Assert.CatchAsync(async () => await node.P2P.RequestBlocksByRangeAsync(session, 5, 2, default));
+        Exception? thrown = await Assert.CatchAsync(async () => await node.P2P.RequestBlocksByRangeAsync(session, 5, 2, default));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((thrown as PartialBlocksException)?.Received, delivered ? Is.EqualTo(new[] { block }) : Is.Null);

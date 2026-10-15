@@ -62,12 +62,11 @@ public class ExecutionPayloadEnvelopesReqRespTests
     }
 
     [Test]
-    public void DialAsync_rejects_more_roots_than_MaxRequestPayloads_before_writing_to_the_wire()
+    public async Task DialAsync_rejects_more_roots_than_MaxRequestPayloads_before_writing_to_the_wire()
     {
         ExecutionPayloadEnvelopesByRootProtocol protocol = new(Spec, new ExecutionPayloadEnvelopePool());
         Hash256[] roots = Enumerable.Repeat(Hash256.Zero, (int)ExecutionPayloadEnvelopesProtocolBase.MaxRequestPayloads + 1).ToArray();
-
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, roots));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, roots));
     }
 
     public enum ByRootProtocol

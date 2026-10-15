@@ -10,8 +10,8 @@ public class BeaconChainConfig : IBeaconChainConfig
     public string? CheckpointSyncUrl { get; set; }
     public string? CheckpointStateFile { get; set; }
     public string? WeakSubjectivityCheckpoint { get; set; }
-    public int P2PPort { get; set; } = 9050;
-    public int Discv5Port { get; set; } = 9050;
+    public int P2PPort { get; set; } = 9060;
+    public int Discv5Port { get; set; } = 9060;
     public int QuicPort { get; set; }
     public string? Bootnodes { get; set; }
     public string? StaticPeers { get; set; }
@@ -23,7 +23,6 @@ public class BeaconChainConfig : IBeaconChainConfig
     public int MaxConcurrentOutboundDials { get; set; } = 8;
     public int FaultDisconnectsBeforeBan { get; set; } = 3;
     public int PeerBanMinutes { get; set; } = 30;
-    public int StateSnapshotIntervalEpochs { get; set; } = 32;
     public ulong? GloasForkEpoch { get; set; }
     public string? GloasForkVersion { get; set; }
     public bool DisableOnExternalCl { get; set; } = true;

@@ -160,7 +160,7 @@ public class RangeSyncColumnCustodyTests
     {
         await using Fixture fixture = Fixture.Create();
         Exception cause = sessionClosed
-            ? new System.IO.IOException("peer disconnected after 1 s: its libp2p session closed", new OperationCanceledException())
+            ? new PeerSessionClosedException("peer disconnected after 1 s: its libp2p session closed", new OperationCanceledException())
             : new TimeoutException("request timed out");
         StubPeer cutShort = fixture.FailingColumnPeer("cut-short", columns => throw new PartialSidecarsException(cause, fixture.ServeColumns(columns[..1])));
         StubPeer good = fixture.Peer("good", custody: StubPeer.AllColumns);
@@ -197,7 +197,7 @@ public class RangeSyncColumnCustodyTests
         await DrainAsync(sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(log.Messages, Has.Some.Matches<string>(static line => line.Contains("cut-short failed after") && line.Contains("keeping 1 sidecars read")));
+        Assert.That(log.Messages, Has.Some.Matches<string>(static line => line is not null && line.Contains("cut-short failed after") && line.Contains("keeping 1 sidecars read")));
         Assert.That(log.Messages, Has.None.Contains("Exception"));
     }
 

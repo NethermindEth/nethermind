@@ -5,13 +5,13 @@ using System.Collections;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
-using Ethereum.Test.Base;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Ssz;
+using Nethermind.Serialization.Ssz.Merkleization;
 using YamlDotNet.RepresentationModel;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
@@ -20,6 +20,23 @@ namespace Nethermind.BeaconChain.Test.Types;
 // Independent roots: ethereum/ssz-specs using spec-declared fields, not production encoders. Named-field/root cases come from original consensus-spec ssz_static fixtures. Body round-trip alone is not an independent oracle.
 public class GloasContainerTests
 {
+    [Test]
+    public void Transaction_preserves_bare_encoding_and_progressive_root([Values(0, 1, 31, 32, 33, 160, 161)] int length)
+    {
+        byte[] bytes = Filled(length, 0x42);
+        TransactionGloas transaction = new() { Bytes = bytes };
+        byte[] encoded = TransactionGloas.Encode(transaction);
+        TransactionGloas.Decode(encoded, out TransactionGloas decoded);
+        Merkle.MerkleizeProgressive(out UInt256 expectedRoot, bytes.AsSpan());
+        Merkle.MixIn(ref expectedRoot, length);
+        TransactionGloas.Merkleize(decoded, out UInt256 actualRoot);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(encoded, Is.EqualTo(bytes));
+        Assert.That(decoded.Bytes, Is.EqualTo(bytes));
+        Assert.That(actualRoot, Is.EqualTo(expectedRoot));
+    }
+
     private static IEnumerable<TestCaseData> IndependentRootCases()
     {
         yield return new TestCaseData((Action)(() => AssertRoundTripsAndMatchesRoot(new Builder
@@ -181,13 +198,7 @@ public class GloasContainerTests
 
     private static void AssertNamedFixture<T>(string caseName, string expectedRoot) where T : class, ISszCodec<T>
     {
-        // Later releases changed these random inputs; retain the original named-field and root oracles.
-        string root = TestFixtureDownloader.EnsureDownloaded("GloasFiveMainnet", "https://github.com/ethereum/consensus-specs/releases/download/{0}/{1}",
-            "v1.7.0-alpha.13", "mainnet.tar.gz", static path => path.Contains("/gloas/ssz_static/") &&
-                (path.Contains("/SignedExecutionPayloadBid/ssz_random/case_3/") || path.Contains("/ExecutionPayloadEnvelope/ssz_random/case_4/") ||
-                 path.Contains("/SignedExecutionPayloadEnvelope/ssz_random/case_3/") || path.Contains("/PayloadAttestation/ssz_random/case_2/") ||
-                 path.Contains("/IndexedPayloadAttestation/ssz_random/case_4/")), "gloas-five-alpha13");
-        string path = Path.Combine(root, "tests", "mainnet", "gloas", "ssz_static", typeof(T).Name, "ssz_random", caseName);
+        string path = Path.Combine(TestContext.CurrentContext.TestDirectory, "Fixtures", "Gloas", typeof(T).Name, caseName);
         using StreamReader reader = new(Path.Combine(path, "value.yaml"));
         YamlStream yaml = [];
         yaml.Load(reader);

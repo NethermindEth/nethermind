@@ -83,7 +83,9 @@ public static class ConsensusSpecArchive
             string archiveName = preset == ConsensusPreset.Mainnet ? "mainnet.tar.gz" : "minimal.tar.gz";
             string suiteName = preset == ConsensusPreset.Mainnet ? "ConsensusMainnet" : "ConsensusMinimal";
             string root = TestFixtureDownloader.EnsureDownloaded(
-                suiteName, SszConsensusTestLoader.ArchiveUrlTemplate, Version, archiveName, ShouldExtract, ExtractionTag);
+                suiteName, SszConsensusTestLoader.ArchiveUrlTemplate, Version, archiveName, ShouldExtract, ExtractionTag, preset == ConsensusPreset.Mainnet
+                    ? "a50c3eae743fcf69e17e3510b84e94dcabf96977655788c66bdc43a96590fdf5"
+                    : "b26832555fa5a67cc3964bf140ae99cb662f8045d6d205993e3fa27feb39ca6f");
             Roots[preset] = root;
             return root;
         }

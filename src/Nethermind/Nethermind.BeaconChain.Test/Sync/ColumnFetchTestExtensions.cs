@@ -46,7 +46,7 @@ internal static class ColumnFetchTestExtensions
     {
         await orchestrator.ProcessGossipBlockAsync(block, token);
         int passes = 0;
-        while (orchestrator.AncestorFetchesInFlight > 0)
+        while (orchestrator.AncestorFetchesInFlight > 0 || orchestrator.QueuedWorkCount > 0)
         {
             if (++passes > maxPasses)
             {

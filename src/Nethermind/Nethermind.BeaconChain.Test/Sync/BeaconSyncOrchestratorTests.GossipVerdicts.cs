@@ -207,12 +207,11 @@ public partial class BeaconSyncOrchestratorTests
         importer.Import(Arg.Any<ForkedSignedBeaconBlock>(), Arg.Any<Hash256>(), true).Returns(_ => throw failure);
         harness.Orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(0, Hash256.Zero)), Hash256.Zero);
         await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.BeaconBlock,
-            Snappier.Snappy.CompressToArray(SignedBeaconBlock.Encode(block)), verdict =>
+            Snappier.Snappy.CompressToArray(SignedBeaconBlock.Encode(block)), async verdict =>
             {
                 harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfFulu(block), verdict));
-                Assert.That(Assert.CatchAsync(async () => await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None)),
+                Assert.That(await Assert.CatchAsync(async () => await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None)),
                     Is.SameAs(failure), "a partially applied import must stop the worker after settling the relay verdict");
-                return Task.CompletedTask;
             }, MessageValidity.Ignored);
     }
 
@@ -296,7 +295,6 @@ public partial class BeaconSyncOrchestratorTests
         SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + slot * chain.Spec.SecondsPerSlot)));
         IEngineDriver engine = Substitute.For<IEngineDriver>();
         engine.NotifyNewPayload(Arg.Any<BeaconBlockBody>(), out Arg.Any<Hash256?>()).Returns(ExecutionStatus.Invalid);
-        engine.HasAnsweredNewPayload.Returns(true);
         BlockImporter importer = chain.CreateImporter(engine, store: store, clock: clock);
         SignedGloasChain.Block first = chain.Next(null, slot - 1, full: false, 0xA1);
         ForkedSignedBeaconBlock child = invalidImport ? chain.NextFulu(slot - 2).Forked : chain.Next(first, slot, full: false, 0xA2).Forked;

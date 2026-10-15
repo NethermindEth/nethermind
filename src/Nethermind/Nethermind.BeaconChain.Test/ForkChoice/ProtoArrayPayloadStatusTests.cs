@@ -226,28 +226,6 @@ public class ProtoArrayPayloadStatusTests
         Assert.That(block.Weight, Is.EqualTo(6ul));
     }
 
-    [Test]
-    public void Invalid_block_loses_its_payload_node_weights([Values] bool payloadPresent)
-    {
-        ProtoArrayForkChoice fc = NewForkChoice();
-        fc.ProcessBlock(Block(1, GetRoot(1), GetRoot(0), isGloas: true, parentBlockHash: GetRoot(0)), 4, Anchor, Anchor);
-        fc.ProcessBlock(Block(2, GetRoot(2), GetRoot(1), isGloas: true, parentBlockHash: GetRoot(1)), 4, Anchor, Anchor);
-        fc.ProcessAttestation(0, GetRoot(1), 3, 0, payloadPresent: false);
-        fc.ProcessAttestation(1, GetRoot(2), 3, 0, payloadPresent);
-        Settle(fc, [5, 6], 4);
-        Assert.That(payloadPresent ? Node(fc, GetRoot(2)).FullWeight : Node(fc, GetRoot(2)).EmptyWeight, Is.EqualTo(6ul), "fixture: the vote reached the payload node");
-
-        fc.ProcessExecutionPayloadInvalidation(InvalidationOperation.InvalidateOne(GetRoot(2)), Anchor);
-        Settle(fc, [5, 6], 4);
-
-        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(Node(fc, GetRoot(2)).EmptyWeight, Is.Zero);
-        Assert.That(Node(fc, GetRoot(2)).FullWeight, Is.Zero);
-        Assert.That(Node(fc, GetRoot(2)).Weight, Is.Zero);
-        Assert.That(Node(fc, GetRoot(1)).FullWeight, Is.Zero, "the invalid child's weight leaves the parent's FULL node");
-        Assert.That(Node(fc, GetRoot(1)).EmptyWeight, Is.EqualTo(5ul));
-        Assert.That(Node(fc, GetRoot(1)).Weight, Is.EqualTo(5ul));
-    }
 
     [Test]
     public void Prune_keeps_every_child_index_pointing_at_its_child()
@@ -268,39 +246,5 @@ public class ProtoArrayPayloadStatusTests
         Assert.That(Node(fc, GetRoot(3)).Children, Is.Empty);
     }
 
-    [Test]
-    public void Valid_block_under_an_invalid_ancestor_is_refused_without_entering_the_tree([Values(0, 2)] int optimisticBlocksAbove)
-    {
-        // 0 <- 1 (valid) <- 2 <- (3 | 4 <- optimistic chain): invalidating 3 back to block 0 throws at the valid block 1 after it
-        // invalidated 3 and 2, which leaves the optimistic 4 and its descendants under the invalid 2.
-        ProtoArray protoArray = new(SlotsPerEpoch, 40);
-        protoArray.OnBlock(Block(0, GetRoot(0), null), 3, Anchor, Anchor);
-        protoArray.OnBlock(Block(1, GetRoot(1), GetRoot(0), ExecutionStatus.Valid), 3, Anchor, Anchor);
-        protoArray.OnBlock(Block(2, GetRoot(2), GetRoot(1)), 3, Anchor, Anchor);
-        protoArray.OnBlock(Block(3, GetRoot(3), GetRoot(2)), 3, Anchor, Anchor);
-        protoArray.OnBlock(Block(3, GetRoot(4), GetRoot(2)), 3, Anchor, Anchor);
-        Assert.That(() => protoArray.InvalidateBlock(InvalidationOperation.InvalidateMany(GetRoot(3), true, GetRoot(0)), Anchor),
-            Throws.InstanceOf<ProtoArrayException>());
-        Assert.That(protoArray.Nodes[2].ExecutionStatus, Is.EqualTo(ExecutionStatus.Invalid), "fixture: the partial invalidation reached block 2");
-        for (ulong i = 0; i < (ulong)optimisticBlocksAbove; i++)
-        {
-            protoArray.OnBlock(Block(4 + i, GetRoot(10 + i), GetRoot(i == 0 ? 4 : 9 + i)), 3 + i, Anchor, Anchor);
-        }
 
-        int nodeCount = protoArray.Nodes.Count;
-        ProtoNode parent = protoArray.Nodes[^1];
-        int? parentBestChild = parent.BestChild;
-        ProtoBlock refused = Block((ulong)(4 + optimisticBlocksAbove), GetRoot(5), parent.Root, ExecutionStatus.Valid);
-
-        Assert.That(() => protoArray.OnBlock(refused, refused.Slot, Anchor, Anchor), Throws.InstanceOf<ProtoArrayException>());
-        Assert.That(() => protoArray.OnBlock(refused, refused.Slot, Anchor, Anchor), Throws.InstanceOf<ProtoArrayException>(), "a replay is refused too");
-
-        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(protoArray.Nodes, Has.Count.EqualTo(nodeCount));
-        Assert.That(protoArray.Indices, Has.Count.EqualTo(nodeCount));
-        Assert.That(protoArray.Indices.ContainsKey(GetRoot(5)), Is.False);
-        Assert.That(parent.BestChild, Is.EqualTo(parentBestChild));
-        Assert.That(parent.Children, Is.Empty);
-        Assert.That(protoArray.Nodes.Skip(3).Where(n => n.ExecutionStatus == ExecutionStatus.Valid), Is.Empty, "no ancestor is marked valid");
-    }
 }

@@ -63,7 +63,7 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid epoch '{c.Request.Query["epoch"]}'.", c.RequestAborted);
         }
 
-        if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
+        if (!StateIdResolver.TryResolvePrefix(ctx, stateId, false, out ResolvedState resolved, out int errorStatus, out string? errorMessage, includeRandao: true))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
@@ -224,7 +224,7 @@ internal static class BeaconStatesEndpoints
 
     private static Task Fork(HttpContext c, string stateId, BeaconApiContext ctx)
     {
-        if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
+        if (!StateIdResolver.TryResolvePrefix(ctx, stateId, true, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
@@ -256,7 +256,7 @@ internal static class BeaconStatesEndpoints
 
     private static Task FinalityCheckpoints(HttpContext c, string stateId, BeaconApiContext ctx)
     {
-        if (!StateIdResolver.TryResolve(ctx, stateId, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
+        if (!StateIdResolver.TryResolvePrefix(ctx, stateId, false, out ResolvedState resolved, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
@@ -283,7 +283,7 @@ internal static class BeaconStatesEndpoints
         List<string> idFilters = CollectQueryValues(c, "id", MaxValidatorIds + 1);
         if (idFilters.Count > MaxValidatorIds)
             return ApiErrors.Write(c, StatusCodes.Status414UriTooLong, "Too many validator IDs in request.", c.RequestAborted);
-        return WriteValidators(c, stateId, ctx, idFilters, CollectQueryValues(c, "status"));
+        return WriteValidators(c, stateId, ctx, idFilters, CollectQueryValues(c, "status", 14));
     }
 
     /// <summary>beacon-APIs v5.0.0-alpha.2 <c>postStateValidators</c>: the GET filters carried in a JSON body, without the URI length limit.</summary>
@@ -292,19 +292,15 @@ internal static class BeaconStatesEndpoints
         (bool read, ValidatorsRequestDto? request) = await TryReadJsonBody<ValidatorsRequestDto>(c, bodyRequired: true);
         if (!read) return;
 
-        // The body schema makes statuses uniqueItems; repeats would multiply the per-validator status matching.
         string[] statuses = request?.Statuses ?? [];
-        if (new HashSet<string>(statuses, StringComparer.Ordinal).Count != statuses.Length)
-        {
-            await ApiErrors.Write(c, StatusCodes.Status400BadRequest, "Validator statuses must be unique.", c.RequestAborted);
-            return;
-        }
-
         await WriteValidators(c, stateId, ctx, [.. request?.Ids ?? []], [.. statuses]);
     }
 
     private static Task WriteValidators(HttpContext c, string stateId, BeaconApiContext ctx, List<string> idFilters, List<string> statusFilters)
     {
+        if (statusFilters.Count > 13 || new HashSet<string>(statusFilters, StringComparer.Ordinal).Count != statusFilters.Count)
+            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, "Validator statuses must be unique.", c.RequestAborted);
+
         foreach (string filter in statusFilters)
         {
             if (!ValidatorStatus.IsValidFilter(filter))

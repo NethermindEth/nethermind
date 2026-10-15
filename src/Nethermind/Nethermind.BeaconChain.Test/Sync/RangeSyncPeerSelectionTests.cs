@@ -98,7 +98,7 @@ public class RangeSyncPeerSelectionTests
         bool first = true;
         StubPeer limited = new("limited", 43, (start, count) =>
         {
-            if (first)
+            if (first || empty)
             {
                 first = false;
                 return empty ? [] : [blocks[0]];
@@ -253,7 +253,7 @@ public class RangeSyncPeerSelectionTests
 
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         stop.CancelAfter(TimeSpan.FromMilliseconds(500));
-        Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
         {
             await RangeSyncTests.DrainAsync(sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, stop.Token));
         });

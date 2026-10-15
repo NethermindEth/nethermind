@@ -166,7 +166,7 @@ public class CheckpointSync(
 
     private async Task<(byte[] Buffer, int Length)> DownloadStateAsync(CancellationToken cancellationToken)
     {
-        if (_logger.IsInfo) _logger.Info($"Downloading finalized beacon state from {EffectiveCheckpointSyncUrl}");
+        if (_logger.IsInfo) _logger.Info($"Downloading finalized beacon state from {new Uri(EffectiveCheckpointSyncUrl).GetComponents(UriComponents.SchemeAndServer, UriFormat.SafeUnescaped)}");
         Stopwatch stopwatch = Stopwatch.StartNew();
 
         using HttpResponseMessage response = await GetOctetStreamAsync("/eth/v2/debug/beacon/states/finalized", cancellationToken);
