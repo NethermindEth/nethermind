@@ -56,19 +56,23 @@ public partial class StorageProviderTests
     }
 
     [Test]
-    public void EndScope_RetainedPendingBuffer_ReleasesBuffer()
+    public void EndScope_GrownPendingBuffer_ReleasesBuffer([Values(1, PersistentStorageProvider.RetainedPendingCapacity + 1)] int slotCount)
     {
         using Context ctx = new(UseFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
         using (provider.BeginScope(IWorldState.PreGenesis))
         {
-            StorageCell cell = new(TestItem.AddressA, UInt256.Zero);
-            provider.Get(cell, out _);
+            provider.Get(new StorageCell(TestItem.AddressA, UInt256.Zero), out _);
             provider.Commit(Frontier.Instance);
-            provider.Get(cell, out _);
+            for (int i = 1; i <= slotCount; i++)
+            {
+                provider.Get(new StorageCell(TestItem.AddressA, (UInt256)i), out _);
+            }
+
             Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
         }
 
-        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
+        bool grown = slotCount > PersistentStorageProvider.RetainedPendingCapacity;
+        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), grown ? Is.Null : Is.Not.Null);
     }
 }
