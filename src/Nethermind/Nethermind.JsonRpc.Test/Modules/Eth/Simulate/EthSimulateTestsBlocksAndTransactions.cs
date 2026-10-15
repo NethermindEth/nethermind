@@ -2539,20 +2539,23 @@ public class EthSimulateTestsBlocksAndTransactions
     /// <summary>
     /// eth_simulateV1 charges the accounts a call creates as eth_call does: a fresh EIP-7702 authority that is also the
     /// call target, and a value transfer to a fresh account, pay NEW_ACCOUNT (EIP-8037 state gas on Amsterdam), and an
-    /// authority that does not exist earns no EIP-7702 refund (Osaka). With too little gas for that charge the call fails
-    /// in both.
+    /// authority that does not exist earns no EIP-7702 refund (Osaka). A fresh sender that authorizes itself exists by
+    /// then, its nonce bumped first, so it pays neither. With one gas short the call fails, or is rejected, in both.
     /// </summary>
     [Test]
     public async Task eth_simulateV1_charges_a_fresh_account_like_eth_call(
         [Values("Osaka", "Amsterdam")] string fork,
-        [Values] bool authorization,
+        [Values("authority is target", "authority is sender", "value transfer")] string scenario,
         [Values] bool tightGas,
         [Values] bool validation)
     {
         using TestRpcBlockchain chain = await BuildFreshAccountChain(fork);
-        TransactionForRpc CreateCall(ulong gas) => authorization
-            ? CreateAuthorizationCall(chain, FreshAuthorityKey.Address, gas)
-            : new LegacyTransactionForRpc { From = FreshAccountSender, To = FreshAccount, Value = 1, Gas = gas, GasPrice = UInt256.Zero };
+        TransactionForRpc CreateCall(ulong gas) => scenario switch
+        {
+            "authority is target" => CreateAuthorizationCall(chain, FreshAuthorityKey.Address, gas),
+            "authority is sender" => CreateAuthorizationCall(chain, TestItem.AddressB, gas, from: FreshAuthorityKey.Address, authorizationNonce: 1),
+            _ => new LegacyTransactionForRpc { From = FreshAccountSender, To = FreshAccount, Value = 1, Gas = gas, GasPrice = UInt256.Zero }
+        };
 
         ulong gas = 400_000;
         if (tightGas)
@@ -2565,8 +2568,8 @@ public class EthSimulateTestsBlocksAndTransactions
         CallOutput expected = CallLikeEthCall(chain, CreateCall(gas));
         if (expected.InputError)
         {
-            // Before EIP-8037 these charges are intrinsic gas, so one gas short is rejected before execution.
-            Assert.That(fork == "Osaka" && tightGas, Is.True, expected.Error);
+            // One gas short of a charge that is intrinsic gas is rejected before execution.
+            Assert.That(tightGas, Is.True, expected.Error);
             Assert.That(RunFreshAccountSimulation(chain, validation, [CreateCall(gas)]).Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
             return;
         }
@@ -2579,17 +2582,21 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(actual.Status, Is.EqualTo(expected.Error is null ? 1UL : 0UL), expected.Error);
             if (fork == "Amsterdam" && !tightGas)
             {
-                Assert.That(actual.GasUsed, Is.GreaterThan((ulong)GasCostOf.NewAccountState));
+                Assert.That(actual.GasUsed, scenario == "authority is sender"
+                    ? Is.LessThan((ulong)GasCostOf.NewAccountState)
+                    : Is.GreaterThan((ulong)GasCostOf.NewAccountState));
             }
         }
     }
 
     /// <summary>
-    /// A fresh EIP-7702 authority stays fresh for the call that authorizes it when a later call in the block targets it.
+    /// A fresh EIP-7702 authority stays fresh for the call that authorizes it when a later call in the block targets it
+    /// or is sent by it.
     /// </summary>
     [Test]
-    public async Task eth_simulateV1_charges_a_fresh_authority_that_a_later_call_targets(
+    public async Task eth_simulateV1_charges_a_fresh_authority_that_a_later_call_uses(
         [Values("Osaka", "Amsterdam")] string fork,
+        [Values] bool laterCallSentByAuthority,
         [Values] bool validation)
     {
         using TestRpcBlockchain chain = await BuildFreshAccountChain(fork);
@@ -2598,7 +2605,10 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateCallResult[] calls = SimulateFreshAccountBlocks(chain, validation,
         [
             CreateAuthorizationCall(chain, TestItem.AddressB, 400_000),
-            new LegacyTransactionForRpc { From = FreshAccountSender, To = FreshAuthorityKey.Address, Gas = 100_000, GasPrice = UInt256.Zero }
+            laterCallSentByAuthority
+                // The authorization bumped the authority's nonce to 1.
+                ? new LegacyTransactionForRpc { From = FreshAuthorityKey.Address, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero, Nonce = 1 }
+                : new LegacyTransactionForRpc { From = FreshAccountSender, To = FreshAuthorityKey.Address, Gas = 100_000, GasPrice = UInt256.Zero }
         ])[0].Calls.ToArray();
 
         using (Assert.EnterMultipleScope())
@@ -2646,18 +2656,26 @@ public class EthSimulateTestsBlocksAndTransactions
         { StopContract, new AccountOverride { Code = [0x00] } }
     };
 
-    /// <summary>A call from <see cref="FreshAccountSender"/> to <paramref name="to"/> that delegates a fresh authority to <see cref="StopContract"/>.</summary>
-    private static SetCodeTransactionForRpc CreateAuthorizationCall(TestRpcBlockchain chain, Address to, ulong gas) => new()
+    /// <summary>
+    /// A call from <paramref name="from"/> (<see cref="FreshAccountSender"/> by default) to <paramref name="to"/> that
+    /// delegates <see cref="FreshAuthorityKey"/> to <see cref="StopContract"/>.
+    /// </summary>
+    private static SetCodeTransactionForRpc CreateAuthorizationCall(
+        TestRpcBlockchain chain, Address to, ulong gas, Address? from = null, ulong authorizationNonce = 0)
     {
-        From = FreshAccountSender,
-        To = to,
-        Gas = gas,
-        AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(
-            [new EthereumEcdsa(chain.SpecProvider.ChainId).Sign(FreshAuthorityKey, chain.SpecProvider.ChainId, StopContract, 0)]),
-        MaxFeePerGas = 0,
-        MaxPriorityFeePerGas = 0,
-        GasPrice = null
-    };
+        AuthorizationTuple authorization = new EthereumEcdsa(chain.SpecProvider.ChainId)
+            .Sign(FreshAuthorityKey, chain.SpecProvider.ChainId, StopContract, authorizationNonce);
+        return new SetCodeTransactionForRpc
+        {
+            From = from ?? FreshAccountSender,
+            To = to,
+            Gas = gas,
+            AuthorizationList = AuthorizationListForRpc.FromAuthorizationList([authorization]),
+            MaxFeePerGas = 0,
+            MaxPriorityFeePerGas = 0,
+            GasPrice = null
+        };
+    }
 
     /// <summary>Runs <paramref name="call"/> through the eth_call path, on the head state with the same overrides as the simulation.</summary>
     private static CallOutput CallLikeEthCall(TestRpcBlockchain chain, TransactionForRpc call) =>
