@@ -1626,7 +1626,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (result && recorder.Finish(tx, in result, refreshed: true) is { } footprint)
             {
                 // A refresh of the position taken later, while this one ran, may have stored first.
-                bool stored = footprints.Store(position, footprint, seededAt, take);
+                bool stored = footprints.Store(position, footprint, seededAt, take, invalidated);
                 Interlocked.Increment(ref stored ? ref Blockchain.Metrics.PrewarmRefreshesStored : ref Blockchain.Metrics.PrewarmRefreshesSuperseded);
             }
             else

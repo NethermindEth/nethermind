@@ -92,8 +92,9 @@ internal sealed class BlockFootprints(Block block, int refreshWorkers = 1)
 
     /// <param name="seededAt">For a refreshed footprint, the <see cref="WritesVersion"/> its run was seeded at.</param>
     /// <param name="take">For a refreshed footprint, the take of the refresh from <see cref="TryTakeInvalidated"/>.</param>
+    /// <param name="seededFrom">For a refreshed footprint, the footprint whose slots its run was seeded with.</param>
     /// <returns>False when a refresh of the position taken later has stored its footprint already; nothing is stored then.</returns>
-    public bool Store(int index, TransactionFootprint footprint, int seededAt = -1, int take = 0)
+    public bool Store(int index, TransactionFootprint footprint, int seededAt = -1, int take = 0, TransactionFootprint? seededFrom = null)
     {
         bool invalidated;
         lock (_lock)
@@ -109,7 +110,7 @@ internal sealed class BlockFootprints(Block block, int refreshWorkers = 1)
             // Stored and indexed under one lock, so two stores of a position cannot leave block processing one footprint
             // and the index another.
             Volatile.Write(ref _footprints[index], footprint);
-            invalidated = Index(index, footprint, seededAt);
+            invalidated = Index(index, footprint, seededAt, seededFrom);
         }
 
         if (invalidated) _changed.Release();
@@ -329,14 +330,15 @@ internal sealed class BlockFootprints(Block block, int refreshWorkers = 1)
     }
 
     // Under the lock; whether it invalidated a footprint.
-    private bool Index(int position, TransactionFootprint footprint, int seededAt)
+    private bool Index(int position, TransactionFootprint footprint, int seededAt, TransactionFootprint? seededFrom)
     {
         // A run that ends after block processing executed its transaction does not replace the writes it made.
         if (_executed[position]) return false;
-        // With no write replaced since the refresh seeded the slots the footprint before it read, a refreshed run
+        // With no write replaced since the refresh seeded the slots the footprint it ran from read, a refreshed run
         // that read one of them at another value than its seed changed it itself first (a creation clears the
-        // storage), and running it again reads the same.
-        TransactionFootprint? seeded = seededAt == _writesVersion ? _indexed[position].Footprint : null;
+        // storage), and running it again reads the same. That footprint, not the one indexed now: another run of the
+        // position can be stored between the refresh taking its footprint and reading the version it seeds at.
+        TransactionFootprint? seeded = seededAt == _writesVersion ? seededFrom : null;
         bool invalidated = Replace(position, new Indexed(footprint, default));
 
         ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;

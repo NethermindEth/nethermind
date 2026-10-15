@@ -544,14 +544,36 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
         StorageCell cell = new(TestItem.AddressC, 0x4e4d);
         footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
-        footprints.Store(1, Footprint(txs[1], reads: [(cell, UInt256.Zero)]));
-        Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.True);
+        TransactionFootprint invalidated = Footprint(txs[1], reads: [(cell, UInt256.Zero)]);
+        footprints.Store(1, invalidated);
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out int take), Is.True);
 
         int seededAt = footprints.WritesVersion;
         if (writeChanges) footprints.Store(0, Footprint(txs[0], writes: [(cell, 2 * 0x4e4d)]));
-        footprints.Store(1, Footprint(txs[1], reads: [(cell, UInt256.Zero)]), seededAt);
+        footprints.Store(1, Footprint(txs[1], reads: [(cell, UInt256.Zero)]), seededAt, take, invalidated);
 
         Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.EqualTo(writeChanges));
+    }
+
+    [Test]
+    public void A_refreshed_run_is_checked_against_the_slots_it_was_seeded_with_not_those_of_a_run_stored_as_it_started()
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell seeded = new(TestItem.AddressC, 0x4e4d);
+        StorageCell other = new(TestItem.AddressC, 2 * 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(seeded, 0x4e4d), (other, 0x4e4d)]));
+        TransactionFootprint invalidated = Footprint(txs[1], reads: [(seeded, UInt256.Zero)]);
+        footprints.Store(1, invalidated);
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out int take), Is.True);
+
+        // Another run of the transaction, which also read the other slot, is stored before the refresh reads the version
+        // it seeds at.
+        footprints.Store(1, Footprint(txs[1], reads: [(seeded, 0x4e4d), (other, 0x4e4d)]));
+        int seededAt = footprints.WritesVersion;
+        // Seeded from the footprint it took, the refresh read the other slot at its parent value.
+        footprints.Store(1, Footprint(txs[1], reads: [(seeded, 0x4e4d), (other, UInt256.Zero)]), seededAt, take, invalidated);
+
+        Assert.That(footprints.TryTakeInvalidated(-1, out _, out _), Is.True);
     }
 
     [Test]
