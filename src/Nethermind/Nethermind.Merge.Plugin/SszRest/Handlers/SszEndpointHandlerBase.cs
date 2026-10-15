@@ -179,5 +179,5 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
 }
 
 [JsonSerializable(typeof(string))]
-[JsonSerializable(typeof(IReadOnlyList<string>))]
+[JsonSerializable(typeof(IEnumerable<string>))]
 internal partial class SszRestJsonContext : JsonSerializerContext;

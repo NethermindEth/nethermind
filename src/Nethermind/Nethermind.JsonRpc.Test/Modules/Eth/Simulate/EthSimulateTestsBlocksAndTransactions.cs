@@ -733,7 +733,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     },
                     Calls =
                     [
-                        // As in geth, logs a revert drops still consume their log indices.
+                        // A reverted transaction emits no logs, so it must not consume log indices either.
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = reverter, Gas = 200_000, GasPrice = 0 },
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = caller, Gas = 200_000, GasPrice = 0 }
                     ]
@@ -757,7 +757,48 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { transferSender, logger, caller }));
         Assert.That(logs[0].Topics, Is.EqualTo(new[] { TransferLog.TransferSignature, caller.ToHash().ToHash256(), logger.ToHash().ToHash256() }));
         Assert.That(new UInt256(logs[0].Data, isBigEndian: true), Is.EqualTo((UInt256)2));
-        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 5, 6, 7 }));
+        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 0, 1, 2 }));
+    }
+
+    [Test]
+    public async Task Test_eth_simulateV1_failed_create_uses_no_log_index()
+    {
+        Address logger = new("0xc600000000000000000000000000000000000000");
+        const string Log0 = "60006000a0";
+        // LOG0, then return the code 0xEF, which EIP-3541 rejects.
+        string initCode = Log0 + "60ef60005360016000f3";
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } },
+                        { logger, new AccountOverride { Code = Bytes.FromHexString(Log0 + "00") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, Input = Bytes.FromHexString(initCode), Gas = 200_000, GasPrice = 0 },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = logger, Gas = 200_000, GasPrice = 0 }
+                    ]
+                }
+            ]
+        };
+
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(London.Instance));
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        SimulateCallResult[] calls = result.Data[0].Calls.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].Status, Is.EqualTo(StatusCode.Failure));
+            Assert.That(calls[0].Logs, Is.Empty);
+            Assert.That(calls[1].Logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 0 }));
+        }
     }
 
     [TestCase(
@@ -821,6 +862,54 @@ public class EthSimulateTestsBlocksAndTransactions
             },
             Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = creator, Gas = 1_000_000 }],
         };
+    }
+
+    /// <remarks>
+    /// EIP-7709 serves <c>BLOCKHASH</c> from the simulated EIP-2935 storage, so a state override of the history
+    /// contract changes the result; without it the hash comes from the block tree.
+    /// </remarks>
+    [Test]
+    public async Task eth_simulateV1_blockhash_follows_history_contract_overrides_only_under_eip7709([Values] bool eip7709)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(Prague.Instance) { IsEip7709Enabled = eip7709 });
+        // Not the head, whose slot the simulated block's own EIP-2935 system call overwrites.
+        ulong requestedBlock = chain.BlockFinder.Head!.Number - 1;
+        Hash256 canonicalHash = chain.BlockTree.FindHeader(requestedBlock)!.Hash!;
+        Address contract = TestItem.AddressC;
+        byte[] code = Prepare.EvmCode
+            .PushData(requestedBlock)
+            .Op(Instruction.BLOCKHASH)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        {
+                            Eip2935Constants.BlockHashHistoryAddress,
+                            new AccountOverride { StateDiff = new() { [requestedBlock % Eip2935Constants.RingBufferSize] = TestItem.KeccakA } }
+                        },
+                        { contract, new AccountOverride { Code = code } },
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                    },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = contract, Gas = 100_000 }],
+                },
+            ],
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        Assert.That(new Hash256(result.Data[0].Calls.Single().ReturnData!), Is.EqualTo(eip7709 ? TestItem.KeccakA : canonicalHash));
     }
 
     // Minimal bytecode: PREVRANDAO PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN

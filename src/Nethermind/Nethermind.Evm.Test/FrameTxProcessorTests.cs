@@ -462,6 +462,7 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.BlockGasUsed = sentinel;
+        tx.SpentGas = sentinel;
 
         Block block = Build.A.Block.WithNumber(1)
             .WithBeneficiary(Beneficiary)
@@ -476,6 +477,7 @@ public partial class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.True, "must reach settlement, else this pins nothing");
             Assert.That(tx.BlockGasUsed, warmup ? Is.EqualTo(sentinel) : Is.Not.EqualTo(sentinel));
+            Assert.That(tx.SpentGas, warmup ? Is.EqualTo(sentinel) : Is.Not.EqualTo(sentinel));
         }
     }
 
@@ -1959,9 +1961,10 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    /// <remarks>EIP-8250 prices <c>rlp(nonce_keys) || rlp(nonce_seq)</c> as transaction data. The baseline is
-    /// standard-bound and the keyed transaction floor-bound, so the extra gas is the floor charge for the added
-    /// bytes less the baseline's headroom over its own floor.</remarks>
+    /// <remarks>EIP-8250 prices <c>rlp(nonce_keys) || rlp(nonce_seq)</c> as transaction data and charges
+    /// <c>KEYED_NONCE_ACCESS_COST</c> per key. The baseline is standard-bound and the keyed transaction floor-bound,
+    /// so the extra gas is the floor charge for the added bytes plus the access cost, less the baseline's headroom
+    /// over its own floor.</remarks>
     [TestCaseSource(nameof(NonceCalldataCases))]
     public void Execute_KeyedNoncePayload_ChargesItsCalldataCost(UInt256[] nonceKeys, int nonceCalldataBytes)
     {
@@ -1983,7 +1986,7 @@ public partial class FrameTxProcessorTests
         ulong floorPerByte = spec.GasCosts.TxDataNonZeroMultiplier * spec.GasCosts.TotalCostFloorPerToken;
         FrameTxValidation.TryCalculateGasBudget(plainTx, spec, out _, out ulong plainFloor, out _);
         ulong baselineHeadroom = plain.GasSpent - plainFloor;
-        Assert.That(keyedTracer.GasSpent - plain.GasSpent, Is.EqualTo((ulong)nonceCalldataBytes * floorPerByte - baselineHeadroom));
+        Assert.That(keyedTracer.GasSpent - plain.GasSpent, Is.EqualTo((ulong)nonceCalldataBytes * floorPerByte + (ulong)nonceKeys.Length * Eip8250Constants.KeyedNonceAccessCost - baselineHeadroom));
     }
 
     /// <remarks>The transitions are independent, so an 8141-on / 8250-off window is representable; a key set
