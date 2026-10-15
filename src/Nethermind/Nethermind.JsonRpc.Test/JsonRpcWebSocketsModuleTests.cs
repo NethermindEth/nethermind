@@ -83,11 +83,27 @@ public class JsonRpcWebSocketsModuleTests
         await processor.SlowAnswered.WaitAsync(cts.Token);
     }
 
-    private static JsonRpcUrl CreateUrl(bool isAuthenticated, bool engine) =>
-        new("http", "127.0.0.1", 8551, RpcEndpoint.Http | RpcEndpoint.Ws, isAuthenticated,
-            engine ? [ModuleType.Engine, ModuleType.Eth] : [ModuleType.Eth]);
+    [TestCase(1024L, null)]
+    [TestCase(null, 1024L)]
+    public async Task CreateClient_PublicConnection_RejectsMessagesOverTheConfiguredBodyCap(long? urlCap, long? configuredCap)
+    {
+        PipelinedRequestRecorder processor = new(slowGate: Task.CompletedTask);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+        JsonRpcUrl url = CreateUrl(isAuthenticated: false, engine: false, maxRequestBodySize: urlCap);
 
-    private static JsonRpcWebSocketsModule CreateModule(JsonRpcUrl url, IJsonRpcProcessor processor)
+        await using WsConnection connection = await WsConnection.OpenAsync(url, processor.Processor, cts.Token, configuredCap);
+        await connection.SendAsync(new string(' ', 4096), cts.Token);
+
+        Assert.That(async () => await connection.ReceiveLoop.WaitAsync(cts.Token),
+            Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("too long"));
+        Assert.That(processor.Events, Is.Empty);
+    }
+
+    private static JsonRpcUrl CreateUrl(bool isAuthenticated, bool engine, long? maxRequestBodySize = null) =>
+        new("http", "127.0.0.1", 8551, RpcEndpoint.Http | RpcEndpoint.Ws, isAuthenticated,
+            engine ? [ModuleType.Engine, ModuleType.Eth] : [ModuleType.Eth], maxRequestBodySize);
+
+    private static JsonRpcWebSocketsModule CreateModule(JsonRpcUrl url, IJsonRpcProcessor processor, long? maxRequestBodySize = null)
     {
         IRpcAuthentication authentication = Substitute.For<IRpcAuthentication>();
         authentication.Authenticate(Arg.Any<string>()).Returns(true);
@@ -101,7 +117,8 @@ public class JsonRpcWebSocketsModuleTests
             new SingleUrlCollection(url),
             authentication,
             maxBatchResponseBodySize: null,
-            PublicConcurrency);
+            PublicConcurrency,
+            maxRequestBodySize);
     }
 
     private sealed class SingleUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlCollection
@@ -126,7 +143,9 @@ public class JsonRpcWebSocketsModuleTests
             _stop = stop;
         }
 
-        public static async Task<WsConnection> OpenAsync(JsonRpcUrl url, IJsonRpcProcessor processor, CancellationToken token)
+        public Task ReceiveLoop => _receiveLoop;
+
+        public static async Task<WsConnection> OpenAsync(JsonRpcUrl url, IJsonRpcProcessor processor, CancellationToken token, long? maxRequestBodySize = null)
         {
             using Socket listener = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
@@ -146,7 +165,7 @@ public class JsonRpcWebSocketsModuleTests
                 DefaultHttpContext context = new();
                 context.Connection.LocalPort = url.Port;
                 context.Request.Headers.Authorization = "Bearer test";
-                ISocketsClient socketsClient = await CreateModule(url, processor).CreateClient(server, "test", context);
+                ISocketsClient socketsClient = await CreateModule(url, processor, maxRequestBodySize).CreateClient(server, "test", context);
 
                 CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
                 Task receiveLoop = Task.Run(() => socketsClient.ReceiveLoopAsync(stop.Token), CancellationToken.None);
@@ -172,7 +191,7 @@ public class JsonRpcWebSocketsModuleTests
                 await _stop.CancelAsync();
                 await _receiveLoop;
             }
-            catch (Exception e) when (e is OperationCanceledException or WebSocketException or IOException)
+            catch (Exception e) when (e is OperationCanceledException or WebSocketException or IOException or InvalidOperationException)
             {
                 await TestContext.Out.WriteLineAsync($"Receive loop stopped on shutdown: {e.GetType().Name}: {e.Message}");
             }

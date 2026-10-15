@@ -417,6 +417,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 NotifiedTransactions.Set(tx.Hash.ValueHash256);
             }
 
+            // A blob tx hash does not cover the sidecar: if a copy with a bad sidecar was rejected first, judge this
+            // copy on its own, as the sparse path does. Done before the only submission, since a rejected owned tx
+            // has its sidecar buffers returned to the pool.
+            if (tx.SupportsBlobs && tx.Hash is { } hash)
+            {
+                _txPool.ForgetInvalidBlobProofs(hash);
+            }
+
             bool canRecycle = false;
             AcceptTxResult accepted = _txPool is IRecyclableTxPool recyclablePool
                 ? recyclablePool.SubmitOwnedTx(tx, out canRecycle)
