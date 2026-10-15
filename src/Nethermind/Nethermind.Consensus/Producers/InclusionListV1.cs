@@ -49,13 +49,14 @@ public sealed class InclusionListV1
     {
         if (lists is null) return "Inclusion lists must be set";
         if (lists.Length > Eip7805Constants.InclusionListCommitteeSize) return "Too many inclusion lists";
-        Span<bool> seen = stackalloc bool[Eip7805Constants.InclusionListCommitteeSize];
+        ulong? previous = null;
         foreach (InclusionListV1? list in lists)
         {
             if (list?.Transactions is not { } transactions) return "Inclusion list transactions must be set";
             if (list.CommitteeIndex >= Eip7805Constants.InclusionListCommitteeSize) return "Inclusion list committee index out of range";
-            if (seen[(int)list.CommitteeIndex]) return "Duplicate inclusion list committee index";
-            seen[(int)list.CommitteeIndex] = true;
+            if (previous is { } index && list.CommitteeIndex <= index)
+                return "Inclusion lists must be in strictly increasing committee-position order";
+            previous = list.CommitteeIndex;
             if (transactions.Length > Eip7805Constants.MaxTransactionsPerInclusionList) return "Inclusion list exceeds the maximum number of transactions";
             long bytes = 0;
             foreach (byte[]? transaction in transactions)

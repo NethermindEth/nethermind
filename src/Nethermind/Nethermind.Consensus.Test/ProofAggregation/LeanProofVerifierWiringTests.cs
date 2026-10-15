@@ -108,7 +108,7 @@ public class LeanProofVerifierWiringTests
             AssertSharedVerifier(chain);
             Assert.That(block.Header.RecursiveStark is not null, Is.EqualTo(enabled));
             // EIP-8288: a block without dependencies carries an empty proof, so neither side runs the backend.
-            Assert.That(block.Header.RecursiveStark?.StarkProof, enabled ? Is.Empty : Is.Null);
+            Assert.That(block.StarkProof, Is.EqualTo(enabled ? System.Array.Empty<byte>() : null));
             Assert.That(verifier.ProofCalls, Is.Zero);
             Assert.That(verifier.VerificationCalls, Is.Zero);
         }

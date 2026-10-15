@@ -155,7 +155,7 @@ public sealed partial class LeanObjectTransport
         LeanDescriptor descriptor = assembly.Descriptor;
         byte[] body = assembly.Body!;
         List<ValueHash256>? entries = null;
-        string? integrityError = CheckIntegrity(descriptor, body, ref entries);
+        string? integrityError = CheckIntegrity(descriptor, body, ref entries, out int verificationBytes);
         if (integrityError is not null)
         {
             Outbox outbox = new(_clock);
@@ -172,6 +172,7 @@ public sealed partial class LeanObjectTransport
             outbox.Flush();
             return;
         }
+        assembly.VerificationBytes = verificationBytes;
         LeanMetrics.Record(descriptor.Kind, LeanEvent.Reassembled);
         TaskCompletionSource<LeanFetchedBody?>[] waiters;
         bool validate;
@@ -226,13 +227,14 @@ public sealed partial class LeanObjectTransport
     }
 
     /// <summary>Checks length, <c>content_hash</c>, the canonical body encoding.</summary>
-    private static string? CheckIntegrity(LeanDescriptor descriptor, byte[] body, ref List<ValueHash256>? entries)
+    private static string? CheckIntegrity(LeanDescriptor descriptor, byte[] body, ref List<ValueHash256>? entries, out int verificationBytes)
     {
+        verificationBytes = 0;
         if ((ulong)body.Length != descriptor.ByteLength) return "reconstructed length differs from the descriptor";
         if (ValueKeccak.Compute(body) != descriptor.ContentHash) return "content hash mismatch";
         try
         {
-            if (descriptor.Kind == LeanProtocol.KindWrapper) entries = LeanBodies.ParseWrapper(body);
+            if (descriptor.Kind == LeanProtocol.KindWrapper) entries = LeanBodies.ParseWrapper(body, out verificationBytes);
             else LeanBodies.Check(descriptor.Kind, body);
         }
         catch (RlpException exception)
@@ -269,14 +271,24 @@ public sealed partial class LeanObjectTransport
         {
             // Verify the witnesses or aggregate proof against the claimed dependencies before fetching anything, so an
             // invalid proof costs no recovery. This does not validate the wrapper: its transactions are checked once resolved.
-            (Verdict claims, string? claimsError) = await AcceptWithRetryAsync(
-                token => _wrappers.VerifyClaimedProofsAsync(body, token), cancellation).ConfigureAwait(false);
+            (Verdict claims, string? claimsError) = await VerifyWithBudgetAsync(assembly,
+                token => _wrappers.VerifyClaimedProofsOwnedAsync(body, token), cancellation).ConfigureAwait(false);
             if (claims != Verdict.Valid) return (claims, claimsError);
             // An unresolved wrapper is retained only within this bounded recovery and is never admitted or announced.
             recovered = await RecoverTransactionsAsync(assembly, missing, cancellation).ConfigureAwait(false);
             if (recovered.Count != missing.Count) return (Verdict.LocalFailure, $"{missing.Count - recovered.Count} hash entries unresolved");
         }
-        return await AcceptWithRetryAsync(token => _wrappers.AcceptDetailedAsync(body, recovered, token), cancellation).ConfigureAwait(false);
+        return await VerifyWithBudgetAsync(assembly,
+            token => _wrappers.AcceptOwnedDetailedAsync(body, recovered, token), cancellation).ConfigureAwait(false);
+    }
+
+    private async Task<(Verdict, string?)> VerifyWithBudgetAsync(LeanAssembly assembly,
+        Func<CancellationToken, Task<ProofWrapperAcceptance>> accept, CancellationToken cancellation)
+    {
+        if (assembly.CompletionSource is not { Closed: false } source
+            || !TryReserveNodeBytes(source.Node.Key!, assembly.VerificationBytes, out IDisposable? lease))
+            return (Verdict.Refused, "no decoder working-space budget");
+        using (lease) return await AcceptWithRetryAsync(accept, cancellation).ConfigureAwait(false);
     }
 
     private static async Task<(Verdict, string?)> AcceptWithRetryAsync(Func<CancellationToken, Task<ProofWrapperAcceptance>> accept,

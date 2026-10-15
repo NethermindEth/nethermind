@@ -590,16 +590,20 @@ public partial class EngineModuleTests
         Hash256 startingHead = chain.BlockTree.HeadHash!;
         chain.AddTransactions(tx1);
 
-        Task improvedBlockWait = chain.WaitForImprovedBlock();
+        Task improvedBlockWait = chain.WaitForImprovedBlock(minTransactions: 1);
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
         await improvedBlockWait;
 
-        improvedBlockWait = chain.WaitForImprovedBlock();
+        improvedBlockWait = chain.WaitForImprovedBlock(minTransactions: 2);
         chain.AddTransactions(tx2);
         await improvedBlockWait;
+
+        // An improvement can finish before its context is published for getPayload.
+        ObservablePayloadPreparationService preparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        await preparation.WaitForStoredBlockAsync(payloadId, static block => block.Transactions.Length == 2, chain.CancellationToken);
 
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()

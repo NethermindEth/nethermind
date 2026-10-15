@@ -30,14 +30,17 @@ internal sealed class LeanTestVerifier : ILeanProofVerifier
 {
     public bool Valid { get; set; } = true;
     public TimeSpan Delay { get; set; }
+    public Exception? AvailabilityError { get; set; }
+    public Exception? VerificationError { get; set; }
     public ManualResetEventSlim? Gate { get; set; }
     public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public void EnsureAvailable() { }
+    public void EnsureAvailable() { if (AvailabilityError is { } error) throw error; }
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
 
     public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
+        if (VerificationError is { } error) throw error;
         Entered.TrySetResult();
         Gate?.Wait(TimeSpan.FromSeconds(10));
         if (Delay > TimeSpan.Zero) Thread.Sleep(Delay);

@@ -18,6 +18,7 @@ using Nethermind.Init.Snapshot;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa;
 using Nethermind.Merge.Plugin;
+using Nethermind.Network.Config;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Steps;
@@ -41,7 +42,7 @@ public class EthereumStepsLoaderTests
             .. LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly),
         ];
 
-        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb), typeof(DropPruningTrieState), typeof(SeedFlatHistoryGenesis), typeof(StartHistoryWindowPruner), typeof(StartHistoryWalkVerification), typeof(StartCommitmentReclaimer), typeof(StartTransactionChangesetBuilder)];
+        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb), typeof(DropPruningTrieState), typeof(SeedFlatHistoryGenesis), typeof(StartHistoryWindowPruner), typeof(StartHistoryWalkVerification), typeof(StartCommitmentReclaimer), typeof(StartTransactionChangesetBuilder), typeof(StartLeanEthp2p)];
         steps = steps.Where((s) => !optionalSteps.Contains(s.StepBaseType)).ToHashSet();
 
         using IContainer container = new ContainerBuilder()
@@ -50,6 +51,15 @@ public class EthereumStepsLoaderTests
             .Build();
 
         AssertStepInfosEquivalent(container.Resolve<IEnumerable<StepInfo>>(), steps);
+    }
+
+    [Test]
+    public void Ethp2p_step_is_registered_only_when_the_binding_is_enabled([Values] bool enabled)
+    {
+        NetworkConfig config = new() { LeanBindings = enabled ? LeanBinding.Rlpx | LeanBinding.Ethp2p : LeanBinding.Rlpx };
+        using IContainer container = new ContainerBuilder().AddModule(new LeanEthp2pModule(config)).Build();
+        Type[] steps = [.. container.Resolve<IEnumerable<StepInfo>>().Select(static s => s.StepBaseType)];
+        Assert.That(steps.Contains(typeof(StartLeanEthp2p)), Is.EqualTo(enabled));
     }
 
     [Test]

@@ -62,15 +62,16 @@ public class NativeBlockProductionTests
         Assert.That(block.Transactions, Has.Length.EqualTo(1));
         Assert.That(block.Header.RecursiveStark, Is.Not.Null);
         Assert.That(block.Header.GasUsedPerDimension, Is.Not.Null);
-        NativeLeanProofVerifierTests.AssertBareStarkProof(block.Header.RecursiveStark!.StarkProof, Eip8288Dependencies.ForBlock(block));
+        NativeLeanProofVerifierTests.AssertBareStarkProof(block.StarkProof!, Eip8288Dependencies.ForBlock(block));
         (ulong Execution, ulong State) dimensions = block.Header.GasUsedPerDimension!.Value;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Eip8288Dependencies.ForBlock(block), Has.Count.EqualTo(2));
+            Assert.That(block.Header.RecursiveStark!.StarkProofHash, Is.EqualTo(Keccak.Compute(block.StarkProof!)));
             Assert.That(block.GasUsed, Is.LessThanOrEqualTo(block.GasLimit));
             Assert.That(Math.Max(dimensions.Execution, dimensions.State), Is.EqualTo(block.GasUsed));
             Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk,
-                block.Header.RecursiveStark!.StarkProof), Is.True);
+                block.StarkProof!), Is.True);
             Assert.That(chain.ReceiptStorage.Get(block)[0].GasUsed, Is.EqualTo(block.GasUsed));
             Assert.That(verifier.ProofCalls - callsBeforeProduction, Is.EqualTo(preAggregate ? 0 : 1));
         }

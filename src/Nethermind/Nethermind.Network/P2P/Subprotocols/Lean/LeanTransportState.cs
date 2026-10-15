@@ -276,6 +276,7 @@ internal sealed class LeanAssembly(LeanDescriptor descriptor, long now, long met
     public bool RetrySource { get; set; }
     public LeanPeer? CompletionSource { get; set; }
     public long RecoveryBytes { get; set; }
+    public int VerificationBytes { get; set; }
 
     /// <summary>Whether the reconstructed object goes through kind validation and, if valid, into the served store.</summary>
     public bool Validate { get; set; }

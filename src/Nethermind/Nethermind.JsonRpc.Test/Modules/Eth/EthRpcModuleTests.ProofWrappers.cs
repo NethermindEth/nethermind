@@ -45,24 +45,7 @@ public partial class EthRpcModuleTests
         RecordingProofVerifier verifier = new();
         using Context context = await ProofContext(verifier);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
-        TxFrame[] frames =
-        [
-            FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-            new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
-                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))
-        ];
-        Transaction transaction = new()
-        {
-            Type = TxType.FrameTx,
-            NonceKeys = [UInt256.Zero],
-            ChainId = context.Test.SpecProvider.ChainId,
-            SenderAddress = TestItem.PrivateKeyB.Address,
-            Frames = frames,
-            GasLimit = FrameTxValidation.TotalGasLimit(frames),
-            GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 100.GWei
-        };
-        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        Transaction transaction = ProofTransaction(context, dependency);
         MempoolWrapper direct = new()
         {
             Transactions = [new WrapperTransaction(transaction)],
@@ -70,7 +53,8 @@ public partial class EthRpcModuleTests
             Deps = [dependency],
             Proofs = [[7]]
         };
-        ResultWrapper<Hash256[]> received = await context.Test.EthRpcModule.eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(direct).Bytes);
+        ResultWrapper<Hash256[]> received = await context.Test.EthRpcModule.eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(direct).Bytes,
+            [Rlp.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes]);
         Assert.That(received.Result, Is.EqualTo(Result.Success), received.Result.Error);
         Assert.That(context.Test.TxPool.TryGetPendingTransaction(received.Data[0].ValueHash256, out _), Is.True);
         MempoolWrapper hashOnly = new()
@@ -104,9 +88,68 @@ public partial class EthRpcModuleTests
     public async Task Proof_wrapper_ingress_rejects_unknown_transaction_hash()
     {
         using Context context = await ProofContext(new RecordingProofVerifier());
-        MempoolWrapper wrapper = new() { Transactions = [new WrapperTransaction(Keccak.Compute("unknown"))], Mode = MempoolWrapper.ModeDirect, Deps = [], Proofs = [] };
+        MempoolWrapper wrapper = new() { Transactions = [new WrapperTransaction(Keccak.Compute("unknown"))], Mode = MempoolWrapper.ModeDirect, Deps = [new(Eip8288Constants.LeanSphincsScheme, default, default)], Proofs = [[1]] };
         ResultWrapper<Hash256[]> response = await context.Test.EthRpcModule.eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes);
         Assert.That(response.Result.Error, Is.EqualTo(MempoolWrapperValidator.UnknownTransaction));
+    }
+
+    [TestCase("duplicate")]
+    [TestCase("empty")]
+    [TestCase("too-many")]
+    [TestCase("unclaimed")]
+    public async Task Wrapper_recovery_rejects_invalid_envelopes_before_proof_verification(string scenario)
+    {
+        RecordingProofVerifier verifier = new();
+        using Context context = await ProofContext(verifier);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = ProofTransaction(context, dependency);
+        byte[] envelope = Rlp.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[][] envelopes = scenario switch
+        {
+            "duplicate" => [envelope, envelope],
+            "empty" => [[]],
+            "too-many" => new byte[Eip8288Constants.MaxTxsPerWrapper + 1][],
+            _ => [envelope]
+        };
+        Hash256 hash = scenario == "unclaimed" ? Keccak.Compute("another-transaction") : transaction.Hash!;
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(hash)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [[1]]
+        }).Bytes;
+        ResultWrapper<Hash256[]> result = await context.Test.EthRpcModule.eth_sendProofWrapper(wrapper, envelopes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+            Assert.That(context.Test.TxPool.GetPendingTransactions(), Is.Empty);
+        }
+    }
+
+    private static Transaction ProofTransaction(Context context, FrameDependency dependency)
+    {
+        TxFrame[] frames =
+        [
+            FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
+            new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))
+        ];
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = context.Test.SpecProvider.ChainId,
+            SenderAddress = TestItem.PrivateKeyB.Address,
+            Frames = frames,
+            GasLimit = FrameTxValidation.TotalGasLimit(frames),
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 100.GWei
+        };
+        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
     }
 
     private static Task<Context> ProofContext(ILeanProofVerifier verifier) => Context.Create(
@@ -116,11 +159,12 @@ public partial class EthRpcModuleTests
     {
         public void EnsureAvailable() { }
         public int ProofCalls { get; private set; }
+        public int VerificationCalls { get; private set; }
 
         public AggregationInput? LastInput { get; private set; }
-        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => !witness.IsEmpty;
-        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => !witness.IsEmpty;
-        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => !proof.IsEmpty;
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) { VerificationCalls++; return !witness.IsEmpty; }
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) { VerificationCalls++; return !witness.IsEmpty; }
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) { VerificationCalls++; return !proof.IsEmpty; }
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             ProofCalls++;

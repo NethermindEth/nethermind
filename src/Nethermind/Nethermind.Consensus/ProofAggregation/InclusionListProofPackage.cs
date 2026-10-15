@@ -115,7 +115,7 @@ public static class InclusionListProofValidator
         return true;
     }
 
-    /// <summary>The EIP-8437 kind-3 checks: <c>deps_hash</c> commits to <paramref name="required"/>, and the proof
+    /// <summary>The per-list dependency proof checks: <c>deps_hash</c> commits to <paramref name="required"/>, and the proof
     /// passes the EIP-8288 STARK check against it.</summary>
     private static bool ValidateProof(RecursiveStark? proof, List<FrameDependency> required, ILeanProofVerifier verifier, out string? error)
     {

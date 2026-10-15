@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Lean;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Lean.LeanTestObjects;
 
@@ -46,6 +45,72 @@ public class LeanObjectTransportTests
     {
         using CancellationTokenSource timeout = new(Timeout);
         while (!condition()) await Task.Delay(10, timeout.Token);
+    }
+
+    [Test]
+    public async Task Wire_valid_aggregate_beyond_local_capacity_is_refused_without_peer_penalty()
+    {
+        using LeanTestNode node = new();
+        Transaction transaction = FrameTransaction(92);
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1)
+            .Select(index => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"capacity:{index}"), default)));
+        byte[] body = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction.Hash!)],
+            Mode = MempoolWrapper.ModeRecursive,
+            Deps = dependencies,
+            RecursiveStark = new(Proof(1024), new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)))
+        }).Bytes;
+        LeanDescriptor descriptor = Describe(body);
+        FakeLink link = Link("local-capacity", transaction);
+        LeanPeer peer = node.Connect(link);
+        node.Transport.OnAnnounce(peer, new([descriptor]));
+        ServeAll(node, peer, link, descriptor, body);
+        await Until(() => node.Transport.AssemblyCount == 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Is.Empty);
+            Assert.That(link.RecoveryCalls, Is.Zero);
+            Assert.That(node.Verifier.Entered.Task.IsCompleted, Is.False);
+            Assert.That(node.Transport.IsStored(descriptor.ObjectId), Is.False);
+            Assert.That(node.Transport.IsTombstoned(descriptor.ObjectId), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Maximum_proof_validates_with_owned_input_and_charged_decoder_copy()
+    {
+        using LeanTestNode node = new();
+        Transaction transaction = FrameTransaction(90);
+        node.Pending.Add(transaction);
+        byte[] body = Wrapper(Eip8288Constants.MaxAggregateProofBytes, true, transaction);
+        LeanDescriptor descriptor = Describe(body);
+        FakeLink link = Link("maximum");
+        LeanPeer peer = node.Connect(link);
+        Assert.That(node.Transport.TryReserveNodeBytes(link.NodeKey, 512 * 1024, out IDisposable? credit), Is.True);
+        using (credit)
+        using (ManualResetEventSlim gate = new())
+        {
+            node.Verifier.Gate = gate;
+            node.Transport.OnAnnounce(peer, new([descriptor]));
+            ServeAll(node, peer, link, descriptor, body);
+            await node.Verifier.Entered.Task.WaitAsync(Timeout);
+            try
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(node.Transport.IncompleteBytes + node.Transport.CompletionBytes,
+                        Is.EqualTo(body.Length + Eip8288Constants.MaxAggregateProofBytes + 512 * 1024));
+                    Assert.That(peer.ChargedBytes, Is.LessThanOrEqualTo(LeanLimits.MaxPeerBytes));
+                    Assert.That(link.Penalties, Is.Empty);
+                }
+            }
+            finally { gate.Set(); }
+            await Until(() => node.Transport.IsStored(descriptor.ObjectId));
+            await Until(() => node.Transport.CompletionBytes == 0);
+            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(512 * 1024));
+        }
+        Assert.That(node.Transport.IncompleteBytes, Is.Zero);
     }
 
     [Test]

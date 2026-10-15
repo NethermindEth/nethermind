@@ -10,6 +10,8 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using NSubstitute;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -33,17 +35,25 @@ internal sealed class TestBroadcastProfile : ILeanBroadcastProfile
     public bool Unresolved { get; set; }
     public bool ContextMismatch { get; set; }
     public bool ContextThrows { get; set; }
+    public Action? BeforeContext { get; set; }
+    public int AuthorizationChecks { get; private set; }
 
     public DateTimeOffset SlotStart(ulong slot) => _genesis + TimeSpan.FromSeconds(12.0 * ((double)slot - CurrentSlot + 1));
 
     public LeanBroadcastAuthorization Authorize(LeanBroadcastManifest manifest, in ValueHash256 manifestId, ReadOnlySpan<byte> signature,
-        ReadOnlySpan<byte> authorization) =>
-        Unresolved ? LeanBroadcastAuthorization.Unresolved
-        : signature.SequenceEqual(manifestId.Bytes) ? LeanBroadcastAuthorization.Authorized
-        : LeanBroadcastAuthorization.Rejected;
+        ReadOnlySpan<byte> authorization)
+    {
+        AuthorizationChecks++;
+        return Unresolved ? LeanBroadcastAuthorization.Unresolved
+            : signature.SequenceEqual(manifestId.Bytes) ? LeanBroadcastAuthorization.Authorized
+            : LeanBroadcastAuthorization.Rejected;
+    }
 
-    public bool MatchesContext(LeanBroadcastManifest manifest, ReadOnlySpan<byte> body) =>
-        ContextThrows ? throw new InvalidOperationException("context lookup failed") : !ContextMismatch;
+    public bool MatchesContext(LeanBroadcastManifest manifest, ReadOnlySpan<byte> body)
+    {
+        BeforeContext?.Invoke();
+        return ContextThrows ? throw new InvalidOperationException("context lookup failed") : !ContextMismatch;
+    }
 
     public static byte[] Sign(LeanBroadcastManifest manifest) => manifest.Id(1, LeanTestNode.Genesis.ValueHash256).ToByteArray();
 }
@@ -54,17 +64,19 @@ internal sealed class TestBroadcastProfile : ILeanBroadcastProfile
 /// </summary>
 public class LeanBroadcastTests
 {
+    private static readonly ConcurrentDictionary<Hash256, Block> KnownBlocks = new();
+
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
     private static readonly byte[] Body = "12345678901234567"u8.ToArray();
     private static readonly ValueHash256 Genesis = new(Bytes.FromHexString("5555555555555555555555555555555555555555555555555555555555555555"));
-    private static readonly ValueHash256 PackageProfile = new(Bytes.FromHexString("2222222222222222222222222222222222222222222222222222222222222222"));
+    private static readonly ValueHash256 ProofProfile = new(Bytes.FromHexString("2222222222222222222222222222222222222222222222222222222222222222"));
 
     private static LeanBroadcastManifest Fixture(byte[] body, out byte[][] shards)
     {
-        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, PackageProfile,
-            LeanDescriptor.InclusionListContext(ValueKeccak.Compute(body)), body, out _);
-        return LeanBroadcastManifest.Create(new ValueHash256(Enumerable.Repeat((byte)0x11, 32).ToArray()), [0x33, 0x33, 0x33, 0x33], 42, 3, 9,
-            new ValueHash256(Enumerable.Repeat((byte)0x44, 32).ToArray()), descriptor, null, body, out shards);
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, ProofProfile,
+            LeanDescriptor.BlockProofContext(new ValueHash256(Enumerable.Repeat((byte)0x66, 32).ToArray())), body);
+        return LeanBroadcastManifest.Create(new ValueHash256(Enumerable.Repeat((byte)0x11, 32).ToArray()), [0x33, 0x33, 0x33, 0x33], 42, 0, 9,
+            new ValueHash256(Enumerable.Repeat((byte)0x44, 32).ToArray()), descriptor, body, out shards);
     }
 
     [Test]
@@ -83,9 +95,9 @@ public class LeanBroadcastTests
                 Is.EqualTo("3132333435363738393031323334353637000000000000000000000000000000"
                     + "4bd4aac40d61cd1a263e9124244a226b2c9a469b7059d630312ef292f501538d"));
             Assert.That(SHA256.HashData(Body).ToHexString(), Is.EqualTo("97f40b8ae3e4d3118bb4afb623d3e768f04d9bc2f913bd64296ebcd53386c1ac"));
-            Assert.That(id.ToString(false), Is.EqualTo("e6f86470166cc46f3acdc1d0efd7f1b594e2209b0c917fb1becc4058be46fdab"));
-            Assert.That(LeanBroadcastManifest.MessageId(id), Is.EqualTo("e6f86470166cc46f3acdc1d0efd7f1b594e2209b0c917fb1becc4058be46fdab"));
-            Assert.That(manifest.Channel(1, Genesis), Is.EqualTo("lean/1/rs/6305cd9070a21d6be6be82a0e4ef98f2019641ab7f65de36d6a5de8889781744"));
+            Assert.That(id.ToString(false), Is.EqualTo("ef5e6a8395ac1f23d6e6179b0454f7ac6131d911c96dfb23990b836a02c2c6a7"));
+            Assert.That(LeanBroadcastManifest.MessageId(id), Is.EqualTo("ef5e6a8395ac1f23d6e6179b0454f7ac6131d911c96dfb23990b836a02c2c6a7"));
+            Assert.That(manifest.Channel(1, Genesis), Is.EqualTo("lean/1/rs/c6f07ea02f8a1d325716da3fb6befadb26c836dc702d9ec82004ba6968af101c"));
             Assert.That(manifest.Preamble([], []).Length, Is.LessThanOrEqualTo(LeanBroadcastManifest.MaxPreambleBytes));
         }
 
@@ -125,8 +137,8 @@ public class LeanBroadcastTests
             LeanRlp.EncodeList([.. manifest.ShardHashes.Select(h => LeanRlp.EncodeBytes(h.Bytes))])
         ];
         return LeanRlp.EncodeList(LeanRlp.EncodeBytes(manifest.BroadcastProfileId.Bytes), LeanRlp.EncodeBytes(manifest.ForkDigest), LeanRlp.EncodeUInt(42),
-            LeanRlp.EncodeUInt(3), LeanRlp.EncodeUInt(9), LeanRlp.EncodeBytes(manifest.ConsensusContextRoot.Bytes),
-            descriptor?.Invoke(manifest.Descriptor.Encoded) ?? manifest.Descriptor.Encoded, LeanRlp.EncodeBytes([]), LeanRlp.EncodeList(coding(fields)));
+            LeanRlp.EncodeUInt(0), LeanRlp.EncodeUInt(9), LeanRlp.EncodeBytes(manifest.ConsensusContextRoot.Bytes),
+            descriptor?.Invoke(manifest.Descriptor.Encoded) ?? manifest.Descriptor.Encoded, LeanRlp.EncodeList(coding(fields)));
     }
 
     private static IEnumerable<TestCaseData> BadGeometry()
@@ -137,8 +149,11 @@ public class LeanBroadcastTests
         yield return new TestCaseData(ManifestWith(f => [.. f[..2], LeanRlp.EncodeUInt(0), .. f[3..]])).Returns(false).SetName("Zero shard width");
         yield return new TestCaseData(ManifestWith(f => [.. f[..2], LeanRlp.EncodeUInt(65537), .. f[3..]])).Returns(false).SetName("Shard width 65537");
         yield return new TestCaseData(ManifestWith(f => [.. f[..4], LeanRlp.EncodeList()])).Returns(false).SetName("No shard hashes");
-        yield return new TestCaseData(ManifestWith(f => f, d => LeanDescriptor.Create(LeanProtocol.KindWrapper, PackageProfile,
-            LeanDescriptor.WrapperContext(), Body, out _).Encoded)).Returns(false).SetName("Kind 1 is never broadcast");
+        yield return new TestCaseData(ManifestWith(f => f, d => LeanDescriptor.Create(LeanProtocol.KindWrapper, ProofProfile,
+            LeanDescriptor.WrapperContext(), Body).Encoded)).Returns(false).SetName("Kind 1 is never broadcast");
+        yield return new TestCaseData(ManifestWith(f => f, d => LeanRlp.EncodeList(LeanRlp.EncodeUInt(3), LeanRlp.EncodeBytes(ProofProfile.Bytes),
+            LeanRlp.EncodeList(), LeanRlp.EncodeUInt((ulong)Body.Length), LeanRlp.EncodeBytes(ValueKeccak.Compute(Body).Bytes))))
+            .Returns(false).SetName("Kind 3 has no transport object");
     }
 
     [TestCaseSource(nameof(BadGeometry))]
@@ -153,6 +168,24 @@ public class LeanBroadcastTests
         {
             return false;
         }
+    }
+
+    [Test]
+    public void Block_manifest_rejects_nonzero_duty_and_obsolete_auxiliary_field([Values] bool auxiliary)
+    {
+        LeanBroadcastManifest manifest = Fixture(Body, out _);
+        LeanRlpReader outer = new(manifest.Encoded);
+        LeanRlpReader reader = outer.ReadList();
+        byte[][] fields = new byte[8][];
+        for (int i = 0; i < fields.Length; i++) fields[i] = reader.ReadItem().ToArray();
+        byte[] malformed;
+        if (auxiliary) malformed = LeanRlp.EncodeList([.. fields[..7], LeanRlp.EncodeBytes([]), fields[7]]);
+        else
+        {
+            fields[3] = LeanRlp.EncodeUInt(1);
+            malformed = LeanRlp.EncodeList(fields);
+        }
+        Assert.That(() => LeanBroadcastManifest.Decode(malformed), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -203,8 +236,7 @@ public class LeanBroadcastTests
             LeanRlp.EncodeBytes((bodySha ?? manifest.BodySha256).Bytes), LeanRlp.EncodeList([.. shardHashes.Select(h => LeanRlp.EncodeBytes(h.Bytes))]));
         return LeanBroadcastManifest.Decode(LeanRlp.EncodeList(LeanRlp.EncodeBytes(manifest.BroadcastProfileId.Bytes), LeanRlp.EncodeBytes(manifest.ForkDigest),
             LeanRlp.EncodeUInt(manifest.Slot), LeanRlp.EncodeUInt(manifest.DutyIndex), LeanRlp.EncodeUInt(manifest.ProducerIndex),
-            LeanRlp.EncodeBytes(manifest.ConsensusContextRoot.Bytes), manifest.Descriptor.Encoded,
-            manifest.Skeleton?.Encoded ?? LeanRlp.EncodeBytes([]), coding));
+            LeanRlp.EncodeBytes(manifest.ConsensusContextRoot.Bytes), manifest.Descriptor.Encoded, coding));
     }
 
     [Test]
@@ -212,8 +244,8 @@ public class LeanBroadcastTests
     {
         LeanBroadcastManifest manifest = Fixture(Body, out _);
         ValueHash256 original = manifest.Id(1, Genesis);
-        LeanBroadcastManifest otherSlot = LeanBroadcastManifest.Create(manifest.BroadcastProfileId, manifest.ForkDigest, 43, 3, 9,
-            manifest.ConsensusContextRoot, manifest.Descriptor, null, Body, out _);
+        LeanBroadcastManifest otherSlot = LeanBroadcastManifest.Create(manifest.BroadcastProfileId, manifest.ForkDigest, 43, 0, 9,
+            manifest.ConsensusContextRoot, manifest.Descriptor, Body, out _);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(otherSlot.Id(1, Genesis), Is.Not.EqualTo(original));
@@ -271,6 +303,11 @@ public class LeanBroadcastTests
         public BroadcastNode(TestBroadcastProfile? profile = null)
         {
             Node = new LeanTestNode(manualTime: false);
+            Node.Tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+                .Returns(c => KnownBlocks.TryGetValue(c.Arg<Hash256>(), out Block? b) ? b.Header : null);
+            Node.Tree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+                .Returns(c => KnownBlocks.TryGetValue(c.Arg<Hash256>(), out Block? b) ? b : null);
+            Node.Tree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
             Profile = profile ?? new TestBroadcastProfile();
             Engine = new LeanBroadcastEngine(Node.Transport, Profile, LimboLogs.Instance);
         }
@@ -301,6 +338,7 @@ public class LeanBroadcastTests
             });
         }
 
+        public LeanPeer? RetrievalPeer { get; set; }
         public string Description { get; }
         public ulong MaxObjectBytes => LeanLimits.MaxObjectBytes;
         public bool IsClosed { get; set; }
@@ -369,6 +407,7 @@ public class LeanBroadcastTests
         private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _live, _maxLive, _sent;
 
+        public LeanPeer? RetrievalPeer => null;
         public string Description => "held";
         public ulong MaxObjectBytes => LeanLimits.MaxObjectBytes;
         public bool IsClosed => false;
@@ -422,18 +461,21 @@ public class LeanBroadcastTests
         while (!condition()) await Task.Delay(10, timeout.Token);
     }
 
-    /// <summary>A validated package held by <paramref name="origin"/>, and its signed manifest for the current slot.</summary>
+    /// <summary>A validated block proof and signed manifest for the current slot.</summary>
     private static async Task<(LeanBroadcastManifest Manifest, LeanDescriptor Descriptor)> Package(BroadcastNode origin, int seed, int proofBytes = 40_000,
-        ulong? slot = null, ulong duty = 0)
+        ulong? slot = null)
     {
-        Transaction transaction = FrameTransaction(seed);
-        byte[] package = InclusionList(proofBytes, transaction);
-        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
-            LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)), package, out _);
-        Assert.That((await origin.Node.Wrappers.AcceptInclusionListDetailedAsync(package)).HasValidProof, Is.True);
+        byte[] proof = Proof(proofBytes);
+        BlockHeader header = LeanTransportTests.ProofHeader(proof, number: (ulong)seed);
+        Block block = new(header, new BlockBody()) { StarkProof = proof };
+        KnownBlocks[header.Hash!] = block;
+        byte[] body = LeanBodies.EncodeBlockProof(proof);
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256), body);
+        origin.Node.Tree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(block));
         await Until(() => origin.Node.Transport.IsStored(descriptor.ObjectId));
         LeanBroadcastManifest manifest = LeanBroadcastManifest.Create(TestBroadcastProfile.ProfileId, [1, 2, 3, 4], slot ?? origin.Profile.CurrentSlot,
-            duty, 7, default, descriptor, null, package, out _);
+            0, 7, default, descriptor, body, out _);
         return (manifest, descriptor);
     }
 
@@ -447,13 +489,13 @@ public class LeanBroadcastTests
 
         Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
 
-        await Until(() => receiver.Node.Transport.IsStored(descriptor.ObjectId) && relay.Node.Transport.IsStored(descriptor.ObjectId));
+        await Until(() => receiver.Node.Transport.HasBroadcastSidecar(descriptor.BlockHash) && relay.Node.Transport.HasBroadcastSidecar(descriptor.BlockHash));
         // Once both reconstructed, each finishes its SESS stream toward the other, returning its QUIC stream allowance.
         await Until(() => originToRelay.ClosedSessions == 1 && relayToReceiver.ClosedSessions == 1);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(relay.Node.Transport.IncompleteBytes + receiver.Node.Transport.IncompleteBytes, Is.Zero,
-                "a reconstructed session's codeword is no longer charged as an incomplete assembly");
+            Assert.That(relay.Node.Transport.IncompleteBytes + receiver.Node.Transport.IncompleteBytes, Is.GreaterThan(0),
+                "unvalidated block proofs remain charged until import or expiry");
             Assert.That(relayToReceiver.Delivered, Is.Not.Empty, "the relay forwarded checked shards");
             Assert.That(originToRelay.Delivered.Distinct().Count(), Is.GreaterThanOrEqualTo(LeanReedSolomon.DataShards));
             Assert.That(new[] { originToRelay, relayToOrigin, relayToReceiver, receiverToRelay }.SelectMany(p => p.Penalties), Is.Empty);
@@ -466,8 +508,8 @@ public class LeanBroadcastTests
         using BroadcastNode origin = new();
         HeldPeer peer = new();
         origin.Engine.AddPeer(peer);
-        (LeanBroadcastManifest first, _) = await Package(origin, 5, duty: 0);
-        (LeanBroadcastManifest second, _) = await Package(origin, 6, duty: 1);
+        (LeanBroadcastManifest first, _) = await Package(origin, 5);
+        (LeanBroadcastManifest second, _) = await Package(origin, 6, slot: 11);
 
         Assert.That(origin.Engine.Originate(first, TestBroadcastProfile.Sign(first), []), Is.True);
         Assert.That(origin.Engine.Originate(second, TestBroadcastProfile.Sign(second), []), Is.True);
@@ -480,7 +522,7 @@ public class LeanBroadcastTests
     }
 
     [Test]
-    public void Retrieval_waits_about_a_round_trip_while_broadcast_shards_arrive()
+    public async Task Retrieval_waits_about_a_round_trip_while_broadcast_shards_arrive()
     {
         using LeanTestNode node = new();
         FakeLink link = new();
@@ -488,6 +530,8 @@ public class LeanBroadcastTests
         LeanDescriptor descriptor = BroadcastPackage(node, 7);
         TimeSpan wait = node.Transport.BroadcastWait;
         node.Transport.OnBroadcastProgress(descriptor);
+        using CancellationTokenSource stop = new();
+        Task<LeanFetchedBody?> fetch = node.Transport.FetchBodyAsync(descriptor, peer, stop.Token);
 
         node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
         TimeSpan? wake = node.Time!.TimerDueTime;
@@ -503,10 +547,12 @@ public class LeanBroadcastTests
             Assert.That(wake, Is.EqualTo(wait), "the timer fires when the deferral ends rather than at the next tick");
             Assert.That(link.Sent<GetChunksMessage>(), Is.Not.Empty);
         }
+        stop.Cancel();
+        using LeanFetchedBody? fetched = await fetch;
     }
 
     [Test]
-    public void Shards_trickling_in_defer_retrieval_only_a_few_round_trips_after_the_manifest()
+    public async Task Shards_trickling_in_defer_retrieval_only_a_few_round_trips_after_the_manifest()
     {
         using LeanTestNode node = new();
         FakeLink link = new();
@@ -514,6 +560,8 @@ public class LeanBroadcastTests
         LeanDescriptor descriptor = BroadcastPackage(node, 8);
         TimeSpan wait = node.Transport.BroadcastWait;
         node.Transport.OnBroadcastProgress(descriptor);
+        using CancellationTokenSource stop = new();
+        Task<LeanFetchedBody?> fetch = node.Transport.FetchBodyAsync(descriptor, peer, stop.Token);
         node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
 
         int ticks = 0;
@@ -524,6 +572,8 @@ public class LeanBroadcastTests
         }
         Assert.That(ticks * (wait / 2), Is.GreaterThanOrEqualTo(3 * wait).And.LessThanOrEqualTo(3 * wait + wait / 2),
             "retrieval waits while shards arrive, but no longer than three round trips after the manifest");
+        stop.Cancel();
+        using LeanFetchedBody? fetched = await fetch;
     }
 
     [Test]
@@ -543,21 +593,23 @@ public class LeanBroadcastTests
         FakeLink link = new();
         LeanPeer peer = node.Connect(link);
         byte[] body = Wrapper(3 * LeanProtocol.ChunkBytes, false, FrameTransaction(9));
-        LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
+        LeanDescriptor descriptor = Describe(body);
         node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
         GetChunksMessage request = link.Sent<GetChunksMessage>().Single();
 
         node.Time!.Advance(TimeSpan.FromMilliseconds(300));
-        node.Transport.OnChunk(peer, LeanChunkView.Parse(Wire(Chunk(request.RequestId, descriptor, body, tree, request.Indices[0]))));
+        node.Transport.OnChunk(peer, LeanChunkView.Parse(Wire(Chunk(request.RequestId, descriptor, body, request.Indices[0]))));
         Assert.That(node.Transport.BroadcastWait, Is.EqualTo(TimeSpan.FromMilliseconds(300)));
     }
 
-    /// <summary>A kind-3 package whose broadcast was admitted, starting its shared assembly.</summary>
+    /// <summary>A known block-proof descriptor whose broadcast starts its shared assembly.</summary>
     private static LeanDescriptor BroadcastPackage(LeanTestNode node, int seed)
     {
-        byte[] package = InclusionList(3 * LeanProtocol.ChunkBytes, FrameTransaction(seed));
-        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
-            LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)), package, out _);
+        byte[] proof = Proof(3 * LeanProtocol.ChunkBytes);
+        BlockHeader header = LeanTransportTests.ProofHeader(proof, number: (ulong)seed);
+        node.Tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256), LeanBodies.EncodeBlockProof(proof));
         Assert.That(node.Transport.AdmitBroadcast(descriptor, 0), Is.EqualTo(LeanBroadcastAdmission.Started));
         return descriptor;
     }
@@ -575,7 +627,7 @@ public class LeanBroadcastTests
         Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
         Assert.That(other.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
 
-        await Until(() => receiver.Node.Transport.IsStored(descriptor.ObjectId));
+        await Until(() => receiver.Node.Transport.HasBroadcastSidecar(descriptor.BlockHash));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bad.Reverse.Penalties, Has.Some.Contains("shard 3"));
@@ -623,6 +675,68 @@ public class LeanBroadcastTests
     }
 
     [Test]
+    public async Task Repeated_bad_signatures_do_not_create_unbounded_authorization_work()
+    {
+        using BroadcastNode origin = new(), receiver = new();
+        (LinkPeer toReceiver, _) = Link(origin, receiver);
+        (LeanBroadcastManifest manifest, _) = await Package(origin, 46);
+        LeanSessOpen open = new(manifest.Channel(1, LeanTestNode.Genesis.ValueHash256),
+            LeanBroadcastManifest.MessageId(manifest.Id(1, LeanTestNode.Genesis.ValueHash256)), manifest.Preamble([], []), []);
+        for (int i = 0; i < LeanBroadcastEngine.MaxAuthorizationChecksPerSlot; i++)
+            Assert.That(receiver.Engine.OnSessionOpen(toReceiver.Reverse, open, out _), Is.EqualTo(LeanBroadcastVerdict.Invalid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receiver.Engine.OnSessionOpen(toReceiver.Reverse, open, out _), Is.EqualTo(LeanBroadcastVerdict.Refused));
+            Assert.That(receiver.Profile.AuthorizationChecks, Is.EqualTo(LeanBroadcastEngine.MaxAuthorizationChecksPerSlot));
+            Assert.That(receiver.Engine.SessionCount, Is.Zero);
+            Assert.That(receiver.Node.Transport.IncompleteBytes, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Broadcast_refuses_when_the_same_authenticated_sources_retrieval_budget_is_full()
+    {
+        using BroadcastNode origin = new(), receiver = new();
+        (LinkPeer toReceiver, _) = Link(origin, receiver);
+        LeanPeer source = receiver.Node.Connect(new FakeLink("retrieval"));
+        toReceiver.Reverse.RetrievalPeer = source;
+        source.ChargedBytes = LeanLimits.MaxPeerBytes;
+        (LeanBroadcastManifest manifest, _) = await Package(origin, 44);
+        LeanBroadcastVerdict verdict = receiver.Engine.OnSessionOpen(toReceiver.Reverse,
+            new LeanSessOpen(manifest.Channel(1, LeanTestNode.Genesis.ValueHash256),
+                LeanBroadcastManifest.MessageId(manifest.Id(1, LeanTestNode.Genesis.ValueHash256)),
+                manifest.Preamble(TestBroadcastProfile.Sign(manifest), []), []), out _);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict, Is.EqualTo(LeanBroadcastVerdict.Refused));
+            Assert.That(receiver.Engine.SessionCount, Is.Zero);
+            Assert.That(source.ChargedBytes, Is.EqualTo(LeanLimits.MaxPeerBytes));
+            Assert.That(toReceiver.Reverse.Penalties, Is.Empty);
+        }
+        source.ChargedBytes = 0;
+    }
+
+    [Test]
+    public async Task Unknown_ordinary_header_refuses_broadcast_before_any_coded_state()
+    {
+        using BroadcastNode origin = new(), receiver = new();
+        (LinkPeer toReceiver, _) = Link(origin, receiver);
+        (LeanBroadcastManifest manifest, LeanDescriptor descriptor) = await Package(origin, 45);
+        receiver.Node.Tree.FindHeader(new Hash256(descriptor.BlockHash), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns((BlockHeader?)null);
+        LeanBroadcastVerdict verdict = receiver.Engine.OnSessionOpen(toReceiver.Reverse,
+            new LeanSessOpen(manifest.Channel(1, LeanTestNode.Genesis.ValueHash256),
+                LeanBroadcastManifest.MessageId(manifest.Id(1, LeanTestNode.Genesis.ValueHash256)),
+                manifest.Preamble(TestBroadcastProfile.Sign(manifest), []), []), out string? reason);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict, Is.EqualTo(LeanBroadcastVerdict.Refused));
+            Assert.That(reason, Does.Contain("header"));
+            Assert.That(receiver.Node.Transport.IncompleteBytes, Is.Zero);
+            Assert.That(receiver.Engine.SessionCount, Is.Zero);
+        }
+    }
+
+    [Test]
     public async Task Object_failing_its_context_is_the_signers_fault_and_stays_retrievable()
     {
         using BroadcastNode origin = new(), receiver = new(new TestBroadcastProfile { ContextMismatch = true });
@@ -639,6 +753,7 @@ public class LeanBroadcastTests
             Assert.That(receiver.Node.Transport.IsTombstoned(descriptor.ObjectId), Is.False, "failure is scoped to the manifest");
             Assert.That(receiver.Node.Transport.AssemblyCount, Is.EqualTo(1), "the shared assembly remains for retrieval");
             Assert.That(toReceiver.Reverse.Penalties, Is.Empty, "relays are not penalized for a producer fault");
+            Assert.That(receiver.Engine.ProducerFaults(manifest.ProducerIndex), Is.EqualTo(1));
         }
     }
 
@@ -703,59 +818,83 @@ public class LeanBroadcastTests
     }
 
     [Test]
-    public async Task Originating_requires_a_fully_validated_object()
+    public async Task Disposal_during_reconstruction_retains_work_credit_and_does_not_publish_late()
     {
-        using BroadcastNode origin = new();
-        byte[] package = InclusionList(1000, FrameTransaction(6));
-        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
-            LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)), package, out _);
-        LeanBroadcastManifest manifest = LeanBroadcastManifest.Create(TestBroadcastProfile.ProfileId, [1, 2, 3, 4], 10, 0, 7, default, descriptor, null,
-            package, out _);
-        Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.False);
-        await Task.CompletedTask;
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim release = new();
+        TestBroadcastProfile profile = new()
+        {
+            BeforeContext = () =>
+            {
+                entered.TrySetResult();
+                if (!release.Wait(Timeout)) throw new TimeoutException("context was not released");
+            }
+        };
+        using BroadcastNode origin = new(), receiver = new(profile);
+        (LinkPeer toReceiver, _) = Link(origin, receiver);
+        (LeanBroadcastManifest manifest, LeanDescriptor descriptor) = await Package(origin, 915);
+        try
+        {
+            Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
+            await entered.Task.WaitAsync(Timeout);
+            receiver.Engine.Dispose();
+            receiver.Node.Transport.Dispose();
+            Assert.That(receiver.Node.Transport.IncompleteBytes, Is.GreaterThan(0), "the decoding task still owns coded memory");
+        }
+        finally { release.Set(); }
+        await Until(() => receiver.Node.Transport.IncompleteBytes == 0);
+        Assert.That(receiver.Node.Transport.HasBroadcastSidecar(descriptor.BlockHash), Is.False);
+        Assert.That(toReceiver.Reverse.Penalties, Is.Empty);
     }
 
     [Test]
-    public async Task First_valid_block_proof_sidecar_is_kept()
+    public void Originating_requires_a_fully_validated_object()
+    {
+        using BroadcastNode origin = new();
+        byte[] body = LeanBodies.EncodeBlockProof(Proof(1000));
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.BlockProofContext(default), body);
+        LeanBroadcastManifest manifest = LeanBroadcastManifest.Create(TestBroadcastProfile.ProfileId, [1, 2, 3, 4], 10, 0, 7, default,
+            descriptor, body, out _);
+        Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.False);
+    }
+
+    [Test]
+    public async Task First_commitment_matching_block_proof_is_kept_and_authenticated_before_import()
     {
         using LeanTestNode node = new(manualTime: false);
-        BlockHeader header = LeanTransportTests.ProofHeader(Proof(2000));
-        LeanHeaderSkeleton skeleton = LeanHeaderSkeleton.FromHeader(header, new HeaderDecoder());
-        LeanDescriptor first = LeanTransportTests.SidecarDescriptor(header, skeleton, out byte[] body);
-        // Rebuilds the same header, so it passes the body checks, but its context names another block number.
+        byte[] proof = Proof(2000);
+        BlockHeader header = LeanTransportTests.ProofHeader(proof);
+        node.Tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
+        byte[] body = LeanBodies.EncodeBlockProof(proof);
+        LeanDescriptor first = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256), body);
+        byte[] wrongBody = LeanBodies.EncodeBlockProof(Proof(2001));
         LeanDescriptor second = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
-            LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256, header.Number + 1, header.TxRoot!.ValueHash256,
-                header.RecursiveStark!.BlockDepsHash.ValueHash256, skeleton.Hash), body, out _);
+            LeanDescriptor.BlockProofContext(header.Hash.ValueHash256), wrongBody);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Transport.AcceptBroadcastBody(first, skeleton, body, Stopwatch.GetTimestamp()), Is.Null);
-            Assert.That(node.Transport.AcceptBroadcastBody(second, skeleton, body, Stopwatch.GetTimestamp()), Is.Null);
+            Assert.That(node.Transport.AcceptBroadcastBody(first, body, Stopwatch.GetTimestamp()), Is.Null);
+            Assert.That(node.Transport.AcceptBroadcastBody(second, wrongBody, Stopwatch.GetTimestamp()), Does.Contain("commitment"));
+            Assert.That(node.Transport.IsTombstoned(second.ObjectId), Is.True);
         }
-
-        BlockHeader withoutProof = header.Clone();
-        withoutProof.RecursiveStark = null;
         using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(1));
-        RecursiveStark? proof = await node.Transport.TryGetAsync(new Block(withoutProof, new BlockBody()), deadline.Token);
-        Assert.That(proof?.StarkProof, Is.EqualTo(header.RecursiveStark.StarkProof), "the later sidecar did not replace the first");
+        RecursiveStark? result = await node.Transport.TryGetAsync(new Block(header, new BlockBody()), deadline.Token);
+        Assert.That(result?.StarkProof, Is.EqualTo(proof));
+        Assert.That(node.Transport.HasBroadcastSidecar(header.Hash.ValueHash256), Is.False, "the unvalidated retention charge was released");
     }
 
-    // EIP-8437 failure scope: a body that does not match the descriptor's commitments fails only its manifest, while a body
-    // that matches them but fails kind validation, here a noncanonical encoding, is invalid exactly as if retrieved.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Committed_broadcast_body_failing_its_encoding_is_invalid_while_a_mismatch_is_manifest_scoped(bool committed)
+    [Test]
+    public void Committed_broadcast_body_failing_encoding_is_invalid_while_a_mismatch_is_manifest_scoped([Values] bool committed)
     {
         using LeanTestNode node = new(manualTime: false);
-        BlockHeader header = LeanTransportTests.ProofHeader(Proof(2000));
-        LeanHeaderSkeleton skeleton = LeanHeaderSkeleton.FromHeader(header, new HeaderDecoder());
-        LeanTransportTests.SidecarDescriptor(header, skeleton, out byte[] body);
+        byte[] body = LeanBodies.EncodeBlockProof(Proof(2000));
         byte[] noncanonical = [.. body, 0x00];
         LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
-            LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256, header.Number, header.TxRoot!.ValueHash256,
-                header.RecursiveStark!.BlockDepsHash.ValueHash256, skeleton.Hash), committed ? noncanonical : body, out _);
+            LeanDescriptor.BlockProofContext(default), committed ? noncanonical : body);
 
-        string? error = node.Transport.AcceptBroadcastBody(descriptor, skeleton, noncanonical, Stopwatch.GetTimestamp());
+        string? error = node.Transport.AcceptBroadcastBody(descriptor, noncanonical, Stopwatch.GetTimestamp());
 
         using (Assert.EnterMultipleScope())
         {

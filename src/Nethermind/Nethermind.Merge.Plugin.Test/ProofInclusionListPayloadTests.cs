@@ -71,6 +71,7 @@ public class ProofInclusionListPayloadTests
 
     [TestCase("missing-transactions")]
     [TestCase("duplicate-position")]
+    [TestCase("descending-position")]
     [TestCase("position-out-of-range")]
     [TestCase("empty-transaction")]
     [TestCase("oversized-list")]
@@ -101,6 +102,7 @@ public class ProofInclusionListPayloadTests
         {
             "missing-transactions" => [new() { Transactions = null }],
             "duplicate-position" => [new() { CommitteeIndex = 4, Transactions = [] }, new() { CommitteeIndex = 4, Transactions = [] }],
+            "descending-position" => [new() { CommitteeIndex = 4, Transactions = [] }, new() { CommitteeIndex = 2, Transactions = [] }],
             "position-out-of-range" => [new() { CommitteeIndex = Eip7805Constants.InclusionListCommitteeSize, Transactions = [] }],
             "empty-transaction" => [new() { Transactions = [[]] }],
             "oversized-list" => [new() { Transactions = [new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]] }],
@@ -127,7 +129,7 @@ public class ProofInclusionListPayloadTests
         Transaction second = Build.A.Transaction.WithNonce(2).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         InclusionListV1[] lists =
         [
-            new() { CommitteeIndex = 7, Transactions = [Encode(first), [0xc0]], RecursiveStark = new() { StarkProof = [1], DepsHash = Keccak.Zero } },
+            new() { CommitteeIndex = 1, Transactions = [Encode(first), [0xc0]], RecursiveStark = new() { StarkProof = [1], DepsHash = Keccak.Zero } },
             new() { CommitteeIndex = 2, Transactions = [Encode(second)] }
         ];
         Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -140,7 +142,7 @@ public class ProofInclusionListPayloadTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.InclusionLists, Has.Count.EqualTo(2));
-            Assert.That(decoded.InclusionLists![0].CommitteeIndex, Is.EqualTo(7));
+            Assert.That(decoded.InclusionLists![0].CommitteeIndex, Is.EqualTo(1));
             Assert.That(decoded.InclusionLists[0].Transactions.Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 1 }), "an undecodable entry is dropped");
             Assert.That(decoded.InclusionLists[0].Proof!.StarkProof, Is.EqualTo(new byte[] { 1 }));
             Assert.That(decoded.InclusionLists[1].Proof, Is.Null);

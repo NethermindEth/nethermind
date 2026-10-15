@@ -44,6 +44,23 @@ public class InclusionListTxSourceTests
             30_000_000UL,
             payloadAttributes);
 
+    [TestCase(0UL, 1UL, true)]
+    [TestCase(4UL, 11UL, true)]
+    [TestCase(4UL, 4UL, false)]
+    [TestCase(11UL, 4UL, false)]
+    public void Lists_require_strict_committee_position_order(ulong first, ulong second, bool valid)
+    {
+        InclusionListV1[] lists =
+        [
+            new() { CommitteeIndex = first, Transactions = [] },
+            new() { CommitteeIndex = second, Transactions = [] }
+        ];
+        string error = InclusionListV1.Validate(lists);
+        Assert.That(error is null, Is.EqualTo(valid));
+        Assert.That(lists[0].CommitteeIndex, Is.EqualTo(first));
+        Assert.That(lists[1].CommitteeIndex, Is.EqualTo(second));
+    }
+
     [Test]
     public void Legacy_source_preserves_list_and_proof_obligations_without_claiming_verified_coverage()
     {

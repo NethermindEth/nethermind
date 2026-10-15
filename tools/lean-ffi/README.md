@@ -236,6 +236,11 @@ Kind 2 is optional block-proof retrieval: context is `[block_hash]`, and the bod
 `[stark_proof]`. The ordinary header must already be known. The received proof must match
 its hash commitment and verify against its dependency commitment before use. Ordinary
 block bodies already carry the proof. There is no inclusion-list object kind.
+An ordinary ETH body response counts proof bytes toward its soft 2 MiB response budget;
+the first body is still returned when its proof alone is larger, up to the 8 MiB proof bound.
+The existing 16 MiB decoded-packet and 12 MiB compressed-frame ceilings still apply. A body
+whose proof and transactions exceed those transport ceilings remains unsupported; optional
+kind-2 retrieval does not permit stripping the proof from an ordinary block body.
 
 Objects are bounded to 9 MiB, chunks to 64 KiB and messages to 128 KiB. A request may
 ask for at most 32 chunks (2 MiB), with four outstanding requests per peer in each
@@ -286,21 +291,29 @@ fragments of one RLPx object.
 
 ## Proof-bearing inclusion lists
 
-With both EIP-8288 and EIP-7805 active, FCUv5 payload attributes and newPayloadV6's
-execution payload accept `inclusionListRecursiveStark: {starkProof, blockDepsHash}` and
-the optional `inclusionListProvenDependencies`, a hex string concatenating sorted,
-deduplicated 96-byte triples (subject to the native profile limit). As in EIP-8288, `deps_hash` must equal the commitment to `dependencies(transactions)`, the union over
-every entry, and the proof must pass the STARK check against it: an empty dependency list
-carries an empty proof. The optional metadata must equal that list. Proof-bearing FOCIL RLP
-is `[transactions, [stark_proof, deps_hash]]`.
-Verification precedes mandatory prefix checks. Malformed frames are ineligible; ordinary and
-zero-dependency frame obligations remain when the package proof is invalid, missing or does
-not cover every entry. Valid dependency-bearing frames retain their obligations in a mixed list. Builders and validators use the same selection. Each build owns one decoded
-snapshot and its verified parent proof even when shared witness storage is full. Bounded input
-snapshots are taken once to prevent caller mutation; later improvements reuse decoded entries
-and production order. `getPayload` echoes neither proof nor metadata; the consensus client
-supplies its own sidecar to `newPayload`. The CL can construct it through native aggregation
-or the proof-wrapper path.
+With both EIP-8288 and EIP-7805 active, `engine_forkchoiceUpdatedV6` accepts
+`PayloadAttributesV6.inclusionLists` and `engine_newPayloadV7` receives separate
+`InclusionListV1` entries in strictly increasing committee-position order. Each entry carries
+`committeeIndex`, `transactions`, and nullable `recursiveStark: {starkProof, depsHash}`.
+Earlier API versions retain their existing formats. The execution client assumes that the
+consensus client supplies the authenticated lists counted by EIP-7805; it does not authenticate
+consensus-layer signatures. Proof-bearing FOCIL RLP is `[transactions, [stark_proof, deps_hash]]`.
+
+Each list's `depsHash` must equal the commitment to its decoded transactions' exact dependency
+union, and its proof must verify against that statement. An empty dependency union carries an
+empty proof without a verifier call. Malformed frames are ineligible. Dependency-free
+obligations remain when that list's proof is missing or invalid; a valid independent list can
+still require the same dependency-bearing transaction. Builders and validators use the same
+per-list eligibility rules. Each build owns decoded snapshots and verified parent proofs even
+when shared witness storage is full. `getPayload` does not echo inclusion-list proofs; the
+consensus client supplies the authenticated lists to `newPayload`.
+
+Signed consensus-layer inclusion-list gossip and an agreed construction API returning the
+proof for signing remain integration requirements. `engine_getInclusionListV1` keeps its
+existing non-frame sampling and returns transaction bytes only; it does not construct a
+proof-bearing list. These missing CL/construction pieces prevent claiming complete activation
+of the latest companion's inclusion-list protocol.
+
 Legacy inclusion sources and producers without an inclusion source use mutually exclusive
 decoding fallbacks; the proof-aware source overrides that path with its prepared snapshot.
 Repeated package checks reuse a 64-entry positive-verdict cache per backend, keyed by the

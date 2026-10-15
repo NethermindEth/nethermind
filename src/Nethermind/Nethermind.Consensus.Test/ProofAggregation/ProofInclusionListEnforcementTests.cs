@@ -123,12 +123,14 @@ public class ProofInclusionListEnforcementTests
             .WithTransactions(includedTransactions).TestObject;
         if (scenario.StartsWith("generic-", System.StringComparison.Ordinal))
         {
-            int count = scenario == "generic-full" ? 16 : scenario == "generic-space" ? 15 : coveredAndNew ? 2 : 1;
+            int count = scenario == "generic-full" ? Eip8288Constants.MaxLeanStarkDepsPerBlock
+                : scenario == "generic-space" ? Eip8288Constants.MaxLeanStarkDepsPerBlock - 1 : coveredAndNew ? 2 : 1;
             byte[] existing = new byte[count * Eip8288Constants.DependencyTripleLength];
             for (int i = 0; i < count; i++)
             {
                 existing[i * Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanStarkScheme;
-                existing[i * Eip8288Constants.DependencyTripleLength + 32] = (byte)i;
+                existing[i * Eip8288Constants.DependencyTripleLength + 32] = (byte)(i % 255);
+                existing[i * Eip8288Constants.DependencyTripleLength + 33] = (byte)(i / 255);
             }
             if (coveredAndNew) existing[Eip8288Constants.DependencyTripleLength + 32] = 255;
             Transaction includedGeneric = new()
@@ -138,8 +140,9 @@ public class ProofInclusionListEnforcementTests
             };
             block = block.WithReplacedBody(new([includedGeneric], block.Uncles, block.Withdrawals));
             List<FrameDependency> existingDependencies = Eip8288Dependencies.ForTransaction(includedGeneric);
-            block.Header.RecursiveStark = new(scenario == "generic-compressed-union"
-                    ? LeanProofTestEnvelope.CreateMaximal(existingDependencies) : LeanProofTestEnvelope.Create(existingDependencies, 0),
+            block.StarkProof = scenario == "generic-compressed-union"
+                ? LeanProofTestEnvelope.CreateMaximal(existingDependencies) : LeanProofTestEnvelope.Create(existingDependencies, 0);
+            block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof),
                 new Hash256(Eip8288Dependencies.ComputeDepsHash(existingDependencies)));
         }
         block.Header.GasUsedPerDimension = (0, 0);

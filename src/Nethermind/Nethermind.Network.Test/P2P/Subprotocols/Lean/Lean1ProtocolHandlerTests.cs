@@ -12,8 +12,6 @@ using DotNetty.Common.Utilities;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -242,6 +240,29 @@ public class Lean1ProtocolHandlerTests
             Assert.That(proof.BlockDepsHash, Is.EqualTo(header.RecursiveStark.BlockDepsHash));
         }
         AssertNoDisconnects(connection);
+    }
+
+    [TestCase("availability")]
+    [TestCase("verification")]
+    [TestCase("invalid proof")]
+    public async Task Sidecar_distinguishes_local_verifier_failure_from_invalid_peer_proof(string failure)
+    {
+        await using Connection connection = new();
+        await connection.Open();
+        byte[] proof = Proof(1024);
+        BlockHeader header = LeanTransportTests.ProofHeader(proof);
+        connection.A.Node.Tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
+        connection.A.Node.Tree.IsMainChain(header).Returns(true);
+        connection.A.Node.Tree.FindBlock(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(new Block(header, new BlockBody([], [], starkProof: proof)));
+        if (failure == "availability") connection.B.Node.Verifier.AvailabilityError = new InvalidOperationException("backend unavailable");
+        else if (failure == "verification") connection.B.Node.Verifier.VerificationError = new NotSupportedException("local verifier geometry");
+        else connection.B.Node.Verifier.Valid = false;
+        using CancellationTokenSource timeout = new(TimeSpan.FromMilliseconds(600));
+        RecursiveStark? result = await connection.B.Node.Transport.TryGetAsync(new Block(header.Clone(), new BlockBody()), timeout.Token);
+        Assert.That(result, Is.Null);
+        Assert.That(connection.B.Disconnects.Count, Is.EqualTo(failure == "invalid proof" ? 1 : 0));
+        Assert.That(connection.B.Node.Transport.IncompleteBytes + connection.B.Node.Transport.CompletionBytes, Is.Zero);
     }
 
     [Test]
