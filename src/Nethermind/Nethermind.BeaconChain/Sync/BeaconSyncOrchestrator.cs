@@ -222,7 +222,7 @@ public sealed class BeaconSyncOrchestrator(
 
     private readonly HashSet<Hash256> _heldColumnFetches = [];
 
-    private readonly Queue<(Hash256 Root, BeaconBlock Message)> _heldColumnFetchQueue = new();
+    private readonly Queue<(Hash256 Root, SignedBeaconBlock Block)> _heldColumnFetchQueue = new();
 
     private readonly Dictionary<Hash256, ForkedSignedBeaconBlock> _refusedOnHeldFetch = [];
 
@@ -1050,21 +1050,21 @@ public sealed class BeaconSyncOrchestrator(
 
     private void QueueHeldColumnFetch(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token)
     {
-        if (block is ForkedSignedBeaconBlock.OfFulu { Block.Message: { Body.BlobKzgCommitments.Length: > 0 } message })
+        if (block is ForkedSignedBeaconBlock.OfFulu { Block: { Message.Body.BlobKzgCommitments.Length: > 0 } signed })
         {
-            _heldColumnFetchQueue.Enqueue((root, message));
+            _heldColumnFetchQueue.Enqueue((root, signed));
             StartHeldColumnFetches(token);
         }
     }
 
     private void StartHeldColumnFetches(CancellationToken token)
     {
-        while (_heldColumnFetches.Count < MaxConcurrentHeldColumnFetches && _heldColumnFetchQueue.TryDequeue(out (Hash256 Root, BeaconBlock Message) next))
+        while (_heldColumnFetches.Count < MaxConcurrentHeldColumnFetches && _heldColumnFetchQueue.TryDequeue(out (Hash256 Root, SignedBeaconBlock Block) next))
         {
             Hash256 root = next.Root;
-            BeaconBlock message = next.Message;
+            SignedBeaconBlock signed = next.Block;
             // A block that left the held chain meanwhile needs nothing ahead of its turn.
-            if (_rangeHeldRoots.ContainsKey(root) && StartColumnFetch(root, fetchToken => rangeSync.FetchColumnsByRootAsync(root, message, fetchToken), token))
+            if (_rangeHeldRoots.ContainsKey(root) && StartColumnFetch(root, fetchToken => rangeSync.FetchColumnsByRootAsync(root, signed, fetchToken), token))
             {
                 _heldColumnFetches.Add(root);
             }
@@ -1279,7 +1279,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <param name="refused">Whether the retry set refused the block: it is neither watched nor given a stored rotation, and the fetch ends with an import attempt of it.</param>
     private void AwaitColumns(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token, bool refused = false)
     {
-        if (block is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { Body.BlobKzgCommitments.Length: > 0 } message })
+        if (block is not ForkedSignedBeaconBlock.OfFulu { Block: { Message.Body.BlobKzgCommitments.Length: > 0 } signed })
         {
             return;
         }
@@ -1317,7 +1317,7 @@ public sealed class BeaconSyncOrchestrator(
             }
         }
 
-        if (StartColumnFetch(root, fetchToken => rangeSync.FetchColumnsByRootAsync(root, message, rotation, fetchToken), token, refused ? block : null) && refused)
+        if (StartColumnFetch(root, fetchToken => rangeSync.FetchColumnsByRootAsync(root, signed, rotation, fetchToken), token, refused ? block : null) && refused)
         {
             _refusedFetchRoot = root;
         }
@@ -1571,7 +1571,7 @@ public sealed class BeaconSyncOrchestrator(
     {
         for (int waiting = _heldColumnFetchQueue.Count; waiting > 0; waiting--)
         {
-            (Hash256 Root, BeaconBlock Message) next = _heldColumnFetchQueue.Dequeue();
+            (Hash256 Root, SignedBeaconBlock Block) next = _heldColumnFetchQueue.Dequeue();
             if (_rangeHeldRoots.ContainsKey(next.Root))
             {
                 _heldColumnFetchQueue.Enqueue(next);

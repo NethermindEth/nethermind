@@ -659,7 +659,7 @@ public sealed class ColumnBackfill(
             switch (block)
             {
                 case ForkedSignedBeaconBlock.OfFulu fulu:
-                    await rangeSync.FetchColumnsByRootAsync(root, fulu.Block.Message!, rotation, token);
+                    await rangeSync.FetchColumnsByRootAsync(root, fulu.Block, rotation, token);
                     break;
                 case ForkedSignedBeaconBlock.OfGloas gloas:
                     await rangeSync.FetchGloasColumnsByRootAsync(root, gloas.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!, rotation, token);

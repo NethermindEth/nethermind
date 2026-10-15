@@ -288,13 +288,13 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     private async Task FetchColumnsForBatchAsync(IReadOnlyList<ForkedSignedBeaconBlock> blocks, Hash256[] roots, CancellationToken token)
     {
         ulong windowStartEpoch = DataAvailabilityStartEpoch();
-        Dictionary<Hash256, BeaconBlock> blobBlocksByRoot = [];
+        Dictionary<Hash256, SignedBeaconBlock> blobBlocksByRoot = [];
         ulong startSlot = ulong.MaxValue;
         ulong endSlot = 0;
         ulong lastBlobSlot = 0;
         for (int i = 0; i < blocks.Count; i++)
         {
-            if (blocks[i] is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { } message }
+            if (blocks[i] is not ForkedSignedBeaconBlock.OfFulu { Block: { Message: { } message } signed }
                 || !IsInDataAvailabilityWindow(message.Slot, windowStartEpoch))
             {
                 continue;
@@ -304,7 +304,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             endSlot = Math.Max(endSlot, message.Slot);
             if (message.Body?.BlobKzgCommitments is { Length: > 0 })
             {
-                blobBlocksByRoot[roots[i]] = message;
+                blobBlocksByRoot[roots[i]] = signed;
                 lastBlobSlot = Math.Max(lastBlobSlot, message.Slot);
             }
         }
@@ -361,7 +361,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
     }
 
-    private List<ulong> MissingBatchColumns(NodeColumnCustody custody, Dictionary<Hash256, BeaconBlock> blobBlocksByRoot, out ulong firstSlot, out ulong lastSlot)
+    private List<ulong> MissingBatchColumns(NodeColumnCustody custody, Dictionary<Hash256, SignedBeaconBlock> blobBlocksByRoot, out ulong firstSlot, out ulong lastSlot)
     {
         firstSlot = ulong.MaxValue;
         lastSlot = 0;
@@ -369,13 +369,13 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         foreach (ulong column in custody.SampledColumns)
         {
             bool lacking = false;
-            foreach ((Hash256 root, BeaconBlock block) in blobBlocksByRoot)
+            foreach ((Hash256 root, SignedBeaconBlock block) in blobBlocksByRoot)
             {
                 if (!sidecarPool.TryGet(root, column, out _))
                 {
                     lacking = true;
-                    firstSlot = Math.Min(firstSlot, block.Slot);
-                    lastSlot = Math.Max(lastSlot, block.Slot);
+                    firstSlot = Math.Min(firstSlot, block.Message!.Slot);
+                    lastSlot = Math.Max(lastSlot, block.Message!.Slot);
                 }
             }
 
@@ -388,7 +388,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         return missing;
     }
 
-    private bool HoldsColumnForAll(ulong column, Dictionary<Hash256, BeaconBlock> blobBlocksByRoot)
+    private bool HoldsColumnForAll(ulong column, Dictionary<Hash256, SignedBeaconBlock> blobBlocksByRoot)
     {
         foreach (Hash256 root in blobBlocksByRoot.Keys)
         {
@@ -503,7 +503,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
     /// <summary>Adds each sidecar that verifies against the block it names in <paramref name="blocksByRoot"/>; any other penalizes <paramref name="peer"/>, once per (root, index) of the reply.</summary>
     /// <remarks>Only KZG failures shadow later copies of a requested column; consensus-specs v1.7.0-beta.2 fulu/p2p-interface.md defines the three independent checks.</remarks>
-    private void AddVerifiedSidecars(IBeaconSyncPeer peer, IReadOnlyList<DataColumnSidecar> sidecars, Dictionary<Hash256, BeaconBlock> blocksByRoot)
+    private void AddVerifiedSidecars(IBeaconSyncPeer peer, IReadOnlyList<DataColumnSidecar> sidecars, Dictionary<Hash256, SignedBeaconBlock> blocksByRoot)
     {
         HashSet<(Hash256 Root, ulong Index)> rejected = [];
         HashSet<(Hash256 Root, ulong Index)> penalized = [];
@@ -522,15 +522,17 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
-            bool requested = blocksByRoot.TryGetValue(sidecarBlockRoot, out BeaconBlock? block);
+            bool requested = blocksByRoot.TryGetValue(sidecarBlockRoot, out SignedBeaconBlock? block);
             // A column an earlier reply already supplied is not verified again.
             if (requested && sidecarPool.TryGet(sidecarBlockRoot, sidecar.Index, out _))
             {
                 continue;
             }
 
+            // The header root is the block root, so a genuine header carries the block's own signature.
             bool reachedKzg = requested
-                && DataColumnAvailability.MatchesBlock(sidecar, sidecarBlockRoot, block!.Body!.BlobKzgCommitments!)
+                && DataColumnAvailability.MatchesBlock(sidecar, sidecarBlockRoot, block!.Message!.Body!.BlobKzgCommitments!)
+                && sidecar.SignedBlockHeader.Signature == block.Signature
                 && DataColumnSidecarVerifier.VerifyStructure(sidecar)
                 && DataColumnSidecarVerifier.VerifyBlobCount(sidecar, spec)
                 && DataColumnSidecarVerifier.VerifyInclusionProof(sidecar);
@@ -610,22 +612,22 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
     /// <summary>Fetches and pools verified missing sampled Fulu columns by root from at most <see cref="MaxByRootColumnPeers"/> custodians.</summary>
     /// <param name="blockRoot">The root of <paramref name="block"/>.</param>
-    /// <param name="block">Supplies the commitments used for verification.</param>
+    /// <param name="block">Supplies the commitments and the signature used for verification.</param>
     /// <param name="token">Cancels the fetch.</param>
     /// <returns>True when all sampled columns are held, no blobs are committed, or the block predates the availability window;
     /// false while this node's custody identity is unknown.</returns>
     /// <remarks>Advertised custodians come first. Peers custodying no missing columns neither receive requests nor consume the bound
     /// (fulu/p2p-interface.md DataColumnSidecarsByRoot).</remarks>
-    public Task<bool> FetchColumnsByRootAsync(Hash256 blockRoot, BeaconBlock block, CancellationToken token) =>
+    public Task<bool> FetchColumnsByRootAsync(Hash256 blockRoot, SignedBeaconBlock block, CancellationToken token) =>
         FetchColumnsByRootAsync(blockRoot, block, new ColumnFetchRotation(clock), token);
 
-    /// <inheritdoc cref="FetchColumnsByRootAsync(Hash256, BeaconBlock, CancellationToken)"/>
+    /// <inheritdoc cref="FetchColumnsByRootAsync(Hash256, SignedBeaconBlock, CancellationToken)"/>
     /// <param name="rotation">Tracks previously asked custodians; only unasked custodians are requested, in parallel.</param>
     /// <remarks>A silent peer costs one request timeout rather than serial timeouts across peers.</remarks>
-    internal async Task<bool> FetchColumnsByRootAsync(Hash256 blockRoot, BeaconBlock block, ColumnFetchRotation rotation, CancellationToken token)
+    internal async Task<bool> FetchColumnsByRootAsync(Hash256 blockRoot, SignedBeaconBlock block, ColumnFetchRotation rotation, CancellationToken token)
     {
-        SszKzgCommitment[] commitments = block.Body?.BlobKzgCommitments ?? [];
-        if (commitments.Length == 0 || !IsInDataAvailabilityWindow(block.Slot, DataAvailabilityStartEpoch()))
+        SszKzgCommitment[] commitments = block.Message?.Body?.BlobKzgCommitments ?? [];
+        if (commitments.Length == 0 || !IsInDataAvailabilityWindow(block.Message!.Slot, DataAvailabilityStartEpoch()))
         {
             return true;
         }
@@ -654,7 +656,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
 
         await Task.WhenAll(responses);
-        Dictionary<Hash256, BeaconBlock> blocksByRoot = new() { [blockRoot] = block };
+        Dictionary<Hash256, SignedBeaconBlock> blocksByRoot = new() { [blockRoot] = block };
         for (int i = 0; i < asked.Count; i++)
         {
             if (responses[i].Result is { } sidecars)

@@ -139,7 +139,7 @@ public class RangeSyncColumnCustodyTests
 
         if (byRoot)
         {
-            await sync.FetchColumnsByRootAsync(fixture.Chain.BlockRoot, fixture.Chain.Block.Message!, token);
+            await sync.FetchColumnsByRootAsync(fixture.Chain.BlockRoot, fixture.Chain.Block, token);
         }
         else
         {
@@ -366,6 +366,49 @@ public class RangeSyncColumnCustodyTests
         Assert.That(served, Is.Not.Empty, "fixture: the peer was asked for columns");
         Assert.That(served, Is.All.Matches<ulong>(column => !fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, column, out _)), "no column over the blob limit is pooled");
         Assert.That(peer.Reports, Is.EqualTo(Enumerable.Repeat(PeerFailureReason.ProtocolViolation, served.Length)), "each (root, index) is penalized once, not once per copy");
+    }
+
+    // fulu/p2p-interface.md: a sidecar's signed_block_header is the block's header, and its root is the block root, so it carries the block's signature.
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_genuine_column_under_corrupted_header_signature_bytes_is_not_pooled_and_penalizes_the_peer([Values] bool byRoot, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        List<ulong> served = [];
+        DataColumnSidecar[] Forge(ulong[] columns)
+        {
+            served.AddRange(columns);
+            return [.. fixture.ServeColumns(columns).Select(static genuine =>
+            {
+                DataColumnSidecar forged = CopySidecar(genuine);
+                byte[] signature = genuine.SignedBlockHeader!.Signature.Bytes.ToArray();
+                signature[^1] ^= 0xFF;
+                forged.SignedBlockHeader = new SignedBeaconBlockHeader { Message = genuine.SignedBlockHeader.Message, Signature = new BlsSignature(signature) };
+                return forged;
+            })];
+        }
+
+        StubPeer peer = new(
+            "forging",
+            fixture.Chain.Block.Message!.Slot,
+            (_, _) => [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block)],
+            (_, _, columns) => Forge(columns),
+            custody: StubPeer.AllColumns,
+            rootHandler: identifiers => Forge(identifiers.Single().Columns!));
+
+        if (byRoot)
+        {
+            await fixture.CreateRangeSync([peer]).FetchColumnsByRootAsync(fixture.Chain.BlockRoot, fixture.Chain.Block, token);
+        }
+        else
+        {
+            await fixture.RunOneRoundAsync([peer], token);
+        }
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(served, Is.Not.Empty, "fixture: the peer served columns");
+        Assert.That(served, Is.All.Matches<ulong>(column => !fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, column, out _)), "no column under a signature other than the block's is pooled or served");
+        Assert.That(peer.Reports, Is.EqualTo(Enumerable.Repeat(PeerFailureReason.ProtocolViolation, served.Distinct().Count())), "each (root, index) is penalized once, as for a header of another block");
     }
 
     [Test]
