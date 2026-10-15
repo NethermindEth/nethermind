@@ -39,6 +39,7 @@ public class OptimismHeaderValidatorTests(Fork fork)
             .WithNonce(0)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
             .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
             .WithRequestsHash(_timestamp >= Spec.IsthmusTimeStamp
