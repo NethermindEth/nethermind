@@ -444,6 +444,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public void Uninitialized_lean_ETH_handler_can_be_disposed_without_a_remote_identity()
+        {
+            _handler.Dispose();
+            _session.RemoteNodeId.Returns((PublicKey)null!);
+            _handler = CreateHandler(RunImmediatelyScheduler.Instance, new LeanEthTransactions());
+
+            Assert.That(() => _handler.Dispose(), Throws.Nothing);
+        }
+
+        [Test]
         public async Task Lean_recovery_uses_authenticated_ETH_and_retains_pool_rejected_envelopes()
         {
             LeanEthTransactions registry = new();
@@ -505,7 +515,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public async Task Lean_ETH_recoveries_complete_when_the_handler_stops([Values] bool disconnect)
+        public async Task Lean_ETH_recoveries_complete_when_the_handler_stops([Values] bool disconnect, [Values] bool clearRemoteIdentity)
         {
             LeanEthTransactions registry = new();
             _session.RemoteNodeId.Returns(TestItem.PublicKeyA);
@@ -522,6 +532,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                     _ => { Interlocked.Increment(ref reservations); return true; }, CancellationToken.None)).ToArray();
             Assert.That(ids, Has.Count.EqualTo(LeanProtocol.MaxRequestsPerPeer));
 
+            if (clearRemoteIdentity) _session.RemoteNodeId.Returns((PublicKey)null!);
             if (disconnect) _session.Disconnected += Raise.EventWith(new DisconnectEventArgs(DisconnectReason.EthDisconnectRequested, DisconnectType.Remote, "test"));
             else _handler.Dispose();
 

@@ -42,6 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly HashSet<long> _leanRetired = [];
         private readonly LeanEthTransactions? _leanTransactions;
         private bool _leanRecoveryStopped;
+        private PublicKey? _leanRecoveryKey;
         private sealed record LeanRecovery(ValueHash256[] Hashes, Func<int, bool> Reserve, TaskCompletionSource<Transaction[]> Completion);
 
         private readonly MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests66;
@@ -66,7 +67,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ProtocolInitialized += (_, _) =>
             {
                 lock (_leanRecoveryLock)
-                    if (!_leanRecoveryStopped) _leanTransactions?.Register(Session.RemoteNodeId, this, RecoverLeanTransactionsAsync);
+                    if (!_leanRecoveryStopped && _leanTransactions is not null && Session.RemoteNodeId is { } key)
+                    {
+                        _leanTransactions.Register(key, this, RecoverLeanTransactionsAsync);
+                        _leanRecoveryKey = key;
+                    }
             };
             Session.Disconnected += (_, _) => StopLeanRecovery();
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
@@ -201,7 +206,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             lock (_leanRecoveryLock)
             {
                 _leanRecoveryStopped = true;
-                _leanTransactions?.Remove(Session.RemoteNodeId, this);
+                if (_leanRecoveryKey is { } key)
+                {
+                    _leanTransactions?.Remove(key, this);
+                    _leanRecoveryKey = null;
+                }
                 foreach ((long id, LeanRecovery request) in _leanRequests)
                 {
                     RetireLeanRequest(id);

@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Lean;
+using Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Lean.LeanTestObjects;
 
@@ -78,7 +79,7 @@ public class LeanObjectTransportTests
     }
 
     [Test]
-    public async Task Maximum_proof_validates_with_owned_input_and_charged_decoder_copy()
+    public async Task Maximum_proof_validates_with_owned_input_and_charged_decoder_copy([Values] bool controlReserve)
     {
         using LeanTestNode node = new();
         Transaction transaction = FrameTransaction(90);
@@ -87,7 +88,8 @@ public class LeanObjectTransportTests
         LeanDescriptor descriptor = Describe(body);
         FakeLink link = Link("maximum");
         LeanPeer peer = node.Connect(link);
-        Assert.That(node.Transport.TryReserveNodeBytes(link.NodeKey, 512 * 1024, out IDisposable? credit), Is.True);
+        int fixedBytes = LeanEthp2pProtocol.ConnectionReceiveWindow + (controlReserve ? LeanEthp2pProtocol.ControlReceiveBytes : 0);
+        Assert.That(node.Transport.TryReserveNodeBytes(link.NodeKey, fixedBytes, out IDisposable? credit), Is.True);
         using (credit)
         using (ManualResetEventSlim gate = new())
         {
@@ -100,7 +102,7 @@ public class LeanObjectTransportTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(node.Transport.IncompleteBytes + node.Transport.CompletionBytes,
-                        Is.EqualTo(body.Length + Eip8288Constants.MaxAggregateProofBytes + 512 * 1024 + descriptor.ChunkCount * 24L + 1024));
+                        Is.EqualTo(body.Length + Eip8288Constants.MaxAggregateProofBytes + fixedBytes + descriptor.ChunkCount * 24L + 1024));
                     Assert.That(peer.ChargedBytes, Is.LessThanOrEqualTo(LeanLimits.MaxPeerBytes));
                     Assert.That(link.Penalties, Is.Empty);
                 }
@@ -108,7 +110,7 @@ public class LeanObjectTransportTests
             finally { gate.Set(); }
             await Until(() => node.Transport.IsStored(descriptor.ObjectId));
             await Until(() => node.Transport.CompletionBytes == 0);
-            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(512 * 1024));
+            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(fixedBytes));
         }
         Assert.That(node.Transport.IncompleteBytes, Is.Zero);
     }
@@ -403,6 +405,43 @@ public class LeanObjectTransportTests
         finally { foreach (IDisposable lease in leases) lease.Dispose(); }
         node.Tick(TimeSpan.FromMilliseconds(1));
         Assert.That(link.Sent<GetChunksMessage>(), Is.Not.Empty);
+    }
+
+    [Test]
+    public async Task Slow_gossip_reservations_leave_room_for_a_maximum_waited_block_proof()
+    {
+        using LeanTestNode node = new();
+        List<FakeLink> gossip = [];
+        for (int index = 0; index < 4; index++)
+        {
+            FakeLink link = Link($"slow-gossip:{index}");
+            gossip.Add(link);
+            LeanPeer peer = node.Connect(link);
+            byte[] body = Wrapper(Eip8288Constants.MaxAggregateProofBytes, true, FrameTransaction(120 + index));
+            node.Transport.OnAnnounce(peer, new([Describe(body)]));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gossip.Take(3).All(link => link.Sent<GetChunksMessage>().Length > 0), Is.True);
+            Assert.That(gossip[3].Sent<GetChunksMessage>(), Is.Empty, "the fourth wrapper would consume import headroom");
+        }
+
+        FakeLink healthy = Link("healthy-import");
+        LeanPeer source = node.Connect(healthy);
+        byte[] proofBody = LeanBodies.EncodeBlockProof(Proof(Eip8288Constants.MaxAggregateProofBytes));
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.BlockProofContext(TestItem.KeccakA.ValueHash256), proofBody);
+        using CancellationTokenSource cancellation = new();
+        Task<LeanFetchedBody?> fetched = node.Transport.FetchBodyAsync(descriptor, source, cancellation.Token);
+        try
+        {
+            Assert.That(healthy.Sent<GetChunksMessage>(), Is.Not.Empty, "a waited proof can use the import reservation");
+            Assert.That(healthy.Sent<GetChunksMessage>().All(request => request.ObjectId == descriptor.ObjectId), Is.True);
+            Assert.That(node.Transport.IncompleteBytes, Is.LessThanOrEqualTo(LeanLimits.MaxIncompleteBytes));
+        }
+        finally { await cancellation.CancelAsync(); }
+        Assert.That(await fetched, Is.Null);
+        Assert.That(source.ChargedBytes, Is.Zero);
     }
 
     [Test]

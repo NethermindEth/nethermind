@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Consensus.Producers;
@@ -37,7 +36,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
         if (block.Header.RecursiveStark is { } recursiveStark)
         {
-            executionPayload.RecursiveStarkProof = block.StarkProof ?? throw new InvalidOperationException("Missing block proof body");
+            executionPayload.RecursiveStarkProof = block.StarkProof ?? throw new System.InvalidOperationException("Missing block proof body");
             executionPayload.RecursiveStarkBlockDepsHash = recursiveStark.BlockDepsHash.Bytes.ToArray();
         }
 

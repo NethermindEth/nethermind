@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -330,6 +331,79 @@ public class LeanEthp2pQuicTests
 
         Assert.That(await c.Host.DialAsync(b.Record, CancellationToken.None), Is.Not.Null);
         await Until(() => b.Host.ConnectionCount == 2, "the static peer in its reserved slot");
+    }
+
+    [Test]
+    public async Task Both_control_streams_progress_when_bulk_budget_is_full([Values] bool global)
+    {
+        await using QuicNode receiver = await QuicNode.Start(TestItem.PrivateKeyB, new TestBroadcastProfile());
+        receiver.Node.EthTransactions.Register(TestItem.PrivateKeyA.PublicKey, receiver,
+            (_, _, _) => Task.FromResult(Array.Empty<Transaction>()));
+        using X509Certificate2 certificate = LeanEthp2pIdentity.CreateCertificate(TestItem.PrivateKeyA);
+        await using QuicConnection client = await QuicConnection.ConnectAsync(RawClient(receiver.Host.LocalEndPoint!, LeanEthp2pProtocol.Alpn, certificate));
+        await Until(() => receiver.Host.ConnectionCount == 1, "the charged connection");
+        List<IDisposable> leases = [];
+        List<QuicStream> incoming = [];
+        try
+        {
+            long charged = LeanEthp2pProtocol.ConnectionReceiveWindow + LeanEthp2pProtocol.ControlReceiveBytes;
+            PrivateKey[] keys = global
+                ? [TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD, TestItem.PrivateKeyA]
+                : [TestItem.PrivateKeyA];
+            foreach (PrivateKey key in keys)
+            {
+                long bytes = LeanLimits.MaxPeerBytes - (key == TestItem.PrivateKeyA ? charged : 0);
+                Assert.That(receiver.Node.Transport.TryReserveNodeBytes(key.PublicKey, bytes, out IDisposable? lease), Is.True);
+                leases.Add(lease!);
+            }
+            Assert.That(receiver.Node.Transport.TryReserveNodeBytes(TestItem.PrivateKeyA.PublicKey, 1, out _), Is.False,
+                "no dynamic frame or read-buffer allocation can be charged");
+
+            await using QuicStream control = await client.OpenOutboundStreamAsync(QuicStreamType.Unidirectional);
+            await control.WriteAsync((byte[])[LeanEthp2pProtocol.ControlStream,
+                .. LeanEthp2pProtocol.Frame(LeanMessageCode.Status, LeanEthp2pProtocol.Encode(LeanTestNode.Status()))]);
+            await Until(() => receiver.Node.Transport.PeerCount == 1, "Status processed under full bulk budget");
+            await using QuicStream bcast = await client.OpenOutboundStreamAsync(QuicStreamType.Unidirectional);
+            await bcast.WriteAsync((byte[])[LeanEthp2pProtocol.BcastStream, .. LeanBroadcastWire.Envelope(LeanBroadcastWire.Handshake())]);
+
+            using CancellationTokenSource deadline = new(Timeout);
+            QuicStream? remoteBcast = null;
+            for (int i = 0; i < 2; i++)
+            {
+                QuicStream stream = await client.AcceptInboundStreamAsync(deadline.Token);
+                incoming.Add(stream);
+                byte[] selector = new byte[1];
+                await stream.ReadExactlyAsync(selector, deadline.Token);
+                if (selector[0] == LeanEthp2pProtocol.BcastStream) remoteBcast = stream;
+            }
+            Assert.That(remoteBcast, Is.Not.Null);
+            Assert.That(LeanBroadcastWire.DecodeBcast(await ReadEnvelope(remoteBcast!, deadline.Token)), Is.TypeOf<LeanBcastHandshake>());
+            Assert.That(LeanBroadcastWire.DecodeBcast(await ReadEnvelope(remoteBcast!, deadline.Token)), Is.TypeOf<LeanBcastSubscribe>(),
+                "the received BCAST handshake joins the engine and produces its subscription");
+            Assert.That(receiver.Node.Transport.PeerCount, Is.EqualTo(1));
+            await using QuicStream unknown = await client.OpenOutboundStreamAsync(QuicStreamType.Unidirectional, deadline.Token);
+            await unknown.WriteAsync((byte[])[0xff], deadline.Token);
+            QuicException? violation = Assert.ThrowsAsync<QuicException>(async () =>
+                await client.AcceptInboundStreamAsync(deadline.Token));
+            Assert.That(violation!.ApplicationErrorCode, Is.EqualTo(LeanEthp2pProtocol.ProtocolViolationError),
+                "budget pressure must not hide an unknown selector");
+        }
+        finally
+        {
+            foreach (IDisposable lease in leases) lease.Dispose();
+            foreach (QuicStream stream in incoming) await stream.DisposeAsync();
+        }
+    }
+
+    private static async Task<byte[]> ReadEnvelope(QuicStream stream, CancellationToken token)
+    {
+        byte[] prefix = new byte[4];
+        await stream.ReadExactlyAsync(prefix, token);
+        int length = checked((int)BinaryPrimitives.ReadUInt32BigEndian(prefix));
+        Assert.That(length, Is.InRange(1, LeanProtocol.MaxMessageBytes));
+        byte[] payload = new byte[length];
+        await stream.ReadExactlyAsync(payload, token);
+        return payload;
     }
 
     [Test]
