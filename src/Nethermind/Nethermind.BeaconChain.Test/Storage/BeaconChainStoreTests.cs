@@ -56,6 +56,34 @@ public class BeaconChainStoreTests
         Assert.That(anchorSlot, Is.EqualTo(12_345_678ul));
     }
 
+    [TestCase(0u, 100ul, TestName = "No chunks for a non-empty state")]
+    [TestCase(1u, 5ul * 1024 * 1024, TestName = "Fewer chunks than the length needs")]
+    [TestCase(1u, 0ul, TestName = "A chunk for an empty state")]
+    [TestCase(1u, ulong.MaxValue, TestName = "A length no array can hold")]
+    [TestCase(256u, 1024ul * 1024 * 1024 + 4 * 1024 * 1024, TestName = "A consistent length above the cap")]
+    public void A_state_manifest_that_disagrees_with_itself_is_not_a_state(uint chunkCount, ulong length)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        byte[] manifest = new byte[sizeof(uint) + sizeof(ulong)];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(manifest, chunkCount);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(manifest.AsSpan(sizeof(uint)), length);
+        db.GetColumnDb(BeaconChainDbColumns.States).Set(BlockRoot.Bytes, manifest);
+
+        Assert.That(store.TryGetState(BlockRoot, out _), Is.False);
+    }
+
+    [Test]
+    public void A_block_record_that_claims_an_oversized_decompressed_length_is_not_read()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        // Raw snappy header declaring 100 MiB of output, with no body.
+        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(BlockRoot.Bytes, [0x80, 0x80, 0x80, 0x32]);
+
+        Assert.That(store.TryGetForkedBlock(BlockRoot, out _), Is.False);
+    }
+
     [Test]
     public void An_unversioned_database_is_stamped_with_the_current_schema_version()
     {

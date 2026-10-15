@@ -59,6 +59,9 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     private const int StateChunkSize = 4 * 1024 * 1024;
     private const int StateManifestLength = sizeof(uint) + sizeof(ulong);
 
+    /// <summary>The most uncompressed bytes a stored state may claim, so a corrupt manifest cannot request an arbitrary allocation.</summary>
+    private const int MaxStateBytes = 1024 * 1024 * 1024;
+
     /// <summary>Byte offset of <c>slot</c> in a stored state, the same in the Fulu and Gloas layouts: <c>genesis_time</c> (8) plus <c>genesis_validators_root</c> (32).</summary>
     private const int StateSlotOffset = 40;
 
@@ -340,6 +343,12 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     {
         byte[]? compressed = _blocks.Get(root.Bytes);
         if (compressed is null)
+        {
+            block = null;
+            return false;
+        }
+
+        if (Snappy.GetUncompressedLength(compressed) > ReqRespFraming.MaxPayloadSize)
         {
             block = null;
             return false;
@@ -650,8 +659,15 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             return false;
         }
 
-        int chunkCount = (int)BinaryPrimitives.ReadUInt32BigEndian(manifest);
-        int length = (int)BinaryPrimitives.ReadUInt64BigEndian(manifest.AsSpan(sizeof(uint)));
+        uint declaredChunkCount = BinaryPrimitives.ReadUInt32BigEndian(manifest);
+        ulong declaredLength = BinaryPrimitives.ReadUInt64BigEndian(manifest.AsSpan(sizeof(uint)));
+        if (declaredLength > MaxStateBytes || (declaredLength + StateChunkSize - 1) / StateChunkSize != declaredChunkCount)
+        {
+            return false;
+        }
+
+        int chunkCount = (int)declaredChunkCount;
+        int length = (int)declaredLength;
         byte[] buffer = new byte[length];
 
         Span<byte> chunkKey = stackalloc byte[Hash256.Size + sizeof(uint)];
