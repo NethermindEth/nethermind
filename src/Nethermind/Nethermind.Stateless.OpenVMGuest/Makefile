@@ -9,9 +9,9 @@ SRC_DIR := /nethermind/src
 
 GUEST_LIBC := openvm
 
-# A 64-bit memcpy in place of libc's 32-bit one; OpenVM has no DMA copy to hand copies to.
-GUEST_OBJECTS := memcpy.o
-GUEST_LDFLAGS := --wrap=memcpy
+# 64-bit memcpy, memmove and memset in place of libc's; OpenVM has no DMA copy or fill to hand them to.
+GUEST_OBJECTS := memcpy.o memmove.o memset.o
+GUEST_LDFLAGS := --wrap=memcpy --wrap=memmove --wrap=memset
 
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
