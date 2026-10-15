@@ -408,6 +408,43 @@ public class LeanObjectTransportTests
     }
 
     [Test]
+    public async Task Slow_gossip_reservations_leave_room_for_a_maximum_waited_block_proof()
+    {
+        using LeanTestNode node = new();
+        List<FakeLink> gossip = [];
+        for (int index = 0; index < 4; index++)
+        {
+            FakeLink link = Link($"slow-gossip:{index}");
+            gossip.Add(link);
+            LeanPeer peer = node.Connect(link);
+            byte[] body = Wrapper(Eip8288Constants.MaxAggregateProofBytes, true, FrameTransaction(120 + index));
+            node.Transport.OnAnnounce(peer, new([Describe(body)]));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gossip.Take(3).All(link => link.Sent<GetChunksMessage>().Length > 0), Is.True);
+            Assert.That(gossip[3].Sent<GetChunksMessage>(), Is.Empty, "the fourth wrapper would consume import headroom");
+        }
+
+        FakeLink healthy = Link("healthy-import");
+        LeanPeer source = node.Connect(healthy);
+        byte[] proofBody = LeanBodies.EncodeBlockProof(Proof(Eip8288Constants.MaxAggregateProofBytes));
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.BlockProofContext(TestItem.KeccakA.ValueHash256), proofBody);
+        using CancellationTokenSource cancellation = new();
+        Task<LeanFetchedBody?> fetched = node.Transport.FetchBodyAsync(descriptor, source, cancellation.Token);
+        try
+        {
+            Assert.That(healthy.Sent<GetChunksMessage>(), Is.Not.Empty, "a waited proof can use the import reservation");
+            Assert.That(healthy.Sent<GetChunksMessage>().All(request => request.ObjectId == descriptor.ObjectId), Is.True);
+            Assert.That(node.Transport.IncompleteBytes, Is.LessThanOrEqualTo(LeanLimits.MaxIncompleteBytes));
+        }
+        finally { await cancellation.CancelAsync(); }
+        Assert.That(await fetched, Is.Null);
+        Assert.That(source.ChargedBytes, Is.Zero);
+    }
+
+    [Test]
     public void Request_ids_allow_gaps_but_reuse_and_decrease_are_violations([Values(0UL, 7UL, 3UL)] ulong invalid)
     {
         using LeanTestNode node = new();

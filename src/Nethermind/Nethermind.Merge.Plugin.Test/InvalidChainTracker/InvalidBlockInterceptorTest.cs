@@ -7,7 +7,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;

@@ -33,7 +33,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
