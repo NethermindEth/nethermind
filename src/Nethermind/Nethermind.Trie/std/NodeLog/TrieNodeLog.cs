@@ -195,7 +195,7 @@ public sealed partial class TrieNodeLog
     private sealed class Generation(ulong id, int length)
     {
         public readonly ulong Id = id;
-        public byte[]? Data = new byte[length];
+        public byte[]? Data = LogBuffer.Allocate(length);
         public SplitBlockBloom? Bloom = new(length / BloomBytesPerKey);
         public CompressedGeneration? Compressed;
         public long Used;

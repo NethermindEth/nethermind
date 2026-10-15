@@ -5,6 +5,8 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -20,6 +22,46 @@ internal class TrieNodeLogTests
     internal const int LiveGenerations = 8;
     internal const int CompactionTimeoutMilliseconds = 10_000;
     internal const int PollingMilliseconds = 10;
+
+    [Test]
+    public void Log_buffers_are_zero_filled([Values(0, 1, GenerationBytes, 2 * 1024 * 1024 - 1, 2 * 1024 * 1024, 2 * 1024 * 1024 + 1)] int length)
+    {
+        byte[] buffer = LogBuffer.Allocate(length);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.Length, Is.EqualTo(length));
+            Assert.That(buffer.AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+        }
+    }
+
+    [Test]
+    [Platform("Linux")]
+    public void Large_generation_buffers_stay_pinned_during_compacting_collections([Values(2 * 1024 * 1024, 4 * 1024 * 1024 + 1)] int length)
+    {
+        TrieNodeLog log = new(0, length);
+        log.Reserve(NodeRecord.RecordAlignment, out byte[] buffer, out _);
+        IntPtr address = Marshal.UnsafeAddrOfPinnedArrayElement(buffer, 0);
+        buffer[0] = 1;
+        buffer[^1] = 2;
+
+        GCLargeObjectHeapCompactionMode previous = GCSettings.LargeObjectHeapCompactionMode;
+        try
+        {
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        }
+        finally
+        {
+            GCSettings.LargeObjectHeapCompactionMode = previous;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Marshal.UnsafeAddrOfPinnedArrayElement(buffer, 0), Is.EqualTo(address));
+            Assert.That(buffer[0], Is.EqualTo(1));
+            Assert.That(buffer[^1], Is.EqualTo(2));
+        }
+    }
 
     [Test]
     public void Records_resolve_in_place_until_their_generation_drops()

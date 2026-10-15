@@ -29,7 +29,7 @@ internal sealed class CompressedGeneration
             length += NodeRecord.AlignedLength(NodeRecord.Length(generation.AsSpan(offset)));
         }
 
-        _records = new byte[length];
+        _records = LogBuffer.Allocate(length);
         _table = new (ulong, int)[BitOperations.RoundUpToPowerOf2((uint)(keptOffsets.Length * 4 / 3 + 1))];
         _tableMask = (ulong)_table.Length - 1;
         int copied = 0;
