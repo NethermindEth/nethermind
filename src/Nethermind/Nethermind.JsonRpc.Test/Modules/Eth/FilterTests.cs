@@ -158,6 +158,7 @@ public class FilterTests
     [TestCase("""{"topics":["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fz7"]}""", typeof(FormatException))]
     [TestCase("""{"topics":[["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7aa"]]}""", typeof(ArgumentException))]
     [TestCase("""{"topics":[[true]]}""", typeof(FormatException))]
+    [TestCase("""{"topics":[null,null,null,null,null]}""", typeof(JsonException))]
     public void ReadJson_rejects_invalid_address_or_topic(string json, Type expectedException)
     {
         Filter filter = new();

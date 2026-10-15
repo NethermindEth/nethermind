@@ -61,4 +61,29 @@ public class RateLimiterTests
         await rateLimiter.WaitAsync(CancellationToken.None);
         Assert.That(rateLimiter.IsThrottled(), Is.True);
     }
+
+    [Test]
+    public async Task Idle_time_does_not_bank_a_burst()
+    {
+        RateLimiter rateLimiter = new(10);
+        await Task.Delay(500);
+
+        // Only the first call is free after an idle period; the next one is delayed by a full interval.
+        Assert.That(rateLimiter.WaitAsync(CancellationToken.None).IsCompleted, Is.True);
+        Assert.That(rateLimiter.WaitAsync(CancellationToken.None).IsCompleted, Is.False);
+    }
+
+    [Test]
+    public void Backlog_reports_the_delay_of_the_next_caller()
+    {
+        RateLimiter rateLimiter = new(10);
+        Assert.That(rateLimiter.Backlog, Is.EqualTo(TimeSpan.Zero));
+
+        for (int i = 0; i < 11; i++)
+        {
+            _ = rateLimiter.WaitAsync(CancellationToken.None);
+        }
+
+        Assert.That(rateLimiter.Backlog, Is.InRange(TimeSpan.FromMilliseconds(1000), TimeSpan.FromMilliseconds(1100)));
+    }
 }

@@ -18,19 +18,13 @@ public partial class BlockProcessor
 {
     public interface ISystemContractHandler
         : IBeaconBlockRootHandler, IBlockhashStore, IWithdrawalProcessor, IExecutionRequestsProcessor
-    {
-        /// <summary>Installs every predeploy <paramref name="spec"/> activates, so their code and nonce are
-        /// captured in the computed state root and, on the BAL path, the block-level access list.</summary>
-        /// <returns><see langword="false"/> when a predeploy cannot be initialised, which makes the block invalid.</returns>
-        bool InstallPredeploys(IReleaseSpec spec, IReleaseSpec parentSpec);
-    }
+    { }
 
     public sealed class SystemContractHandler(
         IBeaconBlockRootHandler beaconBlockRootHandler,
         IBlockhashStore blockHashStore,
         IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor,
-        IWorldState stateProvider) : ISystemContractHandler
+        IExecutionRequestsProcessor executionRequestsProcessor) : ISystemContractHandler
     {
         public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
             => beaconBlockRootHandler.BeaconRootsAccessList(block, spec, includeStorageCells);
@@ -52,8 +46,5 @@ public partial class BlockProcessor
 
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
-
-        public bool InstallPredeploys(IReleaseSpec spec, IReleaseSpec parentSpec)
-            => PredeployInstaller.Install(stateProvider, stateProvider, spec, parentSpec);
     }
 }

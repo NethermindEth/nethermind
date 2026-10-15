@@ -10,6 +10,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381G2AddPrecompile
 {
+    public static Address Address => field ??= Address.FromNumber(0x0d);
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         if (!ValidateInputLength(inputData))

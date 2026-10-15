@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -14,8 +15,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -26,6 +29,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State.Repositories;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -335,6 +339,100 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(realHead.Hash));
     }
 
+    /// <summary>
+    /// A node whose head is far below its best known level (e.g. snap sync once headers reach genesis) holds
+    /// contiguous canonical levels above the head. Starting a simulation must not rewrite every one of them into
+    /// the env's in-memory block info store, and the levels must not change the simulation result.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_does_not_rewrite_canonical_levels_above_head()
+    {
+        const int levelsAboveHead = 2_048;
+        BlockInfosDbWithWriteCountingOverlays blockInfosDb = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(new TestRpcBlockchain())
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
+                .AddKeyedSingleton<IDb>(DbNames.BlockInfos, blockInfosDb));
+
+        ulong headNumber = chain.BlockTree.Head!.Number;
+        ChainLevelInfoRepository levels = new(blockInfosDb);
+        for (ulong number = headNumber + 1; number <= headNumber + levelsAboveHead; number++)
+        {
+            levels.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, UInt256.One)));
+        }
+
+        long writesBefore = blockInfosDb.OverlayWrites;
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> withLevelsAboveHead =
+            chain.EthRpcModule.eth_simulateV1(CreateTransfersAcrossGapPayload(chain), BlockParameter.Latest);
+        long overlayWrites = blockInfosDb.OverlayWrites - writesBefore;
+
+        for (ulong number = headNumber + 1; number <= headNumber + levelsAboveHead; number++)
+        {
+            levels.Delete(number);
+        }
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> withoutLevelsAboveHead =
+            chain.EthRpcModule.eth_simulateV1(CreateTransfersAcrossGapPayload(chain), BlockParameter.Latest);
+
+        EthereumJsonSerializer serializer = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withLevelsAboveHead.Result.ResultType, Is.EqualTo(Core.ResultType.Success), withLevelsAboveHead.Result.Error);
+            Assert.That(withLevelsAboveHead.Data, Has.Count.EqualTo(10));
+            // Simulated levels and the overlay head are written; the levels above them are not.
+            Assert.That(overlayWrites, Is.LessThan(64), "simulation rewrote the canonical levels above the head");
+            Assert.That(serializer.Serialize(withLevelsAboveHead.Data), Is.EqualTo(serializer.Serialize(withoutLevelsAboveHead.Data)));
+        }
+    }
+
+    private static SimulatePayload<TransactionForRpc> CreateTransfersAcrossGapPayload(TestRpcBlockchain chain)
+    {
+        ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Transaction first = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        Transaction second = GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+
+        return new()
+        {
+            BlockStateCalls =
+            [
+                new() { Calls = [ToRpcForInput(first)] },
+                new()
+                {
+                    BlockOverrides = new BlockOverride { Number = chain.BlockTree.Head!.Number + 10 },
+                    Calls = [ToRpcForInput(second)]
+                }
+            ]
+        };
+    }
+
+    /// <summary>Counts writes into the in-memory stores of every read-only view created over this db.</summary>
+    private sealed class BlockInfosDbWithWriteCountingOverlays : TestMemDb, IDb
+    {
+        private long _overlayWrites;
+
+        public long OverlayWrites => Interlocked.Read(ref _overlayWrites);
+
+        IReadOnlyDb IDb.CreateReadOnly(bool createInMemWriteStore) =>
+            new WriteCountingReadOnlyDb(this, createInMemWriteStore, () => Interlocked.Increment(ref _overlayWrites));
+    }
+
+    private sealed class WriteCountingReadOnlyDb(IDb wrappedDb, bool createInMemWriteStore, Action onWrite)
+        : ReadOnlyDb(wrappedDb, createInMemWriteStore), IWriteOnlyKeyValueStore
+    {
+        void IWriteOnlyKeyValueStore.Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
+        {
+            onWrite();
+            Set(key, value, flags);
+        }
+
+        void IWriteOnlyKeyValueStore.PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
+        {
+            onWrite();
+            PutSpan(key, value, flags);
+        }
+    }
+
     private sealed class PausedDeferredBlockDataWriter : IDeferredBlockDataWriter
     {
         private readonly List<Action> _queued = [];
@@ -539,9 +637,9 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     [Test]
-    public async Task Test_eth_simulate_log_index_increments_across_transactions()
+    public async Task Test_eth_simulate_log_index_increments_across_transactions([Values] bool eip8116Enabled)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
 
         Address contractWith2Logs = new("0xc200000000000000000000000000000000000000");
         Address contractWith1Log = new("0xc300000000000000000000000000000000000000");
@@ -591,12 +689,16 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Log[] tx0Logs = calls[0].Logs.ToArray();
         Assert.That(tx0Logs, Has.Length.EqualTo(2));
-        Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
-        Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
+            Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+        }
 
         Log[] tx1Logs = calls[1].Logs.ToArray();
         Assert.That(tx1Logs, Has.Length.EqualTo(1));
-        Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
+        // EIP-8116 counts logIndex within the receipt.
+        Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(eip8116Enabled ? 0ul : 2ul));
     }
 
     [Test]
@@ -631,7 +733,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     },
                     Calls =
                     [
-                        // As in geth, logs a revert drops still consume their log indices.
+                        // A reverted transaction emits no logs, so it must not consume log indices either.
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = reverter, Gas = 200_000, GasPrice = 0 },
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = caller, Gas = 200_000, GasPrice = 0 }
                     ]
@@ -655,7 +757,48 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { transferSender, logger, caller }));
         Assert.That(logs[0].Topics, Is.EqualTo(new[] { TransferLog.TransferSignature, caller.ToHash().ToHash256(), logger.ToHash().ToHash256() }));
         Assert.That(new UInt256(logs[0].Data, isBigEndian: true), Is.EqualTo((UInt256)2));
-        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 5, 6, 7 }));
+        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 0, 1, 2 }));
+    }
+
+    [Test]
+    public async Task Test_eth_simulateV1_failed_create_uses_no_log_index()
+    {
+        Address logger = new("0xc600000000000000000000000000000000000000");
+        const string Log0 = "60006000a0";
+        // LOG0, then return the code 0xEF, which EIP-3541 rejects.
+        string initCode = Log0 + "60ef60005360016000f3";
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } },
+                        { logger, new AccountOverride { Code = Bytes.FromHexString(Log0 + "00") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, Input = Bytes.FromHexString(initCode), Gas = 200_000, GasPrice = 0 },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = logger, Gas = 200_000, GasPrice = 0 }
+                    ]
+                }
+            ]
+        };
+
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(London.Instance));
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        SimulateCallResult[] calls = result.Data[0].Calls.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].Status, Is.EqualTo(StatusCode.Failure));
+            Assert.That(calls[0].Logs, Is.Empty);
+            Assert.That(calls[1].Logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 0 }));
+        }
     }
 
     [TestCase(

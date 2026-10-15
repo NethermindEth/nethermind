@@ -16,7 +16,7 @@ using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
 
-public static class StatelessExecutor
+public static partial class StatelessExecutor
 {
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
@@ -59,10 +59,7 @@ public static class StatelessExecutor
             {
                 ISpecProvider specProvider = payload.SpecProvider;
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
-#if !ZK_EVM
-                if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
-                    KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
-#endif
+                InitializeKzg(spec);
                 if (TryRecoverSenders(transactions, payload.EncodedTransactions, specProvider, spec))
                 {
                     using Witness witness = payload.Witness.ToWitness();
@@ -85,6 +82,9 @@ public static class StatelessExecutor
 
         return output;
     }
+
+    /// <summary>Loads the KZG trusted setup the block's blob transactions need; the guest verifies none.</summary>
+    static partial void InitializeKzg(IReleaseSpec spec);
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
         => Execute(suggestedBlock, witness, specProvider, validateHashes: true);
@@ -165,14 +165,6 @@ public static class StatelessExecutor
     /// callback can access it.
     /// </remarks>
     public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
-
-    private static readonly StatelessValidationResult _defaultFailureResult = new()
-    {
-        NewPayloadRequestRoot = Hash256.Zero,
-        IsSuccess = false,
-        ChainId = 0,
-        SchemaId = 0
-    };
 
     private static bool TryRecoverSenders(
         Transaction[] transactions, byte[][] encodedTransactions, ISpecProvider specProvider, IReleaseSpec spec)

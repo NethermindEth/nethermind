@@ -431,7 +431,7 @@ public class GCKeeperTests
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
 
         Task collection = Task.Run(() => keeper.ScheduleGCInternal(throttle: false));
-        Task worker = Task.CompletedTask;
+        Thread? entry = null;
         IDisposable? lease = null;
         try
         {
@@ -441,14 +441,22 @@ public class GCKeeperTests
                 strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
                 lease = keeper.TryStartNoGCRegion();
                 Assert.That(queued, Has.Count.EqualTo(entries + 1), "the throwaway region holds no slot, so the payload is admitted");
-                worker = Task.Run(queued[^1].Execute);
-                await Task.Delay(100);
-                Assert.That(worker.IsCompleted, Is.False, "the entry waits for the throwaway region to end");
+                entry = new Thread(queued[^1].Execute) { IsBackground = true };
+                entry.Start();
+                // Seen blocked, not merely not started yet: the entry waits on nothing before the runtime lock, so a
+                // WaitSleepJoin state means it waits there; without that lock it would run to the end instead.
+                Assert.That(SpinWait.SpinUntil(() => !entry.IsAlive || (entry.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(5)), Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(entry.IsAlive, Is.True, "the entry waits for the throwaway region to end");
+                    Assert.That(Volatile.Read(ref starts), Is.EqualTo(1), "the entry has not reached the runtime yet");
+                }
             }
             finally
             {
                 proceed.Set();
-                await Task.WhenAll(collection, worker).WaitAsync(TimeSpan.FromSeconds(5));
+                await collection.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(entry?.Join(TimeSpan.FromSeconds(5)) ?? true, Is.True, "the entry finishes once the throwaway region has ended");
             }
 
             using (Assert.EnterMultipleScope())

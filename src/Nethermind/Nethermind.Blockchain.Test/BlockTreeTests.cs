@@ -428,6 +428,65 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockTreeOverlay_ResetMainChain_far_below_best_known_rewrites_levels_above_head_only_when_clearing_stale_markers([Values] bool clearStaleMarkers)
+    {
+        const int levelsAboveHead = 1_024;
+        using TestMemDb baseBlocksDb = new();
+        using TestMemDb overlayBlocksDb = new();
+        using TestMemDb headersDb = new();
+        using TestMemDb blocksInfosDb = new();
+
+        BlockTreeBuilder BuildTree(TestMemDb blocksDb) => Build.A.BlockTree()
+            .WithBlocksDb(blocksDb)
+            .WithHeadersDb(headersDb)
+            .WithBlockInfoDb(blocksInfosDb)
+            .WithoutSettingHead;
+
+        BlockTree baseTree = BuildTree(baseBlocksDb).TestObject;
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        AddToMain(baseTree, block0);
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        AddToMain(baseTree, block1);
+
+        // Contiguous canonical levels above the head, as beacon sync leaves them while the head is far behind.
+        ChainLevelInfoRepository levels = new(blocksInfosDb);
+        for (ulong number = block1.Number + 1; number <= block1.Number + levelsAboveHead; number++)
+        {
+            levels.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, UInt256.One)));
+        }
+
+        BlockTreeBuilder overlayBuilder = BuildTree(overlayBlocksDb);
+        BlockTree overlayTree = new(overlayBuilder.BlockStore, overlayBuilder.HeaderStore, blocksInfosDb, overlayBuilder.MetadataDb,
+            overlayBuilder.BadBlockStore, overlayBuilder.BlockAccessListStore, overlayBuilder.ChainLevelInfoRepository, MainnetSpecProvider.Instance,
+            overlayBuilder.SyncConfig, overlayBuilder.StateBoundary, LimboLogs.Instance, new BlockTreeMutationLock())
+        {
+            ClearStaleMarkersOnForcedHeadUpdate = clearStaleMarkers
+        };
+        Assert.That(overlayTree.BestKnownNumber, Is.EqualTo(block1.Number + levelsAboveHead), "precondition: the head is far below best known");
+        BlockTreeOverlay blockTreeOverlay = new(new ReadOnlyBlockTree(baseTree), overlayTree);
+
+        long writesBefore = blocksInfosDb.WritesCount;
+        blockTreeOverlay.ResetMainChain();
+        long writes = blocksInfosDb.WritesCount - writesBefore;
+
+        ChainLevelInfo? levelAboveHead = new ChainLevelInfoRepository(blocksInfosDb).LoadLevel(block1.Number + 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlayTree.Head!.Hash, Is.EqualTo(block1.Hash));
+            if (clearStaleMarkers)
+            {
+                Assert.That(writes, Is.GreaterThanOrEqualTo(levelsAboveHead), "a regular tree clears every stale marker above the new head");
+                Assert.That(levelAboveHead!.HasBlockOnMainChain, Is.False);
+            }
+            else
+            {
+                Assert.That(writes, Is.LessThan(8), "the overlay must not rewrite the levels above the base head");
+                Assert.That(levelAboveHead!.HasBlockOnMainChain, Is.True);
+            }
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void TryUpdateMainChain_returns_false_without_mutating_when_a_predecessor_is_missing()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -1790,28 +1849,36 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_deleting_invalid_block_deletes_its_descendants()
+    public async Task When_deleting_invalid_block_deletes_its_descendants([Values] bool deferBalWrites)
     {
         BlockStore blockStore = new(new MemDb());
         MemDb blockInfosDb = new();
-        BlockTree tree = Build.A.BlockTree()
+        await using DeferredBlockDataWriter deferredWriter = deferBalWrites
+            ? DeferredWriteTestHelpers.ManualWriter()
+            : DeferredWriteTestHelpers.DisabledWriter();
+        BlockTreeBuilder builder = Build.A.BlockTree()
             .WithoutSettingHead
             .WithBlockInfoDb(blockInfosDb)
-            .WithBlockStore(blockStore)
-            .TestObject;
+            .WithBlockStore(blockStore);
+        IBlockAccessListStore balStore = builder.BlockAccessListStore = new BlockAccessListStore(builder.BlockAccessListsDb, deferredWriter: deferredWriter);
+        BlockTree tree = builder.TestObject;
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
         Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
 
         tree.SuggestBlock(block0);
-        tree.SuggestBlock(block1);
-        tree.SuggestBlock(block2);
-        tree.SuggestBlock(block3);
+        foreach (Block block in new[] { block1, block2, block3 })
+        {
+            block.EncodedBlockAccessList = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+            tree.SuggestBlock(block);
+        }
 
         tree.TryUpdateMainChain(block0.Header, true, preloadedBlocks: new[] { block0 });
         tree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
         tree.DeleteInvalidBlock(block2);
+        // Deferred writes still queued at deletion run afterwards and must not bring the access lists back.
+        deferredWriter.Pump();
 
         using (Assert.EnterMultipleScope())
         {
@@ -1822,6 +1889,10 @@ public class BlockTreeTests
             Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Not.Null, "block 1");
             Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
             Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+
+            Assert.That(balStore.Exists(block1.Number, block1.Hash!), Is.True, "bal 1");
+            Assert.That(balStore.Exists(block2.Number, block2.Hash!), Is.False, "bal 2");
+            Assert.That(balStore.Exists(block3.Number, block3.Hash!), Is.False, "bal 3");
 
             Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
             Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
@@ -3479,6 +3550,27 @@ public class BlockTreeTests
         blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);
 
         Assert.That(events, Is.EqualTo(new[] { (chain[3].Hash, false), (chain[2].Hash, false), (chain[1].Hash, false), (chain[0].Hash, true) }));
+    }
+
+    /// <summary>A head moved back to its parent is reported once, by its removal; the sibling that later takes its
+    /// level replaces nothing, so subscribers must not rely on <see cref="BlockReplacementEventArgs.PreviousBlock"/> alone.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_WhenHeadMovesBackToParentThenSiblingAdded_ReportsOldHeadOnlyAsRemoved()
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis();
+        Block[] chain = BuildAndSuggestChain(blockTree, genesis, 2);
+        blockTree.TryUpdateMainChain(chain[1].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+        Block sibling = Build.A.Block.WithParent(chain[0]).WithExtraData([1]).TestObject;
+        blockTree.SuggestBlock(sibling);
+
+        List<(Hash256?, Hash256? Previous, bool Added)> events = [];
+        blockTree.BlockRemovedFromMain += (_, e) => events.Add((e.Header.Hash, null, false));
+        blockTree.BlockAddedToMain += (_, e) => events.Add((e.Block.Hash, e.PreviousBlock?.Hash, true));
+
+        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.TryUpdateMainChain(sibling.Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        Assert.That(events, Is.EqualTo(new[] { (chain[1].Hash, (Hash256?)null, false), (chain[0].Hash, null, true), (sibling.Hash, null, true) }));
     }
 
     [TestCase(1, TestName = "SingleStaleLevel")]
