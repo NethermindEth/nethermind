@@ -19,6 +19,12 @@ internal sealed class HistoricalTrieNodeBuilder
     private readonly ArchiveProofNodeCache? _cache;
     private readonly ParallelOptions _fanOutOptions;
     private ConcurrentDictionary<TreePath, byte[]>? _prefetched;
+    // A composed node takes a child its rows record as empty as empty instead of rebuilding it from the history rows:
+    // a small trie has many empty children at the composed depth, and each rebuild reads every history row under the
+    // child's path. The current writers never record a present child as empty, and if one ever did, the node or an
+    // ancestor misses its hash check and LoadRlp resolves it again with this trust turned off.
+    private int _trustedEmptyChildren;
+    private bool _distrustEmptyChildren;
 
     public HistoricalTrieNodeBuilder(TrieHistoryScope scope, ulong block, ResolutionBudget budget, int fanOut, ArchiveProofNodeCache? cache)
     {
@@ -44,12 +50,22 @@ internal sealed class HistoricalTrieNodeBuilder
         if (_prefetched is not null && _prefetched.TryRemove(path, out byte[]? prefetched) && ValueKeccak.Compute(prefetched) == expected) return Publish(expected, prefetched);
 
         bool rebuilt = false;
+        int trustedBefore = Volatile.Read(ref _trustedEmptyChildren);
         byte[]? rlp = _scope.IsComposed(path.Length) || _scope.HasCommitmentRows(path.Length) ? ResolveRlp(path, _fanOut > 1, out rebuilt) : null;
         if (rlp is not null && ValueKeccak.Compute(rlp) == expected) return Publish(expected, rlp);
 
-        if (!rebuilt && _scope.IsComposed(path.Length))
+        if (!rebuilt && Volatile.Read(ref _trustedEmptyChildren) != trustedBefore)
         {
-            rlp = Compose(path, _fanOut > 1, allowRebuild: true, trustEmptyChildren: false);
+            _distrustEmptyChildren = true;
+            try
+            {
+                rlp = ResolveRlp(path, _fanOut > 1, out rebuilt);
+            }
+            finally
+            {
+                _distrustEmptyChildren = false;
+            }
+
             if (rlp is not null && ValueKeccak.Compute(rlp) == expected) return Publish(expected, rlp);
         }
 
@@ -115,7 +131,7 @@ internal sealed class HistoricalTrieNodeBuilder
     {
         rebuilt = false;
         empty = false;
-        if (_scope.IsComposed(path.Length)) return Compose(path, parallelChildren, allowRebuild, trustEmptyChildren: true);
+        if (_scope.IsComposed(path.Length)) return Compose(path, parallelChildren, allowRebuild);
         if (!_scope.HasCommitmentRows(path.Length))
         {
             rebuilt = allowRebuild;
@@ -242,10 +258,7 @@ internal sealed class HistoricalTrieNodeBuilder
         ParallelUnbalancedWork.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
     }
 
-    /// <param name="trustEmptyChildren">Takes a child the rows record as empty as empty, instead of rebuilding it from the
-    /// history rows. A small trie has many empty children at the composed depth, and each rebuild reads every history row
-    /// under the child's path; a wrong guess only fails the hash check of the composed node.</param>
-    private byte[]? Compose(in TreePath path, bool parallelChildren, bool allowRebuild, bool trustEmptyChildren)
+    private byte[]? Compose(in TreePath path, bool parallelChildren, bool allowRebuild)
     {
         byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
         int unknown = 0;
@@ -254,7 +267,7 @@ internal sealed class HistoricalTrieNodeBuilder
             TreePath parent = path;
             RunFanOut(index =>
             {
-                children[index] = ResolveComposedChild(parent.Append(index), allowRebuild, trustEmptyChildren, out bool known);
+                children[index] = ResolveComposedChild(parent.Append(index), allowRebuild, out bool known);
                 if (!known) Interlocked.Increment(ref unknown);
             });
         }
@@ -262,7 +275,7 @@ internal sealed class HistoricalTrieNodeBuilder
         {
             for (int index = 0; index < BranchRlp.ChildCount; index++)
             {
-                children[index] = ResolveComposedChild(path.Append(index), allowRebuild, trustEmptyChildren, out bool known);
+                children[index] = ResolveComposedChild(path.Append(index), allowRebuild, out bool known);
                 if (!known) unknown++;
             }
         }
@@ -405,13 +418,18 @@ internal sealed class HistoricalTrieNodeBuilder
         }
     }
 
-    private byte[]? ResolveComposedChild(in TreePath childPath, bool allowRebuild, bool trustEmpty, out bool known)
+    private byte[]? ResolveComposedChild(in TreePath childPath, bool allowRebuild, out bool known)
     {
         known = true;
         if (_prefetched is not null && _prefetched.TryGetValue(childPath, out byte[]? prefetched)) return prefetched;
 
         byte[]? rlp = ResolveRlp(childPath, parallelChildren: false, out bool rebuilt, out bool empty, allowRebuild);
-        if (rlp is not null || rebuilt || (trustEmpty && empty)) return rlp;
+        if (rlp is not null || rebuilt) return rlp;
+        if (empty && !_distrustEmptyChildren)
+        {
+            Interlocked.Increment(ref _trustedEmptyChildren);
+            return null;
+        }
         if (allowRebuild) return RebuildRlp(childPath, parallelChildren: false);
 
         known = false;
