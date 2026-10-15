@@ -1,0 +1,7 @@
+{
+  "report_script_sha256": "ac60a8966692878e793dccdf87dc51eb8c9b9690190efecdd78eec913444ef5b",
+  "measurement_sources": [
+    "0178a8284058611a1a303d7608bd7f8600ecf1db"
+  ],
+  "scope": "Reporting code is separate from the measured source; input measurements are unchanged."
+}

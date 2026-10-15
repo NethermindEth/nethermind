@@ -1,0 +1,205 @@
+{
+  "archive_sha256": "d2bb8f73d7e582b19e45aa28bf023facce6e69f9527a01b1a43a7148f5c8013f",
+  "binary_sha256": "303c8c2f078f8273e640e7eada042221ae92b891abfcb2562f7ab6e4e0085199",
+  "entries": [
+    {
+      "bytes": 549,
+      "path": "eip8437-v9-env.sh",
+      "sha256": "cd42dbcf8bfa3b38ccf2d0eb3e822527fd6887289045c140b20d7ef7c131f620"
+    },
+    {
+      "bytes": 2430,
+      "path": "eip8437-v9-pipeline-diagnostic.sh",
+      "sha256": "e5cced2d32da737ba4c4e6ad207a7feebc4c434c03fc415e06afc7e41e45fb77"
+    },
+    {
+      "bytes": 2461,
+      "path": "metadata/toolchain.json",
+      "sha256": "00ac42b7462a49013bc5c2bb5710d688f44afba5072712999036b9e92dee7c20"
+    },
+    {
+      "bytes": 446,
+      "path": "pipeline-diagnostic-v9-tx16/environment.json",
+      "sha256": "7ace7ee5a04ad6e1ddf16e83c619f098d8483b9cfa12851d716f7e75d299df0b"
+    },
+    {
+      "bytes": 10346,
+      "path": "pipeline-diagnostic-v9-tx16/results.jsonl",
+      "sha256": "ecf4fa31f02f354a9203fe68595a2764e6a80183f0ed9716046b03f3f972a729"
+    },
+    {
+      "bytes": 10346,
+      "path": "pipeline-diagnostic-v9-tx16/run.log",
+      "sha256": "ecf4fa31f02f354a9203fe68595a2764e6a80183f0ed9716046b03f3f972a729"
+    },
+    {
+      "bytes": 468,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/config.0.json",
+      "sha256": "39d30717ab4833fd32917e60999227de5ea1b76dc29e0282c817a0fdbfc91960"
+    },
+    {
+      "bytes": 468,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/config.1.json",
+      "sha256": "3ed2b526d07567c4fce2276e3d85af0b4c63abf51b0703b8ca5565f6ac590982"
+    },
+    {
+      "bytes": 0,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/done.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/done.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/measure",
+      "sha256": "9d4b91f3b20b9e49a9abcc8d9d76180aeab4e5247c50491c64170501be1c9d40"
+    },
+    {
+      "bytes": 1356,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/node.0.log",
+      "sha256": "af843fc612db9a00799449a402021d0a49c81a7385fa5256593ea616569ecc48"
+    },
+    {
+      "bytes": 1419,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/node.1.log",
+      "sha256": "26354a88b590ca18cf116c5837342f38c8fcba3bc009e64d30bda67d861cbf8f"
+    },
+    {
+      "bytes": 1625,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/provenance.json",
+      "sha256": "9c6c5c41936a0414dd592fe06f93b165b1ab0fafe8d942c3b820e771fb23afdb"
+    },
+    {
+      "bytes": 0,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/ready.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/ready.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 9274,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/result.0.json",
+      "sha256": "7527e6fd4e3cbf9a3f5a5fcd04b9fce9b6d19ec0f02d5180f588f0d760ffcd85"
+    },
+    {
+      "bytes": 4116,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/result.1.json",
+      "sha256": "ec8f724273ee32db77ac27ecebea050a4273be00bbf1d5815f42a7016118510f"
+    },
+    {
+      "bytes": 19,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/start",
+      "sha256": "00b4d492edc9b2fa4a1709b22e91c253583b01b7b96677ee521b5044f69401bd"
+    },
+    {
+      "bytes": 0,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/stop",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/warmup.0",
+      "sha256": "9a4e502896e07f5763935502f4a6c9ae41e90f8c38d33e0828881e33a6860e7c"
+    },
+    {
+      "bytes": 19,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-ethp2p-tx16-r32/warmup.1",
+      "sha256": "5b47ba508acb2b39bd07541fe80589dd6f996e3b6145db0065ae772606475c3a"
+    },
+    {
+      "bytes": 464,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/config.0.json",
+      "sha256": "68f3797eafd6857a601661ab30fe2ae70a299b8055df882782b1535f06c959e4"
+    },
+    {
+      "bytes": 464,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/config.1.json",
+      "sha256": "6959f05f13dcc52f01a9e4ff97f488f6c6d4ac68f179925a755057593c6932bb"
+    },
+    {
+      "bytes": 0,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/done.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/done.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/measure",
+      "sha256": "6c173a679626266d05b33c195dbb695d7e87593a087ffd69709875babf9f3579"
+    },
+    {
+      "bytes": 1003,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/node.0.log",
+      "sha256": "6f8db09c183d9daa40fcd6ba1993bfcd0aaacf89b0199fb978b6d8c07b39b1c5"
+    },
+    {
+      "bytes": 1003,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/node.1.log",
+      "sha256": "7819bdac0a25564bb0046e397d50515deb3d4dbe59b30e495ddd1b73e663113d"
+    },
+    {
+      "bytes": 1621,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/provenance.json",
+      "sha256": "fa3f8da726c01e55ee9654d33f862f8315846036913df66ca5028c254617c252"
+    },
+    {
+      "bytes": 0,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/ready.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/ready.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 9187,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/result.0.json",
+      "sha256": "f348325376d4b9db8b501d88dd27812471d073cda37cbfda093e711594ba09e4"
+    },
+    {
+      "bytes": 5087,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/result.1.json",
+      "sha256": "91934ff5f1b750ed30d0221e4a26962e18d38d8f8dc180f611074ca261be3c21"
+    },
+    {
+      "bytes": 19,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/start",
+      "sha256": "bf9812e1c8bc96fbb7f651fa5c78fd36d9a1ae667766e2d2d235c5daf7311257"
+    },
+    {
+      "bytes": 0,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/stop",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/warmup.0",
+      "sha256": "113fe9c74e681fde19d0f17d85bb336c21f16093d22b09754efcfaaba1569e65"
+    },
+    {
+      "bytes": 19,
+      "path": "pipeline-diagnostic-v9-tx16/runs/pipeline-diagnostic-v9-rlpx-tx16-r32/warmup.1",
+      "sha256": "8745d3eb44bd6cae2b22f57782e216389f4b19e954c80e88d4df53ac3a6eac84"
+    }
+  ],
+  "excluded": "Source archives, build outputs, binary snapshots, raw proof bytes. Earlier V4\u2013V6 diagnostics remain preserved remotely and are not included in this group. Absolute runtime paths inside original raw files are retained as historical evidence.",
+  "format": 1,
+  "inputs": [
+    "pipeline-diagnostic-v9-tx16",
+    "eip8437-v9-pipeline-diagnostic.sh",
+    "eip8437-v9-env.sh"
+  ],
+  "scope": "Two separately authorized tx16/32-objects-per-second diagnostics, executed after validation-v9 was packaged. RLPx delivered192/192; QUIC142/192. Missing objects and full observation windows retained. This supersedes no-data chronology only: the earlier validation-v9 archive correctly states its own sequence did not run planned saturation. No full V9 matrix ran.",
+  "source_revision": "db9797495c9b3a0874687bac956b7cba62074322"
+}

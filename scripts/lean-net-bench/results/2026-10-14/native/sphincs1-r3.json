@@ -1,0 +1,24 @@
+{
+  "binarySha256": "e40b23d9124a30d58d0801201e07607a36403f3db18d5d30fd00775ebc38e631",
+  "probeSourceSha256": "dd7ce0619bcd2b4c8e162d9d9e37805aca0ad99b63abe0228e64844eec2bf4a6",
+  "forkRevision": "cf1e92f87a7aec052b680f73e56145e866218583",
+  "profileKey": "00f24bbdf44a31139c975223b77510cd93a905664da3c4a52b5eba4e9b07de9e",
+  "host": "macOS-15.7.4-arm64-arm-64bit",
+  "architecture": "arm64",
+  "logicalCpuCount": 12,
+  "workers": 1,
+  "poison": false,
+  "peakRssScope": "fresh process inclusive fixture creation/proving/verification; macOS wait4 ru_maxrss bytes",
+  "singleSample": true,
+  "case": "sphincs1-r3",
+  "command": [
+    "/private/tmp/eip8288-latest-domain-target/release/eip8288-latest-domain-probe",
+    "1",
+    "raw-binary-tree"
+  ],
+  "exitCode": 0,
+  "wallSeconds": 2.0512925419999988,
+  "peakRssBytes": 849690624,
+  "userCpuSeconds": 1.536341,
+  "systemCpuSeconds": 0.133084
+}

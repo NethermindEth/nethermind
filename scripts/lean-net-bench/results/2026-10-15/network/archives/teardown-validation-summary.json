@@ -1,0 +1,240 @@
+{
+  "base_source_archive_sha256": "c5604b1b4acf9e239d40405071941f7258f44f75f37b35c964d740c715d8f910",
+  "base_source_revision": "0178a8284058611a1a303d7608bd7f8600ecf1db",
+  "baseline_debug_test_dll_sha256": "6e807e89719bf19a3d7118ea8253b5043a0e4315a48ee04af00c428db60da179",
+  "baseline_network_dll_sha256": "3e111f2e4467c2ae42c0ad72fed19b199532acd7cb79d664db6dd3351198da22",
+  "build_commands": {
+    "common": [
+      "-c",
+      "Release",
+      "--disable-build-servers",
+      "-m:1",
+      "--no-restore",
+      "-p:BuildProjectReferences=false",
+      "-p:BuildLeanFfi=false",
+      "-p:CheckForOverflowUnderflow=false",
+      "-p:NuGetAudit=true"
+    ],
+    "fixed_explicit_targets": "Network -t:Rebuild followed by Network.Test -t:Rebuild, using coherent copied dependencies. Production and test-output Network.dll hashes match. DOTNET_PROCESSOR_COUNT=2, nice 10."
+  },
+  "corrected_genuine_baseline": {
+    "classification": "Compatible ETH NoError shutdown emitted false control-stream-closed violation. Incompatible Status and strict live-FIN cases passed. Stopped at first genuine reproduction.",
+    "failed": 1,
+    "log": "teardown-baseline/corrected-baseline-1.log",
+    "skipped": 0,
+    "succeeded": 2,
+    "total": 3
+  },
+  "debug_genuine_baseline": {
+    "classification": "Full debug sequence: 05:32:58.808 normal shutdown regression, 05:32:58.810 peer false control-stream-closed violation.",
+    "failed": 1,
+    "log": "teardown-baseline/debug-baseline-1.log",
+    "skipped": 0,
+    "succeeded": 2,
+    "total": 3
+  },
+  "fixed_connection_source_sha256": "c1367620a163ba8687b54bad5cd789c411965ce1074a886db830c6e899f0e606",
+  "fixed_full_quic": {
+    "failed": 0,
+    "log": "teardown-fixed/full-quic-corrected-count.log",
+    "skipped": 0,
+    "succeeded": 18,
+    "total": 18
+  },
+  "fixed_network_dll_sha256": "f46c120ac0348dce3b247c9693b42bf83b1eb66f06f441a8f4046d2444bda593",
+  "fixed_repetitions": [
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-1.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-2.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-3.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-4.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-5.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-6.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-7.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-8.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-9.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-10.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-11.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-12.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-13.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-14.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-15.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-16.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-17.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-18.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-19.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    },
+    {
+      "failed": 0,
+      "log": "teardown-fixed/fixed-20.log",
+      "skipped": 0,
+      "succeeded": 3,
+      "total": 3
+    }
+  ],
+  "fixed_stream_transport": {
+    "failed": 0,
+    "log": "teardown-fixed/full-stream-transport.log",
+    "skipped": 0,
+    "succeeded": 252,
+    "total": 252
+  },
+  "fixed_test_dll_sha256": "a921bb8298d6845b5eef870902986cb202791d909ebfa66e5805345d82e39b51",
+  "identity_note": "Isolated baseline and fixed trees derived from V12, not a later comment-only branch. Measured 84-row campaign and its source/binary/archive remain unchanged. Fixed stage adds the explicit atomic production patch; it is not claimed to be an unmodified V12 binary.",
+  "initial_fixture_error": {
+    "classification": "Strict live-FIN fixture incorrectly omitted initial Status message ID before length. Failure occurred before sending FIN; not production defect evidence.",
+    "failed": 1,
+    "log": "teardown-baseline/baseline-1.log",
+    "skipped": 0,
+    "succeeded": 2,
+    "total": 3
+  },
+  "minimum_count_mistake": {
+    "classification": "All 18 actual cases passed, but command incorrectly required 19. Original log retained. Corrected command requires 18: replacing one existing case with three adds two.",
+    "exit_code": 9,
+    "failed": 0,
+    "log": "teardown-fixed/full-quic.log",
+    "skipped": 0,
+    "succeeded": 18,
+    "total": 18
+  },
+  "patches": [
+    {
+      "path": "8437-quic-teardown-tests-only.patch",
+      "sha256": "09dc8f33c85f3312fc061344a1d936e94ed9fcd3644e0809608497a2d8192093"
+    },
+    {
+      "path": "8437-quic-teardown-status-test-correction.patch",
+      "sha256": "5c9f353b417895ecc10c21bfe48b3e43730b34c793075da145d5e7dc9cb80658"
+    },
+    {
+      "path": "8437-quic-teardown-debug-test.patch",
+      "sha256": "bc890ed25480f68433d3e6d259d7a96a0b40f183e54b77255100b22d6866c977"
+    },
+    {
+      "path": "8437-quic-teardown-proposed-atomic.patch",
+      "sha256": "7a3a0f185609b91cc09bf77a428d721a25844f2625467822f12decc76ccf5d94"
+    }
+  ],
+  "scope": "Real Linux QUIC/control streams with controlled proof verification. No native proving or devnet services. Twenty fixed repetitions establish bounded regression evidence, not a proof of every scheduling interleaving.",
+  "test_commands": {
+    "corrected_quic_minimum": 18,
+    "full_quic_filter": "FullyQualifiedName~LeanEthp2pQuicTests",
+    "repeated_filter": "FullyQualifiedName~No_error_teardown_does_not_report_a_control_stream_violation|FullyQualifiedName~Control_fin_on_an_established_live_connection_is_a_protocol_violation",
+    "repeated_minimum": 3,
+    "stream_filter": "FullyQualifiedName~LeanEthp2pTests|FullyQualifiedName~LeanObjectTransportTests|FullyQualifiedName~LeanObjectTransportLifecycleTests|FullyQualifiedName~Lean1ProtocolHandlerTests|FullyQualifiedName~LeanTransportTests|FullyQualifiedName~LeanBroadcastTests|FullyQualifiedName~Lean_ETH_"
+  },
+  "test_source_sha256": "2816c5fcdc2928913aea31105305dc7f6485aeb9b00cd4b7141773bb7d701cb1"
+}

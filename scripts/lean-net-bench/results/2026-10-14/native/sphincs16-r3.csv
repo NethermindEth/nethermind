@@ -1,0 +1,2 @@
+mode,claims,proof_bytes,proving_ms,verification_ms,fixture_generation_ms,child_preparation_ms,total_ms,sphincs_claims,generic_claims,input_bytes,profile_key
+raw-binary-tree,16,293448,34657.620,45.478,1163.974,0.000,35930.303,16,0,100940,00f24bbdf44a31139c975223b77510cd93a905664da3c4a52b5eba4e9b07de9e

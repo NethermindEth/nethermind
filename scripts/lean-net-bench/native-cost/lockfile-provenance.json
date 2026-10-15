@@ -1,0 +1,28 @@
+{
+  "measuredLockSha256": "e861cd0ad98b251b8b93a0447d49e393a0827821ecfbd8c38cb447c397a6347c",
+  "portableLockSha256": "5c737433efd2f9ce962ca9dc4e526c6e819bfdf1be5e7b76cd4d49507c105491",
+  "rootPackageRename": [
+    "eip8288-latest-domain-probe",
+    "lean-native-cost"
+  ],
+  "pathPackagesMappedToPinnedGit": [
+    "fiat_shamir",
+    "flock",
+    "lean_compiler",
+    "lean_da",
+    "lean_vm",
+    "parallel",
+    "pcs",
+    "primitives",
+    "rec_aggregation",
+    "sphincs",
+    "xmss",
+    "zk_alloc"
+  ],
+  "adapterPackageRemainsLocalPath": "nethermind-lean",
+  "forkRevision": "cf1e92f87a7aec052b680f73e56145e866218583",
+  "packageCount": 268,
+  "registryPackageCount": 254,
+  "allPackageRecordsEqualAfterDocumentedMapping": true,
+  "lockedOfflineCargoMetadataPassed": true
+}

@@ -33,6 +33,8 @@ internal sealed class LeanTestVerifier : ILeanProofVerifier
     private int _maxActive;
 
     public bool Valid { get; set; } = true;
+    /// <summary>Occupies the synchronous verification worker; models elapsed service time, not native CPU cost.</summary>
+    public TimeSpan Delay { get; set; }
     public Exception? AvailabilityError { get; set; }
     public Exception? VerificationError { get; set; }
     public ManualResetEventSlim? Gate { get; set; }
@@ -55,6 +57,7 @@ internal sealed class LeanTestVerifier : ILeanProofVerifier
             if (VerificationError is { } error) throw error;
             Entered.TrySetResult();
             Gate?.Wait(TimeSpan.FromSeconds(10));
+            if (Delay > TimeSpan.Zero) Thread.Sleep(Delay);
             return Valid;
         }
         finally { Interlocked.Decrement(ref _active); }

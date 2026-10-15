@@ -1,0 +1,365 @@
+{
+  "archive_sha256": "181b5d4bc5e56665563dd26ee26edcfcefab64088ac56949e40f864b30812640",
+  "binary_sha256": "6444342e29450382eabd106c58999493f971989934ec95b0db9326122f03cfc4",
+  "entries": [
+    {
+      "bytes": 446,
+      "path": "baseline-v8/environment.json",
+      "sha256": "3c519ea53653ee10ba71433a0167da2745dd7eb07381b5daa275b0df10129f31"
+    },
+    {
+      "bytes": 20235,
+      "path": "baseline-v8/results.jsonl",
+      "sha256": "e43e9b0527581993a0377c4a7c58e5755619cbc95d18038921fa3eb9cbc52341"
+    },
+    {
+      "bytes": 20235,
+      "path": "baseline-v8/run.log",
+      "sha256": "e43e9b0527581993a0377c4a7c58e5755619cbc95d18038921fa3eb9cbc52341"
+    },
+    {
+      "bytes": 439,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/config.0.json",
+      "sha256": "992ffd1877aac082c53687f9df3d771965f0879acfafa1ff10180b6e1dc80419"
+    },
+    {
+      "bytes": 439,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/config.1.json",
+      "sha256": "7b78884af5e62f2f2ffb992d4f7995e5a83c069a407efe41eae2e6637a293e87"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/done.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/done.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/measure",
+      "sha256": "41815894dd44fcaaf7143de47244cdf69b696e4c8bc9e1e2c982ab87347e653c"
+    },
+    {
+      "bytes": 1276,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/node.0.log",
+      "sha256": "dadfd39c4eb7e47705a97972df8dfb802018ba8056b630e73f9f5829b2a611da"
+    },
+    {
+      "bytes": 1339,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/node.1.log",
+      "sha256": "6a4cb6b8041e21d0b1921ac3416fbf365367c4cc58e63c982902ba5462215685"
+    },
+    {
+      "bytes": 1540,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/provenance.json",
+      "sha256": "f40d80dcd2b34891d3544463b410050c8c37a481749263ddf2102b7a06ea06c3"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/ready.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/ready.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 9273,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/result.0.json",
+      "sha256": "1aebf34ac888e414bcee9c1ae6d2403d732d5d33545ea2b162d8946d41836de0"
+    },
+    {
+      "bytes": 4296,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/result.1.json",
+      "sha256": "33b675ee22aada35041c356b999c737ddbd3dfd880c91b289ca3f084e80c2b49"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/start",
+      "sha256": "6ce9064f0352762397475dfd583be79111873570f513e9d9b59ea5f0fe36a48c"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/stop",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/warmup.0",
+      "sha256": "c8aee9df1189e41fcf7124ba02fbddc468efbb49516088ec8bfe3995a93ac022"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx1-r32/warmup.1",
+      "sha256": "442016354f7ca6c7354a90f571b9a7d3a68ab01df3cbc7e0aa85f78120a44453"
+    },
+    {
+      "bytes": 441,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/config.0.json",
+      "sha256": "baa58810173649e8cd9bbb85d8eccb732fef0a47f0edd05eac473fc7daf9e959"
+    },
+    {
+      "bytes": 441,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/config.1.json",
+      "sha256": "e439e97a2b81b501aaac0ce0c8c9b2126cf6987c1d9531c49e7f387d93de6f54"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/done.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/done.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/measure",
+      "sha256": "3cdc2a60fee91237f19dbd50eca6ec2addf6d55d0d9a53dac870158a14d512c9"
+    },
+    {
+      "bytes": 1276,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/node.0.log",
+      "sha256": "91208f8a680cb7d27d8e9e62d7a3359f201bf231633bc17de6b04b9eb8b4216c"
+    },
+    {
+      "bytes": 1439,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/node.1.log",
+      "sha256": "15ec52412051f04e7b2b0d87ac57a5a6c343efe039beed40d2b6931b5963e7af"
+    },
+    {
+      "bytes": 1542,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/provenance.json",
+      "sha256": "4d590f4d31626b1fafd4dcfa785cedc72288de3397545880d52e4bded1da5514"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/ready.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/ready.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 9274,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/result.0.json",
+      "sha256": "2fbfa40ede688b4d744b1d01ddc55f1b0b5e0094a23c142193e1637698adb567"
+    },
+    {
+      "bytes": 4399,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/result.1.json",
+      "sha256": "3b09ea41c2d64c0649894891bef2745902cc9e458b7a5055fdfb79ccd604bbf1"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/start",
+      "sha256": "89a74cf6d97282e18656e2bf45d8b5d0a8c3dc542f9248cda71966293b7bb84d"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/stop",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/warmup.0",
+      "sha256": "a308b634cd3d4923342a44e854cf5fdaa901c9596e753514b38ef609e623abce"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-ethp2p-tx16-r32/warmup.1",
+      "sha256": "3a16c3f14455162a99e6f829d7af61b8f430874081f55a32b2d98fa2a8664363"
+    },
+    {
+      "bytes": 435,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/config.0.json",
+      "sha256": "d5cb800e0c9e3bbc0d13a6e520ecb47488ad21b9bc7a61dc9dbe4fcbddde3199"
+    },
+    {
+      "bytes": 435,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/config.1.json",
+      "sha256": "801376caa644a22e1823b674a3939c3cdfd9c6694dd6d34ac18bc6f5c57a72e9"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/done.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/done.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/measure",
+      "sha256": "f1affae63c05ae84b24c19de6fcc49e73bb9507fe12646df70e5915b83dff922"
+    },
+    {
+      "bytes": 1180,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/node.0.log",
+      "sha256": "6f1e0627503d2e563aed45d8aabb3b3cf5a89ec41b539a4b36591a28a74b763a"
+    },
+    {
+      "bytes": 1243,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/node.1.log",
+      "sha256": "f5bac9d91c9454c7332a86710bfcc519ed4917872f67f423c99a8a8f10cfebaa"
+    },
+    {
+      "bytes": 1536,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/provenance.json",
+      "sha256": "9dcb75bbc1abeca7ff02304e5bde0569d3b256cdc9374319d910abb59d13cce1"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/ready.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/ready.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 9187,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/result.0.json",
+      "sha256": "103231a012998e235c4dd88f042f5c41f0be5076fe43e28d50343ba1f24e89b6"
+    },
+    {
+      "bytes": 4107,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/result.1.json",
+      "sha256": "4a297360963a5309db95ea682f2ad66721df9d11495bf049da124e5dd320c441"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/start",
+      "sha256": "375108ba655f05571878b8ac049b29d1fcc5427efb79ab82ec01ea64c6d853ec"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/stop",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/warmup.0",
+      "sha256": "6983ed868b0b3a41d488db7a422abeb81cf31aed239540b2eb37a4d10487b176"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx1-r32/warmup.1",
+      "sha256": "b5570226fd49eceaddf8d32de7d4ed8dc637de4531f21b782d62150a128684ea"
+    },
+    {
+      "bytes": 437,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/config.0.json",
+      "sha256": "17f27ca7fc485d2618dc7acee2769a411d1a1ac659a0dd494c3e4167692fac07"
+    },
+    {
+      "bytes": 437,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/config.1.json",
+      "sha256": "bab6cd2c87bc7cd632c85712165f33c1ce6dc9a11011a15b08a0472cd1b7877a"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/done.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/done.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/measure",
+      "sha256": "7e569a57edf8223bfb7bce57c25e4766541950d9cc81bb6579cdcd167a9b0723"
+    },
+    {
+      "bytes": 1180,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/node.0.log",
+      "sha256": "cb899a7902fd004e6529cbf291344292027769e5cd6ee8b35af8d94cd53a525d"
+    },
+    {
+      "bytes": 1243,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/node.1.log",
+      "sha256": "65454cdc38f74b5df594e4f2234b98c4f0ac5e99ee383b764d8cfe37c7b32a13"
+    },
+    {
+      "bytes": 1538,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/provenance.json",
+      "sha256": "9ee0d6f083e98b47b0d9f24fbd4567808fc4917e9c5bdf736f59f7ad8a6449cd"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/ready.0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/ready.1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 9187,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/result.0.json",
+      "sha256": "1bbf7513e43dcb73478af8b726325ec25ed05a149f9e0ca24f216ee351c805c1"
+    },
+    {
+      "bytes": 4127,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/result.1.json",
+      "sha256": "61018b1a87d60147c03aa25961e8da5155a770bb63dd24959dc6942a89d79847"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/start",
+      "sha256": "adc43c08e6b5eadb3b8b4f0a5e95a460a60aa605574881b5597d755f8590d5c6"
+    },
+    {
+      "bytes": 0,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/stop",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/warmup.0",
+      "sha256": "34a4fb15405ab5dc028c7b5e82c41b3290009b7a530c7ec934573c39708b5e67"
+    },
+    {
+      "bytes": 19,
+      "path": "baseline-v8/runs/baseline-v8-rlpx-tx16-r32/warmup.1",
+      "sha256": "5f095febe469679692fee14dd1de42613e28a5b073d952a012bb70862c83438c"
+    },
+    {
+      "bytes": 2364,
+      "path": "eip8437-v8-baseline.sh",
+      "sha256": "634ad8dc5d59f2dd55a86cbb01ef96e13eafad3146062d4301b79962207839bb"
+    },
+    {
+      "bytes": 460,
+      "path": "eip8437-v8-env.sh",
+      "sha256": "37bac312299ab240292bf98eeb4ac5934f0a4b429ee4de1841b50227ea741b79"
+    },
+    {
+      "bytes": 2461,
+      "path": "metadata/toolchain.json",
+      "sha256": "00ac42b7462a49013bc5c2bb5710d688f44afba5072712999036b9e92dee7c20"
+    }
+  ],
+  "excluded": "Source archives, build outputs, binary snapshots, raw proof bytes. Earlier V4\u2013V6 diagnostics remain preserved remotely and are not included in this group. Absolute runtime paths inside original raw files are retained as historical evidence.",
+  "format": 1,
+  "inputs": [
+    "baseline-v8",
+    "eip8437-v8-baseline.sh",
+    "eip8437-v8-env.sh"
+  ],
+  "scope": "Four completed baseline observations, including missing objects under bounded deferred-queue shedding. Not the final campaign.",
+  "source_revision": "f83e62afdc9445694afe98008b22a5112c68b185"
+}

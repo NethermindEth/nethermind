@@ -1,0 +1,792 @@
+{
+  "raw_log_transients": [
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/load-ethp2p-tx16-r8-rep1/node.1.log",
+      "label": "load-ethp2p-tx16-r8-rep1",
+      "line": "04:33:09.587 ethp2p from 06d95c...553e73 at 10.78.1.1:60000 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -8.975355
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/load-ethp2p-tx64-r32-rep1/node.1.log",
+      "label": "load-ethp2p-tx64-r32-rep1",
+      "line": "04:37:42.887 ethp2p from 06d95c...553e73 at 10.78.1.1:34151 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -9.557493
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/load-ethp2p-tx64-r64-rep1/node.1.log",
+      "label": "load-ethp2p-tx64-r64-rep1",
+      "line": "04:39:20.946 ethp2p from 06d95c...553e73 at 10.78.1.1:35132 lean/1 violation: control stream closed",
+      "seconds_relative_to_common_start": -9.15213
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/size-ethp2p-65536-rep1/node.1.log",
+      "label": "size-ethp2p-65536-rep1",
+      "line": "04:41:02.599 ethp2p from 06d95c...553e73 at 10.78.1.1:51808 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -8.981624
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/link-ethp2p-chain4-m100-d50-l0-rep1/node.2.log",
+      "label": "link-ethp2p-chain4-m100-d50-l0-rep1",
+      "line": "04:43:29.519 ethp2p from 198547...08e794 at 10.78.2.1:40524 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -10.640327
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/load-ethp2p-tx1-r8-rep2/node.1.log",
+      "label": "load-ethp2p-tx1-r8-rep2",
+      "line": "04:58:08.855 ethp2p from 06d95c...553e73 at 10.78.1.1:39831 lean/1 violation: control stream closed",
+      "seconds_relative_to_common_start": -11.811184
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/load-ethp2p-tx1-r8-rep2/node.1.log",
+      "label": "load-ethp2p-tx1-r8-rep2",
+      "line": "04:58:11.359 ethp2p from 06d95c...553e73 at 10.78.1.1:59261 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -9.307184
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/load-ethp2p-tx1-r64-rep2/node.1.log",
+      "label": "load-ethp2p-tx1-r64-rep2",
+      "line": "04:59:04.315 ethp2p from 06d95c...553e73 at 10.78.1.1:52563 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -9.436717
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/load-ethp2p-tx16-r64-rep2/node.1.log",
+      "label": "load-ethp2p-tx16-r64-rep2",
+      "line": "05:03:12.986 ethp2p from 06d95c...553e73 at 10.78.1.1:54844 lean/1 violation: control stream closed",
+      "seconds_relative_to_common_start": -12.057073
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/link-ethp2p-chain4-m100-d50-l0-rep2/node.2.log",
+      "label": "link-ethp2p-chain4-m100-d50-l0-rep2",
+      "line": "05:11:26.532 ethp2p from 198547...08e794 at 10.78.2.1:35317 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -12.920682
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "matrix-v12/runs/link-ethp2p-chain4-m100-d50-l0-rep2/node.3.log",
+      "label": "link-ethp2p-chain4-m100-d50-l0-rep2",
+      "line": "05:11:29.207 ethp2p from dc367d...d527eb at 10.78.3.1:57772 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -10.245682
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "long-rtt-v12/runs/rtt200-ethp2p-tx16-r8-rep1/node.1.log",
+      "label": "rtt200-ethp2p-tx16-r8-rep1",
+      "line": "05:15:37.602 ethp2p from 06d95c...553e73 at 10.78.1.1:45441 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -10.452814
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "long-rtt-v12/runs/rtt200-ethp2p-tx16-r32-rep1/node.1.log",
+      "label": "rtt200-ethp2p-tx16-r32-rep1",
+      "line": "05:16:07.695 ethp2p from 06d95c...553e73 at 10.78.1.1:54973 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -13.434097
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "long-rtt-v12/runs/rtt200-ethp2p-tx16-r8-rep2/node.1.log",
+      "label": "rtt200-ethp2p-tx16-r8-rep2",
+      "line": "05:19:49.293 ethp2p from 06d95c...553e73 at 10.78.1.1:43854 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -10.36715
+    },
+    {
+      "classification": "pre_common_start",
+      "file": "long-rtt-v12/runs/rtt200-ethp2p-tx16-r32-rep2/node.1.log",
+      "label": "rtt200-ethp2p-tx16-r32-rep2",
+      "line": "05:20:18.865 ethp2p from 06d95c...553e73 at 10.78.1.1:37938 closing: stream read failed: Connection aborted by peer (0).",
+      "seconds_relative_to_common_start": -10.542907
+    }
+  ],
+  "rows": [
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx1-r1-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx1-r8-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 192,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx1-r32-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 247,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx1-r64-rep1",
+      "measured_error_events": {},
+      "missing": 137
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx16-r1-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx16-r8-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 192,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx16-r32-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 246,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx16-r64-rep1",
+      "measured_error_events": {},
+      "missing": 138
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx64-r1-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx64-r8-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 136,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx64-r32-rep1",
+      "measured_error_events": {},
+      "missing": 56
+    },
+    {
+      "completed": 140,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx64-r64-rep1",
+      "measured_error_events": {},
+      "missing": 244
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": false,
+      "expiry_events": {},
+      "label": "size-rlpx-65536-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-rlpx-1048576-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-rlpx-8388608-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "link-rlpx-pair-m10-d100-l0-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "link-rlpx-pair-m100-d50-l1-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "link-rlpx-chain4-m100-d50-l0-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx1-r1-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx1-r8-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 110,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx1-r32-rep1",
+      "measured_error_events": {},
+      "missing": 82
+    },
+    {
+      "completed": 216,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {
+        "1/expired": 1
+      },
+      "label": "load-ethp2p-tx1-r64-rep1",
+      "measured_error_events": {},
+      "missing": 168
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx16-r1-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx16-r8-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 179,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx16-r32-rep1",
+      "measured_error_events": {},
+      "missing": 13
+    },
+    {
+      "completed": 90,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {
+        "1/expired": 7
+      },
+      "label": "load-ethp2p-tx16-r64-rep1",
+      "measured_error_events": {},
+      "missing": 294
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": false,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx64-r1-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx64-r8-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 166,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx64-r32-rep1",
+      "measured_error_events": {},
+      "missing": 26
+    },
+    {
+      "completed": 119,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {
+        "1/expired": 2
+      },
+      "label": "load-ethp2p-tx64-r64-rep1",
+      "measured_error_events": {},
+      "missing": 265
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-ethp2p-65536-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-ethp2p-1048576-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-ethp2p-8388608-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "link-ethp2p-pair-m10-d100-l0-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": false,
+      "expiry_events": {},
+      "label": "link-ethp2p-pair-m100-d50-l1-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "link-ethp2p-chain4-m100-d50-l0-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 3,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "broadcast-ethp2p-l0-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 3,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "broadcast-ethp2p-l1-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx1-r1-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx1-r8-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 192,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx1-r32-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 248,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx1-r64-rep2",
+      "measured_error_events": {},
+      "missing": 136
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx16-r1-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx16-r8-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 192,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx16-r32-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 215,
+      "cpu_comparison_eligible": false,
+      "expiry_events": {},
+      "label": "load-rlpx-tx16-r64-rep2",
+      "measured_error_events": {},
+      "missing": 169
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx64-r1-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx64-r8-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 143,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx64-r32-rep2",
+      "measured_error_events": {},
+      "missing": 49
+    },
+    {
+      "completed": 132,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-rlpx-tx64-r64-rep2",
+      "measured_error_events": {},
+      "missing": 252
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-rlpx-65536-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-rlpx-1048576-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-rlpx-8388608-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "link-rlpx-pair-m10-d100-l0-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "link-rlpx-pair-m100-d50-l1-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": false,
+      "expiry_events": {},
+      "label": "link-rlpx-chain4-m100-d50-l0-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": false,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx1-r1-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx1-r8-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 192,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx1-r32-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 209,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx1-r64-rep2",
+      "measured_error_events": {},
+      "missing": 175
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx16-r1-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx16-r8-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 165,
+      "cpu_comparison_eligible": false,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx16-r32-rep2",
+      "measured_error_events": {},
+      "missing": 27
+    },
+    {
+      "completed": 178,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {
+        "1/expired": 3
+      },
+      "label": "load-ethp2p-tx16-r64-rep2",
+      "measured_error_events": {},
+      "missing": 206
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx64-r1-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx64-r8-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 153,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx64-r32-rep2",
+      "measured_error_events": {},
+      "missing": 39
+    },
+    {
+      "completed": 141,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "load-ethp2p-tx64-r64-rep2",
+      "measured_error_events": {},
+      "missing": 243
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-ethp2p-65536-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-ethp2p-1048576-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 6,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "size-ethp2p-8388608-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "link-ethp2p-pair-m10-d100-l0-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": false,
+      "expiry_events": {},
+      "label": "link-ethp2p-pair-m100-d50-l1-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 24,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "link-ethp2p-chain4-m100-d50-l0-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 3,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "broadcast-ethp2p-l0-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 3,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "broadcast-ethp2p-l1-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "rtt200-rlpx-tx16-r8-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 137,
+      "cpu_comparison_eligible": false,
+      "expiry_events": {},
+      "label": "rtt200-rlpx-tx16-r32-rep1",
+      "measured_error_events": {},
+      "missing": 55
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "rtt200-ethp2p-tx16-r8-rep1",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 90,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "rtt200-ethp2p-tx16-r32-rep1",
+      "measured_error_events": {},
+      "missing": 102
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "rtt200-rlpx-tx16-r8-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 133,
+      "cpu_comparison_eligible": false,
+      "expiry_events": {},
+      "label": "rtt200-rlpx-tx16-r32-rep2",
+      "measured_error_events": {},
+      "missing": 59
+    },
+    {
+      "completed": 48,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "rtt200-ethp2p-tx16-r8-rep2",
+      "measured_error_events": {},
+      "missing": 0
+    },
+    {
+      "completed": 112,
+      "cpu_comparison_eligible": true,
+      "expiry_events": {},
+      "label": "rtt200-ethp2p-tx16-r32-rep2",
+      "measured_error_events": {},
+      "missing": 80
+    }
+  ],
+  "scope": "Derived after all84 rows completed. Measured counters and raw startup/teardown messages are distinct; at-or-after-common-start messages require window/context review before being called measured faults."
+}

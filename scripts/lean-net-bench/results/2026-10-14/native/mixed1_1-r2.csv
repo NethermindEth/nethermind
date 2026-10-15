@@ -1,0 +1,2 @@
+mode,claims,proof_bytes,proving_ms,verification_ms,fixture_generation_ms,child_preparation_ms,total_ms,sphincs_claims,generic_claims,input_bytes,profile_key
+mixed-raw,2,325248,23741.839,66.262,122.046,0.000,24814.144,1,1,296476,00f24bbdf44a31139c975223b77510cd93a905664da3c4a52b5eba4e9b07de9e

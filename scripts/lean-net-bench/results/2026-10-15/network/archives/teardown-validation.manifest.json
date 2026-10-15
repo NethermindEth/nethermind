@@ -1,0 +1,262 @@
+{
+  "base_archive_sha256": "c5604b1b4acf9e239d40405071941f7258f44f75f37b35c964d740c715d8f910",
+  "base_source_revision": "0178a8284058611a1a303d7608bd7f8600ecf1db",
+  "entries": [
+    {
+      "bytes": 1319,
+      "path": "8437-quic-teardown-debug-test.patch",
+      "sha256": "bc890ed25480f68433d3e6d259d7a96a0b40f183e54b77255100b22d6866c977"
+    },
+    {
+      "bytes": 1434,
+      "path": "8437-quic-teardown-proposed-atomic.patch",
+      "sha256": "7a3a0f185609b91cc09bf77a428d721a25844f2625467822f12decc76ccf5d94"
+    },
+    {
+      "bytes": 859,
+      "path": "8437-quic-teardown-status-test-correction.patch",
+      "sha256": "5c9f353b417895ecc10c21bfe48b3e43730b34c793075da145d5e7dc9cb80658"
+    },
+    {
+      "bytes": 6971,
+      "path": "8437-quic-teardown-tests-only.patch",
+      "sha256": "09dc8f33c85f3312fc061344a1d936e94ed9fcd3644e0809608497a2d8192093"
+    },
+    {
+      "bytes": 7470,
+      "path": "capture-packaging/teardown-validation-summary.json",
+      "sha256": "f4c9893cc05dd25f5a04e8f3e50d10478ac629db9700dabb25c931be28868664"
+    },
+    {
+      "bytes": 2475,
+      "path": "metadata/toolchain.json",
+      "sha256": "c924918c55b7590b2d84f28213980e2b98391bee0b21ad5cf62a3e8e1dd5beea"
+    },
+    {
+      "bytes": 4525,
+      "path": "teardown-baseline/baseline-1.log",
+      "sha256": "96633af2e3916ec91783a25095fc2e34f4d94c7f602a4c1eb8b5a11aaa878da8"
+    },
+    {
+      "bytes": 155,
+      "path": "teardown-baseline/binary.sha256",
+      "sha256": "525f81ef5dcca927017e7c982f93bfd2161a76564936cfd109e6dac68a139b55"
+    },
+    {
+      "bytes": 1032,
+      "path": "teardown-baseline/build.log",
+      "sha256": "08f6f2c5313b77d59fd948683952b4a9bab8fb7907899824e24abeb7748e90f6"
+    },
+    {
+      "bytes": 4845,
+      "path": "teardown-baseline/corrected-baseline-1.log",
+      "sha256": "852c5a15a46b49ec88efd593dcc88e6b9992f05f0d73a39b6aa422fb6353f703"
+    },
+    {
+      "bytes": 305,
+      "path": "teardown-baseline/corrected-binaries.sha256",
+      "sha256": "6b78d5ad77a273ffc12037960d65aabbae7e22796304b430af9fea22688f2258"
+    },
+    {
+      "bytes": 1032,
+      "path": "teardown-baseline/corrected-build.log",
+      "sha256": "34a4ce983e4a773a68b8632d3a80326ae3da7809cd4cd3691088a0b8ac6d5934"
+    },
+    {
+      "bytes": 6197,
+      "path": "teardown-baseline/debug-baseline-1.log",
+      "sha256": "dbc0d383dfd6a508bd02e8a27eef72e590348ce64d0902d7f196e3553c8d5d0e"
+    },
+    {
+      "bytes": 1032,
+      "path": "teardown-baseline/debug-baseline-build.log",
+      "sha256": "852807757b8befb581a137b8ed007e60f059dea95ceeead2740d4fd89acbb7cf"
+    },
+    {
+      "bytes": 664,
+      "path": "teardown-baseline/identity.json",
+      "sha256": "6cd92550915fefb057825abffdd09d5b15e243cb33e0b1bbe768a5b367b307f4"
+    },
+    {
+      "bytes": 450,
+      "path": "teardown-fixed/after-binaries.sha256",
+      "sha256": "199424776bc0241fa9e67f1f596b8679deed95f1d9c5df7fc8fb693f413793ca"
+    },
+    {
+      "bytes": 150,
+      "path": "teardown-fixed/before-network.sha256",
+      "sha256": "bebc5930e6db18a80f424cf70482b605f94b75baf214e926dfeee7e8a80002d3"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-1.log",
+      "sha256": "ed4acee1e5d7a61dc1b660c48348e9229485347c1cbb34adc4092d9268ff8179"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-10.log",
+      "sha256": "6191e4e5ea6fe27d7b2a4fe02d0af72086242fc03acc88519185a72acd26d74d"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-11.log",
+      "sha256": "57405b8ba20baee81c999290ff2a3b855019159b8f9b63737c4381b7fe05173c"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-12.log",
+      "sha256": "ebf4d42ba3140e6e7f6b88f90f9fbafb14e8ae549d9b14c594f360c4547c8dc7"
+    },
+    {
+      "bytes": 1860,
+      "path": "teardown-fixed/fixed-13.log",
+      "sha256": "bcdf45d3b2b4279242ae64c729f52f95ceafe654c91d4b91a4dd887c7637a06a"
+    },
+    {
+      "bytes": 1860,
+      "path": "teardown-fixed/fixed-14.log",
+      "sha256": "8017e8b2f8d924fb7848fe92297b707f271cb22dd385280e68cbe3adc53293e2"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-15.log",
+      "sha256": "261ca362a9b3d3197cbf114cb69579b5c9d190ff7860770284457aa0d4d8ca29"
+    },
+    {
+      "bytes": 1860,
+      "path": "teardown-fixed/fixed-16.log",
+      "sha256": "fb9cfcb4e23674107e22677854c05584d4282f56edbfe70cc5138806c8433fe8"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-17.log",
+      "sha256": "700fe04210eda91e95ac1491006e51e34bc65d9b8436fa5051aba0060bce6cf6"
+    },
+    {
+      "bytes": 1860,
+      "path": "teardown-fixed/fixed-18.log",
+      "sha256": "af9195afe7696e7adbb3c8b8ea925429e6c04ac27651d19fdc5af60c82fe2d4d"
+    },
+    {
+      "bytes": 1860,
+      "path": "teardown-fixed/fixed-19.log",
+      "sha256": "4d599a0f0b180c9d1a9330e802b8c3c320164aac330c26cc8c80bae7c4dee1ad"
+    },
+    {
+      "bytes": 1860,
+      "path": "teardown-fixed/fixed-2.log",
+      "sha256": "9f77ea0b0a03c4038763e34f772f0dc3d75853241c79123a0cd06e877edb78d5"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-20.log",
+      "sha256": "05434e03d55a4509ecaf4c0ed7a0ebbe7967c85600719f7beeac89cccd7f2c0a"
+    },
+    {
+      "bytes": 1860,
+      "path": "teardown-fixed/fixed-3.log",
+      "sha256": "3a5d6dde86f9498cbac461a1419dc64273b1dda7c0dd2a5ac6f1fb4c9efb5462"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-4.log",
+      "sha256": "2754a687340697a7e7a24c94dae6db45759a3cf61cdf8d891fcc5e2986bb11d7"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-5.log",
+      "sha256": "70a792c5b5a49571d0945b3c862d3159213c286215f22c80a93ea375a81b412b"
+    },
+    {
+      "bytes": 1860,
+      "path": "teardown-fixed/fixed-6.log",
+      "sha256": "3bd8cd48a7be52a22fbca6efa8a54dfd20e52f1819a56dfb2a4aee8b8cd6b2b1"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-7.log",
+      "sha256": "3716b2d72de3a82196d1478441ea1e2de4f3d7e6419f5f026a3424d1fc84073d"
+    },
+    {
+      "bytes": 1929,
+      "path": "teardown-fixed/fixed-8.log",
+      "sha256": "98dc83a10f6a7b95608118e4d4922f321e8e778970cbdcc1f07cf4becd6b0a06"
+    },
+    {
+      "bytes": 1860,
+      "path": "teardown-fixed/fixed-9.log",
+      "sha256": "822a42bcc6642b8045c5ae19b038a4bdb77affc6f0a1be50c2bd883e134241be"
+    },
+    {
+      "bytes": 1865,
+      "path": "teardown-fixed/full-quic-corrected-count.log",
+      "sha256": "030b9dfbc8ad2989f303c9890ea6867af1b380c18c146f651e1cdbe384892816"
+    },
+    {
+      "bytes": 2001,
+      "path": "teardown-fixed/full-quic.log",
+      "sha256": "03fc1f139a3e2825a2290bf37e61eac93faaa683d1c608251cf5617298b3f18a"
+    },
+    {
+      "bytes": 658,
+      "path": "teardown-fixed/full-stream-transport.log",
+      "sha256": "de1fafd279375d5c4fa0029ba45cea1a069d8088e95c3997caaddbd26729f414"
+    },
+    {
+      "bytes": 227,
+      "path": "teardown-fixed/network-build.log",
+      "sha256": "ee78a8ce198e22dd6bb520b305ecef066589f7b07891c349e28fda4a5a29e6b1"
+    },
+    {
+      "bytes": 1017,
+      "path": "teardown-fixed/test-build.log",
+      "sha256": "c64a945cd4e360767e572ff5c485057bb2c668af198ccb44c807b19b60ef19ce"
+    }
+  ],
+  "excluded": "Source archives, build outputs, binary snapshots, raw proof bytes. Frozen performance captures are packaged separately and remain unchanged. Absolute runtime paths inside original raw files are retained as historical evidence.",
+  "format": 1,
+  "inputs": [
+    "8437-quic-teardown-tests-only.patch",
+    "8437-quic-teardown-status-test-correction.patch",
+    "8437-quic-teardown-debug-test.patch",
+    "8437-quic-teardown-proposed-atomic.patch",
+    "capture-packaging/teardown-validation-summary.json",
+    "teardown-baseline/baseline-1.log",
+    "teardown-baseline/binary.sha256",
+    "teardown-baseline/build.log",
+    "teardown-baseline/corrected-baseline-1.log",
+    "teardown-baseline/corrected-binaries.sha256",
+    "teardown-baseline/corrected-build.log",
+    "teardown-baseline/debug-baseline-1.log",
+    "teardown-baseline/debug-baseline-build.log",
+    "teardown-baseline/identity.json",
+    "teardown-fixed/after-binaries.sha256",
+    "teardown-fixed/before-network.sha256",
+    "teardown-fixed/fixed-1.log",
+    "teardown-fixed/fixed-10.log",
+    "teardown-fixed/fixed-11.log",
+    "teardown-fixed/fixed-12.log",
+    "teardown-fixed/fixed-13.log",
+    "teardown-fixed/fixed-14.log",
+    "teardown-fixed/fixed-15.log",
+    "teardown-fixed/fixed-16.log",
+    "teardown-fixed/fixed-17.log",
+    "teardown-fixed/fixed-18.log",
+    "teardown-fixed/fixed-19.log",
+    "teardown-fixed/fixed-2.log",
+    "teardown-fixed/fixed-20.log",
+    "teardown-fixed/fixed-3.log",
+    "teardown-fixed/fixed-4.log",
+    "teardown-fixed/fixed-5.log",
+    "teardown-fixed/fixed-6.log",
+    "teardown-fixed/fixed-7.log",
+    "teardown-fixed/fixed-8.log",
+    "teardown-fixed/fixed-9.log",
+    "teardown-fixed/full-quic-corrected-count.log",
+    "teardown-fixed/full-quic.log",
+    "teardown-fixed/full-stream-transport.log",
+    "teardown-fixed/network-build.log",
+    "teardown-fixed/test-build.log"
+  ],
+  "scope": "Subsequent isolated teardown correctness validation, separate from the frozen V12 performance campaign. See explicit phase classifications and changed DLL hashes in summary."
+}

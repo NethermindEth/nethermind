@@ -1,0 +1,12 @@
+[package]
+name = "lean-native-cost"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nethermind-lean = { path = "../../../tools/lean-ffi" }
+rec_aggregation = { git = "https://github.com/Marchhill/leanVM", rev = "cf1e92f87a7aec052b680f73e56145e866218583", features = ["eip8288-mixed"] }
+sphincs = { git = "https://github.com/Marchhill/leanVM", rev = "cf1e92f87a7aec052b680f73e56145e866218583" }
+
+[profile.release]
+opt-level = 3
