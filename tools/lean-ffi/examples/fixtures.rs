@@ -3,6 +3,25 @@
 use nethermind_lean::{aggregated_vk, keccak, prove_stark};
 fn main() {
     let directory = std::env::args().nth(1).expect("fixture output directory");
+    if directory == "--sign-message" {
+        let mut arguments = std::env::args().skip(2);
+        let hash = arguments.next().expect("32-byte message as hex");
+        assert_eq!(hash.len(), 64, "message must contain 64 hex digits");
+        let mut message = [0; 32];
+        for (index, byte) in message.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&hash[index * 2..index * 2 + 2], 16).expect("hex message");
+        }
+        let output = arguments.next().expect("witness output file");
+        assert!(arguments.next().is_none(), "unexpected fixture arguments");
+        let (sk, pk) = sphincs::key_gen_from_seed([42; 32]);
+        let signature = sphincs::sign(&sk, &message);
+        std::fs::write(
+            output,
+            [pk.flatten().as_slice(), signature.to_bytes().as_slice()].concat(),
+        )
+        .unwrap();
+        return;
+    }
     std::fs::create_dir_all(&directory).unwrap();
     let save =
         |name: &str, bytes: &[u8]| std::fs::write(format!("{directory}/{name}"), bytes).unwrap();

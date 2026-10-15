@@ -29,6 +29,45 @@ namespace Nethermind.Consensus.Test.ProofAggregation;
 public class ProofWrapperServiceTests
 {
     [Test]
+    public async Task Zero_dependency_hashes_bind_the_containing_transaction_in_both_wrapper_modes([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
+    {
+        FrameDependency raw = new(Eip8288Constants.LeanSphincsScheme, default, TestItem.KeccakA.ValueHash256);
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            NonceKeys = [UInt256.Zero],
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([raw]))]
+        };
+        transaction.Hash = transaction.CalculateHash();
+        FrameDependency resolved = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)[0];
+        bool[] claims = [true, false];
+        foreach (bool literalZero in claims)
+        {
+            FrameDependency claim = literalZero ? raw : resolved;
+            LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+            ProofWrapperService service = CreateService([], store, new FakeLeanProofVerifier(true));
+            byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+            {
+                Transactions = [new WrapperTransaction(transaction)],
+                Deps = [claim],
+                Mode = mode,
+                Proofs = mode == MempoolWrapper.ModeDirect ? [[1]] : null,
+                RecursiveStark = mode == MempoolWrapper.ModeRecursive ? new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([claim]))) : null
+            }).Bytes;
+
+            ProofWrapperAcceptance result = await AcceptResolvedDetailedAsync(service, encoded, transaction);
+
+            Assert.That(result.Result.IsSuccess, Is.EqualTo(!literalZero), result.Result.Error);
+            Assert.That(store.Covers(transaction), Is.EqualTo(!literalZero));
+            if (literalZero) Assert.That(result.Result.Error, Does.Contain(MempoolWrapperValidator.DepsMismatch));
+        }
+        Assert.That(Eip8288Dependencies.ParseFrame(transaction.Frames[0]).Single(), Is.EqualTo(raw));
+    }
+
+    [Test]
     public async Task Transport_owned_body_avoids_encoded_copy_and_reuses_prechecked_proof([Values] bool owned)
     {
         (ProofWrapperService producer, _) = Create(1, 0, out Transaction[] transactions);
@@ -67,7 +106,7 @@ public class ProofWrapperServiceTests
             IsEip8250Enabled = scenario != "keyed",
             IsEip8272Enabled = scenario != "recent-roots"
         };
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         TxFrame dependencyFrame = new(FrameMode.DepVerify, FrameFlags.None, null,
             Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]));
         Transaction transaction = new()
@@ -82,7 +121,7 @@ public class ProofWrapperServiceTests
                 : [dependencyFrame]
         };
         FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier, spec);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier, spec);
         byte[] Encode() => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
             Transactions = [new WrapperTransaction(transaction)],
@@ -111,7 +150,7 @@ public class ProofWrapperServiceTests
     public async Task Oversized_dependency_frames_are_rejected_before_proof_verification([Values] bool inclusionList)
     {
         (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(0, 0);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         byte[] data = Eip8288Dependencies.Serialize(Enumerable.Repeat(dependency, Eip8288Constants.MaxDependenciesPerFrame + 1).ToArray());
         Transaction transaction = new()
         {
@@ -148,7 +187,7 @@ public class ProofWrapperServiceTests
     public async Task Scalar_nonce_is_rejected_before_proof_verification([Values] bool inclusionList)
     {
         (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(0, 0);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
@@ -183,8 +222,8 @@ public class ProofWrapperServiceTests
     {
         FakeLeanProofVerifier verifier = new(true);
         IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEip8272Enabled = false };
-        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier, spec);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier, spec);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
@@ -216,7 +255,7 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Pool_eviction_after_preflight_retains_the_verified_verdict_without_peer_penalty()
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
@@ -239,7 +278,7 @@ public class ProofWrapperServiceTests
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
         FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, new LeanProofStore(), verifier);
+        ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
             Transactions = [new WrapperTransaction(transaction.Hash)],
@@ -259,7 +298,7 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Local_pool_exceptions_are_nonfatal_and_do_not_retain_unadmitted_proofs([Values] bool argumentError)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
@@ -275,7 +314,7 @@ public class ProofWrapperServiceTests
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
         FakeLeanProofVerifier verifier = new(true);
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, verifier);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
@@ -330,12 +369,12 @@ public class ProofWrapperServiceTests
     [Test]
     public void Known_hash_refresh_skips_bytes_but_rechecks_membership_and_changed_snapshots_are_owned()
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction first = CreateTransaction(dependency, TestItem.KeccakA);
         Transaction second = CreateTransaction(dependency, TestItem.KeccakB);
         Transaction[] pending = [first];
         ITxPool pool = Substitute.For<ITxPool>();
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([dependency], [[1]], null);
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
@@ -364,8 +403,8 @@ public class ProofWrapperServiceTests
     [TestCase(true, false)]
     public void Completed_proving_is_authenticated_once_for_cached_and_custom_backends(bool decorated, bool valid)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
-        LeanProofStore store = new();
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([dependency], [[1]], null);
         FakeLeanProofVerifier backend = new(valid);
         ILeanProofVerifier verifier = decorated ? new ProductionProofCache(backend) : backend;
@@ -378,7 +417,7 @@ public class ProofWrapperServiceTests
     [Test]
     public void Exact_parent_shortcut_remains_authenticated_with_the_completed_work_cache()
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
         FakeLeanProofVerifier backend = new(false);
         ProductionProofCache verifier = new(backend);
@@ -391,11 +430,11 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Pool_removal_during_proving_prevents_publication_but_retains_verified_work()
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
         ITxPool pool = Substitute.For<ITxPool>();
         Transaction[] pending = [transaction];
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([dependency], [[1]], null);
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
@@ -433,7 +472,7 @@ public class ProofWrapperServiceTests
         Transaction b = CreateTransaction(second, TestItem.KeccakB);
         Transaction[] pending = [a];
         ITxPool pool = Substitute.For<ITxPool>();
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([first, second], [[1], [1]], null);
         RecordingVerifier verifier = new();
         ProofWrapperService service = CreateService(pending, store, verifier, pool: pool);
@@ -535,7 +574,7 @@ public class ProofWrapperServiceTests
             new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("large-root-signature"), default),
             new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("large-root-stark"), default)]);
         byte[] proof = new byte[5 * 1024 * 1024];
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         if (sameParent) store.AddVerified(dependencies, null, proof);
         else
         {
@@ -581,7 +620,7 @@ public class ProofWrapperServiceTests
     [Test]
     public void Large_discarded_parent_coverage_is_skipped_before_proving()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Transaction[] transactions = new Transaction[2];
         for (int i = 0; i < transactions.Length; i++)
         {
@@ -613,7 +652,7 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Valid_proof_pool_rejection_has_a_distinct_status()
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
@@ -628,7 +667,7 @@ public class ProofWrapperServiceTests
             call.Arg<Transaction>().Nonce == 0 ? AcceptTxResult.FeeTooLow : AcceptTxResult.Accepted);
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
         Transaction later = new()
         {
@@ -662,7 +701,7 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Pool_rejected_direct_witnesses_do_not_consume_pending_proof_capacity()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
         {
@@ -715,7 +754,7 @@ public class ProofWrapperServiceTests
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         verifier.OnVerification = () => { entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); };
-        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
         Task<ProofWrapperAcceptance> first = AcceptResolvedDetailedAsync(service, encoded, transactions);
         try
         {
@@ -746,7 +785,7 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Rejected_wrappers_do_not_retain_proofs_and_repeats_reuse_verification([Values] bool proofValid)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
@@ -757,7 +796,7 @@ public class ProofWrapperServiceTests
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         ITxPool pool = Substitute.For<ITxPool>();
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
         {
             Assert.That(store.Covers(call.Arg<Transaction>()), Is.True);
@@ -799,7 +838,7 @@ public class ProofWrapperServiceTests
         }).OrderBy(static transaction => transaction.CalculateHash().ToString()).ToArray();
         List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([first, second]);
         ITxPool pool = Substitute.For<ITxPool>();
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
         {
             Assert.That(store.Covers(call.Arg<Transaction>()), Is.True);
@@ -841,12 +880,12 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Recovered_hash_entries_are_admitted_and_the_original_wrapper_is_reported_valid()
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
         transaction.Hash = transaction.CalculateHash();
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
-        ProofWrapperService service = CreateService([], new LeanProofStore(), new FakeLeanProofVerifier(true), pool: pool);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
             Transactions = [new WrapperTransaction(transaction.Hash)],
@@ -881,7 +920,7 @@ public class ProofWrapperServiceTests
     public async Task Wrapper_size_above_the_local_limit_is_refused_and_above_max_wrapper_bytes_is_invalid(int size, ProofWrapperAcceptanceStatus expected)
     {
         FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
         Assert.That((await service.AcceptDetailedAsync(new byte[size])).Status, Is.EqualTo(expected));
         Assert.That(verifier.VerificationCalls, Is.Zero);
     }
@@ -906,7 +945,7 @@ public class ProofWrapperServiceTests
             RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(canonical)))
         }).Bytes;
         FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
         using (Assert.EnterMultipleScope())
         {
             Assert.That((await service.VerifyClaimedProofsAsync(wrapper)).Status, Is.EqualTo(expected));
@@ -938,7 +977,7 @@ public class ProofWrapperServiceTests
             RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
         }).Bytes;
         FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
 
         ProofWrapperAcceptance result = await service.AcceptInclusionListDetailedAsync(package);
         using (Assert.EnterMultipleScope())
@@ -952,13 +991,13 @@ public class ProofWrapperServiceTests
     [TestCase(false)]
     public async Task Preliminary_proof_check_precedes_recovery_and_is_not_repeated(bool proofValid)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
         transaction.Hash = transaction.CalculateHash();
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
         FakeLeanProofVerifier verifier = new(proofValid);
-        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier, pool: pool);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier, pool: pool);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
             Transactions = [new WrapperTransaction(transaction.Hash)],
@@ -991,7 +1030,7 @@ public class ProofWrapperServiceTests
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
         FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier, pool: pool);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier, pool: pool);
         List<byte[]> published = [];
         service.InclusionListValidated += published.Add;
 
@@ -1010,13 +1049,13 @@ public class ProofWrapperServiceTests
     [TestCase("invalid rlp", ProofWrapperAcceptanceStatus.Invalid)]
     public async Task Inclusion_list_acceptance_separates_invalid_packages_from_admission_outcomes(string scenario, ProofWrapperAcceptanceStatus expected)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
         transaction.Hash = transaction.CalculateHash();
         ITxPool pool = Substitute.For<ITxPool>();
         pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
             .Returns(scenario == "pool rejection" ? AcceptTxResult.Invalid : AcceptTxResult.Accepted);
-        ProofWrapperService service = CreateService([], new LeanProofStore(), new FakeLeanProofVerifier(scenario != "invalid proof"), pool: pool);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(scenario != "invalid proof"), pool: pool);
         byte[] package = scenario == "invalid rlp" ? [0xc0] : InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
         {
             Transactions = [transaction],
@@ -1040,7 +1079,7 @@ public class ProofWrapperServiceTests
 
     private static (ProofWrapperService, FakeLeanProofVerifier) Create(int count, int payloadBytes, out Transaction[] transactions)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         byte[] payload = new byte[payloadBytes];
         transactions = Enumerable.Range(0, count).Select(index => new Transaction
         {
@@ -1057,7 +1096,7 @@ public class ProofWrapperServiceTests
             ]
         }).ToArray();
         foreach (Transaction transaction in transactions) transaction.Hash = transaction.CalculateHash();
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([dependency], [[1]], null);
         FakeLeanProofVerifier verifier = new(true);
         return (CreateService(transactions, store, verifier), verifier);

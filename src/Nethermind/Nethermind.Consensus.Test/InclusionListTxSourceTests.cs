@@ -125,7 +125,7 @@ public class InclusionListTxSourceTests
     {
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
         FakeLeanProofVerifier verifier = new(true);
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, store);
         Transaction transaction = FrameTx(0, null!);
@@ -133,7 +133,7 @@ public class InclusionListTxSourceTests
         data[31] = Eip8288Constants.LeanSphincsScheme;
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
         transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
-        List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction);
+        List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         RecursiveStarkV1 proof = new() { StarkProof = [1], DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)) };
         PayloadAttributes attributes = new() { InclusionLists = [new InclusionListV1 { Transactions = [Encode(transaction)], RecursiveStark = proof }] };
         byte[][] list = attributes.CombinedInclusionListTransactions!;
@@ -165,7 +165,7 @@ public class InclusionListTxSourceTests
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
         FakeLeanProofVerifier verifier = new(true);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
-            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, new LeanProofStore());
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, new LeanProofStore(FrameTxSigHash.ComputeValue));
         static Transaction DependencyTx(ulong nonce, string message)
         {
             Transaction transaction = FrameTx(nonce, null!);
@@ -178,7 +178,7 @@ public class InclusionListTxSourceTests
         }
         Transaction unproven = DependencyTx(0, "unproven");
         Transaction proven = DependencyTx(1, "proven");
-        List<FrameDependency> provenDeps = Eip8288Dependencies.ForTransaction(proven);
+        List<FrameDependency> provenDeps = Eip8288Dependencies.ForTransaction(proven, FrameTxSigHash.ComputeValue);
         PayloadAttributes attributes = new()
         {
             InclusionLists =
@@ -214,7 +214,7 @@ public class InclusionListTxSourceTests
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
         FakeLeanProofVerifier verifier = new(true);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
-            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, new LeanProofStore());
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, new LeanProofStore(FrameTxSigHash.ComputeValue));
         Transaction transaction = FrameTx(0, null!);
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[96])];
         PayloadAttributes attributes = new()

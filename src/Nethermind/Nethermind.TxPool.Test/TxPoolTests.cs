@@ -6681,7 +6681,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task Persistent_dependency_blob_pins_full_body_witnesses_and_releases_them_on_shutdown()
         {
-            LeanProofStore store = new();
+            LeanProofStore store = new(FrameTxSigHash.ComputeValue);
             FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("blob-pending"), default);
             Transaction transaction = DependencyBlobTransaction(dependency);
             store.AddVerified([dependency], [[1]], null);
@@ -6702,14 +6702,14 @@ namespace Nethermind.TxPool.Test
         {
             FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("blob-restart"), default);
             Transaction transaction = DependencyBlobTransaction(dependency);
-            LeanProofStore initialStore = new();
+            LeanProofStore initialStore = new(FrameTxSigHash.ComputeValue);
             initialStore.AddVerified([dependency], [[1]], null);
             BlobTxStorage storage = new();
             _txPool = CreateDependencyBlobPool(initialStore, storage);
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             await _txPool.DisposeAsync();
 
-            LeanProofStore restartedStore = new();
+            LeanProofStore restartedStore = new(FrameTxSigHash.ComputeValue);
             if (witnessesAvailable) restartedStore.AddVerified([dependency], [[1]], null);
             _txPool = CreateDependencyBlobPool(restartedStore, storage);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(witnessesAvailable ? 1 : 0));

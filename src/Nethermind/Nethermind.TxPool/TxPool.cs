@@ -16,6 +16,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
@@ -249,7 +250,7 @@ namespace Nethermind.TxPool
                 {
                     if (restored.SupportsFrames && _specProvider.GetCurrentHeadSpec().IsEip8288Enabled
                         && (!_blobTransactions.TryGetValue(restored.Hash!, out Transaction? full)
-                            || Eip8288Dependencies.ForTransaction(full).Count != 0
+                            || Eip8288Dependencies.ForTransaction(full, FrameTxSigHash.ComputeValue).Count != 0
                                 && (_leanProofStore is null || !_leanProofStore.PinPending(full, this))))
                     {
                         // Dependency witnesses are not persisted with blob transactions.

@@ -120,16 +120,59 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void SimulateValidationPrefix_AcceptsLeadingDependencyDeclaration()
+    public void SimulateValidationPrefix_ExcludesDependencyGasButExecutionPaysIt([Values] bool betweenStages)
     {
         _spec.IsEip8288Enabled = true;
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        Transaction tx = FrameTx(0, DependencyFrame(), SelfVerifyFrame());
+        DeploySmartSender(ApproveCode(betweenStages ? FrameFlags.ApproveExecution : FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, ApproveCode(FrameFlags.ApprovePayment), 1.Ether);
+        int declarations = (int)(Eip8141Constants.MaxVerifyGas / Eip8288Constants.LeanSphincsVerificationGas) + 1;
+        TxFrame dependency = DependencyFrame(declarations);
+        byte[] declarationBytes = dependency.Data.ToArray();
+        TxFrame[] frames = betweenStages
+            ? [new(FrameMode.Verify, FrameFlags.ApproveExecution, null, 100_000, UInt256.Zero, default), dependency,
+                new(FrameMode.Verify, FrameFlags.ApprovePayment, Observer, 100_000, UInt256.Zero, default)]
+            : [dependency, SelfVerifyFrame()];
+        Transaction tx = FrameTx(0, frames);
+        Address payer = betweenStages ? Observer : Sender;
+        UInt256 balanceBefore = _stateProvider.GetBalance(payer);
+
+        Assert.That(SimulateValidationPrefix(tx).TransactionExecuted, Is.True);
+        FrameReceiptTracer tracer = new();
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        TxFrameReceipt receipt = tracer.FrameReceipts![betweenStages ? 1 : 0];
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(FrameTxValidation.HasRecognizedValidationPrefix(tx), Is.True);
-            Assert.That(SimulateValidationPrefix(tx).TransactionExecuted, Is.True);
+            Assert.That(dependency.ExecutionGasLimit, Is.GreaterThan(Eip8141Constants.MaxVerifyGas));
+            Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(200_000));
+            Assert.That(FrameTxValidation.TotalGasLimit(frames), Is.EqualTo(200_000 + dependency.ExecutionGasLimit));
+            Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
+            Assert.That(receipt.Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receipt.ExecutionGasUsed, Is.EqualTo(dependency.ExecutionGasLimit));
+            Assert.That(receipt.StateGasUsed, Is.Zero);
+            Assert.That(receipt.Logs, Is.Empty);
+            Assert.That(tracer.GasSpent, Is.GreaterThanOrEqualTo(dependency.ExecutionGasLimit + Eip8288Dependencies.RecursiveStarkGas(tx)));
+            Assert.That(_stateProvider.GetBalance(payer), Is.EqualTo(balanceBefore - (UInt256)tracer.GasSpent));
+            Assert.That(dependency.Data.ToArray(), Is.EqualTo(declarationBytes));
+        }
+    }
+
+    [Test]
+    public void SimulateValidationPrefix_StillRejectsExcessiveEvmWork([Values] bool withDependency)
+    {
+        _spec.IsEip8288Enabled = true;
+        DeploySmartSender(Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done);
+        TxFrame verify = new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null,
+            Eip8141Constants.MaxVerifyGas + 10_000, UInt256.Zero, default);
+        Transaction tx = FrameTx(0, withDependency ? [DependencyFrame(), verify] : [verify]);
+
+        TransactionResult result = SimulateValidationPrefix(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("validation prefix exceeds MAX_VERIFY_GAS"));
         }
     }
 

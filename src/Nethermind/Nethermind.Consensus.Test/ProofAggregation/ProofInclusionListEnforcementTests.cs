@@ -17,6 +17,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.Specs.Forks;
@@ -139,7 +140,7 @@ public class ProofInclusionListEnforcementTests
                 Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanStarkVerificationGas, UInt256.Zero, existing)]
             };
             block = block.WithReplacedBody(new([includedGeneric], block.Uncles, block.Withdrawals));
-            List<FrameDependency> existingDependencies = Eip8288Dependencies.ForTransaction(includedGeneric);
+            List<FrameDependency> existingDependencies = Eip8288Dependencies.ForTransaction(includedGeneric, FrameTxSigHash.ComputeValue);
             block.StarkProof = scenario == "generic-compressed-union"
                 ? LeanProofTestEnvelope.CreateMaximal(existingDependencies) : LeanProofTestEnvelope.Create(existingDependencies, 0);
             block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof),
@@ -186,8 +187,8 @@ public class ProofInclusionListEnforcementTests
         if (scenario == "withdrawal-funded")
             block = block.WithReplacedBody(new(block.Transactions, block.Uncles,
                 [new Withdrawal { Address = sender, AmountInGwei = 1_000_000_000 }]));
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction));
-        List<FrameDependency> inclusionDependencies = Eip8288Dependencies.ForTransaction(transaction);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
+        List<FrameDependency> inclusionDependencies = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         byte[] inclusionProof = scenario is "bounded-proof" or "generic-compressed-union"
             ? LeanProofTestEnvelope.CreateMaximal(inclusionDependencies) : LeanProofTestEnvelope.Create(inclusionDependencies, 0);
         block.InclusionLists = [new CommitteeInclusionList(0, block.InclusionListTransactions!, scenario == "missing-proof" ? null

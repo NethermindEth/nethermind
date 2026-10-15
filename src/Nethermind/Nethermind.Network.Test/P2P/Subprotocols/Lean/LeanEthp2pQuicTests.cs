@@ -166,10 +166,7 @@ public class LeanEthp2pQuicTests
     [Test]
     public async Task No_error_teardown_does_not_report_a_control_stream_violation([Values] bool compatibleEth)
     {
-        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsDebug.Returns(true);
-        logger.When(value => value.Debug(Arg.Any<string>())).Do(call => TestContext.Progress.WriteLine($"{DateTime.UtcNow:HH:mm:ss.fff} {call.Arg<string>()}"));
-        OneLoggerLogManager logs = new(new(logger));
+        ILogManager logs = DebugLogs(out InterfaceLogger logger);
         await using (QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA, logManager: logs))
         await using (QuicNode b = await QuicNode.Start(TestItem.PrivateKeyB, logManager: logs))
         {
@@ -195,10 +192,8 @@ public class LeanEthp2pQuicTests
     [Test]
     public async Task Control_fin_on_an_established_live_connection_is_a_protocol_violation()
     {
-        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsDebug.Returns(true);
-        logger.When(value => value.Debug(Arg.Any<string>())).Do(call => TestContext.Progress.WriteLine($"{DateTime.UtcNow:HH:mm:ss.fff} {call.Arg<string>()}"));
-        await using QuicNode receiver = await QuicNode.Start(TestItem.PrivateKeyB, logManager: new OneLoggerLogManager(new(logger)));
+        ILogManager logs = DebugLogs(out InterfaceLogger logger);
+        await using QuicNode receiver = await QuicNode.Start(TestItem.PrivateKeyB, logManager: logs);
         receiver.Node.EthTransactions.Register(TestItem.PrivateKeyA.PublicKey, receiver,
             (_, _, _) => Task.FromResult(Array.Empty<Transaction>()));
         using X509Certificate2 certificate = LeanEthp2pIdentity.CreateCertificate(TestItem.PrivateKeyA);
@@ -232,6 +227,13 @@ public class LeanEthp2pQuicTests
         Assert.That(violation!.ApplicationErrorCode, Is.EqualTo(LeanEthp2pProtocol.ProtocolViolationError));
         await Until(() => receiver.Host.ConnectionCount == 0, "the protocol violation closes the binding");
         logger.Received().Debug(Arg.Is<string>(message => message.Contains("lean/1 violation: control stream closed")));
+    }
+
+    private static ILogManager DebugLogs(out InterfaceLogger logger)
+    {
+        logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        return new OneLoggerLogManager(new(logger));
     }
 
     [Test]

@@ -374,6 +374,13 @@ public class FrameTxValidationTests
         static TxFrame PayFrame() =>
             Frame(FrameMode.Verify, FrameFlags.ApprovePayment, TestItem.AddressB, gasLimit: 30_000);
 
+        static TxFrame DependencyFrame()
+        {
+            byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
+            data[31] = Eip8288Constants.LeanSphincsScheme;
+            return Frame(FrameMode.DepVerify, gasLimit: Eip8288Constants.LeanSphincsVerificationGas, data: data);
+        }
+
         // The prefix ends at the self-verify frame; the execution frame behind it is paid for out of
         // the transaction's own gas and is outside the budget.
         yield return Work("SelfVerify_CountsOnlyThePrefix",
@@ -391,6 +398,12 @@ public class FrameTxValidationTests
         yield return Work("OnlyVerifyThenPay_CountsBothPrefixFrames",
             [OnlyVerifyFrame(), PayFrame(), Frame(FrameMode.Sender, target: TestItem.AddressC, gasLimit: 900_000)],
             [], 70_000);
+
+        yield return Work("LeadingDependency_DoesNotCountDeclarationGas",
+            [DependencyFrame(), SelfVerifyFrame()], [], 100_000);
+
+        yield return Work("DependencyBetweenApprovalStages_DoesNotCountDeclarationGas",
+            [OnlyVerifyFrame(), DependencyFrame(), PayFrame()], [], 70_000);
 
         yield return Work("DeployThenOnlyVerifyThenPay_CountsAllThree",
             [DefaultModeFrame(), OnlyVerifyFrame(), PayFrame()], [], 120_000);

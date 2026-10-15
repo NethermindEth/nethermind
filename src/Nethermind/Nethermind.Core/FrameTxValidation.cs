@@ -326,6 +326,7 @@ public static class FrameTxValidation
     /// execution limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) plus signature verification, saturating at
     /// <see cref="ulong.MaxValue"/>. The prefix's <c>limits.state</c> is bounded separately by <c>MAX_VERIFY_STATE_GAS</c>.
     /// </summary>
+    /// <remarks>EIP-8288 dependency declarations perform no EVM work and are excluded from this bound.</remarks>
     public static ulong ValidationWorkGas(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
@@ -334,6 +335,7 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
+            if (frames[i].Mode == FrameMode.DepVerify) continue;
             total = total.SaturatingAdd(frames[i].ExecutionGasLimit);
         }
 

@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -147,7 +148,7 @@ public class FrameDependencyTests
             ],
         };
 
-        List<FrameDependency> deps = [.. Eip8288Dependencies.ForTransaction(tx)];
+        List<FrameDependency> deps = [.. Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)];
 
         Assert.That(deps.Count, Is.EqualTo(1));
         Assert.That(deps[0].Scheme, Is.EqualTo(Eip8288Constants.LeanSphincsScheme));
@@ -158,10 +159,10 @@ public class FrameDependencyTests
     {
         Block block = Build.A.Block.WithTransactions(DepTx(Eip8288Constants.LeanSphincsScheme), DepTx(Eip8288Constants.LeanStarkScheme)).TestObject;
 
-        List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block);
+        List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
 
         Assert.That(deps.Count, Is.EqualTo(2));
-        Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps)));
+        Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue), Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(deps)));
     }
 
     [Test]
@@ -210,10 +211,76 @@ public class FrameDependencyTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Eip8288Dependencies.ForTransaction(tx), Has.Count.EqualTo(1));
-            Assert.That(Eip8288Dependencies.ForBlock(block), Has.Count.EqualTo(1));
+            Assert.That(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
+            Assert.That(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
             Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
         }
+    }
+
+    [Test]
+    public void Zero_data_hash_resolves_once_before_canonicalization_without_changing_the_frame([Values(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme)] byte scheme)
+    {
+        FrameDependency raw = new(scheme, default, TestItem.KeccakA.ValueHash256);
+        FrameDependency resolved = new(raw.Scheme, TestItem.KeccakB.ValueHash256, raw.VerificationKey);
+        Transaction transaction = DepTx(raw.Scheme);
+        byte[] data = Eip8288Dependencies.Serialize([raw, resolved, raw]);
+        transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, data)];
+        byte[] encoded = TxDecoder.Instance.Encode(transaction).Bytes;
+        int calls = 0;
+
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction, _ =>
+        {
+            calls++;
+            return resolved.DataHash;
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dependencies, Is.EqualTo((FrameDependency[])[resolved]));
+            Assert.That(calls, Is.EqualTo(1));
+            Assert.That(Eip8288Dependencies.ParseFrame(transaction.Frames[0]).First().DataHash, Is.EqualTo(default(ValueHash256)));
+            Assert.That(transaction.Frames[0].Data.ToArray(), Is.EqualTo(data));
+            Assert.That(TxDecoder.Instance.Encode(transaction).Bytes, Is.EqualTo(encoded));
+        }
+    }
+
+    [Test]
+    public void Block_zero_hashes_use_each_containing_transaction_and_do_not_cache_mutable_signing_fields()
+    {
+        Transaction first = DepTx(Eip8288Constants.LeanSphincsScheme);
+        Transaction second = DepTx(Eip8288Constants.LeanSphincsScheme);
+        second.Nonce = 1;
+        first.Hash = second.Hash = TestItem.KeccakH;
+        Block block = Build.A.Block.WithTransactions(first, second).TestObject;
+        int calls = 0;
+        ValueHash256 SignatureHash(Transaction transaction)
+        {
+            calls++;
+            return FrameTxSigHash.ComputeValue(transaction);
+        }
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, SignatureHash);
+        FrameDependency[] expected = [new(Eip8288Constants.LeanSphincsScheme, FrameTxSigHash.ComputeValue(first), default),
+            new(Eip8288Constants.LeanSphincsScheme, FrameTxSigHash.ComputeValue(second), default)];
+        Assert.That(dependencies, Is.EqualTo(Eip8288Dependencies.Canonicalize(expected)));
+        Assert.That(calls, Is.EqualTo(2));
+
+        first.Nonce = 2;
+        List<FrameDependency> changed = Eip8288Dependencies.ForTransaction(first, FrameTxSigHash.ComputeValue);
+        Assert.That(changed[0].DataHash, Is.EqualTo(FrameTxSigHash.ComputeValue(first)));
+        Assert.That(changed[0].DataHash, Is.Not.EqualTo(expected[0].DataHash));
+        Assert.That(first.Hash, Is.EqualTo(TestItem.KeccakH), "dependency resolution does not trust the envelope-hash cache");
+    }
+
+    [Test]
+    public void Explicit_data_hashes_do_not_compute_the_signature_hash()
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        Transaction transaction = DepTx(dependency.Scheme);
+        transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+        static ValueHash256 UnexpectedHash(Transaction _) => throw new InvalidOperationException("explicit dependency must remain unchanged");
+        Assert.That(Eip8288Dependencies.ForTransaction(transaction, UnexpectedHash), Is.EqualTo((FrameDependency[])[dependency]));
+        Assert.That(Eip8288Dependencies.ForBlock(Build.A.Block.WithTransactions(transaction).TestObject, UnexpectedHash),
+            Is.EqualTo((FrameDependency[])[dependency]));
     }
 
     private static Transaction DepTx(byte scheme)

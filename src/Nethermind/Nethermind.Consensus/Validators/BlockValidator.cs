@@ -133,7 +133,7 @@ public class BlockValidator(
             return false;
         }
 
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
         Hash256 computed = new(Eip8288Dependencies.ComputeDepsHash(dependencies));
         if (recursiveStark.BlockDepsHash != computed)
         {

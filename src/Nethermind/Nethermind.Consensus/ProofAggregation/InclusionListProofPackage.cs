@@ -7,6 +7,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
@@ -99,7 +100,7 @@ public static class InclusionListProofValidator
     {
         List<FrameDependency> declared = [];
         foreach (Transaction tx in transactions)
-            if (tx is not null) declared.AddRange(Eip8288Dependencies.ForTransaction(tx));
+            if (tx is not null) declared.AddRange(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue));
         return Eip8288Dependencies.Canonicalize(declared);
     }
 
