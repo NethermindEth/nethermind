@@ -139,6 +139,28 @@ public class BeaconApiHeadSnapshotTests
         Assert.That(reads, Is.Zero, "a request the limiter exempts must not read a persisted state");
     }
 
+    [Test]
+    public async Task A_state_with_fewer_balances_than_validators_is_a_500_not_a_truncated_list([Values("validators", "validator_balances")] string endpoint)
+    {
+        HeadSnapshotHolder snapshots = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
+        BeaconStateFulu state = BeaconApiTestHost.RichState(host.Spec, Slot);
+        state.Balances = state.Balances![..^1];
+        host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, Hash256.Zero));
+        snapshots.Current = new HeadSnapshot(new StatusMessageV2 { HeadRoot = Head, HeadSlot = Slot, FinalizedRoot = Hash256.Zero }, null, Hash256.Zero, true)
+        {
+            State = new ForkedBeaconState.OfFulu(state),
+        };
+
+        using HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/beacon/states/head/{endpoint}");
+
+        using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError));
+        Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo(500));
+        Assert.That(body.RootElement.TryGetProperty("data", out _), Is.False, "no part of the list may precede the error");
+    }
+
     private static readonly string[] EnvelopeRoutes =
     [
         "/eth/v1/beacon/headers",

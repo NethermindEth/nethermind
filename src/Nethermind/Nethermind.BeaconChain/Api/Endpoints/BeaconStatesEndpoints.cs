@@ -349,6 +349,9 @@ internal static class BeaconStatesEndpoints
         ApiState state = resolved.State;
         Validator[] validators = state.Validators!;
         ulong[] balances = state.Balances!;
+        if (balances.Length < validators.Length)
+            return WriteInconsistentRegistry(c, validators.Length, balances.Length);
+
         ulong epoch = ctx.Spec.GetEpoch(state.Slot);
 
         HashSet<int>? indexFilter = null;
@@ -442,6 +445,9 @@ internal static class BeaconStatesEndpoints
 
         ApiState state = resolved.State;
         ulong[] balances = state.Balances!;
+        if (balances.Length < state.Validators!.Length)
+            return WriteInconsistentRegistry(c, state.Validators.Length, balances.Length);
+
         if (!TryResolveIndices(state, idFilters, out List<int>? indices, out string? invalidId))
         {
             return WriteInvalidValidatorId(c, invalidId);
@@ -555,6 +561,11 @@ internal static class BeaconStatesEndpoints
 
         return true;
     }
+
+    /// <summary>Answers 500 before any byte of a streamed list is written, so a registry that cannot be listed never yields a truncated 200.</summary>
+    private static Task WriteInconsistentRegistry(HttpContext c, int validators, int balances) =>
+        ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
+            $"The state has {validators} validators but {balances} balances.", c.RequestAborted);
 
     private static Task WriteInvalidValidatorId(HttpContext c, string? id) =>
         ApiErrors.Write(c, StatusCodes.Status400BadRequest,
