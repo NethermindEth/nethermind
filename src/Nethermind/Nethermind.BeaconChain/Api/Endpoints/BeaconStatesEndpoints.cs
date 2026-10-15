@@ -197,6 +197,12 @@ internal static class BeaconStatesEndpoints
 
         if (!StateIdResolver.TryResolveHead(ctx, stateId, out ResolvedState resolved))
         {
+            // The limiter exempts head lists, so a persisted state must not be loaded for them.
+            if (stateId == "head")
+            {
+                return ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable, "The head state is not available yet; retry later.", c.RequestAborted);
+            }
+
             if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState raw, out int errorStatus, out string? errorMessage))
             {
                 return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);

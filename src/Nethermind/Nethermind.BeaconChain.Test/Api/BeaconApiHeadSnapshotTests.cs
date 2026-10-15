@@ -116,6 +116,29 @@ public class BeaconApiHeadSnapshotTests
         Assert.That(host.Store.TryGetState(Head, out _), Is.False);
     }
 
+    [Test]
+    public async Task A_head_list_before_the_head_state_is_captured_is_refused_without_loading_a_persisted_state()
+    {
+        TestMemColumnsDb<BeaconChainDbColumns> db = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, db: db);
+        host.Store.PutState(Head, BeaconStateFulu.Encode(BeaconApiTestHost.RichState(host.Spec, Slot)));
+        host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, Hash256.Zero));
+        host.SetStatus(Head, Hash256.Zero, 0);
+        TestMemDb states = (TestMemDb)db.GetColumnDb(BeaconChainDbColumns.States);
+        int reads = 0;
+        states.ReadFunc = _ =>
+        {
+            Interlocked.Increment(ref reads);
+            return null!;
+        };
+
+        using HttpResponseMessage response = await host.GetAsync("/eth/v1/beacon/states/head/pending_deposits", "application/json");
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable));
+        Assert.That(reads, Is.Zero, "a request the limiter exempts must not read a persisted state");
+    }
+
     private static readonly string[] EnvelopeRoutes =
     [
         "/eth/v1/beacon/headers",
