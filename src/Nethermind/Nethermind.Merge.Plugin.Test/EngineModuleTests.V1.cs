@@ -17,6 +17,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -628,6 +629,20 @@ public partial class EngineModuleTests
 
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(forkchoiceState)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(executionPayload.BlockHash));
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_does_not_create_block_info_for_a_stored_head_without_one()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        Block parent = chain.BlockTree.Head!;
+        Block head = Build.A.Block.WithParent(parent).WithStateRoot(parent.StateRoot!).TestObject;
+        chain.Container.Resolve<IHeaderStore>().Insert(head.Header);
+        chain.Container.Resolve<IBlockStore>().Insert(head);
+
+        ForkchoiceStateV1 forkchoiceState = new(head.Hash!, parent.Hash!, parent.Hash!);
+        Assert.That((await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(forkchoiceState)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.That(chain.BlockTree.GetInfo(head.Number, head.Hash!).Info, Is.Null);
     }
 
 
