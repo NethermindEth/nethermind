@@ -361,7 +361,8 @@ public class GCKeeper : IDisposable
         int unconditional = _gcStrategy.CollectionsPerUnconditionalDecommit;
         DecommitDecision decision =
             load.TotalMemoryBytes <= 0 ? DecommitDecision.LoadUnknown
-            : (load.MemoryLoadBytes * 100 + load.TotalMemoryBytes / 2) / load.TotalMemoryBytes >= loadPercent ? DecommitDecision.Pressure
+            // The derived total can be a byte short of the runtime's; one part in 10^4 covers that and keeps "at or above".
+            : load.MemoryLoadBytes * 100 + load.TotalMemoryBytes / 10_000 >= load.TotalMemoryBytes * loadPercent ? DecommitDecision.Pressure
             : unconditional >= 0 && payloadsSinceDecommit >= unconditional ? DecommitDecision.SafetyNet
             : DecommitDecision.Skip;
 

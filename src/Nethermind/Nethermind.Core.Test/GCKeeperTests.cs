@@ -689,6 +689,18 @@ public class GCKeeperTests
         Assert.That(runtime.Collections, Is.EqualTo(new[] { Decommit }), $"total {load.TotalMemoryBytes}");
     }
 
+    [Test]
+    public async Task Load_just_below_the_threshold_percent_does_not_decommit()
+    {
+        IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = 696, TotalMemoryBytes = 1000 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        Assert.That(runtime.Collections, Does.Not.Contain(Decommit));
+    }
+
     /// <summary>A strategy written against <see cref="IGCStrategy"/> before it had the memory-pressure members.</summary>
     private sealed class CadenceOnlyStrategy(int collectionsPerDecommit) : IGCStrategy
     {

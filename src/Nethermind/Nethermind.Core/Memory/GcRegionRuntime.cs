@@ -41,6 +41,8 @@ internal readonly record struct GcMemoryLoad(long MemoryLoadBytes, long TotalMem
 internal sealed class GcRegionRuntime : IGcRegionRuntime
 {
     internal static readonly GcRegionRuntime Instance = new();
+    // Fixed once the runtime has started (gc.cpp compute_memory_settings), so read once rather than per check.
+    private static readonly IReadOnlyDictionary<string, object> GcConfiguration = System.GC.GetConfigurationVariables();
 
     public bool IsActive => GCSettings.LatencyMode == GCLatencyMode.NoGCRegion;
     public bool TryStart(long totalSize, long lohSize) =>
@@ -55,6 +57,6 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
     public GcMemoryLoad GetMemoryLoad()
     {
         GCMemoryInfo info = System.GC.GetGCMemoryInfo();
-        return GcMemoryLoad.FromRecorded(info.MemoryLoadBytes, info.HighMemoryLoadThresholdBytes, System.GC.GetConfigurationVariables());
+        return GcMemoryLoad.FromRecorded(info.MemoryLoadBytes, info.HighMemoryLoadThresholdBytes, GcConfiguration);
     }
 }
