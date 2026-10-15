@@ -1113,6 +1113,35 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    [CancelAfter(10_000)]
+    public async Task Range_sync_keeps_a_head_tip_when_one_peer_answers_off_it(CancellationToken token)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102, 103);
+        TestChain.Persist(store, anchor, anchorRoot, chain[..2]);
+        ForkedSignedBeaconBlock[] offTip = [new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(103, Keccak.Compute("not the tip")))];
+        bool lied = false;
+        RangeSyncTests.StubPeer peer = new("off the tip once", 103, (start, count) =>
+        {
+            if (lied) return [.. chain.Where(b => b.Message!.Slot >= start && b.Message.Slot < start + count).Select(b => new ForkedSignedBeaconBlock.OfFulu(b))];
+            lied = true;
+            return offTip;
+        });
+        Harness harness = CreateHarness(store: store, wallSlot: 103, peers: [peer]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Head = CreateHead(SszRoots.HashTreeRoot(chain[1].Message!), 102, finalizedEpoch: Spec.GetEpoch(AnchorSlot));
+        await harness.Orchestrator.ReplayStoredBlocksAsync(token);
+
+        await harness.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await harness.Orchestrator.ProcessQueuedAsync(token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(peer.RequestedRanges.Select(static r => r.Start), Is.All.EqualTo(103UL), "one peer's word does not send the round back to finalized");
+        Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(SszRoots.HashTreeRoot(chain[2].Message!)));
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task A_replayed_head_near_the_wall_clock_starts_gossip_once_the_libp2p_host_has_started(CancellationToken token)
     {
