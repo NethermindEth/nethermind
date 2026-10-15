@@ -27,7 +27,7 @@ public interface IBeaconApiConfig : IConfig
     [ConfigItem(Description = "The maximum number of downloads (as counted by `MaxConcurrentStateRequests`) per minute from one client address (an IPv6 client is counted by its /64 prefix). Requests beyond it are refused with 429. `0` disables the limit.", DefaultValue = "30")]
     int StateDownloadsPerMinutePerClient { get; set; }
 
-    [ConfigItem(Description = "The maximum number of /eth/v1/beacon/states queries other than downloads, root, fork and head's small lists (as counted by `MaxConcurrentStateRequests`) per minute from one client address (an IPv6 client is counted by its /64 prefix). Requests beyond it are refused with 429. `0` disables the limit.", DefaultValue = "60")]
+    [ConfigItem(Description = "The maximum number of /eth/v1/beacon/states queries other than downloads, root, fork and head's small lists (as counted by `MaxConcurrentStateRequests`) per minute from one client address (an IPv6 client is counted by its /64 prefix). Requests beyond it are refused with 429. `0` disables the limit.", DefaultValue = "600")]
     int StateQueriesPerMinutePerClient { get; set; }
 
     [ConfigItem(Description = "The maximum number of state requests (as counted by `MaxConcurrentStateRequests`) one client address may have in flight at once; an IPv6 client is counted by its /64 prefix, and loopback is limited like any other address. Raise it for tooling or a proxy that fronts several clients from one address. Requests beyond it are refused with 429. Must be at least 1.", DefaultValue = "1")]

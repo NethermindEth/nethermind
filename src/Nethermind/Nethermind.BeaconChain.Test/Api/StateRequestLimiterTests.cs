@@ -508,6 +508,21 @@ public class StateRequestLimiterTests
         Assert.That(second.Response.StatusCode, Is.EqualTo(StatusCodes.Status429TooManyRequests));
     }
 
+    [Test]
+    public async Task A_client_polling_a_few_validators_every_slot_is_not_rate_limited_within_an_epoch()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig());
+        int refused = 0;
+        for (int i = 0; i < 5 * 32; i++)
+        {
+            DefaultHttpContext request = StateRequest("/eth/v1/beacon/states/head/validators/1", "192.0.2.7");
+            await limiter.InvokeAsync(request, _ => Task.CompletedTask);
+            if (request.Response.StatusCode == StatusCodes.Status429TooManyRequests) refused++;
+        }
+
+        Assert.That(refused, Is.Zero, "five queries per slot across an epoch must fit the default budget");
+    }
+
     private sealed class PacedStream(TimeSpan perChunk, int bytesPerChunk = StateRequestLimiter.WriteChunkBytes) : Stream
     {
         public long Written { get; private set; }
