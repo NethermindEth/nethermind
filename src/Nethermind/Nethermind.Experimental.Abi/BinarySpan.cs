@@ -13,6 +13,8 @@ public ref struct BinarySpanReader
     private readonly ReadOnlySpan<byte> _span;
     private int _position;
 
+    public readonly int Remaining => _span.Length - _position;
+
     public BinarySpanReader(ReadOnlySpan<byte> span)
     {
         _span = span;
