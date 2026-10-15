@@ -13,6 +13,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381G2MsmPrecompile
 {
+    public static Address Address { get; } = Address.FromNumber(0xe);
+
     [SkipLocalsInit]
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {

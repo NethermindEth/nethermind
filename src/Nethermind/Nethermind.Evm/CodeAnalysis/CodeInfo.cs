@@ -15,17 +15,6 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo : IEquatable<CodeInfo>
 {
-    public static CodeInfo Empty { get; }
-    // Empty code sentinel
-    private static readonly JumpDestinationAnalyzer _emptyAnalyzer;
-
-    static CodeInfo()
-    {
-        CodeInfo stub = new(); // allocate without analyzer
-        _emptyAnalyzer = new JumpDestinationAnalyzer(stub, skipAnalysis: true);
-        Empty = new CodeInfo(_emptyAnalyzer);
-    }
-
     // Empty
     private CodeInfo() { }
     private CodeInfo(JumpDestinationAnalyzer analyzer) => _analyzer = analyzer;
