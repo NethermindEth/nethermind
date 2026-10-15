@@ -111,6 +111,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private IWorldStateScopeProvider.IScope CurrentScope =>
         _currentScope ?? throw new InvalidOperationException("Persistent storage can only be used within a world-state scope.");
 
+    // Inlined into SSTORE it can exhaust the caller's inline budget, leaving its own callees as calls.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
         IWorldStateScopeProvider.IScope currentScope = CurrentScope;
