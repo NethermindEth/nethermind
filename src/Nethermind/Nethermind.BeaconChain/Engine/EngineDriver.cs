@@ -83,18 +83,27 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// part of this call, and the execution layer accepts V4 for a head of either fork when no attributes
     /// are present. While the node identity is unknown the custody columns are <c>null</c>, which
     /// execution-apis amsterdam.md defines as a CL that provides no custody services.
+    /// A head that is a main-chain ancestor of the execution layer's head is sent as that head, with the requested safe and finalized blocks.
     /// </remarks>
     /// <exception cref="EngineUnavailableException">The call produced no status; a failure is not SYNCING.</exception>
     public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
     {
         bool firstUpdate = !_hasSentForkchoice;
         _hasSentForkchoice = true;
-        if (firstUpdate && headExecHash == safeExecHash && headExecHash == finalizedExecHash
-            && blockTree?.Head?.Header is { } currentHead
-            && blockTree.FindHeader(headExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is { } anchor
-            && anchor.Number < currentHead.Number && blockTree.IsMainChain(anchor))
+        if (blockTree?.Head?.Header is { } currentHead
+            && blockTree.FindHeader(headExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is { } requestedHead
+            && requestedHead.Number < currentHead.Number && blockTree.IsMainChain(requestedHead))
         {
-            return Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
+            if (firstUpdate && headExecHash == safeExecHash && headExecHash == finalizedExecHash)
+            {
+                return Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
+            }
+
+            // execution-apis paris.md engine_forkchoiceUpdatedV1: the EL may stay ahead of a VALID ancestor head, so it is not rewound to one.
+            if (blockTree.FindHeader(finalizedExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is { } finalized && finalized.Number <= currentHead.Number)
+            {
+                headExecHash = currentHead.Hash!;
+            }
         }
         ulong? headNumber = _logger.IsInfo ? blockTree?.FindHeader(headExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number : null;
         return CallEngineAsync("forkchoiceUpdated", _logger.IsInfo ? $"{(headNumber is { } number ? $"{number} ({headExecHash.ToShortString()})" : headExecHash.ToShortString())}, Safe: {FormatExecutionBlock(safeExecHash)}, Finalized: {FormatExecutionBlock(finalizedExecHash)}" : null, async () =>

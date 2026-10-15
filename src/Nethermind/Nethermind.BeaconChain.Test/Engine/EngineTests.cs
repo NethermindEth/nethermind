@@ -32,23 +32,35 @@ public class EngineTests
     private static readonly Hash256 TestHash = new("0x1111111111111111111111111111111111111111111111111111111111111111");
 
     [Test]
-    public async Task Initial_canonical_anchor_does_not_rewind_an_execution_head_ahead_of_it()
+    public async Task Canonical_heads_from_the_anchor_up_do_not_rewind_an_execution_head_ahead_of_them([Values(0, 2)] int importedPastAnchor)
     {
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
-        Hash256 anchor = chain.BlockTree.Head!.Hash!;
-        await chain.BuildSomeBlocks(2);
+        BlockHeader anchor = chain.BlockTree.Head!.Header;
+        await chain.BuildSomeBlocks(3);
         Hash256 head = chain.BlockTree.Head!.Hash!;
         IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
+        // Like the execution layer's handler, a requested head other than the current one is forced to be the head.
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> MoveHead(ForkchoiceStateV1 state)
+        {
+            chain.BlockTree.TryUpdateMainChain(chain.BlockTree.FindHeader(state.HeadBlockHash)!, wereProcessed: true, forceUpdateHeadBlock: true);
+            return Task.FromResult(ForkchoiceUpdatedV1Result.Valid(null, state.HeadBlockHash));
+        }
+        inner.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(call => MoveHead(call.Arg<ForkchoiceStateV1>()));
+        inner.engine_forkchoiceUpdatedV4(default!, default, default).ReturnsForAnyArgs(call => MoveHead(call.Arg<ForkchoiceStateV1>()));
         EngineDriver driver = new(CreateDetector(inner, out _), LimboLogs.Instance,
             new SlotClock(TestEngineDriver.Spec, Timestamper.Default), TestEngineDriver.Spec,
             new TestEngineDriver.FixedCustodySource(null), chain.BlockTree);
 
-        PayloadStatusV1 result = await driver.ForkchoiceUpdated(anchor, anchor, anchor);
+        PayloadStatusV1 result = await driver.ForkchoiceUpdated(anchor.Hash!, anchor.Hash!, anchor.Hash!);
+        for (ulong number = anchor.Number + 1; number <= anchor.Number + (ulong)importedPastAnchor; number++)
+        {
+            result = await driver.ForkchoiceUpdated(chain.BlockTree.FindBlockHash(number)!, anchor.Hash!, anchor.Hash!);
+        }
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(result.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(head));
-        Assert.That(inner.ReceivedCalls(), Is.Empty);
+        Assert.That(inner.ReceivedCalls(), importedPastAnchor == 0 ? Is.Empty : Is.Not.Empty, "only the first update at the anchor is answered without the engine");
     }
 
     [Test]
