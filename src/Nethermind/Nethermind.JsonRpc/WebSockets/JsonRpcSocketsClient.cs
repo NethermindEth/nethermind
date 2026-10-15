@@ -56,9 +56,10 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         JsonRpcUrl? url = null,
         long? maxBatchResponseBodySize = null,
         int concurrency = 1,
+        long? maxRequestBodySize = null,
         IPAddress? remoteAddress = null,
         StringValues forwardedFor = default)
-        : base(clientName, stream, jsonSerializer)
+        : base(clientName, stream, jsonSerializer, RequestSizeLimit(maxRequestBodySize))
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
@@ -70,6 +71,9 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         });
         _workerTaskCount = concurrency;
     }
+
+    private static int RequestSizeLimit(long? maxRequestBodySize) =>
+        (int)Math.Min(maxRequestBodySize ?? MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
     public bool IsClosed => Volatile.Read(ref _disposed) == 1;
 

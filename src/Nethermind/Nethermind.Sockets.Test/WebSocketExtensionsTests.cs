@@ -160,6 +160,7 @@ public class WebSocketExtensionsTests
             30.MB,
             1,
             null,
+            null,
             null);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
