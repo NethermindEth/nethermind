@@ -7,11 +7,13 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using EraException = Nethermind.Era1.Exceptions.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.EraE.Test.Import;
@@ -238,6 +240,23 @@ public class EraImporterTests
         Assert.That(
             () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null),
             Throws.TypeOf<EraVerificationException>());
+    }
+
+    [Test]
+    public async Task Import_ValidatesBlockAgainstItsParent()
+    {
+        // The archive's own verification passes; only the parent-relative rules, which processing cannot catch, reject.
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>()).Returns(true);
+        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), Arg.Any<bool>()).Returns(false);
+        await using ImportEnvironment env = await CreateImportEnvironment(
+            configure: b => b.AddSingleton<IBlockValidator>(blockValidator));
+        Hash256 genesisHash = env.TargetTree.Genesis!.Hash!;
+
+        Assert.That(
+            () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null),
+            Throws.TypeOf<EraVerificationException>());
+        blockValidator.Received().ValidateSuggestedBlock(Arg.Is<Block>(b => b.Number == 1), Arg.Is<BlockHeader>(p => p.Hash == genesisHash), out Arg.Any<string?>(), Arg.Any<bool>());
     }
 
     private static async Task<ImportEnvironment> CreateImportEnvironment(
