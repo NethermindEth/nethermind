@@ -87,8 +87,7 @@ public class DiscoveryV5AppTests
         builder.RegisterInstance(new CryptoRandom()).As<ICryptoRandom>();
         builder.RegisterInstance(new NetworkStorage(_discoveryDb, LimboLogs.Instance)).Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes);
         builder.RegisterInstance(Substitute.For<INodeStatsManager>()).As<INodeStatsManager>();
-        builder.RegisterInstance(new SyncConfig()).As<ISyncConfig>();
-        builder.RegisterInstance(NoopSnapServer.Instance).As<ISnapServer>();
+        builder.RegisterInstance(new SnapEnrAdvertisement(new SyncConfig(), NoopSnapServer.Instance, []));
         builder.RegisterType<NodeRecordProvider>().As<INodeRecordProvider>().WithAttributeFiltering().SingleInstance();
         IContainer container = builder.Build();
         _containers.Add(container);

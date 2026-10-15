@@ -575,6 +575,27 @@ public class NodeRecordProviderTests
         }
     }
 
+    [Test]
+    public async Task GetCurrentAsync_KeepsSequenceWhenSnap2ChangesWithoutServingSnap()
+    {
+        bool snap2Enabled = false;
+        IP2PCapabilityResolver resolver = CreateSnapCapabilityResolver(() => snap2Enabled);
+        NodeRecordProvider provider = CreateProvider(
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IForkInfo>(),
+            new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Parse("192.0.2.1")),
+            timestampMilliseconds: 1_000,
+            syncConfig: new SyncConfig { SnapServingEnabled = false },
+            capabilityResolvers: [resolver]);
+
+        NodeRecord initial = await provider.GetCurrentAsync();
+        snap2Enabled = true;
+        resolver.Changed += Raise.Event<Action>();
+        NodeRecord updated = await provider.GetCurrentAsync();
+
+        Assert.That(updated.EnrSequence, Is.EqualTo(initial.EnrSequence));
+    }
+
     private static IP2PCapabilityResolver CreateSnapCapabilityResolver(Func<bool> snap2Enabled)
     {
         IP2PCapabilityResolver resolver = Substitute.For<IP2PCapabilityResolver>();
@@ -675,9 +696,7 @@ public class NodeRecordProviderTests
             timestamper,
             logManager ?? LimboLogs.Instance,
             listenerState,
-            syncConfig ?? new SyncConfig(),
-            snapServer ?? NoopSnapServer.Instance,
-            capabilityResolvers ?? []);
+            new SnapEnrAdvertisement(syncConfig ?? new SyncConfig(), snapServer ?? NoopSnapServer.Instance, capabilityResolvers ?? []));
     }
 
     private static NetworkListenerState CreateListenerState(IIPResolver.NethermindIp resolvedIp)

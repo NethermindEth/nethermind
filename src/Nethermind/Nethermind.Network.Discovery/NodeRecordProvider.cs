@@ -5,15 +5,11 @@ using System.Net;
 using System.Net.Sockets;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Enr;
-using Nethermind.State.SnapServer;
-using Nethermind.Stats.Model;
 using NetworkForkId = Nethermind.Network.ForkId;
 
 namespace Nethermind.Network.Discovery;
@@ -28,9 +24,7 @@ public sealed class NodeRecordProvider(
     ITimestamper timestamper,
     ILogManager logManager,
     NetworkListenerState listenerState,
-    ISyncConfig syncConfig,
-    ISnapServer snapServer,
-    IP2PCapabilityResolver[] capabilityResolvers
+    SnapEnrAdvertisement snapAdvertisement
 ) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
@@ -52,10 +46,7 @@ public sealed class NodeRecordProvider(
                     blockTree.NewHeadBlock += OnNewHeadBlock;
                     listenerState.Changed += OnListenerChanged;
                     ipResolver.Changed += OnExternalIpChanged;
-                    foreach (IP2PCapabilityResolver resolver in capabilityResolvers)
-                    {
-                        resolver.Changed += OnCapabilitiesChanged;
-                    }
+                    snapAdvertisement.Changed += OnSnapAdvertisementChanged;
                     _subscribed = true;
                 }
 
@@ -108,7 +99,7 @@ public sealed class NodeRecordProvider(
     private void OnExternalIpChanged(object? sender, EventArgs e)
         => RefreshRecord(effectiveHeader: null);
 
-    private void OnCapabilitiesChanged() => RefreshRecord(effectiveHeader: null);
+    private void OnSnapAdvertisementChanged() => RefreshRecord(effectiveHeader: null);
 
     private void RefreshRecord(BlockHeader? effectiveHeader)
     {
@@ -175,11 +166,6 @@ public sealed class NodeRecordProvider(
         IPAddress? discoveryAddress = listenerState.DiscoveryAddress;
         bool advertiseV4 = SupportsEveryBoundListener(rlpxAddress, discoveryAddress, AddressFamily.InterNetwork);
         bool advertiseV6 = SupportsEveryBoundListener(rlpxAddress, discoveryAddress, AddressFamily.InterNetworkV6);
-        HashSet<Capability> capabilities = [];
-        foreach (IP2PCapabilityResolver resolver in capabilityResolvers)
-        {
-            resolver.Resolve(capabilities);
-        }
 
         return new LocalNodeRecordState(
             advertiseV4 ? ip.ExternalIpV4 : null,
@@ -187,10 +173,8 @@ public sealed class NodeRecordProvider(
             discoveryAddress is not null ? networkConfig.DiscoveryPort : null,
             advertiseV6 ? ip.ExternalIpV6 : null,
             currentForkId,
-            // Unlike Hello, which also offers snap for snap sync alone, the entry needs snap serving;
-            // a server that cannot serve (hash db layout) disconnects requests.
-            syncConfig.SnapServingEnabled == true && snapServer.CanServe,
-            capabilities.Contains(new Capability(Protocol.Snap, SnapVersions.Snap2)));
+            snapAdvertisement.ServesSnap,
+            snapAdvertisement.ServesSnap2);
     }
 
     private static bool SupportsEveryBoundListener(IPAddress? rlpxAddress, IPAddress? discoveryAddress, AddressFamily family)
