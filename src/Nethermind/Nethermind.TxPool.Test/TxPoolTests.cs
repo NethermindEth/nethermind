@@ -176,6 +176,33 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test, NonParallelizable]
+        public void TrySubmitKnown_settles_only_a_known_hash_that_needs_no_body([Values("known", "unknown", "discovery", "syncing")] string scenario)
+        {
+            if (scenario == "syncing")
+            {
+                _blockTree.Head = Build.A.Block.WithNumber(1).TestObject;
+            }
+            _txPool = CreatePool();
+            _txPool.AcceptTxWhenNotSynced = true;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _txPool.AcceptTxWhenNotSynced = false;
+            if (scenario == "discovery") _txPool.NewDiscovered += static (_, _) => { };
+            ValueHash256 hash = scenario == "unknown" ? TestItem.KeccakH : tx.Hash!;
+            long known = Metrics.PendingTransactionsKnown;
+
+            bool settled = ((IRecyclableTxPool)_txPool).TrySubmitKnown(in hash);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(settled, Is.EqualTo(scenario == "known"));
+                Assert.That(Metrics.PendingTransactionsKnown - known, Is.EqualTo(settled ? 1 : 0));
+            }
+        }
+
+        [Test, NonParallelizable]
         public void Duplicate_blob_returns_buffers_but_validation_rejection_keeps_them()
         {
             _txPool = CreatePool();

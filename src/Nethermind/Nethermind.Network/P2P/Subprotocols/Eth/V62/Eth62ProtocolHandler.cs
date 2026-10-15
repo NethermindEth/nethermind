@@ -27,7 +27,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
+    public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler, IKnownTransactionFilter
     {
         protected bool _statusReceived;
         private readonly TxFloodController _floodController;
@@ -275,7 +275,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             try
             {
-                message = Deserialize<T>(packet.Content);
+                // Pooled responses keep every item: the flood controller and announcement checks judge the response as sent.
+                using (TransactionsMessageSerializer.SkipKnown(typeof(T) == typeof(TransactionsMessage) ? this : null))
+                {
+                    message = Deserialize<T>(packet.Content);
+                }
                 TransactionsMessage transactions = getTransactions(message);
                 reservation.Attach(transactions.Transactions);
                 transactions.Transactions = reservation;
@@ -286,6 +290,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 reservation?.Dispose();
             }
+        }
+
+        bool IKnownTransactionFilter.TrySettleKnown(in ValueHash256 hash)
+        {
+            if (_txPool is not IRecyclableTxPool recyclablePool || !recyclablePool.TrySubmitKnown(in hash)) return false;
+
+            NotifiedTransactions.Set(hash);
+            _floodController.Report(AcceptTxResult.AlreadyKnown);
+            return true;
         }
 
         protected void Handle(TransactionsMessage msg)

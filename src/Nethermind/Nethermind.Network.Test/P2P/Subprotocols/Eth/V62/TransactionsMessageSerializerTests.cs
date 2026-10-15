@@ -262,6 +262,48 @@ public class TransactionsMessageSerializerTests
         }
     }
 
+    [Test]
+    public void Skips_the_transactions_a_known_filter_settles_and_never_offers_it_a_blob_transaction()
+    {
+        List<Transaction> sent = GetTransactions().ElementAt(1).ToList();
+        Transaction[] hashable = sent.Where(static tx => !tx.SupportsBlobs).ToArray();
+        RecordingKnownFilter filter = new([hashable[0].Hash!, hashable[2].Hash!]);
+        using TransactionsMessage message = new(sent.ToPooledList());
+        TransactionsMessageSerializer serializer = new();
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
+        serializer.Serialize(buffer, message);
+        buffer.MarkReaderIndex();
+
+        TransactionsMessage filtered;
+        using (TransactionsMessageSerializer.SkipKnown(filter))
+        {
+            filtered = serializer.Deserialize(buffer);
+        }
+        buffer.ResetReaderIndex();
+        using TransactionsMessage unfiltered = serializer.Deserialize(buffer);
+
+        using (filtered)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Offered, Is.EqualTo(hashable.Select(static tx => tx.Hash!.ValueHash256)), "every non-blob tx is offered once, by its real hash");
+            Assert.That(filtered.Transactions.Select(static tx => tx.Hash),
+                Is.EqualTo(sent.Where(tx => !filter.Known.Contains(tx.Hash!)).Select(static tx => tx.Hash)), "settled txs are skipped, the rest keep their hash");
+            Assert.That(unfiltered.Transactions.Count, Is.EqualTo(sent.Count), "the filter applies only inside its scope");
+        }
+    }
+
+    private sealed class RecordingKnownFilter(HashSet<ValueHash256> known) : IKnownTransactionFilter
+    {
+        public HashSet<ValueHash256> Known => known;
+        public List<ValueHash256> Offered { get; } = [];
+
+        public bool TrySettleKnown(in ValueHash256 hash)
+        {
+            Offered.Add(hash);
+            return known.Contains(hash);
+        }
+    }
+
     internal static Transaction SimpleSignedTx(ulong nonce = 0) =>
         Build.A.Transaction
             .WithNonce(nonce)
