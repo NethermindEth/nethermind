@@ -157,7 +157,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
-                BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
+                BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec, blockCall.BlockOverrides?.Withdrawals);
                 Block callBlock = new(callHeader, body);
 
                 ProcessingOptions processingFlags = payload.Validation
@@ -198,7 +198,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         TransactionWithSourceDetails[] calls,
         IWorldState stateProvider,
         Dictionary<Address, ulong> nonceCache,
-        IReleaseSpec spec)
+        IReleaseSpec spec,
+        Withdrawal[]? withdrawalsOverride)
     {
         Transaction[] transactions = new Transaction[calls.Length];
         for (int i = 0; i < calls.Length; i++)
@@ -209,7 +210,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         Withdrawal[]? withdrawals = null;
         if (spec.WithdrawalsEnabled)
         {
-            withdrawals = [];
+            withdrawals = withdrawalsOverride ?? [];
         }
 
         BlockBody body = new(transactions, null, withdrawals);
@@ -303,7 +304,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IReleaseSpec spec = specProvider.GetSpec(GetSimulatedActivation(block.BlockOverrides, result));
 
         if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
-        if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
+        if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = block.BlockOverrides?.BeaconRoot ?? Hash256.Zero;
         result.SlotNumber = GetSlotNumber(spec, specProvider, parent, result.SlotNumber, block.BlockOverrides?.Time ?? result.Timestamp);
 
         // In non-validation mode base fee is set to 0 if it is not overridden.

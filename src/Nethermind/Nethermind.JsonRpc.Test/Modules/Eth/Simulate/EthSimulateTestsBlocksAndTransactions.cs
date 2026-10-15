@@ -29,6 +29,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State.Repositories;
+using Nethermind.State.Proofs;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -281,6 +282,117 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.ToString());
         SimulateCallResult callResult = result.Data.First().Calls.First();
         Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success), callResult.Error?.Message);
+    }
+
+    private static IEnumerable<TestCaseData> SimulationOverrideCases()
+    {
+        foreach (string fork in new[] { "Paris", "Shanghai", "Cancun" })
+            foreach (string mode in new[] { "nonempty", "omitted", "null", "empty" })
+            {
+                yield return new TestCaseData(fork, mode, false);
+                if (fork != "Paris") yield return new TestCaseData(fork, mode, true);
+            }
+    }
+
+    [TestCaseSource(nameof(SimulationOverrideCases))]
+    public async Task Simulation_consumes_beacon_root_and_withdrawals(string fork, string mode, bool crossFork)
+    {
+        const ulong forkTimestamp = 2_000_000_000;
+        IReleaseSpec spec = fork switch { "Paris" => Paris.Instance, "Shanghai" => Shanghai.Instance, _ => Cancun.Instance };
+        ISpecProvider provider = new TestSpecProvider(spec);
+        if (crossFork)
+        {
+            CustomSpecProvider crossingProvider = new(
+                ((ForkActivation)0, fork == "Shanghai" ? Paris.Instance : Shanghai.Instance),
+                (ForkActivation.TimestampOnly(forkTimestamp), spec));
+            crossingProvider.UpdateMergeTransitionInfo(0, 0);
+            provider = crossingProvider;
+        }
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(provider);
+        Block canonicalHead = chain.BlockFinder.Head!;
+        ulong timestamp = crossFork ? forkTimestamp : canonicalHead.Timestamp + 12;
+        bool hasWithdrawal = mode == "nonempty" && spec.WithdrawalsEnabled;
+        Hash256 expectedRoot = mode == "nonempty" ? TestItem.KeccakA : Hash256.Zero;
+        Address recipient = TestItem.AddressD;
+        Address reader = TestItem.AddressC;
+        Withdrawal withdrawal = new() { Index = 0, ValidatorIndex = 0, Address = recipient, AmountInGwei = 7 };
+        BlockOverride overrides = new EthereumJsonSerializer().Deserialize<BlockOverride>(mode switch
+        {
+            "null" => "{\"beaconRoot\":null,\"withdrawals\":null}",
+            "empty" => $"{{\"beaconRoot\":\"{Hash256.Zero}\",\"withdrawals\":[]}}",
+            _ => "{}"
+        })!;
+        overrides.Time = timestamp;
+        if (mode == "nonempty")
+        {
+            overrides.BeaconRoot = expectedRoot;
+            overrides.Withdrawals = [withdrawal];
+        }
+        TransactionForRpc[] calls =
+        [
+            new LegacyTransactionForRpc { From = TestItem.AddressA, To = reader, Gas = 100_000, GasPrice = 0 },
+            new LegacyTransactionForRpc { From = TestItem.AddressA, To = Eip4788Constants.BeaconRootsAddress, Gas = 100_000, GasPrice = 0, Input = new UInt256(timestamp).ToBigEndian() },
+            new LegacyTransactionForRpc { From = TestItem.AddressA, To = Eip4788Constants.BeaconRootsAddress, Gas = 100_000, GasPrice = 0, Input = new UInt256(timestamp + 12).ToBigEndian() }
+        ];
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = overrides,
+                    StateOverrides = new()
+                    {
+                        [recipient] = new() { Balance = 0 },
+                        [reader] = new() { Code = Bytes.FromHexString($"73{recipient.ToString()[2..]}3160005260206000f3") },
+                        [Eip4788Constants.BeaconRootsAddress] = new() { Code = Eip4788TestConstants.Code }
+                    },
+                    Calls = calls
+                },
+                new() { BlockOverrides = new() { Time = timestamp + 12, BeaconRoot = TestItem.KeccakB }, Calls = calls }
+            ]
+        };
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.ToString());
+        SimulateBlockResult<SimulateCallResult> first = result.Data[0];
+        SimulateCallResult[] firstCalls = first.Calls.ToArray();
+        SimulateCallResult[] nextCalls = result.Data[1].Calls.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.ParentBeaconBlockRoot, Is.EqualTo(spec.IsBeaconBlockRootAvailable ? expectedRoot : null), "header root");
+            Assert.That(first.Withdrawals?.Length, Is.EqualTo(spec.WithdrawalsEnabled ? (hasWithdrawal ? 1 : 0) : (int?)null), "block withdrawals");
+            Assert.That(firstCalls[0].ReturnData, Is.EqualTo(UInt256.Zero.ToBigEndian()), "withdrawals follow transactions");
+            Assert.That(nextCalls[0].ReturnData, Is.EqualTo(new UInt256(hasWithdrawal ? 7_000_000_000UL : 0UL).ToBigEndian()), "withdrawals fund next block");
+            if (hasWithdrawal)
+            {
+                Withdrawal actual = first.Withdrawals![0];
+                Assert.That((actual.Index, actual.ValidatorIndex, actual.Address, actual.AmountInGwei),
+                    Is.EqualTo((withdrawal.Index, withdrawal.ValidatorIndex, withdrawal.Address, withdrawal.AmountInGwei)));
+                Assert.That(first.WithdrawalsRoot, Is.EqualTo(WithdrawalTrie.CalculateRoot([withdrawal])));
+            }
+            if (spec.IsBeaconBlockRootAvailable)
+            {
+                Assert.That(firstCalls[1].Status, Is.EqualTo(1), "beacon root system call precedes transactions");
+                Assert.That(firstCalls[1].ReturnData, Is.EqualTo(expectedRoot.BytesToArray()), "beacon root storage");
+                Assert.That(nextCalls[1].ReturnData, Is.EqualTo(expectedRoot.BytesToArray()), "beacon root persists");
+                Assert.That(nextCalls[2].Status, Is.EqualTo(1));
+                Assert.That(nextCalls[2].ReturnData, Is.EqualTo(TestItem.KeccakB.BytesToArray()), "next block system update");
+            }
+            Assert.That(chain.BlockFinder.Head!.Hash, Is.EqualTo(canonicalHead.Hash));
+            Assert.That(chain.ReadOnlyState.GetBalance(recipient), Is.EqualTo(UInt256.Zero));
+        }
+
+        payload.BlockStateCalls![0].StateOverrides!.Remove(recipient);
+        overrides.Withdrawals = null;
+        overrides.BeaconRoot = null;
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> isolated = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That(isolated.Result.ResultType, Is.EqualTo(Core.ResultType.Success), isolated.Result.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isolated.Data[1].Calls.First().ReturnData, Is.EqualTo(UInt256.Zero.ToBigEndian()), "withdrawals do not leak across requests");
+            if (spec.IsBeaconBlockRootAvailable)
+                Assert.That(isolated.Data[0].Calls.ElementAt(1).ReturnData, Is.EqualTo(Hash256.Zero.BytesToArray()), "beacon roots do not leak across requests");
+        }
     }
 
     private sealed class GenesisOnlyRpcBlockchain : TestRpcBlockchain
