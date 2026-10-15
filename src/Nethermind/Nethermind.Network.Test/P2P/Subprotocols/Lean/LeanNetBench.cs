@@ -304,6 +304,7 @@ public class LeanNetBenchNode
 
         Snapshot idle = default, before = default;
         int warmupAtIdle = 0, warmupAtStart = 0;
+        long shardsBefore = 0;
         Task snapshot = Task.Run(async () =>
         {
             measured = await measuredStart;
@@ -312,6 +313,7 @@ public class LeanNetBenchNode
             idle = Snapshot.Take();
             await WaitUntil(measured);
             warmupAtStart = completed.Count(e => e.Key < config.Warmup);
+            shardsBefore = binding.Broadcast?.ShardsAccepted ?? 0;
             before = Snapshot.Take();
             startSnapshotTaken.TrySetResult();
         });
@@ -377,6 +379,7 @@ public class LeanNetBenchNode
             ["transfers"] = after.Transfers.ToDictionary(static e => e.Key, e => e.Value - before.Transfers.GetValueOrDefault(e.Key)),
             ["coding_micros"] = after.Coding - before.Coding,
             ["shards_accepted"] = binding.Broadcast?.ShardsAccepted ?? 0,
+            ["shards_accepted_measured"] = (binding.Broadcast?.ShardsAccepted ?? 0) - shardsBefore,
             ["peers_at_end"] = node.Transport.PeerCount,
             ["redials"] = redials
         };

@@ -241,7 +241,14 @@ def goodput_window(results, offered_seconds, controller_seconds):
     return max(offered_seconds, controller_seconds, *observed, 1e-9)
 
 
-def prepare_measurement(run_dir, nodes, enabled, sample, clock=time.time_ns):
+def broadcast_start(earliest_ns, genesis_ns):
+    """Use a fresh duty slot in the shared 12-second benchmark profile."""
+    slot_ns = 12_000_000_000
+    slot = (max(0, earliest_ns - genesis_ns) + slot_ns - 1) // slot_ns
+    return genesis_ns + slot * slot_ns + 100_000_000
+
+
+def prepare_measurement(run_dir, nodes, enabled, sample, clock=time.time_ns, broadcast_genesis_ns=None):
     """Finish baseline reads before publishing the timestamp that releases measured work."""
     before, window = None, None
     if enabled:
@@ -250,6 +257,8 @@ def prepare_measurement(run_dir, nodes, enabled, sample, clock=time.time_ns):
         window = {"before_started_unix_ns": started, "before_finished_unix_ns": clock(),
                   "scope": "post-warmup baseline before measurement scheduling through controller stop"}
     measured = clock() + 4_000_000_000
+    if broadcast_genesis_ns is not None:
+        measured = broadcast_start(measured, broadcast_genesis_ns)
     temporary = os.path.join(run_dir, "measure.tmp")
     with open(temporary, "w") as stream:
         stream.write(str(measured))
@@ -436,11 +445,16 @@ def run(args):
             summary["error"] = summary["warmup_barrier"]["error"]
             return summary
         # Every warmup has completed. Allow two seconds of idle calibration plus two seconds to publish and schedule it.
-        measured_ns, before, wire_window = prepare_measurement(run_dir, n, args.netns, counters)
+        measured_ns, before, wire_window = prepare_measurement(run_dir, n, args.netns, counters,
+            broadcast_genesis_ns=genesis_ms * 1_000_000 if args.broadcast else None)
         if wire_window is not None:
             summary["wire_counter_window"] = wire_window
         summary["warmup_barrier"]["measured_start_unix_ns"] = measured_ns
-        summary["warmup_barrier"]["scheduled_settle_s"] = 4
+        summary["warmup_barrier"]["minimum_settle_s"] = 4
+        summary["warmup_barrier"]["scheduled_settle_s"] = (measured_ns - summary["warmup_barrier"]["observed_unix_ns"]) / 1e9
+        if args.broadcast:
+            summary["warmup_barrier"]["broadcast_slot_start_unix_ns"] = measured_ns - 100_000_000
+            summary["warmup_barrier"]["broadcast_slot_guard_ms"] = 100
         time.sleep(max(0.0, (measured_ns - 20_000_000 - time.time_ns()) / 1e9))
         cpu_before, wall_before = host_cpu(), time.time()
         all_done = wait_files("done", args.timeout + 30)
@@ -527,6 +541,8 @@ def run(args):
     summary["redials"] = sum(r.get("redials", 0) for r in results.values())
     summary["peers_lost_at_end"] = sum(max(0, len(neighbours[i]) - r.get("peers_at_end", 0)) for i, r in results.items())
     summary["broadcast_shards_accepted_total_including_warmup"] = sum(r.get("shards_accepted", 0) for r in results.values())
+    summary["broadcast_shards_accepted_measured"] = sum(r["shards_accepted_measured"] for r in results.values()) \
+        if len(results) == n and all("shards_accepted_measured" in r for r in results.values()) else None
     summary["coding_ms_total"] = sum(r["coding_micros"] for r in results.values()) / 1000
     for field in ("transfers", "events"):
         merged = {}

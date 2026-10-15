@@ -233,6 +233,24 @@ class MetricsTests(unittest.TestCase):
                 self.assertIn("error", status)
                 self.assertIn("observed_unix_ns", status)
 
+    def test_broadcast_measurement_uses_fresh_slot_after_baseline_reads(self):
+        genesis = 1_000_000_000
+        for earliest in (genesis + 11_999_999_999, genesis + 12_000_000_000, genesis + 12_000_000_001):
+            with self.subTest(earliest=earliest):
+                start = controller.broadcast_start(earliest, genesis)
+                self.assertGreaterEqual(start, earliest)
+                self.assertEqual((start - genesis) % 12_000_000_000, 100_000_000)
+        with tempfile.TemporaryDirectory() as directory:
+            now = [genesis + 1_000_000_000]
+            def sample(node):
+                self.assertFalse(Path(directory, "measure").exists())
+                now[0] += 10_000_000_000
+                return {"tx_bytes": node}
+            measured, _, _ = controller.prepare_measurement(directory, 2, True, sample, lambda: now[0], genesis)
+            self.assertEqual(measured, genesis + 36_000_000_000 + 100_000_000)
+            self.assertGreaterEqual(measured, now[0] + 4_000_000_000)
+            self.assertEqual(int(Path(directory, "measure").read_text()), measured)
+
     def test_partial_measurement_is_retained_but_not_complete(self):
         rows = [{'missing': 2, 'goodput_tx_per_s_per_receiver': 4}, {'error': 'timeout'}]
         self.assertEqual(report.measured_values(rows, 'goodput_tx_per_s_per_receiver'), [4])
