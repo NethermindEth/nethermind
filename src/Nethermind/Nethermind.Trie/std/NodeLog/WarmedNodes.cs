@@ -52,13 +52,18 @@ internal sealed class WarmedNodes(int capacity)
             : rented = ArrayPool<byte>.Shared.Rent(length);
         Span<byte> recordBytes = buffer[..length];
         NodeRecord.WriteFromRlp(rlp, kind, hashMask, expectedHash, NodeRecord.NodeKey(address, path), recordBytes);
-        bool added = _table.TryAdd(recordBytes, out record);
+        bool added = _table.TryAdd(address, path, recordBytes, out record);
         if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
         return added;
     }
 
+    /// <summary>Inserts a record already verified against its hash, such as one read from the trie node cache.</summary>
+    /// <inheritdoc cref="RecordTable.TryAdd"/>
+    public bool TryAdd(Hash256? address, in TreePath path, NodeRecordRef record, out NodeRecordRef added) =>
+        _table.TryAdd(address, path, record.Span, out added);
+
     /// <inheritdoc cref="RecordTable.CopyAllTo"/>
-    public void CopyAllTo(ICollection<NodeRecordRef> records) => _table.CopyAllTo(records);
+    public void CopyAllTo(ICollection<(Hash256? Address, TreePath Path, NodeRecordRef Record)> records) => _table.CopyAllTo(records);
 
     /// <inheritdoc cref="RecordTable.Reset"/>
     public void Reset() => _table.Reset();

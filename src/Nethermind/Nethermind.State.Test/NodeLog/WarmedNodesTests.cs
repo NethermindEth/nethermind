@@ -66,11 +66,14 @@ internal class WarmedNodesTests
             largeRecords.Add((largeRecord, largeRlp));
         }
 
-        List<NodeRecordRef> copied = [];
+        List<(Hash256 Address, TreePath Path, NodeRecordRef Record)> copied = [];
         warmed.CopyAllTo(copied);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(copied.Select(copy => copy.Rlp.ToArray()), Is.EqualTo(new[] { rlp, otherRlp }.Concat(largeRecords.Select(large => large.Rlp))), "every record in arena order");
+            Assert.That(copied.Select(copy => copy.Record.Rlp.ToArray()), Is.EqualTo(new[] { rlp, otherRlp }.Concat(largeRecords.Select(large => large.Rlp))), "every record in arena order");
+            Assert.That(copied.Select(copy => (copy.Address, copy.Path)),
+                Is.EqualTo(new[] { path, collidingPath }.Concat(Enumerable.Range(0, LargeRecordCount).Select(i => Path(1000 + i))).Select(insertedPath => (address, insertedPath))),
+                "with the address and path each was inserted for");
             Assert.That(initialArenaBytes, Is.EqualTo(ChunkBytes), "one chunk");
             Assert.That(warmed.ArenaBytes, Is.EqualTo(3 * ChunkBytes), "grows across chunk boundaries");
             Assert.That(largeRecords.Select(large => large.Record.Rlp.SequenceEqual(large.Rlp)), Is.All.True, "records in every chunk");
@@ -97,8 +100,8 @@ internal class WarmedNodesTests
         int alignedRecordLength = (Record(Path(0), TrieNodeLogTests.Leaf(0, 400)).Length + NodeRecord.RecordAlignment - 1) & -NodeRecord.RecordAlignment;
         int fittingRecordCount = ChunkBytes / alignedRecordLength + lastChunkBytes / alignedRecordLength;
 
-        bool allAdded = Enumerable.Range(0, fittingRecordCount).All(i => table.TryAdd(Record(Path(i), TrieNodeLogTests.Leaf(i, 400)), out _));
-        bool overBudgetAdded = table.TryAdd(Record(Path(fittingRecordCount), TrieNodeLogTests.Leaf(fittingRecordCount, 400)), out NodeRecordRef overBudget);
+        bool allAdded = Enumerable.Range(0, fittingRecordCount).All(i => table.TryAdd(null, Path(i), Record(Path(i), TrieNodeLogTests.Leaf(i, 400)), out _));
+        bool overBudgetAdded = table.TryAdd(null, Path(fittingRecordCount), Record(Path(fittingRecordCount), TrieNodeLogTests.Leaf(fittingRecordCount, 400)), out NodeRecordRef overBudget);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(allAdded, Is.True, "adds within the budget");

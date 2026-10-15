@@ -298,7 +298,7 @@ public class SnapshotBundleWarmerTests
         int disposals = 0;
         int retiredRecords = 0;
         int foreignRecords = 0;
-        List<NodeRecordRef> records = [];
+        List<(Hash256? Address, TreePath Path, NodeRecordRef Record)> records = [];
         ulong blockNumber = 0;
         ChurnEpoch current = published;
         while (sw.ElapsedMilliseconds < ChurnMilliseconds && !Volatile.Read(ref stop))
@@ -310,7 +310,7 @@ public class SnapshotBundleWarmerTests
             records.Clear();
             retired.WarmedNodes.CopyAllTo(records);
             retiredRecords += records.Count;
-            foreignRecords += records.Count(record => record.Hash != current.Root.Hash);
+            foreignRecords += records.Count(record => record.Record.Hash != current.Root.Hash);
             snapshot!.Dispose();
             retired.ReleaseLease();
             retirements++;
@@ -403,40 +403,67 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    // A node a warm-up fetched for one block is promoted to the cache when the block's transient retires, so the next block's
-    // warm-ups and bulk sets read it from the cache instead of persistence.
+    // A node a block fetched is promoted to the cache when the block's transient retires, so the next block's warm-ups and
+    // bulk sets read it from the cache instead of persistence. That cache hit is warmed again, so the node is promoted again
+    // and survives the next promotion replacing its full shard, unlike a cached node the next block did not read.
     [Test]
-    public void Warmed_records_are_promoted_and_the_next_block_reads_them_from_the_cache_without_persistence([Values] bool storage)
+    public void Warmed_records_are_promoted_and_cache_hits_are_promoted_again([Values] bool storage, [Values] bool warmUp)
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
         byte[] rootRlp = FlatTestHelpers.LeafRlp(0x80);
         (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(rootRlp);
+        // In the root's shard, as their first path byte is zero too.
+        TreePath unreadPath = TreePath.FromHexString("00");
+        TreePath replacingPath = TreePath.FromHexString("0000");
+        persisted[unreadPath] = FlatTestHelpers.LeafRlp(0x81);
+        persisted[replacingPath] = FlatTestHelpers.LeafRlp(0x82);
         NodeReader reader = new(persisted);
-        TrieNodeCache cache = new(new FlatDbConfig());
+        // Each shard's arena fits two records of these leaves but not three.
+        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = 256 * 128 });
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool, reader), cache, _log, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        bundle.WarmUp(address, root, ValueKeccak.Zero);
-        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
-        try
-        {
-            cache.Add(retired!);
-        }
-        finally
-        {
-            snapshot?.Dispose();
-            retired?.ReleaseLease();
-        }
-
+        LoadRoot(out _);
+        Load(unreadPath);
+        Retire(1);
         int readsInFirstBlock = reader.Reads;
-        bundle.WarmUp(address, root, ValueKeccak.Zero);
-        bool loaded = bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, out NodeRecordRef record);
+        Load(replacingPath);
+        bool rootLoaded = LoadRoot(out NodeRecordRef rootRecord);
+        Retire(2);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(readsInFirstBlock, Is.EqualTo(1));
-            Assert.That(reader.Reads, Is.EqualTo(readsInFirstBlock));
-            Assert.That(loaded, Is.True);
-            Assert.That(record.Rlp.ToArray(), Is.EqualTo(rootRlp));
+            Assert.That(readsInFirstBlock, Is.EqualTo(2));
+            Assert.That(reader.Reads, Is.EqualTo(readsInFirstBlock + 1), "the root read from the cache");
+            Assert.That(rootLoaded, Is.True);
+            Assert.That(rootRecord.Rlp.ToArray(), Is.EqualTo(rootRlp));
+            Assert.That(Cached(TreePath.Empty), Is.True, "the cache hit promoted again");
+            Assert.That(Cached(replacingPath), Is.True);
+            Assert.That(Cached(unreadPath), Is.False, "replaced with its shard");
+        }
+
+        bool LoadRoot(out NodeRecordRef record)
+        {
+            if (warmUp) bundle.WarmUp(address, root, ValueKeccak.Zero);
+            return bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, out record);
+        }
+
+        void Load(in TreePath path) => bundle.TryLoadTrieNodeRecord(address, path, ValueKeccak.Compute(persisted[path]), out _);
+
+        bool Cached(in TreePath path) => cache.TryGet(address, path, ValueKeccak.Compute(persisted[path]), out _);
+
+        void Retire(ulong blockNumber)
+        {
+            (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(
+                new StateId(blockNumber - 1, TestItem.KeccakA), new StateId(blockNumber, TestItem.KeccakA), null);
+            try
+            {
+                cache.Add(retired!);
+            }
+            finally
+            {
+                snapshot?.Dispose();
+                retired?.ReleaseLease();
+            }
         }
     }
 

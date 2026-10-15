@@ -356,7 +356,7 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>Loads the record of a trie node the trie node log does not hold, for a bulk set or point read.</summary>
     /// <remarks>
     /// Tries the nodes warmed for this block, then the trie node cache, then persistence, whose node is verified against
-    /// <paramref name="hash"/> and added to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
+    /// <paramref name="hash"/>; either is added to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
     /// are in the log, which their retains keep readable, so they are looked up by path only as a last resort that counts
     /// <see cref="Metrics.TrieNodeLogFallbackReads"/>.
     /// </remarks>
@@ -367,7 +367,7 @@ public sealed class SnapshotBundle : IDisposable
 
         WarmedNodes warmed = _transientResource.WarmedNodes;
         if (warmed.TryGet(address, path, hash, out record)
-            || _trieNodeCache.TryGet(address, path, hash, out record)
+            || TryWarmCachedRecord(warmed, address, path, hash, out record)
             || TryInsertPersistedRecord(warmed, address, path, hash, out record)) return true;
 
         if (!TryFindInMemoryRecord(_snapshots, address, path, hash, out record)
@@ -406,6 +406,15 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
+    /// <summary>Reads the node from the trie node cache into <paramref name="warmed"/>, so it is promoted to the cache again when the block retires.</summary>
+    private bool TryWarmCachedRecord(WarmedNodes warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
+    {
+        if (!_trieNodeCache.TryGet(address, path, hash, out record)) return false;
+
+        warmed.TryAdd(address, path, record, out _);
+        return true;
+    }
+
     /// <summary>Reads the node at <paramref name="path"/> from persistence into <paramref name="warmed"/>, if it hashes to <paramref name="hash"/>.</summary>
     private bool TryInsertPersistedRecord(WarmedNodes warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
     {
@@ -432,12 +441,12 @@ public sealed class SnapshotBundle : IDisposable
         return false;
     }
 
-    /// <summary>The node source of a warm-up: the nodes already warmed, then the trie node cache, then the verified persisted node, which it warms.</summary>
+    /// <summary>The node source of a warm-up: the nodes already warmed, then the trie node cache, then the verified persisted node, warming the cached and persisted nodes it reads.</summary>
     private sealed class WarmUpRecordSource(SnapshotBundle bundle, TransientResource transientResource, Hash256? address) : INodeRecordSource
     {
         public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
             transientResource.WarmedNodes.TryGet(address, path, hash, out record)
-            || bundle._trieNodeCache.TryGet(address, path, hash, out record)
+            || bundle.TryWarmCachedRecord(transientResource.WarmedNodes, address, path, hash, out record)
             || bundle.TryInsertPersistedRecord(transientResource.WarmedNodes, address, path, hash, out record);
     }
 

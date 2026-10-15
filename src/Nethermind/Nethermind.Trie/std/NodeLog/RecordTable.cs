@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Threading;
 using Nethermind.Core.Crypto;
@@ -15,6 +16,7 @@ namespace Nethermind.Trie.NodeLog;
 /// <c>signature:32 | chunk:15 | offset/8:17</c>, where the signature is the high 32 key bits with bit 0 set so that 0 means empty.
 /// An add that collides with another position replaces it. The arena is a list of 1 MiB chunks that never move.
 /// Adds run under a lock and publish a record with a release write of its slot after copying it, so readers need no lock.
+/// The address and path of every copied record are kept beside it for <see cref="CopyAllTo"/>.
 /// </remarks>
 /// <param name="slotCount">A power of two.</param>
 /// <param name="maxArenaBytes">The arena budget; an add that does not fit fails.</param>
@@ -32,7 +34,7 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
         : throw new ArgumentException("The slot count must be a power of two.", nameof(slotCount));
     private readonly ulong _slotMask = (ulong)slotCount - 1;
     private readonly long _maxArenaBytes = Math.Min(maxArenaBytes, (long)MaxChunks * ChunkBytes);
-    private readonly List<uint> _recordPositions = [];
+    private readonly List<(Hash256? Address, TreePath Path, uint Position)> _addedRecords = [];
     private byte[][] _chunks = [];
     private int _chunkCount;
     private int _chunkUsed;
@@ -43,7 +45,7 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
     {
         get
         {
-            lock (_lock) return _recordPositions.Count;
+            lock (_lock) return _addedRecords.Count;
         }
     }
 
@@ -66,13 +68,15 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
     }
 
     /// <summary>Copies <paramref name="record"/> into the arena and maps its node key to the copy.</summary>
-    /// <param name="record">A whole record; its node key picks the slot.</param>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="record">A whole record of the node at <paramref name="path"/>; its node key picks the slot.</param>
     /// <param name="added">The copy, or the record already mapped when it has the same node key and hash.</param>
     /// <returns>False when the arena is full.</returns>
-    public bool TryAdd(ReadOnlySpan<byte> record, out NodeRecordRef added)
+    public bool TryAdd(Hash256? address, in TreePath path, ReadOnlySpan<byte> record, out NodeRecordRef added)
     {
         RecordView view = new(record);
         ulong nodeKey = view.NodeKey;
+        Debug.Assert(nodeKey == NodeRecord.NodeKey(address, path), "The record is not of the node at the path.");
         ref ulong slot = ref _slots[nodeKey & _slotMask];
         lock (_lock)
         {
@@ -90,21 +94,21 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
             }
 
             record.CopyTo(_chunks[position >> OffsetBits].AsSpan(OffsetOf(position)));
-            _recordPositions.Add(position);
+            _addedRecords.Add((address, path, position));
             Volatile.Write(ref slot, Signature(nodeKey) << 32 | position);
             added = RecordAt(position);
             return true;
         }
     }
 
-    /// <summary>Appends every record in the arena, in arena order, to <paramref name="records"/>.</summary>
-    public void CopyAllTo(ICollection<NodeRecordRef> records)
+    /// <summary>Appends every record in the arena, in arena order, with the address and path it was added for, to <paramref name="records"/>.</summary>
+    public void CopyAllTo(ICollection<(Hash256? Address, TreePath Path, NodeRecordRef Record)> records)
     {
         lock (_lock)
         {
-            foreach (uint position in _recordPositions)
+            foreach ((Hash256? address, TreePath path, uint position) in _addedRecords)
             {
-                records.Add(RecordAt(position));
+                records.Add((address, path, RecordAt(position)));
             }
         }
     }
@@ -115,12 +119,12 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
     {
         lock (_lock)
         {
-            foreach (uint position in _recordPositions)
+            foreach ((_, _, uint position) in _addedRecords)
             {
                 _slots[RecordAt(position).View.NodeKey & _slotMask] = 0;
             }
 
-            _recordPositions.Clear();
+            _addedRecords.Clear();
             if (_chunkCount == 0) return;
 
             Array.Clear(_chunks, 1, _chunkCount - 1);

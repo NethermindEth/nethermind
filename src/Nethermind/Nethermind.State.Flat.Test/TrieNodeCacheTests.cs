@@ -101,6 +101,34 @@ public class TrieNodeCacheTests
         }
     }
 
+    // A shard is picked by the first path byte plus the first address byte, so nodes agreeing on that sum share a shard's
+    // replacement while any other node keeps its own shard.
+    [TestCase(null, "abcd", null, "ab12", true)]
+    [TestCase(null, "abcd", null, "ac12", false)]
+    [TestCase("01", "10cd", "10", "0112", true)]
+    [TestCase("01", "abcd", null, "abcd", false)]
+    [TestCase("01", "abcd", "02", "abcd", false)]
+    public void Nodes_of_one_shard_share_its_replacement(string? addressByte, string pathHex, string? otherAddressByte, string otherPathHex, bool sameShard)
+    {
+        Hash256? address = Address(addressByte);
+        Hash256? otherAddress = Address(otherAddressByte);
+        TreePath path = TreePath.FromHexString(pathHex);
+        TreePath otherPath = TreePath.FromHexString(otherPathHex);
+        // Each shard's arena fits one record of these leaves but not two.
+        TrieNodeCache cache = NewCache(256 * 64);
+
+        Promote(cache, address, (path, RlpA));
+        Promote(cache, otherAddress, (otherPath, RlpB));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Contains(cache, otherAddress, otherPath, RlpB), Is.True);
+            Assert.That(Contains(cache, address, path, RlpA), Is.EqualTo(!sameShard), "replaced with its shard");
+        }
+
+        static Hash256? Address(string? firstByte) => firstByte is null ? null : new Hash256(Bytes.FromHexString(firstByte.PadRight(64, '0')));
+    }
+
     [Test]
     public void Add_waits_for_the_exclusive_lease_and_caches_only_with_a_budget([Values] bool storage, [Values(0UL, 1UL << 20)] ulong memoryBudget)
     {

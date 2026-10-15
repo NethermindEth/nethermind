@@ -15,15 +15,15 @@ namespace Nethermind.State.Flat;
 /// </summary>
 /// <remarks>
 /// The records live in 256 shards, each a direct-mapped <see cref="RecordTable"/> holding an equal share of the memory budget,
-/// so a collision replaces the older record and a lookup checks the record's hash. A record holds its node key but not its path,
-/// so the shard is picked by node key bits that neither the slot index nor the signature of a shard's table uses.
+/// so a collision replaces the older record and a lookup checks the record's hash. The shard is picked by the first path byte
+/// plus the first address byte, so the nodes of one subtree, which tend to be read together, share a shard, while the storage
+/// trie roots spread over the shards.
 /// A shard whose arena is full is replaced by an empty one instead of being reset: its arrays are never reused, so a reader
 /// still holding one of its records keeps reading the same bytes. A budget of zero caches nothing.
 /// </remarks>
 public sealed class TrieNodeCache(IFlatDbConfig flatDbConfig) : ITrieNodeCache
 {
     private const int ShardCount = 256;
-    private const int ShardKeyShift = 24;
     private const int AverageRecordBytes = 350;
     private const double UtilRatio = 0.25;
     private const int MinSlotsPerShard = 16;
@@ -35,7 +35,7 @@ public sealed class TrieNodeCache(IFlatDbConfig flatDbConfig) : ITrieNodeCache
 
     public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
     {
-        RecordTable? shard = Volatile.Read(ref _shards[ShardOf(NodeRecord.NodeKey(address, path))]);
+        RecordTable? shard = Volatile.Read(ref _shards[ShardOf(address, path)]);
         if (shard is not null) return shard.TryGet(address, path, hash, out record);
 
         record = default;
@@ -48,17 +48,20 @@ public sealed class TrieNodeCache(IFlatDbConfig flatDbConfig) : ITrieNodeCache
         transientResource.WaitForExclusiveLease();
         if (_shardMemoryBudget == 0) return;
 
-        using ArrayPoolList<NodeRecordRef> warmed = new(transientResource.WarmedNodes.Count);
+        using ArrayPoolList<(Hash256? Address, TreePath Path, NodeRecordRef Record)> warmed = new(transientResource.WarmedNodes.Count);
         transientResource.WarmedNodes.CopyAllTo(warmed);
         if (warmed.Count == 0) return;
 
         int[] shardStarts = new int[ShardCount + 1];
-        foreach (NodeRecordRef record in warmed.AsSpan()) shardStarts[ShardOf(record) + 1]++;
+        foreach ((Hash256? address, TreePath path, _) in warmed.AsSpan()) shardStarts[ShardOf(address, path) + 1]++;
         for (int shard = 1; shard <= ShardCount; shard++) shardStarts[shard] += shardStarts[shard - 1];
 
         int[] nextPositions = shardStarts[..ShardCount];
-        using ArrayPoolList<NodeRecordRef> byShard = new(warmed.Count, warmed.Count);
-        foreach (NodeRecordRef record in warmed.AsSpan()) byShard[nextPositions[ShardOf(record)]++] = record;
+        using ArrayPoolList<(Hash256? Address, TreePath Path, NodeRecordRef Record)> byShard = new(warmed.Count, warmed.Count);
+        foreach ((Hash256? Address, TreePath Path, NodeRecordRef Record) warmedRecord in warmed.AsSpan())
+        {
+            byShard[nextPositions[ShardOf(warmedRecord.Address, warmedRecord.Path)]++] = warmedRecord;
+        }
 
         Parallel.For(0, ShardCount, shard => AddToShard(shard, byShard.AsSpan()[shardStarts[shard]..shardStarts[shard + 1]]));
 
@@ -76,22 +79,20 @@ public sealed class TrieNodeCache(IFlatDbConfig flatDbConfig) : ITrieNodeCache
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = 0;
     }
 
-    private static int ShardOf(ulong nodeKey) => (int)(nodeKey >> ShardKeyShift) & (ShardCount - 1);
+    private static int ShardOf(Hash256? address, in TreePath path) => (path.Path.Bytes[0] + (address?.Bytes[0] ?? 0)) % ShardCount;
 
-    private static int ShardOf(in NodeRecordRef record) => ShardOf(record.View.NodeKey);
-
-    private void AddToShard(int shardIndex, ReadOnlySpan<NodeRecordRef> records)
+    private void AddToShard(int shardIndex, ReadOnlySpan<(Hash256? Address, TreePath Path, NodeRecordRef Record)> records)
     {
         if (records.IsEmpty) return;
 
         RecordTable shard = _shards[shardIndex] ?? ReplaceShard(shardIndex);
-        foreach (NodeRecordRef record in records)
+        foreach ((Hash256? address, TreePath path, NodeRecordRef record) in records)
         {
             // A record that does not fit an empty shard is skipped rather than replacing the shard for nothing.
-            if (shard.TryAdd(record.Span, out _) || shard.ArenaBytes == 0) continue;
+            if (shard.TryAdd(address, path, record.Span, out _) || shard.ArenaBytes == 0) continue;
 
             shard = ReplaceShard(shardIndex);
-            shard.TryAdd(record.Span, out _);
+            shard.TryAdd(address, path, record.Span, out _);
         }
     }
 
