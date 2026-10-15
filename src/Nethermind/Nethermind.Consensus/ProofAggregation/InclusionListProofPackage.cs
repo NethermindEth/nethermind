@@ -95,7 +95,7 @@ public static class InclusionListProofValidator
     }
 
     /// <summary>Spec <c>dependencies(transactions)</c>: the sorted, deduplicated union over every entry.</summary>
-    public static List<FrameDependency> DependenciesOf(IReadOnlyList<Transaction> transactions)
+    internal static List<FrameDependency> DependenciesOf(IReadOnlyList<Transaction> transactions)
     {
         List<FrameDependency> declared = [];
         foreach (Transaction tx in transactions)

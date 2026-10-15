@@ -421,6 +421,37 @@ public class BlockValidatorTests
         return _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body);
     }
 
+    [TestCase(false, null, true)]
+    [TestCase(false, new byte[0], false)]
+    [TestCase(true, null, false)]
+    [TestCase(true, new byte[0], false)]
+    [TestCase(true, new byte[] { 2 }, false)]
+    [TestCase(true, new byte[] { 1 }, true)]
+    public void ValidateBodyAgainstHeader_binds_proof_presence_and_hash(bool commitmentPresent, byte[]? proof, bool expected)
+    {
+        Block block = Build.A.Block.TestObject;
+        block.Header.RecursiveStark = commitmentPresent ? new(Keccak.Compute(new byte[] { 1 }), Keccak.OfAnEmptyString) : null;
+        block.StarkProof = proof;
+
+        bool valid = _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(expected));
+            Assert.That(error, expected ? Is.Null : Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void ValidateBodyAgainstHeader_accepts_committed_empty_proof()
+    {
+        Block block = Build.A.Block.TestObject;
+        block.Header.RecursiveStark = new(Keccak.OfAnEmptyString, Keccak.OfAnEmptyString);
+        block.StarkProof = [];
+
+        Assert.That(_blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error), Is.True, error);
+    }
+
     [TestCase(false, ExpectedResult = true, TestName = "ValidateProcessedBlock_HashesAreTheSame_ReturnsTrue")]
     [TestCase(true, ExpectedResult = false, TestName = "ValidateProcessedBlock_StateRootIsWrong_ReturnsFalse")]
     public bool ValidateProcessedBlock_Returns(bool wrongStateRoot)

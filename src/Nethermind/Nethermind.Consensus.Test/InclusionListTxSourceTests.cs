@@ -92,6 +92,35 @@ public class InclusionListTxSourceTests
     }
 
     [Test]
+    public void Legacy_fallback_replaces_metadata_and_clears_unverified_coverage([Values("counted", "flattened", "absent")] string mode)
+    {
+        IInclusionListTxSource source = new LegacyInclusionListTxSource();
+        Transaction transaction = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        byte[] encoded = Encode(transaction);
+        PayloadAttributes attributes = mode switch
+        {
+            "counted" => new() { InclusionLists = [new InclusionListV1 { CommitteeIndex = 5, Transactions = [encoded] }] },
+            "flattened" => new() { InclusionListTransactions = [encoded] },
+            _ => null
+        };
+        BlockToProduce block = new(Build.A.BlockHeader.WithNumber(1).TestObject)
+        {
+            InclusionListTransactions = [transaction],
+            InclusionLists = [new CommitteeInclusionList(0, [transaction], null)],
+            InclusionListProofInput = new AggregationInput()
+        };
+
+        source.ApplyInclusionList(block, attributes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.InclusionListTransactions?.Length ?? 0, Is.EqualTo(mode == "absent" ? 0 : 1));
+            Assert.That(block.InclusionLists?.Count ?? 0, Is.EqualTo(mode == "counted" ? 1 : 0));
+            Assert.That(block.InclusionListProofInput, Is.Null);
+        }
+    }
+
+    [Test]
     public void Payload_improvements_reuse_one_verified_snapshot()
     {
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };

@@ -35,7 +35,7 @@ public class LeanObjectTransportTests
     private static void ServeAll(LeanTestNode node, LeanPeer peer, FakeLink link, LeanDescriptor descriptor, byte[] body)
     {
         HashSet<ulong> served = [];
-        while (link.Sent<GetChunksMessage>().FirstOrDefault(request => !served.Contains(request.RequestId)) is { } request)
+        while (link.Sent<GetChunksMessage>().FirstOrDefault(request => request.ObjectId == descriptor.ObjectId && !served.Contains(request.RequestId)) is { } request)
         {
             served.Add(request.RequestId);
             Serve(node, peer, request, descriptor, body);
@@ -100,7 +100,7 @@ public class LeanObjectTransportTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(node.Transport.IncompleteBytes + node.Transport.CompletionBytes,
-                        Is.EqualTo(body.Length + Eip8288Constants.MaxAggregateProofBytes + 512 * 1024));
+                        Is.EqualTo(body.Length + Eip8288Constants.MaxAggregateProofBytes + 512 * 1024 + descriptor.ChunkCount * 24L + 1024));
                     Assert.That(peer.ChargedBytes, Is.LessThanOrEqualTo(LeanLimits.MaxPeerBytes));
                     Assert.That(link.Penalties, Is.Empty);
                 }
@@ -111,6 +111,41 @@ public class LeanObjectTransportTests
             Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(512 * 1024));
         }
         Assert.That(node.Transport.IncompleteBytes, Is.Zero);
+    }
+
+    [Test]
+    public async Task Concurrent_maximum_proofs_queue_until_decoder_capacity_is_released()
+    {
+        using LeanTestNode node = new();
+        Transaction first = FrameTransaction(90), second = FrameTransaction(91);
+        node.Pending.Add(first);
+        node.Pending.Add(second);
+        byte[] firstBody = Wrapper(Eip8288Constants.MaxAggregateProofBytes, true, first);
+        byte[] secondBody = Wrapper(Eip8288Constants.MaxAggregateProofBytes, true, second);
+        LeanDescriptor firstDescriptor = Describe(firstBody), secondDescriptor = Describe(secondBody);
+        FakeLink link = Link("maximum");
+        LeanPeer peer = node.Connect(link);
+        Assert.That(node.Transport.TryReserveNodeBytes(link.NodeKey, 512 * 1024, out IDisposable? credit), Is.True);
+        using (credit)
+        using (ManualResetEventSlim gate = new())
+        {
+            node.Verifier.Gate = gate;
+            node.Transport.OnAnnounce(peer, new([firstDescriptor, secondDescriptor]));
+            ServeAll(node, peer, link, firstDescriptor, firstBody);
+            await node.Verifier.Entered.Task.WaitAsync(Timeout);
+            try
+            {
+                Assert.That(link.Sent<GetChunksMessage>().Any(request => request.ObjectId == secondDescriptor.ObjectId), Is.False);
+                Assert.That(peer.ChargedBytes, Is.LessThanOrEqualTo(LeanLimits.MaxPeerBytes));
+            }
+            finally { gate.Set(); }
+            await Until(() => link.Sent<GetChunksMessage>().Any(request => request.ObjectId == secondDescriptor.ObjectId));
+            ServeAll(node, peer, link, secondDescriptor, secondBody);
+            await Until(() => node.Transport.IsStored(firstDescriptor.ObjectId) && node.Transport.IsStored(secondDescriptor.ObjectId));
+            await Until(() => node.Transport.AssemblyCount == 0);
+            Assert.That(link.Penalties, Is.Empty);
+            Assert.That(peer.ChargedBytes, Is.EqualTo(512 * 1024));
+        }
     }
 
     [Test]
@@ -157,7 +192,7 @@ public class LeanObjectTransportTests
     }
 
     [Test]
-    public void Announcements_allocate_metadata_and_only_one_source_receives_body_requests()
+    public void Retrieval_reserves_capacity_and_only_one_source_receives_body_requests()
     {
         using LeanTestNode node = new();
         FakeLink a = Link("a"), b = Link("b");
@@ -170,7 +205,8 @@ public class LeanObjectTransportTests
             Assert.That(a.Sent<GetChunksMessage>(), Has.Length.EqualTo(4));
             Assert.That(a.Sent<GetChunksMessage>().All(request => request.Indices.Length <= 32), Is.True);
             Assert.That(b.Sent<GetChunksMessage>(), Is.Empty);
-            Assert.That(node.Transport.IncompleteBytes, Is.LessThan(64 * 1024));
+            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(peerA.ChargedBytes));
+            Assert.That(peerA.ChargedBytes, Is.LessThan(LeanLimits.MaxPeerBytes));
             Assert.That(node.Transport.AssemblyCount, Is.EqualTo(1));
         }
     }
@@ -190,7 +226,8 @@ public class LeanObjectTransportTests
         Serve(node, peerA, first, descriptor, body, 2, LeanCompleteStatus.Unavailable);
         GetChunksMessage restarted = b.Sent<GetChunksMessage>().Single();
         Assert.That(restarted.Indices, Does.Contain(0));
-        Assert.That(node.Transport.IncompleteBytes, Is.LessThan(64 * 1024), "old source buffer released before new body allocation");
+        Assert.That(peerA.ChargedBytes, Is.EqualTo(descriptor.ChunkCount * 24L + 1024), "only metadata remains on the origin");
+        Assert.That(peerB.ChargedBytes, Is.EqualTo(2L * body.Length), "replacement source reserves body and decoding capacity");
         ServeAll(node, peerB, b, descriptor, body);
         await Until(() => node.Transport.IsStored(descriptor.ObjectId));
         Assert.That(node.Pending.Select(tx => tx.Hash), Does.Contain(transaction.Hash));
@@ -220,6 +257,46 @@ public class LeanObjectTransportTests
     }
 
     [Test]
+    public async Task Integrity_retry_keeps_waiters_and_accounting_until_validation_finishes()
+    {
+        using LeanTestNode node = new();
+        Transaction transaction = FrameTransaction(2);
+        node.Pending.Add(transaction);
+        FakeLink a = Link("a"), b = Link("b");
+        LeanPeer peerA = node.Connect(a), peerB = node.Connect(b);
+        byte[] body = Wrapper(2 * ChunkBytes, true, transaction);
+        LeanDescriptor descriptor = Describe(body);
+        node.Transport.OnAnnounce(peerA, new([descriptor]));
+        node.Transport.OnAnnounce(peerB, new([descriptor]));
+        using CancellationTokenSource timeout = new(Timeout);
+        Task<LeanFetchedBody?> fetched = node.Transport.FetchBodyAsync(descriptor, peerA, timeout.Token);
+        byte[] corrupted = (byte[])body.Clone();
+        corrupted[^1] ^= 1;
+        ServeAll(node, peerA, a, descriptor, corrupted);
+        await Until(() => b.Sent<GetChunksMessage>().Length > 0);
+        Assert.That(fetched.IsCompleted, Is.False);
+        Assert.That(peerA.Assemblies, Is.EqualTo(1));
+        Assert.That(peerA.ChargedBytes, Is.EqualTo(descriptor.ChunkCount * 24L + 1024));
+        using ManualResetEventSlim gate = new();
+        node.Verifier.Gate = gate;
+        ServeAll(node, peerB, b, descriptor, body);
+        LeanFetchedBody? lease = await fetched.WaitAsync(Timeout);
+        Assert.That(lease, Is.Not.Null);
+        await node.Verifier.Entered.Task.WaitAsync(Timeout);
+        try
+        {
+            lease!.Dispose();
+            Assert.That(node.Transport.CompletionBytes, Is.EqualTo(body.Length + 2 * ChunkBytes));
+            Assert.That(peerB.ChargedBytes, Is.EqualTo(node.Transport.CompletionBytes));
+            Assert.That(peerA.Assemblies, Is.EqualTo(1));
+        }
+        finally { gate.Set(); }
+        await Until(() => node.Transport.IsStored(descriptor.ObjectId) && node.Transport.AssemblyCount == 0);
+        Assert.That(peerA.Assemblies, Is.Zero);
+        Assert.That(node.Transport.CompletionBytes + node.Transport.IncompleteBytes, Is.Zero);
+    }
+
+    [Test]
     public void Download_attempts_are_bounded_across_restarts_without_resetting_absolute_age()
     {
         using LeanTestNode node = new();
@@ -241,24 +318,24 @@ public class LeanObjectTransportTests
     }
 
     [Test]
-    public void First_credited_chunk_reserves_one_contiguous_buffer_with_receive_credit_headroom()
+    public void First_credited_chunk_uses_reserved_capacity_with_receive_credit_headroom()
     {
         using LeanTestNode node = new();
         FakeLink link = Link("maximum");
         LeanPeer peer = node.Connect(link);
-        Assert.That(node.Transport.TryReserveNodeBytes(link.NodeKey, 2 * 1024 * 1024, out IDisposable? credit), Is.True);
+        Assert.That(node.Transport.TryReserveNodeBytes(link.NodeKey, 512 * 1024, out IDisposable? credit), Is.True);
         using (credit)
         {
-            byte[] body = OpaqueWrapperBody((int)LeanProtocol.MaxObjectBytes);
+            byte[] body = Wrapper(Eip8288Constants.MaxAggregateProofBytes, true, FrameTransaction(90));
             LeanDescriptor descriptor = Describe(body);
             node.Transport.OnAnnounce(peer, new([descriptor]));
-            long metadata = node.Transport.IncompleteBytes - 2 * 1024 * 1024;
+            long reserved = node.Transport.IncompleteBytes;
             GetChunksMessage request = link.Sent<GetChunksMessage>()[0];
             Deliver(node, peer, Chunk(request.RequestId, descriptor, body, 0));
-            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(2 * 1024 * 1024 + metadata + body.Length));
+            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(reserved));
             Assert.That(peer.ChargedBytes, Is.LessThan(LeanLimits.MaxPeerBytes));
             node.Tick(LeanProtocol.MaxAssemblyIdle);
-            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(2 * 1024 * 1024));
+            Assert.That(node.Transport.IncompleteBytes, Is.EqualTo(512 * 1024));
         }
         Assert.That(node.Transport.IncompleteBytes, Is.Zero);
     }
@@ -298,6 +375,34 @@ public class LeanObjectTransportTests
         }
         finally { foreach (IDisposable lease in leases) lease.Dispose(); }
         Assert.That(node.Transport.IncompleteBytes, Is.Zero);
+    }
+
+    [Test]
+    public void New_retrieval_preserves_ingress_headroom([Values] bool global)
+    {
+        using LeanTestNode node = new();
+        FakeLink link = Link("source");
+        LeanPeer peer = node.Connect(link);
+        byte[] body = OpaqueWrapperBody(2 * 1024 * 1024);
+        LeanDescriptor descriptor = Describe(body);
+        long retained = (global ? LeanLimits.MaxIncompleteBytes : LeanLimits.MaxPeerBytes) - 2L * body.Length - (global ? 1024 : 384) * 1024;
+        List<IDisposable> leases = [];
+        try
+        {
+            for (int i = 0; retained > 0; i++)
+            {
+                long bytes = Math.Min(retained, LeanLimits.MaxPeerBytes);
+                Assert.That(node.Transport.TryReserveNodeBytes(global ? Link($"budget:{i}").NodeKey : link.NodeKey, bytes,
+                    out IDisposable? lease), Is.True);
+                leases.Add(lease!);
+                retained -= bytes;
+            }
+            node.Transport.OnAnnounce(peer, new([descriptor]));
+            Assert.That(link.Sent<GetChunksMessage>(), Is.Empty);
+        }
+        finally { foreach (IDisposable lease in leases) lease.Dispose(); }
+        node.Tick(TimeSpan.FromMilliseconds(1));
+        Assert.That(link.Sent<GetChunksMessage>(), Is.Not.Empty);
     }
 
     [Test]
@@ -415,7 +520,9 @@ public class LeanObjectTransportTests
         List<FrameDependency> claimed = [Dependency(99)];
         byte[] body = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction.Hash!)], Deps = claimed, Mode = MempoolWrapper.ModeRecursive,
+            Transactions = [new WrapperTransaction(transaction.Hash!)],
+            Deps = claimed,
+            Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = new(Proof(ChunkBytes), new(Eip8288Dependencies.ComputeDepsHash(claimed)))
         }).Bytes;
         LeanDescriptor descriptor = Describe(body);

@@ -34,13 +34,13 @@ public sealed partial class LeanObjectTransport
             return;
         }
         if (assembly.Validate && _pendingValidations >= LeanLimits.MaxPendingValidations) return;
-        long length = (long)assembly.Descriptor.ByteLength;
+        long length = assembly.RetrievalBytes;
         _incompleteBytes -= length;
         _completionBytes += length;
         assembly.CompletionSource = assembly.CurrentSource;
         if (assembly.CurrentSource is { } source) assembly.Contributors.Add(source);
         assembly.Queued = true;
-        ReleaseChunks(assembly);
+        ReleaseChunks(assembly, releaseMetadata: false);
         assembly.Processing = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
         CancelRequestsFor(assembly, outbox);
         if (!assembly.Validate)
@@ -111,17 +111,25 @@ public sealed partial class LeanObjectTransport
                 assembly.Processing = null;
                 if (_assemblies.TryGetValue(assembly.Descriptor.ObjectId, out LeanAssembly? current) && current == assembly)
                 {
-                    if (!assembly.RetrySource) _assemblies.Remove(assembly.Descriptor.ObjectId);
+                    if (!assembly.RetrySource)
+                    {
+                        _assemblies.Remove(assembly.Descriptor.ObjectId);
+                        ReleaseChunks(assembly);
+                    }
                     else
                     {
                         assembly.Queued = false;
                         assembly.Started = false;
                         assembly.Received = 0;
                         assembly.RetrySource = false;
+                        assembly.ReleaseRequested = false;
                     }
                 }
-                foreach (TaskCompletionSource<LeanFetchedBody?> waiter in assembly.Waiters) waiter.TrySetResult(null);
-                assembly.Waiters.Clear();
+                if (assembly.Queued || assembly.Dropped)
+                {
+                    foreach (TaskCompletionSource<LeanFetchedBody?> waiter in assembly.Waiters) waiter.TrySetResult(null);
+                    assembly.Waiters.Clear();
+                }
                 Schedule(outbox, _clock.GetTimestamp());
             }
             outbox.Flush();
@@ -134,10 +142,11 @@ public sealed partial class LeanObjectTransport
     {
         assembly.ReleaseRequested = true;
         if (assembly.Body is null || assembly.BodyLeases != 0) return;
-        long released = (long)assembly.Descriptor.ByteLength + assembly.RecoveryBytes;
+        long released = assembly.RetrievalBytes + assembly.RecoveryBytes;
         _completionBytes -= released;
         if (assembly.CompletionSource is { } source) { source.ChargedBytes -= released; PruneNode(source.Node); }
         assembly.RecoveryBytes = 0;
+        assembly.RetrievalBytes = 0;
         assembly.CompletionSource = null;
         assembly.Body = null;
         if (!assembly.Started && assembly.Validate)
@@ -178,6 +187,13 @@ public sealed partial class LeanObjectTransport
         bool validate;
         lock (_gate)
         {
+            long unused = assembly.RetrievalBytes - body.Length - verificationBytes;
+            if (unused > 0)
+            {
+                assembly.RetrievalBytes -= unused;
+                _completionBytes -= unused;
+                if (assembly.CompletionSource is { } source) source.ChargedBytes -= unused;
+            }
             Interlocked.Increment(ref _stats.Reassembled);
             waiters = [.. assembly.Waiters];
             assembly.Waiters.Clear();
@@ -285,10 +301,10 @@ public sealed partial class LeanObjectTransport
     private async Task<(Verdict, string?)> VerifyWithBudgetAsync(LeanAssembly assembly,
         Func<CancellationToken, Task<ProofWrapperAcceptance>> accept, CancellationToken cancellation)
     {
-        if (assembly.CompletionSource is not { Closed: false } source
-            || !TryReserveNodeBytes(source.Node.Key!, assembly.VerificationBytes, out IDisposable? lease))
+        if (assembly.CompletionSource is not { Closed: false }
+            || assembly.VerificationBytes > assembly.RetrievalBytes - (long)assembly.Descriptor.ByteLength)
             return (Verdict.Refused, "no decoder working-space budget");
-        using (lease) return await AcceptWithRetryAsync(accept, cancellation).ConfigureAwait(false);
+        return await AcceptWithRetryAsync(accept, cancellation).ConfigureAwait(false);
     }
 
     private static async Task<(Verdict, string?)> AcceptWithRetryAsync(Func<CancellationToken, Task<ProofWrapperAcceptance>> accept,
