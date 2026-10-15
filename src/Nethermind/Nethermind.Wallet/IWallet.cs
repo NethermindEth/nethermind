@@ -46,7 +46,7 @@ namespace Nethermind.Wallet
         {
             ValueHash256 hash = ValueKeccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
             if (!TrySign(in hash, tx.SenderAddress, out Signature sig)) return false;
-            sig.V = tx.Type == TxType.Legacy ? sig.V + 8 + 2 * chainId : (ulong)(sig.RecoveryId + 27);
+            sig.V = tx.Type == TxType.Legacy ? checked(sig.V + 8 + 2 * chainId) : (ulong)(sig.RecoveryId + 27);
             tx.Signature = sig;
             return true;
         }
