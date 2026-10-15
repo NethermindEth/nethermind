@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -58,6 +59,241 @@ public class NativePatriciaBulkSetTests
             NativePendingNodesView view = pending.GetView(shard);
             Assert.That(Enumerable.Range(0, view.Count).Where(i => Keccak.Compute(view.GetRlp(view[i])).ValueHash256 != view[i].Hash), Is.Empty);
         }
+    }
+
+    [TestCaseSource(nameof(BulkSetTestGen))]
+    public void Prepared_bulk_set_root_matches_patricia_tree(List<(Hash256 key, byte[] value)> existingItems, List<(Hash256 key, byte[] value)> items)
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
+        using NativePendingNodes pending = NativePendingNodes.Rent(existingItems.Count);
+        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLogPin pin = log.PinActiveGeneration();
+        Hash256 existingRoot = BulkSet(store, pending, log, Keccak.EmptyTreeHash, existingItems);
+        int pendingBefore = pending.Count;
+        using NativeBulkSetState trie = NativeBulkSetState.Create(existingRoot.ValueHash256, TestItem.KeccakA);
+        foreach ((Hash256 key, byte[] value)[] batch in items.Chunk(31))
+        {
+            PatriciaTree.BulkSetEntry[] entries = ToEntries(batch);
+            NativePatriciaBulkSet.Update(store, trie, log, null, entries);
+            NativePatriciaBulkSet.Update(store, trie, log, null, entries);
+        }
+
+        Assert.That(pending.Count, Is.EqualTo(pendingBefore));
+        Hash256 root = NativePatriciaBulkSet.Finish(store, trie, pending, log, null, []);
+        Assert.That(root, Is.EqualTo(ManagedRoot(existingItems.Concat(items))));
+    }
+
+    [Test]
+    public void Prepared_bulk_set_reconciles_after_cross_thread_handoff_and_log_activity()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        List<(Hash256 key, byte[] value)> initial = PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 31);
+        List<(Hash256 key, byte[] value)> hints = initial.Take(500).Select(item => (item.key, (byte[])[7])).ToList();
+        List<(Hash256 key, byte[] value)> corrections =
+        [
+            .. initial.Take(250),
+            .. initial.Skip(250).Take(250).Select(item => (item.key, (byte[])null)),
+            .. PatriciaTreeBulkSetterTests.GenRandomOfLength(100, seed: 32),
+        ];
+        DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
+        using NativePendingNodes pending = NativePendingNodes.Rent(initial.Count);
+        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLogPin pin = log.PinActiveGeneration();
+        Hash256 root = BulkSet(store, pending, log, Keccak.EmptyTreeHash, initial);
+        pending.Clear();
+        using NativeBulkSetState trie = NativeBulkSetState.Create(root.ValueHash256, TestItem.KeccakA);
+        Task.Factory.StartNew(() => NativePatriciaBulkSet.Update(store, trie, log, null, ToEntries(hints)),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).GetAwaiter().GetResult();
+
+        using NativePendingNodes unrelated = NativePendingNodes.Rent(1000);
+        for (int i = 0; i < 20; i++) BulkSet(store, unrelated, log, Keccak.EmptyTreeHash, PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 100 + i));
+
+        Assert.That(pending.Count, Is.Zero);
+        Hash256 finished = NativePatriciaBulkSet.Finish(store, trie, pending, log, null, ToEntries(corrections));
+        Assert.That(finished, Is.EqualTo(ManagedRoot(initial.Concat(hints).Concat(corrections))));
+        Assert.That(pending.Count, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void Prepared_bulk_set_copies_input_buffers_and_rejects_finished_state()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
+        using NativePendingNodes pending = NativePendingNodes.Rent(2);
+        using NativeTrieNodeLog log = new(256 * 1024);
+        ValueHash256 root = Keccak.EmptyTreeHash.ValueHash256;
+        using NativeBulkSetState trie = NativeBulkSetState.Create(root, null);
+        root = TestItem.KeccakA.ValueHash256;
+        NativeBulkSetEntry[] entries = [new(TestItem.KeccakA.ValueHash256, 0, 2), new(TestItem.KeccakB.ValueHash256, 2, 2)];
+        byte[] values = [1, 2, 3, 4];
+        NativePatriciaBulkSet.Update(store, trie, log, null, entries, values);
+        entries.AsSpan().Clear();
+        values.AsSpan().Fill(99);
+        Hash256 finished = NativePatriciaBulkSet.Finish(store, trie, pending, log, null,
+            [new NativeBulkSetEntry(TestItem.KeccakA.ValueHash256, 0, 0)], []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finished, Is.EqualTo(ManagedRoot([(TestItem.KeccakB, [3, 4])])));
+            Assert.That(trie.IsClosed, Is.False);
+            Assert.That(() => NativePatriciaBulkSet.Update(store, trie, log, null, []), Throws.InvalidOperationException.With.Message.Contains("status -2"));
+            Assert.That(() => NativePatriciaBulkSet.Finish(store, trie, pending, log, null, []), Throws.InvalidOperationException.With.Message.Contains("status -2"));
+        }
+    }
+
+    [Test]
+    public void Prepared_bulk_set_can_be_discarded_before_starting_an_empty_trie()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
+        using NativePendingNodes pending = NativePendingNodes.Rent(1);
+        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeBulkSetState discarded = NativeBulkSetState.Create(Keccak.EmptyTreeHash.ValueHash256, null);
+        NativePatriciaBulkSet.Update(store, discarded, log, null, [new PatriciaTree.BulkSetEntry(TestItem.KeccakA.ValueHash256, [1])]);
+        discarded.Dispose();
+        discarded.Dispose();
+        Assert.That(() => NativePatriciaBulkSet.Update(store, discarded, log, null, []), Throws.TypeOf<ObjectDisposedException>());
+        Assert.That(pending.Count, Is.Zero);
+
+        using NativeBulkSetState cleared = NativeBulkSetState.Create(Keccak.EmptyTreeHash.ValueHash256, null);
+        Assert.That(NativePatriciaBulkSet.Finish(store, cleared, pending, log, null, []), Is.EqualTo(Keccak.EmptyTreeHash));
+    }
+
+    [Test]
+    public void Prepared_bulk_set_callback_failure_invalidates_state([Values] bool finish)
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        InvalidOperationException cause = new("fetch failed");
+        ThrowingNodeStore store = new(cause);
+        using NativePendingNodes pending = NativePendingNodes.Rent(1);
+        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeBulkSetState trie = NativeBulkSetState.Create(TestItem.KeccakA.ValueHash256, null);
+        PatriciaTree.BulkSetEntry[] entries = [new(TestItem.KeccakB.ValueHash256, [1])];
+        Assert.That(() => Call(), Throws.InvalidOperationException.With.InnerException.SameAs(cause));
+        Assert.That(() => NativePatriciaBulkSet.Update(store, trie, log, null, []), Throws.InvalidOperationException.With.Message.Contains("status -2"));
+
+        void Call()
+        {
+            if (finish) NativePatriciaBulkSet.Finish(store, trie, pending, log, null, entries);
+            else NativePatriciaBulkSet.Update(store, trie, log, null, entries);
+        }
+    }
+
+    [Test]
+    public void Prepared_bulk_set_releases_callback_state([Values] bool finish, [Values] bool fail)
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        using NativePendingNodes pending = NativePendingNodes.Rent(1);
+        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeBulkSetState trie = NativeBulkSetState.Create(fail ? TestItem.KeccakA.ValueHash256 : Keccak.EmptyTreeHash.ValueHash256, null);
+        WeakReference store = CallWithTransientStore(trie, pending, log, finish, fail);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.That(store.IsAlive, Is.False);
+    }
+
+    [Test]
+    public async Task Prepared_bulk_set_keeps_native_handles_alive_during_call([Values] bool finish)
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        List<(Hash256 key, byte[] value)> initial = [(TestItem.KeccakA, [1]), (TestItem.KeccakB, [2])];
+        Dictionary<TreePath, byte[]> nodes = [];
+        using NativePendingNodes pending = NativePendingNodes.Rent(initial.Count);
+        using NativeTrieNodeLog initialLog = new(256 * 1024);
+        Hash256 root = BulkSet(new DictionaryNodeStore(nodes), pending, initialLog, Keccak.EmptyTreeHash, initial);
+        for (int shard = 0; shard < pending.ShardCount; shard++)
+        {
+            NativePendingNodesView view = pending.GetView(shard);
+            for (int i = 0; i < view.Count; i++) nodes[view[i].Path] = view.GetRlp(view[i]).ToArray();
+        }
+        pending.Clear();
+        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeWarmedNodes warmed = new();
+        using NativeBulkSetState trie = NativeBulkSetState.Create(root.ValueHash256, TestItem.KeccakA);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        BlockingNodeStore store = new(new DictionaryNodeStore(nodes), entered, release);
+        PatriciaTree.BulkSetEntry[] entries = [new(TestItem.KeccakA.ValueHash256, [3])];
+        Task<Hash256> call = Task.Run(() =>
+        {
+            if (finish) return NativePatriciaBulkSet.Finish(store, trie, pending, log, warmed, entries);
+            NativePatriciaBulkSet.Update(store, trie, log, warmed, entries);
+            return null;
+        });
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            trie.Dispose();
+            pending.Dispose();
+            log.Dispose();
+            warmed.Dispose();
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        Hash256 result = await call.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            if (finish) Assert.That(result, Is.EqualTo(ManagedRoot(initial.Concat([(TestItem.KeccakA, (byte[])[3])]))));
+            Assert.That(trie.IsClosed, Is.True);
+            Assert.That(pending.IsClosed, Is.True);
+            Assert.That(log.IsClosed, Is.True);
+            Assert.That(warmed.IsClosed, Is.True);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference CallWithTransientStore(NativeBulkSetState trie, NativePendingNodes pending, NativeTrieNodeLog log, bool finish, bool fail)
+    {
+        INativeNodeStore store = fail ? new ThrowingNodeStore(new InvalidOperationException("fetch failed")) : new DictionaryNodeStore(new Dictionary<TreePath, byte[]>());
+        WeakReference reference = new(store);
+        PatriciaTree.BulkSetEntry[] entries = [new(TestItem.KeccakB.ValueHash256, [1])];
+        void Call()
+        {
+            if (finish) NativePatriciaBulkSet.Finish(store, trie, pending, log, null, entries);
+            else NativePatriciaBulkSet.Update(store, trie, log, null, entries);
+        }
+        if (fail) Assert.That(() => Call(), Throws.InvalidOperationException);
+        else Call();
+        return reference;
+    }
+
+    private static PatriciaTree.BulkSetEntry[] ToEntries(IEnumerable<(Hash256 key, byte[] value)> items) =>
+        items.Select(item => new PatriciaTree.BulkSetEntry(item.key.ValueHash256, item.value)).ToArray();
+
+    private static Hash256 ManagedRoot(IEnumerable<(Hash256 key, byte[] value)> items)
+    {
+        using MemDb db = new();
+        PatriciaTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+        foreach ((Hash256 key, byte[] value) in items) tree.Set(key.Bytes, value);
+        tree.UpdateRootHash();
+        return tree.RootHash;
+    }
+
+    private sealed class BlockingNodeStore(INativeNodeStore inner, ManualResetEventSlim entered, ManualResetEventSlim release) : INativeNodeStore
+    {
+        public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver)
+        {
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Native call was not released");
+            return inner.Fetch(in path, in hash, receiver);
+        }
+    }
+
+    private sealed class ThrowingNodeStore(Exception exception) : INativeNodeStore
+    {
+        public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) => throw exception;
     }
 
     [Test]

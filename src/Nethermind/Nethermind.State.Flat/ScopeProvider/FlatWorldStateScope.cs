@@ -117,7 +117,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
-            && !configuration.UseNativeBulkSet && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
+            && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
@@ -149,7 +149,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
-        _earlyApplyClosed = true;
+        DiscardEarlyWrites();
         // Nothing reads the warmed paths after this, so queued jobs skip their walk and the wait covers only walks in flight.
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
@@ -573,9 +573,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
+    private void DiscardEarlyWrites()
+    {
+        _earlyApplyClosed = true;
+        _earlyApplyGeneration++;
+        foreach (FlatStorageTree storage in _storages.Values) storage.DiscardEarlyWrites();
+        if (_hintWarmStorages is { } hinted)
+        {
+            foreach (KeyValuePair<AddressAsKey, FlatStorageTree?> storage in hinted) storage.Value?.DiscardEarlyWrites();
+        }
+    }
+
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        DiscardEarlyWrites();
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
@@ -624,7 +636,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (logger.IsDebug) logger.Debug($"Early storage apply block={blockNumber} applied={applied} reused={reused} restored={restored} abandoned={abandoned}");
 
         _earlyApplier!.BlockCommitted();
-        _earlyApplyGeneration++;
         _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
     }
 
