@@ -381,7 +381,7 @@ public partial class TrieStoreScopeProvider(
         // Slight optimization on small contract as the index hash can be precalculated in some case.
         public const int MIN_ENTRIES_TO_BATCH = 16;
 
-        /// <summary>Writes above which a batch that only hashes its tree hashes it in parallel.</summary>
+        /// <summary>Writes above which the storage root is hashed in parallel.</summary>
         private const int MinWritesToHashInParallel = 64;
 
         private bool _hasSelfDestruct;
