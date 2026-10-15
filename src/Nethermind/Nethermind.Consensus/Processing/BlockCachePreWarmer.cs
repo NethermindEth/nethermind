@@ -1534,8 +1534,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 // The next transaction is the one block processing reaches next; it is left to execution.
                 if (footprints.TryTakeInvalidated(MainThreadTxIndex + 1, out int position, out int take))
                 {
-                    // Held only while there are refreshes to run.
-                    IPrewarmerEnv env = _envPool.Get();
+                    // Held only while there are refreshes to run. A take ends even when no env can be had for it.
+                    IPrewarmerEnv env;
+                    try
+                    {
+                        env = _envPool.Get();
+                    }
+                    catch
+                    {
+                        footprints.EndRefresh(position);
+                        throw;
+                    }
+
                     try
                     {
                         do
@@ -1563,7 +1573,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 // Checked only when the worker wakes: block processing moving on signals nothing, so after the last report
                 // the worker waits for the session to end, holding no env. A pass waited on before block processing ends
                 // with what it has refreshed.
-                if (footprints.TryEnd(MainThreadTxIndex)) return;
+                if (footprints.IsDone(MainThreadTxIndex)) return;
                 footprints.WaitForWork(token);
             }
         }
@@ -1574,6 +1584,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         catch (Exception ex)
         {
             _logger.DebugError("Error refreshing invalidated footprints", ex);
+        }
+        finally
+        {
+            footprints.Leave();
         }
     }
 
@@ -1596,7 +1610,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         bool running = false;
         try
         {
-            int seededAt = footprints.WritesVersion;
+            // The store checks each seed against what the footprints before the position leave by then.
+            (StorageCell Cell, UInt256 Value)[] seeds = new (StorageCell Cell, UInt256 Value)[invalidated.Slots.Length];
+            int seeded = 0;
             bool moved = false;
             foreach (ref readonly SlotPrecondition slot in invalidated.Slots)
             {
@@ -1604,6 +1620,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 {
                     moved |= value != slot.Value;
                     state.Set(in slot.Cell, in value);
+                    seeds[seeded++] = (slot.Cell, value);
                 }
                 else if (!moved)
                 {
@@ -1633,7 +1650,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (result && recorder.Finish(tx, in result, refreshed: true) is { } footprint)
             {
                 // A refresh of the position taken later, while this one ran, may have stored first.
-                bool stored = footprints.Store(position, footprint, seededAt, take, invalidated);
+                bool stored = footprints.Store(position, footprint, take, seeds.AsSpan(0, seeded));
                 Interlocked.Increment(ref stored ? ref Blockchain.Metrics.PrewarmRefreshesStored : ref Blockchain.Metrics.PrewarmRefreshesSuperseded);
             }
             else
