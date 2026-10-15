@@ -43,7 +43,11 @@ public sealed class InclusionListV1
     public RecursiveStarkV1? RecursiveStark { get; set; }
 
     /// <summary>Checks the per-list Engine API bounds: at most one list per committee position, each within
-    /// <c>MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST</c> with nonempty entries, and well-formed proof fields.</summary>
+    /// <c>MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST</c>, and set proof fields within <c>MAX_AGGREGATE_PROOF_BYTES</c>.</summary>
+    /// <remarks>
+    /// An undecodable entry or a proof whose emptiness disagrees with its <c>deps_hash</c> is left to per-list processing, where
+    /// it only voids that list's dependency-bearing obligations (EIPs#12475), so one committee member cannot fail the request.
+    /// </remarks>
     /// <returns>The violated bound, or <c>null</c>.</returns>
     public static string? Validate(InclusionListV1[]? lists)
     {
@@ -61,12 +65,12 @@ public sealed class InclusionListV1
             long bytes = 0;
             foreach (byte[]? transaction in transactions)
             {
-                if (transaction is not { Length: > 0 }) return "Inclusion list transactions must be nonempty";
+                if (transaction is null) return "Inclusion list transactions must be set";
                 bytes += transaction.Length;
             }
             if (bytes > Eip7805Constants.MaxBytesPerInclusionList) return "Inclusion list exceeds MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST";
             if (list.RecursiveStark is { } proof
-                && (proof.StarkProof is null || proof.DepsHash is null || !proof.ToRecursiveStark().HasValidShape))
+                && (proof.StarkProof is not { Length: <= Eip8288Constants.MaxAggregateProofBytes } || proof.DepsHash is null))
                 return "Invalid inclusion-list recursive STARK";
         }
         return null;

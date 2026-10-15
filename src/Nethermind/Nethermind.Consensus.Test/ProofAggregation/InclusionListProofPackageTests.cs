@@ -116,6 +116,8 @@ public class InclusionListProofPackageTests
     [TestCase("uncovered")]
     [TestCase("invalid-proof")]
     [TestCase("missing-proof")]
+    [TestCase("empty-proof")]
+    [TestCase("proof-for-empty-dependencies")]
     [TestCase("valid")]
     public void Eligibility_preserves_independent_entries_when_one_frame_or_package_is_bad(string scenario)
     {
@@ -126,7 +128,13 @@ public class InclusionListProofPackageTests
         // The proof must commit to dependencies(transactions) exactly; "uncovered" proves only the first entry's.
         List<FrameDependency> proven = Eip8288Dependencies.Canonicalize([.. Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue),
             .. scenario == "uncovered" ? [] : Eip8288Dependencies.ForTransaction(other, FrameTxSigHash.ComputeValue)]);
-        RecursiveStark? proof = scenario == "missing-proof" ? null : new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(proven)));
+        RecursiveStark? proof = scenario switch
+        {
+            "missing-proof" => null,
+            "empty-proof" => new([], new Hash256(Eip8288Dependencies.ComputeDepsHash(proven))),
+            "proof-for-empty-dependencies" => new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([]))),
+            _ => new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(proven)))
+        };
         FakeLeanProofVerifier verifier = new(scenario != "invalid-proof");
 
         Transaction[] eligible = InclusionListProofValidator.SelectEligible([], [new CommitteeInclusionList(0, [covered, other, ordinary], proof)],
