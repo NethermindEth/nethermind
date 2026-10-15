@@ -335,12 +335,23 @@ public class BeaconApiHostTests : BeaconApiFixture
         NoOpProcessExitSource exitSource = new();
 
         WeakReference disposedHost = await StartAndDisposeHostAsync(exitSource);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
+
+        // Kestrel's shutdown continuations hold the host until this test yields; only the registration holds it for good.
+        for (int attempt = 0; attempt < 100 && IsAliveAfterCollection(disposedHost); attempt++)
+        {
+            await Task.Delay(50);
+        }
 
         Assert.That(disposedHost.IsAlive, Is.False, "only the exit token's registration can still reach a disposed host");
         GC.KeepAlive(exitSource);
+    }
+
+    private static bool IsAliveAfterCollection(WeakReference reference)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        return reference.IsAlive;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
