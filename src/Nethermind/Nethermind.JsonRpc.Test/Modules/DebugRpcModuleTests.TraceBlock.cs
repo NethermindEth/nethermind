@@ -562,12 +562,23 @@ public partial class DebugRpcModuleTests
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
     }
 
-    [Test]
+    private static IEnumerable<TestCaseData> ReplayAvailabilityCases()
+    {
+        foreach (string method in new[] { "debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock",
+                     "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex" })
+            foreach (bool streaming in new[] { false, true })
+                foreach (bool parentAvailable in new[] { false, true })
+                {
+                    yield return new TestCaseData(method, streaming, parentAvailable, "");
+                    if (method is "debug_traceBlock" or "debug_traceTransactionInBlockByHash" or "debug_traceTransactionInBlockByIndex")
+                        foreach (string suffix in new[] { "00", "c0" })
+                            yield return new TestCaseData(method, streaming, parentAvailable, suffix);
+                }
+    }
+
+    [TestCaseSource(nameof(ReplayAvailabilityCases))]
     public async Task Debug_traceBlock_checks_replay_parent_state(
-        [Values("debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock",
-            "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex")] string method,
-        [Values] bool streaming,
-        [Values] bool parentAvailable)
+        string method, bool streaming, bool parentAvailable, string suffix)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
@@ -600,7 +611,7 @@ public partial class DebugRpcModuleTests
         {
             "debug_traceBlockByHash" => unprocessed.Hash!,
             "debug_traceBlockByNumber" => unprocessed.Number,
-            _ => Rlp.Encode(unprocessed).ToString()
+            _ => Rlp.Encode(unprocessed).ToString() + suffix
         };
         object[] parameters = method switch
         {
@@ -609,7 +620,18 @@ public partial class DebugRpcModuleTests
             _ => [selector]
         };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameters);
+        TestContext.Out.WriteLine($"method={method}, streaming={streaming}, parentAvailable={parentAvailable}, suffix={suffix}: {response}");
         JToken actual = JToken.Parse(response);
+        if (method == "debug_traceBlock" && suffix.Length != 0)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual["result"], Is.Null, response);
+                Assert.That(actual["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(actual["error"]?["message"]?.Value<string>(), Does.Contain("decoding block RLP"));
+            }
+            return;
+        }
         if (!parentAvailable)
         {
             using (Assert.EnterMultipleScope())
