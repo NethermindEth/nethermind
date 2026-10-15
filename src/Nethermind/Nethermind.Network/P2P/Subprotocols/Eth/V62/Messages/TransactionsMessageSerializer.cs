@@ -128,15 +128,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                         continue;
                     }
 
-                    if (knownFilter is not null && TryHashWireItem(ref ctx, out ValueHash256 hash))
+                    if (knownFilter is not null && TryHashWireItem(ref ctx, out ValueHash256 hash, out TxType type, out int size))
                     {
-                        if (knownFilter.TrySettleKnown(in hash))
+                        if (knownFilter.TrySettleKnown(in hash, type, size))
                         {
                             ctx.SkipItem();
                             continue;
                         }
 
-                        Transaction tx = TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers);
+                        Transaction tx = TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers | RlpBehaviors.ExcludeHashes);
                         tx.Hash = new Hash256(in hash);
                         result.Add(tx);
                         continue;
@@ -161,22 +161,31 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         }
 
         /// <summary>Hashes the transaction at the reader's current position without decoding it, for the types whose hash is the Keccak of the wire item.</summary>
-        private static bool TryHashWireItem(ref RlpReader ctx, out ValueHash256 hash)
+        /// <param name="size">The length of the hashed bytes, which is the transaction's network encoding size.</param>
+        private static bool TryHashWireItem(ref RlpReader ctx, out ValueHash256 hash, out TxType type, out int size)
         {
             if (ctx.IsSequenceNext())
             {
-                hash = ValueKeccak.Compute(ctx.PeekNextItem());
+                ReadOnlySpan<byte> item = ctx.PeekNextItem();
+                hash = ValueKeccak.Compute(item);
+                type = TxType.Legacy;
+                size = item.Length;
                 return true;
             }
 
             (int prefixLength, int contentLength) = ctx.PeekPrefixAndContentLength();
             if (contentLength > 0 && ctx.Peek(prefixLength, 1)[0] is (byte)TxType.AccessList or (byte)TxType.EIP1559 or (byte)TxType.SetCode)
             {
-                hash = ValueKeccak.Compute(ctx.Peek(prefixLength, contentLength));
+                ReadOnlySpan<byte> content = ctx.Peek(prefixLength, contentLength);
+                hash = ValueKeccak.Compute(content);
+                type = (TxType)content[0];
+                size = contentLength;
                 return true;
             }
 
             hash = default;
+            type = default;
+            size = 0;
             return false;
         }
 

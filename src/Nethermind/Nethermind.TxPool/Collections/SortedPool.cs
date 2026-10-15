@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
@@ -196,8 +197,7 @@ namespace Nethermind.TxPool.Collections
         private sealed class SnapshotBucket(IComparer<TValue> comparer) : EnhancedSortedSet<TValue>(comparer)
         {
             public TValue[]? Snapshot;
-            private TValue[] _ordered = [];
-            private int _orderedCount;
+            private readonly List<TValue> _ordered = [];
             private bool _isOrderedStale;
 
             public ReadOnlySpan<TValue> Ordered
@@ -205,7 +205,7 @@ namespace Nethermind.TxPool.Collections
                 get
                 {
                     if (_isOrderedStale) RebuildOrdered();
-                    return _ordered.AsSpan(0, _orderedCount);
+                    return CollectionsMarshal.AsSpan(_ordered);
                 }
             }
 
@@ -229,7 +229,7 @@ namespace Nethermind.TxPool.Collections
 
             private bool TryInsertOrdered(TValue value)
             {
-                ReadOnlySpan<TValue> items = _ordered.AsSpan(0, _orderedCount);
+                ReadOnlySpan<TValue> items = CollectionsMarshal.AsSpan(_ordered);
                 for (int i = 1; i < items.Length; i++)
                 {
                     if (Comparer.Compare(items[i - 1], items[i]) >= 0) return false;
@@ -237,34 +237,25 @@ namespace Nethermind.TxPool.Collections
 
                 int index = items.BinarySearch(value, Comparer);
                 if (index >= 0) return false;
-                index = ~index;
 
-                if (_orderedCount == _ordered.Length)
-                {
-                    Array.Resize(ref _ordered, Math.Max(4, _ordered.Length * 2));
-                }
-
-                Array.Copy(_ordered, index, _ordered, index + 1, _orderedCount - index);
-                _ordered[index] = value;
-                _orderedCount++;
+                _ordered.Insert(~index, value);
                 return true;
             }
 
             private bool TryRemoveOrdered(TValue value)
             {
-                for (int i = 0; i < _orderedCount; i++)
+                ReadOnlySpan<TValue> items = CollectionsMarshal.AsSpan(_ordered);
+                for (int i = 0; i < items.Length; i++)
                 {
-                    if (Comparer.Compare(_ordered[i], value) != 0) continue;
+                    if (Comparer.Compare(items[i], value) != 0) continue;
 
                     // An out-of-order tree can hold an item twice, and which copy it removed is not knowable here.
-                    for (int j = i + 1; j < _orderedCount; j++)
+                    for (int j = i + 1; j < items.Length; j++)
                     {
-                        if (Comparer.Compare(_ordered[j], value) == 0) return false;
+                        if (Comparer.Compare(items[j], value) == 0) return false;
                     }
 
-                    _orderedCount--;
-                    Array.Copy(_ordered, i + 1, _ordered, i, _orderedCount - i);
-                    _ordered[_orderedCount] = default!;
+                    _ordered.RemoveAt(i);
                     return true;
                 }
 
@@ -273,19 +264,13 @@ namespace Nethermind.TxPool.Collections
 
             private void RebuildOrdered()
             {
-                if (_ordered.Length < Count)
-                {
-                    _ordered = new TValue[Math.Max(Count, _ordered.Length * 2)];
-                }
-
-                int count = 0;
+                _ordered.Clear();
+                _ordered.EnsureCapacity(Count);
                 foreach (TValue value in this)
                 {
-                    _ordered[count++] = value;
+                    _ordered.Add(value);
                 }
 
-                _ordered.AsSpan(count).Clear();
-                _orderedCount = count;
                 _isOrderedStale = false;
             }
         }
