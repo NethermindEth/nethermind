@@ -56,7 +56,7 @@ public partial class BeaconBlocksByRangeRequest
 
 /// <summary>Deneb req/resp <c>BeaconBlocksByRootRequest</c>: a bare SSZ list of block roots.</summary>
 [SszContainer(isCollectionItself: true)]
-public partial class BeaconBlocksByRootRequest
+public partial struct BeaconBlocksByRootRequest
 {
     [SszList(128)]
     public Hash256[]? Roots { get; set; }
