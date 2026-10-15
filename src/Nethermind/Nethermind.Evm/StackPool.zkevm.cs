@@ -7,7 +7,7 @@ namespace Nethermind.Evm;
 
 internal static partial class StackPool
 {
-    private static readonly EvmObjectPool<StackItem> _stackPool = new();
+    private static EvmObjectPool<StackItem> _stackPool => field ??= new();
 
     public static partial void ReturnStacks(byte[] dataStack)
     {

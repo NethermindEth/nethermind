@@ -40,7 +40,7 @@ public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
 
         return Encoding.UTF8.GetBytes(
             $"{{\"supported_forks\":{supportedForksJson}," +
-            $"\"fork_scoped_endpoints\":[\"payloads\",\"forkchoice\",\"bodies\"]," +
+            $"\"fork_scoped_endpoints\":[\"payloads\",\"forkchoice\",\"bodies\",\"payloads/witness\"]," +
             $"\"independently_versioned\":{{\"blobs\":[\"v1\",\"v2\",\"v3\",\"v4\"]}}," +
             $"\"unscoped_endpoints\":[\"capabilities\",\"identity\"]," +
             $"\"limits\":{{" +

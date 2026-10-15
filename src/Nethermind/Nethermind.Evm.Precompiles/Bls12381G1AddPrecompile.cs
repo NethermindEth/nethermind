@@ -16,8 +16,6 @@ public partial class Bls12381G1AddPrecompile : IPrecompile<Bls12381G1AddPrecompi
 
     private Bls12381G1AddPrecompile() { }
 
-    public static Address Address { get; } = Address.FromNumber(0x0b);
-
     public string Name => "BLS12_G1ADD";
 
     public ulong BaseGasCost(IReleaseSpec _) => 375UL;
