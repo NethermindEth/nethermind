@@ -361,6 +361,64 @@ public class LeanObjectTransportLifecycleTests
         }
     }
 
+    [Test]
+    public async Task ETH_loss_after_reservation_only_refuses_incomplete_recovery([Values] bool complete)
+    {
+        using LeanTestNode node = new();
+        Transaction[] transactions = [.. Enumerable.Range(220, 17).Select(FrameTransaction)];
+        byte[] body = Wrapper(4096, true, transactions);
+        LeanDescriptor descriptor = Describe(body);
+        FakeLink link = new("reserved-envelopes")
+        {
+            OnRecover = hashes => transactions.Where(transaction => hashes.Contains(transaction.Hash!.ValueHash256)).ToArray()
+        };
+        int responses = 0;
+        link.OnRecoveryReserved = () =>
+        {
+            if (++responses == (complete ? 2 : 1)) link.HasTransactionRecovery = false;
+        };
+        LeanPeer peer = node.Connect(link);
+        node.Transport.OnAnnounce(peer, new([descriptor]));
+        Serve(node, peer, link, descriptor, body);
+        await Until(() => node.Transport.AssemblyCount == 0 && node.Transport.CompletionBytes == 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.HasTransactionRecovery, Is.False);
+            Assert.That(link.RecoveryCalls, Is.EqualTo(complete ? 2 : 1));
+            Assert.That(node.Transport.IsStored(descriptor.ObjectId), Is.EqualTo(complete));
+            Assert.That(node.Transport.IsTombstoned(descriptor.ObjectId), Is.False);
+            Assert.That(node.Verifier.Calls, Is.EqualTo(1));
+            Assert.That(peer.ChargedBytes, Is.Zero);
+            Assert.That(link.Penalties, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Non_recovery_local_failure_keeps_backoff_after_ETH_link_loss()
+    {
+        using LeanTestNode node = new();
+        Transaction transaction = FrameTransaction(238);
+        node.Pending.Add(transaction);
+        node.Verifier.VerificationError = new ArgumentException("local verifier unavailable");
+        byte[] body = Wrapper(4096, true, transaction);
+        LeanDescriptor descriptor = Describe(body);
+        FakeLink link = new("local-failure-without-ETH");
+        LeanPeer peer = node.Connect(link);
+        link.HasTransactionRecovery = false;
+        node.Transport.OnAnnounce(peer, new([descriptor]));
+        Serve(node, peer, link, descriptor, body);
+        await Until(() => node.Transport.AssemblyCount == 0 && node.Transport.CompletionBytes == 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.IsTombstoned(descriptor.ObjectId), Is.True, "an unrelated local failure retains its backoff");
+            Assert.That(node.Transport.IsStored(descriptor.ObjectId), Is.False);
+            Assert.That(link.RecoveryCalls, Is.Zero);
+            Assert.That(node.Verifier.Calls, Is.EqualTo(1));
+            Assert.That(peer.ChargedBytes, Is.Zero);
+            Assert.That(link.Penalties, Is.Empty);
+        }
+    }
+
     private static void Serve(LeanTestNode node, LeanPeer peer, FakeLink link, LeanDescriptor descriptor, byte[] body)
     {
         GetChunksMessage request = link.Sent<GetChunksMessage>().Single(request => request.ObjectId == descriptor.ObjectId);
