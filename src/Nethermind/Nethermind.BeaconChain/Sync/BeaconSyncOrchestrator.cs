@@ -1100,6 +1100,20 @@ public sealed class BeaconSyncOrchestrator(
     /// <param name="otherCopyPending">Another signed copy still waits, so refusal must preserve its held children.</param>
     internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns = false, RangeBlockItem? rangeItem = null, bool fetchedByRoot = false, IBeaconSyncPeer? servedBy = null, bool otherCopyPending = false)
     {
+        try
+        {
+            return await ImportBlockCoreAsync(block, token, retryingOnColumns, rangeItem, fetchedByRoot, servedBy, otherCopyPending);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            // A held gossip copy resumed by another work item: a local fault is not its sender's, so its message is neither charged nor cached.
+            if (_gossipVerdicts.Remove(block, out GossipVerdict? tracked)) tracked.Complete(MessageValidity.Throttled);
+            throw;
+        }
+    }
+
+    private async Task<BlockImportResult> ImportBlockCoreAsync(ForkedSignedBeaconBlock block, CancellationToken token, bool retryingOnColumns, RangeBlockItem? rangeItem, bool fetchedByRoot, IBeaconSyncPeer? servedBy, bool otherCopyPending)
+    {
         Hash256 root = block.ComputeMessageRoot();
         long startMs = Environment.TickCount64;
         // Provenance follows the exact signed block: a copy from gossip under the same message root may carry another signature.

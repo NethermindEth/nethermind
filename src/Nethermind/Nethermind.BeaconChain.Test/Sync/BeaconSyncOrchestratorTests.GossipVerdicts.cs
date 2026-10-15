@@ -116,6 +116,27 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task A_held_gossip_block_whose_resumed_import_throws_is_throttled_rather_than_left_pending()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.UnverifiedPayloads.Add(anchorRoot);
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 4);
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        (GossipVerdict verdict, List<MessageValidity> given) = RecordingVerdict();
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None, verdict);
+        Assert.That(given, Is.Empty, "fixture: the block waits for its parent's payload");
+        harness.Importer.UnverifiedPayloads.Remove(anchorRoot);
+        harness.Importer.OnImported = (_, _) => throw new InvalidOperationException("scripted fault");
+
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.FetchedEnvelopeItem(EnvelopeFor(anchorRoot, EnvelopeBlockSlot), null));
+        Assert.That(() => CompleteWorkerAsync(harness.Orchestrator, CancellationToken.None), Throws.Nothing);
+
+        Assert.That(given, Is.EqualTo(new[] { MessageValidity.Throttled }), "a local fault neither charges the sender nor caches the message");
+    }
+
+    [Test]
     public async Task Pending_block_verdict_is_ignored_once_the_block_is_dropped()
     {
         Harness harness = CreateHarness();
