@@ -651,6 +651,28 @@ public class GCKeeperTests
         }
     }
 
+    [Test]
+    public async Task Decommit_whose_collection_is_declined_is_not_logged_until_one_runs()
+    {
+        List<string> infos = [];
+        IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = 90, TotalMemoryBytes = 100, CollectionSucceeds = false };
+        using GCKeeper keeper = new(strategy, CreateInfoLogManager(infos), runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        // The scheduler declines the collection (a payload paused it): nothing was released.
+        await keeper.ScheduleGCInternal(throttle: false);
+        Assert.That(infos, Is.Empty, "nothing was released");
+
+        runtime.CollectionSucceeds = true;
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Is.EqualTo(new[] { Decommit, Decommit }));
+            Assert.That(infos, Has.Count.EqualTo(1), string.Join(Environment.NewLine, infos));
+        }
+    }
+
     /// <summary>A strategy written against <see cref="IGCStrategy"/> before it had the memory-pressure members.</summary>
     private sealed class CadenceOnlyStrategy(int collectionsPerDecommit) : IGCStrategy
     {
