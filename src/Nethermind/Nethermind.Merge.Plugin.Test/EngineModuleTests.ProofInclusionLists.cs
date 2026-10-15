@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -18,6 +19,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -138,6 +140,7 @@ public partial class EngineModuleTests
     }
 
     [TestCase("duplicate-position")]
+    [TestCase("descending-position")]
     [TestCase("position-out-of-range")]
     [TestCase("empty-transaction")]
     [TestCase("oversized-list")]
@@ -154,6 +157,7 @@ public partial class EngineModuleTests
         InclusionListV1[] lists = scenario switch
         {
             "duplicate-position" => [new() { CommitteeIndex = 1, Transactions = [] }, new() { CommitteeIndex = 1, Transactions = [] }],
+            "descending-position" => [new() { CommitteeIndex = 2, Transactions = [] }, new() { CommitteeIndex = 1, Transactions = [] }],
             "position-out-of-range" => [new() { CommitteeIndex = Eip7805Constants.InclusionListCommitteeSize, Transactions = [] }],
             "empty-transaction" => [new() { Transactions = [[]] }],
             "oversized-list" => [new() { Transactions = [new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]] }],
@@ -200,6 +204,27 @@ public partial class EngineModuleTests
             Assert.That(result.Result.ResultType, Is.EqualTo(scenario == "empty-proof" ? ResultType.Failure : ResultType.Success));
             if (scenario == "empty-proof") Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
         }
+    }
+
+    [TestCase("wrong-version")]
+    [TestCase("invalid-attributes")]
+    [TestCase("valid")]
+    public async Task Forkchoice_retains_inclusion_lists_only_for_valid_attributes(string scenario)
+    {
+        IInclusionListTxSource source = Substitute.For<IInclusionListTxSource>();
+        using MergeTestBlockchain chain = await CreateBlockchain(InclusionProofEngineSpec(), new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddSingleton<ILeanProofVerifier>(new EngineListProofVerifier())
+                .AddSingleton<IInclusionListTxSource>(source));
+        Hash256 head = chain.BlockTree.HeadHash!;
+        PayloadAttributes attributes = BuildPerListPayloadAttributes([new() { CommitteeIndex = 0, Transactions = [] }]);
+        if (scenario == "invalid-attributes") attributes.ParentBeaconBlockRoot = null;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> result = scenario == "wrong-version"
+            ? await chain.EngineRpcModule.engine_forkchoiceUpdatedV5(new(head, Keccak.Zero, head), attributes)
+            : await chain.EngineRpcModule.engine_forkchoiceUpdatedV6(new(head, Keccak.Zero, head), attributes);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(scenario == "valid" ? ResultType.Success : ResultType.Failure));
+        source.ReceivedWithAnyArgs(scenario == "valid" ? 1 : 0).Set(default!, default!, default);
     }
 
     private static InclusionListV1 InclusionList(ulong committeeIndex, Transaction transaction, RecursiveStarkV1? proof) => new()

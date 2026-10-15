@@ -179,6 +179,30 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public void Maximum_proof_body_is_served_alone_and_roundtrips_over_ordinary_ETH()
+        {
+            byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
+            Block block = new(Build.A.BlockHeader.TestObject, new BlockBody([], [], starkProof: proof));
+            _syncManager.Find(TestItem.KeccakA).Returns(block);
+            _syncManager.Find(TestItem.KeccakB).Returns(block);
+            Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage? response = null;
+            _session.When(session => session.DeliverMessage(Arg.Any<Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage>()))
+                .Do(call => response = call.Arg<Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage>());
+            using GetBlockBodiesMessage request62 = new(new[] { TestItem.KeccakA, TestItem.KeccakB });
+            using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage request = new(1111, request62);
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(request, Eth66MessageCode.GetBlockBodies);
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response!.EthMessage.Bodies.Bodies, Has.Length.EqualTo(1), "a maximum proof exceeds the soft cap but is not omitted");
+            using DisposableByteBuffer encoded = _svc.ZeroSerialize(response).AsDisposable();
+            encoded.ReadByte();
+            Assert.That(encoded.ReadableBytes, Is.LessThan(12 * 1024 * 1024), "single maximum proof fits the ordinary frame bound");
+            using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage decoded =
+                _svc.Deserialize<Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage>(encoded);
+            Assert.That(decoded.EthMessage.Bodies.Bodies[0]!.StarkProof, Is.EqualTo(proof));
+        }
+
+        [Test]
         public void Should_throw_when_receiving_get_block_bodies_before_status()
         {
             using GetBlockBodiesMessage msg62 = new(new[] { Keccak.Zero, TestItem.KeccakA });

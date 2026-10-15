@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Consensus.Validators;
 using Nethermind.Serialization.Rlp;
@@ -20,7 +21,7 @@ namespace Nethermind.Consensus.ProofAggregation;
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
     IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier, IChainHeadInfoProvider? headInfo = null)
 {
-    internal const int MaxWrapperTransactionBytes = LeanProofStore.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes - 4096;
+    internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxTxsPerWrapper * (Hash256.Size + 1);
 
     /// <summary>Local scheduling target for leanSPHINCS dependencies in one produced mode-1 batch.</summary>
     /// <remarks>Not a validity limit: received aggregates may carry up to <see cref="Eip8288Constants.MaxDepsPerAggregate"/>.</remarks>
@@ -47,7 +48,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Raised with the encoded wrapper once it is fully validated, whether or not the pool admitted its transactions.</summary>
     /// <remarks>The second argument maps each of the wrapper's hash entries to the transaction that resolved it, so a relay
-    /// can keep serving the envelopes it offers by hash. It is not modified after the event is raised.</remarks>
+    /// can keep serving the envelopes it offers by hash. Subscribers must not mutate either argument.</remarks>
     public event Action<byte[], IReadOnlyDictionary<ValueHash256, Transaction>>? WrapperValidated;
 
     /// <summary>Raised with the encoded inclusion-list package once its proof validated.</summary>
@@ -61,8 +62,19 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <param name="wrapper">The encoded wrapper.</param>
     /// <param name="recovered">Envelopes for hash entries not pending locally, already checked against their hashes.</param>
     /// <param name="cancellationToken">Cancels validation and admission.</param>
-    public async Task<ProofWrapperAcceptance> AcceptDetailedAsync(byte[] wrapper, IReadOnlyDictionary<ValueHash256, Transaction>? recovered,
+    public Task<ProofWrapperAcceptance> AcceptDetailedAsync(byte[] wrapper, IReadOnlyDictionary<ValueHash256, Transaction>? recovered,
         CancellationToken cancellationToken = default)
+        => AcceptDetailedCoreAsync(wrapper, recovered, true, cancellationToken);
+
+    /// <summary>Accepts an exclusively owned transport buffer without another encoded-body copy.</summary>
+    /// <remarks>The transport must retain its charged buffer throughout the returned task and must not mutate it.
+    /// Decoding still owns a separate proof copy; validation subscribers must treat the encoded body as read-only.</remarks>
+    internal Task<ProofWrapperAcceptance> AcceptOwnedDetailedAsync(byte[] wrapper,
+        IReadOnlyDictionary<ValueHash256, Transaction>? recovered, CancellationToken cancellationToken = default)
+        => AcceptDetailedCoreAsync(wrapper, recovered, false, cancellationToken);
+
+    private async Task<ProofWrapperAcceptance> AcceptDetailedCoreAsync(byte[] wrapper,
+        IReadOnlyDictionary<ValueHash256, Transaction>? recovered, bool copyInput, CancellationToken cancellationToken)
     {
         Block? head = blockFinder.Head;
         IReleaseSpec? admissionSpec = head is null ? null : specProvider.GetSpec(head.Header);
@@ -78,7 +90,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            wrapper = (byte[])wrapper.Clone();
+            if (copyInput) wrapper = (byte[])wrapper.Clone();
             MempoolWrapper decoded;
             try { decoded = DecodeProofWrapper(wrapper); }
             catch (Exception exception) when (exception is RlpException or ArgumentException)
@@ -87,7 +99,19 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             if (ExceedsLocalCapacity(decoded)) return ProofWrapperAcceptance.Refused(LocalAggregateCapacity);
             IReadOnlyList<WrapperTransaction> received = decoded.Transactions;
-            if (recovered is { Count: > 0 }) decoded = WithRecovered(decoded, recovered);
+            if (recovered is { Count: > 0 })
+            {
+                HashSet<ValueHash256> claimed = [];
+                foreach (WrapperTransaction entry in received) claimed.Add(entry.Hash!.ValueHash256);
+                foreach ((ValueHash256 hash, Transaction transaction) in recovered)
+                {
+                    Hash256 canonicalHash = transaction.CalculateHash();
+                    if (!claimed.Contains(hash) || canonicalHash.ValueHash256 != hash)
+                        return ProofWrapperAcceptance.Invalid("Recovered envelope does not match a proof wrapper transaction hash.");
+                    transaction.Hash = canonicalHash;
+                }
+                decoded = WithRecovered(decoded, recovered);
+            }
             // Envelopes resolving the received hash entries, from the pool or recovered from peers.
             Dictionary<ValueHash256, Transaction> resolved = [];
             string? currentStateError = null;
@@ -173,7 +197,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// verifying the same proofs again once the entries are resolved. The result is <see cref="ProofWrapperAcceptanceStatus.Accepted"/>
     /// when the claimed proofs verify.
     /// </remarks>
-    public async Task<ProofWrapperAcceptance> VerifyClaimedProofsAsync(byte[] wrapper, CancellationToken cancellationToken = default)
+    public Task<ProofWrapperAcceptance> VerifyClaimedProofsAsync(byte[] wrapper, CancellationToken cancellationToken = default)
+        => VerifyClaimedProofsCoreAsync(wrapper, true, cancellationToken);
+
+    /// <summary>Prechecks claimed proofs from an exclusively owned, charged transport buffer.</summary>
+    /// <remarks>The caller must retain the buffer without mutation until the task completes. The decoder owns its proof copy.</remarks>
+    internal Task<ProofWrapperAcceptance> VerifyClaimedProofsOwnedAsync(byte[] wrapper, CancellationToken cancellationToken = default)
+        => VerifyClaimedProofsCoreAsync(wrapper, false, cancellationToken);
+
+    private async Task<ProofWrapperAcceptance> VerifyClaimedProofsCoreAsync(byte[] wrapper, bool copyInput, CancellationToken cancellationToken)
     {
         if (!IsEnabled) return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
         if (wrapper.Length > LeanProofStore.MaxWrapperBytes) return ProofWrapperAcceptance.LocalFailure("Proof wrapper exceeds the local size limit.");
@@ -182,7 +214,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            wrapper = (byte[])wrapper.Clone();
+            if (copyInput) wrapper = (byte[])wrapper.Clone();
             MempoolWrapper decoded;
             try { decoded = DecodeProofWrapper(wrapper); }
             catch (Exception exception) when (exception is RlpException or ArgumentException)
@@ -423,7 +455,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (!transaction.SupportsFrames) continue;
             List<FrameDependency> transactionDeps = Eip8288Dependencies.ForTransaction(transaction);
             if (transactionDeps.Count == 0) continue;
-            int encodedLength = Rlp.LengthOfByteString(TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping), 0);
+            int encodedLength = Rlp.LengthOf(transaction.Hash);
             if (encodedLength > MaxWrapperTransactionBytes) continue;
             if (encodedLength > MaxWrapperTransactionBytes - transactionBytes)
             {

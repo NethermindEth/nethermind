@@ -12,8 +12,7 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// Validates an EIP-8288 mempool wrapper per the spec "Mempool Wrapper Object" rules and the EIP-8437 kind-1 rules: every
 /// transaction is a frame transaction within the per-transaction limits, the dependency list is their union, mode 0 stays
 /// within the direct witness limits and verifies each witness, and mode 1 stays within <c>MAX_DEPS_PER_AGGREGATE</c> and
-/// <c>MAX_LEANSTARK_DEPS_PER_AGGREGATE</c> and carries one recursive STARK that verifies against <c>get_deps_hash(deps)</c>. A wrapper has
-/// empty <c>deps</c> only when no transaction has a dependency verification frame, and then uses mode 0 with no proofs.
+/// <c>MAX_LEANSTARK_DEPS_PER_AGGREGATE</c> and carries one recursive STARK that verifies against <c>get_deps_hash(deps)</c>. A wrapper must have a nonempty, sorted and deduplicated dependency list.
 /// </summary>
 public static class MempoolWrapperValidator
 {
@@ -27,7 +26,7 @@ public static class MempoolWrapperValidator
     public const string TooManyStarkDeps = "mode 0 wrapper exceeds MAX_LEANSTARK_DEPS_PER_WRAPPER";
     public const string TooManyAggregateDeps = "mode 1 wrapper exceeds MAX_DEPS_PER_AGGREGATE";
     public const string TooManyAggregateStarkDeps = "mode 1 wrapper exceeds MAX_LEANSTARK_DEPS_PER_AGGREGATE";
-    public const string EmptyAggregate = "a wrapper with empty deps must use mode 0";
+    public const string EmptyAggregate = "proof wrapper dependencies must not be empty";
     public const string TooManyTransactions = "wrapper exceeds MAX_TXS_PER_WRAPPER";
     public const string ProofCountMismatch = "mode 0 wrapper must carry exactly one proof per dependency";
     public const string InvalidProof = "a wrapper dependency proof failed verification";
@@ -116,6 +115,10 @@ public static class MempoolWrapperValidator
     private static bool CheckModeLimits(MempoolWrapper wrapper, out string? error)
     {
         error = null;
+        if (wrapper.Deps.Count == 0) { error = EmptyAggregate; return false; }
+        if (!DepsEqual(Eip8288Dependencies.Canonicalize(wrapper.Deps), wrapper.Deps)) { error = DepsMismatch; return false; }
+        foreach (FrameDependency dependency in wrapper.Deps)
+            if (!Eip8288Dependencies.IsAcceptedScheme(dependency.Scheme)) { error = InvalidProof; return false; }
         switch (wrapper.Mode)
         {
             case MempoolWrapper.ModeDirect:

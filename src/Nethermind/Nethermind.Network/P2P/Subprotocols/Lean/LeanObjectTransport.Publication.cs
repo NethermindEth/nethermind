@@ -146,16 +146,29 @@ public sealed partial class LeanObjectTransport
         }
     }
 
-    private bool IsValidBlockProof(Block block, ReadOnlySpan<byte> proof)
+    private bool IsValidBlockProof(Block block, ReadOnlySpan<byte> proof) => CheckBlockProof(block, proof) == Verdict.Valid;
+
+    private Verdict CheckBlockProof(Block block, ReadOnlySpan<byte> proof)
     {
         if (block.Header.RecursiveStark is not { } commitment || proof.Length > Eip8288Constants.MaxAggregateProofBytes
-            || !_specProvider.GetSpec(block.Header).IsEip8288Enabled
-            || ValueKeccak.Compute(proof) != commitment.StarkProofHash.ValueHash256) return false;
+            || ValueKeccak.Compute(proof) != commitment.StarkProofHash.ValueHash256) return Verdict.Invalid;
+        if (!_specProvider.GetSpec(block.Header).IsEip8288Enabled) return Verdict.Refused;
         List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block);
         ValueHash256 dependencyHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        return Eip8288Dependencies.AreSchemesEnabled(dependencies) && LeanProofCapacity.FitsBlock(dependencies)
-            && dependencyHash == commitment.BlockDepsHash.ValueHash256
-            && _proofVerifier.VerifyRecursiveStark(in dependencyHash, Eip8288Constants.AggregatedVk, proof);
+        if (!Eip8288Dependencies.AreSchemesEnabled(dependencies) || !LeanProofCapacity.FitsBlock(dependencies)
+            || dependencyHash != commitment.BlockDepsHash.ValueHash256) return Verdict.Invalid;
+        if (LeanProofCapacity.CapacityError(new HashSet<FrameDependency>(dependencies)) is not null) return Verdict.Refused;
+        try
+        {
+            // The native bool verifier also returns false for a missing library: distinguish local availability first.
+            _proofVerifier.EnsureAvailable();
+            return _proofVerifier.VerifyRecursiveStark(in dependencyHash, Eip8288Constants.AggregatedVk, proof) ? Verdict.Valid : Verdict.Invalid;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            if (_logger.IsDebug) _logger.Debug($"lean/1 block-proof verification unavailable: {exception.Message}");
+            return Verdict.LocalFailure;
+        }
     }
 
     /// <inheritdoc/>
@@ -212,11 +225,15 @@ public sealed partial class LeanObjectTransport
                 using LeanFetchedBody? fetched = await FetchBodyAsync(descriptor, peer, cancellationToken).ConfigureAwait(false);
                 if (fetched is null) continue;
                 ReadOnlySpan<byte> proof = LeanBodies.ParseBlockProof(fetched.Body);
-                if (!IsValidBlockProof(block, proof))
+                Verdict verdict = CheckBlockProof(block, proof);
+                if (verdict != Verdict.Valid)
                 {
-                    Outbox outbox = new(_clock);
-                    lock (_gate) Violation(peer, "Block proof differs from its header or dependency statement", outbox);
-                    outbox.Flush();
+                    if (verdict == Verdict.Invalid)
+                    {
+                        Outbox outbox = new(_clock);
+                        lock (_gate) Violation(peer, "Block proof differs from its header or dependency statement", outbox);
+                        outbox.Flush();
+                    }
                     continue;
                 }
                 Interlocked.Increment(ref _stats.SidecarsFetched);

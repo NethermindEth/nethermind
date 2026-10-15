@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
-/// <summary>A wrapper transaction entry: either the full transaction or, if already broadcast, its hash.</summary>
+/// <summary>A wrapper transaction hash, with an optional locally resolved envelope. Only the hash is serialized.</summary>
 public readonly struct WrapperTransaction
 {
     public Transaction? Full { get; }

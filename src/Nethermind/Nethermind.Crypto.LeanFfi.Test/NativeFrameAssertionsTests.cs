@@ -87,7 +87,7 @@ public class NativeFrameAssertionsTests
             Assert.That(Math.Max(execution, state), Is.EqualTo(block.GasUsed));
             Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block), Is.EqualTo(commitment));
             Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk,
-                block.Header.RecursiveStark!.StarkProof), Is.True);
+                block.StarkProof!), Is.True);
         }
     }
 

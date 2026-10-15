@@ -201,7 +201,7 @@ public class NativeLeanProtocolTests
         {
             Assert.That(block.Transactions, Has.Length.EqualTo(1));
             Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(Eip8288Dependencies.ComputeBlockDepsHash(block),
-                Eip8288Constants.AggregatedVk, block.Header.RecursiveStark!.StarkProof), Is.True);
+                Eip8288Constants.AggregatedVk, block.StarkProof!), Is.True);
         }
         toTarget.Writer.TryComplete();
         toSource.Writer.TryComplete();
