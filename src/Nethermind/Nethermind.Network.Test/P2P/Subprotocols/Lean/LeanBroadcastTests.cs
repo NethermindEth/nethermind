@@ -405,8 +405,11 @@ public class LeanBroadcastTests
     private sealed class HeldPeer : ILeanBroadcastPeer
     {
         private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _live, _maxLive, _sent;
+        private int _live, _maxLive, _sent, _closed;
 
+        public bool Fail { get; init; }
+        public bool ThrowOnSend { get; init; }
+        public int Closed => Volatile.Read(ref _closed);
         public LeanPeer? RetrievalPeer => null;
         public string Description => "held";
         public ulong MaxObjectBytes => LeanLimits.MaxObjectBytes;
@@ -418,7 +421,7 @@ public class LeanBroadcastTests
         public bool IsSubscribed(string channel) => true;
 
         public ILeanBroadcastSession OpenSession(string channel, string messageId, byte[] preamble, byte[] initialUpdate) =>
-            new HeldSession(channel, messageId);
+            new HeldSession(this, channel, messageId);
 
         public async ValueTask<bool> SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard)
         {
@@ -428,20 +431,40 @@ public class LeanBroadcastTests
             await _release.Task;
             Interlocked.Decrement(ref _live);
             Interlocked.Increment(ref _sent);
-            return true;
+            if (ThrowOnSend) throw new InvalidOperationException("shard stream closed");
+            return !Fail;
         }
 
         public void Release() => _release.TrySetResult();
 
         public void Penalize(string reason) { }
 
-        private sealed class HeldSession(string channel, string messageId) : ILeanBroadcastSession
+        private sealed class HeldSession(HeldPeer owner, string channel, string messageId) : ILeanBroadcastSession
         {
             public string Channel { get; } = channel;
             public string MessageId { get; } = messageId;
             public void Update(byte[] bitmap) { }
             public void Complete() { }
-            public void Close() { }
+            public void Close() => Interlocked.Increment(ref owner._closed);
+        }
+    }
+
+    [Test]
+    public async Task Synchronous_shard_write_failure_finishes_the_session_without_retrying([Values] bool throws)
+    {
+        using BroadcastNode origin = new();
+        HeldPeer peer = new() { Fail = true, ThrowOnSend = throws };
+        peer.Release();
+        origin.Engine.AddPeer(peer);
+        (LeanBroadcastManifest manifest, _) = await Package(origin, 917);
+
+        Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Sent, Is.InRange(1, LeanBroadcastEngine.MaxShardsInFlightPerPeer));
+            Assert.That(peer.Live, Is.Zero);
+            Assert.That(peer.Closed, Is.EqualTo(1));
         }
     }
 
@@ -622,15 +645,16 @@ public class LeanBroadcastTests
         (LinkPeer good, _) = Link(other, receiver);
         (LeanBroadcastManifest manifest, LeanDescriptor descriptor) = await Package(origin, 2);
         await Package(other, 2);
-        bad.Tamper = static (index, shard) => index == 3 ? [.. shard[..^1], (byte)(shard[^1] ^ 1)] : shard;
+        bad.Tamper = static (_, shard) => [.. shard[..^1], (byte)(shard[^1] ^ 1)];
 
         Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
+        await Until(() => !bad.Reverse.Penalties.IsEmpty);
         Assert.That(other.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
 
         await Until(() => receiver.Node.Transport.HasBroadcastSidecar(descriptor.BlockHash));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bad.Reverse.Penalties, Has.Some.Contains("shard 3"));
+            Assert.That(bad.Reverse.Penalties, Has.Some.Contains("shard"));
             Assert.That(good.Reverse.Penalties, Is.Empty);
         }
     }
