@@ -158,6 +158,15 @@ public class CodeInfoRepository : ICodeInfoRepository
         return worldState.InsertCode(codeOwner, in codeHash, code, spec);
     }
 
+    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        InsertTransientCode(_worldState, code, codeOwner, spec);
+
+    public static void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
+        worldState.InsertTransientCode(codeOwner, in codeHash, code, spec);
+    }
+
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         SetDelegation(_worldState, codeSource, authority, spec, out _, out _);
 

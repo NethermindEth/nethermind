@@ -62,6 +62,9 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(code, codeOwner, spec);
 
+    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        codeInfoRepository.InsertTransientCode(code, codeOwner, spec);
+
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         codeInfoRepository.SetDelegation(codeSource, authority, spec);
 
