@@ -10,6 +10,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class SecP256r1Precompile
 {
+    public static Address Address { get; } = Address.FromNumber(0x100);
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         Metrics.SecP256r1Precompile++;

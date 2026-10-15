@@ -91,6 +91,26 @@ public class ReceiptMessageDecoderTests
         }
     }
 
+    [Test]
+    public void Decode_TypedReceiptWrapperLengthMustMatchItsContent([Values(-1, 0, 1)] int lengthDelta)
+    {
+        TxReceipt receipt = new() { TxType = TxType.EIP1559, StatusCode = 1, GasUsedTotal = 21_000, Bloom = new Bloom(), Logs = [] };
+        ReceiptMessageDecoder decoder = new();
+        // A trailing byte keeps an over-declared wrapper inside the buffer, so only the wrapper check can reject it.
+        byte[] encoded = [.. decoder.EncodeNew(receipt, RlpBehaviors.Eip658Receipts), 0x00];
+        (int wrapperPrefixLength, _) = new RlpReader(encoded).PeekPrefixAndContentLength();
+        encoded[wrapperPrefixLength - 1] = (byte)(encoded[wrapperPrefixLength - 1] + lengthDelta);
+
+        if (lengthDelta == 0)
+        {
+            Assert.That(Decode(decoder, encoded).TxType, Is.EqualTo(TxType.EIP1559));
+        }
+        else
+        {
+            Assert.That(() => Decode(decoder, encoded), Throws.TypeOf<RlpException>());
+        }
+    }
+
     /// <summary>Locates the header of the logs list holding the single log both paths encode.</summary>
     /// <remarks>The logs are the last item of the payload on either path, so the declared payload end places
     /// their header exactly. A byte scan could instead hit an unrelated field and still throw, passing for the

@@ -31,10 +31,6 @@ namespace Nethermind.Core.Extensions
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
-        // The ReadOnlyMemory<byte> needs to be initialized = or it will be created each time.
-        public static ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
-        public static ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
-        public static ReadOnlyMemory<byte> TwoByte = new byte[] { 2 };
         // The Jit converts a ReadOnlySpan<byte> => new byte[] to a data section load, no allocation.
         public static ReadOnlySpan<byte> ZeroByteSpan => new byte[] { 0 };
         public static ReadOnlySpan<byte> OneByteSpan => new byte[] { 1 };
@@ -801,7 +797,6 @@ namespace Nethermind.Core.Extensions
             state.Bytes.AsSpan().OutputBytesToCharHexWithEip55Checksum(chars, state.WithZeroX, state.LeadingZeros);
         });
 
-        internal static uint[] Lookup32 = CreateLookup32();
         // Plain arithmetic rather than formatting each byte, which allocated and parsed a string per entry.
         private static uint[] CreateLookup32()
         {

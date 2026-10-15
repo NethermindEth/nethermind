@@ -349,8 +349,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         {
                             UInt256 key = slotChanges.Key;
                             if (!_snapshotBundle.ShouldQueuePrewarm(address, key)) continue;
+                            StorageChange[] changes = slotChanges.Changes;
+                            bool isDelete = changes.Length > 0 && changes[^1].Value.IsZero;
                             Interlocked.Increment(ref _outstandingWarmups);
-                            if (!_warmer.PushSlotJobMpmc(storageWarmer, key, snapshot)) CompleteWarmup();
+                            if (!_warmer.PushSlotJobMpmc(storageWarmer, key, snapshot, isDelete)) CompleteWarmup();
                         }
                     }
 
@@ -513,7 +515,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address);
         if (tree is null) return;
         Interlocked.Increment(ref _outstandingWarmups);
-        if (!_warmer.PushSlotJobMpmc(tree, index, _hintSequenceId)) CompleteWarmup();
+        if (!_warmer.PushSlotJobMpmc(tree, index, _hintSequenceId, isDelete: false)) CompleteWarmup();
     }
 
     private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
