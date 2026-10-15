@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -21,12 +20,12 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 /// </summary>
 public class InvalidChainTracker(
     IPoSSwitcher poSSwitcher,
-    IBlockFinder blockFinder,
+    IBlockTree blockTree,
     IBlockCacheService blockCacheService,
     ILogManager logManager) : IInvalidChainTracker
 {
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
-    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IBlockTree _blockTree = blockTree;
     private readonly IBlockCacheService _blockCacheService = blockCacheService;
     private readonly ILogger _logger = logManager.GetClassLogger<InvalidChainTracker>();
     private readonly LruCache<ValueHash256, Node> _tree = new(1024, nameof(InvalidChainTracker));
@@ -52,7 +51,7 @@ public class InvalidChainTracker(
         lock (parentNode)
         {
             parentNode.Children.Add(child);
-            needPropagate = parentNode.LastValidHash is not null;
+            needPropagate = parentNode.IsInvalid;
         }
 
         if (needPropagate)
@@ -77,8 +76,12 @@ public class InvalidChainTracker(
                 foreach (Hash256 nodeChild in current.Children)
                 {
                     Node childNode = GetNode(nodeChild);
-                    if (childNode.LastValidHash != current.LastValidHash)
+                    // Written under the parent's lock only: nesting the child's lock could deadlock on the cycles
+                    // SetChildParent tolerates, and a reader that sees the mark before the hash answers INVALID
+                    // with a last valid hash the next query corrects.
+                    if (!childNode.IsInvalid || childNode.LastValidHash != current.LastValidHash)
                     {
+                        childNode.IsInvalid = true;
                         childNode.LastValidHash = current.LastValidHash;
                         if (visited.Add(childNode))
                         {
@@ -98,9 +101,17 @@ public class InvalidChainTracker(
             return block.Header;
         }
 
-        return _blockFinder.FindHeader(hash, BlockTreeLookupOptions.AllowInvalid | BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        return _blockTree.FindHeader(hash, BlockTreeLookupOptions.AllowInvalid | BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The engine API's <c>latestValidHash</c> names an ancestor that is fully validated, zero for a pre-merge one,
+    /// and is null when no such ancestor can be determined. It is therefore the parent only when this node executed
+    /// it, the parent's own last valid hash when the parent is itself tracked as invalid, and unknown for a parent
+    /// that is only inserted, cached or unresolved: a block rejected before execution can have an unexecuted parent,
+    /// and a consensus client may mark the hash it is given valid without executing it.
+    /// </remarks>
     public void OnInvalidBlock(Hash256 failedBlock, Hash256? parent)
     {
         if (_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
@@ -118,26 +129,40 @@ public class InvalidChainTracker(
             parent = failedBlockHeader.ParentHash!;
         }
 
-        Hash256 effectiveParent = parent;
-        BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
-        if (parentHeader is not null)
-        {
-            if (!_poSSwitcher.IsPostMerge(parentHeader))
-            {
-                effectiveParent = Keccak.Zero;
-            }
-        }
-        else
-        {
-            if (_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
-        }
+        Hash256? lastValidHash = GetLastValidHash(parent);
 
         Node failedBlockNode = GetNode(failedBlock);
         lock (failedBlockNode)
         {
-            failedBlockNode.LastValidHash = effectiveParent;
+            failedBlockNode.IsInvalid = true;
+            failedBlockNode.LastValidHash = lastValidHash;
         }
         PropagateLastValidHash(failedBlockNode);
+    }
+
+    private Hash256? GetLastValidHash(Hash256 parent)
+    {
+        if (_tree.TryGet(parent, out Node parentNode))
+        {
+            lock (parentNode)
+            {
+                if (parentNode.IsInvalid) return parentNode.LastValidHash;
+            }
+        }
+
+        BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
+        if (parentHeader is null)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Unable to resolve parent {parent}; the last valid hash is unknown.");
+            return null;
+        }
+
+        if (!_poSSwitcher.IsPostMerge(parentHeader)) return Keccak.Zero;
+
+        if (_blockTree.GetInfo(parentHeader.Number, parent).Info is { WasProcessed: true }) return parent;
+
+        if (_logger.IsTrace) _logger.Trace($"Parent {parent} was not executed; the last valid hash is unknown.");
+        return null;
     }
 
     public bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256? lastValidHash)
@@ -151,13 +176,15 @@ public class InvalidChainTracker(
         lock (node)
         {
             lastValidHash = node.LastValidHash;
-            return node.LastValidHash is not null;
+            return node.IsInvalid;
         }
     }
 
     class Node
     {
         public HashSet<Hash256> Children { get; } = [];
+        public bool IsInvalid { get; set; }
+        /// <summary>Null while invalid means that no validated ancestor is known.</summary>
         public Hash256? LastValidHash { get; set; }
     }
 
