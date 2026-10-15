@@ -67,7 +67,9 @@ public class McsLockTests
                     gates[threadId].Wait();
                     using McsLock.Disposable handle = mcsLock.Acquire();
                     executionOrder.Add(threadId);
-                });
+                })
+                // A failed queue wait leaves later threads blocked on their gates; they must not keep the test host alive.
+                { IsBackground = true };
                 threads.Add(thread);
                 thread.Start();
             }
