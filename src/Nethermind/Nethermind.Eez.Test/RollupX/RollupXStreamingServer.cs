@@ -40,7 +40,7 @@ namespace Nethermind.Eez.Test.RollupX;
 
 internal sealed class RollupXStreamingServer : IAsyncDisposable
 {
-    private readonly PrivateKey _key = new("8b3a350cf5c34c9194ca3a545d1b58b8cc60df0ec59baeaebebe0b48c1d97b32");
+    private readonly PrivateKey _key = new("8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba");
     private readonly TempPath _directory = TempPath.GetTempDirectory();
     private readonly X509Certificate2 _certificate = StreamingEndpointTests.EndpointServer.Certificate("server", true);
     private readonly X509Certificate2 _client = StreamingEndpointTests.EndpointServer.Certificate("composer", false);
