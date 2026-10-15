@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Evm;
 
@@ -144,4 +145,17 @@ public partial struct EvmPooledMemory
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref word, 2 * sizeof(ulong)), 0UL);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref word, 3 * sizeof(ulong)), 0UL);
     }
+
+    // The guest has no GC, so a buffer dropped on return is lost for good: every cache miss rents from the shared
+    // pool, which retains every buffer returned to it, bounding the heap by the buffers live at once.
+    private const int MaxNewAllocLength = 0;
+
+    private static byte[] RentLarge(int minLength, out ulong initializedSize)
+    {
+        byte[] array = SafeArrayPool<byte>.Shared.Rent(minLength, out bool isFresh);
+        initializedSize = isFresh ? (ulong)array.Length : 0;
+        return array;
+    }
+
+    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
 }
