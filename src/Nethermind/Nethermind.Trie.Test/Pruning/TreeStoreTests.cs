@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1235,6 +1236,30 @@ namespace Nethermind.Trie.Test.Pruning
 
             fullTrieStore.Dispose();
             Assert.That(memDb.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void PrepareStableState_releases_its_locks_when_persisting_fails()
+        {
+            TestMemDb memDb = new();
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(false, false),
+                persistenceStrategy: No.Persistence);
+
+            TreePath emptyPath = TreePath.Empty;
+            TrieNode node = new(NodeType.Leaf, TestItem.KeccakA, new CappedArray<byte>(new byte[2]));
+            using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1, node))
+            {
+                committer.CommitNode(ref emptyPath, node);
+            }
+
+            memDb.WriteFunc = (_, _) => throw new IOException("disk full");
+            Assert.That(() => fullTrieStore.PrepareStableState(default), Throws.InstanceOf<IOException>());
+
+            memDb.WriteFunc = null;
+            Task retry = Task.Run(() => { using (fullTrieStore.PrepareStableState(default)) { } });
+            Assert.That(retry.Wait(TimeSpan.FromSeconds(10)), Is.True, "the failed attempt must not keep the locks");
         }
 
         [Test]

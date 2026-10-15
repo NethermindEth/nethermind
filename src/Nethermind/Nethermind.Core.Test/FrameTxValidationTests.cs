@@ -511,8 +511,8 @@ public class FrameTxValidationTests
         yield return Admission("FrameDataAtTheCalldataRate",
             static t => t.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, new byte[] { 0, 1 })],
             prefixAndIntrinsic + GasCostOf.TxDataZero + GasCostOf.TxDataNonZeroEip2028);
-        yield return Admission("OneColdSloadPerNonceKey", static t => t.NonceKeys = [UInt256.One, (UInt256)2], prefixAndIntrinsic + 2 * GasCostOf.ColdSLoad);
-        yield return Admission("AccountNonceReadsNoNonceKey", static t => t.NonceKeys = [UInt256.Zero], prefixAndIntrinsic);
+        yield return Admission("OneAccessCostPerNonceKey", static t => t.NonceKeys = [UInt256.One, (UInt256)2], prefixAndIntrinsic + 2 * Eip8250Constants.KeyedNonceAccessCost);
+        yield return Admission("AccountNonceAccessesNoNonceKey", static t => t.NonceKeys = [UInt256.Zero], prefixAndIntrinsic);
         yield return Admission("RecentRootFrameAtItsDeclaredLimit",
             static t => t.Frames = [RecentRootFrame(), SelfVerifyFrame()],
             prefixAndIntrinsic + (ulong)Eip8141Constants.PerFrameGasCost + 20_000 + Eip8272Constants.RecentRootTupleLength * GasCostOf.TxDataZero);
@@ -618,6 +618,27 @@ public class FrameTxValidationTests
 
         Assert.That(measuredIntrinsic, Is.GreaterThan(unmeasuredIntrinsic),
             "the measured calldata must be priced, not served from the memo taken before it was set");
+    }
+
+    [TestCase(new ulong[] { 0 }, 0ul)]
+    [TestCase(new ulong[] { 1 }, 12_100ul)]
+    [TestCase(new ulong[] { 1, 2 }, 24_200ul)]
+    public void TryCalculateGasBudget_ChargesKeyedNonceAccessInIntrinsicGasAndTheCalldataFloor(ulong[] nonceKeys, ulong accessCost)
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip7623Enabled.Returns(true);
+        spec.IsEip8250Enabled.Returns(true);
+        Transaction keyless = CreateValidFrameTx(static _ => { });
+        Transaction keyed = CreateValidFrameTx(t => t.NonceKeys = Array.ConvertAll(nonceKeys, static key => (UInt256)key));
+
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(keyless, spec, out ulong keylessIntrinsic, out ulong keylessFloor, out _), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(keyed, spec, out ulong intrinsic, out ulong floor, out _), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsic, Is.EqualTo(keylessIntrinsic + accessCost));
+            Assert.That(floor, Is.EqualTo(keylessFloor + accessCost));
+        }
     }
 
     [TestCase(TxFrameSignature.SchemeSecp256k1, 65)]

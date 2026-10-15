@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -48,9 +49,15 @@ internal sealed partial class PersistentStorageProvider
         _lastCapturedOriginal = CaptureIndexedOriginalValue(in cell, in value);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private partial void EnsureOriginalsIndexed()
     {
-        if (_originalsIndexed) return;
+        if (!_originalsIndexed) IndexPendingOriginals();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void IndexPendingOriginals()
+    {
         if (_pendingOriginalValues is { } pending)
         {
             foreach (KeyValuePair<StorageCell, UInt256> entry in pending)
@@ -194,6 +201,11 @@ internal sealed partial class PersistentStorageProvider
 
             writes += WriteDeletes(deferredDeletes.AsSpan(), storageWriteBatch);
             return (writes, skipped);
+        }
+
+        private static partial class Pool
+        {
+            private static readonly ConcurrentQueue<PerContractState> _pool = [];
         }
     }
 }
