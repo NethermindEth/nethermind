@@ -6,6 +6,8 @@ concurrency:
 
 on:
   pull_request:
+    # Skipped on draft PRs; ready_for_review starts it once the PR is ready.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [master]
   workflow_dispatch:
@@ -19,6 +21,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ !github.event.pull_request.draft }}
     uses: ./.github/workflows/build-test-artifacts.yml
     with:
       matrix: >-
@@ -97,7 +100,13 @@ jobs:
     needs: [tests]
     if: always()
     runs-on: ubuntu-latest
+    env:
+      DRAFT_PR: ${{ github.event.pull_request.draft == true }}
     steps:
       - name: Check result
         run: |
+          if [[ "$DRAFT_PR" == "true" ]]; then
+            echo "Skipped on draft PRs; this workflow runs once the PR is marked ready for review."
+            exit 0
+          fi
           [[ "${{ needs.tests.result }}" == "success" ]]

@@ -6,6 +6,8 @@ concurrency:
 
 on:
   pull_request:
+    # ready_for_review starts the arm64, macOS and Windows legs that draft PRs skip.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [master]
   workflow_dispatch:
@@ -31,10 +33,14 @@ permissions:
 jobs:
   # Build the test binaries once per Linux RID and share as an artifact. Windows/macOS
   # are excluded — their artifacts can't be deduped cheaply, so building in-job is faster.
+  # Draft PRs run the x64 legs only; everything else runs once the PR is ready for review.
   build:
     uses: ./.github/workflows/build-test-artifacts.yml
     with:
-      matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-arm64","os":"ubuntu-24.04-arm","variant":"release","build_args":""}]}'
+      matrix: >-
+        ${{ github.event.pull_request.draft
+        && '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""}]}'
+        || '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-arm64","os":"ubuntu-24.04-arm","variant":"release","build_args":""}]}' }}
 
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
@@ -48,9 +54,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner:
-          - ubuntu-latest
-          - ubuntu-24.04-arm
+        runner: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-latest"]' || '["ubuntu-latest","ubuntu-24.04-arm"]') }}
         project:
           - Nethermind.Abi.Test
           - Nethermind.Analyzers.Test
@@ -110,7 +114,7 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         chunk: ['']
-        exclude: # These projects are chunked on slower runners (see include block) to stay within the 15-minute job budget.
+        exclude: # These projects are chunked on slower runners (see the include blocks here and in tests-cross-platform) to stay within the 15-minute job budget.
           - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
@@ -123,55 +127,12 @@ jobs:
           - runner: ubuntu-24.04-arm
             project: Nethermind.Merge.AuRa.Test
             chunk: ''
-        include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
-          - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
-          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
-          - { runner: macos-latest, project: Nethermind.KeyStore.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Sockets.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 1of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 1of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 2of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 3of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 4of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 1of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 2of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 3of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 4of4 }
+        include: # Synchronization.Test is chunked to stay within the 15-minute job budget.
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
-          - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
-          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
-          - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Sockets.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
-          - { runner: windows-11-arm, project: Nethermind.Db.Test, chunk: '' }
-          - { runner: windows-11-arm, project: Nethermind.Evm.Test, chunk: '' }
-          - { runner: windows-11-arm, project: Nethermind.Runner.Test, chunk: '' }
-    steps:
+    steps: &test-steps
       - name: Check out repository
         uses: actions/checkout@v6
 
@@ -242,6 +203,65 @@ jobs:
           path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
           retention-days: 1
 
+  # arm64 legs that need chunking, plus macOS and Windows for OS-sensitive tests (I/O, networking,
+  # sockets). Skipped on draft PRs; they run once the PR is marked ready for review.
+  tests-cross-platform:
+    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    needs: build
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      DOTNET_GCConserveMemory: 9
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
+          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
+          - { runner: macos-latest, project: Nethermind.KeyStore.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Sockets.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 1of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 2of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 3of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 4of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 1of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 2of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 3of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 4of4 }
+          - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
+          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
+          - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Sockets.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: windows-11-arm, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: windows-11-arm, project: Nethermind.Evm.Test, chunk: '' }
+          - { runner: windows-11-arm, project: Nethermind.Runner.Test, chunk: '' }
+    steps: *test-steps
+
   tests-spec:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     needs: build
@@ -253,9 +273,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner:
-          - ubuntu-latest
-          - ubuntu-24.04-arm
+        runner: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-latest"]' || '["ubuntu-latest","ubuntu-24.04-arm"]') }}
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -349,11 +367,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner:
-          - ubuntu-latest
-          - ubuntu-24.04-arm
-          - windows-latest
-          - macos-latest
+        runner: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-latest"]' || '["ubuntu-latest","ubuntu-24.04-arm","windows-latest","macos-latest"]') }}
         test:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
@@ -480,14 +494,18 @@ jobs:
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked, nethtest, matrix-guard]
+    needs: [tests, tests-cross-platform, tests-spec, tests-chunked, nethtest, matrix-guard]
     if: always()
     runs-on: ubuntu-latest
+    env:
+      CROSS_PLATFORM_EXPECTED: ${{ !github.event.pull_request.draft }}
     steps:
       - name: Check result
         run: |
           [[ \
             "${{ needs.tests.result }}" == "success" && \
+            ( "${{ needs.tests-cross-platform.result }}" == "success" || \
+              ( "$CROSS_PLATFORM_EXPECTED" == "false" && "${{ needs.tests-cross-platform.result }}" == "skipped" ) ) && \
             "${{ needs.tests-spec.result }}" == "success" && \
             "${{ needs.tests-chunked.result }}" == "success" && \
             "${{ needs.nethtest.result }}" == "success" && \
