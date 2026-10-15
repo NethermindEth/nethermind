@@ -64,7 +64,7 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
-    public void ApplyBal_MatchesTheSameChangesMadeThroughTheWorldState()
+    public void ApplyBal_MatchesTheSameChangesMadeThroughTheWorldState([Values(1, 32)] int extraStorageSlots)
     {
         byte[] code = Bytes.FromHexString("0x60006000");
         // EIP-8298: AddressE adopts by hash the code AddressF deposits and later replaces, so only F's first change has it.
@@ -104,6 +104,23 @@ public class StateProviderTests(bool useFlat)
                     .TestObject)
             .TestObject;
 
+        ReadOnlyAccountChanges[] expanded = new ReadOnlyAccountChanges[bal.AccountChanges.Count];
+        int accountIndex = 0;
+        foreach (ReadOnlyAccountChanges account in bal.AccountChanges)
+        {
+            if (account.Address != TestItem.AddressA && account.Address != TestItem.AddressC && account.Address != TestItem.AddressD)
+            {
+                expanded[accountIndex++] = account;
+                continue;
+            }
+            ReadOnlySlotChanges[] slots = new ReadOnlySlotChanges[account.StorageChanges.Length + extraStorageSlots];
+            account.StorageChanges.CopyTo(slots, 0);
+            for (int i = 0; i < extraStorageSlots; i++)
+                slots[account.StorageChanges.Length + i] = new ReadOnlySlotChanges((UInt256)(10 + i), [new StorageChange(1, (UInt256)(i + 1))]);
+            expanded[accountIndex++] = new ReadOnlyAccountChanges(account.Address, slots, account.StorageReads, account.BalanceChanges, account.NonceChanges, account.CodeChanges);
+        }
+        bal = Build.A.BlockAccessList.WithAccountChanges(expanded).TestObject;
+
         using Context executed = new(useFlat, UnavailableStateHeaderProvider.Instance);
         Hash256 executedRoot = CommitBlockOverGenesis(executed.WorldState, state =>
         {
@@ -116,6 +133,9 @@ public class StateProviderTests(bool useFlat)
             state.InsertCode(TestItem.AddressC, code, Amsterdam.Instance);
             state.Set(new StorageCell(TestItem.AddressC, 5), 7);
             state.Set(new StorageCell(TestItem.AddressD, 1), 0x55);
+            foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressC, TestItem.AddressD })
+                for (int i = 0; i < extraStorageSlots; i++)
+                    state.Set(new StorageCell(address, (UInt256)(10 + i)), (UInt256)(i + 1));
             state.CreateAccount(TestItem.AddressF, 0);
             state.InsertCode(TestItem.AddressF, adoptedCode, Amsterdam.Instance);
             state.CreateAccount(TestItem.AddressE, 0);

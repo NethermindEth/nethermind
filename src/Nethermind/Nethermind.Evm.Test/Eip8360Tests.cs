@@ -612,13 +612,20 @@ public class Eip8360Tests : VirtualMachineTestsBase
             {
                 NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)trace.CustomTracerResult!.Value;
                 Assert.That(diff.pre.ContainsKey(tcreated), Is.False, "the account was created by the transaction");
-                Assert.That(diff.post.TryGetValue(tcreated, out NativePrestateTracerAccount? post), Is.EqualTo(endowment != 0));
-                if (endowment != 0)
+                Assert.That(TestState.AccountExists(tcreated), Is.EqualTo(endowment != 0), "empty accounts are removed after the wipe");
+                Assert.That(diff.post.TryGetValue(tcreated, out NativePrestateTracerAccount? post), Is.True);
+                if (endowment == 0)
+                {
+                    Assert.That(JsonSerializer.Serialize(post, EthereumJsonSerializer.JsonOptions),
+                        Is.EqualTo($"{{\"codeHash\":\"{Hash256.Zero}\"}}"));
+                }
+                else
                 {
                     Assert.That(post!.Balance, Is.EqualTo((UInt256?)(UInt256)endowment));
                     Assert.That(post.Nonce, Is.Null, "the nonce is reset");
                     Assert.That(post.Code.IsEmpty, Is.True, "the code is removed");
                     Assert.That(post.Storage, Is.Null);
+                    Assert.That(post.CodeHash, Is.Null, "the empty-code hash is unchanged");
                 }
             }
             else
