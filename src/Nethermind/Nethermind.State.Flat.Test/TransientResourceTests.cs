@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -53,6 +56,29 @@ public class TransientResourceTests
         resource.Reset();
 
         Assert.That(resource.ShouldPrewarm(TestItem.AddressA, null), Is.True, "a reset resource must forget earlier hints");
+    }
+
+    [Test]
+    public void Reset_GrowsTheWarmedNodesOnlyPastTheirCapacity([Values] bool pastCapacity)
+    {
+        const int capacity = 4;
+        using TransientResource resource = new(new TransientResource.Size(1024, capacity));
+        WarmedNodes warmedNodes = resource.WarmedNodes;
+        int nodeCount = pastCapacity ? capacity + 1 : capacity;
+        for (byte value = 0; value < nodeCount; value++)
+        {
+            byte[] rlp = FlatTestHelpers.LeafRlp(value);
+            warmedNodes.TryInsert(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, out _);
+        }
+
+        resource.Reset();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resource.WarmedNodes, pastCapacity ? Is.Not.SameAs(warmedNodes) : Is.SameAs(warmedNodes));
+            Assert.That(resource.WarmedNodes.Count, Is.Zero);
+            Assert.That(resource.GetSize().NodesCacheSize, Is.EqualTo(nodeCount));
+        }
     }
 
     [Test]

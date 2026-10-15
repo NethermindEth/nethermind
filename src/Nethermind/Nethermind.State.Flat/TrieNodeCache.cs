@@ -82,6 +82,8 @@ public sealed class TrieNodeCache(IFlatDbConfig flatDbConfig) : ITrieNodeCache
 
     private void AddToShard(int shardIndex, ReadOnlySpan<NodeRecordRef> records)
     {
+        if (records.IsEmpty) return;
+
         RecordTable shard = _shards[shardIndex] ?? ReplaceShard(shardIndex);
         foreach (NodeRecordRef record in records)
         {

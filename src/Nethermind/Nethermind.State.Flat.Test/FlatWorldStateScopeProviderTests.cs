@@ -201,7 +201,7 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null, Hash256? stateRoot = null)
         {
             config ??= new FlatDbConfig();
 
@@ -234,10 +234,18 @@ public class FlatWorldStateScopeProviderTests
                                 }
                                 LastCommittedSnapshot = snapshot;
 
-                                // Mirror FlatDbManager.AddSnapshot: returning to the pool directly would recycle
+                                // Mirror FlatDbManager.AddSnapshot, which promotes the warmed nodes into the trie node cache
+                                // before releasing the lease: returning to the pool directly would recycle
                                 // the resource while a warmer lease is still outstanding, and the resource would
                                 // then be returned a second time when that lease is released.
-                                transientResource.ReleaseLease();
+                                try
+                                {
+                                    Container.Resolve<ITrieNodeCache>().Add(transientResource);
+                                }
+                                finally
+                                {
+                                    transientResource.ReleaseLease();
+                                }
                             });
 
                         flatDiff.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
@@ -274,7 +282,7 @@ public class FlatWorldStateScopeProviderTests
                 .ExternallyOwned();
 
             ConfigureSnapshotBundle();
-            ConfigureFlatWorldStateScope();
+            ConfigureFlatWorldStateScope(stateRoot ?? Keccak.EmptyTreeHash);
         }
 
         private void ConfigureSnapshotBundle() =>
@@ -283,9 +291,9 @@ public class FlatWorldStateScopeProviderTests
                 .WithParameter(TypedParameter.From(ResourcePool.Usage.MainBlockProcessing))
                 .ExternallyOwned();
 
-        private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
+        private void ConfigureFlatWorldStateScope(Hash256 stateRoot) => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
-                .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
+                .WithParameter(TypedParameter.From(new StateId(0, stateRoot)))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
@@ -1002,10 +1010,7 @@ public class FlatWorldStateScopeProviderTests
         const int contractCount = 8;
         FlatDbConfig config = new() { DeferStorageTrieCommit = deferStorageTrieCommit };
         if (!trieNodeCacheEnabled) config.TrieCacheMemoryBudget = 0;
-        using TestContext ctx = new(config: config);
-        FlatWorldStateScope scope = ctx.Scope;
         Account baseAccount = new(1, 1);
-        ctx.PersistenceReader.GetAccount(Arg.Any<Address>()).Returns(baseAccount);
 
         RawTrieStore expectedStore = new(new TestMemDb());
         StateTree expectedState = new(expectedStore.GetTrieStore(null), LimboLogs.Instance);
@@ -1013,16 +1018,49 @@ public class FlatWorldStateScopeProviderTests
         for (int contract = 0; contract < contractCount; contract++)
         {
             expectedStorages[contract] = new StorageTree(expectedStore.GetTrieStore(TestItem.Addresses[contract].ToAccountPath.ToHash256()), LimboLogs.Instance);
+            for (int slot = 0; slot < 2 * slotsPerContract; slot++) expectedStorages[contract].Set((UInt256)slot, ((UInt256)(slot + 1)).ToMinimalBigEndian());
+            expectedStorages[contract].Commit();
+            expectedState.Set(TestItem.Addresses[contract], baseAccount.WithChangedStorageRoot(expectedStorages[contract].RootHash));
         }
+        expectedState.Commit();
+
+        // The tries start from nodes only persistence holds, so the blocks load and warm nodes from outside the trie node log.
+        Dictionary<(Hash256? Storage, TreePath Path), byte[]> persistedNodes = CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Rlps;
+        CountingTrieNodeCache trieNodeCache = new(new TrieNodeCache(config));
+        InlineTrieWarmer warmer = new();
+        using TestContext ctx = new(config: config, trieWarmer: warmer, trieNodeCache: trieNodeCache, stateRoot: expectedState.RootHash);
+        ctx.PersistenceReader.GetAccount(Arg.Any<Address>()).Returns(baseAccount);
+        for (int contract = 0; contract < contractCount; contract++)
+        {
+            ctx.PersistenceReader.GetAccount(TestItem.Addresses[contract]).Returns(baseAccount.WithChangedStorageRoot(expectedStorages[contract].RootHash));
+        }
+        ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(c => persistedNodes.GetValueOrDefault((null, c.ArgAt<TreePath>(0))));
+        ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(c => persistedNodes.GetValueOrDefault((c.ArgAt<Hash256>(0), c.ArgAt<TreePath>(1))));
+        FlatWorldStateScope scope = ctx.Scope;
+        warmer.Scope = scope;
 
         int lastBlock = blocksBetweenCommits + 2;
+        // The first and last blocks write every contract and the ones in between one each, so the last block
+        // updates tries committed many blocks, and log generations, before.
+        (int First, int End) ContractsOf(int block) =>
+            block == 1 || block == lastBlock ? (0, contractCount) : (block % contractCount, block % contractCount + 1);
+        UInt256 SlotOf(int block, int i) => (UInt256)((block * 7 + i) % (2 * slotsPerContract));
+
         for (int block = 1; block <= lastBlock; block++)
         {
-            // The first and last blocks write every contract and the ones in between one each, so the last block
-            // updates tries committed many blocks, and log generations, before.
-            bool allContracts = block == 1 || block == lastBlock;
-            int firstContract = allContracts ? 0 : block % contractCount;
-            int endContract = allContracts ? contractCount : firstContract + 1;
+            // Warming the next block's slots fetches the persisted nodes that block then reads from the trie node cache.
+            if (block < lastBlock)
+            {
+                (int nextFirstContract, int nextEndContract) = ContractsOf(block + 1);
+                for (int contract = nextFirstContract; contract < nextEndContract; contract++)
+                {
+                    for (int i = 0; i < slotsPerContract; i++) scope.HintWarmSlot(TestItem.Addresses[contract], SlotOf(block + 1, i));
+                }
+            }
+
+            (int firstContract, int endContract) = ContractsOf(block);
             Address plainAddress = TestItem.Addresses[contractCount + block];
             Account plainAccount = new((ulong)block, (UInt256)block);
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(endContract - firstContract + 1))
@@ -1032,7 +1070,7 @@ public class FlatWorldStateScopeProviderTests
                     using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(TestItem.Addresses[contract], slotsPerContract);
                     for (int i = 0; i < slotsPerContract; i++)
                     {
-                        UInt256 slot = (UInt256)((block * 7 + i) % (2 * slotsPerContract));
+                        UInt256 slot = SlotOf(block, i);
                         UInt256 value = i % 5 == 0 ? UInt256.Zero : (UInt256)(block * 1000 + i);
                         storageBatch.Set(slot, value);
                         expectedStorages[contract].Set(slot, value.ToMinimalBigEndian());
@@ -1061,8 +1099,12 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        Assert.That(CollectNodes(new StateTrieStoreAdapter(ctx.SnapshotBundle), scope.RootHash),
-            Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CollectNodes(new StateTrieStoreAdapter(ctx.SnapshotBundle), scope.RootHash).Nodes,
+                Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
+            Assert.That(trieNodeCache.Hits, trieNodeCacheEnabled ? Is.Positive : Is.Zero);
+        }
     }
 
     [Test]
@@ -1111,16 +1153,18 @@ public class FlatWorldStateScopeProviderTests
     }
 
     /// <summary>The hash-referenced nodes of the state trie at <paramref name="root"/> and its storage tries, by address hash, path and RLP.</summary>
-    private static HashSet<string> CollectNodes(IScopedTrieStore store, Hash256 root)
+    private static NodeCollector CollectNodes(IScopedTrieStore store, Hash256 root)
     {
         NodeCollector collector = new();
         new PatriciaTree(store, LimboLogs.Instance).Accept(collector, root);
-        return collector.Nodes;
+        return collector;
     }
 
     private sealed class NodeCollector : ITreeVisitor<TreePathContextWithStorage>
     {
         public HashSet<string> Nodes { get; } = [];
+
+        public Dictionary<(Hash256? Storage, TreePath Path), byte[]> Rlps { get; } = [];
 
         public bool IsFullDbScan => false;
 
@@ -1143,9 +1187,30 @@ public class FlatWorldStateScopeProviderTests
         {
             if (node.FullRlp.Length >= Hash256.Size || nodeContext.Path.Length == 0)
             {
-                Nodes.Add($"{nodeContext.Storage}/{nodeContext.Path}/{node.FullRlp.ToArray()!.ToHexString()}");
+                byte[] rlp = node.FullRlp.ToArray()!;
+                Nodes.Add($"{nodeContext.Storage}/{nodeContext.Path}/{rlp.ToHexString()}");
+                Rlps[(nodeContext.Storage, nodeContext.Path)] = rlp;
             }
         }
+    }
+
+    private sealed class CountingTrieNodeCache(ITrieNodeCache cache) : ITrieNodeCache
+    {
+        private int _hits;
+
+        public int Hits => Volatile.Read(ref _hits);
+
+        public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
+        {
+            if (!cache.TryGet(address, path, hash, out record)) return false;
+
+            Interlocked.Increment(ref _hits);
+            return true;
+        }
+
+        public void Add(TransientResource transientResource) => cache.Add(transientResource);
+
+        public void Clear() => cache.Clear();
     }
 
     [Test]
