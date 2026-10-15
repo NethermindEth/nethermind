@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -123,13 +122,23 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
         Task<ISession> ILocalPeer.DialAsync(Multiaddress addr, CancellationToken token) => DialTcpAsync(addr.GetPeerId(), [addr], token);
 
         Task<ISession> ILocalPeer.DialAsync(Multiaddress[] samePeerAddrs, CancellationToken token) =>
-            DialTcpAsync(samePeerAddrs.FirstOrDefault()?.GetPeerId(), samePeerAddrs, token);
+            DialTcpAsync(samePeerAddrs.Length == 0 ? null : samePeerAddrs[0].GetPeerId(), samePeerAddrs, token);
 
         Task<ISession> ILocalPeer.DialAsync(PeerId peerId, CancellationToken token) =>
             FindSession(peerId) is { } existing ? Task.FromResult<ISession>(existing)
-            : DialTcpAsync(peerId, _peerStore?.GetPeerInfo(peerId).Addrs?.ToArray() ?? [], token);
+            : DialTcpAsync(peerId, _peerStore?.GetPeerInfo(peerId).Addrs is { } addresses ? [.. addresses] : [], token);
 
-        private Session? FindSession(PeerId peerId) => Sessions.FirstOrDefault(session => session.State.RemotePeerId == peerId);
+        private Session? FindSession(PeerId peerId)
+        {
+            lock (Sessions)
+            {
+                foreach (Session session in Sessions)
+                {
+                    if (session.State.RemotePeerId == peerId) return session;
+                }
+            }
+            return null;
+        }
 
         private async Task<ISession> DialTcpAsync(PeerId? peerId, Multiaddress[] addrs, CancellationToken token)
         {
@@ -143,17 +152,25 @@ public class Libp2pStackPeerFactory(IProtocolStackSettings protocolStackSettings
                 return existing;
             }
 
-            if (addrs.Any(addr => addr.GetPeerId() != peerId))
+            foreach (Multiaddress addr in addrs)
             {
-                throw new Libp2pException($"A dial to {peerId} has addresses of another peer id");
+                if (addr.GetPeerId() != peerId)
+                {
+                    throw new Libp2pException($"A dial to {peerId} has addresses of another peer id");
+                }
             }
 
             // Only IP, TCP and this peer id: the library would resolve any other component, such as a name inside, on the dialing thread,
             // and fails the whole dial on an address of another peer id, as a dnsaddr record can name.
-            List<Multiaddress> tcp = [.. (await ResolveAsync(addrs).WaitAsync(token))
-                .Where(resolved => resolved.Protocols is [IP4 or IP6, TCP, P2P] && resolved.GetPeerId() == peerId)
-                .Distinct()
-                .Take(MaxDialAddresses)];
+            List<Multiaddress> tcp = [];
+            foreach (Multiaddress resolved in await ResolveAsync(addrs).WaitAsync(token))
+            {
+                if (resolved.Protocols is [IP4 or IP6, TCP, P2P] && resolved.GetPeerId() == peerId && !tcp.Contains(resolved))
+                {
+                    tcp.Add(resolved);
+                    if (tcp.Count == MaxDialAddresses) break;
+                }
+            }
 
             if (tcp.Count == 0)
             {

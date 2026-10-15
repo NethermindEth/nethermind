@@ -933,7 +933,16 @@ public sealed class BeaconSyncOrchestrator(
         if (result == BlockImportResult.UnknownParent)
         {
             // A block a restarted round delivers again is held once, but still extends the chain the round rebuilds.
-            bool alreadyHeld = _pendingByParent.TryGetValue(block.ParentRoot, out List<ForkedSignedBeaconBlock>? siblings) && siblings.Any(sibling => sibling.ComputeMessageRoot() == root);
+            bool alreadyHeld = false;
+            if (_pendingByParent.TryGetValue(block.ParentRoot, out List<ForkedSignedBeaconBlock>? siblings))
+            {
+                foreach (ForkedSignedBeaconBlock sibling in siblings)
+                {
+                    if (sibling.ComputeMessageRoot() != root) continue;
+                    alreadyHeld = true;
+                    break;
+                }
+            }
 
             // A child links to the newest held block, or to a deferred block, whose chain it then starts.
             if (held is not null && block.ParentRoot == held.Tip.Root)
@@ -1013,8 +1022,9 @@ public sealed class BeaconSyncOrchestrator(
         PeerColumnCustody peerCustody = peer.Custody;
         foreach ((Hash256 root, PendingRetry retry) in _pendingRetry.ToArray())
         {
-            if (custody.SampledColumns.Any(column => peerCustody.Custodies(column) && !columnPool.TryGet(root, column, out _)))
+            foreach (ulong column in custody.SampledColumns)
             {
+                if (!peerCustody.Custodies(column) || columnPool.TryGet(root, column, out _)) continue;
                 if (_columnFetchesInFlight.Contains(root))
                 {
                     _fetchAgainOnEnd.Add(root);
@@ -1023,6 +1033,7 @@ public sealed class BeaconSyncOrchestrator(
                 {
                     AwaitColumns(retry.Block, root, token);
                 }
+                break;
             }
         }
     }
@@ -1155,7 +1166,10 @@ public sealed class BeaconSyncOrchestrator(
             bool queuedRangeCopy = isQueued && queued.Origin == ImportOrigin.Range;
             if (result == BlockImportResult.Invalid && (rangeItem is not null || isRangeHeld || queuedRangeCopy))
             {
-                (rangeItem is not null || isRangeHeld ? rangeSource : queued.ServedBy)?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Invalid range block at slot {block.Slot}");
+                if (refusal != ImportRefusal.LocalAdmission)
+                {
+                    (rangeItem is not null || isRangeHeld ? rangeSource : queued.ServedBy)?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Invalid range block at slot {block.Slot}");
+                }
             }
             // A promoted copy still waits under the root, so the held chain waits with it.
             else if (wasRetried && promoted is null)
@@ -1949,7 +1963,8 @@ public sealed class BeaconSyncOrchestrator(
         if (_pendingByParent.Remove(root, out List<ForkedSignedBeaconBlock>? children))
         {
             _pendingCount -= children.Count;
-            Hash256[] childRoots = [.. children.Select(static child => child.ComputeMessageRoot())];
+            Hash256[] childRoots = new Hash256[children.Count];
+            for (int i = 0; i < children.Count; i++) childRoots[i] = children[i].ComputeMessageRoot();
             for (int i = 0; i < children.Count; i++)
             {
                 ForkedSignedBeaconBlock child = children[i];
@@ -2657,9 +2672,19 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         // A peer offered on a stale status does not count, or the signalled slot would stop following the clock.
-        if (_lastHead is { } lagging && lagging.HeadSlot + FollowingHeadSlackSlots < slot && !peerPool.GetBestPeers(lagging.HeadSlot + 1).Any(peer => peer.HeadSlot > lagging.HeadSlot))
+        if (_lastHead is { } lagging && lagging.HeadSlot + FollowingHeadSlackSlots < slot)
         {
-            SignalChainAhead(slot, $"head at slot {lagging.HeadSlot} is {slot - lagging.HeadSlot} slots behind the wall clock and no peer's status is past it");
+            bool peerAhead = false;
+            foreach (IBeaconSyncPeer peer in peerPool.GetBestPeers(lagging.HeadSlot + 1))
+            {
+                if (peer.HeadSlot <= lagging.HeadSlot) continue;
+                peerAhead = true;
+                break;
+            }
+            if (!peerAhead)
+            {
+                SignalChainAhead(slot, $"head at slot {lagging.HeadSlot} is {slot - lagging.HeadSlot} slots behind the wall clock and no peer's status is past it");
+            }
         }
 
         await DrainPendingRetriesAsync(token);
@@ -2705,7 +2730,6 @@ public sealed class BeaconSyncOrchestrator(
         {
             if (!QueueVote(new GossipPayloadAttestationItem(vote, verdict)))
             {
-                gossipRouter.ReleasePayloadAttestation(vote);
                 verdict.Complete(MessageValidity.Throttled);
             }
         };
@@ -3028,10 +3052,17 @@ public sealed class BeaconSyncOrchestrator(
         ulong count = run[^1].Slot - startSlot + 1;
         // Status v2 earliest_available_slot (fulu/p2p-interface.md): prefer peers serving from the run start; with none, a peer serving part of the run still beats none.
         IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
-        IReadOnlyList<IBeaconSyncPeer> peers = [.. reaching.Where(peer => peer.EarliestAvailableSlot <= startSlot)];
-        if (peers.Count == 0)
+        List<IBeaconSyncPeer> eligible = new(reaching.Count);
+        foreach (IBeaconSyncPeer peer in reaching)
         {
-            peers = [.. reaching.Where(peer => peer.EarliestAvailableSlot <= run[^1].Slot)];
+            if (peer.EarliestAvailableSlot <= startSlot) eligible.Add(peer);
+        }
+        if (eligible.Count == 0)
+        {
+            foreach (IBeaconSyncPeer peer in reaching)
+            {
+                if (peer.EarliestAvailableSlot <= run[^1].Slot) eligible.Add(peer);
+            }
         }
         Hash256 firstRoot = run[0].ComputeMessageRoot();
         if (!_rangeEnvelopePeerSelections.TryGet(firstRoot, out RangeSync.ColumnFetchRotation? rotation))
@@ -3039,7 +3070,7 @@ public sealed class BeaconSyncOrchestrator(
             rotation = new RangeSync.ColumnFetchRotation(slotClock);
             _rangeEnvelopePeerSelections.Set(firstRoot, rotation);
         }
-        peers = rotation.Take(peers, MaxBackfillPeersPerRequest);
+        IReadOnlyList<IBeaconSyncPeer> peers = rotation.Take(eligible, MaxBackfillPeersPerRequest);
         for (int p = 0; p < peers.Count && p < MaxBackfillPeersPerRequest; p++)
         {
             IBeaconSyncPeer peer = peers[p];

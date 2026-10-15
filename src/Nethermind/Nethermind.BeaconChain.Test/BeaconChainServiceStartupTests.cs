@@ -24,6 +24,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using NSubstitute;
 using NUnit.Framework.Constraints;
 
 namespace Nethermind.BeaconChain.Test;
@@ -71,6 +72,35 @@ public class BeaconChainServiceStartupTests
 
         Assert.That(source.IsCancellationRequested, Is.True);
         NSubstitute.SubstituteExtensions.Received(exit, 1).Exit(ExitCodes.GeneralError);
+    }
+
+    [Test]
+    public async Task External_takeover_cancellation_before_the_stop_event_does_not_exit_the_node()
+    {
+        PubkeyCache pubkeys = new();
+        KickEngine engine = new(pubkeys);
+        IProcessExitSource exit = Substitute.For<IProcessExitSource>();
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        logger.IsInfo.Returns(true);
+        ILogger detectorLogger = new(logger);
+        ILogManager detectorLogs = Substitute.For<ILogManager>();
+        detectorLogs.GetClassLogger<ExternalClDetector>().Returns(detectorLogger);
+        detectorLogs.GetClassLogger<BeaconChainService>().Returns(detectorLogger);
+        ExternalClDetector detector = new(new BeaconChainConfig { DisableOnExternalCl = true },
+            new Lazy<Nethermind.Merge.Plugin.IEngineRpcModule>(() => throw new InvalidOperationException()), detectorLogs);
+        // Inject the engine cancellation after detection becomes visible but before the stop event can cancel the run token.
+        logger.When(log => log.Warn(Arg.Any<string>())).Do(_ => detector.ThrowIfStoodDown());
+        logger.When(log => log.Info(Arg.Is<string>(text => text.StartsWith("Starting embedded beacon chain driver."))))
+            .Do(_ => detector.OnExternalEngineCall());
+        using IContainer container = KickContainer(engine, pubkeys).AddSingleton(detector).AddSingleton(exit).AddSingleton(detectorLogs).Build();
+        SeedAnchor(container.Resolve<BeaconChainStore>(), gloas: false, nextCommittee: false, key: null);
+        BeaconChainService service = container.Resolve<BeaconChainService>();
+
+        await service.Start();
+
+        Assert.That(detector.HasStoodDown, Is.True);
+        exit.DidNotReceive().Exit(Arg.Any<int>());
     }
 
     [Test]

@@ -46,13 +46,9 @@ public class GloasForkScheduleTests
         Assert.Throws<BeaconStateException>(() => SyntheticGloasSpec().ForkAtEpoch(0));
 
     [Test]
-    public void ForkAtEpoch_on_mainnet_and_hoodi_never_reaches_gloas_since_it_is_unscheduled() =>
-        Assert.Multiple(() =>
-        {
-            Assert.That(BeaconChainSpec.Mainnet.ForkAtEpoch(10_000_000), Is.EqualTo(BeaconFork.Fulu),
-                "GloasForkEpoch is the far-future sentinel until a real date is confirmed");
-            Assert.That(BeaconChainSpec.Hoodi.ForkAtEpoch(10_000_000), Is.EqualTo(BeaconFork.Fulu));
-        });
+    public void ForkAtEpoch_on_mainnet_never_reaches_gloas_since_it_is_unscheduled() =>
+        Assert.That(BeaconChainSpec.Mainnet.ForkAtEpoch(10_000_000), Is.EqualTo(BeaconFork.Fulu),
+            "GloasForkEpoch is the far-future sentinel until a real date is confirmed");
 
     [Test]
     public void ForkAtEpoch_on_sepolia_selects_gloas_at_its_confirmed_epoch_and_fulu_immediately_before_it() =>

@@ -27,7 +27,7 @@ namespace Nethermind.BeaconChain.Sync;
 /// <remarks>
 /// A live Fulu state follows the canonical lineage with one <see cref="CachedBeaconStateHasher"/> in its <see cref="EpochCache"/>.
 /// Branch clones use fresh caches and <see cref="FullBeaconStateHasher"/>; reorg adoption uses the retained post-state and fresh cached hasher.
-/// Untrusted blocks apply to clones to protect lineage from partial mutation; trusted persisted replays apply in place.
+/// Live blocks and trusted persisted replays apply to clones to protect lineage from partial mutation.
 /// Gloas always clones its parent's post-state, carrying Fulu parents across the fork on that clone, and retains frozen results
 /// for fork choice and envelope verification. A child of the last Gloas block reuses its CachedBeaconStateHasher with envelope root checks;
 /// branches start fresh. Retain each epoch's last block and the next epoch's first in <see cref="PostStateCache"/> for checkpoints despite skipped first slots.
@@ -281,7 +281,7 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.Invalid;
         }
 
-        // fork-choice.md on_block: a trusted replay must wait before mutating its lineage state in place.
+        // fork-choice.md on_block: even a trusted replay must wait until its slot.
         if (!verifySignatures && IsBeforeItsSlot(block.Slot, blockRoot))
         {
             return BlockImportResult.FutureSlot;
@@ -674,7 +674,7 @@ public sealed class BlockImporter : IBlockImporter
             }
             else if (fuluParent is not null)
             {
-                // The live lineage state advances in place, so it is retained as a copy.
+                // Keep checkpoint ownership separate from the live lineage.
                 _states.Retain(parentRoot, parentRoot == _states.LineageRoot ? fuluParent.Clone() : fuluParent, checkpointCandidate: true);
             }
         }

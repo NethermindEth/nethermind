@@ -129,6 +129,75 @@ public class OptimismGossipLoopbackTests
         }
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Concurrent_outbound_dials_and_the_static_peer_check_share_one_session(CancellationToken token)
+    {
+        await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+        TaskCompletionSource bothResolving = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<IEnumerable<IPAddress>> resolved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int queries = 0;
+        IDnsLookup dns = Substitute.For<IDnsLookup>();
+        dns.QueryAAsync(Arg.Any<string>()).Returns(_ =>
+        {
+            if (Interlocked.Increment(ref queries) == 2) bothResolving.TrySetResult();
+            return resolved.Task;
+        });
+        await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite, dns);
+        string port = sequencer.Address.ToString().Split('/')[4];
+        Multiaddress address = Multiaddress.Decode($"/dns4/sequencer.test/tcp/{port}/p2p/{sequencer.Peer.Identity.PeerId}");
+        IRoutingStateContainer routing = Substitute.For<IRoutingStateContainer>();
+        routing.ConnectedPeers.Returns([]);
+        ISession? kept = null;
+        using StaticPeerKeeper keeper = new(node.Peer, routing, [address], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>(),
+            (session, _) =>
+            {
+                kept = session;
+                return Task.CompletedTask;
+            });
+
+        Task<ISession> routerDial = node.Peer.DialAsync(address, token);
+        Task check = keeper.CheckAsync(token);
+        await bothResolving.Task.WaitAsync(token);
+        resolved.SetResult([IPAddress.Loopback]);
+        ISession connected = await routerDial;
+        await check;
+        ISession reused = await node.Peer.DialAsync(sequencer.Address, token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(kept, Is.SameAs(connected));
+        Assert.That(reused, Is.SameAs(connected));
+        Assert.That(((LocalPeer)node.Peer).Sessions, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public async Task A_router_connection_completed_during_the_static_peer_check_is_preserved()
+    {
+        PeerId peerId = new Nethermind.Libp2p.Core.Identity().PeerId;
+        Multiaddress address = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{peerId}");
+        ISession session = Substitute.For<ISession>();
+        ILocalPeer localPeer = Substitute.For<ILocalPeer>();
+        IRoutingStateContainer routing = Substitute.For<IRoutingStateContainer>();
+        routing.ConnectedPeers.Returns([]);
+        localPeer.DialAsync(address, Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            routing.ConnectedPeers.Returns([peerId]);
+            return session;
+        });
+        int gossipDials = 0;
+        using StaticPeerKeeper keeper = new(localPeer, routing, [address], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>(),
+            (_, _) =>
+            {
+                gossipDials++;
+                return Task.CompletedTask;
+            });
+
+        await keeper.CheckAsync(CancellationToken.None);
+
+        Assert.That(gossipDials, Is.Zero);
+        await session.DidNotReceive().DisconnectAsync();
+    }
+
     [TestCase("/dns4/sequencer.invalid/tcp/{port}/p2p/{id}", TestName = "A name whose first lookup fails")]
     [TestCase("/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name")]
     [TestCase("/ip4/127.0.0.1/tcp/{port}/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name after an address")]

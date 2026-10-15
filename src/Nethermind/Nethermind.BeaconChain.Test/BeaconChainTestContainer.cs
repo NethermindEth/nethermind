@@ -56,9 +56,11 @@ internal static class BeaconChainTestContainer
             .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)));
         ISpecProvider specProvider = Substitute.For<ISpecProvider>(); // registered by NethermindModule in production
         specProvider.ChainId.Returns(chainId);
-        if (chainId == BlockchainIds.Sepolia)
+        BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
+        if (config?.GloasForkEpoch is { } epoch && epoch >= spec.FuluForkEpoch)
+            spec = spec with { GloasForkEpoch = epoch };
+        if (spec.GloasForkEpoch != Presets.FarFutureEpoch)
         {
-            BeaconChainSpec spec = BeaconChainSpec.Sepolia;
             ulong activation = spec.GenesisTime + spec.GloasForkEpoch * spec.SlotsPerEpoch * spec.SecondsPerSlot;
             IReleaseSpec before = Substitute.For<IReleaseSpec>();
             IReleaseSpec after = Substitute.For<IReleaseSpec>();

@@ -2105,7 +2105,7 @@ public sealed class ForkChoiceRunner
     /// <summary>A mutable copy of the post-state of <paramref name="blockRoot"/> advanced to <paramref name="targetSlot"/>, crossing into <paramref name="targetFork"/> on the way when needed.</summary>
     private ForkedBeaconState AdvanceCopy(Hash256 blockRoot, ulong blockSlot, ulong targetSlot, BeaconFork targetFork, bool requireHeld = false)
     {
-        Hash256 blockStateRoot = _protoArray.EnumerateAncestorNodes(blockRoot).First().StateRoot;
+        Hash256 blockStateRoot = _protoArray.Nodes[_protoArray.IndexOf(blockRoot) ?? throw new ForkChoiceException($"Block {blockRoot} is unknown to fork choice")].StateRoot;
         EpochCache cache = new() { Hasher = new KnownSlotRoots(blockSlot, KnownAdvanceRoots(blockRoot, blockStateRoot, blockSlot, targetSlot), CheckpointStateHasher()) };
         ForkedBeaconState state = IsGloasSlot(blockSlot)
             ? new ForkedBeaconState.OfGloas(((ForkedBeaconState.OfGloas)GetBlockState(blockRoot)).State.Clone())

@@ -24,7 +24,7 @@ public class ShutterStaticPeerTests
     private static readonly TimeSpan Bound = TimeSpan.FromSeconds(15);
     [Test]
     [CancelAfter(60_000)]
-    public async Task A_bootnode_is_connected_again_after_its_connection_closes(CancellationToken token)
+    public async Task A_bootnode_is_not_pinned_after_the_router_disconnects_it(CancellationToken token)
     {
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         await using ShutterP2P keyper = Create();
@@ -39,8 +39,6 @@ public class ShutterStaticPeerTests
         await WaitUntilAsync(() => node.RoutingStateForTest.ConnectedPeers.Contains(keyperId), "the node never connected to its bootnode", token);
 
         LocalPeer nodePeer = (LocalPeer)node.PeerForTest;
-        // The static peer check can reconnect within one 200 ms period, faster than a poll sees the peer gone, so a new session is the signal.
-        ISession[] closed = nodePeer.Sessions.ToArray<ISession>();
         foreach (ShutterP2P host in new[] { node, keyper })
         {
             foreach (ISession session in ((LocalPeer)host.PeerForTest).Sessions.ToArray())
@@ -49,8 +47,15 @@ public class ShutterStaticPeerTests
             }
         }
 
-        await WaitUntilAsync(() => nodePeer.Sessions.Any(session => !closed.Contains(session)) && node.RoutingStateForTest.ConnectedPeers.Contains(keyperId),
-            "the bootnode was never connected again", token);
+        await WaitUntilAsync(() => nodePeer.Sessions.Count == 0 && !node.RoutingStateForTest.ConnectedPeers.Contains(keyperId),
+            "the bootnode did not disconnect", token);
+        await node.RoutingStateForTest.Heartbeat();
+        await Task.Delay(TimeSpan.FromSeconds(1), token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodePeer.Sessions, Is.Empty);
+            Assert.That(node.RoutingStateForTest.ConnectedPeers, Does.Not.Contain(keyperId));
+        }
 
         stop.Cancel();
         await Task.WhenAll(keyperRun, nodeRun);
@@ -102,13 +107,13 @@ public class ShutterStaticPeerTests
         await keyperRun;
     }
 
-    // The router's own redial is off, so only the static peer check can connect a bootnode again.
+    // Disable the router's redial to distinguish discovery peers from permanently pinned peers.
     private static ShutterP2P Create()
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback));
         return new ShutterP2P(new ShutterConfig { P2PPort = 0 }, LimboLogs.Instance, Substitute.For<IFileSystem>(), new KeyStoreConfig(), ipResolver,
-            staticPeerCheckInterval: TimeSpan.FromMilliseconds(200), configureGossip: static settings => settings.ReconnectionPeriod = Timeout.Infinite);
+            configureGossip: static settings => settings.ReconnectionPeriod = Timeout.Infinite);
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition, string failure, CancellationToken token)

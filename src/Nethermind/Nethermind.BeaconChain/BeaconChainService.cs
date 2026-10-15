@@ -117,7 +117,7 @@ public sealed class BeaconChainService(
                 }
             });
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        catch (OperationCanceledException) when (token.IsCancellationRequested || externalClDetector.HasStoodDown)
         {
         }
         catch (Exception e)
