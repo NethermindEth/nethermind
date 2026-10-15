@@ -2,6 +2,8 @@
 
 The harness runs separate Nethermind test processes over real RLPx/TCP or ethp2p/QUIC, with authenticated ETH66 transaction recovery. Linux network namespaces provide isolated, shaped links. Proof bytes, pool admission and verification are controlled fixtures; reported transaction goodput is **measured transport goodput under this workload, not native proving or block throughput**. Native measurements and their reproduction recipe are in `native-cost/`.
 
+`--verify-ms` occupies the synchronous verifier worker once per verification call. It models elapsed worker occupancy, not native CPU cost; nonzero values can also delay the thread pool. The published campaign used zero.
+
 Requirements: Linux, .NET 10 SDK, Python 3, `iproute2`, `ethtool`, and `libmsquic`. Namespace creation needs root. Use a dedicated machine or bound the workload; the default matrix uses at most four node processes and 100 Mbit/s links. It creates no external listener outside its namespaces.
 
 ```sh

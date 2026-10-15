@@ -33,6 +33,7 @@ internal sealed class LeanTestVerifier : ILeanProofVerifier
     private int _maxActive;
 
     public bool Valid { get; set; } = true;
+    /// <summary>Occupies the synchronous verification worker; models elapsed service time, not native CPU cost.</summary>
     public TimeSpan Delay { get; set; }
     public Exception? AvailabilityError { get; set; }
     public Exception? VerificationError { get; set; }

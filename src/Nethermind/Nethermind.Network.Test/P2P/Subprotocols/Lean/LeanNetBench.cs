@@ -104,6 +104,31 @@ public class LeanNetBenchNode
     public sealed record NodeConfig(int Id, string Binding, bool Broadcast, string Ip, int Port, PeerConfig[] Peers, int Nodes, int Kind,
         int Objects, int Warmup, int ProofBytes, int TransactionsPerObject, int Burst, int IntervalMs, string Origins, int VerifyMs, long GenesisUnixMs, string RunDir, int TimeoutSec);
 
+    internal static void ValidateBinding(string binding, bool broadcast)
+    {
+        if (binding is not ("rlpx" or "ethp2p")) throw new ArgumentException($"unknown binding {binding}");
+        if (broadcast && binding != "ethp2p") throw new ArgumentException("broadcast requires the ethp2p binding");
+    }
+
+    internal static bool CanRedial(Task<LeanEthp2pConnection?> dial, Action<Exception> reportFailure)
+    {
+        if (!dial.IsCompleted) return false;
+        if (dial.IsFaulted)
+        {
+            reportFailure(dial.Exception!);
+            return true;
+        }
+        return dial.IsCanceled || dial.GetAwaiter().GetResult() is not { Closed.IsCompleted: false };
+    }
+
+    internal static async Task<bool> FetchSidecarAsync(IBlockProofSidecarSource source, Block block, Action import, CancellationToken cancellationToken)
+    {
+        // Retrieval already performs verification, including the configured synchronous worker delay.
+        if (await source.TryGetAsync(block, cancellationToken) is null) return false;
+        import();
+        return true;
+    }
+
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, WriteIndented = false };
 
     internal static PrivateKey NodeKey(int id) => new(Keccak.Compute($"lean-net-bench node {id}").Bytes.ToArray());
@@ -118,6 +143,7 @@ public class LeanNetBenchNode
         string? path = Environment.GetEnvironmentVariable("LEAN_NET_CONFIG");
         if (path is null) Assert.Ignore("LEAN_NET_CONFIG is not set");
         NodeConfig config = JsonSerializer.Deserialize<NodeConfig>(File.ReadAllText(path), Json)!;
+        ValidateBinding(config.Binding, config.Broadcast);
         Metrics.LeanObjectTransferMicros = TransferCounter.Instance;
         // As in release builds of the runner: leak sampling captures stack traces of pooled buffers, which would dominate RLPx CPU.
         ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
@@ -287,12 +313,8 @@ public class LeanNetBenchNode
         async Task FetchSidecar(BenchObject o)
         {
             await WaitForRelease(o.Index);
-            RecursiveStark? proof = await node.Transport.TryGetAsync(new Block(o.Header!, new BlockBody(o.Transactions, [], null)), deadline.Token);
-            if (proof is null) return;
-            // Import verifies the proof before the block, and so its sidecar, is served onward.
-            if (config.VerifyMs > 0) await Task.Delay(config.VerifyMs, deadline.Token);
-            Import(o);
-            Complete(o.Index);
+            if (await FetchSidecarAsync(node.Transport, new Block(o.Header!, new BlockBody(o.Transactions, [], null)), () => Import(o), deadline.Token))
+                Complete(o.Index);
         }
 
         foreach (BenchObject o in objects)
@@ -506,7 +528,7 @@ public class LeanNetBenchNode
     }
 
     /// <summary>The ethp2p QUIC binding, as <see cref="LeanEthp2pQuicTests"/> runs it.</summary>
-    private sealed class Ethp2pBinding(LeanEthp2pHost host, RlpxBinding eth) : IBenchBinding
+    private sealed class Ethp2pBinding(LeanEthp2pHost host, RlpxBinding eth, ILogger logger) : IBenchBinding
     {
         private readonly ConcurrentDictionary<PublicKey, Task<LeanEthp2pConnection?>> _dials = new();
 
@@ -518,7 +540,7 @@ public class LeanNetBenchNode
             LeanEthp2pHost host = new(node.Transport, config, new InsecureProtectedPrivateKey(key), logs, node.EthTransactions, profile);
             await host.StartAsync(CancellationToken.None);
             RlpxBinding eth = await RlpxBinding.StartAsync(key, ip, port - 1, node, logs, lean: false);
-            return new Ethp2pBinding(host, eth);
+            return new Ethp2pBinding(host, eth, logs.GetClassLogger<Ethp2pBinding>());
         }
 
         public LeanBroadcastEngine? Broadcast => host.Broadcast;
@@ -529,7 +551,7 @@ public class LeanNetBenchNode
         {
             eth.Dial(key, ip, port - 1);
             if (_dials.TryGetValue(key, out Task<LeanEthp2pConnection?>? dial)
-                && (!dial.IsCompleted || dial.Result is { Closed.IsCompleted: false })) return false;
+                && !CanRedial(dial, error => { if (logger.IsWarn) logger.Warn($"Benchmark dial to {key} failed; retrying: {error}"); })) return false;
             _dials[key] = host.DialAsync(new LeanEthp2pRecord(key, new IPEndPoint(IPAddress.Parse(ip), port)), CancellationToken.None);
             return true;
         }
@@ -686,6 +708,48 @@ internal sealed class BenchBroadcastProfile(long genesisUnixMs) : ILeanBroadcast
 [SupportedOSPlatform("windows")]
 public class LeanNetBenchFixtureTests
 {
+    [TestCase("rlpx", false, true)]
+    [TestCase("ethp2p", false, true)]
+    [TestCase("ethp2p", true, true)]
+    [TestCase("rlpx", true, false)]
+    [TestCase("unknown", false, false)]
+    public void Invalid_binding_is_rejected_before_startup(string binding, bool broadcast, bool valid)
+    {
+        if (valid) Assert.DoesNotThrow(() => LeanNetBenchNode.ValidateBinding(binding, broadcast));
+        else Assert.Throws<ArgumentException>(() => LeanNetBenchNode.ValidateBinding(binding, broadcast));
+    }
+
+    [Test]
+    public void Redial_waits_for_pending_attempt_and_recovers_from_terminal_failure([Values] bool canceled)
+    {
+        TaskCompletionSource<LeanEthp2pConnection?> attempt = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        List<Exception> failures = [];
+        Assert.That(LeanNetBenchNode.CanRedial(attempt.Task, failures.Add), Is.False);
+        if (canceled) attempt.SetCanceled();
+        else attempt.SetException(new IOException("dial failed"));
+        Assert.That(LeanNetBenchNode.CanRedial(attempt.Task, failures.Add), Is.True);
+        Assert.That(failures.Count, Is.EqualTo(canceled ? 0 : 1));
+        Assert.That(LeanNetBenchNode.CanRedial(Task.FromResult<LeanEthp2pConnection?>(null), failures.Add), Is.True);
+    }
+
+    [Test]
+    public async Task Sidecar_completion_imports_only_verified_results_without_another_wait([Values] bool verified)
+    {
+        IBlockProofSidecarSource source = Substitute.For<IBlockProofSidecarSource>();
+        Block block = new(LeanTransportTests.ProofHeader([1]), new BlockBody());
+        using CancellationTokenSource deadline = new();
+        source.TryGetAsync(block, deadline.Token).Returns(_ =>
+        {
+            // A deadline that expires after verification must not cancel an artificial second delay.
+            deadline.Cancel();
+            return Task.FromResult<RecursiveStark?>(verified ? new([1], block.Header.RecursiveStark!.BlockDepsHash) : null);
+        });
+        int imports = 0;
+        Assert.That(await LeanNetBenchNode.FetchSidecarAsync(source, block, () => imports++, deadline.Token), Is.EqualTo(verified));
+        Assert.That(imports, Is.EqualTo(verified ? 1 : 0));
+        await source.Received(1).TryGetAsync(block, deadline.Token);
+    }
+
     [Test]
     public void Controlled_pool_uses_hash_index_and_owned_snapshots()
     {
