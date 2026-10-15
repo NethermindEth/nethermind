@@ -197,7 +197,7 @@ public class RangeSyncColumnCustodyTests
         await DrainAsync(sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(log.Messages, Has.Some.Matches<string>(static line => line.Contains("cut-short failed after") && line.Contains("keeping 1 sidecars read")));
+        Assert.That(log.Messages, Has.Some.Matches<string>(static line => line is not null && line.Contains("cut-short failed after") && line.Contains("keeping 1 sidecars read")));
         Assert.That(log.Messages, Has.None.Contains("Exception"));
     }
 

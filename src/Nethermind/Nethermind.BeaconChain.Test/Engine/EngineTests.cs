@@ -317,8 +317,7 @@ public class EngineTests
         await driver.ForkchoiceUpdated(TestHash, TestHash, TestHash);
         Assert.That(driver.IsAvailable, Is.True);
         engine.Configure().engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(Task.FromResult(answer));
-
-        Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash));
+        await Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(driver.LastForkchoiceStatus, Is.SameAs(PayloadStatusV1.Syncing), "a failed call must not overwrite the last status");
@@ -347,7 +346,7 @@ public class EngineTests
         await InvokeEngine(driver, method);
         Assert.That(driver.IsAvailable, Is.True);
         ConfigureEngine(engine, synchronous ? () => throw cause : () => Task.FromException<PayloadStatusV1>(cause));
-        EngineUnavailableException? failure = Assert.ThrowsAsync<EngineUnavailableException>(() => InvokeEngine(driver, method));
+        EngineUnavailableException? failure = await Assert.ThrowsAsync<EngineUnavailableException>(() => InvokeEngine(driver, method));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(failure!.InnerException, cancellation ? Is.InstanceOf<OperationCanceledException>() : Is.SameAs(cause));
@@ -374,7 +373,7 @@ public class EngineTests
         engine.ClearReceivedCalls();
 
         if (disableOnExternalCl)
-            Assert.ThrowsAsync<OperationCanceledException>(() => InvokeEngine(driver, method));
+            await Assert.ThrowsAsync<OperationCanceledException>(() => InvokeEngine(driver, method));
         else
             await InvokeEngine(driver, method);
 
@@ -401,15 +400,15 @@ public class EngineTests
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            EngineUnavailableException? timeout = Assert.ThrowsAsync<EngineUnavailableException>(() => call.WaitAsync(TimeSpan.FromSeconds(2)));
+            EngineUnavailableException? timeout = await Assert.ThrowsAsync<EngineUnavailableException>(() => call.WaitAsync(TimeSpan.FromSeconds(2)));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(timeout!.InnerException, Is.InstanceOf<TimeoutException>());
                 Assert.That(driver.IsAvailable, Is.False);
             }
 
-            Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash).WaitAsync(TimeSpan.FromSeconds(2)));
-            Assert.ThrowsAsync<EngineUnavailableException>(() => Task.Run(() => driver.NewPayload(CreateBlock())).WaitAsync(TimeSpan.FromSeconds(2)));
+            await Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash).WaitAsync(TimeSpan.FromSeconds(2)));
+            await Assert.ThrowsAsync<EngineUnavailableException>(() => Task.Run(() => driver.NewPayload(CreateBlock())).WaitAsync(TimeSpan.FromSeconds(2)));
             Assert.That(engine.ReceivedCalls().Count(), Is.EqualTo(1));
         }
         finally

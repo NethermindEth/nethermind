@@ -855,7 +855,7 @@ internal static partial class SszCodecHelpers
         if (IsConstructedByteList(property))
         {
             // Built from the slice itself: the collection takes its own copy, so an intermediate array would copy twice.
-            return $"ValidateSszListLimit({sliceExpression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = new {property.CollectionTypeReferenceName}({sliceExpression});";
+            return $"ValidateSszListLimit({sliceExpression}.Length, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = new {property.CollectionTypeReferenceName}({sliceExpression});";
         }
 
         if (IsByteVector(property))

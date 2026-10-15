@@ -36,7 +36,7 @@ public class ReqRespCompressedLengthTests
 
         if (refused)
         {
-            Eth2ReqRespException exception = Assert.ThrowsAsync<Eth2ReqRespException>(async () => await read);
+            Eth2ReqRespException exception = await Assert.ThrowsAsync<Eth2ReqRespException>(async () => await read);
             if (padding == 12) Assert.That(exception.Message, Does.Contain("bound"));
         }
         else
@@ -57,7 +57,7 @@ public class ReqRespCompressedLengthTests
 
         if (refused)
         {
-            Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default, allowEmpty: true));
+            await Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default, allowEmpty: true));
         }
         else
         {

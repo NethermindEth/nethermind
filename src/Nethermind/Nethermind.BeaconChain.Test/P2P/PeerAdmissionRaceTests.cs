@@ -59,7 +59,7 @@ public class PeerAdmissionRaceTests
         else
         {
             await caller.CancelAsync();
-            Assert.CatchAsync<OperationCanceledException>(() => dial.WaitAsync(Hold, token), "the caller's cancellation propagates even though a session exists");
+            await Assert.CatchAsync<OperationCanceledException>(() => dial.WaitAsync(Hold, token), "the caller's cancellation propagates even though a session exists");
         }
     }
 
@@ -98,7 +98,7 @@ public class PeerAdmissionRaceTests
                 break;
             case DialOutcome.CallerCancels:
                 await caller.CancelAsync();
-                Assert.CatchAsync<OperationCanceledException>(() => dial.WaitAsync(Hold, token));
+                await Assert.CatchAsync<OperationCanceledException>(() => dial.WaitAsync(Hold, token));
                 break;
             case DialOutcome.TimesOut:
                 Assert.That(await dial.WaitAsync(TimeSpan.FromSeconds(20), token), Is.False, "the dial timed out");

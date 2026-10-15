@@ -67,7 +67,7 @@ public class StatusFallbackTests
     [CancelAfter(30_000)]
     public async Task A_status_v2_answer_that_fails_to_decode_is_an_exchange_failure_and_falls_back_to_v1(CancellationToken token)
     {
-        Eth2ReqRespException decodeFailure = Assert.ThrowsAsync<Eth2ReqRespException>(() => DialStatusV2AnsweredWithAsync(new byte[91], token))!;
+        Eth2ReqRespException decodeFailure = (await Assert.ThrowsAsync<Eth2ReqRespException>(() => DialStatusV2AnsweredWithAsync(new byte[91], token)))!;
         Assert.That(decodeFailure.Message, Does.Contain("92 bytes"), "the documented decode failure of a short v2 status");
 
         (Exception? thrown, StatusMessageV2? answer, _) = await RequestStatusAsync(new AggregateException(decodeFailure), token);

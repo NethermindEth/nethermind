@@ -24,7 +24,7 @@ public class BeaconChainServiceTests
 
     // Never start the service: this race must not reach network or socket code.
     [Test]
-    public void Stop_and_Dispose_do_not_throw_when_invoked_concurrently()
+    public async Task Stop_and_Dispose_do_not_throw_when_invoked_concurrently()
     {
         using IContainer container = BuildContainer();
         IBeaconChainConfig config = container.Resolve<IBeaconChainConfig>();
@@ -50,8 +50,7 @@ public class BeaconChainServiceTests
                 barrier.SignalAndWait();
                 service.Dispose();
             });
-
-            Assert.DoesNotThrowAsync(async () => await Task.WhenAll(stopTask, disposeTask));
+            await Assert.DoesNotThrowAsync(async () => await Task.WhenAll(stopTask, disposeTask));
         }
     }
 

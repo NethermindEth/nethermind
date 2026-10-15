@@ -105,8 +105,8 @@ public class StateRequestLimiterTests
 
     [TestCase(0, 30, TestName = "No concurrent state request allowed")]
     [TestCase(2, -1, TestName = "Negative download rate")]
-    public void A_limit_out_of_range_fails_the_host_start(int maxConcurrent, int perMinute) =>
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet,
+    public async Task A_limit_out_of_range_fails_the_host_start(int maxConcurrent, int perMinute) =>
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet,
             apiConfig: new BeaconApiConfig { MaxConcurrentStateRequests = maxConcurrent, StateDownloadsPerMinutePerClient = perMinute }));
 
     [TestCase("2001:db8:1:2::1", "2001:db8:1:2:ffff:ffff:ffff:ffff", true, TestName = "Addresses of one IPv6 /64 share a budget")]
@@ -304,12 +304,12 @@ public class StateRequestLimiterTests
         await app.StartAsync();
 
         using HttpClient client = new() { BaseAddress = new Uri(app.Urls.First()) };
-        Assert.ThrowsAsync<HttpRequestException>(async () => await client.GetByteArrayAsync(Download).WaitAsync(Wait),
+        await Assert.ThrowsAsync<HttpRequestException>(async () => await client.GetByteArrayAsync(Download).WaitAsync(Wait),
             "a truncated state must not be served as a complete 200");
     }
 
     [Test]
-    public void A_client_abort_reaches_the_host_instead_of_being_taken_for_the_deadline()
+    public async Task A_client_abort_reaches_the_host_instead_of_being_taken_for_the_deadline()
     {
         using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 600 });
         using CancellationTokenSource clientGone = new();
@@ -318,13 +318,12 @@ public class StateRequestLimiterTests
         Task invocation = limiter.InvokeAsync(request, c => Task.Delay(Timeout.Infinite, c.RequestAborted));
 
         clientGone.Cancel();
-
-        Assert.CatchAsync<OperationCanceledException>(async () => await invocation.WaitAsync(Wait));
+        await Assert.CatchAsync<OperationCanceledException>(async () => await invocation.WaitAsync(Wait));
     }
 
     [Test]
-    public void An_idle_bound_out_of_range_fails_the_host_start([Values(0, StateRequestLimiter.MaxResponseTimeoutSeconds + 1)] int idleSeconds) =>
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet,
+    public async Task An_idle_bound_out_of_range_fails_the_host_start([Values(0, StateRequestLimiter.MaxResponseTimeoutSeconds + 1)] int idleSeconds) =>
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet,
             apiConfig: new BeaconApiConfig { StateResponseIdleTimeoutSeconds = idleSeconds }));
 
     /// <summary>
@@ -347,8 +346,8 @@ public class StateRequestLimiterTests
     [TestCase(0, 600, TestName = "No state request per client allowed")]
     [TestCase(1, 0, TestName = "No time to answer a state request")]
     [TestCase(1, StateRequestLimiter.MaxResponseTimeoutSeconds + 1, TestName = "A deadline CancelAfter cannot schedule")]
-    public void A_per_client_limit_or_deadline_out_of_range_fails_the_host_start(int perClient, int timeoutSeconds) =>
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet,
+    public async Task A_per_client_limit_or_deadline_out_of_range_fails_the_host_start(int perClient, int timeoutSeconds) =>
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet,
             apiConfig: new BeaconApiConfig { MaxConcurrentStateRequestsPerClient = perClient, StateResponseTimeoutSeconds = timeoutSeconds }));
 
     [TestCase("/eth/v1/beacon/states/head/root", true)]

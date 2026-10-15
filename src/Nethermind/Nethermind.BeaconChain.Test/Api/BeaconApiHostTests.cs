@@ -438,7 +438,7 @@ public class BeaconApiHostTests : BeaconApiFixture
         await Call();
         await AssertOffline(false);
         unavailable = true;
-        Assert.ThrowsAsync<EngineUnavailableException>(async () => await Call());
+        await Assert.ThrowsAsync<EngineUnavailableException>(async () => await Call());
         await AssertOffline(true);
         unavailable = false;
         await Call();

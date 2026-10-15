@@ -326,7 +326,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(PtcVote(router, slot, validatorIndex: 1), Is.EqualTo(MessageValidity.Ignored), "fixture: the vote is raised");
         using CancellationTokenSource cancelled = new();
         cancelled.Cancel();
-        Assert.CatchAsync<OperationCanceledException>(async () => await harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 2, cancelled.Token), "fixture: the newer tick is stamped but never queued");
+        await Assert.CatchAsync<OperationCanceledException>(async () => await harness.Orchestrator.EnqueueSlotTickAsync(WallSlot + 2, cancelled.Token), "fixture: the newer tick is stamped but never queued");
 
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);

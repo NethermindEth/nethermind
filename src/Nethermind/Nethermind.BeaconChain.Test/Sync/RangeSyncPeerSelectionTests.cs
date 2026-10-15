@@ -253,7 +253,7 @@ public class RangeSyncPeerSelectionTests
 
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         stop.CancelAfter(TimeSpan.FromMilliseconds(500));
-        Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
         {
             await RangeSyncTests.DrainAsync(sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, stop.Token));
         });

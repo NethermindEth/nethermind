@@ -64,6 +64,9 @@ public class BeaconDiscoveryTests
             Assert.That(discovery.LocalNodeRecord.EnrSequence, Is.GreaterThan(failedRecord.EnrSequence));
         }
         await discovery.Stop();
+        using Socket rebound = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        rebound.ExclusiveAddressUse = true;
+        Assert.DoesNotThrow(() => rebound.Bind(new IPEndPoint(IPAddress.Any, port)));
     }
 
     private static readonly IPAddress PublicIp = IPAddress.Parse("8.8.8.8");
@@ -397,10 +400,10 @@ public class BeaconDiscoveryTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         await using BeaconDiscovery discovery = new(config, BeaconChainSpec.Mainnet, store, new RangeSyncTests.FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
 
-        NettyDiscoveryV5Handler handler = discovery.CreateDiscv5Services(PublicIp);
+        DiscoveryV5Transport transport = discovery.CreateDiscv5Services(PublicIp);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(handler, Is.Not.Null);
+        Assert.That(transport, Is.Not.Null);
         Assert.That(discovery.LocalNodeRecord, Is.Not.Null);
     }
 

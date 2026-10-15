@@ -542,10 +542,11 @@ public class PeerBandTests
 
         using CancellationTokenSource shortLived = new(TimeSpan.FromMilliseconds(300));
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, shortLived.Token);
+        await
 
-        // CatchAsync, not ThrowsAsync: Task.Delay throws the derived TaskCanceledException, and
-        // ThrowsAsync requires an exact type match.
-        Assert.CatchAsync<OperationCanceledException>(async () => await peerManager.WaitForAdmissionCapacityAsync(linked.Token),
+                // CatchAsync, not ThrowsAsync: Task.Delay throws the derived TaskCanceledException, and
+                // ThrowsAsync requires an exact type match.
+                Assert.CatchAsync<OperationCanceledException>(async () => await peerManager.WaitForAdmissionCapacityAsync(linked.Token),
             "at the target watermark the wait must not return on its own");
     }
 
