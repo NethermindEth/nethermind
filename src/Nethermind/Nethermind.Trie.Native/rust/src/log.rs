@@ -3,7 +3,7 @@
 
 //! In-memory log of the decoded nodes bulk sets write, which later bulk sets read in place.
 
-use std::alloc::{alloc_zeroed, dealloc, Layout};
+use std::alloc::{alloc, alloc_zeroed, dealloc, Layout};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -33,8 +33,21 @@ const MIN_GENERATION_BYTES: usize = 64 << 10;
 /// What generations grow to under pressure, unless configured larger, so the generation table holds at least 256 GiB.
 const MAX_GROWN_GENERATION_BYTES: usize = 64 << 20;
 const RECORD_ALIGNMENT: usize = 8;
-/// Generations are allocated cache line aligned, as the blocks of their bloom filter follow their records.
+/// Generations are allocated at least cache line aligned, as the blocks of their bloom filter follow their records.
 const ALLOCATION_ALIGNMENT: usize = 64;
+const HUGE_PAGE_BYTES: usize = 2 << 20;
+#[cfg(target_os = "linux")]
+const MADV_HUGEPAGE: std::ffi::c_int = 14;
+
+#[cfg(target_os = "linux")]
+extern "C" {
+    fn madvise(
+        address: *mut std::ffi::c_void,
+        length: usize,
+        advice: std::ffi::c_int,
+    ) -> std::ffi::c_int;
+}
+
 const BLOOM_BITS_PER_KEY: usize = 14;
 /// Bytes a record is assumed to take, which sizes the bloom filter of a generation for the keys it can hold.
 const BLOOM_BYTES_PER_KEY: usize = 128;
@@ -539,23 +552,45 @@ fn slot(generation: u64) -> usize {
     generation as usize % MAX_GENERATIONS
 }
 
+fn allocation_layout(length: usize) -> Layout {
+    let alignment = if cfg!(target_os = "linux") && length >= HUGE_PAGE_BYTES {
+        HUGE_PAGE_BYTES
+    } else {
+        ALLOCATION_ALIGNMENT
+    };
+    Layout::from_size_align(length, alignment).unwrap()
+}
+
 /// Zeroed, so every record slice covers initialized memory and the bloom filter starts empty.
 fn allocate(length: usize) -> *mut u8 {
-    let layout = Layout::from_size_align(length, ALLOCATION_ALIGNMENT).unwrap();
-    let buffer = unsafe { alloc_zeroed(layout) };
+    let layout = allocation_layout(length);
+    let buffer = unsafe {
+        if layout.align() == HUGE_PAGE_BYTES {
+            alloc(layout)
+        } else {
+            alloc_zeroed(layout)
+        }
+    };
     if buffer.is_null() {
         std::alloc::handle_alloc_error(layout);
+    }
+    #[cfg(target_os = "linux")]
+    if layout.align() == HUGE_PAGE_BYTES {
+        unsafe {
+            // Advise before zeroing faults pages in, and exclude the tail so madvise cannot round past the allocation.
+            let _ = madvise(
+                buffer.cast(),
+                length / HUGE_PAGE_BYTES * HUGE_PAGE_BYTES,
+                MADV_HUGEPAGE,
+            );
+            buffer.write_bytes(0, length);
+        }
     }
     buffer
 }
 
 fn free(buffer: *mut u8, length: usize) {
-    unsafe {
-        dealloc(
-            buffer,
-            Layout::from_size_align(length, ALLOCATION_ALIGNMENT).unwrap(),
-        )
-    }
+    unsafe { dealloc(buffer, allocation_layout(length)) }
 }
 
 /// Length of the node or root key record starting `bytes`.
@@ -889,6 +924,30 @@ mod tests {
         let mut state = log.state.lock().unwrap();
         while state.compacting {
             state = log.compaction_idle.wait(state).unwrap();
+        }
+    }
+
+    #[test]
+    fn allocations_are_aligned_and_zeroed() {
+        for length in [
+            MIN_GENERATION_BYTES,
+            HUGE_PAGE_BYTES - 1,
+            HUGE_PAGE_BYTES,
+            HUGE_PAGE_BYTES + 1,
+        ] {
+            let alignment = if cfg!(target_os = "linux") && length >= HUGE_PAGE_BYTES {
+                HUGE_PAGE_BYTES
+            } else {
+                ALLOCATION_ALIGNMENT
+            };
+            assert_eq!(allocation_layout(length).align(), alignment);
+            assert_eq!(allocation_layout(length).size(), length);
+            let buffer = allocate(length);
+            assert_eq!(buffer as usize % alignment, 0);
+            assert!(unsafe { std::slice::from_raw_parts(buffer, length) }
+                .iter()
+                .all(|&byte| byte == 0));
+            free(buffer, length);
         }
     }
 
