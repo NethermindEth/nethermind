@@ -843,6 +843,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return false;
     }
 
+    /// <summary>Whether <paramref name="peerId"/> passed admission and its session is still in the pool.</summary>
+    internal bool IsAdmitted(PeerId peerId) => TryFindConnected(peerId.ToString(), out _);
+
     private bool TryFindConnected(string peerId, out ManagedPeer? peer)
     {
         foreach (KeyValuePair<string, ManagedPeer> connected in _peers)

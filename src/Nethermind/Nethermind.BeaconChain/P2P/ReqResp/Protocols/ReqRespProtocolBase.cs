@@ -96,9 +96,16 @@ public abstract class ReqRespProtocolBase
     /// <summary>Peer ceiling that sizes the global bucket, so a full honest peer set cannot drain it.</summary>
     internal int MaxPeerCount { get; init; } = 80;
 
+    /// <summary>Whether the peer manager admitted a peer; when set, only admitted peers are charged against the global budget, and others are refused.</summary>
+    internal Func<PeerId, bool>? IsAdmitted { get; init; }
+
     /// <summary>Charges decoded work against the per-peer ten-second token bucket and, unless <paramref name="perPeerOnly"/>, a global one.</summary>
+    /// <exception cref="Eth2ReqRespException">Code 139: a budget is spent, or a global charge comes from a peer that is not admitted.</exception>
     protected void ChargeRequest(ISessionContext context, ulong items, ulong capacity, bool perPeerOnly = false)
     {
+        // Any key can open a session, so fresh identities could drain the global budget before admission refuses them.
+        if (!perPeerOnly && IsAdmitted is { } isAdmitted && (context.State.RemotePeerId is not { } requester || !isAdmitted(requester)))
+            throw new Eth2ReqRespException("Request from a peer that is not admitted", 139);
         items = Math.Max(1, items);
         lock (_quotaLock)
         {

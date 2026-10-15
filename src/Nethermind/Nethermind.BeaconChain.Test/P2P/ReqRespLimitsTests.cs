@@ -81,6 +81,20 @@ public class ReqRespLimitsTests
     }
 
     [Test]
+    public void Unadmitted_fresh_identities_do_not_drain_the_data_budget_of_an_admitted_peer()
+    {
+        ISessionContext admitted = NewPeerContext();
+        PeerId admittedId = admitted.State.RemotePeerId!;
+        TestReqRespProtocol protocol = new() { MaxPeerCount = 80, QuotaTime = new FixedTime(), IsAdmitted = peer => peer == admittedId };
+        for (int i = 0; i < 100; i++)
+        {
+            Assert.That(() => protocol.Charge(NewPeerContext(), 128), Throws.TypeOf<Eth2ReqRespException>().With.Property(nameof(Eth2ReqRespException.ResponseCode)).EqualTo(139));
+        }
+
+        Assert.DoesNotThrow(() => protocol.Charge(admitted, 128), "a hundred identities that were never admitted must not spend the global budget of eighty peers");
+    }
+
+    [Test]
     public void Sessions_without_a_peer_id_share_one_quota()
     {
         TestReqRespProtocol protocol = new() { QuotaTime = new FixedTime() };

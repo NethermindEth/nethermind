@@ -112,13 +112,13 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new Eth2PingProtocol(metadataSource) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new MetaDataProtocolV3(metadataSource) { RequestViolationSink = ReportRequestViolation })
             // The global request budget covers one peer above the ceiling, which admission allows a static peer.
-            .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1 })
-            .AddSingleton(new BeaconBlocksByHeadProtocolV1(spec, store, clock) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1 })
-            .AddSingleton(new BeaconBlocksByRootProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1 })
-            .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool, store, clock) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1 })
-            .AddSingleton(new DataColumnSidecarsByRootProtocol(spec, dataColumnSidecarPool) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1 })
-            .AddSingleton(new ExecutionPayloadEnvelopesByRangeProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1 })
-            .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1 })
+            .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
+            .AddSingleton(new BeaconBlocksByHeadProtocolV1(spec, store, clock) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
+            .AddSingleton(new BeaconBlocksByRootProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
+            .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool, store, clock) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
+            .AddSingleton(new DataColumnSidecarsByRootProtocol(spec, dataColumnSidecarPool) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
+            .AddSingleton(new ExecutionPayloadEnvelopesByRangeProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
+            .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
             .AddLibp2p(builder => builder
                 .WithPubsub()
                 .AddProtocol<StatusProtocolV1>()
@@ -243,6 +243,9 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <remarks>Most mainnet dials fail and the library logs each failed upgrade as an error whose text holds the whole stack trace, which would drown the Debug output.</remarks>
     internal static ILoggerFactory CreateLibp2pLoggerFactory(ILogManager logManager) =>
         new NethermindLoggerFactory(logManager, lowerLogLevel: true, maxLogLevel: Microsoft.Extensions.Logging.LogLevel.Trace);
+
+    // Status, Ping, MetaData and Goodbye stay open to every session, as admission needs them; a host without the peer manager admits no one itself.
+    private bool IsAdmittedPeer(PeerId peerId) => _peerPool?.Value is not PeerManager manager || manager.IsAdmitted(peerId);
 
     /// <summary>Records a protocol violation by an inbound requester against the peer's failure count, when the peer is connected.</summary>
     /// <remarks>The peer manager finds the peer by id; any other pool can only offer the peers selection would hand out.</remarks>
