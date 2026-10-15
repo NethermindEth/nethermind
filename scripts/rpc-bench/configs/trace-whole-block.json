@@ -1,0 +1,512 @@
+{
+ "test_name": "whole-block tracing",
+ "description": "debug_traceBlockByNumber callTracer and trace_block over blocks 25489981-25490000 (snapshot 25490000).",
+ "clients": [
+  "nethermind"
+ ],
+ "duration": "60s",
+ "rps": 2,
+ "vus": 64,
+ "calls": [
+  {
+   "name": "dtb callTracer 25489981",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f23d",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489982",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f23e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489983",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f23f",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489984",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f240",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489985",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f241",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489986",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f242",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489987",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f243",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489988",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f244",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489989",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f245",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489990",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f246",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489991",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f247",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489992",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f248",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489993",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f249",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489994",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f24a",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489995",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f24b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489996",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f24c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489997",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f24d",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489998",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f24e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25489999",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f24f",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtb callTracer 25490000",
+   "method": "debug_traceBlockByNumber",
+   "params": [
+    "0x184f250",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489981",
+   "method": "trace_block",
+   "params": [
+    "0x184f23d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489982",
+   "method": "trace_block",
+   "params": [
+    "0x184f23e"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489983",
+   "method": "trace_block",
+   "params": [
+    "0x184f23f"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489984",
+   "method": "trace_block",
+   "params": [
+    "0x184f240"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489985",
+   "method": "trace_block",
+   "params": [
+    "0x184f241"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489986",
+   "method": "trace_block",
+   "params": [
+    "0x184f242"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489987",
+   "method": "trace_block",
+   "params": [
+    "0x184f243"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489988",
+   "method": "trace_block",
+   "params": [
+    "0x184f244"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489989",
+   "method": "trace_block",
+   "params": [
+    "0x184f245"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489990",
+   "method": "trace_block",
+   "params": [
+    "0x184f246"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489991",
+   "method": "trace_block",
+   "params": [
+    "0x184f247"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489992",
+   "method": "trace_block",
+   "params": [
+    "0x184f248"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489993",
+   "method": "trace_block",
+   "params": [
+    "0x184f249"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489994",
+   "method": "trace_block",
+   "params": [
+    "0x184f24a"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489995",
+   "method": "trace_block",
+   "params": [
+    "0x184f24b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489996",
+   "method": "trace_block",
+   "params": [
+    "0x184f24c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489997",
+   "method": "trace_block",
+   "params": [
+    "0x184f24d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489998",
+   "method": "trace_block",
+   "params": [
+    "0x184f24e"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25489999",
+   "method": "trace_block",
+   "params": [
+    "0x184f24f"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "trace_block 25490000",
+   "method": "trace_block",
+   "params": [
+    "0x184f250"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  }
+ ]
+}
