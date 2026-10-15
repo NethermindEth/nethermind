@@ -507,7 +507,7 @@ public class LeanNetBenchNode
                         byte[] proof = new byte[proofBytes];
                         new Random(1000 + index).NextBytes(proof);
                         Transaction transaction = FrameTransaction(index + 1);
-                        Hash256 depsHash = new(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction)));
+                        Hash256 depsHash = new(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)));
                         BlockHeader header = LeanTransportTests.ProofHeader(proof, depsHash, (ulong)index + 1);
                         byte[] body = LeanRlp.EncodeList(LeanRlp.EncodeBytes(proof));
                         LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
