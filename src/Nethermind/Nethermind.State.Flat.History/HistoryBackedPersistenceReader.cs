@@ -22,7 +22,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     private readonly HistoryScopeGate _scopeGate;
     private readonly StorageClearsScopeCache _clearsCache = new();
     private readonly long _scopeToken;
-    private readonly HistoryReader.ReadScope? _readScope;
+    private HistoryReader.ReadScopeState _readScope;
 
     // Non-null only below the general floor, where per-address slices are all that remains.
     private readonly ScopeFloor[]? _sliceScopes;
@@ -44,7 +44,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
                     $"Historical state for block {block.BlockNumber} is unavailable" +
                     (!restrictToSlices && historyReader.IsPrunedBelowFloor(block.BlockNumber) ? " (below the flat history retention floor)." : ".")));
             }
-            _readScope = historyReader.CreateReadScope();
+            _readScope = historyReader.CreateReadScopeState();
         }
         catch
         {
@@ -60,7 +60,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         if (_sliceScopes is not null) RequireRetainedBySlice(address);
         try
         {
-            return _historyReader.TryGetAccount(_block.BlockNumber, address, out AccountStruct account, _readScope) ? account.ToAccount() : null;
+            return _historyReader.TryGetAccount(_block.BlockNumber, address, out AccountStruct account, _readScope.GetScope()) ? account.ToAccount() : null;
         }
         catch (StateUnavailableException e)
         {
@@ -73,7 +73,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         if (_sliceScopes is not null) RequireRetainedBySlice(address);
         try
         {
-            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out UInt256 value, _clearsCache, _readScope)) return false;
+            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out UInt256 value, _clearsCache, _readScope.GetScope())) return false;
             outValue = value;
             return true;
         }
@@ -103,7 +103,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
 
     public void Dispose()
     {
-        _readScope?.Dispose();
+        _readScope.Dispose();
         _scopeGate.ExitScope(_scopeToken);
     }
 

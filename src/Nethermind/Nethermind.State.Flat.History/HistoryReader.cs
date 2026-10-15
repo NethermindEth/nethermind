@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -205,6 +206,44 @@ public sealed class HistoryReader
     }
 
     internal ReadScope? CreateReadScope() => _isV3 ? new ReadScope() : null;
+
+    internal ReadScopeState CreateReadScopeState() => new(_isV3);
+
+    internal struct ReadScopeState(bool enabled) : IDisposable
+    {
+        private static readonly object FirstRead = new();
+        private static readonly object ReuseReads = new();
+        private static readonly object Disposed = new();
+        private object? _scope = enabled ? FirstRead : null;
+
+        internal ReadScope? GetScope()
+        {
+            object? scope = Volatile.Read(ref _scope);
+            if (ReferenceEquals(scope, FirstRead))
+            {
+                scope = Interlocked.CompareExchange(ref _scope, ReuseReads, FirstRead);
+                if (ReferenceEquals(scope, FirstRead)) return null;
+            }
+
+            if (ReferenceEquals(scope, ReuseReads))
+            {
+                ReadScope created = new();
+                scope = Interlocked.CompareExchange(ref _scope, created, ReuseReads);
+                if (ReferenceEquals(scope, ReuseReads)) return created;
+
+                created.Dispose();
+            }
+
+            ObjectDisposedException.ThrowIf(ReferenceEquals(scope, Disposed), typeof(ReadScopeState));
+            return (ReadScope?)scope;
+        }
+
+        public void Dispose()
+        {
+            object? scope = Interlocked.Exchange(ref _scope, Disposed);
+            (scope as ReadScope)?.Dispose();
+        }
+    }
 
     internal sealed class ReadScope : IDisposable
     {

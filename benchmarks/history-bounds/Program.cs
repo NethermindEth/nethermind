@@ -94,13 +94,15 @@ public class HistoryBoundsBenchmarks
         for (int start = 0; start < Queries; start += ScopeSize)
         {
 #if REUSE_BOUNDS
-            using HistoryReader.ReadScope scope = new();
+            HistoryReader.ReadScopeState scope = new(true);
+            try
+            {
 #endif
             int end = Math.Min(start + ScopeSize, Queries);
             for (int i = start; i < end; i++)
             {
 #if REUSE_BOUNDS
-                int written = _store.TryGetValueBeforeNextChange(3, _keys[i], output, out ulong next, scope.Accounts, generation: 0);
+                int written = _store.TryGetValueBeforeNextChange(3, _keys[i], output, out ulong next, scope.GetScope()?.Accounts, generation: 0);
 #else
                 int written = _store.TryGetValueBeforeNextChange(3, _keys[i], output, out ulong next);
 #endif
@@ -108,6 +110,13 @@ public class HistoryBoundsBenchmarks
                 if (written != (present ? 64 : -1) || (present && (next != 4 || !output.SequenceEqual(Value(_groups[i], 4)))))
                     throw new InvalidOperationException($"Incorrect history lookup {i}, state={State}, scope={ScopeSize}");
             }
+#if REUSE_BOUNDS
+            }
+            finally
+            {
+                scope.Dispose();
+            }
+#endif
         }
         Console.WriteLine($"Verified {Queries} exact HistoryStoreV3 results; state={State}; scope={ScopeSize}");
     }
@@ -120,18 +129,27 @@ public class HistoryBoundsBenchmarks
         for (int start = 0; start < Queries; start += ScopeSize)
         {
 #if REUSE_BOUNDS
-            using HistoryReader.ReadScope scope = new();
+            HistoryReader.ReadScopeState scope = new(true);
+            try
+            {
 #endif
             int end = Math.Min(start + ScopeSize, Queries);
             for (int i = start; i < end; i++)
             {
 #if REUSE_BOUNDS
-                int written = _store.TryGetValueBeforeNextChange(3, _keys[i], output, out _, scope.Accounts, generation: 0);
+                int written = _store.TryGetValueBeforeNextChange(3, _keys[i], output, out _, scope.GetScope()?.Accounts, generation: 0);
 #else
                 int written = _store.TryGetValueBeforeNextChange(3, _keys[i], output, out _);
 #endif
                 if (written > 0) checksum += output[3];
             }
+#if REUSE_BOUNDS
+            }
+            finally
+            {
+                scope.Dispose();
+            }
+#endif
         }
         return checksum;
     }
