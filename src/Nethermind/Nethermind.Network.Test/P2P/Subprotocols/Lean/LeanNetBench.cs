@@ -204,15 +204,33 @@ public class LeanNetBenchNode
         await Task.Delay(20, deadline.Token);
         // The start is wall-clock time, the same in every process; release times are kept on the monotonic clock.
         long start = Now() + long.Parse(File.ReadAllText(Path_("start")).Trim()) - UnixNow();
-        // Warm-up objects JIT both paths before the measured window, which opens three seconds after the last of them.
-        long measured = start + ((long)config.Warmup * config.IntervalMs + 3000) * 1_000_000L;
+        long measured = 0, warmupCompletedAt = 0;
+        TaskCompletionSource startSnapshotTaken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<long> measuredStart = ReadMeasuredStart();
+        async Task<long> ReadMeasuredStart()
+        {
+            while (!File.Exists(Path_("measure"))) await Task.Delay(10, deadline.Token);
+            return Now() + long.Parse(File.ReadAllText(Path_("measure")).Trim()) - UnixNow();
+        }
+
+        void SignalWarmup()
+        {
+            warmupCompletedAt = Now();
+            string marker = Path_($"warmup.{config.Id}");
+            File.WriteAllText(marker + ".tmp", UnixNow().ToString());
+            File.Move(marker + ".tmp", marker);
+        }
 
         ConcurrentDictionary<int, long> originated = new();
         ConcurrentDictionary<int, long> completed = new();
         TaskCompletionSource holdsAll = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int warmupCompleted = 0;
+        if (config.Warmup == 0) SignalWarmup();
         void Complete(int index)
         {
-            if (completed.TryAdd(index, Now()) && completed.Count == objects.Length) holdsAll.TrySetResult();
+            if (!completed.TryAdd(index, Now())) return;
+            if (index < config.Warmup && Interlocked.Increment(ref warmupCompleted) == config.Warmup) SignalWarmup();
+            if (completed.Count == objects.Length) holdsAll.TrySetResult();
         }
         // Wrappers complete when the node's own validation accepts them, which is also when the transport publishes them.
         Dictionary<ValueHash256, int> indices = objects.ToDictionary(static o => BenchObject.Key(o.Body), static o => o.Index);
@@ -222,9 +240,17 @@ public class LeanNetBenchNode
         }
         node.Wrappers.WrapperValidated += (body, _) => OnValidated(body);
         List<Task> work = [];
-        long Release(int i) => i < config.Warmup
-            ? start + (long)i * config.IntervalMs * 1_000_000L
-            : measured + (long)((i - config.Warmup) / Math.Max(1, config.Burst)) * config.IntervalMs * 1_000_000L;
+        async Task WaitForRelease(int i)
+        {
+            if (i < config.Warmup)
+            {
+                await WaitUntil(start + (long)i * config.IntervalMs * 1_000_000L);
+                return;
+            }
+            long target = await measuredStart;
+            await WaitUntil(target + (long)((i - config.Warmup) / Math.Max(1, config.Burst)) * config.IntervalMs * 1_000_000L);
+            await startSnapshotTaken.Task.WaitAsync(deadline.Token);
+        }
         async Task WaitUntil(long when)
         {
             long remaining = when - Now();
@@ -234,7 +260,7 @@ public class LeanNetBenchNode
 
         async Task Originate(BenchObject o)
         {
-            await WaitUntil(Release(o.Index));
+            await WaitForRelease(o.Index);
             originated[o.Index] = Now();
             if (o.Kind == LeanProtocol.KindBlockProof)
             {
@@ -261,13 +287,13 @@ public class LeanNetBenchNode
 
         async Task FetchSidecar(BenchObject o)
         {
-            await WaitUntil(Release(o.Index));
+            await WaitForRelease(o.Index);
             RecursiveStark? proof = await node.Transport.TryGetAsync(new Block(o.Header!, new BlockBody(o.Transactions, [], null)), deadline.Token);
             if (proof is null) return;
-            Complete(o.Index);
             // Import verifies the proof before the block, and so its sidecar, is served onward.
             if (config.VerifyMs > 0) await Task.Delay(config.VerifyMs, deadline.Token);
             Import(o);
+            Complete(o.Index);
         }
 
         foreach (BenchObject o in objects)
@@ -280,13 +306,14 @@ public class LeanNetBenchNode
         int warmupAtIdle = 0, warmupAtStart = 0;
         Task snapshot = Task.Run(async () =>
         {
-            // Record warm-up completion rather than assuming the fixed settling delay was sufficient.
+            measured = await measuredStart;
             await WaitUntil(measured - 2_000_000_000L);
             warmupAtIdle = completed.Count(e => e.Key < config.Warmup);
             idle = Snapshot.Take();
             await WaitUntil(measured);
             warmupAtStart = completed.Count(e => e.Key < config.Warmup);
             before = Snapshot.Take();
+            startSnapshotTaken.TrySetResult();
         });
         try
         {
@@ -326,6 +353,7 @@ public class LeanNetBenchNode
             ["start_ns"] = start,
             ["measured_ns"] = measured,
             ["finished_ns"] = finished,
+            ["warmup_completed_ns"] = warmupCompletedAt,
             ["idle_snapshot_ns"] = idle.Time,
             ["snapshot_before_ns"] = before.Time,
             ["snapshot_after_ns"] = after.Time,

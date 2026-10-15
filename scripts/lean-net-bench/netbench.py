@@ -220,6 +220,27 @@ def cpu_snapshot_quality(results, warmup, expected_nodes):
             "policy": "all warmup complete before idle/start; timely snapshots; no measured activity before start snapshot"}
 
 
+def wait_warmup(run_dir, nodes, processes, timeout):
+    """Wait for every node's validated/recovered warmup marker before scheduling measurement."""
+    started = time.monotonic()
+    while True:
+        completed = {}
+        for node in range(nodes):
+            path = os.path.join(run_dir, f"warmup.{node}")
+            if os.path.exists(path):
+                with open(path) as stream:
+                    completed[str(node)] = int(stream.read().strip())
+        now = time.monotonic()
+        status = {"completed_nodes": len(completed), "expected_nodes": nodes, "completed_unix_ns": completed,
+                  "observed_unix_ns": time.time_ns(), "wait_s": now - started}
+        if len(completed) == nodes:
+            return status
+        if now - started >= timeout or any(process.poll() is not None for process, _ in processes):
+            status["error"] = "not all nodes completed warmup before the deadline or a node exited"
+            return status
+        time.sleep(0.05)
+
+
 def retain_process_failures(summary, exit_codes):
     """Retain child exit status even when a node wrote measurements before failing during cleanup."""
     summary["node_exit_codes"] = {str(node): code for node, code in exit_codes.items()}
@@ -316,8 +337,17 @@ def run(args):
         with open(os.path.join(run_dir, "start.tmp"), "w") as f:
             f.write(str(start_ns))
         os.rename(os.path.join(run_dir, "start.tmp"), os.path.join(run_dir, "start"))
-        # Interface counters cover the measured window only, which opens three seconds after the last warm-up release.
-        measured_ns = start_ns + (args.warmup * args.interval_ms + 3000) * 1_000_000
+        summary["warmup_barrier"] = wait_warmup(run_dir, n, processes, args.timeout)
+        if summary["warmup_barrier"].get("error"):
+            summary["error"] = summary["warmup_barrier"]["error"]
+            return summary
+        # Every warmup has completed. Allow two seconds of idle calibration plus two seconds to publish and schedule it.
+        measured_ns = time.time_ns() + 4_000_000_000
+        summary["warmup_barrier"]["measured_start_unix_ns"] = measured_ns
+        summary["warmup_barrier"]["scheduled_settle_s"] = 4
+        with open(os.path.join(run_dir, "measure.tmp"), "w") as stream:
+            stream.write(str(measured_ns))
+        os.rename(os.path.join(run_dir, "measure.tmp"), os.path.join(run_dir, "measure"))
         time.sleep(max(0.0, (measured_ns - 20_000_000 - time.time_ns()) / 1e9))
         before = {i: counters(i) for i in range(n)} if args.netns else None
         cpu_before, wall_before = host_cpu(), time.time()

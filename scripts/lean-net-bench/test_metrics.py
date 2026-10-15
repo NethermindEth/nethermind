@@ -3,6 +3,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
+from unittest.mock import Mock, patch
 
 HERE = Path(__file__).resolve().parent
 
@@ -101,6 +103,34 @@ class MetricsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Mixed transport campaigns"):
             report.validate_campaign([valid, {"error": "missing provenance"}])
         report.validate_campaign([{"error": "old diagnostic without provenance"}])
+
+    def test_warmup_barrier_waits_for_every_node(self):
+        for nodes in (2, 4):
+            with self.subTest(nodes=nodes), tempfile.TemporaryDirectory() as directory:
+                for node in range(nodes - 1):
+                    Path(directory, f"warmup.{node}").write_text(str(100 + node))
+                process = Mock()
+                process.poll.return_value = None
+                def finish_last(_):
+                    Path(directory, f"warmup.{nodes - 1}").write_text("200")
+                with patch.object(controller.time, "sleep", side_effect=finish_last) as sleep:
+                    status = controller.wait_warmup(directory, nodes, [(process, None)], 5)
+                sleep.assert_called_once()
+                self.assertEqual(status["completed_nodes"], nodes)
+                self.assertEqual(status["completed_unix_ns"][str(nodes - 1)], 200)
+                self.assertNotIn("error", status)
+
+    def test_warmup_timeout_or_process_exit_retains_partial_evidence(self):
+        for timeout, exit_code in ((0, None), (5, 1)):
+            with self.subTest(timeout=timeout, exit_code=exit_code), tempfile.TemporaryDirectory() as directory:
+                Path(directory, "warmup.0").write_text("123")
+                process = Mock()
+                process.poll.return_value = exit_code
+                status = controller.wait_warmup(directory, 2, [(process, None)], timeout)
+                self.assertEqual(status["completed_nodes"], 1)
+                self.assertEqual(status["completed_unix_ns"], {"0": 123})
+                self.assertIn("error", status)
+                self.assertIn("observed_unix_ns", status)
 
     def test_partial_measurement_is_retained_but_not_complete(self):
         rows = [{'missing': 2, 'goodput_tx_per_s_per_receiver': 4}, {'error': 'timeout'}]
