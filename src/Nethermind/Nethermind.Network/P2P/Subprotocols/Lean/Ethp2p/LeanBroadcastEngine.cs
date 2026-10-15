@@ -92,8 +92,8 @@ internal sealed class LeanBroadcastEngine : IDisposable
     internal const int MaxAuthorizationChecksPerSlot = 128;
 
     /// <summary>Live CHUNK streams toward one connection across all sessions: EIP-8437's cap of 16.</summary>
-    /// <remarks>Each stream carries one shard of at most 64 KiB, so up to 1 MiB is in flight per round trip, which covers the
-    /// bandwidth-delay product of typical paths; the peer's stream allowance reserves exactly these 16 for CHUNK streams.</remarks>
+    /// <remarks>This is a concurrency ceiling. The shared transport receive credit can further limit in-flight bytes;
+    /// it does not guarantee 1 MiB per round trip.</remarks>
     internal const int MaxShardsInFlightPerPeer = 16;
 
     /// <summary>Successful sends per shard for a relay; origins are unlimited (RS strategy <c>ForwardMultiplier</c>).</summary>
@@ -524,11 +524,10 @@ internal sealed class LeanBroadcastEngine : IDisposable
             LeanMetrics.Coding(Stopwatch.GetElapsedTime(decoding));
             signerFault = error is not null;
             if (body is not null && !_profile.MatchesContext(session.Manifest, body)) error = "object does not match its consensus context";
-            lock (_gate)
-            {
-                if (!session.Failed && !_disposed && body is not null && error is null)
-                    error = _transport.AcceptBroadcastBody(session.Manifest.Descriptor, body, session.Started, session.Source);
-            }
+            bool accept;
+            lock (_gate) accept = !session.Failed && !_disposed && body is not null && error is null;
+            // Decoding retains the workspace charge through validation, including if the session expires meanwhile.
+            if (accept) error = _transport.AcceptBroadcastBody(session.Manifest.Descriptor, body!, session.Started, session.Source);
             signerFault |= error is not null;
         }
         catch (Exception exception)
@@ -671,10 +670,11 @@ internal sealed class LeanBroadcastEngine : IDisposable
 
     private async Task SendAsync(Session session, Participant participant, int index, byte[] shard)
     {
-        bool sent = false;
+        bool sent = false, failed = false;
         try { sent = await participant.Peer.SendShardAsync(participant.Out!, index, shard).ConfigureAwait(false); }
         catch (Exception exception)
         {
+            failed = true;
             if (_logger.IsDebug) _logger.Debug($"lean/1 shard write failed: {exception.Message}");
         }
         Outgoing outgoing = new();
@@ -688,10 +688,18 @@ internal sealed class LeanBroadcastEngine : IDisposable
             else
             {
                 session.Sent[index]--;
-                if (!participant.OutFinished) failedStream = participant.Out;
-                participant.OutFinished = true;
+                if (failed || participant.Peer.IsClosed || session.Expiry <= _clock.GetUtcNow())
+                {
+                    if (!participant.OutFinished) failedStream = participant.Out;
+                    participant.OutFinished = true;
+                }
+                else participant.Inventory |= 1u << index;
             }
-            if (session.Failed || _disposed) Fail(session);
+            if (session.Failed || _disposed)
+            {
+                Fail(session);
+                if (!_disposed) DispatchTo(participant.Peer, outgoing);
+            }
             else
             {
                 if (session.Reconstructed) RetainCodewordCharge(session);

@@ -409,6 +409,7 @@ public class LeanBroadcastTests
 
         public bool Fail { get; init; }
         public bool ThrowOnSend { get; init; }
+        public bool RefuseFirst { get; init; }
         public int Closed => Volatile.Read(ref _closed);
         public LeanPeer? RetrievalPeer => null;
         public string Description => "held";
@@ -430,9 +431,9 @@ public class LeanBroadcastTests
                 if (Interlocked.CompareExchange(ref _maxLive, live, max) == max) break;
             await _release.Task;
             Interlocked.Decrement(ref _live);
-            Interlocked.Increment(ref _sent);
+            int sent = Interlocked.Increment(ref _sent);
             if (ThrowOnSend) throw new InvalidOperationException("shard stream closed");
-            return !Fail;
+            return !Fail && (!RefuseFirst || sent != 1);
         }
 
         public void Release() => _release.TrySetResult();
@@ -450,7 +451,7 @@ public class LeanBroadcastTests
     }
 
     [Test]
-    public async Task Synchronous_shard_write_failure_finishes_the_session_without_retrying([Values] bool throws)
+    public async Task Synchronous_shard_write_failure_does_not_retry_a_refused_shard([Values] bool throws)
     {
         using BroadcastNode origin = new();
         HeldPeer peer = new() { Fail = true, ThrowOnSend = throws };
@@ -462,9 +463,27 @@ public class LeanBroadcastTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(peer.Sent, Is.InRange(1, LeanBroadcastEngine.MaxShardsInFlightPerPeer));
+            Assert.That(peer.Sent, throws ? Is.InRange(1, LeanBroadcastEngine.MaxShardsInFlightPerPeer) : Is.EqualTo(LeanReedSolomon.TotalShards));
             Assert.That(peer.Live, Is.Zero);
-            Assert.That(peer.Closed, Is.EqualTo(1));
+            Assert.That(peer.Closed, Is.EqualTo(throws ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public async Task One_refused_shard_does_not_end_the_session_for_other_shards()
+    {
+        using BroadcastNode origin = new();
+        HeldPeer peer = new() { RefuseFirst = true };
+        peer.Release();
+        origin.Engine.AddPeer(peer);
+        (LeanBroadcastManifest manifest, _) = await Package(origin, 918);
+
+        Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Sent, Is.EqualTo(LeanReedSolomon.TotalShards));
+            Assert.That(peer.Closed, Is.Zero);
         }
     }
 
@@ -542,6 +561,35 @@ public class LeanBroadcastTests
         // Streams freed by one session go to the other, so both codewords reach the peer.
         await Until(() => peer.Sent == 2 * LeanReedSolomon.TotalShards);
         Assert.That(peer.MaxLive, Is.EqualTo(LeanBroadcastEngine.MaxShardsInFlightPerPeer));
+    }
+
+    [Test]
+    public async Task Failed_session_send_completions_release_slots_to_another_session()
+    {
+        using BroadcastNode origin = new(), relay = new(new TestBroadcastProfile { ContextThrows = true });
+        HeldPeer source = new(), target = new();
+        relay.Engine.AddPeer(source);
+        relay.Engine.AddPeer(target);
+        (LeanBroadcastManifest first, LeanDescriptor descriptor) = await Package(origin, 919);
+        string messageId = LeanBroadcastManifest.MessageId(first.Id(1, LeanTestNode.Genesis.ValueHash256));
+        string channel = first.Channel(1, LeanTestNode.Genesis.ValueHash256);
+        Assert.That(relay.Engine.OnSessionOpen(source, new LeanSessOpen(channel, messageId,
+            first.Preamble(TestBroadcastProfile.Sign(first), []), LeanBroadcastWire.Bitmap(uint.MaxValue)), out _),
+            Is.EqualTo(LeanBroadcastVerdict.Accepted));
+        byte[][] shards = LeanReedSolomon.Encode(origin.Node.Transport.HeldBody(descriptor.ObjectId)!);
+        for (int i = 0; i < LeanReedSolomon.DataShards; i++)
+            Assert.That(relay.Engine.OnShard(source, messageId, i, shards[i]), Is.EqualTo(LeanBroadcastVerdict.Accepted));
+        await Until(() => relay.Engine.ResolveShard(new LeanChunkHeader(channel, messageId, LeanBroadcastWire.ShardId(16), (uint)first.ShardBytes),
+            out _, out _, out string? reason) == LeanBroadcastVerdict.Refused && reason == "shard not needed");
+        (LeanBroadcastManifest second, _) = await Package(relay, 920, slot: 11);
+        Assert.That(relay.Engine.Originate(second, TestBroadcastProfile.Sign(second), []), Is.True);
+        Assert.That(target.Live, Is.EqualTo(LeanBroadcastEngine.MaxShardsInFlightPerPeer));
+
+        target.Release();
+        source.Release();
+
+        await Until(() => target.Sent == LeanReedSolomon.DataShards + LeanReedSolomon.TotalShards);
+        Assert.That(target.MaxLive, Is.EqualTo(LeanBroadcastEngine.MaxShardsInFlightPerPeer));
     }
 
     [Test]
@@ -839,6 +887,40 @@ public class LeanBroadcastTests
             receiver.Engine.ResolveShard(new LeanChunkHeader(channel, messageId, LeanBroadcastWire.ShardId(i), (uint)manifest.ShardBytes),
                 out _, out bool unknown, out string? reason) == LeanBroadcastVerdict.Refused && !unknown && reason == "shard not needed"));
         Assert.That(toReceiver.Reverse.Penalties, Is.Empty);
+    }
+
+    [Test]
+    public async Task Reconstructed_body_header_lookup_does_not_block_other_session_events()
+    {
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using BroadcastNode origin = new(), receiver = new();
+        (LinkPeer toReceiver, LinkPeer toOrigin) = Link(origin, receiver);
+        (LeanBroadcastManifest manifest, LeanDescriptor descriptor) = await Package(origin, 921);
+        Hash256 blockHash = new(descriptor.BlockHash);
+        BlockHeader header = KnownBlocks[blockHash].Header;
+        receiver.Profile.BeforeContext = () => receiver.Node.Tree.FindHeader(blockHash, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(_ =>
+            {
+                entered.TrySetResult();
+                if (!release.Wait(Timeout)) throw new TimeoutException("header lookup was not released");
+                return header;
+            });
+        string messageId = LeanBroadcastManifest.MessageId(manifest.Id(1, LeanTestNode.Genesis.ValueHash256));
+        try
+        {
+            Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
+            await entered.Task.WaitAsync(Timeout);
+
+            LeanBroadcastVerdict verdict = await Task.Run(() => receiver.Engine.OnRoutingUpdate(toOrigin, messageId,
+                LeanBroadcastWire.Bitmap(uint.MaxValue))).WaitAsync(Timeout / 2);
+            Assert.That(verdict, Is.EqualTo(LeanBroadcastVerdict.Accepted));
+        }
+        finally
+        {
+            release.Set();
+        }
+        await Until(() => receiver.Node.Transport.HasBroadcastSidecar(descriptor.BlockHash));
     }
 
     [Test]
