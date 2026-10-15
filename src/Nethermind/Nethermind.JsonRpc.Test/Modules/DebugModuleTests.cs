@@ -614,28 +614,138 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugGetBadBlocks_WhenWriteFails_RemovesFileSoRetrySucceeds()
+    public async Task DebugGetBadBlocks_WhenFileIsNetworkOrDevicePath_ReturnsInvalidParamsAndWritesNothing([Values("//", @"\\?\")] string prefix)
     {
-        Block block = Build.A.Block.WithNumber(1).TestObject;
-        _debugBridge.GetBadBlocks().Returns(FailAfter(block), [block]);
+        _debugBridge.GetBadBlocks().Returns([]);
         using TempPath file = TempPath.GetTempFile();
 
-        using JsonRpcResponse failed = await Request("debug_getBadBlocks", file.Path);
+        // "//" + an absolute path is a UNC path on Windows and the same local file on Unix; "\\?\" is a Windows device path.
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", prefix + file.Path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(File.Exists(file.Path), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenPathIsDirectory_ReturnsExistingFileError()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", directory.Path);
+
+        Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("location would overwrite an existing file"));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhileWriting_TargetHoldsNoPartialFile()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        bool targetExistedDuringWrite = true;
+        _debugBridge.GetBadBlocks().Returns(CheckTargetWhileWriting());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertSuccess<IEnumerable<BadBlock>>(response), Is.Null);
+            Assert.That(targetExistedDuringWrite, Is.False, "readers must not see a partial file at the target path");
+            Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.EqualTo(new[] { file }));
+            Assert.That(JToken.Parse(await File.ReadAllTextAsync(file)).Select(static b => (string?)b["hash"]), Is.EqualTo(new[] { block.Hash!.ToString() }));
+        }
+
+        IEnumerable<Block> CheckTargetWhileWriting()
+        {
+            yield return block;
+            targetExistedDuringWrite = File.Exists(file);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenWriteFails_LeavesNoFileSoRetrySucceeds()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _debugBridge.GetBadBlocks().Returns(FailAfter(block), [block]);
+
+        using JsonRpcResponse failed = await Request("debug_getBadBlocks", file);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(RpcTest.AssertError(failed).Code, Is.EqualTo(ErrorCodes.Default));
-            Assert.That(File.Exists(file.Path), Is.False);
+            Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.Empty, "neither the target nor a temporary file is left behind");
         }
 
-        using JsonRpcResponse retried = await Request("debug_getBadBlocks", file.Path);
+        using JsonRpcResponse retried = await Request("debug_getBadBlocks", file);
 
-        Assert.That(JToken.Parse(await File.ReadAllTextAsync(file.Path)).Select(static b => (string?)b["hash"]), Is.EqualTo(new[] { block.Hash!.ToString() }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertSuccess<IEnumerable<BadBlock>>(retried), Is.Null);
+            Assert.That(JToken.Parse(await File.ReadAllTextAsync(file)).Select(static b => (string?)b["hash"]), Is.EqualTo(new[] { block.Hash!.ToString() }));
+        }
 
         static IEnumerable<Block> FailAfter(Block block)
         {
             yield return block;
             throw new IOException("No space left on device");
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileCreatedByOthersDuringFailedWrite_KeepsIt()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        _debugBridge.GetBadBlocks().Returns(FailAfterOtherWriterCreatesFile());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("original write error"));
+            Assert.That(File.Exists(file) ? await File.ReadAllTextAsync(file) : null, Is.EqualTo("other writer"), "a failed write must only remove what it created");
+        }
+
+        IEnumerable<Block> FailAfterOtherWriterCreatesFile()
+        {
+            yield return Build.A.Block.WithNumber(1).TestObject;
+            if (File.Exists(file)) File.Delete(file); // Unix allows unlinking a file that is still open for writing.
+            File.WriteAllText(file, "other writer");
+            throw new IOException("original write error");
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileCreatedByOthersDuringWrite_ReturnsExistingFileErrorAndKeepsIt()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        _debugBridge.GetBadBlocks().Returns(OtherWriterCreatesFile());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("location would overwrite an existing file"));
+            Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.EqualTo(new[] { file }), "the temporary file is removed");
+            Assert.That(await File.ReadAllTextAsync(file), Is.EqualTo("other writer"));
+        }
+
+        IEnumerable<Block> OtherWriterCreatesFile()
+        {
+            yield return Build.A.Block.WithNumber(1).TestObject;
+            File.WriteAllText(file, "other writer");
         }
     }
 
@@ -651,12 +761,12 @@ public class DebugModuleTests
 
     [Test]
     [Platform("Linux,MacOsX")]
-    public async Task DebugGetBadBlocks_WhenPartialFileCleanupFails_PreservesWriteError()
+    public async Task DebugGetBadBlocks_WhenTemporaryFileCleanupFails_PreservesWriteError()
     {
         using TempPath directory = TempPath.GetTempDirectory();
         Directory.CreateDirectory(directory.Path);
         string file = Path.Combine(directory.Path, "bad-blocks.json");
-        _debugBridge.GetBadBlocks().Returns(FailAfterReplacingFile());
+        _debugBridge.GetBadBlocks().Returns(FailAfterReplacingTemporaryFile());
 
         using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
 
@@ -666,12 +776,13 @@ public class DebugModuleTests
             Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("original write error"));
         }
 
-        IEnumerable<Block> FailAfterReplacingFile()
+        IEnumerable<Block> FailAfterReplacingTemporaryFile()
         {
             yield return Build.A.Block.WithNumber(1).TestObject;
             // Unix allows unlinking the open output; a directory at that path makes cleanup fail.
-            File.Delete(file);
-            Directory.CreateDirectory(file);
+            string temporary = Directory.GetFiles(directory.Path).Single();
+            File.Delete(temporary);
+            Directory.CreateDirectory(temporary);
             throw new IOException("original write error");
         }
     }

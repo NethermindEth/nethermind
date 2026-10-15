@@ -737,6 +737,8 @@ public class DebugRpcModule(
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
 
+    private const string ExistingFileError = "location would overwrite an existing file";
+
     public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null)
     {
         IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
@@ -746,48 +748,57 @@ public class DebugRpcModule(
         }
 
         // Non-string arguments arrive as their raw JSON text, so a relative path could be "123" or "{}".
-        if (!Path.IsPathFullyQualified(file))
+        // Two leading separators make a UNC or device path on Windows, which would open a connection to another host.
+        if (!Path.IsPathFullyQualified(file) || file is ['/' or '\\', '/' or '\\', ..])
         {
-            return ResultWrapper<IEnumerable<BadBlock>>.Fail("file path must be absolute", ErrorCodes.InvalidParams);
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail("file path must be an absolute local path", ErrorCodes.InvalidParams);
         }
 
-        FileStream stream;
-        try
+        // Checked up front to fail before serializing, and so an existing directory fails the same way on every
+        // platform; the move below stays the final guard.
+        if (Path.Exists(file))
         {
-            stream = new FileStream(file, FileMode.CreateNew, FileAccess.Write);
-        }
-        catch (IOException) when (Path.Exists(file))
-        {
-            return ResultWrapper<IEnumerable<BadBlock>>.Fail("location would overwrite an existing file", ErrorCodes.Default);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-        {
-            return ResultWrapper<IEnumerable<BadBlock>>.Fail(e.Message, ErrorCodes.Default);
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail(ExistingFileError, ErrorCodes.Default);
         }
 
+        // Written next to the target and moved into place, so the target never holds a partial file and a failed
+        // write only removes the file this call created.
+        string temporaryFile = $"{file}.{Guid.NewGuid():N}.tmp";
         try
         {
-            using (stream)
-            {
-                EthereumJsonSerializer.SerializeToStream(stream, badBlocks);
-            }
+            using FileStream stream = new(temporaryFile, FileMode.CreateNew, FileAccess.Write);
+            EthereumJsonSerializer.SerializeToStream(stream, badBlocks);
         }
         catch (Exception e)
         {
             if (_logger.IsWarn) _logger.Warn($"{nameof(debug_getBadBlocks)} failed to write {file}: {e.Message}");
-            // A partial file would make every retry on the same path fail with "would overwrite".
-            try
-            {
-                File.Delete(file);
-            }
-            catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
-            {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(debug_getBadBlocks)} failed to remove partial file {file}: {cleanupError.Message}");
-            }
+            DeleteTemporaryFile(temporaryFile);
             return ResultWrapper<IEnumerable<BadBlock>>.Fail(e.Message, ErrorCodes.Default);
         }
 
+        try
+        {
+            File.Move(temporaryFile, file, overwrite: false);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            DeleteTemporaryFile(temporaryFile);
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail(e is IOException && Path.Exists(file) ? ExistingFileError : e.Message, ErrorCodes.Default);
+        }
+
         return ResultWrapper<IEnumerable<BadBlock>>.Success(null);
+
+        void DeleteTemporaryFile(string path)
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(debug_getBadBlocks)} failed to remove temporary file {path}: {e.Message}");
+            }
+        }
     }
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
