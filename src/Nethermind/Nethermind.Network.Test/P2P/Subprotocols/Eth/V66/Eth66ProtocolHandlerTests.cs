@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Threading;
@@ -23,14 +23,15 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
-using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
@@ -501,6 +502,79 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(requestId, message);
             HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
             Assert.That(await recovery, Is.Empty);
+        }
+
+        [Test]
+        public async Task Lean_ETH_recoveries_complete_when_the_handler_stops([Values] bool disconnect)
+        {
+            LeanEthTransactions registry = new();
+            _session.RemoteNodeId.Returns(TestItem.PublicKeyA);
+            _handler.Dispose();
+            _handler = CreateHandler(RunImmediatelyScheduler.Instance, registry);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            List<long> ids = [];
+            _session.When(session => session.DeliverMessage(Arg.Any<GetPooledTransactionsMessage66>()))
+                .Do(call => ids.Add(call.Arg<GetPooledTransactionsMessage66>().RequestId));
+            int reservations = 0;
+            Task<Transaction[]>[] pending = Enumerable.Range(0, LeanProtocol.MaxRequestsPerPeer).Select(index =>
+                registry.RecoverAsync(TestItem.PublicKeyA, [TestItem.KeccakA.ValueHash256],
+                    _ => { Interlocked.Increment(ref reservations); return true; }, CancellationToken.None)).ToArray();
+            Assert.That(ids, Has.Count.EqualTo(LeanProtocol.MaxRequestsPerPeer));
+
+            if (disconnect) _session.Disconnected += Raise.EventWith(new DisconnectEventArgs(DisconnectReason.EthDisconnectRequested, DisconnectType.Remote, "test"));
+            else _handler.Dispose();
+
+            Transaction[][] completed = await Task.WhenAll(pending).WaitAsync(TimeSpan.FromSeconds(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(completed, Is.All.Empty, "disconnect releases every recovery without waiting for its caller token");
+                Assert.That(registry.HasPeer(TestItem.PublicKeyA), Is.False);
+                Assert.That(reservations, Is.Zero);
+            }
+            // A late response must remain correlated with the retired recovery, even after its waiter has resumed.
+            using PooledTransactionsMessage message = new(new ArrayPoolList<Transaction>(0));
+            using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(ids[0], message);
+            HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+            Assert.That(reservations, Is.Zero);
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+
+        [Test]
+        public async Task Disconnect_keeps_a_claimed_responses_reservation_until_processing_finishes()
+        {
+            LeanEthTransactions registry = new();
+            _session.RemoteNodeId.Returns(TestItem.PublicKeyA);
+            _handler.Dispose();
+            _handler = CreateHandler(RunImmediatelyScheduler.Instance, registry);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            long id = 0;
+            _session.When(session => session.DeliverMessage(Arg.Any<GetPooledTransactionsMessage66>()))
+                .Do(call => id = call.Arg<GetPooledTransactionsMessage66>().RequestId);
+            TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim release = new();
+            Task<Transaction[]> recovery = registry.RecoverAsync(TestItem.PublicKeyA, [TestItem.KeccakA.ValueHash256], _ =>
+            {
+                entered.TrySetResult();
+                if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("reservation was not released");
+                return true;
+            }, CancellationToken.None);
+            using PooledTransactionsMessage message = new(new ArrayPoolList<Transaction>(0));
+            using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(id, message);
+            Task handling = Task.Run(() => HandleZeroMessage(response, Eth66MessageCode.PooledTransactions));
+            try
+            {
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                _session.Disconnected += Raise.EventWith(new DisconnectEventArgs(DisconnectReason.EthDisconnectRequested, DisconnectType.Remote, "test"));
+                Assert.That(recovery.IsCompleted, Is.False, "the response still owns reserved decode memory");
+            }
+            finally
+            {
+                release.Set();
+                await handling;
+            }
+            Assert.That(await recovery.WaitAsync(TimeSpan.FromSeconds(1)), Is.Empty);
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
