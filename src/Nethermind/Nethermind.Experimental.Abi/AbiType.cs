@@ -70,8 +70,11 @@ public static partial class AbiType
         IsDynamic = true,
         Read = (ref BinarySpanReader r) =>
         {
-            int length = (int)UInt256.Read(ref r);
-            return r.Scoped((length, abi), static ((int, Abi<T>) ctx, ref BinarySpanReader r) =>
+            UInt256 length = UInt256.Read(ref r);
+            // Every element head takes at least 32 bytes
+            if (length > (UInt256)(r.Remaining / 32)) throw new AbiException();
+
+            return r.Scoped(((int)length, abi), static ((int, Abi<T>) ctx, ref BinarySpanReader r) =>
             {
                 (int length, Abi<T> abi) = ctx;
 
