@@ -188,11 +188,11 @@ namespace Nethermind.Trie
         private PreviousRlp ReadPreviousRlp() => new(_rlpArray, (nint)(_rlpSeqAndLength >> 32));
 
         /// <summary>Computes the keccak of <paramref name="rlp"/>, this node's encoding.</summary>
-        /// <remarks>A full branch re-encoded from a witness node resumes from the sponge state of its unchanged leading
+        /// <remarks>A branch re-encoded from a witness node resumes from the sponge state of its unchanged leading
         /// rate blocks; see <see cref="KeccakHash.ComputeHash256OfEdited"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
-            rlp.Length == FullBranchRlpLength
+            rlp.Length >= KeccakHash.MinResumableLength
                 ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag))
                 : Nethermind.Core.Crypto.Keccak.Compute(rlp);
 
