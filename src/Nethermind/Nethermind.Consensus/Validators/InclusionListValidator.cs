@@ -31,17 +31,6 @@ public static class InclusionListValidator
         FrameTxFieldsTxValidator.Instance,
         FrameTxNonceKeysTxValidator.Instance);
 
-    public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ulong maxVerifyGasPerTx = Eip8369Constants.MaxVerifyGasPerTx, IProfile2EligibilityReplayer? replayer = null)
-        => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator, maxVerifyGasPerTx, replayer);
-
-    /// <summary>Whether <paramref name="block"/> honours a single flat inclusion list, which carries no committee
-    /// positions and so admits no Profile 2 candidate.</summary>
-    /// <param name="maxVerifyGasPerTx">EIP-7805 <c>MAX_VERIFY_GAS_PER_TX</c>, above which a frame transaction is
-    /// no Profile 2 candidate and its omission is excused; <c>0</c> lifts the cap.</param>
-    public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ulong maxVerifyGasPerTx = Eip8369Constants.MaxVerifyGasPerTx,
-        IProfile2EligibilityReplayer? replayer = null)
-        => IsSatisfied(block, il, null, state, spec, txValidator, maxVerifyGasPerTx, null, replayer, null);
-
     /// <summary>Whether <paramref name="block"/> honours EIP-7805's separate inclusion lists under the builder's
     /// omission claims.</summary>
     /// <param name="inclusionLists">One decoded list per committee position, each in its original order with its
@@ -56,18 +45,13 @@ public static class InclusionListValidator
     /// <c>null</c> judges that fit against the whole block's gas, which only excuses more.</param>
     public static bool IsSatisfied(Block block, IReadOnlyList<Transaction[]> inclusionLists, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
         ulong maxVerifyGasPerTx, OmissionClaim[]? claims, IProfile2EligibilityReplayer? replayer = null, IReadOnlyList<(ulong Execution, ulong State)>? gasUsedBefore = null)
-        => IsSatisfied(block, InclusionLists.Distinct(inclusionLists), inclusionLists, state, spec, txValidator, maxVerifyGasPerTx, claims, replayer, gasUsedBefore);
-
-    private static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyList<Transaction[]>? inclusionLists, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
-        ulong maxVerifyGasPerTx, OmissionClaim[]? claims, IProfile2EligibilityReplayer? replayer, IReadOnlyList<(ulong Execution, ulong State)>? gasUsedBefore)
     {
         if (!spec.InclusionListsEnabled) return true;
-        // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
-        if (il is null) return true;
+        Transaction[] il = InclusionLists.Distinct(inclusionLists);
 
         // EIP-7805: before Profile 2 is active, committee positions and claims are carried but have no effect.
         bool profile2Active = Eip8369Profile2.IsActive(spec);
-        if (!profile2Active) (inclusionLists, claims) = (null, null);
+        if (!profile2Active) claims = null;
 
         // No room for even the cheapest possible tx → nothing is appendable, unless a claim moves an
         // evaluation before the end of the payload.
@@ -140,14 +124,13 @@ public static class InclusionListValidator
     }
 
     /// <summary>The inputs EIP-8369 Profile 2 enforcement takes beyond the list itself.</summary>
-    private readonly record struct Profile2Inputs(bool Active, ulong MaxVerifyGasPerTx, IReadOnlyList<Transaction[]>? InclusionLists,
+    private readonly record struct Profile2Inputs(bool Active, ulong MaxVerifyGasPerTx, IReadOnlyList<Transaction[]> InclusionLists,
         Dictionary<Hash256AsKey, int?>? ClaimedIndices, IProfile2EligibilityReplayer? Replayer, IReadOnlyList<(ulong Execution, ulong State)>? GasUsedBefore);
 
     /// <summary>Whether an omitted Profile 2 candidate passes every check but the replay at its evaluation index:
     /// the static, fee and gas-fit conditions, and admission by some committee position's VERIFY budget fill.</summary>
-    /// <remarks>Only these reach the replay, so replay work is bounded by the per-IL budgets. A flat list has no
-    /// committee positions, so none admits the entry. The payer's balance is left to the replay, which collects the
-    /// maximum cost from the state at <paramref name="index"/>.</remarks>
+    /// <remarks>Only these reach the replay, so replay work is bounded by the per-IL budgets. The payer's balance is
+    /// left to the replay, which collects the maximum cost from the state at <paramref name="index"/>.</remarks>
     private static bool IsReplayableOmission(
         Transaction tx,
         int index,
@@ -157,13 +140,13 @@ public static class InclusionListValidator
         in Profile2Inputs profile2,
         ref HashSet<Hash256AsKey>? admitted)
     {
-        if (tx.Hash is null || tx.SenderAddress is null || profile2.InclusionLists is not { } inclusionLists) return false;
+        if (tx.Hash is null || tx.SenderAddress is null) return false;
         if (!FitsRemainingBlockGas(tx, block, spec, GasUsedBefore(block, index, profile2.GasUsedBefore))) return false;
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out _) || !FrameTxValidation.TryCalculateMaxCost(tx, spec, out _)) return false;
 
-        admitted ??= Eip8369Profile2.AdmitByVerifyBudget(InclusionLists.InFillOrder(inclusionLists), profile2.MaxVerifyGasPerTx,
+        admitted ??= Eip8369Profile2.AdmitByVerifyBudget(InclusionLists.InFillOrder(profile2.InclusionLists), profile2.MaxVerifyGasPerTx,
             profile2.Replayer is { } signatures ? occurrence => signatures.AreSignaturesValid(occurrence, spec) : null,
             entry => Profile2StaticChecks.IsWellFormed(entry, spec));
         return admitted.Contains(tx.Hash);

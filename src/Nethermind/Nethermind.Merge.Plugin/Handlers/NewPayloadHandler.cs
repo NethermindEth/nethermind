@@ -879,7 +879,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // answered: the commit, the prewarm join and the BlockProcessed subscribers all arrive here as an exception,
         // including the one kind that would otherwise have been reported as the block being invalid. Any of them
         // leaves a VALID that was already given standing for a block that is not there.
-        bool failed = e.ProcessingResult is not (ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied);
+        bool failed = e.ProcessingResult is not ProcessingResult.Success;
         bool found = _blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed);
 
         // The completion that received the verdict arbitrates with its own request over the cache entry, below.
@@ -910,7 +910,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             ProcessingResult.Success => ValidationResult.Valid,
             ProcessingResult.ProcessingError => ValidationResult.Invalid,
-            ProcessingResult.InclusionListUnsatisfied => ValidationResult.Valid,
             _ => null
         };
 

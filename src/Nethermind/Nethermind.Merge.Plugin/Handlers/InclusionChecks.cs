@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,24 +33,30 @@ public interface IInclusionChecks
 /// <inheritdoc cref="IInclusionChecks"/>
 /// <remarks>
 /// A check runs once per identifier however often its inputs are resent, and its verdict never changes once complete.
-/// Checks are kept in insertion order up to <see cref="Capacity"/>, the oldest evicted first, which the engine API
-/// permits: the consensus layer resubmits the original inputs after <c>Unknown inclusion check</c>. A check that
-/// cannot be decided, its state or execution gas counters being unavailable, is forgotten rather than completed,
-/// so it is never reported as satisfied or excused.
+/// At most <see cref="Capacity"/> checks are kept. Past it one is evicted, which the engine API permits since the
+/// consensus layer resubmits the original inputs after <c>Unknown inclusion check</c>: the oldest whose block is at or
+/// below the finalized one, so finalized or pruned from fork choice, else the oldest pending one, else the oldest.
+/// A check that cannot be decided, its state or execution gas counters being unavailable, is evicted rather than
+/// completed, so it is never reported as satisfied or excused, and a resubmission runs it again. At most
+/// <see cref="MaxConcurrentChecks"/> run at once, and an evicted pending check is cancelled.
 /// </remarks>
-public sealed class InclusionChecks(IInclusionListComplianceEvaluator evaluator, ILogManager logManager) : IInclusionChecks, IDisposable
+public sealed class InclusionChecks(IInclusionListComplianceEvaluator evaluator, IBlockFinder blockFinder, ILogManager logManager) : IInclusionChecks, IDisposable
 {
     public const int Capacity = 256;
+    public const int MaxConcurrentChecks = 4;
 
     private readonly ILogger _logger = logManager.GetClassLogger<InclusionChecks>();
     private readonly Lock _lock = new();
     private readonly Dictionary<Hash256AsKey, LinkedListNode<Check>> _checks = [];
     private readonly LinkedList<Check> _order = new();
     private readonly CancellationTokenSource _disposed = new();
+    private readonly SemaphoreSlim _running = new(MaxConcurrentChecks);
 
-    private sealed class Check(Hash256 id)
+    private sealed class Check(Hash256 id, ulong blockNumber)
     {
         public Hash256 Id { get; } = id;
+        public ulong BlockNumber { get; } = blockNumber;
+        public CancellationTokenSource Evicted { get; } = new();
         public Task<bool?>? Verdict { get; set; }
 
         public bool? Current => Verdict is { IsCompletedSuccessfully: true } completed ? completed.Result : null;
@@ -56,16 +64,20 @@ public sealed class InclusionChecks(IInclusionListComplianceEvaluator evaluator,
 
     public bool? Start(Hash256 inclusionCheckId, ExecutionPayload executionPayload, byte[][][] inclusionLists, OmissionClaim[] claims)
     {
+        // Read outside the lock, and only near capacity, as it may touch the block tree's storage.
+        ulong? finalizedNumber = _checks.Count >= Capacity ? FinalizedNumber() : null;
         Check check;
+        Check? evicted = null;
         lock (_lock)
         {
             if (_checks.TryGetValue(inclusionCheckId, out LinkedListNode<Check>? known)) return known.Value.Current;
 
-            check = new Check(inclusionCheckId);
+            check = new Check(inclusionCheckId, executionPayload.BlockNumber);
             _checks[inclusionCheckId] = _order.AddLast(check);
-            while (_checks.Count > Capacity) Remove(_order.First!.Value);
+            if (_checks.Count > Capacity) Remove(evicted = EvictionCandidate(finalizedNumber, check));
         }
 
+        evicted?.Evicted.Cancel();
         check.Verdict = Task.Run(() => RunAsync(check, executionPayload, inclusionLists, claims));
         return check.Current;
     }
@@ -80,11 +92,32 @@ public sealed class InclusionChecks(IInclusionListComplianceEvaluator evaluator,
         }
     }
 
+    private ulong? FinalizedNumber() =>
+        blockFinder.FinalizedHash is { } finalized ? blockFinder.FindHeader(finalized, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Number : null;
+
+    /// <remarks>bogota.md § Deferred inclusion checking: a completed verdict is retained until a finalized block's
+    /// number reaches its block's, unless resources run short, which a full store of other completed verdicts is.
+    /// <paramref name="added"/> is the check being made room for, never the one evicted.</remarks>
+    private Check EvictionCandidate(ulong? finalizedNumber, Check added)
+    {
+        Check? oldestPending = null;
+        foreach (Check check in _order)
+        {
+            if (check.BlockNumber <= finalizedNumber) return check;
+            if (check.Current is null && !ReferenceEquals(check, added)) oldestPending ??= check;
+        }
+        return oldestPending ?? _order.First!.Value;
+    }
+
     private async Task<bool?> RunAsync(Check check, ExecutionPayload executionPayload, byte[][][] inclusionLists, OmissionClaim[] claims)
     {
         bool? verdict = null;
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(_disposed.Token, check.Evicted.Token);
+        bool entered = false;
         try
         {
+            await _running.WaitAsync(cancellation.Token);
+            entered = true;
             Result<Block> block = executionPayload.TryGetBlock();
             if (block.IsError)
             {
@@ -93,16 +126,20 @@ public sealed class InclusionChecks(IInclusionListComplianceEvaluator evaluator,
             else
             {
                 Transaction[][] decoded = InclusionListDecoder.DecodeLists(inclusionLists);
-                verdict = await evaluator.EvaluateAsync(block.Data, decoded, claims, _disposed.Token);
+                verdict = await evaluator.EvaluateAsync(block.Data, decoded, claims, cancellation.Token);
                 if (verdict is null && _logger.IsDebug) _logger.Debug($"Inclusion check {check.Id} for block {executionPayload.BlockHash} is undecidable without its state or execution gas counters; forgetting it.");
             }
         }
-        catch (OperationCanceledException) when (_disposed.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
         }
         catch (Exception e)
         {
             if (_logger.IsError) _logger.Error($"Inclusion check {check.Id} for block {executionPayload.BlockHash} failed.", e);
+        }
+        finally
+        {
+            if (entered) _running.Release();
         }
 
         if (verdict is null)

@@ -274,13 +274,21 @@ public partial class EngineModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(invalid && claims == 0 ? MergeErrorCodes.InvalidPayloadAttributes : ErrorCodes.None), result.Result.Error);
     }
 
-    /// <summary>bogota.md engine_newPayloadV6 point 2.2: a claim must match <c>OmissionClaimV1</c> on the wire, while
-    /// an index above the payload's transaction count is well formed and only clamped by EIP-7805.</summary>
+    /// <summary>bogota.md engine_newPayloadV6 point 2.2: a claim must match <c>OmissionClaimV1</c> on the wire, its index a
+    /// canonical <c>QUANTITY</c> (common.md), while an index above the payload's transaction count is well formed and
+    /// only clamped by EIP-7805.</summary>
     [TestCase("""{"transactionHash":"0x0000000000000000000000000000000000000000000000000000000000000000","evaluationIndex":"0xffffffffffffffff"}""", false, TestName = "Claim at the largest uint64 index is well formed")]
     [TestCase("""{"transactionHash":"0x0000000000000000000000000000000000000000000000000000000000000000","evaluationIndex":"0x10000000000000000"}""", true, TestName = "Claim index overflowing uint64 is invalid params")]
     [TestCase("""{"transactionHash":"0x0000000000000000000000000000000000000000000000000000000000000000"}""", true, TestName = "Claim without an index is invalid params")]
     [TestCase("""{"evaluationIndex":"0x0"}""", true, TestName = "Claim without a hash is invalid params")]
     [TestCase("""{"transactionHash":"0x00","evaluationIndex":"0x0"}""", true, TestName = "Claim with a short hash is invalid params")]
+    [TestCase("""{"transactionHash":"0x0000000000000000000000000000000000000000000000000000000000000000","evaluationIndex":"0x0"}""", false, TestName = "Claim at index zero is well formed")]
+    [TestCase("""{"transactionHash":"0x0000000000000000000000000000000000000000000000000000000000000000","evaluationIndex":"0xAbC"}""", false, TestName = "Claim index in either hex case is well formed")]
+    [TestCase("""{"transactionHash":"0x0000000000000000000000000000000000000000000000000000000000000000","evaluationIndex":"0x01"}""", true, TestName = "Claim index with a leading zero is invalid params")]
+    [TestCase("""{"transactionHash":"0x0000000000000000000000000000000000000000000000000000000000000000","evaluationIndex":"0x00"}""", true, TestName = "Claim index zero with a leading zero is invalid params")]
+    [TestCase("""{"transactionHash":"0x0000000000000000000000000000000000000000000000000000000000000000","evaluationIndex":"0x"}""", true, TestName = "Claim index without digits is invalid params")]
+    [TestCase("""{"transactionHash":"0x0000000000000000000000000000000000000000000000000000000000000000","evaluationIndex":"1"}""", true, TestName = "Claim index without 0x is invalid params")]
+    [TestCase("""{"transactionHash":"0x0000000000000000000000000000000000000000000000000000000000000000","evaluationIndex":1}""", true, TestName = "Claim index as a JSON number is invalid params")]
     public async Task NewPayloadV6_rejects_a_malformed_claim(string claim, bool invalid)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });

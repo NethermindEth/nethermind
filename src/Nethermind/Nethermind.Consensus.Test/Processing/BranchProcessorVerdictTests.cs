@@ -21,6 +21,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Test;
@@ -218,12 +219,39 @@ public class BranchProcessorVerdictTests
             .Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
 
         BranchProcessor branchProcessor = new(blockProcessor, Substitute.For<ISpecProvider>(), worldState, Substitute.For<IBlockhashProvider>(),
-            Substitute.For<IInclusionListSatisfactionChecker>(), LimboLogs.Instance);
+            LimboLogs.Instance);
         branchProcessor.BlockExecuted += (_, e) => e.Answered = answered;
         branchProcessor.BlockProcessed += (_, _) => throw new InvalidBlockException(block, "failed after the verdict");
 
         Exception thrown = Assert.Catch(() => branchProcessor.Process(parent, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance));
 
         Assert.That(thrown, Is.TypeOf(expected));
+    }
+
+    /// <summary>EIP-7805 fits an omission claim against the gas used before its index, which only execution
+    /// records, so it is kept on the suggested block for a deferred inclusion check once Profile 2 is active.</summary>
+    [Test]
+    public void Process_records_the_gas_used_before_each_transaction_once_profile_2_is_active([Values] bool profile2Active)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        Transaction[] txs = [Build.A.Transaction.WithNonce(0).TestObject, Build.A.Transaction.WithNonce(1).TestObject];
+        Block suggested = Build.A.Block.WithParent(parent).WithTransactions(txs).TestObject;
+        Block processed = Build.A.Block.WithParent(parent).WithTransactions(txs).WithGasUsed(30_000).TestObject;
+        processed.Header.GasUsedPerDimension = (30_000, 5_000);
+        TxReceipt[] receipts = [new() { BlockGasUsed = 21_000, StorageGasUsed = 5_000 }, new() { BlockGasUsed = 9_000 }];
+
+        IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
+        blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns((processed, receipts));
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.TryBeginScopeAtTarget(Arg.Any<BlockHeader>(), out Arg.Any<IDisposable>())
+            .Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(profile2Active ? Eip8369Prototype.Instance : Bogota.Instance);
+
+        BranchProcessor branchProcessor = new(blockProcessor, specProvider, worldState, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance);
+        branchProcessor.Process(parent, [suggested], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        Assert.That(suggested.GasUsedBeforeTransactions, profile2Active ? Is.EqualTo(new (ulong, ulong)[] { (0, 0), (21_000, 5_000) }) : Is.Null);
     }
 }

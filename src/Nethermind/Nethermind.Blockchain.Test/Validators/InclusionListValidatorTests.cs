@@ -36,14 +36,12 @@ public class InclusionListValidatorTests
     {
         get
         {
-            static TestCaseData Case(string name, Transaction[]? il, bool satisfied, Transaction[]? blockTxs = null, ulong gasUsed = 1_000_000, UInt256 baseFee = default, ulong senderNonce = 0) =>
+            static TestCaseData Case(string name, Transaction[] il, bool satisfied, Transaction[]? blockTxs = null, ulong gasUsed = 1_000_000, UInt256 baseFee = default, ulong senderNonce = 0) =>
                 new(blockTxs ?? [], il, gasUsed, baseFee, senderNonce, satisfied) { TestName = name };
 
             yield return Case("Full block is satisfied", [_validTx], true, gasUsed: 30_000_000);
             yield return Case("All IL txs included", [_validTx], true, blockTxs: [_validTx]);
             yield return Case("Appendable IL tx excluded", [_validTx], false);
-            // Null IL = non-engine-API path (genesis, RLP import); validator treats as not applicable.
-            yield return Case("No IL", null, true);
             yield return Case("Empty IL", [], true);
             yield return Case("Sender lacks balance", [BuildTx(value: 100.Ether, to: TestItem.AddressB)], true);
             yield return Case("Wrong nonce", [BuildTx(nonce: 5, to: TestItem.AddressB)], true);
@@ -112,14 +110,13 @@ public class InclusionListValidatorTests
             .WithGasUsed(1_000_000)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
-            .WithInclusionListTransactions([BuildBlobTx()])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(satisfied));
+        Assert.That(IsSatisfied(block, [BuildBlobTx()], StateWith(TestItem.AddressA, 10.Ether, 0), spec), Is.EqualTo(satisfied));
     }
 
     [TestCaseSource(nameof(SatisfactionCases))]
-    public void Inclusion_list_satisfaction(Transaction[] blockTxs, Transaction[]? il, ulong gasUsed, UInt256 baseFee, ulong senderNonce, bool satisfied)
+    public void Inclusion_list_satisfaction(Transaction[] blockTxs, Transaction[] il, ulong gasUsed, UInt256 baseFee, ulong senderNonce, bool satisfied)
     {
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
@@ -128,11 +125,10 @@ public class InclusionListValidatorTests
             .WithTransactions(blockTxs)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
-            .WithInclusionListTransactions(il)
             .TestObject;
 
         IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
-        Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
+        Assert.That(IsSatisfied(block, il, state, _specProvider.GetSpec(block.Header)), Is.EqualTo(satisfied));
     }
 
     [Test]
@@ -153,7 +149,7 @@ public class InclusionListValidatorTests
         if (included) block = new Block(block.Header, [tx], block.Uncles);
 
         bool expected = included || underpriced || remainingBlobGas < Eip4844Constants.GasPerBlob;
-        Assert.That(InclusionListValidator.IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(expected));
+        Assert.That(IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec), Is.EqualTo(expected));
     }
 
     // Withdrawals land after the block's transactions, so judging against the raw post-block balance
@@ -172,11 +168,10 @@ public class InclusionListValidatorTests
             .WithBaseFeePerGas(UInt256.Zero)
             .WithTransactions([])
             .WithWithdrawals(withdrawals)
-            .WithInclusionListTransactions([_validTx])
             .TestObject;
 
         // Withdrawing 9.5 of the 10 ether leaves 0.5, below _validTx's ~1.001 ether cost.
-        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+        return IsSatisfied(block, [_validTx], StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header));
     }
 
     // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent
@@ -194,11 +189,10 @@ public class InclusionListValidatorTests
             .WithGasUsed(513_317)
             .WithBaseFeePerGas(UInt256.Zero)
             .WithTransactions([])
-            .WithInclusionListTransactions([BuildTx(gasLimit: ilGasLimit, to: TestItem.AddressB)])
             .TestObject;
         if (dimensionsKnown) block.Header.GasUsedPerDimension = (513_317, 97_920);
 
-        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+        return IsSatisfied(block, [BuildTx(gasLimit: ilGasLimit, to: TestItem.AddressB)], StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header));
     }
 
     /// <summary>EIP-8369 Profile 2: an omitted frame transaction is judged when it is a candidate and excused
@@ -278,11 +272,9 @@ public class InclusionListValidatorTests
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
             .WithTransactions(ordinaryEntryIncluded ? [_validTx] : [])
-            .WithInclusionListTransactions(il)
             .TestObject;
 
-        return InclusionListValidator.IsSatisfied(
-            block, StateWith(TestItem.AddressA, 10.Ether, 0), _frameSpecProvider.GetSpec(block.Header), _txValidator);
+        return IsSatisfied(block, il, StateWith(TestItem.AddressA, 10.Ether, 0), _frameSpecProvider.GetSpec(block.Header));
     }
 
     [TestCaseSource(nameof(FrameCases))]
@@ -295,7 +287,6 @@ public class InclusionListValidatorTests
             .WithGasUsed(gasUsed)
             .WithBaseFeePerGas(baseFee)
             .WithTransactions(blockTxs)
-            .WithInclusionListTransactions(il)
             .TestObject;
         // Admission is by hash and by committee position, so every entry gets a hash and sits at position 0.
         for (int i = 0; i < il.Length; i++) il[i].Hash ??= Keccak.Compute($"frame-case-{i}");
@@ -409,9 +400,8 @@ public class InclusionListValidatorTests
     {
         get
         {
-            static TestCaseData Case(string name, Transaction[][] lists, Transaction candidate, bool satisfied,
-                bool separate = true, Transaction? badSignature = null) =>
-                new(lists, separate, candidate, badSignature, satisfied) { TestName = name };
+            static TestCaseData Case(string name, Transaction[][] lists, Transaction candidate, bool satisfied, Transaction? badSignature = null) =>
+                new(lists, candidate, badSignature, satisfied) { TestName = name };
 
             // 1-of-N: pooled into one budget, the stuffed position's 1,040,000 would leave the honest one 8,576.
             Transaction honest = Candidate(5, 100_000);
@@ -423,7 +413,6 @@ public class InclusionListValidatorTests
             Transaction first = filler[0];
             Transaction second = Candidate(5, 250_000);
             yield return Case("Candidate over its own position's remaining budget is excused", [[.. filler, second]], second, true);
-            yield return Case("A flat list has no committee position to admit a candidate", [[first]], first, true, separate: false);
             yield return Case("A duplicate in one list is debited once", [[.. filler[..3], first, second]], second, false);
             yield return Case("The fill takes a position's entries by hash, not by arrival", [[second, .. filler]], second, true);
             yield return Case("Candidate carried at several positions is enforced when any admits it",
@@ -459,10 +448,9 @@ public class InclusionListValidatorTests
 
     [TestCaseSource(nameof(BudgetCases))]
     public void Profile_2_verify_budget_is_filled_per_committee_position(
-        Transaction[][] lists, bool separate, Transaction candidate, Transaction? badSignature, bool satisfied)
+        Transaction[][] lists, Transaction candidate, Transaction? badSignature, bool satisfied)
     {
         Profile2Case block = Profile2Block(lists, blockTxCount: 0);
-        if (!separate) block = block with { Lists = null };
         FakeReplayer replayer = new((tx, _) => ReferenceEquals(tx, candidate), tx => !ReferenceEquals(tx, badSignature));
 
         Assert.That(IsSatisfied(block, replayer), Is.EqualTo(satisfied));
@@ -536,22 +524,6 @@ public class InclusionListValidatorTests
         Assert.That(result, Is.EqualTo(satisfied));
     }
 
-    /// <summary>The checker records the gas used before each transaction on the suggested block, whether or not it
-    /// carries a list, which a deferred inclusion check then fits claims against without re-executing.</summary>
-    [Test]
-    public void Satisfaction_checker_records_the_gas_used_before_each_transaction()
-    {
-        Block processed = Profile2Block(Array.Empty<Transaction>(), blockTxCount: 2).Block;
-        processed.Header.GasUsedPerDimension = (30_000, 5_000);
-        Block suggested = Profile2Block(Array.Empty<Transaction>(), blockTxCount: 2).Block;
-        suggested.InclusionListTransactions = null;
-        TxReceipt[] receipts = [new() { BlockGasUsed = 21_000, StorageGasUsed = 5_000 }, new() { BlockGasUsed = 9_000 }];
-        InclusionListSatisfactionChecker checker = new(_frameSpecProvider, _txValidator, new Nethermind.Config.BlocksConfig());
-
-        Assert.That(checker.IsSatisfied(processed, suggested, Substitute.For<IWorldState>(), receipts), Is.True);
-        Assert.That(suggested.GasUsedBeforeTransactions, Is.EqualTo(new (ulong, ulong)[] { (0, 0), (21_000, 5_000) }));
-    }
-
     /// <summary>The gas used before each transaction is read off the receipts only when they add up to the block's totals.</summary>
     [TestCase(30_000UL, 5_000UL, true, TestName = "Receipts adding up to the block's gas give the gas before each transaction")]
     [TestCase(30_001UL, 5_000UL, false, TestName = "Receipts not adding up to the block's gas give nothing")]
@@ -602,18 +574,16 @@ public class InclusionListValidatorTests
         }
     }
 
-    /// <summary>A block with the separate lists and claims it is checked against; <c>null</c> lists check it against
-    /// its flat <see cref="Block.InclusionListTransactions"/> instead.</summary>
-    private sealed record Profile2Case(Block Block, Transaction[][]? Lists, OmissionClaim[]? Claims);
+    /// <summary>A block with the separate lists and claims it is checked against.</summary>
+    private sealed record Profile2Case(Block Block, Transaction[][] Lists, OmissionClaim[]? Claims);
 
-    private static bool IsSatisfied(Profile2Case profile2, IProfile2EligibilityReplayer replayer, (ulong, ulong)[]? gasUsedBefore = null)
-    {
-        IReleaseSpec spec = _frameSpecProvider.GetSpec(profile2.Block.Header);
-        IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, 0);
-        return profile2.Lists is { } lists
-            ? InclusionListValidator.IsSatisfied(profile2.Block, lists, state, spec, _txValidator, Eip8369Constants.MaxVerifyGasPerTx, profile2.Claims, replayer, gasUsedBefore)
-            : InclusionListValidator.IsSatisfied(profile2.Block, profile2.Block.InclusionListTransactions, state, spec, _txValidator, replayer: replayer);
-    }
+    private static bool IsSatisfied(Profile2Case profile2, IProfile2EligibilityReplayer replayer, (ulong, ulong)[]? gasUsedBefore = null) =>
+        InclusionListValidator.IsSatisfied(profile2.Block, profile2.Lists, StateWith(TestItem.AddressA, 10.Ether, 0), _frameSpecProvider.GetSpec(profile2.Block.Header),
+            _txValidator, Eip8369Constants.MaxVerifyGasPerTx, profile2.Claims, replayer, gasUsedBefore);
+
+    /// <summary>Whether <paramref name="block"/> honours <paramref name="il"/>, the list at committee position 0.</summary>
+    private static bool IsSatisfied(Block block, Transaction[] il, IReadOnlyStateProvider state, IReleaseSpec spec) =>
+        InclusionListValidator.IsSatisfied(block, AtPositions(il), state, spec, _txValidator, Eip8369Constants.MaxVerifyGasPerTx, claims: null);
 
     /// <summary>A block omitting <paramref name="il"/>, which sits at committee position 0.</summary>
     private static Profile2Case Profile2Block(Transaction[] il, int blockTxCount, OmissionClaim[]? claims = null, Transaction[]? included = null) =>
@@ -631,7 +601,6 @@ public class InclusionListValidatorTests
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
             .WithTransactions([.. blockTxs])
-            .WithInclusionListTransactions(InclusionLists.Distinct(positions))
             .TestObject;
         return new Profile2Case(block, positions, claims);
     }
@@ -714,10 +683,9 @@ public class InclusionListValidatorTests
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), Prague.Instance, _txValidator), Is.True);
+        Assert.That(IsSatisfied(block, [_validTx], StateWith(TestItem.AddressA, 10.Ether, 0), Prague.Instance), Is.True);
     }
 
     // EIP-3607: a sender that has deployed (non-delegation) code cannot send a tx.
@@ -738,10 +706,9 @@ public class InclusionListValidatorTests
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        return InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator);
+        return IsSatisfied(block, [_validTx], state, _specProvider.GetSpec(block.Header));
     }
 
     private static Transaction BuildTx(ulong gasLimit = 100_000, ulong nonce = 0, UInt256? gasPrice = null, UInt256? value = null, Address? to = null) =>

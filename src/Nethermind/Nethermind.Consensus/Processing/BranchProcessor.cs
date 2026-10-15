@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -24,7 +25,6 @@ public class BranchProcessor(
     ISpecProvider specProvider,
     IWorldState stateProvider,
     IBlockhashProvider blockhashProvider,
-    IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
@@ -112,8 +112,8 @@ public class BranchProcessor(
             BlockHeader? preBlockBaseBlock = baseBlock;
 
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-            // Production, tracing and eth_simulate never report inclusion-list compliance.
-            bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
+            // Production, tracing and eth_simulate are never put to an inclusion check.
+            bool recordGasUsedBefore = !options.ContainsFlag(ProcessingOptions.NoValidation);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
 
@@ -175,14 +175,16 @@ public class BranchProcessor(
                 if (processedBlock.GasUsed == 0) processedBlock.Header.GasUsedPerDimension ??= (0, 0);
                 suggestedBlock.Header.GasUsedPerDimension = processedBlock.Header.GasUsedPerDimension;
 
-                // A signal, not a rejection: the block is still committed, and it reads post-execution
-                // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
-                bool inclusionListSatisfied = !checkInclusionList
-                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider, receipts);
-                processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
-                suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
+                // EIP-7805 fits an omission claim before the end of the payload against the gas used before its
+                // index, which only execution records. A deferred inclusion check reads it off the suggested block.
+                if (recordGasUsedBefore)
+                {
+                    suggestedBlock.GasUsedBeforeTransactions = Eip8369Profile2.IsActive(spec)
+                        ? InclusionListValidator.GasUsedBeforeEachTransaction(processedBlock, receipts)
+                        : null;
+                }
 
-                // The verdict is final here: the roots matched and the inclusion list is judged. The prewarm join,
+                // The verdict is final here: the roots matched. The prewarm join,
                 // the commit and the chain update below are what the block's readers need, not its validity, so
                 // whoever only waits for the verdict is told now rather than after them. Only the last block of the
                 // branch: an earlier one can still be discarded with the branch if a later one is invalid, and it
