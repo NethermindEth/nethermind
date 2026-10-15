@@ -62,9 +62,8 @@ public abstract class TransactionForRpc
     [JsonIgnore]
     internal bool IsTypeDefaulted { get; set; }
 
-    // True when a request sets maxFeePerBlobGas but no blobVersionedHashes, and is not a frame
-    // transaction. Only blobVersionedHashes select the blob class, so the cap would otherwise be silently dropped.
-    // Set only during JSON deserialization.
+    // True when a request sets maxFeePerBlobGas but its fields select a class that drops it, i.e. no
+    // blobVersionedHashes outside a frame transaction. Set only during JSON deserialization.
     [JsonIgnore]
     internal bool HasBlobFeeCapWithoutBlobHashes { get; set; }
 
@@ -288,14 +287,14 @@ public abstract class TransactionForRpc
             // Peek property names for the concrete type, then deserialize (no DOM).
             Utf8JsonReader txTypeReader = reader;
 
-            Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted, out bool hasBlobFeeCapWithoutBlobHashes);
+            Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted, out bool hasBlobFeeCap);
 
             TransactionForRpc? result = (TransactionForRpc?)TypeInfoJsonSerializer.Deserialize(ref reader, concreteTxType, options);
             if (result is not null)
             {
                 result.IsTypeDefaulted = isDefaulted;
                 // An EIP-8141 frame transaction carries the blob fee cap whether or not it carries blobs.
-                result.HasBlobFeeCapWithoutBlobHashes = hasBlobFeeCapWithoutBlobHashes && result is not FrameTransactionForRpc;
+                result.HasBlobFeeCapWithoutBlobHashes = hasBlobFeeCap && result is not (BlobTransactionForRpc or FrameTransactionForRpc);
             }
             return result;
         }
@@ -303,15 +302,13 @@ public abstract class TransactionForRpc
         private static ReadOnlySpan<byte> TypeFieldUtf8 => "type"u8;
         private static ReadOnlySpan<byte> GasPriceFieldUtf8 => "gasprice"u8;
         private static ReadOnlySpan<byte> MaxFeePerBlobGasFieldUtf8 => "maxfeeperblobgas"u8;
-        private static ReadOnlySpan<byte> BlobVersionedHashesFieldUtf8 => "blobversionedhashes"u8;
 
-        private Type DeriveTxType(ref Utf8JsonReader reader, JsonSerializerOptions options, out bool isDefaulted, out bool hasBlobFeeCapWithoutBlobHashes)
+        private Type DeriveTxType(ref Utf8JsonReader reader, JsonSerializerOptions options, out bool isDefaulted, out bool hasBlobFeeCap)
         {
             Registry registry = _registry;
             TxType? setType = null;
             bool hasGasPrice = false;
-            bool hasBlobFeeCap = false;
-            bool hasBlobHashes = false;
+            hasBlobFeeCap = false;
             // Bit i set ⇒ non-null discriminator for registry.Types[i] seen; lowest bit wins (registration order).
             // An explicit null is the same as omitting the member, as in geth, which keys on non-nil fields.
             ulong discriminated = 0;
@@ -332,7 +329,6 @@ public abstract class TransactionForRpc
                     int name = -1;
                     bool isGasPrice = false;
                     bool isBlobFeeCap = false;
-                    bool isBlobHashes = false;
                     if (!hasGasPrice && NameEqualsIgnoreCase(ref reader, GasPriceFieldUtf8))
                     {
                         isGasPrice = true;
@@ -343,7 +339,6 @@ public abstract class TransactionForRpc
                     }
                     else
                     {
-                        isBlobHashes = NameEqualsIgnoreCase(ref reader, BlobVersionedHashesFieldUtf8);
                         byte[][] names = registry.NamesUtf8;
                         for (int n = 0; n < names.Length; n++)
                         {
@@ -365,14 +360,11 @@ public abstract class TransactionForRpc
                         }
                         hasGasPrice |= isGasPrice;
                         hasBlobFeeCap |= isBlobFeeCap;
-                        hasBlobHashes |= isBlobHashes;
                     }
 
                     if (!reader.TrySkip()) break;
                 }
             }
-
-            hasBlobFeeCapWithoutBlobHashes = hasBlobFeeCap && !hasBlobHashes;
 
             // As in geth, the fields pick the class for the Ethereum types up to set-code, so an explicit type never
             // drops a field or adds a requirement, and an unknown type is ignored. A registered type above set-code,
