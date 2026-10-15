@@ -405,9 +405,10 @@ public class SnapshotBundleWarmerTests
 
     // A node a block fetched is promoted to the cache when the block's transient retires, so the next block's warm-ups and
     // bulk sets read it from the cache instead of persistence. That cache hit is warmed again, so the node is promoted again
-    // and survives the next promotion replacing its full shard, unlike a cached node the next block did not read.
+    // and survives the next promotion replacing its full shard, whether it was read before or after the node that fills the
+    // shard, unlike a cached node the next block did not read.
     [Test]
-    public void Warmed_records_are_promoted_and_cache_hits_are_promoted_again([Values] bool storage, [Values] bool warmUp)
+    public void Warmed_records_are_promoted_and_cache_hits_are_promoted_again([Values] bool storage, [Values] bool warmUp, [Values] bool cacheHitFirst)
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
         byte[] rootRlp = FlatTestHelpers.LeafRlp(0x80);
@@ -426,8 +427,9 @@ public class SnapshotBundleWarmerTests
         Load(unreadPath);
         Retire(1);
         int readsInFirstBlock = reader.Reads;
-        Load(replacingPath);
+        if (!cacheHitFirst) Load(replacingPath);
         bool rootLoaded = LoadRoot(out NodeRecordRef rootRecord);
+        if (cacheHitFirst) Load(replacingPath);
         Retire(2);
 
         using (Assert.EnterMultipleScope())

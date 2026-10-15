@@ -69,6 +69,7 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
 
     /// <summary>Copies <paramref name="record"/> into the arena and maps its node key to the copy.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="path">The path of the node in its trie.</param>
     /// <param name="record">A whole record of the node at <paramref name="path"/>; its node key picks the slot.</param>
     /// <param name="added">The copy, or the record already mapped when it has the same node key and hash.</param>
     /// <returns>False when the arena is full.</returns>

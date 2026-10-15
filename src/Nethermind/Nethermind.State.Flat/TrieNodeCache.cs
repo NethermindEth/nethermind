@@ -85,14 +85,18 @@ public sealed class TrieNodeCache(IFlatDbConfig flatDbConfig) : ITrieNodeCache
     {
         if (records.IsEmpty) return;
 
-        RecordTable shard = _shards[shardIndex] ?? ReplaceShard(shardIndex);
-        foreach ((Hash256? address, TreePath path, NodeRecordRef record) in records)
+        RecordTable? earlierShard = _shards[shardIndex];
+        RecordTable shard = earlierShard ?? ReplaceShard(shardIndex);
+        for (int i = 0; i < records.Length; i++)
         {
+            (Hash256? address, TreePath path, NodeRecordRef record) = records[i];
             // A record that does not fit an empty shard is skipped rather than replacing the shard for nothing.
             if (shard.TryAdd(address, path, record.Span, out _) || shard.ArenaBytes == 0) continue;
 
+            // The records an earlier block's shard already held, such as cache hits, were not copied, so they are added
+            // again from the start of the batch; a shard this batch filled itself only retries the record.
+            i = shard == earlierShard ? -1 : i - 1;
             shard = ReplaceShard(shardIndex);
-            shard.TryAdd(address, path, record.Span, out _);
         }
     }
 
