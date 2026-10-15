@@ -563,9 +563,16 @@ public sealed class BeaconSyncOrchestrator(
             {
                 if (!store.TryGetForkedBlock(root, out block)) break;
             }
-            catch (Exception e) when (e is InvalidDataException or ArgumentException or OverflowException)
+            catch (Exception e) when (e is not OperationCanceledException and not OutOfMemoryException)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot replay stored block {root} at slot {slot}; range sync will refetch it: {e.Message}");
+                break;
+            }
+
+            Hash256 actualRoot = block.ComputeMessageRoot();
+            if (actualRoot != root)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Stored block at slot {slot} is indexed under {root} but has root {actualRoot}; range sync will refetch it");
                 break;
             }
 

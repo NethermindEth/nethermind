@@ -1059,21 +1059,33 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "a head step follows the replay");
     }
 
+    public enum StoredBlockCorruption { NotSnappy, TooShortForASlot, AnotherBlockUnderItsRoot }
+
     [Test]
-    public async Task Corrupt_stored_replay_stops_at_the_last_readable_block()
+    public async Task Corrupt_stored_replay_stops_at_the_last_readable_block([Values] StoredBlockCorruption corruption)
     {
         using MemColumnsDb<BeaconChainDbColumns> db = new();
-        BeaconChainStore store = new(db);
+        BeaconChainStore store = new(db, Spec);
         (SignedBeaconBlock anchor, Hash256 root, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1, AnchorSlot + 2);
         TestChain.Persist(store, anchor, root, chain);
         Hash256 corrupt = new ForkedSignedBeaconBlock.OfFulu(chain[1]).ComputeMessageRoot();
-        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(corrupt.Bytes, [0xFF]);
+        SignedBeaconBlock sibling = TestChain.CreateBlock(AnchorSlot + 2, chain[1].Message!.ParentRoot!);
+        sibling.Message!.StateRoot = Keccak.Compute("sibling");
+        byte[] record = corruption switch
+        {
+            StoredBlockCorruption.NotSnappy => [0xFF],
+            StoredBlockCorruption.TooShortForASlot => Snappy.CompressToArray([0x01]),
+            _ => Snappy.CompressToArray(SignedBeaconBlock.Encode(sibling)),
+        };
+        db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(corrupt.Bytes, record);
         Harness harness = CreateHarness(store: store);
         harness.Importer.Known.Add(root);
 
-        await harness.Orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+        Assert.That(() => harness.Orchestrator.ReplayStoredBlocksAsync(CancellationToken.None), Throws.Nothing, "a corrupt record must not stop the node on every start");
 
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(AnchorSlot + 1));
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo(new[] { AnchorSlot + 1 }), "no block enters fork choice under another block's root");
     }
 
     [Test]
