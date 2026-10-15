@@ -269,6 +269,26 @@ public class PrewarmerReadAheadTests
         Assert.That(EntriesNotAtTheParent(), Is.Empty);
     }
 
+    /// <summary>Only a block that reads ahead seeds its runs; in any other the footprints the block has do not reach them.</summary>
+    [Test]
+    public void Only_a_block_that_reads_ahead_seeds_its_runs([Values] bool readAhead)
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true);
+        Transaction second = BatchClaim(TestItem.PrivateKeyA, 1, 6);
+        Block block = BuildBlock(BatchClaim(TestItem.PrivateKeyA, 0, 6), second);
+        BlockFootprints footprints = new(block);
+        UInt256 moved = ColdTailContracts.BatchCounter + 6;
+        // Block processing is on the first claim, so the second is discovered with or without the read-ahead.
+        preWarmer.OnBeforeTxExecution();
+        footprints.QueueExecuted(0, new[] { (new StorageCell(ColdTailContracts.Batch, 0), moved) });
+        footprints.ApplyExecuted();
+
+        preWarmer.DiscoverAndWarmStorage([(1, second)], block, Spec, null, CancellationToken.None, footprints: footprints, readAhead: readAhead);
+
+        // The first slot past the moved counter: a run reads it only on the seed, before its zero check reverts.
+        Assert.That(_caches.StorageCache.TryGetValue(ColdTailContracts.BatchSlot(moved, 0), out _), Is.EqualTo(readAhead));
+    }
+
     [Test]
     public void Block_processings_cold_reads_start_one_read_ahead_of_the_transaction_it_executes()
     {
