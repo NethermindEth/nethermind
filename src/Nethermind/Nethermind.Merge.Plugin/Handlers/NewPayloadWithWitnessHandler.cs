@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -23,6 +24,7 @@ public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
     WitnessRendezvous rendezvous,
     IBlockFinder blockFinder,
+    IStateReader stateReader,
     IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
     Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessEnvFactory,
     ILogManager? logManager = null) :
@@ -110,7 +112,7 @@ public sealed class NewPayloadWithWitnessHandler(
             if (witness is null)
             {
                 return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
-                    $"{methodName}: cannot generate a witness for VALID block {blockHash}: the block or its parent is missing",
+                    $"{methodName}: cannot generate a witness for VALID block {blockHash}: the block, its parent or the parent state is missing",
                     ErrorCodes.InternalError);
             }
         }
@@ -122,12 +124,13 @@ public sealed class NewPayloadWithWitnessHandler(
     }
 
     /// <summary>Rebuilds the witness of an already-processed block by re-executing it on its parent state.</summary>
-    /// <returns><c>null</c> when the block or its parent is not in the block tree.</returns>
+    /// <returns><c>null</c> when the block or its parent is not in the block tree, or the parent state is not available.</returns>
+    /// <remarks>newPayload answers VALID for a known block below finalized even after its state is pruned.</remarks>
     private Witness? GenerateWitness(Hash256 blockHash, string methodName)
     {
         Block? block = blockFinder.FindBlock(blockHash);
         BlockHeader? parent = block is null ? null : blockFinder.FindHeader(block.ParentHash!);
-        if (block is null || parent is null) return null;
+        if (block is null || parent is null || !stateReader.HasStateForBlock(parent)) return null;
 
         if (_logger.IsDebug) _logger.Debug($"{methodName}: no witness captured for {blockHash}; re-executing the block to generate it.");
 

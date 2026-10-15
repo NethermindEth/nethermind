@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
@@ -46,13 +47,18 @@ public partial class EngineModuleTests
 
     private static class WitnessHandlerBuilder
     {
-        public static IContainer CreateContainer(Func<IEngineRpcModule> engineModule, WitnessRendezvous rendezvous) =>
-            new ContainerBuilder()
+        public static IContainer CreateContainer(Func<IEngineRpcModule> engineModule, WitnessRendezvous rendezvous, IBlockFinder? blockFinder = null)
+        {
+            ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(Amsterdam.Instance))
                 .AddSingleton<IEngineRpcModule>(_ => engineModule())
                 .AddSingleton<WitnessRendezvous>(rendezvous)
-                .AddSingleton<NewPayloadWithWitnessHandler>()
-                .Build();
+                .AddSingleton<NewPayloadWithWitnessHandler>();
+
+            if (blockFinder is not null) builder.AddSingleton<IBlockFinder>(blockFinder);
+
+            return builder.Build();
+        }
 
         public static IEngineRpcModule SucceedingEngineModule(PayloadStatusV1 status)
         {
@@ -340,20 +346,35 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task Handler_fails_when_VALID_block_has_no_captured_witness_and_is_not_in_the_block_tree()
+    public async Task Handler_fails_when_VALID_block_has_no_captured_witness_and_cannot_be_re_executed(
+        [Values] bool blockKnownWithoutParentState)
     {
         WitnessRendezvous rendezvous = new();
+        Hash256 blockHash = TestItem.KeccakA;
+        IBlockFinder? blockFinder = null;
+
+        if (blockKnownWithoutParentState)
+        {
+            BlockHeader parent = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakB).TestObject;
+            Block block = Build.A.Block.WithParent(parent).TestObject;
+            blockHash = block.Hash!;
+
+            blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(blockHash).Returns(block);
+            blockFinder.FindHeader(parent.Hash!).Returns(parent);
+        }
 
         using IContainer container = WitnessHandlerBuilder.CreateContainer(
             () => PublishingEngineModule(
                 rendezvous,
                 null,
-                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }),
-            rendezvous);
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = blockHash }),
+            rendezvous,
+            blockFinder);
         NewPayloadWithWitnessHandler handler = container.Resolve<NewPayloadWithWitnessHandler>();
 
         using ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakA, []));
+            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(new ExecutionPayloadV4 { BlockHash = blockHash }, [], TestItem.KeccakA, []));
 
         using (Assert.EnterMultipleScope())
         {
