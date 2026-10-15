@@ -416,7 +416,9 @@ public class LeanObjectTransportTests
         List<FrameDependency> claimed = [Dependency(99)];
         byte[] body = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new WrapperTransaction(transaction.Hash!)], Deps = claimed, Mode = MempoolWrapper.ModeRecursive,
+            Transactions = [new WrapperTransaction(transaction.Hash!)],
+            Deps = claimed,
+            Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = new(Proof(ChunkBytes), new(Eip8288Dependencies.ComputeDepsHash(claimed)))
         }).Bytes;
         LeanDescriptor descriptor = Describe(body);
