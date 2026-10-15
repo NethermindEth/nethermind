@@ -58,6 +58,9 @@ public static class LeanEthp2pProtocol
     /// <summary>Per-stream receive ceiling; the smaller shared connection window currently limits aggregate credit.</summary>
     public const int StreamReceiveWindow = 2 * 1024 * 1024;
 
+    /// <summary>Two control payloads, read buffers and bounded decoded metadata reserved against bulk pressure.</summary>
+    internal const int ControlReceiveBytes = 384 * 1024;
+
     /// <summary>Connection QUIC receive credit, reserved from the authenticated node's shared transport budget.</summary>
     /// <remarks>Leaves room for maximum-proof reassembly and decoding within the 18 MiB node budget. The fixed window limits
     /// high-RTT throughput (about 5 MiB/s at 100 ms); increasing it requires rebalancing that shared budget.</remarks>

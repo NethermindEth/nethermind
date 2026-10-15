@@ -49,9 +49,21 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
     }
 
     /// <summary>Routes a stream whose selector is not retrieval: BCAST, SESS or CHUNK.</summary>
-    private async Task ReadFrameworkStreamAsync(QuicStream stream, byte selector, byte[] leftover, long accepted)
+    private async Task ReadFrameworkStreamAsync(QuicStream stream, byte selector, long accepted)
     {
-        using StreamInput input = new(stream, selector, leftover, ReserveFrame);
+        if (selector is not (LeanEthp2pProtocol.BcastStream or LeanEthp2pProtocol.SessStream or LeanEthp2pProtocol.ChunkStream))
+        {
+            Violation($"unknown stream type {selector}");
+            return;
+        }
+        bool control = selector == LeanEthp2pProtocol.BcastStream;
+        using IDisposable? readLease = control ? null : ReserveFrame(3 * ReadBufferBytes);
+        if (!control && readLease is null)
+        {
+            Refuse(stream);
+            return;
+        }
+        using StreamInput input = new(stream, selector, control ? null : ReserveFrame);
         // The first framework envelope expires within MAX_REQUEST_IDLE_SECONDS of stream acceptance.
         TimeSpan firstEnvelope = LeanProtocol.MaxRequestIdle - _clock.GetElapsedTime(accepted);
         try
@@ -122,6 +134,8 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
         {
             first = null;
             LeanBcastFrame frame = LeanBroadcastWire.DecodeBcast(envelope);
+            // Do not retain the previous payload while awaiting the next precharged control frame.
+            envelope = [];
             bool handshake;
             lock (_lock) handshake = _handshakeReceived;
             switch (frame)
@@ -382,11 +396,11 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
     }
 
     /// <summary>Buffered reads of a framework stream: length-prefixed envelopes, exact shard bodies and FIN.</summary>
-    private sealed class StreamInput(QuicStream stream, byte selector, byte[] leftover, Func<int, IDisposable?> reserve) : IDisposable
+    private sealed class StreamInput(QuicStream stream, byte selector, Func<int, IDisposable?>? reserve) : IDisposable
     {
-        private byte[] _buffer = leftover;
+        private byte[] _buffer = [];
         private int _offset;
-        private int _length = leftover.Length;
+        private int _length;
         private readonly List<IDisposable> _leases = [];
 
         public QuicStream Stream { get; } = stream;
@@ -422,8 +436,11 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
 
         public async Task<byte[]> ReadExactAsync(int length, CancellationToken token)
         {
-            IDisposable lease = reserve(3 * length) ?? throw new LeanEthp2pRefusedException();
-            _leases.Add(lease);
+            if (reserve is not null)
+            {
+                IDisposable lease = reserve(3 * length) ?? throw new LeanEthp2pRefusedException();
+                _leases.Add(lease);
+            }
             byte[] result = new byte[length];
             int filled = 0;
             while (filled < length)

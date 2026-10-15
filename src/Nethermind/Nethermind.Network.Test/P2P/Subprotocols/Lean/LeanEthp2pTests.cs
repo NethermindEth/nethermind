@@ -166,6 +166,24 @@ public class LeanEthp2pTests
     }
 
     [Test]
+    public void Precharged_controls_do_not_request_bulk_frame_credit()
+    {
+        Handler handler = new();
+        int reservations = 0;
+        LeanEthp2pStreamReader reader = new(handler, _ => { reservations++; return null; }, controlReserved: true);
+        reader.Feed([.. Control, .. Cancel]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handler.Messages, Is.EqualTo((int[])[LeanMessageCode.Status, LeanMessageCode.Cancel]));
+            Assert.That(reservations, Is.Zero);
+        }
+        reader.Abandon();
+        LeanEthp2pStreamReader response = new(handler, _ => null, controlReserved: true);
+        response.Feed(Prefix);
+        Assert.That(() => response.Feed(Frame(LeanMessageCode.Chunk, 100)), Throws.TypeOf<LeanEthp2pRefusedException>());
+    }
+
+    [Test]
     public void Terminal_frame_keeps_its_lease_until_fin_cleanup()
     {
         FrameLease lease = new();

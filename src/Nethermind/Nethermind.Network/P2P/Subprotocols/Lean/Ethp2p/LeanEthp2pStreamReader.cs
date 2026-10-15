@@ -50,7 +50,7 @@ internal enum LeanEthp2pStreamEnd
 /// A terminal response is held until FIN, so extra bytes after it are rejected before the request retires.
 /// Not thread-safe: one reader per stream.
 /// </remarks>
-internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler, Func<int, IDisposable?>? reserve = null)
+internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler, Func<int, IDisposable?>? reserve = null, bool controlReserved = false)
 {
     private enum Stage { Type, RequestId, Header, Payload, Discard }
 
@@ -171,7 +171,7 @@ internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler, F
         uint length = BinaryPrimitives.ReadUInt32BigEndian(_small.AsSpan(1));
         if (length == 0 || length > LeanEthp2pProtocol.MaxPayload(_messageId))
             throw new LeanEthp2pViolationException($"message {_messageId} payload length {length}");
-        if (reserve is not null && (_payloadLease = reserve(3 * (int)length)) is null) throw new LeanEthp2pRefusedException();
+        if (!(controlReserved && Type == LeanEthp2pProtocol.ControlStream) && reserve is not null && (_payloadLease = reserve(3 * (int)length)) is null) throw new LeanEthp2pRefusedException();
         _payload = ArrayPool<byte>.Shared.Rent((int)length);
         Next(Stage.Payload, (int)length);
     }

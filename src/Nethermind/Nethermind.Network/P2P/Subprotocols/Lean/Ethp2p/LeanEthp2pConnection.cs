@@ -66,6 +66,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
     private ulong _lastResponseId;
     private int _closeStarted;
     private int _activeStreams;
+    private int _disposeStarted;
 
     public LeanEthp2pConnection(QuicConnection quic, PublicKey remoteKey, bool outbound, LeanObjectTransport transport, LeanBroadcastEngine? engine, LeanEthTransactions transactions,
         ILogManager logManager, TimeProvider? timeProvider = null)
@@ -96,7 +97,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
         _transactions.RecoverAsync(RemoteKey, hashes, reserve, cancellationToken);
 
     internal bool TryReserveReceiveCredit() =>
-        _transport.TryReserveNodeBytes(RemoteKey, LeanEthp2pProtocol.ConnectionReceiveWindow, out _receiveCredit);
+        _transport.TryReserveNodeBytes(RemoteKey, LeanEthp2pProtocol.ConnectionReceiveWindow + LeanEthp2pProtocol.ControlReceiveBytes, out _receiveCredit);
 
     private IDisposable? ReserveFrame(int bytes) =>
         _transport.TryReserveNodeBytes(RemoteKey, bytes, out IDisposable? lease) ? lease : null;
@@ -229,7 +230,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
                     Violation("bidirectional stream");
                     return;
                 }
-                IncomingStream incoming = new(stream, new LeanEthp2pStreamReader(this, ReserveFrame), _clock.GetTimestamp());
+                IncomingStream incoming = new(stream, new LeanEthp2pStreamReader(this, ReserveFrame, controlReserved: true), _clock.GetTimestamp());
                 lock (_lock) _incoming.Add(incoming);
                 _ = ReadStreamAsync(incoming);
             }
@@ -242,20 +243,34 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
 
     private async Task ReadStreamAsync(IncomingStream incoming)
     {
-        using IDisposable? readLease = ReserveFrame(3 * ReadBufferBytes);
-        if (readLease is null)
-        {
-            Refuse(incoming.Stream);
-            lock (_lock) _incoming.Remove(incoming);
-            await DisposeQuietly(incoming.Stream).ConfigureAwait(false);
-            return;
-        }
         Interlocked.Increment(ref _activeStreams);
         LeanEthp2pStreamReader reader = incoming.Reader;
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(ReadBufferBytes);
+        byte[]? buffer = null;
+        IDisposable? readLease = null;
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(_closing.Token, incoming.Stop.Token);
         try
         {
+            byte[] selector = new byte[1];
+            if (await incoming.Stream.ReadAsync(selector, stop.Token).ConfigureAwait(false) == 0)
+            {
+                Finish(reader);
+                return;
+            }
+            LeanMetrics.Ethp2pBytes(outbound: false, selector[0], 1);
+            try
+            {
+                reader.Feed(selector);
+            }
+            catch (LeanEthp2pOtherStreamException other)
+            {
+                lock (_lock) _incoming.Remove(incoming);
+                await ReadFrameworkStreamAsync(incoming.Stream, other.Selector, incoming.Accepted).ConfigureAwait(false);
+                return;
+            }
+            if (!Track(incoming)) return;
+            if (reader.Type != LeanEthp2pProtocol.ControlStream)
+                readLease = ReserveFrame(3 * ReadBufferBytes) ?? throw new LeanEthp2pRefusedException();
+            buffer = ArrayPool<byte>.Shared.Rent(ReadBufferBytes);
             while (true)
             {
                 int read = await incoming.Stream.ReadAsync(buffer, stop.Token).ConfigureAwait(false);
@@ -265,18 +280,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
                     break;
                 }
                 LeanMetrics.Ethp2pBytes(outbound: false, reader.Type ?? buffer[0], read);
-                try
-                {
-                    reader.Feed(buffer.AsSpan(0, read));
-                }
-                catch (LeanEthp2pOtherStreamException other)
-                {
-                    // Framework streams keep their own deadlines, from this stream's acceptance onwards.
-                    lock (_lock) _incoming.Remove(incoming);
-                    await ReadFrameworkStreamAsync(incoming.Stream, other.Selector, buffer.AsSpan(1, read - 1).ToArray(), incoming.Accepted)
-                        .ConfigureAwait(false);
-                    break;
-                }
+                reader.Feed(buffer.AsSpan(0, read));
                 if (!Track(incoming)) break;
                 if (reader.IsDiscarding)
                 {
@@ -316,10 +320,12 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
         finally
         {
             reader.Abandon();
-            ArrayPool<byte>.Shared.Return(buffer);
+            if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
+            readLease?.Dispose();
             lock (_lock) _incoming.Remove(incoming);
             await DisposeQuietly(incoming.Stream).ConfigureAwait(false);
-            Interlocked.Decrement(ref _activeStreams);
+            if (Interlocked.Decrement(ref _activeStreams) == 0 && Volatile.Read(ref _disposeStarted) != 0)
+                Interlocked.Exchange(ref _receiveCredit, null)?.Dispose();
         }
     }
 
@@ -611,10 +617,14 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
         await _closed.Task.ConfigureAwait(false);
         // Disposing the connection aborts its streams, so their readers unwind before the shared token goes away.
         await _quic.DisposeAsync().ConfigureAwait(false);
-        Interlocked.Exchange(ref _receiveCredit, null)?.Dispose();
+        Volatile.Write(ref _disposeStarted, 1);
         using CancellationTokenSource drain = new(TimeSpan.FromSeconds(5));
         while (Volatile.Read(ref _activeStreams) > 0 && !drain.IsCancellationRequested) await Task.Delay(10, CancellationToken.None).ConfigureAwait(false);
-        if (Volatile.Read(ref _activeStreams) == 0) _closing.Dispose();
+        if (Volatile.Read(ref _activeStreams) == 0)
+        {
+            Interlocked.Exchange(ref _receiveCredit, null)?.Dispose();
+            _closing.Dispose();
+        }
     }
 
     public override string ToString() => Description;
