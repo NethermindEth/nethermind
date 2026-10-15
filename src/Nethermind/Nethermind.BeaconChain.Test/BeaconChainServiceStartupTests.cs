@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text;
 using Autofac;
@@ -208,7 +209,7 @@ public class BeaconChainServiceStartupTests
     [Test]
     public async Task A_valid_resumed_anchor_goes_on_to_start_whatever_the_checkpoint_url([Values("beacon.example/relative", "")] string checkpointSyncUrl)
     {
-        (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas: false, nextCommittee: false, key: null, checkpointSyncUrl: checkpointSyncUrl);
+        (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas: false, nextCommittee: false, key: null, checkpointSyncUrl: checkpointSyncUrl, infoLogging: true);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(refusal, Is.Null);
@@ -852,7 +853,7 @@ public class BeaconChainServiceStartupTests
     }
 
     private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> ResumeAsync(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key, Hash256? genesisValidatorsRoot = null,
-        string? weakSubjectivityCheckpoint = null, Action<BeaconChainStore>? prepare = null, string checkpointSyncUrl = "http://invalid.localhost:1")
+        string? weakSubjectivityCheckpoint = null, Action<BeaconChainStore>? prepare = null, string checkpointSyncUrl = "http://invalid.localhost:1", bool infoLogging = false)
     {
         CacheWrittenMemDb metadata = new();
         BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
@@ -874,7 +875,10 @@ public class BeaconChainServiceStartupTests
             }
         }
 
-        TestErrorLogManager logManager = new();
+        TestErrorLogManager errorLogs = new();
+        InfoLevelErrorLogManager infoLogs = new();
+        ILogManager logManager = infoLogging ? infoLogs : errorLogs;
+        TestErrorLogManager.Error[] Errors() => infoLogging ? [.. infoLogs.Errors] : [.. errorLogs.Errors];
         PubkeyCache pubkeyCache = new();
         KickEngine engine = new(pubkeyCache);
         using IContainer container = BeaconChainTestContainer.Builder().AddSingleton(GloasCheckpointFiles.Spec).AddSingleton<IEngineDriver>(engine).Build();
@@ -891,10 +895,38 @@ public class BeaconChainServiceStartupTests
         }
         catch (InvalidDataException e)
         {
-            return (e, [.. logManager.Errors], pubkeyCache.Count);
+            return (e, Errors(), pubkeyCache.Count);
         }
 
         await run;
-        return (null, [.. logManager.Errors], pubkeyCache.Count);
+        return (null, Errors(), pubkeyCache.Count);
+    }
+
+    /// <summary>Records errors like <see cref="TestErrorLogManager"/> but reports Info as enabled, so Info-level message formatting runs.</summary>
+    private sealed class InfoLevelErrorLogManager : ILogManager
+    {
+        private readonly ConcurrentQueue<TestErrorLogManager.Error> _errors = new();
+
+        public IReadOnlyCollection<TestErrorLogManager.Error> Errors => _errors;
+
+        public ILogger GetClassLogger<T>() => GetLogger(typeof(T).Name);
+
+        public ILogger GetLogger(string loggerName) => new(new InfoLevelLogger(_errors));
+
+        private sealed class InfoLevelLogger(ConcurrentQueue<TestErrorLogManager.Error> errors) : InterfaceLogger
+        {
+            private readonly TestErrorLogManager.TestErrorLogger _inner = new(errors);
+
+            public void Info(string text) { }
+            public void Warn(string text) { }
+            public void Debug(string text) { }
+            public void Trace(string text) { }
+            public void Error(string text, Exception? ex = null) => _inner.Error(text, ex);
+            public bool IsInfo => true;
+            public bool IsWarn => false;
+            public bool IsDebug => true;
+            public bool IsTrace => false;
+            public bool IsError => true;
+        }
     }
 }
