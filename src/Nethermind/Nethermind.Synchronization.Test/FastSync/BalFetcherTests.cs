@@ -231,6 +231,44 @@ public class BalFetcherTests
     }
 
     [Test]
+    public async Task Retried_range_still_skips_peers_that_answered_empty_at_a_later_window()
+    {
+        // Window 1 (blocks 11..1034) is already stored; window 2 (block 1035) stalls.
+        BlockHeader from = Block(10, bal: null);
+        for (ulong number = 11; number <= 1034; number++)
+        {
+            byte[] bal = [(byte)number, (byte)(number >> 8)];
+            BlockHeader header = Block(number, bal);
+            _balStore.Insert(number, header.Hash!, bal);
+        }
+        BlockHeader to = Block(1035, [0x01, 0x02]);
+
+        Dictionary<PeerInfo, int> asked = [];
+        using CancellationTokenSource cts = new();
+        PeerInfo[] empty = [CountingPeer(asked, serves: false, onAsked: Cancel), CountingPeer(asked, serves: false, onAsked: Cancel)];
+        AllocateFrom(empty);
+        await Assert.ThatAsync(() => _fetcher.EnsureRange(from, to, cts.Token), Throws.InstanceOf<OperationCanceledException>());
+
+        PeerInfo serving = CountingPeer(asked, serves: true);
+        AllocateFrom([.. empty, serving]);
+        bool result = await _fetcher.EnsureRange(from, to, default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_balStore.Exists(to.Number, to.Hash!), Is.True);
+            Assert.That(asked.GetValueOrDefault(serving), Is.EqualTo(1));
+            foreach (PeerInfo peer in empty) Assert.That(asked.GetValueOrDefault(peer), Is.EqualTo(1));
+        }
+
+        // Stop the first call once every peer has answered empty, before the set resets.
+        void Cancel()
+        {
+            if (asked.Count == 2) cts.Cancel();
+        }
+    }
+
+    [Test]
     public async Task Stores_what_a_short_response_carries()
     {
         BlockHeader from = Block(10, bal: null);
@@ -341,7 +379,7 @@ public class BalFetcherTests
             });
 
     // A snap/2 peer that serves every known BAL, or answers empty for all of them, counting the requests it gets.
-    private PeerInfo CountingPeer(Dictionary<PeerInfo, int> asked, bool serves)
+    private PeerInfo CountingPeer(Dictionary<PeerInfo, int> asked, bool serves, Action? onAsked = null)
     {
         PeerInfo peer = null!;
         ISnapSyncPeer snap = Substitute.For<ISnapSyncPeer>();
@@ -353,6 +391,7 @@ public class BalFetcherTests
                 IReadOnlyList<ValueHash256> requested = ci.Arg<IReadOnlyList<ValueHash256>>();
                 ArrayPoolList<byte[]> response = new(requested.Count);
                 foreach (ValueHash256 hash in requested) response.Add(serves ? _balByHash.GetValueOrDefault(hash, []) : []);
+                onAsked?.Invoke();
                 return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(response));
             });
 

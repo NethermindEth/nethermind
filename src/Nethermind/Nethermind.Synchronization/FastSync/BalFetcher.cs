@@ -50,6 +50,7 @@ public class BalFetcher(
             ulong windowEnd = Math.Min(windowStart + WindowSize - 1, to.Number);
 
             int noProgress = 0;
+            bool fetched = false;
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -70,8 +71,9 @@ public class BalFetcher(
 
                 if (missing.Count == 0)
                 {
-                    // A peer that lacked this window's BALs may hold the next window's.
-                    lock (_answeredEmptyLock) _answeredEmpty.Clear();
+                    // A peer that lacked this window's BALs may hold the next window's. A window that was already
+                    // complete leaves the set alone, so a retried range still skips them at the window that stalled.
+                    if (fetched) lock (_answeredEmptyLock) _answeredEmpty.Clear();
                     break;
                 }
                 if (noProgress >= MaxNoProgressRounds)
@@ -80,6 +82,7 @@ public class BalFetcher(
                     return false;
                 }
 
+                fetched = true;
                 int stored;
                 using (SyncPeerAllocation allocation = await peerPool.Allocate(new SkipAnsweredEmptyStrategy(this), AllocationContexts.State, _allocateTimeoutMs, token))
                 {
