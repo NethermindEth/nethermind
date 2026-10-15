@@ -151,7 +151,7 @@ public class ColumnGossipRouterTests
 
     // fulu/p2p-interface.md data_column_sidecar_{subnet_id}: the header proposer signature must be valid.
     [Test]
-    public void Reconstructed_columns_under_a_signature_other_than_the_verified_one_are_not_published()
+    public void Reconstructed_columns_carry_the_verified_signature_when_a_column_under_another_one_is_held_first()
     {
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         DataColumnSidecarPool pool = new();
@@ -164,13 +164,16 @@ public class ColumnGossipRouterTests
         forged.SignedBlockHeader!.Signature = new BlsSignature(Enumerable.Repeat((byte)0xAB, BlsSignature.Length).ToArray());
         pool.Add(SszRoots.HashTreeRoot(forged.SignedBlockHeader.Message!), CurrentSlot, forged);
 
-        MessageValidity[] received = [.. Enumerable.Range(1, required).Select(column =>
+        MessageValidity[] received = [.. Enumerable.Range(1, required - 1).Select(column =>
             router.Handle((ulong)column, gloasTopic: false, Message(DataColumnSidecarTestFixture.BuildValidSidecar((ulong)column, CurrentSlot))))];
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(received, Is.All.EqualTo(MessageValidity.Accepted), "the gossip columns pass every check under the imported header");
-        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(forged.SignedBlockHeader.Message!), (ulong)required + 1, out _), Is.True, "fixture: the block was reconstructed");
-        Assert.That(topics.Values.SelectMany(static t => t.Published), Is.Empty);
+        Assert.That(pool.TryGet(SszRoots.HashTreeRoot(forged.SignedBlockHeader.Message!), (ulong)required, out DataColumnSidecar? served), Is.True, "fixture: the block was reconstructed");
+        Assert.That(served?.SignedBlockHeader?.Signature, Is.EqualTo(DataColumnSidecarTestFixture.BuildValidSidecar(0, CurrentSlot).SignedBlockHeader!.Signature), "a reconstructed column is served under the verified signature");
+        ulong[] reconstructed = [.. Enumerable.Range(required, Eip7594DasConstants.NumberOfColumns - required).Select(static column => (ulong)column)];
+        Assert.That(topics.Values.SelectMany(static t => t.Published), Is.EquivalentTo(reconstructed.Select(column => Message(DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot)))),
+            "every reconstructed column is cross-seeded under the verified signature");
     }
 
     // fulu/p2p-interface.md: first sidecar per tuple; das-core.md exposes reconstructed columns as received.

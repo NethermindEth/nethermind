@@ -1422,6 +1422,13 @@ public sealed class ColumnGossipRouter(
             _reconstructionsInFlight.Add(blockRoot);
         }
 
+        // Recovered columns copy the first held column's signed header, and sync pools columns without checking its signature.
+        if (_acceptedHeaders.TryGet(blockRoot, out BlsSignature accepted))
+        {
+            int signed = Array.FindIndex(held, column => column.SignedBlockHeader?.Signature == accepted);
+            if (signed > 0) (held[0], held[signed]) = (held[signed], held[0]);
+        }
+
         List<ReconstructedSidecarToPublish> exposed = [];
         try
         {
