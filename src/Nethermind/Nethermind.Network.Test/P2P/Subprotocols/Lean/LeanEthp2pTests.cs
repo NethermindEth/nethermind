@@ -46,7 +46,7 @@ public class LeanEthp2pTests
     private static readonly byte[] Control = [0x10, .. Status];
     private static readonly byte[] Prefix = Bytes.FromHexString("110000000000000007");
     private static readonly byte[] Complete = Bytes.FromHexString("0600000024e307a0000000000000000000000000000000000000000000000000000000000000000001");
-    private static readonly byte[] Objects = Bytes.FromHexString("0300000007c607c4c3028080");
+    private static readonly byte[] Objects = Bytes.FromHexString("0300000006c507c3c20280");
     private static readonly byte[] ChunkFrame = Bytes.FromHexString("0500000031f007a00000000000000000000000000000000000000000000000000000000000000000808c6f7061717565206368756e6b");
     private static readonly byte[] CompleteForRequestSix = Bytes.FromHexString("0600000024e306a0000000000000000000000000000000000000000000000000000000000000000001");
     private static readonly byte[] Cancel = Bytes.FromHexString("0700000002c107");
@@ -520,13 +520,15 @@ public class LeanEthp2pTests
         LeanPeer viaRlpx = node.Transport.Accept(rlpx, LeanTestNode.Status(), TestItem.PublicKeyA)!;
         LeanPeer viaQuic = node.Transport.Accept(quic, LeanTestNode.Status(), TestItem.PublicKeyA)!;
         LeanPeer otherNode = node.Transport.Accept(other, LeanTestNode.Status(), TestItem.PublicKeyB)!;
-        // 256 chunks need eight requests: four for each node.
-        byte[] body = OpaqueWrapperBody(255 * LeanProtocol.ChunkBytes);
+        // Each object requires more than four requests.
+        byte[] body = OpaqueWrapperBody(128 * LeanProtocol.ChunkBytes);
         LeanDescriptor descriptor = Describe(body);
 
         node.Transport.OnAnnounce(viaRlpx, new AnnounceObjectsMessage([descriptor]));
         node.Transport.OnAnnounce(viaQuic, new AnnounceObjectsMessage([descriptor]));
-        node.Transport.OnAnnounce(otherNode, new AnnounceObjectsMessage([descriptor]));
+        byte[] otherBody = (byte[])body.Clone();
+        otherBody[^1] ^= 1;
+        node.Transport.OnAnnounce(otherNode, new AnnounceObjectsMessage([Describe(otherBody)]));
         int sameNode = rlpx.Sent<GetChunksMessage>().Length + quic.Sent<GetChunksMessage>().Length;
 
         node.Transport.PublishWrapper(Wrapper(1000, false, FrameTransaction(40)));
