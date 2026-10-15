@@ -464,6 +464,7 @@ def run(args):
         v for r in results.values() for k, v in r["ethp2p_stream_bytes"].items() if k.startswith("out/"))
     summary["redials"] = sum(r.get("redials", 0) for r in results.values())
     summary["peers_lost_at_end"] = sum(max(0, len(neighbours[i]) - r.get("peers_at_end", 0)) for i, r in results.items())
+    summary["broadcast_shards_accepted_total_including_warmup"] = sum(r.get("shards_accepted", 0) for r in results.values())
     summary["coding_ms_total"] = sum(r["coding_micros"] for r in results.values()) / 1000
     for field in ("transfers", "events"):
         merged = {}
