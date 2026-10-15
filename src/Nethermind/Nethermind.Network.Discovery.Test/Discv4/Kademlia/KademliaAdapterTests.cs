@@ -151,7 +151,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
         }
 
-        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1, IEcdsa? ecdsa = null)
+        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1, IEcdsa? ecdsa = null, int maxOutgoingMessagePerSecond = 500)
         {
             if (listenerState is null)
             {
@@ -170,6 +170,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     PingTimeout = requestTimeoutMs,
                     SendNodeTimeout = requestTimeoutMs,
                     BondWaitTime = bondWaitTime,
+                    MaxOutgoingMessagePerSecond = maxOutgoingMessagePerSecond,
                 },
                 _kademliaConfig,
                 _nodeRecordProvider,
@@ -1138,6 +1139,43 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 n.Id == _receiver.Id &&
                 n.Port == 30303 &&
                 n.DiscoveryPort == 30304));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_from_endpoint_that_fails_bonding_is_not_added_to_the_routing_table(CancellationToken token)
+        {
+            // The pong is sent, but the sender never answers our bonding ping (spoofed source).
+            _adapter = CreateAdapter(ExpiringRequestTimeoutMs);
+            PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address);
+            pingMsg.FarAddress = _receiver.Address;
+            pingMsg = AddReceiverFarAddress(pingMsg);
+
+            await _adapter.OnIncomingMsg(pingMsg);
+
+            await _msgSender.Received(1).SendMsg(Arg.Any<PongMsg>());
+            _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_flood_drops_pongs_instead_of_queueing_them_past_the_request_timeout(CancellationToken token)
+        {
+            // 1 response per second; a pong queued behind the first one would leave after the 100 ms ping timeout.
+            _adapter = CreateAdapter(ExpiringRequestTimeoutMs, maxOutgoingMessagePerSecond: 2);
+            ConfigureBondCallback();
+
+            for (int i = 0; i < 20; i++)
+            {
+                PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address);
+                pingMsg.FarAddress = _receiver.Address;
+                pingMsg = AddReceiverFarAddress(pingMsg);
+                _ = _adapter.OnIncomingMsg(pingMsg);
+            }
+
+            // Past the second response slot: a queued pong would have been sent by now.
+            await Task.Delay(1500, token);
+            await _msgSender.Received(1).SendMsg(Arg.Any<PongMsg>());
         }
 
         [TestCase(30303, true)]

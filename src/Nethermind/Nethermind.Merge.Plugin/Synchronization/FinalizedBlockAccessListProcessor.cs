@@ -20,6 +20,7 @@ public sealed class FinalizedBlockAccessListProcessor(
     FinalizedBlockAccessListPolicy policy,
     IWorldState state,
     IReceiptStorage receiptStorage,
+    IReceiptsRecovery receiptsRecovery,
     ILogManager logManager) : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FinalizedBlockAccessListProcessor>();
@@ -56,6 +57,8 @@ public sealed class FinalizedBlockAccessListProcessor(
             // The downloader stores receipts only after checking them against the receipts root.
             if (!receiptStorage.HasBlock(block.Number, block.Hash!)) return Execute("no receipts");
             receipts = receiptStorage.Get(block);
+            // The downloader stored them before senders were recovered, and a cached copy is served as stored.
+            receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: true);
         }
 
         // No transactions run, so background work such as prewarming can stop before the writes are applied.
