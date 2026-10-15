@@ -1062,7 +1062,7 @@ public class HistoryPruner : IHistoryPruner
     /// the floor.</summary>
     private ulong OldestStoredReceipts()
     {
-        ulong receiptsFloor = _defaultReceiptsColumn.Get(Keccak.Zero) is { } lowestInserted
+        ulong receiptsFloor = _defaultReceiptsColumn.Get(PersistentReceiptStorage.LowestInsertedReceiptBlockKey) is { } lowestInserted
             ? new RlpReader(lowestInserted).DecodeULong()
             : _fastSync ? _blockTree.SyncPivot.BlockNumber : 0;
 
