@@ -355,6 +355,38 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(blockHash, Is.Null);
     }
 
+    /// <summary>
+    /// The receipt backfill keeps its lowest-inserted-block pointer in the legacy tx-hash keyed column. A lookup of
+    /// that key is not a transaction and must not decode the pointer as a receipt. 24,600,000 is the mainnet ancient
+    /// receipts barrier: RLP 0x84 0x01 0x77..., which used to fail as "expected a sequence prefix ... got 119".
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlockHash_returns_null_for_the_lowest_inserted_receipt_pointer_key()
+    {
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Default)
+            .Set(PersistentReceiptStorage.LowestInsertedReceiptBlockKey, Rlp.Encode(24_600_000UL).Bytes);
+
+        Assert.That(_storage.FindBlockHash(Keccak.Zero), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlockHash_returns_null_for_the_migration_progress_key()
+    {
+        _storage.MigratedBlockNumber = 24_600_000;
+
+        Assert.That(_storage.FindBlockHash(Keccak.Compute(nameof(PersistentReceiptStorage.MigratedBlockNumber))), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlockHash_still_serves_a_receipt_stored_in_the_legacy_format()
+    {
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).TestObject;
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Default)
+            .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage).Bytes);
+
+        Assert.That(_storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void ReceiptsIterator_does_not_throw_on_empty_span()
     {

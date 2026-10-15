@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -14,8 +15,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -26,6 +29,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State.Repositories;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -333,6 +337,100 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(second.Result.ResultType, Is.EqualTo(Core.ResultType.Success), second.Result.Error);
         Assert.That(second.Data![0].ParentHash, Is.EqualTo(realHead.Hash));
         Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(realHead.Hash));
+    }
+
+    /// <summary>
+    /// A node whose head is far below its best known level (e.g. snap sync once headers reach genesis) holds
+    /// contiguous canonical levels above the head. Starting a simulation must not rewrite every one of them into
+    /// the env's in-memory block info store, and the levels must not change the simulation result.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_does_not_rewrite_canonical_levels_above_head()
+    {
+        const int levelsAboveHead = 2_048;
+        BlockInfosDbWithWriteCountingOverlays blockInfosDb = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(new TestRpcBlockchain())
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
+                .AddKeyedSingleton<IDb>(DbNames.BlockInfos, blockInfosDb));
+
+        ulong headNumber = chain.BlockTree.Head!.Number;
+        ChainLevelInfoRepository levels = new(blockInfosDb);
+        for (ulong number = headNumber + 1; number <= headNumber + levelsAboveHead; number++)
+        {
+            levels.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, UInt256.One)));
+        }
+
+        long writesBefore = blockInfosDb.OverlayWrites;
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> withLevelsAboveHead =
+            chain.EthRpcModule.eth_simulateV1(CreateTransfersAcrossGapPayload(chain), BlockParameter.Latest);
+        long overlayWrites = blockInfosDb.OverlayWrites - writesBefore;
+
+        for (ulong number = headNumber + 1; number <= headNumber + levelsAboveHead; number++)
+        {
+            levels.Delete(number);
+        }
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> withoutLevelsAboveHead =
+            chain.EthRpcModule.eth_simulateV1(CreateTransfersAcrossGapPayload(chain), BlockParameter.Latest);
+
+        EthereumJsonSerializer serializer = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withLevelsAboveHead.Result.ResultType, Is.EqualTo(Core.ResultType.Success), withLevelsAboveHead.Result.Error);
+            Assert.That(withLevelsAboveHead.Data, Has.Count.EqualTo(10));
+            // Simulated levels and the overlay head are written; the levels above them are not.
+            Assert.That(overlayWrites, Is.LessThan(64), "simulation rewrote the canonical levels above the head");
+            Assert.That(serializer.Serialize(withLevelsAboveHead.Data), Is.EqualTo(serializer.Serialize(withoutLevelsAboveHead.Data)));
+        }
+    }
+
+    private static SimulatePayload<TransactionForRpc> CreateTransfersAcrossGapPayload(TestRpcBlockchain chain)
+    {
+        ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Transaction first = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        Transaction second = GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+
+        return new()
+        {
+            BlockStateCalls =
+            [
+                new() { Calls = [ToRpcForInput(first)] },
+                new()
+                {
+                    BlockOverrides = new BlockOverride { Number = chain.BlockTree.Head!.Number + 10 },
+                    Calls = [ToRpcForInput(second)]
+                }
+            ]
+        };
+    }
+
+    /// <summary>Counts writes into the in-memory stores of every read-only view created over this db.</summary>
+    private sealed class BlockInfosDbWithWriteCountingOverlays : TestMemDb, IDb
+    {
+        private long _overlayWrites;
+
+        public long OverlayWrites => Interlocked.Read(ref _overlayWrites);
+
+        IReadOnlyDb IDb.CreateReadOnly(bool createInMemWriteStore) =>
+            new WriteCountingReadOnlyDb(this, createInMemWriteStore, () => Interlocked.Increment(ref _overlayWrites));
+    }
+
+    private sealed class WriteCountingReadOnlyDb(IDb wrappedDb, bool createInMemWriteStore, Action onWrite)
+        : ReadOnlyDb(wrappedDb, createInMemWriteStore), IWriteOnlyKeyValueStore
+    {
+        void IWriteOnlyKeyValueStore.Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
+        {
+            onWrite();
+            Set(key, value, flags);
+        }
+
+        void IWriteOnlyKeyValueStore.PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
+        {
+            onWrite();
+            PutSpan(key, value, flags);
+        }
     }
 
     private sealed class PausedDeferredBlockDataWriter : IDeferredBlockDataWriter
