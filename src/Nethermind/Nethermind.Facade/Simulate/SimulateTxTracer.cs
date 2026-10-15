@@ -22,7 +22,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     private readonly ulong _currentBlockTimestamp;
     private readonly ulong _txIndex;
     private readonly ulong _logIndexStart;
-    private readonly List<(LogEntry Entry, ulong Index)> _logs;
+    private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
     private readonly bool _isTracingTransfers;
     private List<Log>? _frameTxLogs;
@@ -59,8 +59,6 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         _logs = [];
     }
 
-    /// <summary>The number of block log indices this transaction consumed, including those of logs a revert dropped.</summary>
-    public int LogCount { get; private set; }
     public SimulateCallResult? TraceResult { get; set; }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -72,7 +70,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (callType == ExecutionType.DELEGATECALL) return;
         if (!value.IsZero)
         {
-            AddLog(TransferLog.CreateSimulateTransfer(from, to, value));
+            _logs.Add(TransferLog.CreateSimulateTransfer(from, to, value));
         }
     }
 
@@ -82,14 +80,14 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (!_isTracingTransfers) return;
         if (!balance.IsZero)
         {
-            AddLog(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
+            _logs.Add(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
         }
     }
 
     public override void ReportLog(LogEntry log)
     {
         base.ReportLog(log);
-        AddLog(log);
+        _logs.Add(log);
     }
 
     /// <inheritdoc/>
@@ -158,14 +156,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         _frameLogEnd = _logs.Count;
     }
 
-    private void AddLog(LogEntry log) => _logs.Add((log, _logIndexStart + (ulong)LogCount++));
-
-    private void TruncateLogs(int count)
-    {
-        _logs.RemoveRange(count, _logs.Count - count);
-        // Like geth, a dropped log keeps its index; a frame transaction's logs are numbered as its receipt's are.
-        if (_tx.SupportsFrames) LogCount = count;
-    }
+    private void TruncateLogs(int count) => _logs.RemoveRange(count, _logs.Count - count);
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
@@ -204,18 +195,28 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         ? frameError.GetEvmExceptionDescription() ?? frameError.ToString()
         : error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error;
 
-    private List<Log> BuildLogs() => _logs.Select(log => new Log
+    private List<Log> BuildLogs()
     {
-        Address = log.Entry.Address,
-        Topics = log.Entry.Topics,
-        Data = log.Entry.Data,
-        LogIndex = log.Index,
-        TransactionHash = _tx.Hash!,
-        TransactionIndex = _txIndex,
-        BlockHash = _currentBlockHash,
-        BlockNumber = _currentBlockNumber,
-        BlockTimestamp = _currentBlockTimestamp
-    }).ToList();
+        List<Log> logs = new(_logs.Count);
+        for (int i = 0; i < _logs.Count; i++)
+        {
+            LogEntry entry = _logs[i];
+            logs.Add(new Log
+            {
+                Address = entry.Address,
+                Topics = entry.Topics,
+                Data = entry.Data,
+                LogIndex = _logIndexStart + (ulong)i,
+                TransactionHash = _tx.Hash!,
+                TransactionIndex = _txIndex,
+                BlockHash = _currentBlockHash,
+                BlockNumber = _currentBlockNumber,
+                BlockTimestamp = _currentBlockTimestamp
+            });
+        }
+
+        return logs;
+    }
 
     private EvmExceptionType _exceptionType = EvmExceptionType.None;
 

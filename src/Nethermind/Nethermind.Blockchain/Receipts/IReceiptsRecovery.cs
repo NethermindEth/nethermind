@@ -32,5 +32,15 @@ namespace Nethermind.Blockchain.Receipts
         {
             Hash256 RecoverReceiptData(ref TxReceiptStructRef receipt, int transactionIndex);
         }
+
+        internal interface IDeferredLogRecoveryContext : ISelectiveLogRecoveryContext
+        {
+            IRecoveryContext CreateFullRecoveryContext();
+        }
+
+        internal interface IRecoveryBlockSource
+        {
+            ReceiptRecoveryBlock GetBlock();
+        }
     }
 }
