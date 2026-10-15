@@ -41,17 +41,18 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Proof_wrapper_ingress_resolves_pending_hashes_and_egress_proves_witnesses()
+    public async Task Proof_wrapper_ingress_resolves_pending_hashes_and_egress_proves_witnesses([Values] bool zeroDataHash)
     {
         RecordingProofVerifier verifier = new();
         using Context context = await ProofContext(verifier);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, zeroDataHash ? default : TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = ProofTransaction(context, dependency);
+        byte[] frameData = transaction.Frames![1].Data.ToArray();
         MempoolWrapper direct = new()
         {
             Transactions = [new WrapperTransaction(transaction)],
             Mode = MempoolWrapper.ModeDirect,
-            Deps = [dependency],
+            Deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue),
             Proofs = [[7]]
         };
         ResultWrapper<Hash256[]> received = await context.Test.EthRpcModule.eth_sendProofWrapper(MempoolWrapperDecoder.Instance.Encode(direct).Bytes,
@@ -81,7 +82,9 @@ public partial class EthRpcModuleTests
             Assert.That(output.Mode, Is.EqualTo(MempoolWrapper.ModeRecursive));
             Assert.That(output.Transactions, Has.Count.EqualTo(1));
             Assert.That(output.Deps, Is.EqualTo(direct.Deps));
+            Assert.That(output.Deps[0].DataHash, Is.EqualTo(zeroDataHash ? FrameTxSigHash.ComputeValue(transaction) : dependency.DataHash));
             Assert.That(output.RecursiveStark!.BlockDepsHash.ValueHash256, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash(direct.Deps)));
+            Assert.That(transaction.Frames[1].Data.ToArray(), Is.EqualTo(frameData));
         }
     }
 
