@@ -8,7 +8,7 @@ export CARGO_BUILD_JOBS=2
 export CARGO_TARGET_DIR=/tmp/lean-native-cost-target
 export RUSTFLAGS='-C target-cpu=native'
 unset ZK_ALLOC_POISON
-cargo +1.99.0 build --release --manifest-path scripts/lean-net-bench/native-cost/Cargo.toml
+cargo +1.99.0 build --release --locked --manifest-path scripts/lean-net-bench/native-cost/Cargo.toml
 python3 scripts/lean-net-bench/native-cost/capture.py \
   --exe /tmp/lean-native-cost-target/release/lean-native-cost \
   --out /tmp/lean-native-cost-new-run --repetitions 3 --include-sphincs64
@@ -23,3 +23,5 @@ Each raw case additionally verifies the direct witness batch ten times, reportin
 The pinned guest supports 256 total dependencies, 16 generic dependencies, at most 2048 instructions per generic program, inner committed/bus logs at most 22, mixed committed log at most 27 and bus log at most 26, rate 1 and its bounded transcript stream. These limitations prevent claiming full conformance to the companion's 4096-dependency aggregate capacity. Measurements are not RAM guarantees.
 
 The archived 2026-10-14 captures used the identical `src/main.rs` via a temporary manifest pointing to the committed adapter and fork checkouts. Their original absolute command paths are retained as immutable capture provenance; the commands above provide portable reproduction. Their historical executable hash belongs to that temporary build, not a promise that a differently located build produces the same binary hash. Three fresh-process samples were recorded for the small cases; SPH64 is an exploratory single sample. Managed builds/tests also ran on the host during part of capture; the host was not reserved exclusively for timing.
+
+`measured-Cargo.lock` is the original temporary probe's dependency lockfile, preserved byte-for-byte. The portable `Cargo.lock` keeps every dependency version, registry checksum and dependency list. It renames the root package to `lean-native-cost` and replaces the 12 fork crates' local-path identities with the exact published Git revision; `nethermind-lean` remains a local dependency on this checkout. `lockfile-provenance.json` records both hashes and the mapping. Locked, offline `cargo metadata` validates this graph without compilation or new proofs. A different checkout's adapter dependency changes may require a new lockfile and must not be presented as this historical build.
