@@ -67,9 +67,7 @@ internal sealed class RollupXParentAuthorizer
     private async Task<RollupXAuthorization> AuthorizeSelected(Begin selected, L1PostingContext target, CancellationToken cancellation)
     {
         await _evidence.CheckChains(_schedule.L1Reference.ChainId, _deployment.Context.ChainId, cancellation).ConfigureAwait(false);
-        CanonicalL1Header reference = await _evidence.HeaderAt(_schedule.L1Reference.Number, cancellation).ConfigureAwait(false);
-        if (reference.Hash != _schedule.L1Reference.Hash || reference.Timestamp != _schedule.L1Reference.Timestamp ||
-            reference.MixHash != _schedule.L1Reference.PrevRandao) throw RollupXAuthorizationEvidence.Rejected();
+        CanonicalL1Header reference = await _evidence.Reference(_schedule.L1Reference, cancellation).ConfigureAwait(false);
         CanonicalL1Header l1Parent = await _evidence.HeaderAt(target.ParentNumber, cancellation).ConfigureAwait(false);
         if (!l1Parent.Hash.Bytes.SequenceEqual(target.ParentHash.Span)) throw RollupXAuthorizationEvidence.Stale();
         if (target.TargetTimestamp <= l1Parent.Timestamp || target.TargetTimestamp < reference.Timestamp ||

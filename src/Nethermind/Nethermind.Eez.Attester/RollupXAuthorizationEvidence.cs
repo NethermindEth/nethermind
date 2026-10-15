@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Grpc.Core;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Follower;
 using Nethermind.Eez.Follower.RollupX;
@@ -34,14 +35,25 @@ internal sealed class RollupXAuthorizationEvidence(SettlementRpcReader l1, Settl
             throw Rejected();
     }
 
+    internal async Task<CanonicalL1Header> Reference(RollupXL1Reference trusted, CancellationToken cancellation)
+    {
+        CanonicalL1Header? finalized = null;
+        if (trusted.Number != 0)
+        {
+            finalized = await Header("finalized", cancellation).ConfigureAwait(false);
+            if (finalized.Number < trusted.Number) throw Rejected();
+        }
+        CanonicalL1Header reference = await HeaderAt(trusted.Number, cancellation).ConfigureAwait(false);
+        if (reference.Hash != trusted.Hash || reference.Timestamp != trusted.Timestamp || reference.MixHash != trusted.PrevRandao ||
+            (finalized is not null && (finalized.Timestamp < reference.Timestamp ||
+                (finalized.Number == reference.Number && finalized.Hash != reference.Hash)))) throw Rejected();
+        return reference;
+    }
+
     internal async Task<CanonicalL1Header> HeaderAt(ulong number, CancellationToken cancellation)
     {
-        JsonElement block = await l1.Read("eth_getBlockByNumber", [Quantity(number), false], cancellation, SettlementRpcReader.BlockResponseLimit).ConfigureAwait(false);
-        ulong returned = SettlementRpcReader.Quantity(Field(block, "number"));
-        if (returned != number) throw SettlementRpcReader.Unavailable();
-        Hash256 hash = Hash(Field(block, "hash"));
-        if (hash == Keccak.Zero) throw SettlementRpcReader.Unavailable();
-        return new CanonicalL1Header(number, hash, SettlementRpcReader.Quantity(Field(block, "timestamp")), Hash(Field(block, "mixHash")));
+        CanonicalL1Header header = await Header(Quantity(number), cancellation).ConfigureAwait(false);
+        return header.Number == number ? header : throw SettlementRpcReader.Unavailable();
     }
 
     internal async Task<BlockHeader> L2Header(Hash256 hash, CancellationToken cancellation)
@@ -232,6 +244,15 @@ internal sealed class RollupXAuthorizationEvidence(SettlementRpcReader l1, Settl
     {
         byte[] bytes = SettlementRpcReader.Bytes(value);
         return bytes.Length == 32 ? new Hash256(bytes) : throw SettlementRpcReader.Unavailable();
+    }
+
+    private async Task<CanonicalL1Header> Header(string selector, CancellationToken cancellation)
+    {
+        JsonElement block = await l1.Read("eth_getBlockByNumber", [selector, false], cancellation, SettlementRpcReader.BlockResponseLimit).ConfigureAwait(false);
+        ulong number = SettlementRpcReader.Quantity(Field(block, "number"));
+        Hash256 hash = Hash(Field(block, "hash"));
+        if (hash == Keccak.Zero) throw SettlementRpcReader.Unavailable();
+        return new CanonicalL1Header(number, hash, SettlementRpcReader.Quantity(Field(block, "timestamp")), Hash(Field(block, "mixHash")));
     }
 
     private static Hash256 RollupTopic(ulong id)

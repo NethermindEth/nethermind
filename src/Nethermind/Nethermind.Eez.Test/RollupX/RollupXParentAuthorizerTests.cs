@@ -77,6 +77,56 @@ public class RollupXParentAuthorizerTests
         Assert.That((result.DescendantSeed, _source.LogReads), Is.EqualTo((_source.Genesis.MixHash, 0)), "trusted genesis has no claimed acceptance or live refresh");
     }
 
+    [TestCase(100UL, TestName = "Authorize_ReferenceAtFinalizedHeight_Authenticates")]
+    [TestCase(105UL, TestName = "Authorize_ReferenceBelowFinalizedHeight_Authenticates")]
+    public async Task Authorize_FinalizedReference_ReadsFinalityBeforeCanonicalReference(ulong height)
+    {
+        _source.Finalized = _source.Blocks[height];
+        RollupXAuthorization result = await Authorizer().Authorize(_source.Begin(), _source.Target(), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.CanonicalEvidence[0], Is.EqualTo(_source.Blocks[100]), "canonical reference identity remains part of the signing recheck");
+            Assert.That(_source.HeaderReads.Take(2), Is.EqualTo(new[] { "finalized", "0x64" }), "the reference is read canonically after finality is established");
+            Assert.That(_source.HeaderReads.Count(static selector => selector == "finalized"), Is.EqualTo(1), "one bounded finality read covers each authorization");
+        }
+    }
+
+    [TestCase("height", StatusCode.FailedPrecondition, TestName = "Authorize_ReferenceAboveFinalizedHeight_Refuses")]
+    [TestCase("timestamp", StatusCode.FailedPrecondition, TestName = "Authorize_FinalizedTimestampBeforeReference_Refuses")]
+    [TestCase("hash", StatusCode.FailedPrecondition, TestName = "Authorize_FinalizedReferenceHashConflict_Refuses")]
+    [TestCase("missing", StatusCode.Unavailable, TestName = "Authorize_FinalizedSourceMissing_IsUnavailable")]
+    [TestCase("zeroHash", StatusCode.Unavailable, TestName = "Authorize_FinalizedHashZero_IsUnavailable")]
+    [TestCase("numberEncoding", StatusCode.Unavailable, TestName = "Authorize_FinalizedHeightMalformed_IsUnavailable")]
+    public async Task Authorize_InvalidFinality_DoesNotReturnContext(string mutation, StatusCode status)
+    {
+        _source.Mutation = "finalized" + mutation;
+        RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => Authorizer().Authorize(_source.Begin(), _source.Target(), CancellationToken.None)))!;
+        Assert.That((exception.StatusCode, exception.Trailers.Count, _source.LogReads, _source.Calls), Is.EqualTo((status, 0, 0, 0)),
+            "invalid finality stops before parent history or deployment authorization and exposes no eviction details");
+    }
+
+    [TestCase(false, TestName = "Authorize_CanonicalBlockZero_DoesNotRequireFinalizedCheckpoint")]
+    [TestCase(true, TestName = "Authorize_ReplacedBlockZero_RefusesWithoutFinalizedRead")]
+    public async Task Authorize_ReferenceAtBlockZero_AuthenticatesCanonicalGenesis(bool replaced)
+    {
+        CanonicalL1Header reference = _source.Blocks[100] with { Number = 0 };
+        _source.Blocks[0] = reference;
+        _source.Schedule = _source.Schedule with { L1Reference = _source.Schedule.L1Reference with { Number = 0 } };
+        _source.Mutation = "finalizedmissing";
+        if (replaced) _source.Blocks[0] = reference with { Hash = TestItem.KeccakC };
+        if (replaced)
+        {
+            RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => Authorizer().Authorize(_source.Begin(_source.Genesis), _source.Target(), CancellationToken.None)))!;
+            Assert.That(exception.StatusCode, Is.EqualTo(StatusCode.FailedPrecondition), "block zero must match the exact configured reference even without a finalized checkpoint");
+        }
+        else
+        {
+            RollupXAuthorization result = await Authorizer().Authorize(_source.Begin(_source.Genesis), _source.Target(), CancellationToken.None);
+            Assert.That(result.CanonicalEvidence[0], Is.EqualTo(reference), "block zero is authenticated canonically and retained for recheck");
+        }
+        Assert.That(_source.HeaderReads, Does.Not.Contain("finalized"), "block zero is final by definition on a fresh private devnet");
+    }
+
     [TestCase("rollup", StatusCode.FailedPrecondition, TestName = "Authorize_WrongRollup_Refuses")]
     [TestCase("number", StatusCode.FailedPrecondition, TestName = "Authorize_WrongParentNumber_Refuses")]
     [TestCase("root", StatusCode.FailedPrecondition, TestName = "Authorize_WrongParentStateRoot_Refuses")]
@@ -423,11 +473,13 @@ public class RollupXParentAuthorizerTests
         internal readonly Dictionary<Hash256, BlockHeader> Headers = [];
         internal readonly Dictionary<(ulong Number, ulong Index), PostBatch> Batches = [];
         internal readonly List<ulong> BlockReads = [];
+        internal readonly List<string> HeaderReads = [];
         internal readonly Dictionary<(ulong Number, ulong Index), HashSet<ulong>> Skipped = [];
         internal readonly BlockHeader Genesis;
         internal BlockHeader Parent;
         internal Hash256 RegistryRoot;
         internal RollupXSchedule Schedule;
+        internal CanonicalL1Header Finalized;
         internal string Mutation = "";
         internal Action? BeforeCall;
         internal int Requests, Calls, LogReads, RangeReads, TransactionReads;
@@ -443,6 +495,7 @@ public class RollupXParentAuthorizerTests
                 Blocks[number] = new CanonicalL1Header(number, Keccak.Compute("L1-" + number), 1000 + (number - 100) * 5,
                     number == 100 ? TestItem.KeccakA : Keccak.Compute("seed-" + number));
             CanonicalL1Header reference = Blocks[100];
+            Finalized = reference;
             Schedule = new RollupXSchedule(1, 5, new RollupXL1Reference(10200, 100, reference.Hash, 1000, reference.MixHash), 1000);
             Genesis = Header(0, 1000, TestItem.KeccakA, [0x00]);
             Parent = Header(5, 1005, TestItem.KeccakA, [0xAA]);
@@ -484,7 +537,7 @@ public class RollupXParentAuthorizerTests
             Batches[(number, index)] = new PostBatch([], entries, [], (ulong)roots.Length, 0, [TestItem.AddressD], [new RollupProofSystems(1, [0])], [], [], [[]], ulong.MaxValue, false);
         }
 
-        internal object Read(string method, JsonElement parameters, bool l2, CancellationToken cancellation)
+        internal object? Read(string method, JsonElement parameters, bool l2, CancellationToken cancellation)
         {
             Requests++;
             switch (method)
@@ -495,7 +548,10 @@ public class RollupXParentAuthorizerTests
                     byte[] raw = Rlp.Encode(Mutation == "rawhash" ? Genesis : header).Bytes;
                     return (Mutation == "rawtrailing" ? [.. raw, 0] : raw).ToHexString(true);
                 case "eth_getBlockByNumber":
-                    ulong number = Convert.ToUInt64(parameters[0].GetString(), 16);
+                    string selector = parameters[0].GetString()!;
+                    HeaderReads.Add(selector);
+                    if (selector == "finalized") return FinalizedBlock();
+                    ulong number = Convert.ToUInt64(selector, 16);
                     BlockReads.Add(number);
                     CanonicalL1Header block = BlockAt(number);
                     if (TemporaryFork && number is 101 or 102 && BlockReads.Count(n => n == number) == 1)
@@ -531,6 +587,14 @@ public class RollupXParentAuthorizerTests
                 default: throw new InvalidOperationException(method);
             }
         }
+
+        private object? FinalizedBlock() => Mutation == "finalizedmissing" ? null : new
+        {
+            number = Mutation == "finalizednumberEncoding" ? "100" : Hex(Mutation == "finalizedheight" ? 99 : Finalized.Number),
+            hash = (Mutation == "finalizedhash" ? TestItem.KeccakC : Mutation == "finalizedzeroHash" ? Keccak.Zero : Finalized.Hash).ToString(),
+            timestamp = Hex(Mutation == "finalizedtimestamp" ? 999 : Finalized.Timestamp),
+            mixHash = Finalized.MixHash.ToString()
+        };
 
         private object Logs(JsonElement filter)
         {
