@@ -69,18 +69,21 @@ public class ProofInclusionListPayloadTests
         Assert.That(payload.ValidateForkOnNewPayload(new TestSpecProvider(spec), version), Is.EqualTo(expected));
     }
 
-    [TestCase("missing-transactions")]
-    [TestCase("duplicate-position")]
-    [TestCase("descending-position")]
-    [TestCase("position-out-of-range")]
-    [TestCase("empty-transaction")]
-    [TestCase("oversized-list")]
-    [TestCase("missing-hash")]
-    [TestCase("missing-proof-bytes")]
-    [TestCase("empty-proof")]
-    [TestCase("proof-for-empty-dependencies")]
-    [TestCase("oversized-proof")]
-    public void Invalid_list_shape_is_rejected_at_each_entry_point(string invalidShape)
+    [TestCase("missing-transactions", true)]
+    [TestCase("missing-transaction", true)]
+    [TestCase("duplicate-position", true)]
+    [TestCase("descending-position", true)]
+    [TestCase("position-out-of-range", true)]
+    [TestCase("oversized-list", true)]
+    [TestCase("missing-hash", true)]
+    [TestCase("missing-proof-bytes", true)]
+    [TestCase("oversized-proof", true)]
+    // EIPs#12475: an undecodable entry or a proof that disagrees with its deps_hash voids only that list's dependency-bearing
+    // obligations, so it must not fail the request for every other list.
+    [TestCase("empty-transaction", false)]
+    [TestCase("empty-proof", false)]
+    [TestCase("proof-for-empty-dependencies", false)]
+    public void List_shape_is_checked_at_each_entry_point(string invalidShape, bool rejected)
     {
         RecursiveStarkV1 proof = new()
         {
@@ -104,17 +107,23 @@ public class ProofInclusionListPayloadTests
             "duplicate-position" => [new() { CommitteeIndex = 4, Transactions = [] }, new() { CommitteeIndex = 4, Transactions = [] }],
             "descending-position" => [new() { CommitteeIndex = 4, Transactions = [] }, new() { CommitteeIndex = 2, Transactions = [] }],
             "position-out-of-range" => [new() { CommitteeIndex = Eip7805Constants.InclusionListCommitteeSize, Transactions = [] }],
+            "missing-transaction" => [new() { Transactions = [null!] }],
             "empty-transaction" => [new() { Transactions = [[]] }],
             "oversized-list" => [new() { Transactions = [new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]] }],
             _ => [new() { Transactions = [], RecursiveStark = proof }]
         };
-        Assert.That(InclusionListV1.Validate(lists), Is.Not.Null);
+        string? listError = InclusionListV1.Validate(lists);
+        Assert.That(listError is not null, Is.EqualTo(rejected));
         Assert.That(Attributes(lists).Validate(new TestSpecProvider(PerListSpec), 6, out _),
-            Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes));
+            Is.EqualTo(rejected ? PayloadAttributesValidationResult.InvalidPayloadAttributes : PayloadAttributesValidationResult.Success));
 
+        // The test payload fails a later, unrelated check, so an accepted list must reach the same error as a well-formed one.
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(Build.A.Block.TestObject);
+        new ExecutionPayloadParams<ExecutionPayloadV3>(payload, [], Keccak.Zero, [], null, [new() { Transactions = [] }])
+            .ValidateParams(PerListSpec, 7, out string? wellFormedError);
         ExecutionPayloadParams<ExecutionPayloadV3> parameters = new(payload, [], Keccak.Zero, [], null, lists);
-        Assert.That(parameters.ValidateParams(PerListSpec, 7, out _), Is.EqualTo(ValidationResult.Fail));
+        Assert.That(parameters.ValidateParams(PerListSpec, 7, out string? error), Is.EqualTo(ValidationResult.Fail));
+        Assert.That(error, Is.EqualTo(rejected ? listError : wellFormedError));
     }
 
     [Test]
