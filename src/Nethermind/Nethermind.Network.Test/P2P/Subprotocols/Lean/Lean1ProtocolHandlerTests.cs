@@ -12,8 +12,6 @@ using DotNetty.Common.Utilities;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;

@@ -8,9 +8,10 @@ using System.Linq;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using NSubstitute;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 using NUnit.Framework;
@@ -21,12 +22,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Lean;
 /// <summary>Runs one object-transfer workload between two in-process nodes over a chosen EIP-8437 binding.</summary>
 /// <remarks>
 /// <para>
-/// Settings come from environment variables: <c>LEAN_BENCH_KIND</c> (1 or 3, default 1), <c>LEAN_BENCH_OBJECTS</c> (default 20, at
-/// most 250, 48 MiB of proofs and, when broadcasting, 64 sessions), <c>LEAN_BENCH_BYTES</c> (proof bytes per object, default 1 MiB less 4 KiB) and <c>LEAN_BENCH_CONCURRENCY</c> (default 4).
-/// The <c>ethp2p-broadcast</c> case always uses kind 3 and also announces each object, so retrieval and broadcast race.
+/// Settings come from environment variables: <c>LEAN_BENCH_KIND</c> (1 for retrieval, default 1), <c>LEAN_BENCH_OBJECTS</c> (default 20, at
+/// most 250, 48 MiB of proofs and, when broadcasting, one duty), <c>LEAN_BENCH_BYTES</c> (proof bytes per object, default 1 MiB less 4 KiB) and <c>LEAN_BENCH_CONCURRENCY</c> (default 4).
+/// The <c>ethp2p-broadcast</c> case always uses kind 2 and also announces each object, so retrieval and broadcast race.
 /// </para>
 /// <para>
-/// Latency runs from the sender's validation to the receiver storing the validated object. RLPx bytes are encoded <c>lean/1</c>
+/// Latency runs from the sender's validation to the receiver validating the object. RLPx bytes are encoded <c>lean/1</c>
 /// message data before Snappy and RLPx framing, over an in-process wire; ethp2p bytes are QUIC stream data over loopback, before
 /// QUIC, TLS and UDP overhead. CPU is the test process's, covering both nodes. Wire-level comparisons need two real nodes.
 /// </para>
@@ -82,15 +83,15 @@ public class LeanBindingBenchmark
     public async Task Transfer(string binding)
     {
         bool broadcast = binding == "ethp2p-broadcast";
-        byte kind = broadcast ? LeanProtocol.KindInclusionList : (byte)Setting("LEAN_BENCH_KIND", LeanProtocol.KindWrapper);
+        byte kind = broadcast ? LeanProtocol.KindBlockProof : (byte)Setting("LEAN_BENCH_KIND", LeanProtocol.KindWrapper);
         int proofBytes = Setting("LEAN_BENCH_BYTES", LeanReedSolomon.MaxBodyBytes - 4096);
         if (broadcast) proofBytes = Math.Min(proofBytes, LeanReedSolomon.MaxBodyBytes - 4096);
         // Unmined proofs stay in each node's 64 MiB proof store, and distinct test transactions are limited.
         int count = Math.Min(Setting("LEAN_BENCH_OBJECTS", 20), (int)Math.Min(250, MaxProofBytes / proofBytes));
         // Each broadcast takes its own duty's allowance and session until the duty expires.
-        if (broadcast) count = Math.Min(count, LeanBroadcastEngine.MaxSessions);
+        if (broadcast) count = 1;
         int concurrency = Setting("LEAN_BENCH_CONCURRENCY", 4);
-        Assert.That(kind, Is.EqualTo(LeanProtocol.KindWrapper).Or.EqualTo(LeanProtocol.KindInclusionList), "LEAN_BENCH_KIND");
+        Assert.That(kind, Is.EqualTo(broadcast ? LeanProtocol.KindBlockProof : LeanProtocol.KindWrapper), "LEAN_BENCH_KIND");
 
         await using Pair pair = await Open(binding);
         long bytesBefore = pair.Bytes;
@@ -105,20 +106,37 @@ public class LeanBindingBenchmark
             try
             {
                 Transaction transaction = FrameTransaction(i);
-                byte[] body = kind == LeanProtocol.KindWrapper ? Wrapper(proofBytes, false, transaction) : InclusionList(proofBytes, transaction);
+                byte[] body;
+                LeanDescriptor descriptor;
+                Block? block = null;
+                if (broadcast)
+                {
+                    byte[] proof = Proof(proofBytes);
+                    BlockHeader header = LeanTransportTests.ProofHeader(proof);
+                    block = new(header, new BlockBody());
+                    foreach (LeanTestNode node in (LeanTestNode[])[pair.A, pair.B])
+                        node.Tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
+                    body = LeanBodies.EncodeBlockProof(proof);
+                    descriptor = LeanDescriptor.Create(kind, LeanObjectTransport.LocalProfile, LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256), body);
+                    pair.A.Tree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(header, new BlockBody()) { StarkProof = proof }));
+                }
+                else
+                {
+                    body = Wrapper(proofBytes, false, transaction);
+                    descriptor = Describe(body);
+                    ProofWrapperAcceptance acceptance;
+                    while ((acceptance = await pair.A.Wrappers.AcceptDetailedAsync(body)).Status == ProofWrapperAcceptanceStatus.Busy)
+                        await Task.Delay(1, deadline.Token);
+                    Assert.That(acceptance.HasValidProof, Is.True, "the sender validates its object");
+                }
                 Interlocked.Add(ref bodyBytes, body.Length);
-                LeanDescriptor descriptor = kind == LeanProtocol.KindWrapper ? Describe(body, out _)
-                    : LeanDescriptor.Create(kind, LeanObjectTransport.LocalProfile, LeanDescriptor.InclusionListContext(ValueKeccak.Compute(body)), body, out _);
-                ProofWrapperAcceptance acceptance;
-                // Proof admission takes one object at a time and reports Busy to the others.
-                while ((acceptance = kind == LeanProtocol.KindWrapper
-                           ? await pair.A.Wrappers.AcceptDetailedAsync(body)
-                           : await pair.A.Wrappers.AcceptInclusionListDetailedAsync(body)).Status == ProofWrapperAcceptanceStatus.Busy)
-                    await Task.Delay(1, deadline.Token);
-                Assert.That(acceptance.HasValidProof, Is.True, "the sender validates its object");
                 long sent = Stopwatch.GetTimestamp();
-                if (broadcast) await Originate(pair, descriptor, body, (ulong)i, deadline.Token);
-                while (!pair.B.Transport.IsStored(descriptor.ObjectId))
+                if (broadcast)
+                {
+                    await Originate(pair, descriptor, body, deadline.Token);
+                    Assert.That(await pair.B.Transport.TryGetAsync(block!, deadline.Token), Is.Not.Null);
+                }
+                while (!broadcast && !pair.B.Transport.IsStored(descriptor.ObjectId))
                 {
                     if (deadline.IsCancellationRequested)
                         Assert.Fail($"object {i} never reached the receiver: {pair.B.Transport.AssemblyCount} assemblies, " +
@@ -146,12 +164,12 @@ public class LeanBindingBenchmark
         Console.WriteLine(line);
     }
 
-    private static async Task Originate(Pair pair, LeanDescriptor descriptor, byte[] body, ulong duty, CancellationToken token)
+    private static async Task Originate(Pair pair, LeanDescriptor descriptor, byte[] body, CancellationToken token)
     {
         // A node broadcasts only objects it has stored, which publication does in the background after validation.
         while (!pair.A.Transport.IsStored(descriptor.ObjectId)) await Task.Delay(1, token);
-        LeanBroadcastManifest manifest = LeanBroadcastManifest.Create(TestBroadcastProfile.ProfileId, [1, 2, 3, 4], pair.Profile!.CurrentSlot, duty, 7,
-            default, descriptor, null, body, out _);
+        LeanBroadcastManifest manifest = LeanBroadcastManifest.Create(TestBroadcastProfile.ProfileId, [1, 2, 3, 4], pair.Profile!.CurrentSlot, 0, 7,
+            default, descriptor, body, out _);
         Assert.That(pair.Broadcaster!.Broadcast!.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True, "the broadcast starts");
     }
 

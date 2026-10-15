@@ -22,7 +22,6 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
-using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Lean.LeanTestObjects;
@@ -53,7 +52,7 @@ public class LeanEthp2pQuicTests
             Node = new LeanTestNode(manualTime: false);
             Config = new NetworkConfig { LocalIp = "127.0.0.1", LeanEthp2pPort = 0, LeanBindings = LeanBinding.Ethp2p, LeanCommonBinding = LeanBinding.Ethp2p };
             configure?.Invoke(Config);
-            Host = new LeanEthp2pHost(Node.Transport, Config, new InsecureProtectedPrivateKey(key), LimboLogs.Instance, profile);
+            Host = new LeanEthp2pHost(Node.Transport, Config, new InsecureProtectedPrivateKey(key), LimboLogs.Instance, Node.EthTransactions, profile);
         }
 
         public PrivateKey Key { get; }
@@ -93,10 +92,26 @@ public class LeanEthp2pQuicTests
     {
         QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA, profile is null ? null : new TestBroadcastProfile());
         QuicNode b = await QuicNode.Start(TestItem.PrivateKeyB, profile);
+        RegisterRecovery(a, b);
+        RegisterRecovery(b, a);
         Assert.That(await a.Host.DialAsync(b.Record, CancellationToken.None), Is.Not.Null);
         await Until(() => a.Node.Transport.PeerCount == 1 && b.Node.Transport.PeerCount == 1, "Status in both directions");
         return (a, b);
     }
+
+    private static void RegisterRecovery(QuicNode receiver, QuicNode source) =>
+        receiver.Node.EthTransactions.Register(source.Key.PublicKey, source, (hashes, reserve, token) =>
+        {
+            List<Transaction> transactions = [];
+            foreach (ValueHash256 hash in hashes)
+            {
+                token.ThrowIfCancellationRequested();
+                source.Node.EthTransactions.TryGetRetained(hash, out Transaction? transaction);
+                transaction ??= source.Node.Pending.FirstOrDefault(t => t.Hash!.ValueHash256 == hash);
+                if (transaction is not null && reserve(Envelope(transaction).Length)) transactions.Add(transaction);
+            }
+            return Task.FromResult(transactions.ToArray());
+        });
 
     private static void AssertNoViolations(QuicNode a, QuicNode b)
     {
@@ -117,9 +132,10 @@ public class LeanEthp2pQuicTests
             Transaction transaction = FrameTransaction(21);
             // Five MiB need three concurrent GetChunks requests, each on its own response stream.
             byte[] wrapper = Wrapper(5 * 1024 * 1024, false, transaction);
-            LeanDescriptor descriptor = Describe(wrapper, out _);
+            LeanDescriptor descriptor = Describe(wrapper);
 
-            Assert.That((await a.Node.Wrappers.AcceptDetailedAsync(wrapper)).HasValidProof, Is.True);
+            Assert.That((await a.Node.Wrappers.AcceptDetailedAsync(wrapper,
+                new Dictionary<ValueHash256, Transaction> { [transaction.Hash!.ValueHash256] = transaction })).HasValidProof, Is.True);
 
             await Until(() => b.Node.Transport.IsStored(descriptor.ObjectId) && b.Node.Pending.Any(t => t.Hash == transaction.Hash),
                 "the wrapper and its admitted transaction at b");
@@ -128,7 +144,7 @@ public class LeanEthp2pQuicTests
     }
 
     [Test]
-    public async Task Hash_entries_are_resolved_over_get_transactions()
+    public async Task Hash_entries_are_resolved_through_the_separate_authenticated_eth_binding()
     {
         (QuicNode a, QuicNode b) = await Connected();
         await using (a)
@@ -138,7 +154,8 @@ public class LeanEthp2pQuicTests
             a.Node.Pending.Add(transaction);
             byte[] wrapper = Wrapper(LeanProtocol.ChunkBytes, true, transaction);
 
-            Assert.That((await a.Node.Wrappers.AcceptDetailedAsync(wrapper)).HasValidProof, Is.True);
+            Assert.That((await a.Node.Wrappers.AcceptDetailedAsync(wrapper,
+                new Dictionary<ValueHash256, Transaction> { [transaction.Hash!.ValueHash256] = transaction })).HasValidProof, Is.True);
 
             await Until(() => b.Node.Pending.Any(t => t.Hash == transaction.Hash), "the resolved transaction at b");
             AssertNoViolations(a, b);
@@ -146,74 +163,66 @@ public class LeanEthp2pQuicTests
     }
 
     [Test]
-    public async Task Inclusion_list_package_is_fetched_validated_and_admitted()
+    public async Task A_quic_peer_without_compatible_eth_recovery_does_not_enable_kind_one()
     {
-        (QuicNode a, QuicNode b) = await Connected();
-        await using (a)
-        await using (b)
-        {
-            Transaction transaction = FrameTransaction(23);
-            byte[] package = InclusionList(2 * LeanProtocol.ChunkBytes, transaction);
-            LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
-                LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)), package, out _);
-
-            Assert.That((await a.Node.Wrappers.AcceptInclusionListDetailedAsync(package)).HasValidProof, Is.True);
-
-            await Until(() => b.Node.Transport.IsStored(descriptor.ObjectId) && b.Node.Pending.Any(t => t.Hash == transaction.Hash),
-                "the package and its admitted transaction at b");
-            AssertNoViolations(a, b);
-        }
+        await using QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA);
+        await using QuicNode b = await QuicNode.Start(TestItem.PrivateKeyB);
+        Assert.That(await a.Host.DialAsync(b.Record, CancellationToken.None), Is.Not.Null);
+        await Until(() => a.Host.ConnectionCount == 0 && b.Host.ConnectionCount == 0, "incompatible Status closes this binding");
+        Assert.That(a.Node.Transport.PeerCount + b.Node.Transport.PeerCount, Is.Zero);
     }
 
     [Test]
-    public async Task Block_proof_sidecar_rebuilds_the_header_committed_by_the_block_hash()
+    public async Task Block_proof_retrieval_checks_the_existing_ordinary_header_commitment()
     {
         (QuicNode a, QuicNode b) = await Connected();
         await using (a)
         await using (b)
         {
-            BlockHeader header = LeanTransportTests.ProofHeader(Proof(300_000));
+            byte[] proofBytes = Proof(300_000);
+            BlockHeader header = LeanTransportTests.ProofHeader(proofBytes);
             IBlockTree tree = a.Node.Tree;
-            tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
             tree.IsMainChain(header).Returns(true);
-            BlockHeader withoutProof = header.Clone();
-            withoutProof.RecursiveStark = null;
+            tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
+            tree.FindBlock(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(new Block(header, new BlockBody()) { StarkProof = proofBytes });
+            b.Node.Tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
 
             using CancellationTokenSource deadline = new(Timeout);
-            RecursiveStark? proof = await b.Node.Transport.TryGetAsync(new Block(withoutProof, new BlockBody()), deadline.Token);
+            RecursiveStark? proof = await b.Node.Transport.TryGetAsync(new Block(header, new BlockBody()), deadline.Token);
 
-            Assert.That(proof?.StarkProof, Is.EqualTo(header.RecursiveStark!.StarkProof));
+            Assert.That(proof?.StarkProof, Is.EqualTo(proofBytes));
             AssertNoViolations(a, b);
         }
     }
 
     [Test]
-    public async Task Block_proof_is_broadcast_as_authenticated_shards_and_rebuilds_its_header()
+    public async Task Block_proof_is_broadcast_as_authenticated_shards_bound_to_the_known_header()
     {
         (QuicNode a, QuicNode b) = await Connected(new TestBroadcastProfile());
         await using (a)
         await using (b)
         {
-            // Block-proof announcements are only availability hints, so b can obtain the proof only from the broadcast.
-            BlockHeader header = LeanTransportTests.ProofHeader(Proof(300_000));
-            LeanHeaderSkeleton skeleton = LeanHeaderSkeleton.FromHeader(header, new HeaderDecoder());
-            LeanDescriptor descriptor = LeanTransportTests.SidecarDescriptor(header, skeleton, out byte[] body);
-            a.Node.Tree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(header, new BlockBody())));
-            await Until(() => a.Node.Transport.IsStored(descriptor.ObjectId), "the block proof at a");
-            LeanBroadcastManifest manifest = LeanBroadcastManifest.Create(TestBroadcastProfile.ProfileId, [1, 2, 3, 4], 10, 0, 7, default, descriptor,
-                skeleton, body, out _);
+            byte[] proofBytes = Proof(300_000);
+            BlockHeader header = LeanTransportTests.ProofHeader(proofBytes);
+            Block block = new(header, new BlockBody()) { StarkProof = proofBytes };
+            a.Node.Tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
+            b.Node.Tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
+            byte[] body = LeanBodies.EncodeBlockProof(proofBytes);
+            LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+                LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256), body);
+            a.Node.Tree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(block));
+            await Until(() => a.Node.Transport.IsStored(descriptor.ObjectId), "the validated block proof at a");
+            LeanBroadcastManifest manifest = LeanBroadcastManifest.Create(TestBroadcastProfile.ProfileId, [1, 2, 3, 4], 10, 0, 7, default,
+                descriptor, body, out _);
 
             Assert.That(a.Host.Broadcast!.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
-
-            await Until(() => b.Node.Transport.HasBroadcastSidecar(header.Hash!.ValueHash256), "the reconstructed proof at b");
-            BlockHeader withoutProof = header.Clone();
-            withoutProof.RecursiveStark = null;
-            RecursiveStark? proof = await b.Node.Transport.TryGetAsync(new Block(withoutProof, new BlockBody()), CancellationToken.None);
+            await Until(() => b.Node.Transport.HasBroadcastSidecar(header.Hash.ValueHash256), "the reconstructed proof at b");
+            RecursiveStark? proof = await b.Node.Transport.TryGetAsync(new Block(header, new BlockBody()), CancellationToken.None);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(proof?.StarkProof, Is.EqualTo(header.RecursiveStark!.StarkProof));
-                Assert.That(b.Host.Broadcast!.SessionCount, Is.EqualTo(1), "the SESS Open passed every check");
-                Assert.That(b.Host.Broadcast.ShardsAccepted, Is.GreaterThanOrEqualTo(LeanReedSolomon.DataShards), "checked shards on CHUNK streams");
+                Assert.That(proof?.StarkProof, Is.EqualTo(proofBytes));
+                Assert.That(b.Host.Broadcast!.SessionCount, Is.EqualTo(1));
+                Assert.That(b.Host.Broadcast.ShardsAccepted, Is.GreaterThanOrEqualTo(LeanReedSolomon.DataShards));
             }
             AssertNoViolations(a, b);
         }

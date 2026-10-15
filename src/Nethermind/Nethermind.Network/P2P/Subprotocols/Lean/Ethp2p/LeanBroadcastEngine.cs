@@ -501,7 +501,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
             if (session.Count == LeanReedSolomon.DataShards)
             {
                 session.Decoding = true;
-                // Expiry or disposal may release the session's shards while it decodes.
+                // The decoding task owns these shards until it unwinds, including after expiry.
                 session.TakeDataShards(out indices, out shards);
             }
             foreach (Participant other in session.Participants.Values) if (other.Out is not null) outgoing.Update(other.Out, session.Have);
@@ -524,8 +524,11 @@ internal sealed class LeanBroadcastEngine : IDisposable
             LeanMetrics.Coding(Stopwatch.GetElapsedTime(decoding));
             signerFault = error is not null;
             if (body is not null && !_profile.MatchesContext(session.Manifest, body)) error = "object does not match its consensus context";
-            if (body is not null && error is null)
-                error = _transport.AcceptBroadcastBody(session.Manifest.Descriptor, body, session.Started, session.Source);
+            lock (_gate)
+            {
+                if (!session.Failed && !_disposed && body is not null && error is null)
+                    error = _transport.AcceptBroadcastBody(session.Manifest.Descriptor, body, session.Started, session.Source);
+            }
             signerFault |= error is not null;
         }
         catch (Exception exception)
@@ -537,6 +540,11 @@ internal sealed class LeanBroadcastEngine : IDisposable
         lock (_gate)
         {
             session.Decoding = false;
+            if (session.Failed || _disposed)
+            {
+                Fail(session);
+                return;
+            }
             if (error is not null)
             {
                 // The checked shards are the signer's responsibility: no relay is penalized, and retrieval stays possible.
@@ -558,7 +566,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
 
     private void RetainCodewordCharge(Session session)
     {
-        long retained = 2L * LeanReedSolomon.DataShards * session.Manifest.ShardBytes + 4L * LeanBroadcastManifest.MaxPreambleBytes;
+        long retained = (session.ActiveSends == 0 ? 2L : 3L) * LeanReedSolomon.DataShards * session.Manifest.ShardBytes + 4L * LeanBroadcastManifest.MaxPreambleBytes;
         if (session.CodedBytes <= retained) return;
         _transport.ReleaseBroadcast(session.CodedBytes - retained, session.Source);
         session.CodedBytes = retained;
@@ -582,6 +590,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
         session.Failed = true;
         // Retrieval need not wait for a session that will deliver no more shards.
         _transport.OnBroadcastEnded(session.Manifest.Descriptor);
+        if (session.Decoding || session.ActiveSends != 0) return;
         session.Release();
         if (session.CodedBytes > 0) _transport.ReleaseBroadcast(session.CodedBytes, session.Source);
         session.CodedBytes = 0;
@@ -633,6 +642,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
             if (best < 0) break;
             participant.InFlight |= 1u << best;
             session.Sent[best]++;
+            session.ActiveSends++;
             outgoing.Send(session, participant, best, session.Shard(best));
             inFlight++;
         }
@@ -661,16 +671,27 @@ internal sealed class LeanBroadcastEngine : IDisposable
 
     private async Task SendAsync(Session session, Participant participant, int index, byte[] shard)
     {
-        bool sent = await participant.Peer.SendShardAsync(participant.Out!, index, shard).ConfigureAwait(false);
+        bool sent = false;
+        try { sent = await participant.Peer.SendShardAsync(participant.Out!, index, shard).ConfigureAwait(false); }
+        catch (Exception exception)
+        {
+            if (_logger.IsDebug) _logger.Debug($"lean/1 shard write failed: {exception.Message}");
+        }
         Outgoing outgoing = new();
         lock (_gate)
         {
+            session.ActiveSends--;
             participant.InFlight &= ~(1u << index);
             SetInFlight(participant.Peer, _inFlight.GetValueOrDefault(participant.Peer) - 1);
             if (sent) participant.Inventory |= 1u << index;
             else session.Sent[index]--;
-            if (sent) Dispatch(session, outgoing);
-            DispatchTo(participant.Peer, outgoing);
+            if (session.Failed || _disposed) Fail(session);
+            else
+            {
+                if (session.Reconstructed) RetainCodewordCharge(session);
+                if (sent) Dispatch(session, outgoing);
+                DispatchTo(participant.Peer, outgoing);
+            }
         }
         outgoing.Run(this);
     }
@@ -771,6 +792,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
         public int[] Sent { get; } = new int[LeanReedSolomon.TotalShards];
         public uint Have { get; private set; }
         public int Count => BitOperations.PopCount(Have);
+        public int ActiveSends { get; set; }
         public bool Decoding { get; set; }
         public bool Reconstructed { get; private set; }
         public bool Failed { get; set; }

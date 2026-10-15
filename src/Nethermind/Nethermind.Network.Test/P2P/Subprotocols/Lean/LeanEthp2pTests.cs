@@ -47,8 +47,7 @@ public class LeanEthp2pTests
     private static readonly byte[] Prefix = Bytes.FromHexString("110000000000000007");
     private static readonly byte[] Complete = Bytes.FromHexString("0600000024e307a0000000000000000000000000000000000000000000000000000000000000000001");
     private static readonly byte[] Objects = Bytes.FromHexString("0300000007c607c4c3028080");
-    private static readonly byte[] Transactions = Bytes.FromHexString("0900000006c507c3c20280");
-    private static readonly byte[] ChunkFrame = Bytes.FromHexString("0500000032f107a00000000000000000000000000000000000000000000000000000000000000000808c6f7061717565206368756e6bc0");
+    private static readonly byte[] ChunkFrame = Bytes.FromHexString("0500000031f007a00000000000000000000000000000000000000000000000000000000000000000808c6f7061717565206368756e6b");
     private static readonly byte[] CompleteForRequestSix = Bytes.FromHexString("0600000024e306a0000000000000000000000000000000000000000000000000000000000000000001");
     private static readonly byte[] Cancel = Bytes.FromHexString("0700000002c107");
 
@@ -64,7 +63,6 @@ public class LeanEthp2pTests
             : requestType switch
             {
                 LeanMessageCode.GetObjects => LeanResponseTarget.GetObjects,
-                LeanMessageCode.GetTransactions => LeanResponseTarget.GetTransactions,
                 _ => LeanResponseTarget.GetChunks
             };
 
@@ -100,22 +98,14 @@ public class LeanEthp2pTests
     }
 
     [Test]
-    public void Receive_windows_hold_a_full_response_and_reserve_capacity_for_the_control_streams()
+    public void Receive_credit_leaves_room_for_a_maximal_object_in_the_shared_source_budget()
     {
-        int frame = LeanEthp2pProtocol.FrameHeaderBytes + LeanProtocol.MaxMessageBytes;
-        // A GetChunks response: every requested chunk with a maximal branch, each in its own frame, then Complete.
-        ChunkMessage chunk = new(ulong.MaxValue, default, LeanProtocol.MaxChunkCount - 1, new byte[LeanProtocol.ChunkBytes],
-            new ValueHash256[LeanCommitment.Depth(LeanProtocol.MaxChunkCount)]);
-        int response = LeanEthp2pProtocol.ResponsePrefixBytes + LeanProtocol.MaxChunksPerRequest
-            * (LeanEthp2pProtocol.FrameHeaderBytes + new ChunkMessageSerializer().Encode(chunk).Length) + frame;
-        // Full windows of both control streams and every live response stream, and a maximal frame on every broadcast stream.
-        int reserved = (2 + LeanProtocol.MaxRequestsPerPeer) * LeanEthp2pProtocol.StreamReceiveWindow + LeanEthp2pProtocol.MaxBroadcastStreams * frame;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response, Is.LessThanOrEqualTo(LeanEthp2pProtocol.StreamReceiveWindow));
-            Assert.That(reserved, Is.LessThanOrEqualTo(LeanEthp2pProtocol.ConnectionReceiveWindow));
-            Assert.That(LeanEthp2pProtocol.StreamReceiveWindow >= 4 * 1024 * 1024, Is.True, "EIP-8437 recommends at least 4 MiB per stream");
-            Assert.That(LeanEthp2pProtocol.ConnectionReceiveWindow >= 32 * 1024 * 1024, Is.True, "EIP-8437 recommends at least 32 MiB per connection");
+            Assert.That(LeanEthp2pProtocol.MaxInboundStreams, Is.EqualTo(26));
+            Assert.That(LeanEthp2pProtocol.StreamReceiveWindow, Is.GreaterThan(LeanProtocol.MaxMessageBytes));
+            Assert.That(LeanEthp2pProtocol.ConnectionReceiveWindow + (long)LeanProtocol.MaxObjectBytes,
+                Is.LessThan(LeanLimits.MaxPeerBytes));
             Assert.That(int.IsPow2(LeanEthp2pProtocol.StreamReceiveWindow) && int.IsPow2(LeanEthp2pProtocol.ConnectionReceiveWindow), Is.True);
         }
     }
@@ -125,7 +115,6 @@ public class LeanEthp2pTests
         yield return new TestCaseData((byte[])[.. Control, .. Cancel], LeanMessageCode.GetChunks, LeanMessageCode.Cancel).SetName("Control and Cancel");
         yield return new TestCaseData((byte[])[.. Prefix, .. Complete], LeanMessageCode.GetChunks, LeanMessageCode.Complete).SetName("Complete");
         yield return new TestCaseData((byte[])[.. Prefix, .. Objects], LeanMessageCode.GetObjects, LeanMessageCode.Objects).SetName("Objects");
-        yield return new TestCaseData((byte[])[.. Prefix, .. Transactions], LeanMessageCode.GetTransactions, LeanMessageCode.Transactions).SetName("Transactions");
     }
 
     [TestCaseSource(nameof(Fragmented))]
@@ -146,7 +135,7 @@ public class LeanEthp2pTests
 
     private static IEnumerable<TestCaseData> BadHeaders()
     {
-        yield return new TestCaseData(Control, 10, 1, LeanMessageCode.GetChunks).SetName("Unknown message ID");
+        yield return new TestCaseData(Control, 8, 1, LeanMessageCode.GetChunks).SetName("Unknown message ID");
         yield return new TestCaseData(Control, LeanMessageCode.Chunk, 1, LeanMessageCode.GetChunks).SetName("Chunk on the control stream");
         yield return new TestCaseData(Prefix, LeanMessageCode.Cancel, 1, LeanMessageCode.GetChunks).SetName("Cancel on a response stream");
         yield return new TestCaseData(Prefix, LeanMessageCode.Objects, 1, LeanMessageCode.GetChunks).SetName("Objects answers GetChunks");
@@ -154,8 +143,6 @@ public class LeanEthp2pTests
         yield return new TestCaseData(Control, LeanMessageCode.Cancel, MaxMessageBytes + 1, LeanMessageCode.GetChunks).SetName("Above MAX_MESSAGE_BYTES");
         yield return new TestCaseData(Prefix, LeanMessageCode.Objects, LeanProtocol.MaxMetadataResponseBytes + 1, LeanMessageCode.GetObjects)
             .SetName("Objects above its ceiling");
-        yield return new TestCaseData(Prefix, LeanMessageCode.Transactions, LeanProtocol.MaxTxResponseBytes + 1, LeanMessageCode.GetTransactions)
-            .SetName("Transactions above its ceiling");
     }
 
     [TestCaseSource(nameof(BadHeaders))]
@@ -166,6 +153,35 @@ public class LeanEthp2pTests
         long before = reader.PayloadBytesRead;
         Assert.Throws<LeanEthp2pViolationException>(() => reader.Feed(Frame(messageId, length, "unread payload"u8.ToArray())));
         Assert.That(reader.PayloadBytesRead, Is.EqualTo(before));
+    }
+
+    [Test]
+    public void Local_frame_pressure_refuses_before_reading_payload_without_a_protocol_violation()
+    {
+        Handler handler = new();
+        LeanEthp2pStreamReader reader = new(handler, _ => null);
+        reader.Feed(Prefix);
+        Assert.That(() => reader.Feed(Frame(LeanMessageCode.Chunk, 100)), Throws.TypeOf<LeanEthp2pRefusedException>());
+        Assert.That(reader.PayloadBytesRead, Is.Zero);
+    }
+
+    [Test]
+    public void Terminal_frame_keeps_its_lease_until_fin_cleanup()
+    {
+        FrameLease lease = new();
+        Handler handler = new();
+        LeanEthp2pStreamReader reader = new(handler, _ => lease);
+        reader.Feed([.. Prefix, .. Complete]);
+        Assert.That(lease.Disposed, Is.False);
+        Assert.That(reader.Finish(), Is.EqualTo(LeanEthp2pStreamEnd.Complete));
+        reader.Abandon();
+        Assert.That(lease.Disposed, Is.True);
+    }
+
+    private sealed class FrameLease : IDisposable
+    {
+        public bool Disposed { get; private set; }
+        public void Dispose() => Disposed = true;
     }
 
     [TestCase("110000000000000000", TestName = "Request ID zero")]
@@ -187,7 +203,6 @@ public class LeanEthp2pTests
 
     [TestCase(LeanMessageCode.Chunk, LeanMessageCode.GetChunks, MaxMessageBytes)]
     [TestCase(LeanMessageCode.Objects, LeanMessageCode.GetObjects, LeanProtocol.MaxMetadataResponseBytes)]
-    [TestCase(LeanMessageCode.Transactions, LeanMessageCode.GetTransactions, LeanProtocol.MaxTxResponseBytes)]
     public void Exact_payload_ceiling_is_accepted_without_reading_the_payload(int messageId, int requestType, int limit)
     {
         (LeanEthp2pStreamReader reader, _) = Stream(requestType);
@@ -507,7 +522,7 @@ public class LeanEthp2pTests
         LeanPeer otherNode = node.Transport.Accept(other, LeanTestNode.Status(), TestItem.PublicKeyB)!;
         // 256 chunks need eight requests: four for each node.
         byte[] body = OpaqueWrapperBody(255 * LeanProtocol.ChunkBytes);
-        LeanDescriptor descriptor = Describe(body, out _);
+        LeanDescriptor descriptor = Describe(body);
 
         node.Transport.OnAnnounce(viaRlpx, new AnnounceObjectsMessage([descriptor]));
         node.Transport.OnAnnounce(viaQuic, new AnnounceObjectsMessage([descriptor]));
@@ -532,7 +547,7 @@ public class LeanEthp2pTests
         FakeLink link = new();
         LeanPeer peer = node.Connect(link);
         byte[] body = OpaqueWrapperBody(3 * LeanProtocol.ChunkBytes);
-        LeanDescriptor descriptor = Describe(body, out _);
+        LeanDescriptor descriptor = Describe(body);
         node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
         ulong live = link.Sent<GetChunksMessage>().Single().RequestId;
 
@@ -554,11 +569,11 @@ public class LeanEthp2pTests
         FakeLink link = new();
         LeanPeer peer = node.Connect(link);
         byte[] body = OpaqueWrapperBody(3 * LeanProtocol.ChunkBytes);
-        LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
+        LeanDescriptor descriptor = Describe(body);
         node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
         GetChunksMessage request = link.Sent<GetChunksMessage>().Single();
         Assert.That(node.Transport.OpenResponseStream(peer, request.RequestId), Is.EqualTo(LeanResponseTarget.GetChunks));
-        node.Transport.OnChunk(peer, LeanChunkView.Parse(Wire(Chunk(request.RequestId, descriptor, body, tree, request.Indices[0]))));
+        node.Transport.OnChunk(peer, LeanChunkView.Parse(Wire(Chunk(request.RequestId, descriptor, body, request.Indices[0]))));
         long retained = node.Transport.IncompleteBytes;
 
         node.Transport.OnResponseAborted(peer, request.RequestId);
@@ -580,7 +595,7 @@ public class LeanEthp2pTests
         LeanPeer peer = node.Connect(link);
         using CancellationTokenSource cancellation = new();
         Task<LeanObjectResult[]?> response = node.Transport.RequestObjectsAsync(peer,
-            [new(LeanProtocol.KindWrapper, LeanObjectTransport.LocalProfile, LeanProtocol.LookupPrimary, TestItem.KeccakA.ValueHash256)],
+            [new(LeanProtocol.KindWrapper, LeanObjectTransport.LocalProfile, TestItem.KeccakA.ValueHash256)],
             cancellation.Token);
         await cancellation.CancelAsync();
         Assert.That(await response, Is.Null);
@@ -652,7 +667,7 @@ public class LeanEthp2pTests
     {
         using LeanTestNode node = new();
         await using LeanEthp2pHost host = new(node.Transport, new NetworkConfig(), new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
-            LimboLogs.Instance);
+            LimboLogs.Instance, node.EthTransactions);
         INodeRecordProvider inner = Substitute.For<INodeRecordProvider>();
         LeanEthp2pNodeRecordProvider provider = new(inner, host, new Ecdsa(), new InsecureProtectedPrivateKey(TestItem.PrivateKeyA));
         NodeRecord first = Record(TestItem.PrivateKeyA, null);
