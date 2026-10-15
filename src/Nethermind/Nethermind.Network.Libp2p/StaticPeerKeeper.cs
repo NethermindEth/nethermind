@@ -93,6 +93,8 @@ public sealed class StaticPeerKeeper : IDisposable
 
     // At most one gossip dial per peer: it is the live channel once connected, and is abandoned if the next check still finds the peer unconnected.
     private readonly Dictionary<PeerId, CancellationTokenSource> _gossipDials = [];
+    // The cause of each static peer's last failed dial, so an operator sees the first failure and each new cause, not every retry.
+    private readonly Dictionary<Multiaddress, string> _failureCauses = [];
 
     /// <summary>Runs one check; calls must not overlap.</summary>
     public async Task CheckAsync(CancellationToken token)
@@ -108,6 +110,7 @@ public sealed class StaticPeerKeeper : IDisposable
             try
             {
                 ISession session = await _localPeer.DialAsync(address, token);
+                _failureCauses.Remove(address);
                 // A connect the router made meanwhile wins, so the peer gets no second gossip channel.
                 if (_router.ConnectedPeers.Contains(peerId))
                 {
@@ -125,7 +128,12 @@ public sealed class StaticPeerKeeper : IDisposable
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
-                if (_logger.IsDebug) _logger.Debug($"Reconnecting static peer {address} failed: {e.Message}");
+                // The innermost message: an outer one can carry a per-attempt session id.
+                string cause = e.GetBaseException().Message;
+                bool known = _failureCauses.TryGetValue(address, out string? last) && last == cause;
+                _failureCauses[address] = cause;
+                if (!known && _logger.IsWarn) _logger.Warn($"Reconnecting static peer {address} failed: {e.Message}");
+                else if (known && _logger.IsDebug) _logger.Debug($"Reconnecting static peer {address} failed: {e.Message}");
             }
         }
     }

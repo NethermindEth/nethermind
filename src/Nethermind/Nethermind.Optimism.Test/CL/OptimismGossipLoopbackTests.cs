@@ -198,6 +198,37 @@ public class OptimismGossipLoopbackTests
         await session.DidNotReceive().DisconnectAsync();
     }
 
+    [Test]
+    public async Task A_static_peer_dial_failure_is_a_warning_when_first_seen_or_its_cause_changes()
+    {
+        PeerId peerId = new Nethermind.Libp2p.Core.Identity().PeerId;
+        Multiaddress address = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peerId}");
+        IRoutingStateContainer routing = Substitute.For<IRoutingStateContainer>();
+        routing.ConnectedPeers.Returns([]);
+        ILocalPeer localPeer = Substitute.For<ILocalPeer>();
+        localPeer.DialAsync(address, Arg.Any<CancellationToken>()).Returns(
+            Task.FromException<ISession>(new InvalidOperationException("refused")),
+            Task.FromException<ISession>(new InvalidOperationException("refused")),
+            Task.FromException<ISession>(new InvalidOperationException("unreachable")),
+            Task.FromResult(Substitute.For<ISession>()),
+            Task.FromException<ISession>(new InvalidOperationException("unreachable")));
+        List<string> levels = [];
+        InterfaceLogger log = Substitute.For<InterfaceLogger>();
+        log.IsWarn.Returns(true);
+        log.IsDebug.Returns(true);
+        log.When(static l => l.Warn(Arg.Any<string>())).Do(_ => levels.Add("Warn"));
+        log.When(static l => l.Debug(Arg.Is<string>(static text => text.StartsWith("Reconnecting")))).Do(_ => levels.Add("Debug"));
+        using StaticPeerKeeper keeper = new(localPeer, routing, [address], new ILogger(log), static (_, _) => Task.CompletedTask);
+
+        for (int check = 0; check < 5; check++)
+        {
+            await keeper.CheckAsync(CancellationToken.None);
+        }
+
+        // An operator at Info must see a failing static peer, without one warning per retry.
+        Assert.That(levels, Is.EqualTo(new[] { "Warn", "Debug", "Warn", "Warn" }));
+    }
+
     [TestCase("/dns4/sequencer.invalid/tcp/{port}/p2p/{id}", TestName = "A name whose first lookup fails")]
     [TestCase("/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name")]
     [TestCase("/ip4/127.0.0.1/tcp/{port}/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name after an address")]
@@ -253,8 +284,8 @@ public class OptimismGossipLoopbackTests
         routing.ConnectedPeers.Returns([]);
         List<string> lines = [];
         InterfaceLogger log = Substitute.For<InterfaceLogger>();
-        log.IsDebug.Returns(true);
-        log.When(static l => l.Debug(Arg.Any<string>())).Do(call => lines.Add(call.Arg<string>()));
+        log.IsWarn.Returns(true);
+        log.When(static l => l.Warn(Arg.Any<string>())).Do(call => lines.Add(call.Arg<string>()));
         using StaticPeerKeeper keeper = new(node.Peer, routing, [named], new ILogger(log));
 
         await keeper.CheckAsync(token);
