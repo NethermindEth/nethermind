@@ -3,7 +3,6 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 using Nethermind.Core;
-using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -37,7 +36,7 @@ public class HistoryBoundsBenchmarks
         _root = Path.Combine(Environment.GetEnvironmentVariable("BENCH_DATA")!, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
         DbConfig config = new() { BlocksDbAdditionalRocksDbOptions = "disable_auto_compactions=true;" };
-        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1L << 30), LimboLogs.Instance, validateConfig: false);
+        RocksDbConfigFactory factory = new(config, new PruningConfig(), new BenchmarkHardwareInfo(), LimboLogs.Instance, validateConfig: false);
         _db = new DbOnTheRocks(_root, new DbSettings("Blocks", "history"), config, factory, LimboLogs.Instance);
         _store = new HistoryStoreV3(_db);
         using (IWriteBatch batch = _db.StartWriteBatch())
@@ -143,5 +142,11 @@ public class HistoryBoundsBenchmarks
     {
         _db.Dispose();
         Directory.Delete(_root, recursive: true);
+    }
+
+    private sealed class BenchmarkHardwareInfo : IHardwareInfo
+    {
+        public long AvailableMemoryBytes => 1L << 30;
+        public int? MaxOpenFilesLimit => null;
     }
 }

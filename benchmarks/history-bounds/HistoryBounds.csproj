@@ -5,14 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsTestProject>false</IsTestProject>
-    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
-    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     <DefineConstants Condition="'$(BoundsReuse)' == 'true'">$(DefineConstants);REUSE_BOUNDS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
     <ProjectReference Include="../../src/Nethermind/Nethermind.State.Flat.History/Nethermind.State.Flat.History.csproj" />
     <ProjectReference Include="../../src/Nethermind/Nethermind.Db.Rocks/Nethermind.Db.Rocks.csproj" />
-    <ProjectReference Include="../../src/Nethermind/Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
   </ItemGroup>
 </Project>

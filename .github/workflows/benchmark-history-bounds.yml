@@ -63,8 +63,6 @@ jobs:
         shell: bash
         env:
           BENCH_DATA: ${{ runner.temp }}/history-bounds
-          IsTestingPlatformApplication: 'false'
-          GenerateTestingPlatformEntryPoint: 'false'
         run: |
           set -euo pipefail
           for arm in baseline candidate candidate baseline; do
