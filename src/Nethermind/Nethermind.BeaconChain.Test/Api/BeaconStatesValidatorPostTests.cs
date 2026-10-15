@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -34,7 +35,7 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
     [OneTimeSetUp]
     public async Task StartHost()
     {
-        _host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet);
+        _host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, apiConfig: new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0 });
         BeaconStateFulu state = BeaconApiTestHost.RichState(BeaconChainSpec.Mainnet, StateSlot);
         state.LatestBlockHeader!.Slot = StateSlot;
         state.Validators = [.. Enumerable.Range(0, ValidatorCount).Select(MakeValidator)];
