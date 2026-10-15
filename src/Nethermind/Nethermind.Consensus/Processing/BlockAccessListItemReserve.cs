@@ -12,36 +12,13 @@ using Nethermind.Int256;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// Upper bound on the EIP-7928 block access list items that the end-of-block steps can add after transaction
-/// selection, so a block producer can stop selecting transactions before the block exceeds
-/// <c>block_gas_limit / ITEM_COST</c>.
+/// Upper bound on the EIP-7928 items the end-of-block steps can add, reserved during transaction selection so the
+/// block stays within <c>block_gas_limit / ITEM_COST</c>.
 /// </summary>
 /// <remarks>
-/// <para>
-/// After the transactions, a block only runs the withdrawals and the request-queue system calls
-/// (EIP-7002, EIP-7251, EIP-8282). Neither spends block gas, so their items are not covered by the
-/// transactions' gas and have to be reserved:
-/// </para>
-/// <list type="bullet">
-/// <item>Withdrawals credit their recipients: one item per distinct recipient not already in the list.</item>
-/// <item>
-/// Each queue contract is one address item plus the four words below <c>QUEUE_STORAGE_OFFSET</c> (excess, count,
-/// head, tail), read or written on every call. It then dequeues up to its per-block maximum of records, oldest first,
-/// reading every slot of each. Records enqueued by this block's transactions were written by them, so their slots are
-/// already in the list; only records queued before the block (<c>tail - head</c> in the parent state) can add items.
-/// </item>
-/// </list>
-/// <para>
-/// Record sizes (EIP-7002 <c>add_withdrawal_request</c>, EIP-7251 <c>add_consolidation_request</c>, EIP-8282
-/// "Deposit requests"/"Exit requests"): withdrawal <c>20 + 48 + 8</c> bytes in 3 slots, consolidation
-/// <c>20 + 48 + 48</c> bytes in 4 slots, builder deposit 184 bytes in 6 slots, builder exit <c>20 + 48</c> bytes in 3 slots.
-/// The queue length is read only from canonical bytecode at the canonical address; any other code is assumed to drain
-/// its per-block maximum with the same layout.
-/// </para>
-/// <para>
-/// The pre-execution system calls (EIP-4788, EIP-2935, the EIP-8253 fork-block transition) run before the
-/// transactions and are already in the list when selection starts.
-/// </para>
+/// Withdrawals and the request-queue system calls (EIP-7002, EIP-7251, EIP-8282) spend no block gas. Withdrawals add
+/// one item per new recipient. Each queue adds its address and four header words, plus the slots of records queued
+/// before the block, up to its per-block maximum.
 /// </remarks>
 public static class BlockAccessListItemReserve
 {
