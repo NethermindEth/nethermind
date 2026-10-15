@@ -145,8 +145,9 @@ public partial class BlockProcessor(
     /// build and the executor reserves the excess in later builds on the same parent.
     /// </summary>
     /// <remarks>
-    /// A block without transactions is only logged: transactions never remove items, so its items are the least any
-    /// block on this parent with these withdrawals can have, and no valid block exists to fall back to.
+    /// A block without transactions is rejected too, but reserves nothing: transactions never remove items, so its
+    /// items are the least any block on this parent with these withdrawals can have, and no build of this payload is
+    /// valid.
     /// </remarks>
     private void ThrowIfProducedBlockExceedsItemLimit(Block block)
     {
@@ -164,10 +165,12 @@ public partial class BlockProcessor(
         if (block.Transactions.Length == 0)
         {
             if (_logger.IsError) _logger.Error($"Block {block.Number} cannot be built within the block access list item limit, even without transactions: {error}");
-            return;
+        }
+        else
+        {
+            producer.ReportItemLimitExceeded(itemCount - (long)maxItems);
         }
 
-        producer.ReportItemLimitExceeded(itemCount - (long)maxItems);
         block.DisposeAccountChanges();
         throw new InvalidBlockException(block, error);
     }

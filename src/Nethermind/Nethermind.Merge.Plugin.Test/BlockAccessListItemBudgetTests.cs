@@ -112,13 +112,7 @@ public class BlockAccessListItemBudgetTests(bool parallel) : BaseEngineModuleTes
     [Test]
     public async Task Request_dequeues_read_the_slots_the_reserve_counts()
     {
-        using MergeTestBlockchain chain = await CreateLowGasLimitChain(Amsterdam.Instance, 30_000_000, static state =>
-        {
-            Enqueue(state, Eip7002Constants.WithdrawalRequestPredeployAddress, 40);
-            Enqueue(state, Eip7251Constants.ConsolidationRequestPredeployAddress, 10);
-            Enqueue(state, Eip8282Constants.BuilderDepositRequestPredeployAddress, 100);
-            Enqueue(state, Eip8282Constants.BuilderExitRequestPredeployAddress, 40);
-        });
+        using MergeTestBlockchain chain = await CreateLowGasLimitChain(Amsterdam.Instance, 30_000_000, EnqueueAboveMax);
 
         Block block = (await BuildBlock(chain, []))!;
 
@@ -131,6 +125,32 @@ public class BlockAccessListItemBudgetTests(bool parallel) : BaseEngineModuleTes
             Assert.That(StorageKeys(bal, Eip8282Constants.BuilderExitRequestPredeployAddress), Is.EqualTo(4 + 16 * 3));
         }
         await AssertValidates(chain, block);
+    }
+
+    /// <summary>
+    /// With every request queue above its per-block maximum the end-of-block dequeues alone exceed a 200-item limit,
+    /// so even an empty block is invalid: production fails rather than returning it, and the payload has no block to
+    /// serve. Info logging stays on, as the payload service logs the empty build it starts from.
+    /// </summary>
+    [Test]
+    public async Task Producer_fails_when_the_empty_block_exceeds_the_item_limit()
+    {
+        using MergeTestBlockchain chain = await CreateLowGasLimitChain(Amsterdam.Instance, LowGasLimit, EnqueueAboveMax,
+            configurer: static builder => builder.AddSingleton<ILogManager>(LimboLogs.Instance));
+        Submit(chain, TxC);
+        Hash256 head = chain.BlockTree.Head!.Hash!;
+
+        Block? block = await BuildBlock(chain, []);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
+            new ForkchoiceStateV1(head, head, head), Attributes(chain, []));
+        ResultWrapper<GetPayloadV6Result?> payload = await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.Null);
+            Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(payload.ErrorCode, Is.EqualTo(MergeErrorCodes.UnknownPayload));
+        }
     }
 
     [Test]
@@ -232,6 +252,14 @@ public class BlockAccessListItemBudgetTests(bool parallel) : BaseEngineModuleTes
             configurer?.Invoke(builder);
         });
 
+    private static void EnqueueAboveMax(IWorldState state)
+    {
+        Enqueue(state, Eip7002Constants.WithdrawalRequestPredeployAddress, 40);
+        Enqueue(state, Eip7251Constants.ConsolidationRequestPredeployAddress, 10);
+        Enqueue(state, Eip8282Constants.BuilderDepositRequestPredeployAddress, 100);
+        Enqueue(state, Eip8282Constants.BuilderExitRequestPredeployAddress, 40);
+    }
+
     private static void Enqueue(IWorldState state, Address queueContract, int records) =>
         state.Set(new StorageCell(queueContract, 3), (UInt256)records);
 
@@ -261,10 +289,13 @@ public class BlockAccessListItemBudgetTests(bool parallel) : BaseEngineModuleTes
             .Select(static i => new Withdrawal { Index = (ulong)i, ValidatorIndex = (ulong)i, Address = Address.FromNumber((UInt256)(0x5000 + i)), AmountInGwei = 1 })
             .ToArray();
 
-    private static Task<Block?> BuildBlock(MergeTestBlockchain chain, Withdrawal[] withdrawals, bool slotNumber = true)
+    private static Task<Block?> BuildBlock(MergeTestBlockchain chain, Withdrawal[] withdrawals, bool slotNumber = true) =>
+        chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: Attributes(chain, withdrawals, slotNumber));
+
+    private static PayloadAttributes Attributes(MergeTestBlockchain chain, Withdrawal[] withdrawals, bool slotNumber = true)
     {
         BlockHeader head = chain.BlockTree.Head!.Header;
-        PayloadAttributes payloadAttributes = new()
+        return new()
         {
             Timestamp = head.Timestamp + 12,
             PrevRandao = TestItem.KeccakH,
@@ -274,7 +305,6 @@ public class BlockAccessListItemBudgetTests(bool parallel) : BaseEngineModuleTes
             SlotNumber = slotNumber ? head.SlotNumber + 1 : null,
             TargetGasLimit = head.GasLimit
         };
-        return chain.BlockProducer!.BuildBlock(head, payloadAttributes: payloadAttributes);
     }
 
     /// <summary>Re-executes a produced block through the node's own newPayload, which checks the item limit.</summary>
