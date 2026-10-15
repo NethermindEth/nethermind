@@ -102,6 +102,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             // execution-apis paris.md engine_forkchoiceUpdatedV1: the EL may stay ahead of a VALID ancestor head, so it is not rewound to one.
             if (blockTree.FindHeader(finalizedExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is { } finalized && finalized.Number <= currentHead.Number)
             {
+                if (_logger.IsDebug) _logger.Debug($"Forkchoice head {requestedHead.Number} ({headExecHash.ToShortString()}) is a canonical ancestor of execution head {currentHead.Number}; keeping the execution head");
                 headExecHash = currentHead.Hash!;
             }
         }
