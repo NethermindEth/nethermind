@@ -1308,7 +1308,7 @@ public class BlockchainBridgeTests
 
         List<ulong> executedGasLimits = [];
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.SkipValidationAndCommit | ExecutionOptions.EnforceNonceLimit)
+        processor.Trace(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
             .Returns(ci =>
             {
                 Transaction tx = ci.Arg<Transaction>();
@@ -1352,7 +1352,7 @@ public class BlockchainBridgeTests
 
         List<ulong> executedGasLimits = [];
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.SkipValidationAndCommit | ExecutionOptions.EnforceNonceLimit)
+        processor.Trace(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
             .Returns(ci =>
             {
                 Transaction tx = ci.Arg<Transaction>();
@@ -1414,23 +1414,6 @@ public class BlockchainBridgeTests
         InvalidTransactionException exception = Assert.Throws<InvalidTransactionException>(
             () => adapter.PrepareForInclusionCheck(explicitGas, ulong.MaxValue))!;
         Assert.That(exception.Reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
-    }
-
-    [Test]
-    public void Simulate_adapter_passes_nonce_policy_through_processor_interface([Values] bool validate, [Values] bool enforceNonceLimit)
-    {
-        Transaction transaction = Build.A.Transaction.WithGasLimit(21_000).TestObject;
-        SimulateRequestState state = new() { Validate = validate, TotalGasLeft = 100_000, BlockGasLeft = 100_000 };
-        state.Calls = [new() { HadGasLimitInRequest = true, EnforceNonceLimit = enforceNonceLimit, Transaction = transaction }];
-        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        SimulateTransactionProcessorAdapter adapter = new(processor, state);
-        using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(transaction);
-
-        ExecuteWithReceiptsTracer(adapter, receiptsTracer, transaction);
-
-        ExecutionOptions expected = validate ? ExecutionOptions.Commit : ExecutionOptions.SkipValidationAndCommit;
-        if (!validate && enforceNonceLimit) expected |= ExecutionOptions.EnforceNonceLimit;
-        processor.Received(1).Process(transaction, Arg.Any<ITxTracer>(), expected);
     }
 
     // With validation, EIP-8037 reserves at most TX_MAX_GAS_LIMIT of execution gas, so a full cap left in the execution

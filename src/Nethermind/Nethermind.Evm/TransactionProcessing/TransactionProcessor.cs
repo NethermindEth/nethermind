@@ -1337,7 +1337,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         $"nonce too low: address {sender}, tx: {tx.Nonce} state: {nonce}");
             }
 
-            if (nonce == ulong.MaxValue && !validate && opts.HasFlag(ExecutionOptions.EnforceNonceLimit))
+            if (nonce == ulong.MaxValue && IsNonStrictSimulation(opts))
             {
                 TraceLogInvalidTx(tx, "NONCE_OVERFLOW");
                 return TransactionResult.NonceOverflow;

@@ -72,7 +72,6 @@ public class SimulateTxExecutor<TTrace>(
                             HadGasLimitInRequest = hadGasLimitInRequest,
                             // The block checks the gas as requested, before the conversion clamped it to the RPC gas cap.
                             GasLimitToFitBlock = !callSemantics && hadGasLimitInRequest ? asLegacy!.Gas : null,
-                            EnforceNonceLimit = !callSemantics,
                             HadNonceInRequest = hadNonceInRequest,
                             Transaction = tx
                         };
