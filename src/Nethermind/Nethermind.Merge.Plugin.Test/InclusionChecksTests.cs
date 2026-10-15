@@ -79,9 +79,10 @@ public class InclusionChecksTests
 
     /// <summary>bogota.md § Deferred inclusion checking: past capacity a check for a finalized or pruned block goes
     /// first, then a pending one, and a completed verdict for an unfinalized block only when nothing else is left.</summary>
-    [TestCase(null, "pending", TestName = "Pending check is evicted before an unfinalized verdict")]
-    [TestCase(1UL, "finalized", TestName = "Verdict at or below the finalized block is evicted before a pending check")]
-    public async Task Eviction_keeps_unfinalized_verdicts(ulong? finalizedNumber, string expectedEvicted)
+    [TestCase(null, 2UL, "pending", TestName = "Pending check is evicted before an unfinalized verdict")]
+    [TestCase(1UL, 2UL, "finalized", TestName = "Verdict at or below the finalized block is evicted before a pending check")]
+    [TestCase(0UL, 0UL, "pending", TestName = "Check added at or below the finalized block does not evict itself")]
+    public async Task Eviction_keeps_unfinalized_verdicts(ulong? finalizedNumber, ulong addedNumber, string expectedEvicted)
     {
         TaskCompletionSource<bool?> never = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IInclusionListComplianceEvaluator evaluator = Substitute.For<IInclusionListComplianceEvaluator>();
@@ -100,7 +101,7 @@ public class InclusionChecksTests
             checks.Start(id, Payload(2), Lists(), []);
             await PollAsync(checks, id);
         }
-        checks.Start(TestItem.KeccakA, Payload(2), Lists(), []);
+        checks.Start(TestItem.KeccakA, Payload(addedNumber), Lists(), []);
 
         using (Assert.EnterMultipleScope())
         {

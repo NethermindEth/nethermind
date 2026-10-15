@@ -103,8 +103,9 @@ public sealed class InclusionChecks(IInclusionListComplianceEvaluator evaluator,
         Check? oldestPending = null;
         foreach (Check check in _order)
         {
+            if (ReferenceEquals(check, added)) continue;
             if (check.BlockNumber <= finalizedNumber) return check;
-            if (check.Current is null && !ReferenceEquals(check, added)) oldestPending ??= check;
+            if (check.Current is null) oldestPending ??= check;
         }
         return oldestPending ?? _order.First!.Value;
     }
