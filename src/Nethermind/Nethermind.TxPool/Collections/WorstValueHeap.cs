@@ -9,11 +9,9 @@ namespace Nethermind.TxPool.Collections;
 
 /// <summary>A max-heap of each bucket's worst value, indexed so any member can be removed or re-sifted in place.</summary>
 /// <remarks>
-/// Replaces a sorted set whose every change of a bucket's worst value freed one tree node and allocated another; the
-/// heap's arrays only grow. <see cref="Max"/> agrees with the sorted set's maximum because the comparer is a strict
-/// total order (the pool comparer ends in a hash tie-break, without which the set would also reject distinct equal
-/// values). A member's ordering inputs may change only between its lookup and <see cref="Update"/>, as the set
-/// required them to change only while the member was removed.
+/// The heap's arrays only grow, so steady-state churn allocates nothing. <see cref="Max"/> is well defined because the
+/// comparer is a strict total order (the pool comparer ends in a hash tie-break). A member's ordering inputs may change
+/// only immediately before <see cref="Update"/>.
 /// </remarks>
 internal sealed class WorstValueHeap<TValue, TKey>(IComparer<TValue> comparer)
 {
@@ -78,12 +76,16 @@ internal sealed class WorstValueHeap<TValue, TKey>(IComparer<TValue> comparer)
             slot = parent;
         }
 
+        // An unmoved item's slot is already recorded, so skip the dictionary write.
+        if (slot == start) return false;
+
         Place(item, slot);
-        return slot != start;
+        return true;
     }
 
     private void SiftDown(int slot)
     {
+        int start = slot;
         (TValue Value, TKey Key) item = _heap[slot];
         while (true)
         {
@@ -96,7 +98,7 @@ internal sealed class WorstValueHeap<TValue, TKey>(IComparer<TValue> comparer)
             slot = child;
         }
 
-        Place(item, slot);
+        if (slot != start) Place(item, slot);
     }
 
     private void Move(int from, int to) => Place(_heap[from], to);
