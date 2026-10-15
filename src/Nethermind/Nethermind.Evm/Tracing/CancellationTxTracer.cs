@@ -435,6 +435,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
+    /// <inheritdoc/>
     public void ReportActionErrorDetails(string error)
     {
         token.ThrowIfCancellationRequested();
