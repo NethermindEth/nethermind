@@ -46,22 +46,22 @@ public sealed class NewPayloadWithWitnessHandler(
                 payload.ParentBeaconBlockRoot,
                 payload.ExecutionRequests));
 
-    /// <remarks>Inclusion-list compliance is not part of the witness contract, so the V5 response shape is
-    /// kept and callers read compliance for this head off <c>engine_forkchoiceUpdatedV5</c>.</remarks>
+    /// <remarks>Inclusion is not part of the witness contract, so the V5 response shape is kept. The inclusion check is
+    /// still scheduled, and its identifier is a function of the request alone, so it can be polled through
+    /// <c>engine_getInclusionListVerdictV1</c>.</remarks>
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(InclusionListExecutionPayloadParams request) =>
         HandleAsync(
             request,
             nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6),
-            async (module, payload) =>
+            static async (module, payload) =>
             {
                 ResultWrapper<PayloadStatusV2> result = await module.engine_newPayloadV6(
                     payload.ExecutionPayload,
                     payload.BlobVersionedHashes!,
                     payload.ParentBeaconBlockRoot,
                     payload.ExecutionRequests,
-                    payload.InclusionListTransactions,
-                    request.InclusionListMembership,
-                    request.InclusionListClaims);
+                    payload.InclusionLists,
+                    payload.OmissionClaims);
                 return ResultWrapper<PayloadStatusV1>.From(result);
             });
 

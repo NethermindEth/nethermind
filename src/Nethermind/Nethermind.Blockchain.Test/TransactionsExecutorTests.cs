@@ -674,8 +674,8 @@ namespace Nethermind.Blockchain.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(blockToProduce.Transactions, Is.Empty);
-                Assert.That(blockToProduce.InclusionListClaims ?? [],
-                    claimed ? Is.EqualTo(new[] { new InclusionListClaim(candidate.Hash, 0) }) : Is.Empty);
+                Assert.That(blockToProduce.OmissionClaims ?? [],
+                    claimed ? Is.EqualTo(new[] { new OmissionClaim(candidate.Hash, 0) }) : Is.Empty);
             }
         }
 

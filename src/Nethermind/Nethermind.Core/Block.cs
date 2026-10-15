@@ -139,17 +139,12 @@ public class Block
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
 
-    /// <summary>One <see cref="InclusionListMembership"/> mask per entry of <see cref="InclusionListTransactions"/>,
-    /// or <c>null</c> when the list arrived without one and its provenance is unknown (EIP-8369).</summary>
+    /// <summary>The EIP-7805 omission claims a build committed to for the inclusion-list entries it omitted.</summary>
     [JsonIgnore]
-    public ushort[]? InclusionListMembership { get; set; }
-
-    /// <summary>The builder's EIP-8369 claimed evaluation indices for omitted inclusion-list entries.</summary>
-    [JsonIgnore]
-    public InclusionListClaim[]? InclusionListClaims { get; set; }
+    public OmissionClaim[]? OmissionClaims { get; set; }
 
     /// <summary>The EIP-8037 execution and state gas the block used before each of its transactions, as its execution
-    /// recorded them, so a later inclusion-list check can fit an EIP-8369 claim exactly; <c>null</c> when not recorded.</summary>
+    /// recorded them, so a later inclusion check can fit an omission claim exactly; <c>null</c> when not recorded.</summary>
     [JsonIgnore]
     public (ulong Execution, ulong State)[]? GasUsedBeforeTransactions { get; set; }
 

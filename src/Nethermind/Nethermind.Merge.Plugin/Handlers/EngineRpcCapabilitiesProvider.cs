@@ -136,6 +136,8 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getInclusionListV1), SszRestPaths.GetInclusionList, GateWithWarn(spec.IsEip7805Enabled));
         Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5), SszRestPaths.PostForkchoice, GateWithWarn(spec.IsEip7805Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7805Enabled));
+        // JSON-RPC only: polling a verdict carries a single hash, which gains nothing from an SSZ-REST endpoint.
+        jsonLocal[nameof(IEngineRpcModule.engine_getInclusionListVerdictV1)] = GateWithWarn(spec.IsEip7805Enabled);
 
         json = jsonLocal;
         ssz = sszLocal;

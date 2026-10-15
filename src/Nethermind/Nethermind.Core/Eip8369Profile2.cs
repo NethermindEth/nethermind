@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Core;
@@ -43,7 +42,10 @@ public enum Profile2Exclusion : byte
 public static class Eip8369Profile2
 {
     /// <summary>Whether EIP-7805's Profile 2 is active: it needs EIP-8141, EIP-8250 and EIP-8272 beside inclusion lists.</summary>
-    /// <remarks>Once it is, an omitted transaction outside both profiles, a blob transaction among them, is excused.</remarks>
+    /// <remarks>EIP-7805 activates both profiles with FOCIL and requires these EIPs for that activation, so the
+    /// conjunction only matters for a chain that schedules inclusion lists without frames, which keeps the original
+    /// Profile 1 rule. Once Profile 2 is active, an omitted transaction outside both profiles, a blob transaction among
+    /// them, is excused.</remarks>
     public static bool IsActive(IReleaseSpec spec) =>
         spec.InclusionListsEnabled && spec.IsEip8141Enabled && spec.IsEip8250Enabled && spec.IsEip8272Enabled;
 
@@ -86,8 +88,7 @@ public static class Eip8369Profile2
     /// entry that is no Profile 2 candidate, statically invalid or costlier than the remaining budget is skipped
     /// without a debit; otherwise the signature cost is debited, and the prefix cost too once the signatures verify.
     /// An entry is admitted when any list admits it, so one list exhausting its own budget cannot excuse another's.
-    /// Taking each member's occurrences rather than a wire layout keeps the fill independent of how the engine
-    /// API conveys membership. An entry carried by several members is verified once, however many lists carry it.
+    /// An entry carried by several positions is verified once, however many lists carry it, but debited by each.
     /// </remarks>
     /// <param name="inclusionLists">Each committee member's occurrences, in the order the fill processes them.</param>
     /// <param name="maxVerifyGasPerTx"><c>MAX_VERIFY_GAS_PER_TX</c>; <c>0</c> lifts the cap.</param>

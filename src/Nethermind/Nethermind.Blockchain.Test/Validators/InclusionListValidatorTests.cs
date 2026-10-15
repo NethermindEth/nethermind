@@ -76,8 +76,8 @@ public class InclusionListValidatorTests
         }
     }
 
-    /// <summary>Before Profile 2 is active an omitted frame transaction is excused, as before this change: membership
-    /// and claims have no effect, and nothing is replayed or signature-checked.</summary>
+    /// <summary>Before Profile 2 is active an omitted frame transaction is excused, as before this change: committee
+    /// positions and claims have no effect, and nothing is replayed or signature-checked.</summary>
     [TestCase(10_000_000_000_000_000_000UL, 0UL, TestName = "Before Profile 2 an omitted frame tx is excused despite a claim")]
     [TestCase(1UL, 1UL, TestName = "Before Profile 2 an omitted frame tx is excused whatever its sender's state")]
     public void Frame_tx_omission_is_excused_before_profile_2(ulong senderBalance, ulong senderNonce)
@@ -85,11 +85,11 @@ public class InclusionListValidatorTests
         // Without EIP-8250 a frame transaction still carries the scalar account nonce.
         Transaction candidate = Candidate(1, 100_000);
         candidate.NonceKeys = null;
-        Block block = Profile2Block([candidate], blockTxCount: 3, claims: [new(candidate.Hash!, 1)]);
+        Profile2Case profile2 = Profile2Block([candidate], blockTxCount: 3, claims: [new(candidate.Hash!, 1)]);
         FakeReplayer replayer = new((_, _) => true);
 
-        bool result = InclusionListValidator.IsSatisfied(block, block.InclusionListTransactions, StateWith(TestItem.AddressA, senderBalance, senderNonce),
-            _preProfile2Spec, _txValidator, ilMembership: block.InclusionListMembership, claims: block.InclusionListClaims, replayer: replayer);
+        bool result = InclusionListValidator.IsSatisfied(profile2.Block, profile2.Lists!, StateWith(TestItem.AddressA, senderBalance, senderNonce),
+            _preProfile2Spec, _txValidator, Eip8369Constants.MaxVerifyGasPerTx, profile2.Claims, replayer);
 
         using (Assert.EnterMultipleScope())
         {
@@ -297,9 +297,8 @@ public class InclusionListValidatorTests
             .WithTransactions(blockTxs)
             .WithInclusionListTransactions(il)
             .TestObject;
-        // Admission is by hash and by membership, so every entry gets a hash and sits at position 0.
+        // Admission is by hash and by committee position, so every entry gets a hash and sits at position 0.
         for (int i = 0; i < il.Length; i++) il[i].Hash ??= Keccak.Compute($"frame-case-{i}");
-        block.InclusionListMembership = [.. Enumerable.Repeat((ushort)1, il.Length)];
         IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
         IReadOnlyStateProvider state = StateWith((TestItem.AddressA, senderBalance, 0), (TestItem.AddressB, payerBalance, 0));
 
@@ -310,7 +309,7 @@ public class InclusionListValidatorTests
                 if (tx.SupportsFrames)
                     Assert.That((bool)_txValidator.IsWellFormed(tx, spec, block.GasLimit), Is.EqualTo(wellFormed));
 
-            Assert.That(InclusionListValidator.IsSatisfied(block, state, spec, _txValidator, maxVerifyGasPerTx), Is.EqualTo(satisfied));
+            Assert.That(InclusionListValidator.IsSatisfied(block, AtPositions(il), state, spec, _txValidator, maxVerifyGasPerTx, claims: null), Is.EqualTo(satisfied));
         }
     }
 
@@ -322,7 +321,8 @@ public class InclusionListValidatorTests
             SelfVerify(),
             new(FrameMode.Default, FrameFlags.None, TestItem.AddressC, 50_000, 200_000, UInt256.Zero, default),
         ]), "state-reservation");
-        Block block = Profile2Block([candidate], blockTxCount: 0);
+        Profile2Case profile2 = Profile2Block([candidate], blockTxCount: 0);
+        Block block = profile2.Block;
         IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(candidate, spec, out _, out ulong stateReservation), Is.True);
         ulong stateUsed = block.GasLimit - stateReservation + excess;
@@ -330,7 +330,7 @@ public class InclusionListValidatorTests
         block.Header.GasUsedPerDimension = (28_000_000, stateUsed);
         Assert.That((bool)_txValidator.IsWellFormed(candidate, spec, block.GasLimit), Is.True);
 
-        return IsSatisfied(block, new FakeReplayer((_, _) => true));
+        return IsSatisfied(profile2, new FakeReplayer((_, _) => true));
     }
 
     private static readonly Transaction _candidate = Candidate(1, 100_000);
@@ -343,7 +343,7 @@ public class InclusionListValidatorTests
         get
         {
             const int end = 3;
-            static TestCaseData Case(string name, InclusionListClaim[]? claims, int[] eligibleAt, bool satisfied, int[] replayedAt) =>
+            static TestCaseData Case(string name, OmissionClaim[]? claims, int[] eligibleAt, bool satisfied, int[] replayedAt) =>
                 new(claims, eligibleAt, satisfied, replayedAt) { TestName = name };
             Hash256 hash = _candidate.Hash!;
 
@@ -373,9 +373,9 @@ public class InclusionListValidatorTests
 
     [TestCaseSource(nameof(ClaimCases))]
     public void Profile_2_omission_is_judged_at_the_resolved_evaluation_index(
-        InclusionListClaim[]? claims, int[] eligibleAt, bool satisfied, int[] replayedAt)
+        OmissionClaim[]? claims, int[] eligibleAt, bool satisfied, int[] replayedAt)
     {
-        Block block = Profile2Block([_candidate], blockTxCount: 3, claims: claims);
+        Profile2Case block = Profile2Block([_candidate], blockTxCount: 3, claims: claims);
         FakeReplayer replayer = new((_, index) => System.Array.IndexOf(eligibleAt, index) >= 0);
 
         using (Assert.EnterMultipleScope())
@@ -392,7 +392,7 @@ public class InclusionListValidatorTests
     public void Claim_is_ignored_outside_an_omitted_candidate(bool included)
     {
         Transaction entry = included ? _candidate : WithHash(BuildFrameTx([Body(50_000)]), "non-candidate");
-        Block block = Profile2Block([entry], blockTxCount: 3, claims: [new(entry.Hash!, 1)], included: included ? [entry] : []);
+        Profile2Case block = Profile2Block([entry], blockTxCount: 3, claims: [new(entry.Hash!, 1)], included: included ? [entry] : []);
         FakeReplayer replayer = new((_, _) => true);
 
         using (Assert.EnterMultipleScope())
@@ -402,7 +402,7 @@ public class InclusionListValidatorTests
         }
     }
 
-    /// <summary>EIP-8369 § Includers: the VERIFY budget filled per committee position, in ascending hash order.
+    /// <summary>EIP-7805 § VERIFY budget: the budget filled per committee position, in ascending hash order.
     /// Only the named candidate is eligible, so whether its omission is excused is the fill's verdict alone. A
     /// candidate's order argument is the leading byte of its hash, which fixes where the fill takes it.</summary>
     public static IEnumerable<TestCaseData> BudgetCases
@@ -410,8 +410,8 @@ public class InclusionListValidatorTests
         get
         {
             static TestCaseData Case(string name, Transaction[][] lists, Transaction candidate, bool satisfied,
-                bool withMembership = true, Transaction? badSignature = null) =>
-                new(lists, withMembership, candidate, badSignature, satisfied) { TestName = name };
+                bool separate = true, Transaction? badSignature = null) =>
+                new(lists, separate, candidate, badSignature, satisfied) { TestName = name };
 
             // 1-of-N: pooled into one budget, the stuffed position's 1,040,000 would leave the honest one 8,576.
             Transaction honest = Candidate(5, 100_000);
@@ -423,7 +423,8 @@ public class InclusionListValidatorTests
             Transaction first = filler[0];
             Transaction second = Candidate(5, 250_000);
             yield return Case("Candidate over its own position's remaining budget is excused", [[.. filler, second]], second, true);
-            yield return Case("A list without membership admits no candidate", [[first]], first, true, withMembership: false);
+            yield return Case("A flat list has no committee position to admit a candidate", [[first]], first, true, separate: false);
+            yield return Case("A duplicate in one list is debited once", [[.. filler[..3], first, second]], second, false);
             yield return Case("The fill takes a position's entries by hash, not by arrival", [[second, .. filler]], second, true);
             yield return Case("Candidate carried at several positions is enforced when any admits it",
                 [[.. filler, second], [second]], second, false);
@@ -458,27 +459,31 @@ public class InclusionListValidatorTests
 
     [TestCaseSource(nameof(BudgetCases))]
     public void Profile_2_verify_budget_is_filled_per_committee_position(
-        Transaction[][] lists, bool withMembership, Transaction candidate, Transaction? badSignature, bool satisfied)
+        Transaction[][] lists, bool separate, Transaction candidate, Transaction? badSignature, bool satisfied)
     {
-        (Transaction[] il, ushort[] membership) = Membership(lists);
-        Block block = Profile2Block(il, blockTxCount: 0, membership: membership);
-        if (!withMembership) block.InclusionListMembership = null;
+        Profile2Case block = Profile2Block(lists, blockTxCount: 0);
+        if (!separate) block = block with { Lists = null };
         FakeReplayer replayer = new((tx, _) => ReferenceEquals(tx, candidate), tx => !ReferenceEquals(tx, badSignature));
 
         Assert.That(IsSatisfied(block, replayer), Is.EqualTo(satisfied));
     }
 
-    /// <summary>A membership that is not one mask per entry attributes nothing, so no candidate is admitted.</summary>
-    [TestCase(false, false, TestName = "Aligned membership admits the candidate")]
-    [TestCase(true, true, TestName = "Misaligned membership admits nothing")]
-    public void Misaligned_membership_admits_nothing(bool truncate, bool satisfied)
+    /// <summary>EIP-7805 § Separate inclusion lists: a validator at several positions has the same list at each, and
+    /// each identical fill has its own budget without multiplying anyone's.</summary>
+    [Test]
+    public void Identical_lists_at_several_positions_fill_independently()
     {
-        Transaction first = Candidate(1, 100_000);
-        Transaction second = Candidate(2, 100_000);
-        (Transaction[] il, ushort[] membership) = Membership([[first, second]]);
-        Block block = Profile2Block(il, blockTxCount: 0, membership: truncate ? membership[..1] : membership);
+        Transaction[] filler = [Candidate(1, 200_000), Candidate(2, 200_000), Candidate(3, 200_000), Candidate(4, 200_000)];
+        Transaction over = Candidate(5, 250_000);
+        Transaction[] list = [.. filler, over];
 
-        Assert.That(IsSatisfied(block, new FakeReplayer((tx, _) => ReferenceEquals(tx, second))), Is.EqualTo(satisfied));
+        using (Assert.EnterMultipleScope())
+        {
+            // Over its list's remaining budget at every position, so repeating the list admits it nowhere.
+            Assert.That(IsSatisfied(Profile2Block([list, list, list], blockTxCount: 0), new FakeReplayer((tx, _) => ReferenceEquals(tx, over))), Is.True);
+            // Within budget at one position of its own, so the stuffed copies elsewhere cannot excuse it.
+            Assert.That(IsSatisfied(Profile2Block([list, list, [over]], blockTxCount: 0), new FakeReplayer((tx, _) => ReferenceEquals(tx, over))), Is.False);
+        }
     }
 
     /// <summary>An entry carried at every committee position is verified once, not once per position.</summary>
@@ -487,10 +492,9 @@ public class InclusionListValidatorTests
     {
         Transaction signed = Candidate(1, 100_000, signatures: 1);
         Transaction[][] lists = [.. Enumerable.Repeat(new[] { signed, Candidate(2, 100_000) }, Eip7805Constants.InclusionListCommitteeSize)];
-        (Transaction[] il, ushort[] membership) = Membership(lists);
         FakeReplayer replayer = new((_, _) => false);
 
-        IsSatisfied(Profile2Block(il, blockTxCount: 0, membership: membership), replayer);
+        IsSatisfied(Profile2Block(lists, blockTxCount: 0), replayer);
 
         // Both entries sit at all 16 positions: 2 verifications, not 32.
         Assert.That(replayer.SignatureChecks, Is.EqualTo(2));
@@ -502,8 +506,7 @@ public class InclusionListValidatorTests
     public void Candidates_are_replayed_in_one_batch()
     {
         Transaction[] candidates = [Candidate(1, 100_000), Candidate(2, 100_000), Candidate(3, 100_000)];
-        (Transaction[] il, ushort[] membership) = Membership([candidates]);
-        Block block = Profile2Block(il, blockTxCount: 3, membership: membership,
+        Profile2Case block = Profile2Block(candidates, blockTxCount: 3,
             claims: [new(candidates[0].Hash!, 0), new(candidates[1].Hash!, 2)]);
         FakeReplayer replayer = new((_, _) => false);
 
@@ -521,27 +524,27 @@ public class InclusionListValidatorTests
     [TestCase(false, true, TestName = "Without per-transaction gas a claim is judged on the whole block's gas")]
     public void Claimed_candidate_fits_the_gas_used_before_its_index(bool withGasUsedBefore, bool satisfied)
     {
-        Block block = Profile2Block([_candidate], blockTxCount: 3, claims: [new(_candidate.Hash!, 1)]);
+        Profile2Case profile2 = Profile2Block([_candidate], blockTxCount: 3, claims: [new(_candidate.Hash!, 1)]);
+        Block block = profile2.Block;
         block.Header.GasUsed = block.GasLimit;
         block.Header.GasUsedPerDimension = (block.GasLimit, block.GasLimit);
         (ulong, ulong)[] gasUsedBefore = [(0, 0), (21_000, 0), (block.GasLimit - 21_000, 0)];
         FakeReplayer replayer = new((_, index) => index == 1);
 
-        bool result = InclusionListValidator.IsSatisfied(block, block.InclusionListTransactions, StateWith(TestItem.AddressA, 10.Ether, 0),
-            _frameSpecProvider.GetSpec(block.Header), _txValidator, ilMembership: block.InclusionListMembership, claims: block.InclusionListClaims,
-            replayer: replayer, gasUsedBefore: withGasUsedBefore ? gasUsedBefore : null);
+        bool result = IsSatisfied(profile2, replayer, withGasUsedBefore ? gasUsedBefore : null);
 
         Assert.That(result, Is.EqualTo(satisfied));
     }
 
-    /// <summary>The checker records the gas used before each transaction on the suggested block, which a resend
-    /// under other claims is then fit against without re-executing.</summary>
+    /// <summary>The checker records the gas used before each transaction on the suggested block, whether or not it
+    /// carries a list, which a deferred inclusion check then fits claims against without re-executing.</summary>
     [Test]
     public void Satisfaction_checker_records_the_gas_used_before_each_transaction()
     {
-        Block processed = Profile2Block([], blockTxCount: 2);
+        Block processed = Profile2Block(Array.Empty<Transaction>(), blockTxCount: 2).Block;
         processed.Header.GasUsedPerDimension = (30_000, 5_000);
-        Block suggested = Profile2Block([], blockTxCount: 2);
+        Block suggested = Profile2Block(Array.Empty<Transaction>(), blockTxCount: 2).Block;
+        suggested.InclusionListTransactions = null;
         TxReceipt[] receipts = [new() { BlockGasUsed = 21_000, StorageGasUsed = 5_000 }, new() { BlockGasUsed = 9_000 }];
         InclusionListSatisfactionChecker checker = new(_frameSpecProvider, _txValidator, new Nethermind.Config.BlocksConfig());
 
@@ -554,7 +557,7 @@ public class InclusionListValidatorTests
     [TestCase(30_001UL, 5_000UL, false, TestName = "Receipts not adding up to the block's gas give nothing")]
     public void Gas_used_before_each_transaction_comes_from_consistent_receipts(ulong totalExecution, ulong totalState, bool consistent)
     {
-        Block block = Profile2Block([], blockTxCount: 2);
+        Block block = Profile2Block(Array.Empty<Transaction>(), blockTxCount: 2).Block;
         block.Header.GasUsedPerDimension = (totalExecution, totalState);
         TxReceipt[] receipts = [new() { BlockGasUsed = 21_000, StorageGasUsed = 5_000 }, new() { BlockGasUsed = 9_000 }];
 
@@ -563,26 +566,12 @@ public class InclusionListValidatorTests
         Assert.That(before, consistent ? Is.EqualTo(new (ulong, ulong)[] { (0, 0), (21_000, 5_000) }) : Is.Null);
     }
 
-    /// <summary>Deduplicates committee positions' lists into one list and a membership mask per entry.</summary>
-    private static (Transaction[] Il, ushort[] Membership) Membership(Transaction[][] lists)
+    /// <summary>Pads <paramref name="lists"/> with empty lists to one per committee position.</summary>
+    private static Transaction[][] AtPositions(params Transaction[][] lists)
     {
-        List<Transaction> il = [];
-        List<ushort> masks = [];
-        for (int position = 0; position < lists.Length; position++)
-        {
-            foreach (Transaction tx in lists[position])
-            {
-                int index = il.IndexOf(tx);
-                if (index < 0)
-                {
-                    il.Add(tx);
-                    masks.Add(0);
-                    index = il.Count - 1;
-                }
-                masks[index] |= (ushort)(1 << position);
-            }
-        }
-        return ([.. il], [.. masks]);
+        Transaction[][] positions = new Transaction[Eip7805Constants.InclusionListCommitteeSize][];
+        for (int position = 0; position < positions.Length; position++) positions[position] = position < lists.Length ? lists[position] : [];
+        return positions;
     }
 
     private sealed class FakeReplayer(Func<Transaction, int, bool> eligible, Func<Transaction, bool>? signaturesValid = null)
@@ -613,25 +602,38 @@ public class InclusionListValidatorTests
         }
     }
 
-    private static bool IsSatisfied(Block block, IProfile2EligibilityReplayer replayer) =>
-        InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _frameSpecProvider.GetSpec(block.Header), _txValidator, replayer: replayer);
+    /// <summary>A block with the separate lists and claims it is checked against; <c>null</c> lists check it against
+    /// its flat <see cref="Block.InclusionListTransactions"/> instead.</summary>
+    private sealed record Profile2Case(Block Block, Transaction[][]? Lists, OmissionClaim[]? Claims);
 
-    private static Block Profile2Block(Transaction[] il, int blockTxCount, InclusionListClaim[]? claims = null, ushort[]? membership = null, Transaction[]? included = null)
+    private static bool IsSatisfied(Profile2Case profile2, IProfile2EligibilityReplayer replayer, (ulong, ulong)[]? gasUsedBefore = null)
+    {
+        IReleaseSpec spec = _frameSpecProvider.GetSpec(profile2.Block.Header);
+        IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, 0);
+        return profile2.Lists is { } lists
+            ? InclusionListValidator.IsSatisfied(profile2.Block, lists, state, spec, _txValidator, Eip8369Constants.MaxVerifyGasPerTx, profile2.Claims, replayer, gasUsedBefore)
+            : InclusionListValidator.IsSatisfied(profile2.Block, profile2.Block.InclusionListTransactions, state, spec, _txValidator, replayer: replayer);
+    }
+
+    /// <summary>A block omitting <paramref name="il"/>, which sits at committee position 0.</summary>
+    private static Profile2Case Profile2Block(Transaction[] il, int blockTxCount, OmissionClaim[]? claims = null, Transaction[]? included = null) =>
+        Profile2Block([il], blockTxCount, claims, included);
+
+    /// <summary>A block omitting <paramref name="lists"/>, one per committee position from position 0.</summary>
+    private static Profile2Case Profile2Block(Transaction[][] lists, int blockTxCount, OmissionClaim[]? claims = null, Transaction[]? included = null)
     {
         List<Transaction> blockTxs = [.. included ?? []];
         for (int i = blockTxs.Count; i < blockTxCount; i++)
             blockTxs.Add(BuildTx(nonce: (ulong)i + 10, to: TestItem.AddressB));
 
+        Transaction[][] positions = AtPositions(lists);
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
             .WithTransactions([.. blockTxs])
-            .WithInclusionListTransactions(il)
+            .WithInclusionListTransactions(InclusionLists.Distinct(positions))
             .TestObject;
-        // Every entry at committee position 0 unless the case says otherwise.
-        block.InclusionListMembership = membership ?? [.. Enumerable.Repeat((ushort)1, il.Length)];
-        block.InclusionListClaims = claims;
-        return block;
+        return new Profile2Case(block, positions, claims);
     }
 
     /// <param name="order">The hash's leading byte, which places the candidate in a position's fill order.</param>

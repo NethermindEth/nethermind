@@ -187,6 +187,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<NewPayloadHandler>()
                 .Bind<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
                 .Bind<IInclusionListComplianceEvaluator, NewPayloadHandler>()
+                .AddSingleton<IInclusionChecks, InclusionChecks>()
                 .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV1Handler, GetPayloadBodiesByRangeV1Handler>()

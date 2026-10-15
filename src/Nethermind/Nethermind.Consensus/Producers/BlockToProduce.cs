@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.Producers
 
         public long TxByteLength { get; internal set; }
 
-        /// <summary>Hashes of the EIP-8369 Profile 2 candidates in the build's inclusion list, each of which the
+        /// <summary>Hashes of the Profile 2 candidates in the build's inclusion lists that some position admits, each of which the
         /// build answers with a claim when it fails to append one; <c>null</c> when there are none.</summary>
         public IReadOnlySet<Hash256AsKey>? InclusionListCandidates { get; set; }
 

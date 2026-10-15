@@ -28,13 +28,13 @@ public class InclusionListTxSource(
     private readonly Lazy<InclusionListDecoder> _decoder = new(() => new InclusionListDecoder(ecdsa, specProvider, logManager));
     private readonly ILogger _logger = logManager.GetClassLogger<InclusionListTxSource>();
 
-    // Keyed by the build's PayloadAttributes array so a concurrent FCU can't leak another build's IL;
+    // Keyed by the build's PayloadAttributes array so a concurrent FCU can't leak another build's lists;
     // weak keys collect with the build.
-    private readonly ConditionalWeakTable<byte[][], Lazy<DecodedInclusionList>> _decodedByAttributes = [];
+    private readonly ConditionalWeakTable<byte[][][], Lazy<DecodedInclusionLists>> _decodedByAttributes = [];
 
-    /// <summary>A build's list decoded twice over: ordered for production, and in list order beside the
-    /// membership masks the EIP-8369 budget fill reads, which stay aligned after undecodable entries are dropped.</summary>
-    private sealed record DecodedInclusionList(Transaction[] ForProduction, Transaction[] InListOrder, ushort[]? Masks, IReleaseSpec Spec)
+    /// <summary>A build's lists decoded twice over: as one deduplicated sequence ordered for production, and
+    /// position by position for the per-IL VERIFY budget fill.</summary>
+    private sealed record DecodedInclusionLists(Transaction[] ForProduction, Transaction[][] ByPosition, IReleaseSpec Spec)
     {
         /// <summary>The fill under the cap it ran with; every improvement of one build asks again.</summary>
         public (ulong MaxVerifyGasPerTx, IReadOnlySet<Hash256AsKey>? Candidates)? Profile2Candidates;
@@ -42,12 +42,11 @@ public class InclusionListTxSource(
 
     // gasLimit is ignored: the downstream tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
-        => TryGetDecoded(payloadAttributes, out DecodedInclusionList? decoded) ? decoded.ForProduction : [];
+        => TryGetDecoded(payloadAttributes, out DecodedInclusionLists? decoded) ? decoded.ForProduction : [];
 
     public IReadOnlySet<Hash256AsKey>? GetProfile2Candidates(PayloadAttributes? payloadAttributes, ulong maxVerifyGasPerTx)
     {
-        // Without membership no committee position carries an entry, so none is admitted (EIP-7805 as amended).
-        if (!TryGetDecoded(payloadAttributes, out DecodedInclusionList? decoded) || decoded.Masks is not { } masks) return null;
+        if (!TryGetDecoded(payloadAttributes, out DecodedInclusionLists? decoded)) return null;
         if (decoded.Profile2Candidates is { } cached && cached.MaxVerifyGasPerTx == maxVerifyGasPerTx) return cached.Candidates;
 
         IReleaseSpec spec = decoded.Spec;
@@ -56,22 +55,21 @@ public class InclusionListTxSource(
         Func<Transaction, bool> signaturesValid = profile2Replayer is not null
             ? tx => profile2Replayer.AreSignaturesValid(tx, spec)
             : tx => Profile2EligibilityReplayer.AreSignaturesValid(tx, ecdsa, spec);
-        HashSet<Hash256AsKey> admitted = Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(decoded.InListOrder, masks), maxVerifyGasPerTx, signaturesValid,
+        HashSet<Hash256AsKey> admitted = Eip8369Profile2.AdmitByVerifyBudget(InclusionLists.InFillOrder(decoded.ByPosition), maxVerifyGasPerTx, signaturesValid,
             tx => InclusionListValidator.Profile2StaticChecks.IsWellFormed(tx, spec));
         IReadOnlySet<Hash256AsKey>? candidates = admitted.Count > 0 ? admitted : null;
         decoded.Profile2Candidates = (maxVerifyGasPerTx, candidates);
         return candidates;
     }
 
-    private bool TryGetDecoded(PayloadAttributes? payloadAttributes, [NotNullWhen(true)] out DecodedInclusionList? decoded)
+    private bool TryGetDecoded(PayloadAttributes? payloadAttributes, [NotNullWhen(true)] out DecodedInclusionLists? decoded)
     {
         decoded = null;
-        if (payloadAttributes?.InclusionListTransactions is not { Length: > 0 } il) return false;
-        if (!_decodedByAttributes.TryGetValue(il, out Lazy<DecodedInclusionList>? lazy))
+        if (payloadAttributes?.InclusionLists is not { } inclusionLists || IsEmpty(inclusionLists)) return false;
+        if (!_decodedByAttributes.TryGetValue(inclusionLists, out Lazy<DecodedInclusionLists>? lazy))
         {
-            // A miss means Set was never called for these attributes, e.g. an oversized IL that
-            // engine_forkchoiceUpdatedV5 already warned about; debug-level as this runs once per improvement.
-            if (_logger.IsDebug) _logger.Debug($"No inclusion list for this build ({il.Length} entries) — building without it.");
+            // A miss means Set was never called for these attributes; debug-level as this runs once per improvement.
+            if (_logger.IsDebug) _logger.Debug("No inclusion lists for this build — building without them.");
             return false;
         }
 
@@ -82,30 +80,29 @@ public class InclusionListTxSource(
         }
         catch (Exception ex) when (ex is RlpException or ArgumentException)
         {
-            // Lazy caches the failure, so a malformed list is reported once per build, not per improvement.
-            if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}); building without it.");
+            // Lazy caches the failure, so malformed lists are reported once per build, not per improvement.
+            if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion lists ({ex.GetType().Name}: {ex.Message}); building without them.");
             return false;
         }
+    }
+
+    private static bool IsEmpty(byte[][][] inclusionLists)
+    {
+        foreach (byte[][]? inclusionList in inclusionLists)
+            if (inclusionList is { Length: > 0 }) return false;
+        return true;
     }
 
     /// <inheritdoc/>
     /// <remarks>Decoding and sender recovery are deferred to the first <see cref="GetTransactions"/> call, so
     /// a forkchoice update that never starts a build pays nothing.</remarks>
-    public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec, byte[][]? inclusionListMembership = null)
-        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions,
-            new Lazy<DecodedInclusionList>(() => Decode(inclusionListTransactions, spec, inclusionListMembership)));
-
-    private DecodedInclusionList Decode(byte[][] inclusionListTransactions, IReleaseSpec spec, byte[][]? inclusionListMembership)
-    {
-        if (inclusionListMembership is null || InclusionListMembership.Validate(inclusionListTransactions, inclusionListMembership) is not null)
-        {
-            Transaction[] flat = _decoder.Value.DecodeAndRecover(inclusionListTransactions, spec);
-            return new DecodedInclusionList(OrderForProduction(FilterBlobs([.. flat])), flat, null, spec);
-        }
-
-        (Transaction[] decoded, ushort[] masks) = _decoder.Value.DecodeAndRecover(inclusionListTransactions, inclusionListMembership, spec);
-        return new DecodedInclusionList(OrderForProduction(FilterBlobs([.. decoded])), decoded, masks, spec);
-    }
+    public void Set(byte[][][] inclusionLists, IReleaseSpec spec)
+        => _decodedByAttributes.AddOrUpdate(inclusionLists,
+            new Lazy<DecodedInclusionLists>(() =>
+            {
+                Transaction[][] byPosition = _decoder.Value.DecodeAndRecover(inclusionLists, spec);
+                return new DecodedInclusionLists(OrderForProduction(FilterBlobs(InclusionLists.Distinct(byPosition))), byPosition, spec);
+            }));
 
     // The producer offers each IL tx once, so a shuffled IL would skip a nonce that arrives after its
     // dependent. Ordering by first-appearance rather than address avoids favouring low-address senders.

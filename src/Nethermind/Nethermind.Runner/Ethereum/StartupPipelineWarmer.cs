@@ -509,11 +509,19 @@ internal static class StartupPipelineWarmer
         ExecutionPayload payload = spec.IsEip7928Enabled
             ? ExecutionPayloadV4.Create(block) : ExecutionPayloadV3.Create(block);
         object[] parameters = spec.IsEip7805Enabled
-            ? [payload, Array.Empty<Hash256>(), Keccak.Zero, Array.Empty<byte[]>(), Array.Empty<byte[]>()]
+            ? [payload, Array.Empty<Hash256>(), Keccak.Zero, Array.Empty<byte[]>(), EmptyInclusionLists(), Array.Empty<OmissionClaim>()]
             : spec.RequestsEnabled
             ? [payload, Array.Empty<Hash256>(), Keccak.Zero, Array.Empty<byte[]>()]
             : spec.IsEip4844Enabled ? [payload, Array.Empty<Hash256>(), Keccak.Zero] : [payload];
         return (method, parameters);
+    }
+
+    /// <summary>One empty list per EIP-7805 committee position, as <c>engine_newPayloadV6</c> requires.</summary>
+    private static byte[][][] EmptyInclusionLists()
+    {
+        byte[][][] inclusionLists = new byte[Eip7805Constants.InclusionListCommitteeSize][][];
+        Array.Fill(inclusionLists, []);
+        return inclusionLists;
     }
 
     private static async Task SendForkchoiceUpdatedAsync(HttpClient client, EthereumJsonSerializer serializer, string address, Block block, IReleaseSpec spec, CancellationToken cancellationToken)

@@ -39,7 +39,7 @@ internal static class GetPayloadDirectResponseWriter
         CancellationToken cancellationToken) =>
         WriteAsync(writer, block, blockValue, blobsBundle, executionRequests, shouldOverrideBuilder, includeV6Fields: true, cancellationToken);
 
-    /// <summary>The V6 response plus the builder's EIP-8369 inclusion-list claims.</summary>
+    /// <summary>The V6 response plus the build's EIP-7805 omission claims.</summary>
     public static ValueTask WriteV7Async(
         PipeWriter writer,
         Block block,
@@ -47,9 +47,9 @@ internal static class GetPayloadDirectResponseWriter
         BlobsBundleV2 blobsBundle,
         byte[][]? executionRequests,
         bool shouldOverrideBuilder,
-        InclusionListClaim[] inclusionListClaims,
+        OmissionClaim[] omissionClaims,
         CancellationToken cancellationToken) =>
-        WriteAsync(writer, block, blockValue, blobsBundle, executionRequests, shouldOverrideBuilder, includeV6Fields: true, cancellationToken, inclusionListClaims);
+        WriteAsync(writer, block, blockValue, blobsBundle, executionRequests, shouldOverrideBuilder, includeV6Fields: true, cancellationToken, omissionClaims);
 
     private static async ValueTask WriteAsync(
         PipeWriter writer,
@@ -60,7 +60,7 @@ internal static class GetPayloadDirectResponseWriter
         bool shouldOverrideBuilder,
         bool includeV6Fields,
         CancellationToken cancellationToken,
-        InclusionListClaim[]? inclusionListClaims = null)
+        OmissionClaim[]? omissionClaims = null)
     {
         writer.Write("{\"blockValue\":"u8);
         HexWriter.WriteUInt256HexString(writer, blockValue);
@@ -88,24 +88,24 @@ internal static class GetPayloadDirectResponseWriter
             }
         }
 
-        if (inclusionListClaims is not null)
+        if (omissionClaims is not null)
         {
-            WriteInclusionListClaims(writer, inclusionListClaims);
+            WriteOmissionClaims(writer, omissionClaims);
         }
 
         writer.Write("}"u8);
     }
 
-    private static void WriteInclusionListClaims(IBufferWriter<byte> writer, InclusionListClaim[] claims)
+    private static void WriteOmissionClaims(IBufferWriter<byte> writer, OmissionClaim[] claims)
     {
-        writer.Write(",\"inclusionListClaims\":["u8);
+        writer.Write(",\"omissionClaims\":["u8);
         for (int i = 0; i < claims.Length; i++)
         {
             if (i > 0) writer.Write(","u8);
             writer.Write("{\"transactionHash\":"u8);
             WriteHexString(writer, claims[i].TransactionHash.Bytes, chunked: false);
-            writer.Write(",\"transactionIndex\":"u8);
-            HexWriter.WriteUlongHexString(writer, claims[i].TransactionIndex);
+            writer.Write(",\"evaluationIndex\":"u8);
+            HexWriter.WriteUlongHexString(writer, claims[i].EvaluationIndex);
             writer.Write("}"u8);
         }
         writer.Write("]"u8);

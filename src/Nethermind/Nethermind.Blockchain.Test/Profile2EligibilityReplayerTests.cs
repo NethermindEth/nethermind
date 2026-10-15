@@ -112,6 +112,47 @@ public class Profile2EligibilityReplayerTests
         Assert.That(IsEligible(replayer, ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0), Is.EqualTo(eligible));
     }
 
+    public enum DeployFactory { Contract, Codeless, Delegated }
+
+    /// <summary>EIP-7805 replay: the deploy frame's factory is a dependency of the deployment, so it must be a contract
+    /// whose code no authority can change. A delegated factory CREATEs the same sender as the contract it delegates to,
+    /// so only the factory rule tells them apart.</summary>
+    [TestCase(DeployFactory.Contract, true, TestName = "Deploy frame through a contract factory is eligible")]
+    [TestCase(DeployFactory.Codeless, false, TestName = "Deploy frame through a codeless factory is ineligible")]
+    [TestCase(DeployFactory.Delegated, false, TestName = "Deploy frame through a delegated factory is ineligible")]
+    public async Task Deploy_frame_factory_must_be_an_undelegated_contract(DeployFactory kind, bool eligible)
+    {
+        Address factory = TestItem.AddressE;
+        Address delegate_ = TestItem.AddressF;
+        Address deployed = ContractAddress.From(factory, 0);
+        byte[] approve = [(byte)Instruction.PUSH1, (byte)FrameFlags.ApproveExecutionAndPayment, (byte)Instruction.PUSH1, 0, (byte)Instruction.PUSH1, 0, (byte)Instruction.APPROVE];
+        byte[] create = Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(approve).Done, 0).Done;
+        using BasicTestBlockchain chain = await CreateChain([], worldState =>
+        {
+            worldState.CreateAccount(deployed, 10.Ether);
+            switch (kind)
+            {
+                case DeployFactory.Contract:
+                    worldState.CreateAccount(factory, 0);
+                    worldState.InsertCode(factory, create, Spec);
+                    break;
+                case DeployFactory.Delegated:
+                    worldState.CreateAccount(delegate_, 0);
+                    worldState.InsertCode(delegate_, create, Spec);
+                    worldState.CreateAccount(factory, 0);
+                    worldState.InsertCode(factory, (byte[])[.. Eip7702Constants.DelegationHeader, .. delegate_.Bytes], Spec);
+                    break;
+            }
+        });
+        IProfile2EligibilityReplayer replayer = chain.Container.Resolve<IProfile2EligibilityReplayer>();
+
+        Transaction tx = FrameTx();
+        tx.SenderAddress = deployed;
+        tx.Frames = [new TxFrame(FrameMode.Default, FrameFlags.None, factory, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default), .. tx.Frames!];
+
+        Assert.That(IsEligible(replayer, ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0), Is.EqualTo(eligible));
+    }
+
     /// <summary>With no access list there is no state to reconstruct, and EIP-8369 makes that no excuse.</summary>
     [Test]
     public async Task A_block_without_an_access_list_leaves_the_candidate_enforced()

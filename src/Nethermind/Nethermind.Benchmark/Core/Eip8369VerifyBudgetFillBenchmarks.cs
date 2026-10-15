@@ -18,7 +18,7 @@ using Nethermind.Specs.Forks;
 namespace Nethermind.Benchmarks.Core;
 
 /// <summary>
-/// The EIP-8369 per-IL VERIFY budget fill at its most signature-heavy: all 16 committee positions filled to
+/// The EIP-7805 per-IL VERIFY budget fill at its most signature-heavy: all 16 committee positions filled to
 /// <c>MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST</c> with the smallest frame transactions that carry one
 /// signature, each verifying in full and then failing, so the fill debits only the signature cost.
 /// </summary>
@@ -31,9 +31,9 @@ public class Eip8369VerifyBudgetFillBenchmarks
     private static readonly IReleaseSpec Spec = new Specs.Test.OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true };
     private readonly EthereumEcdsa _ecdsa = new(BlockchainIds.Mainnet);
 
-    private (Transaction[] Transactions, ushort[] Masks) _distinctSecp256k1;
-    private (Transaction[] Transactions, ushort[] Masks) _sharedSecp256k1;
-    private (Transaction[] Transactions, ushort[] Masks) _distinctP256;
+    private Transaction[][] _distinctSecp256k1 = [];
+    private Transaction[][] _sharedSecp256k1 = [];
+    private Transaction[][] _distinctP256 = [];
 
     [GlobalSetup]
     public void Setup()
@@ -41,7 +41,7 @@ public class Eip8369VerifyBudgetFillBenchmarks
         _distinctSecp256k1 = Fill(Secp256k1Signature, distinct: true);
         _sharedSecp256k1 = Fill(Secp256k1Signature, distinct: false);
         _distinctP256 = Fill(P256Signature, distinct: true);
-        Console.WriteLine($"// entries: distinct secp256k1 {_distinctSecp256k1.Transactions.Length}, shared secp256k1 {_sharedSecp256k1.Transactions.Length}, distinct P256 {_distinctP256.Transactions.Length}");
+        Console.WriteLine($"// entries: distinct secp256k1 {InclusionLists.Distinct(_distinctSecp256k1).Length}, shared secp256k1 {InclusionLists.Distinct(_sharedSecp256k1).Length}, distinct P256 {InclusionLists.Distinct(_distinctP256).Length}");
     }
 
     [Benchmark(Baseline = true)]
@@ -53,24 +53,24 @@ public class Eip8369VerifyBudgetFillBenchmarks
     [Benchmark]
     public int P256_distinct_at_every_position() => Run(_distinctP256);
 
-    private int Run((Transaction[] Transactions, ushort[] Masks) il) =>
-        Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(il.Transactions, il.Masks), Eip8369Constants.MaxVerifyGasPerTx,
+    private int Run(Transaction[][] inclusionLists) =>
+        Eip8369Profile2.AdmitByVerifyBudget(InclusionLists.InFillOrder(inclusionLists), Eip8369Constants.MaxVerifyGasPerTx,
             tx => Profile2EligibilityReplayer.AreSignaturesValid(tx, _ecdsa, Spec)).Count;
 
-    /// <summary>Fills every position to its byte cap, with fresh entries per position or one set for all.</summary>
-    private static (Transaction[] Transactions, ushort[] Masks) Fill(Func<ulong, TxFrameSignature> signature, bool distinct)
+    /// <summary>Fills every position to its byte cap, with fresh entries per position or one list for all.</summary>
+    private static Transaction[][] Fill(Func<ulong, TxFrameSignature> signature, bool distinct)
     {
-        List<Transaction> transactions = [];
-        List<ushort> masks = [];
+        Transaction[][] inclusionLists = new Transaction[Eip7805Constants.InclusionListCommitteeSize][];
         ulong nonce = 0;
-        for (int position = 0; position < Eip7805Constants.InclusionListCommitteeSize; position++)
+        for (int position = 0; position < inclusionLists.Length; position++)
         {
             if (!distinct && position > 0)
             {
-                for (int i = 0; i < masks.Count; i++) masks[i] |= (ushort)(1 << position);
+                inclusionLists[position] = inclusionLists[0];
                 continue;
             }
 
+            List<Transaction> transactions = [];
             int bytes = 0;
             while (true)
             {
@@ -80,10 +80,10 @@ public class Eip8369VerifyBudgetFillBenchmarks
                 bytes += encoded.Length;
                 tx.Hash = Keccak.Compute(encoded);
                 transactions.Add(tx);
-                masks.Add((ushort)(1 << position));
             }
+            inclusionLists[position] = [.. transactions];
         }
-        return ([.. transactions], [.. masks]);
+        return inclusionLists;
     }
 
     private static Transaction FrameTx(ulong nonce, Func<ulong, TxFrameSignature> signature) => new()

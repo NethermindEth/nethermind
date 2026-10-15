@@ -8,17 +8,15 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Transactions;
 
-/// <summary>Feeds the inclusion list supplied by <c>engine_forkchoiceUpdatedV5</c> into block production (EIP-7805).</summary>
+/// <summary>Feeds the inclusion lists supplied by <c>engine_forkchoiceUpdatedV5</c> into block production (EIP-7805).</summary>
 public interface IInclusionListTxSource : ITxSource
 {
-    /// <summary>Retains the list for the build identified by the <paramref name="inclusionListTransactions"/>
-    /// array instance, which is the key <c>GetTransactions</c> looks it up by.</summary>
-    /// <param name="inclusionListMembership">One well-formed membership entry per transaction, or <c>null</c>
-    /// when none was sent (EIP-8369).</param>
-    void Set(byte[][] inclusionListTransactions, IReleaseSpec spec, byte[][]? inclusionListMembership = null);
+    /// <summary>Retains the separate lists for the build identified by the <paramref name="inclusionLists"/>
+    /// array instance, which is the key <c>GetTransactions</c> looks them up by.</summary>
+    /// <param name="inclusionLists">One structurally valid list per committee position (<see cref="Core.InclusionLists"/>).</param>
+    void Set(byte[][][] inclusionLists, IReleaseSpec spec);
 
-    /// <summary>The build's EIP-8369 Profile 2 candidates that an omission would leave enforceable, so the
-    /// build answers each it fails to append with a claim; <c>null</c> when there are none.</summary>
-    /// <remarks>With a membership only the entries the per-IL VERIFY budget fill admits qualify.</remarks>
+    /// <summary>The build's Profile 2 candidates that some committee position's VERIFY budget fill admits, so the
+    /// build answers each it fails to append with an omission claim; <c>null</c> when there are none.</summary>
     IReadOnlySet<Hash256AsKey>? GetProfile2Candidates(PayloadAttributes? payloadAttributes, ulong maxVerifyGasPerTx);
 }

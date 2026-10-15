@@ -11,12 +11,13 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>The <c>engine_getPayloadV7</c> response: the V6 response plus the builder's EIP-8369 claims.</summary>
+/// <summary>The <c>engine_getPayloadV7</c> response: the V6 response plus the build's EIP-7805 omission claims.</summary>
 public class GetPayloadV7Result(Block block, UInt256 blockFees, BlobsBundleV2 blobsBundle, byte[][] executionRequests, bool shouldOverrideBuilder)
     : GetPayloadV6Result(block, blockFees, blobsBundle, executionRequests, shouldOverrideBuilder)
 {
-    /// <summary>The claimed evaluation index of every omitted Profile 2 candidate the build tried to append.</summary>
-    public InclusionListClaim[] InclusionListClaims => Block.InclusionListClaims ?? [];
+    /// <summary>An omission claim for each admitted Profile 2 candidate the build found invalid where it tried to
+    /// append it, at most <see cref="Eip8369Constants.MaxOmissionClaims"/>.</summary>
+    public OmissionClaim[] OmissionClaims => Block.OmissionClaims ?? [];
 
     public override bool ValidateFork(ISpecProvider specProvider) => specProvider.GetSpec(Block.Number, Block.Timestamp).IsEip7805Enabled;
 }
@@ -25,5 +26,5 @@ public sealed class GetPayloadV7DirectResponse(Block block, UInt256 blockFees, B
     : GetPayloadV7Result(block, blockFees, blobsBundle, executionRequests, shouldOverrideBuilder), IStreamableResult
 {
     public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
-        GetPayloadDirectResponseWriter.WriteV7Async(writer, Block, BlockValue, BlobsBundle, ExecutionRequests, ShouldOverrideBuilder, InclusionListClaims, cancellationToken);
+        GetPayloadDirectResponseWriter.WriteV7Async(writer, Block, BlockValue, BlobsBundle, ExecutionRequests, ShouldOverrideBuilder, OmissionClaims, cancellationToken);
 }

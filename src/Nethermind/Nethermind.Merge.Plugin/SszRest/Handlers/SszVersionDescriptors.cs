@@ -94,7 +94,7 @@ public readonly struct NewPayloadWithWitnessDescriptorV6 : INewPayloadWithWitnes
     {
         ExecutionPayloadV4 ep = wire.ExecutionPayload.AsExecutionPayload();
         return engine.engine_newPayloadWithWitnessV6(ep, SszCodec.GetBlobVersionedHashes(ep), wire.ParentBeaconBlockRoot, wire.ExecutionRequests.ToExecutionRequests(),
-            wire.InclusionListTransactions.ToExecutionRequests(), wire.InclusionListMembership.ToMembership() ?? [], wire.InclusionListClaims.ToClaims());
+            wire.InclusionLists.ToInclusionLists(), wire.OmissionClaims.ToClaims());
     }
 }
 
@@ -166,6 +166,20 @@ public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion
         return engine.engine_forkchoiceUpdatedV4(state, attrs, custody);
     }
     public static ulong? GetTimestamp(in ForkchoiceUpdatedRequestWire wire) =>
+        ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
+}
+
+public readonly struct ForkchoiceUpdatedDescriptorV5 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV5RequestWire>
+{
+    public static int VersionNumber => EngineApiVersions.Fcu.V5;
+    public static Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Call(IEngineRpcModule engine, in ForkchoiceUpdatedV5RequestWire wire)
+    {
+        ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(wire.ForkchoiceState);
+        PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
+        BitArray? custody = wire.CustodyColumns is { Length: > 0 } c ? c[0].Bits : null;
+        return engine.engine_forkchoiceUpdatedV5(state, attrs, custody);
+    }
+    public static ulong? GetTimestamp(in ForkchoiceUpdatedV5RequestWire wire) =>
         ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
 }
 

@@ -29,9 +29,8 @@ public sealed class NewPayloadV6SszHandler(IEngineRpcModule engineModule) : SszE
             SszCodec.GetBlobVersionedHashes(ep),
             wire.ParentBeaconBlockRoot,
             wire.ExecutionRequests.ToExecutionRequests(),
-            wire.InclusionListTransactions.ToExecutionRequests(),
-            wire.InclusionListMembership.ToMembership() ?? [],
-            wire.InclusionListClaims.ToClaims());
+            wire.InclusionLists.ToInclusionLists(),
+            wire.OmissionClaims.ToClaims());
         await WriteSszResultAsync(ctx, result, SszCodec.EncodePayloadStatusV2);
     }
 }

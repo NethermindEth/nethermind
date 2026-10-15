@@ -9,7 +9,7 @@ namespace Nethermind.Core;
 /// </summary>
 /// <remarks>
 /// EIP-8369 is Informational and leaves its budget caps to the Standards Track EIP that enforces them; EIP-7805
-/// § Profile 2 inclusion claims and per IL budgets fixes the values here. <c>IBlocksConfig.FocilProfile2MaxVerifyGas</c>
+/// § Profile 2 omission claims and per IL budgets fixes the values here. <c>IBlocksConfig.FocilProfile2MaxVerifyGas</c>
 /// is the operator-facing mirror, as <c>ITxPoolConfig.FrameTxMaxVerifyGas</c> is for EIP-8141's own cap.
 /// </remarks>
 public static class Eip8369Constants
@@ -32,6 +32,6 @@ public static class Eip8369Constants
     /// <summary><c>MAX_REPLAY_CODE_BYTES</c>: the combined size of the distinct code bodies one Profile 2 replay may load.</summary>
     public const long MaxReplayCodeBytes = 1L << 17;
 
-    /// <summary><c>MAX_INCLUSION_LIST_CLAIMS</c>: the builder claims one payload may carry.</summary>
-    public const int MaxInclusionListClaims = 1 << 12;
+    /// <summary><c>MAX_OMISSION_CLAIMS</c>: the omission claims one payload may carry.</summary>
+    public const int MaxOmissionClaims = 1 << 12;
 }

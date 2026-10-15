@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Processing;
 
 /// <inheritdoc cref="IProfile2EligibilityReplayer"/>
 /// <remarks>
-/// EIP-8369 § Attesters: state at the evaluation index is the parent state plus the EIP-7928 access list's
+/// EIP-7805 § Profile 2 predicates: state at the evaluation index is the parent state plus the EIP-7928 access list's
 /// changes before that index, pre-execution system updates included. The changes are written into a
 /// throwaway env opened at the parent, then the validation prefix runs under the Profile 2 trace rules.
 /// <see cref="BlockAccessListBasedWorldState"/> is not reused: it rejects every account the list omits,

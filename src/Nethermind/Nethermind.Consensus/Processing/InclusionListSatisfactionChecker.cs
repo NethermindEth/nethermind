@@ -17,16 +17,18 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
     public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState, TxReceipt[] receipts)
     {
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
-        // P2P-decoded blocks legitimately have null IL; IsSatisfied treats null as "not applicable".
-        if (suggestedBlock.InclusionListTransactions is null) return true;
-
-        // A claim before the end of the payload needs the gas used before its index; recorded on the suggested block
-        // too, so a resend under other claims is judged on the same gas without re-executing. Claims only count once Profile 2 is active.
+        // An omission claim before the end of the payload is fit against the gas used before its index, which only
+        // execution records. The deferred inclusion check reads it off the suggested block, so it is recorded whether
+        // or not this block carries a list. Claims only count once Profile 2 is active.
         (ulong Execution, ulong State)[]? gasUsedBefore = Eip8369Profile2.IsActive(spec)
             ? InclusionListValidator.GasUsedBeforeEachTransaction(processedBlock, receipts)
             : null;
         suggestedBlock.GasUsedBeforeTransactions = gasUsedBefore;
+
+        // P2P-decoded blocks legitimately have null IL; IsSatisfied treats null as "not applicable".
+        if (suggestedBlock.InclusionListTransactions is null) return true;
+
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec, txValidator, blocksConfig.FocilProfile2MaxVerifyGas,
-            suggestedBlock.InclusionListMembership, suggestedBlock.InclusionListClaims, profile2Replayer, gasUsedBefore);
+            profile2Replayer);
     }
 }

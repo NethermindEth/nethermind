@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -35,28 +36,35 @@ public class InclusionListDecoder(
         return txs;
     }
 
-    /// <inheritdoc cref="DecodeAndRecover(byte[][], IReleaseSpec)"/>
-    /// <param name="membership">One well-formed <see cref="InclusionListMembership"/> entry per transaction.</param>
-    public (Transaction[] Transactions, ushort[] Masks) DecodeAndRecover(byte[][] txBytes, byte[][] membership, IReleaseSpec spec)
+    /// <summary>Decodes each committee position's list and recovers the senders, tolerating entries that are neither.</summary>
+    /// <remarks>As <see cref="DecodeAndRecover(byte[][], IReleaseSpec)"/>, list by list, so each decoded list can be
+    /// shorter than its input. Envelopes repeated across positions share one decoded transaction, whose sender is
+    /// recovered and whose signatures are verified once however many lists carry it.</remarks>
+    public Transaction[][] DecodeAndRecover(byte[][][] inclusionLists, IReleaseSpec spec)
     {
-        (Transaction[] txs, ushort[] masks) = DecodeWithMembership(txBytes, membership);
-        _recoverSignatures.RecoverData(txs, spec, skipErrors: true);
-        return (txs, masks);
+        Transaction[][] decoded = DecodeLists(inclusionLists);
+        _recoverSignatures.RecoverData(InclusionLists.Distinct(decoded), spec, skipErrors: true);
+        return decoded;
     }
 
-    /// <summary>Decodes the list beside its membership, dropping an undecodable entry's mask with it so the two stay aligned.</summary>
-    /// <param name="membership">One well-formed <see cref="InclusionListMembership"/> entry per transaction.</param>
-    public static (Transaction[] Transactions, ushort[] Masks) DecodeWithMembership(byte[][] txBytes, byte[][] membership)
+    /// <summary>Decodes each committee position's list, dropping undecodable entries and sharing one transaction
+    /// per hash across positions.</summary>
+    public static Transaction[][] DecodeLists(byte[][][] inclusionLists)
     {
-        List<Transaction> txs = new(txBytes.Length);
-        List<ushort> masks = new(txBytes.Length);
-        for (int i = 0; i < txBytes.Length; i++)
+        Dictionary<Hash256AsKey, Transaction> byHash = [];
+        Transaction[][] decoded = new Transaction[inclusionLists.Length][];
+        for (int position = 0; position < inclusionLists.Length; position++)
         {
-            if (TxsDecoder.DecodeTxs([txBytes[i]], skipErrors: true).Transactions is not [Transaction tx]) continue;
-            txs.Add(tx);
-            masks.Add(InclusionListMembership.ToMask(membership[i]));
+            Transaction[] transactions = TxsDecoder.DecodeTxs(inclusionLists[position] ?? [], skipErrors: true).Transactions;
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                if (transactions[i].Hash is not { } hash) continue;
+                if (byHash.TryGetValue(hash, out Transaction? shared)) transactions[i] = shared;
+                else byHash[hash] = transactions[i];
+            }
+            decoded[position] = transactions;
         }
-        return ([.. txs], [.. masks]);
+        return decoded;
     }
 
     private static byte[] Encode(Transaction transaction)

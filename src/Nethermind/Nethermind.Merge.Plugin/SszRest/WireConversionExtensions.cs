@@ -81,27 +81,27 @@ internal static class WireConversionExtensions
         return result;
     }
 
-    public static byte[][]? ToMembership(this SszInclusionListMembership[]? membership)
+    public static byte[][][]? ToInclusionLists(this SszInclusionList[]? inclusionLists)
     {
-        if (membership is null) return null;
-        byte[][] result = new byte[membership.Length][];
-        for (int i = 0; i < membership.Length; i++) result[i] = membership[i].Bits ?? [];
+        if (inclusionLists is null) return null;
+        byte[][][] result = new byte[inclusionLists.Length][][];
+        for (int i = 0; i < inclusionLists.Length; i++) result[i] = inclusionLists[i].Transactions.ToExecutionRequests() ?? [];
         return result;
     }
 
-    public static InclusionListClaim[]? ToClaims(this InclusionListClaimWire[]? claims)
+    public static OmissionClaim[]? ToClaims(this OmissionClaimWire[]? claims)
     {
         if (claims is null) return null;
-        InclusionListClaim[] result = new InclusionListClaim[claims.Length];
-        for (int i = 0; i < claims.Length; i++) result[i] = new InclusionListClaim(claims[i].TransactionHash, claims[i].TransactionIndex);
+        OmissionClaim[] result = new OmissionClaim[claims.Length];
+        for (int i = 0; i < claims.Length; i++) result[i] = new OmissionClaim(claims[i].TransactionHash, claims[i].EvaluationIndex);
         return result;
     }
 
-    public static InclusionListClaimWire[] ToWire(this InclusionListClaim[] claims)
+    public static OmissionClaimWire[] ToWire(this OmissionClaim[] claims)
     {
-        InclusionListClaimWire[] result = new InclusionListClaimWire[claims.Length];
+        OmissionClaimWire[] result = new OmissionClaimWire[claims.Length];
         for (int i = 0; i < claims.Length; i++)
-            result[i] = new InclusionListClaimWire { TransactionHash = claims[i].TransactionHash, TransactionIndex = claims[i].TransactionIndex };
+            result[i] = new OmissionClaimWire { TransactionHash = claims[i].TransactionHash, EvaluationIndex = claims[i].EvaluationIndex };
         return result;
     }
 
