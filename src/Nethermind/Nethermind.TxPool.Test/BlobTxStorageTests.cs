@@ -212,7 +212,6 @@ public class BlobTxStorageTests
     [TestCase(1, true)]
     [TestCase(2, true)]
     [TestCase(3, false)]
-    [TestCase(-1, false)]
     public void TryGetProcessedTransaction_should_read_the_row_at_the_stored_position(int position, bool expectedHit)
     {
         BlobTxStorage storage = new();
@@ -273,7 +272,7 @@ public class BlobTxStorageTests
         SaveProcessed(storage, 359, second);
         ProcessedBlobTxKey[] keys =
         [
-            new(359, 0), new(358, 5), new(358, 1), new(360, 0), new(358, -1), new(358, 0)
+            new(359, 0), new(358, 5), new(358, 1), new(360, 0), new(358, 0)
         ];
         Transaction[] results = new Transaction[keys.Length];
         results[1] = first[0];
@@ -283,9 +282,9 @@ public class BlobTxStorageTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(found, Is.EqualTo(3));
-            Assert.That(results.Select(static tx => tx is not null), Is.EqualTo(new[] { true, false, true, false, false, true }));
+            Assert.That(results.Select(static tx => tx is not null), Is.EqualTo(new[] { true, false, true, false, true }));
         }
-        AssertNetworkWrappersEqual([second[0], first[1], first[0]], [results[0], results[2], results[5]]);
+        AssertNetworkWrappersEqual([second[0], first[1], first[0]], [results[0], results[2], results[4]]);
     }
 
     [Test]

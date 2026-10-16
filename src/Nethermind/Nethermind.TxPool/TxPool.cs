@@ -719,6 +719,7 @@ namespace Nethermind.TxPool
             if (!TryGetIncludedBlob(blobVersionedHash, ProofVersion.V1, out ShardBlobNetworkWrapper? wrapper, out int blobIndex)
                 || !BlobTxDistinctSortedPool.TryBuildBlobCellsAndProofsResponse(
                     [new BlobTxDistinctSortedPool.BlobCellsCandidate(wrapper, blobIndex)], requestedMask, out availableMask, out cells, out proofs)
+                // Never null on success; TryBuildBlobCellsAndProofsResponse does not annotate its outs, so these satisfy the [NotNullWhen] contract.
                 || cells is null
                 || proofs is null)
             {
@@ -1441,9 +1442,10 @@ namespace Nethermind.TxPool
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Failed to save {blobTxsToSave.Count} processed blob txs of block {block.Number}; they cannot be re-added on a reorg: {e.Message}");
+                // The head loop logs the rethrown exception, so the context travels in its message instead of a second log line.
                 _includedBlobLocations?.Record(block.Number, block.Hash, []);
-                return ExceptionDispatchInfo.Capture(e);
+                return ExceptionDispatchInfo.Capture(new InvalidOperationException(
+                    $"Failed to save {blobTxsToSave.Count} processed blob txs of block {block.Number}; they cannot be re-added on a reorg.", e));
             }
 
             _includedBlobLocations?.Record(block.Number, block.Hash, blobTxsToSave.AsSpan());

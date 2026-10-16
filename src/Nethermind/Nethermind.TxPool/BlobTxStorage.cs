@@ -472,7 +472,6 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     bool IProcessedBlobTxStorage.TryGetProcessedTransaction(ulong blockNumber, int position, [NotNullWhen(true)] out Transaction? transaction)
     {
         transaction = null;
-        if (position < 0) return false;
 
         Span<byte> key = stackalloc byte[ProcessedTransactionKeyLength];
         WriteProcessedTransactionKey(key, blockNumber, position);
@@ -492,7 +491,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         for (int i = 0; i < keys.Length; i++)
         {
             dbKeys[i] = new byte[ProcessedTransactionKeyLength];
-            WriteProcessedTransactionKey(dbKeys[i], keys[i].BlockNumber, Math.Max(keys[i].Position, 0));
+            WriteProcessedTransactionKey(dbKeys[i], keys[i].BlockNumber, keys[i].Position);
         }
 
         KeyValuePair<byte[], byte[]?>[] dbResults = _processedBlobTxsDb[dbKeys];
@@ -500,7 +499,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         for (int i = 0; i < keys.Length; i++)
         {
             byte[]? payload = dbResults[i].Value;
-            if (keys[i].Position >= 0 && payload is not null && TryDecodeProcessedTransaction(payload, out results[i]))
+            if (payload is not null && TryDecodeProcessedTransaction(payload, out results[i]))
             {
                 found++;
             }
@@ -556,7 +555,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         return _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
     }
 
-    // A corrupt row reads as a miss so that a lock-free reader never throws on data it cannot lock against.
+    // A row that fails to decode as RLP reads as a miss, so a lock-free reader does not throw on it. Other failures still propagate.
     private static bool TryDecodeProcessedTransaction(ReadOnlySpan<byte> payload, [NotNullWhen(true)] out Transaction? transaction)
     {
         try
