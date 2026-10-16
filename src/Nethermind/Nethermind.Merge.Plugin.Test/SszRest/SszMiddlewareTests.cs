@@ -1608,6 +1608,8 @@ public class SszMiddlewareTests
             .SetName("NewPayloadWithWitness_unsupported_fork_maps_to_400"),
         new TestCaseData(ErrorCodes.InternalError, "Something exploded", StatusCodes.Status500InternalServerError, "/engine-api/errors/internal")
             .SetName("NewPayloadWithWitness_internal_error_maps_to_500"),
+        new TestCaseData(ErrorCodes.InvalidParams, "Invalid requests", StatusCodes.Status422UnprocessableEntity, "/engine-api/errors/invalid-body")
+            .SetName("NewPayloadWithWitness_invalid_params_maps_to_422"),
     ];
 
     [TestCaseSource(nameof(WitnessEngineErrorCases))]

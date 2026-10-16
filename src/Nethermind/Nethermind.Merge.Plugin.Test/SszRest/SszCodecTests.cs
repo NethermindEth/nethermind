@@ -355,6 +355,20 @@ public class SszCodecTests
             requests, executionRequest);
     }
 
+    [Test]
+    public void DecodeNewPayload_v5_keeps_empty_block_access_list_present()
+    {
+        NewPayloadV5RequestWire wire = new()
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [], slotNumber: 0)),
+            ParentBeaconBlockRoot = TestItem.KeccakD,
+        };
+
+        NewPayloadV5RequestWire.Decode(NewPayloadV5RequestWire.Encode(wire), out NewPayloadV5RequestWire decoded);
+
+        Assert.That(decoded.ExecutionPayload.AsExecutionPayload().BlockAccessList, Is.Not.Null.And.Empty);
+    }
+
     private static IEnumerable<TestCaseData> BufferConsistentEncodings()
     {
         yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
