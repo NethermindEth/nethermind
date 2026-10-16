@@ -764,6 +764,38 @@ public class ArchiveProofTests
             "the reattached child changed while the branch above it was gone; the re-formed branch's row must carry it, or the reader fills it from the row written before the collapse and has to rebuild the branch from the (here corrupt) history rows");
     }
 
+    [TestCase("12", null, true)]
+    [TestCase("1234", "1235", true)]
+    [TestCase("12", null, false)]
+    [TestCase("1234", "1235", false)]
+    public void A_composed_node_captured_at_the_tip_over_children_with_no_node_of_their_own_is_served_from_commitments_alone(string path, string? siblingPath, bool atTheTip)
+    {
+        // Depth 1 is composed from the rows of its children at depth 2. Under a leaf or an extension at depth 1 no
+        // child holds a node of its own, so the tip has to record their views, or the reader rebuilds the composed
+        // node from the (here corrupt) history rows.
+        _policy = new CommitmentDepthPolicy(CommitmentDepthPolicy.MinIntervalLog2);
+        Address proven = AddressUnder(path, 0x5000_0000);
+        List<Address> accounts = [proven, AddressUnder("7a", 0x5100_0000), AddressUnder("7b", 0x5200_0000)];
+        if (siblingPath is not null) accounts.Add(AddressUnder(siblingPath, 0x5300_0000));
+
+        ReplaceChain();
+        _chain.AddBlock(0, block =>
+        {
+            foreach (Address address in accounts) block.SetBalance(address, 100);
+        });
+        _chain.AddBlock(1, block => block.SetBalance(proven, 200));
+        _chain.PublishWatermark();
+        if (atTheTip) CaptureAtTheTip();
+        else BuildCommitments();
+
+        AccountProof expected = _chain.ExpectedProof(proven, 1);
+
+        CorruptEveryAccountRow();
+
+        Assert.That(ProveFromArchive(proven, 1).Proof, Is.EqualTo(expected.Proof),
+            "the children of the composed node at 1 hold no node of their own; their rows must carry the views under the leaf or extension there");
+    }
+
     [Test]
     public void A_storage_proof_at_a_windows_last_change_is_served_from_commitments_alone([Values(1L, 40L)] long maxRowsPerPartition)
     {
