@@ -1564,10 +1564,13 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status500InternalServerError),
-            "a witness over the SSZ bounds is a server-side failure, not a client decode error");
-        Assert.That(lifetime.RequestAborted.IsCancellationRequested, Is.False,
-            "nothing was written before the bound check, so the connection must stay open for the 500");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status500InternalServerError),
+                "a witness over the SSZ bounds is a server-side failure, not a client decode error");
+            Assert.That(lifetime.RequestAborted.IsCancellationRequested, Is.False,
+                "nothing was written before the bound check, so the connection must stay open for the 500");
+        }
     }
 
     private sealed class AbortableLifetimeFeature : IHttpRequestLifetimeFeature
