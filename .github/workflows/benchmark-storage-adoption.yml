@@ -1,5 +1,7 @@
 name: Measure storage adoption
 on:
+  push:
+    branches: [perf/storage-adoption-proof]
   workflow_dispatch:
     inputs:
       baseline_ref:
@@ -25,9 +27,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     env:
-      BASELINE_REF: ${{ inputs.baseline_ref }}
-      HISTORY_REF: ${{ inputs.history_ref }}
-      MULTIGET_REF: ${{ inputs.multiget_ref }}
+      BASELINE_REF: ${{ inputs.baseline_ref || '60518b8183ed7e0b81252edad8e48573f891dfba' }}
+      HISTORY_REF: ${{ inputs.history_ref || '5605890ee67991041ee3859b47223b49e386ed24' }}
+      MULTIGET_REF: ${{ inputs.multiget_ref || '653d85458ad61de664f00bbbfd7cacbfe8896ce7' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -40,15 +42,15 @@ jobs:
           done
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.baseline_ref }}
+          ref: ${{ inputs.baseline_ref || '60518b8183ed7e0b81252edad8e48573f891dfba' }}
           path: baseline
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.history_ref }}
+          ref: ${{ inputs.history_ref || '5605890ee67991041ee3859b47223b49e386ed24' }}
           path: history
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.multiget_ref }}
+          ref: ${{ inputs.multiget_ref || '653d85458ad61de664f00bbbfd7cacbfe8896ce7' }}
           path: multiget
       - uses: actions/setup-dotnet@v6
         with:
