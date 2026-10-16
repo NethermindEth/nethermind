@@ -42,7 +42,13 @@ public class NativeCallTracerCallFrame : IDisposable
 
     public string? RevertReason { get; set; }
 
-    public ArrayPoolList<NativeCallTracerCallFrame> Calls { get; } = new(8);
+    private ArrayPoolList<NativeCallTracerCallFrame>? _calls;
+
+    public ArrayPoolList<NativeCallTracerCallFrame> Calls => _calls ??= new(8);
+
+    internal ReadOnlySpan<NativeCallTracerCallFrame> CallsSpan => _calls is null ? [] : _calls.AsSpan();
+
+    internal bool HasCalls => _calls is not null;
 
     public ArrayPoolList<NativeCallTracerLogEntry>? Logs { get; set; }
 
@@ -79,7 +85,7 @@ public class NativeCallTracerCallFrame : IDisposable
             Return(ref _rentedInput);
             Return(ref _rentedOutput);
             Logs?.Dispose();
-            Calls.DisposeRecursive();
+            _calls?.DisposeRecursive();
         }
     }
 }
