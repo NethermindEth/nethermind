@@ -16,6 +16,12 @@ on:
         description: Exact decoded MultiGet adoption SHA
         required: true
         type: string
+      components:
+        description: Components to measure
+        required: true
+        type: choice
+        options: [blob, history, both]
+        default: blob
 permissions:
   contents: read
 jobs:
@@ -27,9 +33,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     env:
+      COMPONENTS: ${{ inputs.components || 'blob' }}
       BASELINE_REF: ${{ inputs.baseline_ref || '60518b8183ed7e0b81252edad8e48573f891dfba' }}
       HISTORY_REF: ${{ inputs.history_ref || '5605890ee67991041ee3859b47223b49e386ed24' }}
-      MULTIGET_REF: ${{ inputs.multiget_ref || '653d85458ad61de664f00bbbfd7cacbfe8896ce7' }}
+      MULTIGET_REF: ${{ inputs.multiget_ref || '1b69217753ec1f3c1e7c64c29dc7a45694ec0808' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -37,6 +44,7 @@ jobs:
       - name: Validate commit inputs
         shell: bash
         run: |
+          case "$COMPONENTS" in blob|history|both) ;; *) exit 1 ;; esac
           for sha in "$BASELINE_REF" "$HISTORY_REF" "$MULTIGET_REF"; do
             [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           done
@@ -50,7 +58,7 @@ jobs:
           path: history
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.multiget_ref || '653d85458ad61de664f00bbbfd7cacbfe8896ce7' }}
+          ref: ${{ inputs.multiget_ref || '1b69217753ec1f3c1e7c64c29dc7a45694ec0808' }}
           path: multiget
       - uses: actions/setup-dotnet@v6
         with:
@@ -82,7 +90,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for target in history:Nethermind.Db.Test history:Nethermind.State.Flat.History.Test multiget:Nethermind.Db.Test multiget:Nethermind.TxPool.Test; do
+          targets=()
+          if [[ "$COMPONENTS" != blob ]]; then
+            targets+=(history:Nethermind.Db.Test history:Nethermind.State.Flat.History.Test)
+          fi
+          if [[ "$COMPONENTS" != history ]]; then
+            targets+=(multiget:Nethermind.Db.Test multiget:Nethermind.TxPool.Test)
+          fi
+          for target in "${targets[@]}"; do
             source=${target%%:*}
             project=${target#*:}
             dotnet build "$source/src/Nethermind/$project/$project.csproj" -c Release
@@ -102,13 +117,15 @@ jobs:
             cp proof/benchmarks/storage-adoption/blob-batch/* "$source/benchmarks/blob-batch/"
           done
           mkdir -p "$RUNNER_TEMP/storage-adoption"
-      - name: Measure both changes against unchanged master in ABBA order
+      - name: Measure selected changes against unchanged master in ABBA order
         shell: bash
         env:
           BENCH_DATA: ${{ runner.temp }}/storage-adoption
         run: |
           set -euo pipefail
-          for kind in history blob; do
+          kinds=(history blob)
+          if [[ "$COMPONENTS" != both ]]; then kinds=("$COMPONENTS"); fi
+          for kind in "${kinds[@]}"; do
             round=0
             if [[ "$kind" == history ]]; then
               candidate=history

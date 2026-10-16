@@ -52,7 +52,7 @@ public class BlobBatchBenchmarks
         Directory.CreateDirectory(_root);
         DbConfig config = new();
         RocksDbConfigFactory factory = new(config, new PruningConfig(), new HardwareInfo(), LimboLogs.Instance, validateConfig: false);
-        _db = new(_root, new DbSettings("BlobTransactions", "blobs"), config, factory,
+        _db = new(_root, new DbSettings(DbNames.BlobTransactions, "blobs"), config, factory,
             LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>());
         _storage = new(_db);
         Transaction[] stored = new Transaction[Records];
