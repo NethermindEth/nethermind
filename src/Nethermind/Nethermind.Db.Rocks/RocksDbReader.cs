@@ -118,10 +118,10 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         _mainDb.ThrowIfDisposing();
         keyLength = valueLength = 0;
-        // The shared options are immutable and non-tailing. Crossing prefix buckets needs total-order options.
-        using ReadOptions? ownedOptions = _mainDb.CrossesPrefixBucket(lowerBoundInclusive, upperBoundExclusive)
-            ? _readOptionsFactory().SetTotalOrderSeek(true) : null;
-        using Iterator iterator = _mainDb.CreateIterator(ownedOptions ?? _options, _columnFamily);
+        using ReadOptions readOptions = _readOptionsFactory();
+        if (_mainDb.CrossesPrefixBucket(lowerBoundInclusive, upperBoundExclusive)) readOptions.SetTotalOrderSeek(true);
+        readOptions.SetIterateBounds(lowerBoundInclusive, upperBoundExclusive);
+        using Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
         iterator.Seek(lowerBoundInclusive);
         if (!iterator.Valid())
         {
