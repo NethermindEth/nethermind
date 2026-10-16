@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db;
 
