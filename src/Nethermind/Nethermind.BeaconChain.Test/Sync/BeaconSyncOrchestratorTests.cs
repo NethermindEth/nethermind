@@ -1431,17 +1431,27 @@ public partial class BeaconSyncOrchestratorTests
         await orchestrator.RunWorkerAsync(token);
     }
 
-    [Test]
-    public async Task Execution_layer_sees_a_head_as_catching_up_only_when_the_consensus_head_sent_is_more_than_a_slot_behind([Values(0, 1, 2)] int slotsBehind)
+    private static IEnumerable<TestCaseData> ForkchoiceHeadLags()
+    {
+        yield return new TestCaseData(0UL).Returns(false).SetArgDisplayNames("at the wall slot");
+        yield return new TestCaseData(1UL).Returns(false).SetArgDisplayNames("one slot behind");
+        // Block N at slot s, s+1 missed: at s+2 the head is (N, EMPTY), whose execution head is N's bid parent hash and must replace N's payload.
+        yield return new TestCaseData(2UL).Returns(false).SetArgDisplayNames("an EMPTY Gloas head after a missed slot");
+        yield return new TestCaseData(Spec.SlotsPerEpoch).Returns(false).SetArgDisplayNames("one epoch behind");
+        yield return new TestCaseData(Spec.SlotsPerEpoch + 1).Returns(true).SetArgDisplayNames("more than an epoch behind");
+    }
+
+    [TestCaseSource(nameof(ForkchoiceHeadLags))]
+    public async Task<bool?> Execution_layer_sees_a_head_as_catching_up_only_when_the_consensus_head_sent_is_more_than_an_epoch_behind(ulong slotsBehind)
     {
         Harness harness = CreateHarness();
         bool? catchingUpAtSend = null;
         harness.Engine.OnCall = () => catchingUpAtSend = harness.Orchestrator.IsForkchoiceHeadCatchingUp;
-        harness.Importer.Head = CreateHead(TestItem.KeccakB, WallSlot - (ulong)slotsBehind, finalizedEpoch: 3);
+        harness.Importer.Head = CreateHead(TestItem.KeccakB, WallSlot - slotsBehind, finalizedEpoch: 3);
 
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
 
-        Assert.That(catchingUpAtSend, Is.EqualTo(slotsBehind > 1), "the head being sent decides, not the one published before it");
+        return catchingUpAtSend;
     }
 
     private static Harness CreateHarness(
