@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private static void WriteActionRecursively(Utf8JsonWriter writer, ParityLikeTxTrace txTrace, ParityTraceAction action, TxTraceFilter? filter, JsonSerializerOptions options, ParityTxTraceFromStore item)
         {
-            if (!action.IncludeInTrace) return;
+            if (!action.IncludeInTrace || filter is { IsExhausted: true }) return;
 
             if (filter is null || filter.ShouldUseTxTrace(action))
             {

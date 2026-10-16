@@ -4,12 +4,13 @@
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Serialization.Json;
-using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
@@ -79,7 +80,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             {
                 write(writer);
             }
-            return System.Text.Encoding.UTF8.GetString(buffer.WrittenSpan);
+            return Encoding.UTF8.GetString(buffer.WrittenSpan);
         }
 
         private static ParityTraceAction Action(string type, Address to, int[] traceAddress, params ParityTraceAction[] subtraces)
