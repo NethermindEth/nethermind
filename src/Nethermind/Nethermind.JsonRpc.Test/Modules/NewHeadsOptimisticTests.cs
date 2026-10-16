@@ -194,11 +194,12 @@ public class NewHeadsOptimisticTests
     {
         IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        using OptimisticHeadSource source = new(queue, blockTree, new ManualTimestamper(DateTime.UtcNow), 12, LimboLogs.Instance);
+        OptimisticHeadSource source = new(queue, blockTree, new ManualTimestamper(DateTime.UtcNow), 12, LimboLogs.Instance);
 
         queue.BlockRemoved += Raise.EventWith(queue, new BlockRemovedEventArgs(Keccak.Compute("block"), ProcessingResult.Success));
+        source.Dispose();
 
-        blockTree.DidNotReceiveWithAnyArgs().FindBlock(default(Hash256)!, default(BlockTreeLookupOptions), default);
+        blockTree.DidNotReceiveWithAnyArgs().FindBlock(null!, BlockTreeLookupOptions.None, null);
     }
 
     [Test]
@@ -229,7 +230,7 @@ public class NewHeadsOptimisticTests
     /// <summary>A substitute client that records every notification's result as parsed JSON.</summary>
     private sealed class Harness
     {
-        private readonly BlockingCollection<JsonElement> _results = new();
+        private readonly BlockingCollection<JsonElement> _results = [];
 
         public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
         public IJsonRpcDuplexClient Client { get; } = Substitute.For<IJsonRpcDuplexClient>();

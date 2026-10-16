@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -37,6 +38,7 @@ public sealed class OptimisticHeadSource : IOptimisticHeadSource, IDisposable
     private readonly ulong _maxAgeSeconds;
     private readonly ILogger _logger;
 
+    [ConstructorWithSideEffect]
     public OptimisticHeadSource(
         IBlockProcessingQueue processingQueue,
         IBlockTree blockTree,
