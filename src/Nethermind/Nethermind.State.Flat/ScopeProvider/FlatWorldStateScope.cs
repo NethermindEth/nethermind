@@ -244,7 +244,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintGet(Address address, Account? account) => _snapshotBundle.PromoteAccount(address, account);
 
-    public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+    public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal, _logManager);
 
     // Not reentrant: cancels and replaces the previous hint task unguarded; call only from the block-processing thread.
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
