@@ -37,8 +37,9 @@ public enum InclusionListProofStatus
 /// <remarks>
 /// Every call takes the target block's timestamp, whose fork fixes the static validity rules and <c>AGGREGATED_VK</c>; a
 /// verdict or held proof under another fork's key never counts. A proof is held under <c>(stark_proof_hash, deps_hash)</c> when
-/// this node has its bytes, its <c>proof_deps</c> and a valid aggregate verdict under the target fork's key: from a fully
-/// validated mode-1 wrapper, or from an <c>il_proof</c> verified through this service.
+/// this node knows its <c>proof_deps</c> and a valid aggregate verdict under the target fork's key: from a fully validated
+/// mode-1 wrapper, or from an <c>il_proof</c> verified through this service. Serving and folding the proof also need its
+/// bytes, which retention keeps through the slots that need them.
 /// </remarks>
 public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanProofVerifier verifier, LeanProofStore proofStore,
     ITimestamper timestamper, IBlocksConfig? blocksConfig = null, ProofWrapperService? wrappers = null)
@@ -65,7 +66,7 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
         }
         InclusionListProof? matching = ilProof is not null && InclusionListProofValidator.Matches(ilProof, commitment, spec) ? ilProof : null;
         ValueHash256 depsHash = commitment.DepsHash;
-        bool held = TryGetHeld(commitment.StarkProofHash, depsHash, forkVerifier, out byte[]? heldProof, out FrameDependency[]? heldDeps);
+        bool held = TryGetVerified(commitment.StarkProofHash, depsHash, forkVerifier, out byte[]? heldProof, out FrameDependency[]? heldDeps);
         IReadOnlyList<FrameDependency>? proofDeps = ProofVerdictCache.For(verifier).TryGetPreimage(in depsHash, out FrameDependency[] known)
             ? known : held ? heldDeps : matching?.ProofDeps;
         if (proofDeps is not null && !InclusionListProofValidator.Covers(proofDeps, deps))
@@ -75,7 +76,8 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
         }
         if (held)
         {
-            Retention.Retain(heldProof!, heldDeps!, commitment, forkVerifier, timestamp, InclusionListProofRetention.Requirement.Valid);
+            if (heldProof is not null)
+                Retention.Retain(heldProof, heldDeps!, commitment, forkVerifier, timestamp, InclusionListProofRetention.Requirement.Valid);
             return InclusionListProofStatus.Valid;
         }
         if (matching is null)
@@ -133,7 +135,7 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
         if (lists is null || !targetSpec.IsEip8288Enabled) return;
         Eip8288Verifier forkVerifier = Eip8288Verifier.For(targetSpec);
         foreach (CommitteeInclusionList list in lists)
-            list.HoldsValidProof = list.Commitment is { } commitment && HoldsValidProof(list.Transactions, commitment, targetSpec, forkVerifier, out _, out _);
+            list.HoldsValidProof = list.Commitment is { } commitment && Covers(list.Transactions, commitment, targetSpec, forkVerifier, out _, out _);
     }
 
     /// <summary>The held proofs of the lists <see cref="ResolveObligations"/> marked, each once, for the builder to fold into its
@@ -147,29 +149,36 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
         Eip8288Verifier forkVerifier = Eip8288Verifier.For(targetSpec);
         foreach (CommitteeInclusionList list in lists)
             if (list.HoldsValidProof && list.Commitment is { } commitment
-                && HoldsValidProof(list.Transactions, commitment, targetSpec, forkVerifier, out byte[]? proof, out FrameDependency[]? proofDeps)
-                && added.Add(commitment.StarkProofHash))
+                && Covers(list.Transactions, commitment, targetSpec, forkVerifier, out byte[]? proof, out FrameDependency[]? proofDeps)
+                && proof is not null && added.Add(commitment.StarkProofHash))
                 proven.Add(new RecursiveProofInput(Array.AsReadOnly(proofDeps!), proof!, commitment.StarkProofHash));
         return proven;
     }
 
-    private bool HoldsValidProof(IReadOnlyList<Transaction> transactions, in InclusionListCommitment commitment, IReleaseSpec spec,
+    /// <summary>Whether this node holds a valid proof for <paramref name="commitment"/> covering the list's dependencies.</summary>
+    private bool Covers(IReadOnlyList<Transaction> transactions, in InclusionListCommitment commitment, IReleaseSpec spec,
         in Eip8288Verifier forkVerifier, out byte[]? proof, out FrameDependency[]? proofDeps)
     {
         List<FrameDependency> deps = InclusionListProofValidator.StaticallyValidDependencies(transactions, spec);
-        bool held = TryGetHeld(commitment.StarkProofHash, commitment.DepsHash, forkVerifier, out proof, out proofDeps);
+        bool held = TryGetVerified(commitment.StarkProofHash, commitment.DepsHash, forkVerifier, out proof, out proofDeps);
         return held && deps.Count != 0 && InclusionListProofValidator.Covers(proofDeps!, deps);
     }
 
-    /// <summary>Whether a proof under <c>(stark_proof_hash, deps_hash)</c> is held with its <c>proof_deps</c> and a valid verdict
-    /// under <paramref name="forkVerifier"/>.</summary>
-    private bool TryGetHeld(in ValueHash256 proofHash, in ValueHash256 depsHash, in Eip8288Verifier forkVerifier, out byte[]? proof,
+    /// <summary>Whether a proof under <c>(stark_proof_hash, deps_hash)</c> is verified under <paramref name="forkVerifier"/> with
+    /// known <c>proof_deps</c>, and its bytes when this node still has them.</summary>
+    private bool TryGetVerified(in ValueHash256 proofHash, in ValueHash256 depsHash, in Eip8288Verifier forkVerifier, out byte[]? proof,
         out FrameDependency[]? proofDeps)
     {
         if (Retention.TryGet(proofHash, depsHash, forkVerifier, out proof, out proofDeps)) return true;
         if (proofStore.TryGetRecursiveProof(proofHash, depsHash, out proof, out proofDeps) && IsVerifiedUnder(proofHash, depsHash, forkVerifier))
             return true;
         proof = null;
+        ProofVerdictCache cache = ProofVerdictCache.For(verifier);
+        if (cache.TryGetVerdict(proofHash, depsHash, forkVerifier.AggregatedVk) == true && cache.TryGetPreimage(in depsHash, out FrameDependency[] known))
+        {
+            proofDeps = known;
+            return true;
+        }
         proofDeps = null;
         return false;
     }

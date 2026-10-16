@@ -121,7 +121,7 @@ public class InclusionListProofsTests
     }
 
     // EIP-8288 Test Case 9 for engine_verifyInclusionListProofV1: a commitment to a held wrapper proof whose deps strictly
-    // contain the list's is VALID by lookup alone; PROOF_UNKNOWN for a node holding neither the wrapper nor an il_proof, until a
+    // contain the list's is VALID by lookup alone, as is one whose aggregate verdict and proof_deps are known; PROOF_UNKNOWN for a node holding neither the wrapper nor an il_proof, until a
     // matching il_proof is supplied; an il_proof whose proof_deps do not hash to deps_hash is ignored; known proof_deps omitting
     // a list dependency, a failing proof or a list without dependencies are INVALID. Under a timestamp whose fork has another
     // AGGREGATED_VK, a held proof does not count. A zero data_hash resolves to the signature hash for every scheme.
@@ -129,7 +129,7 @@ public class InclusionListProofsTests
     [TestCase("il-proof", InclusionListProofStatus.Valid, null, 1)]
     [TestCase("il-proof-fails", InclusionListProofStatus.Invalid, InclusionListProofValidator.InvalidProof, 1)]
     [TestCase("not-held", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
-    [TestCase("verdict-without-bytes", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
+    [TestCase("verdict-without-bytes", InclusionListProofStatus.Valid, null, 0)]
     [TestCase("mismatched-il-proof", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
     [TestCase("omits-dependency", InclusionListProofStatus.Invalid, InclusionListProofValidator.UncoveredDependency, 0)]
     [TestCase("known-invalid", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
@@ -257,6 +257,10 @@ public class InclusionListProofsTests
                 InclusionListCommitment commitment = Commit(proof, proofDeps);
                 Assert.That(node.Service.Verify(Target, [covered], in commitment, null, out _), Is.EqualTo(InclusionListProofStatus.Valid));
                 Assert.That(node.Verifier.VerificationCalls, Is.EqualTo(1), "a later list check is a cache lookup");
+                node.At(Target + 12);
+                Assert.That(node.Service.Get(Target, commitment.StarkProofHash), Is.Null, "released after the retrieval window");
+                Assert.That(node.Service.Verify(Target, [covered], in commitment, null, out _), Is.EqualTo(InclusionListProofStatus.Valid),
+                    "the verdict and proof_deps still answer a commitment check");
             }
         }
     }
