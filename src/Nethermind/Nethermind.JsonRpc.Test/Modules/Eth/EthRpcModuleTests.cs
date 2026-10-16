@@ -832,6 +832,7 @@ public partial class EthRpcModuleTests
     [TestCase(40, 0)]
     [TestCase(40, 40)]
     [TestCase(41, 40)]
+    [TestCase(2, int.MaxValue)]
     public async Task Eth_get_filter_logs_respects_max_logs_per_response(int logCount, int maxLogsPerResponse)
     {
         using Context ctx = await Context.Create();
