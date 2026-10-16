@@ -485,7 +485,7 @@ public class Startup : IStartup
         try
         {
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
-            using JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
+            JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
             {
                 RemoteAddress = ctx.Connection.RemoteIpAddress,
                 ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]

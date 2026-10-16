@@ -285,11 +285,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     foreach (ParityLikeTxTrace trace in blockTracesOne)
                     {
                         ct.ThrowIfCancellationRequested();
-                        foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
-                        {
-                            if (!filter.ShouldUseTxTrace(item.Action)) continue;
-                            TypeInfoJsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
-                        }
+                        ParityTxTraceFromStore.Write(writer, trace, filter, EthereumJsonSerializer.JsonOptions);
                         FlushPipe(writer, pipeWriter, ct);
                     }
                 }
@@ -335,10 +331,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     foreach (ParityLikeTxTrace trace in traces)
                     {
                         ct.ThrowIfCancellationRequested();
-                        foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
-                        {
-                            TypeInfoJsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
-                        }
+                        ParityTxTraceFromStore.Write(writer, trace, null, EthereumJsonSerializer.JsonOptions);
                         FlushPipe(writer, pipeWriter, ct);
                     }
                 },
@@ -358,11 +351,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             return BuildStoreStreamingResult<ParityTxTraceFromStore>(
                 runStreaming: (writer, pipeWriter, ct) =>
                 {
-                    foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(storedTrace))
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        TypeInfoJsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
-                    }
+                    ParityTxTraceFromStore.Write(writer, storedTrace, null, EthereumJsonSerializer.JsonOptions, ct);
                     FlushPipe(writer, pipeWriter, ct);
                 },
                 runBuffered: () => ParityTxTraceFromStore.FromTxTrace(storedTrace))!;
