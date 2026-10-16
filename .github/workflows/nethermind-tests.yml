@@ -159,7 +159,8 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
-          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
+          # Absolute path: with --coverage the test host restarts itself under the coverage controller, and the child rejects a relative settings path
+          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.json' || '' }}"
           if [ "$RUNNER_OS" = "Linux" ]; then
             # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
             run_tests=(../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} --results-directory TestResults)

@@ -48,6 +48,9 @@ public sealed class FinalizedBlockAccessListProcessor(
         // Queued processing attaches a stored list only when it matches the header's commitment.
         if (block.BlockAccessList is not { } list) return Execute("no verified block access list");
 
+        // Applying the list skips the post-execution item limit check, so a list over the limit is executed instead.
+        if (Eip7928Constants.ExceedsItemLimit(list.ItemCount, block.GasLimit)) return Execute("block access list over the item limit");
+
         TxReceipt[] receipts = [];
         if (block.Transactions.Length > 0)
         {

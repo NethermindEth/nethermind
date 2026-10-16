@@ -567,16 +567,19 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode? SetNew(TraverseStack traverseStack, Span<byte> remainingKey, CappedArray<byte> value, ref TreePath path, TrieNode? node)
+        private TrieNode? SetNew(TraverseStack traverseStack, Span<byte> key, CappedArray<byte> value, ref TreePath path, TrieNode? node)
         {
             TrieNode? originalNode = node;
             int originalPathLength = path.Length;
+            // The nibbles walked so far, word-sized: a branch level only reads its nibble and moves on, so it keeps no
+            // sliced span of the rest, whose start and length the guest would store back to the stack per level.
+            nint consumed = 0;
 
             while (true)
             {
                 if (node is null)
                 {
-                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(remainingKey, value);
+                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(key[(int)consumed..], value);
 
                     // End traverse
                     break;
@@ -587,6 +590,7 @@ namespace Nethermind.Trie
                 // Resolved, so anything but a branch is a leaf or an extension.
                 if (!node.IsBranch)
                 {
+                    Span<byte> remainingKey = key[(int)consumed..];
                     int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                     if (commonPrefixLength == node.Key!.Length)
                     {
@@ -604,7 +608,7 @@ namespace Nethermind.Trie
                             });
 
                             // Continue loop with the child as current node
-                            remainingKey = remainingKey[node!.Key.Length..];
+                            consumed += node!.Key.Length;
                             node = extensionChild;
 
                             continue;
@@ -674,7 +678,7 @@ namespace Nethermind.Trie
                     break;
                 }
 
-                int nib = remainingKey[0];
+                int nib = key[(int)consumed];
                 if (TracksPath) path.AppendMut(nib);
                 TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
 
@@ -687,7 +691,7 @@ namespace Nethermind.Trie
 
                 // Continue loop with child as current node
                 node = child;
-                remainingKey = remainingKey[1..];
+                consumed++;
             }
 
             while (traverseStack.TryPop(out TraverseStackFrame cStack))
@@ -875,7 +879,9 @@ namespace Nethermind.Trie
 
         private class TraverseStack
         {
-            [InlineArray(64)]
+            private const int Capacity = 64;
+
+            [InlineArray(Capacity)]
             private struct Inline64
             {
                 public TraverseStackFrame Item;
@@ -884,15 +890,26 @@ namespace Nethermind.Trie
             private Inline64 _entries;
             private nint _count;
 
+            /// <remarks>Indexed by the word-sized count itself, checked once against the capacity: the inline array's indexer
+            /// takes an <see langword="int"/>, which the guest re-extends and checks again per push and pop.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void Push(TraverseStackFrame frame) => _entries[(int)_count++] = frame;
+            public void Push(TraverseStackFrame frame)
+            {
+                nint count = _count;
+                if ((nuint)count >= Capacity) ThrowStackFull();
+                Unsafe.Add(ref _entries.Item, count) = frame;
+                _count = count + 1;
+            }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool TryPop(out TraverseStackFrame frame)
             {
-                if (_count == 0) { frame = default; return false; }
-                frame = _entries[(int)--_count];
-                if (ReleasesPoppedFrames) _entries[(int)_count] = default; // release references
+                nint count = _count - 1;
+                if (count < 0) { frame = default; return false; }
+                ref TraverseStackFrame top = ref Unsafe.Add(ref _entries.Item, count);
+                frame = top;
+                if (ReleasesPoppedFrames) top = default; // release references
+                _count = count;
                 return true;
             }
 
@@ -914,6 +931,9 @@ namespace Nethermind.Trie
                     node.Unseal();
                 }
             }
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowStackFull() => throw new IndexOutOfRangeException("The trie walk is deeper than its stack.");
 
             public void Clear()
             {
