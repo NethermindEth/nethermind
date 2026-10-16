@@ -51,6 +51,7 @@ public class OptimismCLP2P : IDisposable
     private ITopic? _blocksV2Topic;
     private PeerStore? _peerStore;
     private CancellationTokenSource? _staticPeerKeeperStop;
+    private int _disposed;
     private Task? _staticPeerKeeper;
 
     private ulong? _headNumber = null;
@@ -365,7 +366,9 @@ public class OptimismCLP2P : IDisposable
         CancellationTokenSource keeperStop = CancellationTokenSource.CreateLinkedTokenSource(token);
         // Read before publishing: a concurrent Dispose takes and disposes the published source.
         CancellationToken keeperToken = keeperStop.Token;
-        _staticPeerKeeperStop = keeperStop;
+        Interlocked.Exchange(ref _staticPeerKeeperStop, keeperStop);
+        // A Dispose that ran before the publish found nothing to stop, so the keeper stops itself.
+        if (Volatile.Read(ref _disposed) != 0) StopStaticPeerKeeper();
         _staticPeerKeeper = StaticPeerKeeper.RunAsync(_localPeer!, _router!, _staticPeerList, StaticPeerKeeper.CheckInterval, _logger, keeperToken);
         _ = _staticPeerKeeper.ContinueWith(keeper =>
         {
@@ -383,16 +386,22 @@ public class OptimismCLP2P : IDisposable
     /// <summary>Internal so a test can see the static peer keeper end.</summary>
     internal Task? StaticPeerKeeperForTest => _staticPeerKeeper;
 
-    public void Dispose()
+    private void StopStaticPeerKeeper()
     {
-        _blocksV2Topic?.Unsubscribe();
-        _blocksP2PMessageChannel.Writer.Complete();
-        // The keeper would otherwise dial through the disposed peer until the run token is cancelled.
         if (Interlocked.Exchange(ref _staticPeerKeeperStop, null) is { } keeperStop)
         {
             keeperStop.Cancel();
             keeperStop.Dispose();
         }
+    }
+
+    public void Dispose()
+    {
+        _blocksV2Topic?.Unsubscribe();
+        _blocksP2PMessageChannel.Writer.Complete();
+        // The keeper would otherwise dial through the disposed peer until the run token is cancelled.
+        Interlocked.Exchange(ref _disposed, 1);
+        StopStaticPeerKeeper();
         // Disposing through ILocalPeer marks the peer closed before it disconnects, so a dial that completes later is closed too.
         _localPeer?.DisposeAsync().AsTask().ContinueWith(static disposal => _ = disposal.Exception,
             CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);

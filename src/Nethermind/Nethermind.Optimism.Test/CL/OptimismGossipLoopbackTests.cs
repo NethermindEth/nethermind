@@ -404,11 +404,13 @@ public class OptimismGossipLoopbackTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task Dispose_stops_the_static_peer_keeper_before_the_run_token_is_cancelled(CancellationToken token)
+    public async Task Dispose_stops_the_static_peer_keeper_before_the_run_token_is_cancelled([Values] bool disposedBeforeRun, CancellationToken token)
     {
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         OptimismCLP2P p2p = new(Substitute.For<IExecutionEngineManager>(), 10, ["/ip4/127.0.0.1/tcp/1/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW"],
             new OptimismConfig { ClP2PHost = "127.0.0.1", ClP2PPort = 0 }, Address.Zero, Substitute.For<ITimestamper>(), Substitute.For<IIPResolver>(), LimboLogs.Instance);
+        // A Dispose before Run finds no keeper to stop; the run must still not leave one dialing.
+        if (disposedBeforeRun) p2p.Dispose();
         Task run = p2p.Run(stop.Token);
         Task? keeper;
         while ((keeper = p2p.StaticPeerKeeperForTest) is null)
@@ -418,7 +420,7 @@ public class OptimismGossipLoopbackTests
 
         try
         {
-            p2p.Dispose();
+            if (!disposedBeforeRun) p2p.Dispose();
             // Well inside the keeper's 30 s check interval, so only Dispose can have ended it.
             Assert.That(async () => await keeper.WaitAsync(TimeSpan.FromSeconds(10), token), Throws.Nothing, "a disposed host must not keep dialing through its disposed peer");
         }
