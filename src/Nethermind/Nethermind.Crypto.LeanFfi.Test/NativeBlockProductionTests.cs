@@ -76,6 +76,14 @@ public class NativeBlockProductionTests
             new Dictionary<ValueHash256, Transaction> { [transaction.Hash!.ValueHash256] = transaction });
         Assert.That(acceptance.Result.IsSuccess, Is.True, acceptance.Result.Error);
         using CancellationTokenSource provingBudget = new(TimeSpan.FromMinutes(3));
+        if (mode == MempoolWrapper.ModeDirect)
+        {
+            // A pass with a deadline never waits for native proving; it schedules the statement off the production path.
+            using CancellationTokenSource deadline = new();
+            Block first = (await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token))!;
+            Assert.That(first.Transactions, Is.Empty);
+            Assert.That(() => proofs.TryGetRecursiveProof([resolved], out _), Is.True.After(180_000, 100));
+        }
 
         Block block = await chain.Container.Resolve<TestBlockchainUtil>().AddBlock(
             TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, provingBudget.Token);
