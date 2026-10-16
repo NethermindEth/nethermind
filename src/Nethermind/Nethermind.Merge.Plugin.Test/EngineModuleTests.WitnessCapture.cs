@@ -799,8 +799,8 @@ public partial class EngineModuleTests
         foreach (byte[] header in witness.Headers)
         {
             Assert.That(header, Is.Not.Empty, "each header entry must be an RLP-encoded block header");
-            Assert.That(header.Length, Is.LessThanOrEqualTo(1_048_576),
-                "each header must fit within MAX_WITNESS_ITEM_BYTES per execution-apis#773");
+            Assert.That(header.Length, Is.LessThanOrEqualTo(SszRestLimits.MaxBytesPerHeader),
+                "each header must fit within MAX_BYTES_PER_HEADER");
         }
     }
 
