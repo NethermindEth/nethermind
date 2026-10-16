@@ -116,7 +116,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
     }
 
-    // The walks mostly wait on the database, so more threads than cores overlap the reads, and a raised nice value
+    // The walks mostly wait on the database, so more threads than cores overlap the reads, and SCHED_IDLE
     // keeps them from taking cores from block execution and the prewarmer.
     private void LowerPriority()
     {
@@ -124,12 +124,13 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             if (OperatingSystem.IsLinux())
             {
-                // Linux keeps the nice value per thread, and who 0 is the calling thread.
-                if (setpriority(PrioProcess, 0, WarmerNice) != 0 && _logger.IsWarn) _logger.Warn($"Could not raise the trie warmer thread nice value (errno {Marshal.GetLastPInvokeError()}), so it runs at normal priority.");
+                SchedParam param = default;
+                // pid 0 is the calling thread.
+                if (sched_setscheduler(0, SchedIdle, ref param) != 0 && _logger.IsWarn) _logger.Warn($"Could not move the trie warmer thread to SCHED_IDLE (errno {Marshal.GetLastPInvokeError()}), so it runs at normal priority.");
                 return;
             }
 
-            Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+            Thread.CurrentThread.Priority = ThreadPriority.Lowest;
         }
         catch (Exception e)
         {
@@ -137,11 +138,16 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
     }
 
-    private const int PrioProcess = 0;
-    private const int WarmerNice = 10;
+    private const int SchedIdle = 5;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SchedParam
+    {
+        public int SchedPriority;
+    }
 
     [DllImport("libc", SetLastError = true)]
-    private static extern int setpriority(int which, int who, int prio);
+    private static extern int sched_setscheduler(int pid, int policy, ref SchedParam param);
 
     private bool HasReadyWork() => _slotJobBuffer.HasReadyItem || _jobBufferMultiThreaded.HasReadyItem;
 
