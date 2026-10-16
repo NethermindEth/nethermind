@@ -151,7 +151,7 @@ public class HistoryReaderTests
 
         HistoryReader reader = new(hooked, history, availability, rowFormat, LimboLogs.Instance);
 
-        using HistoryReader.ReadScope? scope = scoped ? reader.CreateReadScope() : null;
+        using HistoryReader.ReadScope? scope = scoped ? new() : null;
         bool found = reader.TryGetAccount(10, Address, out AccountStruct account, scope);
 
         using (Assert.EnterMultipleScope())
@@ -181,7 +181,7 @@ public class HistoryReaderTests
 
         HistoryReader reader = new(hooked, history, availability, rowFormat, LimboLogs.Instance);
 
-        using HistoryReader.ReadScope? scope = scoped ? reader.CreateReadScope() : null;
+        using HistoryReader.ReadScope? scope = scoped ? new() : null;
         bool found = reader.TryGetStorage(10, Address, Slot, out UInt256 value, clearsCache: null, scope);
 
         Assert.That(found, Is.EqualTo(expectedFound));

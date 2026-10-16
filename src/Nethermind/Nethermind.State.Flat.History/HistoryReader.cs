@@ -205,8 +205,6 @@ public sealed class HistoryReader
         return true;
     }
 
-    internal ReadScope? CreateReadScope() => _isV3 ? new ReadScope() : null;
-
     internal ReadScopeState CreateReadScopeState() => new(_isV3);
 
     internal struct ReadScopeState(bool enabled) : IDisposable

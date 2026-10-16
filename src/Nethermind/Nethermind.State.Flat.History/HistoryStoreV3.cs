@@ -88,6 +88,11 @@ internal sealed class HistoryStoreV3
         return value.Length;
     }
 
+    /// <summary>Retains a bounded view until its capture generation changes.</summary>
+    /// <remarks>Reuse relies on capture appending rows above the published watermark, then calling
+    /// <see cref="HistoryAvailability.MarkCapturePublished"/> before live state changes. Existing rows stay
+    /// unchanged while <see cref="HistoryScopeGate"/> protects the reader from pruning. Any future rewrite of
+    /// retained rows must also invalidate the capture generation before readers can observe updated live state.</remarks>
     internal sealed class ReadScope : IDisposable
     {
         private readonly Lock _lock = new();

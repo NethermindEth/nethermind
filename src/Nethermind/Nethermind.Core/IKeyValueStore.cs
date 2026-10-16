@@ -230,8 +230,12 @@ namespace Nethermind.Core
         public bool SeekTo(ReadOnlySpan<byte> key);
     }
 
+    /// <summary>A sorted view whose bounds can change without replacing its snapshot.</summary>
     public interface IRebindableSortedView : ISeekableSortedView
     {
+        /// <summary>Attempts to set new bounds. On success, the next <see cref="ISortedView.MoveNext"/>
+        /// seeks to the new lower bound using the original snapshot. Returns false when the caller must create
+        /// a new view.</summary>
         bool TryResetBounds(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
     }
 

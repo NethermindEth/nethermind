@@ -22,6 +22,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     private readonly HistoryScopeGate _scopeGate;
     private readonly StorageClearsScopeCache _clearsCache = new();
     private readonly long _scopeToken;
+    // Must remain mutable: readonly would run scope transitions and disposal on defensive copies.
     private HistoryReader.ReadScopeState _readScope;
 
     // Non-null only below the general floor, where per-address slices are all that remains.
