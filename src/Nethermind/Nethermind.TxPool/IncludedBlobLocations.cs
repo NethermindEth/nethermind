@@ -44,9 +44,8 @@ internal readonly record struct IncludedBlobLocation(ulong BlockNumber, int Posi
 /// </para>
 /// </remarks>
 /// <param name="maxBlockDistance">
-/// How far below a recorded block a batch is kept, normally <see cref="Reorganization.MaxDepth"/>. It is fixed
-/// at construction rather than read from that mutable static on every record, so the bound holds for the lifetime of
-/// the index.
+/// How far below a recorded block a batch is kept. It is fixed at construction, so the bound holds for the
+/// lifetime of the index.
 /// </param>
 internal sealed class IncludedBlobLocations(ulong maxBlockDistance)
 {

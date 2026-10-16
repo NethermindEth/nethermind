@@ -1861,15 +1861,15 @@ namespace Nethermind.TxPool.Test
                 yield return new TestCaseData(BlobsSupportMode.StorageWithReorgs, lookup, 0UL, 0UL, true).SetDescription($"{proofs}, included in the head");
                 yield return new TestCaseData(BlobsSupportMode.StorageWithReorgs, lookup, 1UL, IncludedBlobInclusionBlock - 1, true).SetDescription($"{proofs}, not finalized yet");
                 yield return new TestCaseData(BlobsSupportMode.StorageWithReorgs, lookup, 1UL, IncludedBlobInclusionBlock, false).SetDescription($"{proofs}, finalized");
-                yield return new TestCaseData(BlobsSupportMode.StorageWithReorgs, lookup, Reorganization.MaxDepth, 0UL, true).SetDescription($"{proofs}, at the reorg depth");
-                yield return new TestCaseData(BlobsSupportMode.StorageWithReorgs, lookup, Reorganization.MaxDepth + 1, 0UL, false).SetDescription($"{proofs}, beyond the reorg depth");
+                yield return new TestCaseData(BlobsSupportMode.StorageWithReorgs, lookup, TxPool.IncludedBlobMaxBlockDistance, 0UL, true).SetDescription($"{proofs}, at the maximum block distance");
+                yield return new TestCaseData(BlobsSupportMode.StorageWithReorgs, lookup, TxPool.IncludedBlobMaxBlockDistance + 1, 0UL, false).SetDescription($"{proofs}, beyond the maximum block distance");
                 yield return new TestCaseData(BlobsSupportMode.InMemory, lookup, 0UL, 0UL, false).SetDescription($"{proofs}, in memory without reorg support");
                 yield return new TestCaseData(BlobsSupportMode.Storage, lookup, 0UL, 0UL, false).SetDescription($"{proofs}, in storage without reorg support");
             }
         }
 
         [TestCaseSource(nameof(IncludedBlobServingCases))]
-        public async Task should_serve_included_blobs_with_reorg_support_until_finalized_or_beyond_the_reorg_depth(
+        public async Task should_serve_included_blobs_with_reorg_support_until_finalized_or_beyond_the_maximum_block_distance(
             BlobsSupportMode blobsSupport, BlobLookup lookup, ulong nextHeadDistance, ulong finalizedAtNextHead, bool expectedServed)
         {
             ulong finalizedBlockNumber = 0;

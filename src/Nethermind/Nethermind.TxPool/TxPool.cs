@@ -49,6 +49,11 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IAsyncDisposable, IRecyclableTxPool
     {
+        /// <summary>
+        /// How many blocks an included blob stays servable. It is above the normal finality lag, so finality is the usual
+        /// bound and this only limits growth of the index when finality stalls.
+        /// </summary>
+        internal const ulong IncludedBlobMaxBlockDistance = 128;
         private const int RevalidationAbandonmentWarningThreshold = 3;
         private const int MarkerPublicationDeferralWarningThreshold = 3;
 
@@ -223,7 +228,7 @@ namespace Nethermind.TxPool
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _processedBlobTxStorage = _blobReorgsSupportEnabled ? blobTxStorage as IProcessedBlobTxStorage : null;
-            _includedBlobLocations = _processedBlobTxStorage is null ? null : new IncludedBlobLocations(Reorganization.MaxDepth);
+            _includedBlobLocations = _processedBlobTxStorage is null ? null : new IncludedBlobLocations(IncludedBlobMaxBlockDistance);
             _stateHeaderProvider = stateHeaderProvider;
             _frameEvictionRetryBudget = txPoolConfig.FrameTxEvictionRetryBudget;
             _frameRevalidationDeferralBudget = txPoolConfig.FrameTxRevalidationDeferralBudget;
