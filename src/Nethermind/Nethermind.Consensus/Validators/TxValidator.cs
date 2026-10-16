@@ -622,13 +622,11 @@ public abstract class BaseSignatureTxValidator : ITxValidator
 
 public sealed class LegacySignatureTxValidator(ulong chainId) : BaseSignatureTxValidator
 {
-    protected override ValidationResult ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        ulong v = transaction.Signature!.V;
-        return releaseSpec.IsEip155Enabled && (v == chainId * 2 + 35ul || v == chainId * 2 + 36ul)
+    // Signature.ChainId derives the chain id from v without overflow, unlike 2 * chainId + 35.
+    protected override ValidationResult ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec) =>
+        releaseSpec.IsEip155Enabled && transaction.Signature!.ChainId == chainId
             ? ValidationResult.Success
             : base.ValidateChainId(transaction, releaseSpec);
-    }
 }
 
 public sealed class SignatureTxValidator : BaseSignatureTxValidator
