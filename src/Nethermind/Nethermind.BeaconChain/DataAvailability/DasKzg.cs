@@ -5,7 +5,7 @@ using Nethermind.Crypto;
 
 namespace Nethermind.BeaconChain.DataAvailability;
 
-/// <summary>Makes the execution layer's KZG trusted setup available to this plugin's DAS code paths.</summary>
+/// <summary>Loads the execution layer's KZG trusted setup on first use by this plugin's DAS code paths.</summary>
 internal static class DasKzg
 {
     /// <summary>Loads the execution layer's KZG trusted setup if nothing has loaded it yet.</summary>

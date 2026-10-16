@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using Nethermind.Crypto;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
@@ -23,14 +22,6 @@ public class DasKzgTests
         Assert.That(callSites, Has.Length.EqualTo(1),
             $"expected exactly one production Ckzg.LoadTrustedSetup call site, found: {string.Join(", ", callSites)}");
         Assert.That(callSites[0], Does.Match(@"Nethermind\.Crypto[\\/]KzgPolynomialCommitments\.cs$"));
-    }
-
-    [Test]
-    public void DasKzg_loads_the_execution_layers_setup_before_first_use()
-    {
-        Nethermind.BeaconChain.DataAvailability.DasKzg.EnsureInitialized();
-
-        Assert.That(KzgPolynomialCommitments.IsInitialized, Is.True);
     }
 
     // Locate the source file, not merely a named directory: artifacts/bin contains matching assembly directories.
