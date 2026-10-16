@@ -98,7 +98,7 @@ public class HistoryPrunerTests
 
     private static IEnumerable<TestCaseData> BalPruningCases()
     {
-        // head=100, SlotsPerEpoch=32 → cutoff = 100 - retentionEpochs*32 (clamped at 0)
+        // head=100, SlotsPerEpoch=32 → block cutoff = 100 - (retentionEpochs + 1)*32, BAL cutoff = 100 - balRetentionEpochs*32 (clamped at 0)
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, BalRetentionEpochs = 1, PruningInterval = 0 },
             /*expectedBlocksPointer:*/ 36UL,
@@ -109,7 +109,7 @@ public class HistoryPrunerTests
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 1, BalRetentionEpochs = 2, PruningInterval = 0 },
             /*expectedBlocksPointer:*/ 36UL,
             /*expectedBalsPointer:*/ 36UL
-        ).SetName("Bals_pruned_alongside_blocks_when_retentions_equal");
+        ).SetName("Bals_pruned_alongside_blocks_when_cutoffs_equal");
 
         yield return new TestCaseData(
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 0, BalRetentionEpochs = 2, PruningInterval = 0 },
