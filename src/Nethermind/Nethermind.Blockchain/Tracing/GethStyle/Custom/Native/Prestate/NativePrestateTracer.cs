@@ -43,6 +43,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly bool _isEip8298Enabled;
     // EIP-6780: SELFDESTRUCT deletes only an account created in the same transaction.
     private readonly bool _isEip6780Enabled;
+    // EIP-8246: a self-destructed account that ends the transaction with a balance survives.
+    private readonly bool _isEip8246Enabled;
     private readonly bool _disableCode;
     private readonly bool _disableStorage;
 
@@ -68,6 +70,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
         _isEip8298Enabled = releaseSpec?.IsEip8298Enabled == true;
         _isEip6780Enabled = releaseSpec?.IsEip6780Enabled == true;
+        _isEip8246Enabled = releaseSpec?.IsEip8246Enabled == true;
         UInt256 instructionMask = CaptureMask;
         if (_isEip5920Enabled) instructionMask |= UInt256.One << (int)Instruction.PAY;
         if (_isEip8298Enabled) instructionMask |= UInt256.One << (int)Instruction.SETCODEFROM;
@@ -350,8 +353,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
         {
-            // If an account was deleted then don't show it in the postState trace
-            if (_deletedAccounts.Contains(addr))
+            // If an account was deleted then don't show it in the postState trace. Unlike geth, under EIP-8246 one
+            // that still exists kept its balance as a balance-only account, so it is a normal diff; EIP-161 removed
+            // it if the balance was zero.
+            if (_deletedAccounts.Contains(addr) && !(_isEip8246Enabled && _worldState!.AccountExists(addr)))
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);

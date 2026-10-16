@@ -808,22 +808,84 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>EIP-8246: a same-transaction creation that self-destructs keeps the balance it ends the transaction
+    /// with, whether kept by a SELFDESTRUCT to itself or received afterwards, so it shows in post as a balance-only
+    /// account; with no balance EIP-161 removes it and it shows nowhere.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_UnderEip8246_KeepsTheBalance([Values] bool toItself, [Values] bool funded)
+    {
+        const int balance = 3;
+        Address created = ContractAddress.From(TestItem.AddressC, 0);
+        byte[] initCode = toItself
+            ? Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done
+            : Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done;
+        Prepare victimCode = Prepare.EvmCode.Create(initCode, toItself && funded ? balance : 0u);
+        if (!toItself && funded) victimCode = victimCode.CallWithValue(created, 50_000, balance);
+
+        NativePrestateTracerDiffMode diff = TraceSelfDestruct(MainnetSpecProvider.AmsterdamActivation, victimCode.Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.post[TestItem.AddressC].Nonce, Is.EqualTo((UInt256?)1), "CREATE must succeed");
+            Assert.That(diff.pre.ContainsKey(created), Is.False);
+            Assert.That(diff.post.TryGetValue(created, out NativePrestateTracerAccount? post), Is.EqualTo(funded));
+            if (funded)
+            {
+                Assert.That(post!.Balance, Is.EqualTo((UInt256?)(UInt256)balance));
+                Assert.That(post.Nonce, Is.Null);
+                Assert.That(post.Code.IsEmpty, Is.True);
+                Assert.That(post.Storage, Is.Null);
+            }
+        }
+    }
+
+    /// <summary>EIP-8246: the contract of a contract-creation transaction whose initcode self-destructs to itself keeps
+    /// its balance.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_InCreationTxUnderEip8246_KeepsTheBalance()
+    {
+        const int prefund = 2;
+        ForkActivation fork = MainnetSpecProvider.AmsterdamActivation;
+        // EIP-8037 state gas makes an Amsterdam creation tx cost far more than 100k.
+        (Block block, Transaction transaction) = PrepareInitTx(fork, 1_000_000, Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done);
+        Address created = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(created, prefund);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), transaction.Hash, transaction.SenderAddress, null, block.Beneficiary, transaction, spec);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre[created].Balance, Is.EqualTo((UInt256?)(UInt256)prefund));
+            Assert.That(diff.post.TryGetValue(created, out NativePrestateTracerAccount? post), Is.True);
+            Assert.That(post?.Balance, Is.EqualTo((UInt256?)(prefund + transaction.Value)));
+        }
+    }
+
     /// <summary>Calls <see cref="TestItem.AddressC"/>, which runs <paramref name="victimCode"/>, with
     /// <see cref="TestItem.AddressE"/> as an existing beneficiary.</summary>
-    private NativePrestateTracerDiffMode TraceSelfDestruct(bool cancun, byte[] victimCode, bool revert = false)
+    private NativePrestateTracerDiffMode TraceSelfDestruct(bool cancun, byte[] victimCode, bool revert = false) =>
+        TraceSelfDestruct(cancun ? MainnetSpecProvider.CancunActivation : MainnetSpecProvider.ShanghaiActivation, victimCode, revert);
+
+    private NativePrestateTracerDiffMode TraceSelfDestruct(ForkActivation fork, byte[] victimCode, bool revert = false)
     {
-        ForkActivation fork = cancun ? MainnetSpecProvider.CancunActivation : MainnetSpecProvider.ShanghaiActivation;
         TestState.CreateAccount(Address.Zero, 100.Ether);
         TestState.CreateAccount(TestItem.AddressE, HeirBalance);
         TestState.CreateAccount(TestItem.AddressC, VictimBalance);
         TestState.InsertCode(TestItem.AddressC, victimCode, Spec);
 
-        Prepare code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000);
+        // EIP-8037 state gas makes an Amsterdam CREATE cost far more than 50k.
+        Prepare code = Prepare.EvmCode.Call(TestItem.AddressC, 500_000);
         if (revert) code = code.Revert(0, 0);
 
+        (Block block, Transaction transaction) = PrepareTx(fork, 1_000_000, code.Done);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero,
-            releaseSpec: SpecProvider.GetSpec(fork));
-        Execute(tracer, code.Done, fork);
+            releaseSpec: spec);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
         return (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
     }
 
