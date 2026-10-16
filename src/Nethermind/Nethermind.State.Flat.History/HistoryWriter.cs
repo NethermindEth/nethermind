@@ -62,6 +62,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private readonly PendingV3Writes? _pendingV3;
     private readonly ForwardCommitmentCapture? _commitments;
     private readonly ulong _pivotImageGranularity;
+    private readonly FlatLayout _layout;
     private bool _formatStamped;
 
     public HistoryWriter(
@@ -79,6 +80,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _commitments = commitments is { Enabled: true } ? commitments : null;
         ILogger logger = logManager.GetClassLogger<HistoryWriter>();
         _enabled = config.HistoryEnabled;
+        _layout = config.Layout;
         _history = history;
         _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(
             db,
@@ -579,6 +581,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             // A fresh node executes genesis before it syncs, and that capture would read through below the image: a
             // genesis key gone by the pivot would resurface. Only genesis can be here, so drop it all.
             DiscardGenesisCapture();
+        }
+
+        // The slots copy over from the flat storage column, whose keys and values match history rows only on this layout.
+        if (_layout != FlatLayout.Flat)
+        {
+            DisableCapture(
+                $"The sync moved the state to pivot {pivotBlock}, but unwindowed (v2) history can start at a pivot only on " +
+                $"FlatDb.Layout={nameof(FlatLayout.Flat)}; this node runs {_layout}. Capture stops here and as-of reads report no " +
+                $"history. Resync with FlatDb.Layout={nameof(FlatLayout.Flat)}, or sync from genesis with Sync.FastSync=false.");
+            return;
         }
 
         if (accounts is null)
