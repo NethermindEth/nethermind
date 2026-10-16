@@ -1173,7 +1173,7 @@ public partial class EthRpcModule(
         out bool timeoutTransferred)
     {
         timeoutTransferred = false;
-        bool enforceLogsLimits = JsonRpcContext.Current.Value?.IsAuthenticated != true;
+        bool enforceLogsLimits = JsonRpcContext.Current?.IsAuthenticated != true;
         bool enforceMaxLogs = enforceLogsLimits && _rpcConfig.MaxLogsPerResponse != 0;
 
         if (_rpcConfig.EnableLogsStreamMode)
