@@ -24,6 +24,25 @@ public class Eth2MessageIdTests
             Assert.That(Eth2MessageId.Compute(Topic, payload), Is.SameAs(id));
             Assert.That(Eth2MessageId.Compute(Topic + "other", payload), Is.Not.EqualTo(id));
             Assert.That(id, Is.EqualTo(Eth2MessageId.Compute(Topic, payload.Span)));
+            Assert.That(Eth2MessageId.Compute(Topic, payload), Is.EqualTo(id), "a payload seen on another topic still gets its own topic's id");
+        }
+    }
+
+    // The router computes an id before any topic check, so a peer choosing the topic must not grow the memo; a message without data carries the shared ByteString.Empty.
+    [TestCase(0, 0)]
+    [TestCase(1024, 1)]
+    public void A_payload_seen_on_many_topics_keeps_at_most_one_memoized_id(int length, int expectedMemoized)
+    {
+        ByteString payload = length == 0 ? ByteString.Empty : ByteString.CopyFrom(Snappy.CompressToArray(new byte[length]));
+        for (int i = 0; i < 100; i++)
+        {
+            Eth2MessageId.Compute($"/t/{i}", payload);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eth2MessageId.MemoizedTopicCount(payload), Is.EqualTo(expectedMemoized));
+            Assert.That(Eth2MessageId.Compute("/t/0", payload), Is.EqualTo(Eth2MessageId.Compute("/t/0", payload.Span)));
         }
     }
 
