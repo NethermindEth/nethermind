@@ -149,6 +149,7 @@ public sealed class ReceiptTxHashesMigration(
             }
         }
 
+        if (next < lowest) _progress.TargetValue = _progress.CurrentValue;
         _progress.MarkEnd();
         _progress.LogProgress();
         if (next < lowest)

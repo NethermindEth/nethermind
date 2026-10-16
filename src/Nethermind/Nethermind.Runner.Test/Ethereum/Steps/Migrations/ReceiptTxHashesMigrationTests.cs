@@ -119,14 +119,16 @@ public class ReceiptTxHashesMigrationTests
         }
 
         chain.HistoryPruner.OldestUnreclaimedBlockNumber.Returns(0UL, 0UL, 3UL);
+        TestLogger logger = new();
 
-        await chain.RunMigration();
+        await chain.RunMigration(new ReceiptConfig(), new OneLoggerLogManager(new(logger)));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Read(3), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(3), RlpBehaviors.Storage)));
             Assert.That(chain.Read(2), Is.EqualTo(withoutHashes[2]));
             Assert.That(chain.Read(1), Is.EqualTo(withoutHashes[1]));
+            Assert.That(logger.LogList.Last(static line => line.StartsWith("Receipt hashes")), Does.Match(@"^Receipt hashes\s+1 /\s+1 "));
         }
     }
 
@@ -182,7 +184,7 @@ public class ReceiptTxHashesMigrationTests
         TestLogger logger = new();
         await chain.RunMigration(new ReceiptConfig(), new OneLoggerLogManager(new(logger)));
 
-        Assert.That(logger.LogList, Has.Some.StartsWith("Receipt hashes"));
+        Assert.That(logger.LogList, Has.Some.Matches(@"^Receipt hashes\s+1 /\s+3 "));
     }
 
     [Test]
