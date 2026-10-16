@@ -53,7 +53,8 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         ReferenceEquals(_otherTracer, NullBlockTracer.Instance) && ReferenceEquals(_currentTxTracer, NullTxTracer.Instance);
 
     /// <summary>Whether receipts are built; when not, only the block gas accounting is kept.</summary>
-    /// <remarks>For a replay whose receipts nothing reads; logs are then collected only for the wrapped tracers.</remarks>
+    /// <remarks>For a replay whose receipts nothing reads; logs are then collected only for the wrapped tracers. While off,
+    /// <see cref="LastReceipt"/>, <see cref="TakeSnapshot"/>, <see cref="Restore"/> and <see cref="DiscardLastTx"/> are unsupported.</remarks>
     internal bool BuildsReceipts { get; set; } = true;
 
     public bool IsTracingReceipt => true;
