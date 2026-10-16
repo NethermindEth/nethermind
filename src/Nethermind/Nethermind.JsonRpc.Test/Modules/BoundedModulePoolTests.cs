@@ -191,6 +191,17 @@ public class BoundedModulePoolTests
     }
 
     [Test]
+    public async Task Available_module_is_rented_as_the_same_completed_task([Values] bool canBeShared)
+    {
+        Task<IEthRpcModule> first = _modulePool.GetModule(canBeShared);
+        _modulePool.ReturnModule(await first);
+
+        Task<IEthRpcModule> second = _modulePool.GetModule(canBeShared);
+        Assert.That(second.IsCompletedSuccessfully, Is.True);
+        Assert.That(second, Is.SameAs(first));
+    }
+
+    [Test]
     public async Task Can_rent_and_return_in_a_loop([Values] bool canBeShared)
     {
         for (int i = 0; i < 1000; i++)
