@@ -109,6 +109,31 @@ public class ReceiptsIteratorTests
     }
 
     [Test]
+    public void Skip_lands_on_the_receipt_after_the_skipped_ones([Values] bool fromCache)
+    {
+        Block block = Build.A.Block.WithTransactions(3, MainnetSpecProvider.Instance).TestObject;
+        TxReceipt[] receipts =
+        [
+            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressA).TestObject,
+            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressB).TestObject,
+            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject
+        ];
+
+        ReceiptsIterator iterator = fromCache ? new ReceiptsIterator(receipts) : CreateIterator(receipts, block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(iterator.CountRemaining(), Is.EqualTo(3));
+            iterator.Skip(2);
+            Assert.That(iterator.CountRemaining(), Is.EqualTo(1));
+            Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
+            Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressC.Bytes));
+            Assert.That(iterator.CountRemaining(), Is.Zero);
+            Assert.That(iterator.TryGetNext(out _), Is.False);
+        }
+    }
+
+    [Test]
     public void Legacy_missing_log_entries_are_skipped()
     {
         LogEntry first = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;

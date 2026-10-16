@@ -451,7 +451,7 @@ public partial class ForwardHeaderProviderTests
 
         public PublicKey Id => Node.Id;
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
+        public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx) =>
             throw new NotImplementedException();
 
         public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token) =>
@@ -715,7 +715,7 @@ public partial class ForwardHeaderProviderTests
         public void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
             throw new NotImplementedException();
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
+        public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx) =>
             throw new NotImplementedException();
 
         public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) =>

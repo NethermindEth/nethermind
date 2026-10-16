@@ -53,7 +53,7 @@ public static class EthereumEcdsaExtensions
 
         if (tx.Type == TxType.Legacy && isEip155Enabled)
         {
-            tx.Signature.V = tx.Signature.V + 8 + 2 * ecdsa.ChainId;
+            tx.Signature.V = CalculateV(ecdsa.ChainId, tx.Signature.RecoveryId == 1);
         }
     }
 
@@ -152,10 +152,8 @@ public static class EthereumEcdsaExtensions
     {
         useSignatureChainId &= signature.ChainId.HasValue;
 
-        // feels like it is the same check twice
-        bool applyEip155 = useSignatureChainId
-                           || signature.V == CalculateV(ecdsa.ChainId, false)
-                           || signature.V == CalculateV(ecdsa.ChainId, true);
+        // Compared through the chain id the signature carries: 2 * chainId + 35 overflows a ulong for the largest chain ids.
+        bool applyEip155 = useSignatureChainId || signature.ChainId == ecdsa.ChainId;
         ulong chainId = tx.Type switch
         {
             TxType.Legacy when useSignatureChainId => signature.ChainId
@@ -248,7 +246,22 @@ public static class EthereumEcdsaExtensions
     private static void WriteRaw<TWriter>(ref TWriter writer, scoped ReadOnlySpan<byte> bytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(bytes);
 
-    public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
+    /// <summary>The largest chain id for which both EIP-155 <c>v</c> values fit a ulong.</summary>
+    public const ulong MaxEip155ChainId = (ulong.MaxValue - 36) / 2;
+
+    /// <summary>EIP-155 <c>v</c> for <paramref name="chainId"/>; throws <see cref="OverflowException"/> where no such <c>v</c> fits a ulong.</summary>
+    public static ulong CalculateV(ulong chainId, bool addParity = true)
+        => TryCalculateV(chainId, addParity, out ulong v) ? v : throw new OverflowException($"No EIP-155 v fits a ulong for chain id {chainId}.");
+
+    /// <summary>EIP-155 <c>v</c> for <paramref name="chainId"/>; false where no such <c>v</c> fits a ulong.</summary>
+    public static bool TryCalculateV(ulong chainId, bool addParity, out ulong v)
+    {
+        ulong parity = addParity ? 1u : 0u;
+        // Past the shared bound, only the parity-0 v (2^64 - 1) still fits.
+        bool fits = chainId <= MaxEip155ChainId + (1 - parity);
+        v = fits ? chainId * 2 + 35 + parity : 0;
+        return fits;
+    }
 
     public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, AuthorizationTuple tuple)
     {
