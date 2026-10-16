@@ -185,7 +185,8 @@ public class NewHeadsOptimisticTests
 
         queue.BlockRemoved += Raise.EventWith(queue, new BlockRemovedEventArgs(block.Hash!, result));
 
-        Assert.That(heads, raised ? Is.EqualTo(new[] { block }) : Is.Empty);
+        if (raised) Assert.That(heads, Is.EqualTo(new[] { block }));
+        else Assert.That(heads, Is.Empty);
     }
 
     [Test]
