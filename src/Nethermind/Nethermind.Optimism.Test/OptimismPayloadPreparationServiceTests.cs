@@ -129,9 +129,8 @@ public class OptimismPayloadPreparationServiceTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Null_empty_block_is_carried_through_improvement(bool noTxPool)
+    [Test]
+    public async Task Null_empty_block_is_carried_through_improvement([Values] bool noTxPool)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block improved = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
