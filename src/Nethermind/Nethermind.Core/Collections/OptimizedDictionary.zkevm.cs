@@ -482,7 +482,7 @@ public sealed class OptimizedDictionary<TKey, TValue> : IEnumerable<KeyValuePair
 
 public static class OptimizedDictionaryExtensions
 {
-    /// <inheritdoc cref="DictionaryExtensions.ResetAndClear{TKey,TValue}(IDictionary{TKey,TValue})"/>
+    /// <inheritdoc cref="DictionaryExtensions.ResetAndClear{TKey,TValue}(Dictionary{TKey,TValue})"/>
     public static void ResetAndClear<TKey, TValue>(this OptimizedDictionary<TKey, TValue> dictionary)
         where TKey : notnull, IEquatable<TKey>
         where TValue : class, IReturnable
