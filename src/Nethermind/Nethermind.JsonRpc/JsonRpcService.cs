@@ -1153,7 +1153,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         /// <summary>Maps a deferred error through the normal invocation error mapping.</summary>
         /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
         internal JsonRpcErrorResponse MapException(Exception exception) =>
-            methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceTransaction) && exception is Nethermind.Blockchain.Tracing.GethStyle.TraceDurationFormatException
+            methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceTransaction) && exception is Modules.DebugModule.DebugRpcModule.TransactionTraceNotFoundException
+                ? service.GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, exception.Message, null, in request.IdRef, null)
+                : methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceTransaction) && exception is Nethermind.Blockchain.Tracing.GethStyle.TraceDurationFormatException
                 ? service.GetErrorResponse(methodName, ErrorCodes.InvalidInput, exception.Message, null, in request.IdRef, null)
                 : service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
 

@@ -28,12 +28,44 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceTransaction_missing_body_returns_top_level_error(
+        [Values] bool streamMode, [Values("5s", "bad")] string timeout)
+    {
+        ExecutionCount counter = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter>(
+                (_, inner) => new BudgetCountingAdapter(inner, counter)));
+        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressC)
+            .WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressB)).WithValue(1).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transaction);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        chain.BlockTree.DeleteOldBlock(block.Number, block.Hash!);
+        Assert.That(chain.BlockTree.FindHeader(block.Hash!), Is.Not.Null);
+        Assert.That(chain.BlockTree.FindBlock(block.Hash!), Is.Null);
+        counter.Enabled = true;
+        Nethermind.Core.Test.IO.FlushRecordingPipeWriter pipe = new(keepOutput: true);
+        using JsonRpcResponse rpcResponse = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_traceTransaction", transaction.Hash!,
+            new { timeout, streamMode });
+        await JsonRpcResponseWriter.WriteAsync(pipe, rpcResponse, Nethermind.Serialization.Json.EthereumJsonSerializer.JsonOptions,
+            System.Threading.CancellationToken.None);
+        string response = System.Text.Encoding.UTF8.GetString(pipe.WrittenSpan);
+        TestContext.Out.WriteLine($"streamMode={streamMode} timeout={timeout} calls={counter.Calls} response={response}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counter.Calls, Is.Zero);
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"transaction not found\"},\"id\":67}"));
+        }
+    }
+
     [TestCase("valid")]
     [TestCase("bad")]
     [TestCase("prefix-error")]
+    [TestCase("failed-target")]
     public async Task Debug_traceTransaction_validates_timeout_after_prefix_before_stream_commit(string scenario)
     {
-        bool invalidTimeout = scenario != "valid";
+        bool invalidTimeout = scenario is "bad" or "prefix-error";
         ExecutionCount counter = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(builder => builder.AddDecorator<Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter>(
@@ -45,6 +77,9 @@ public partial class DebugRpcModuleTests
             transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i).WithValue(1)
                 .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         }
+        if (scenario == "failed-target")
+            transactions[1] = Build.A.Transaction.WithCode(Prepare.EvmCode.Revert(0, 0).Done).WithNonce(nonce + 1)
+                .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block block = await chain.AddBlock(transactions);
         Assert.That(block.Transactions, Has.Length.EqualTo(3));
         System.IO.Pipelines.Pipe pipe = new(new System.IO.Pipelines.PipeOptions(pauseWriterThreshold: 0));
@@ -79,6 +114,13 @@ public partial class DebugRpcModuleTests
                     Assert.That(parsed["result"]?["failed"]?.Value<bool>(), Is.True);
                     Assert.That(parsed["result"]?["error"]?.Value<string>(), Does.Contain("prefix failure"));
                     Assert.That(parsed["result"]?["errorCode"]?.Value<int>(), Is.EqualTo(-32603));
+                }
+                else if (scenario == "failed-target")
+                {
+                    Assert.That(parsed["error"], Is.Null);
+                    Assert.That(parsed["result"]?["failed"]?.Value<bool>(), Is.True);
+                    Assert.That(parsed["result"]?["error"], Is.Null);
+                    Assert.That(parsed["result"]?["structLogs"], Is.Not.Empty);
                 }
                 else if (invalidTimeout)
                 {
