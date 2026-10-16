@@ -42,6 +42,13 @@ internal class WorldStateDbDeciderModule : Module
                             logger.Warn("Copy-style full pruning is patricia-only and is ignored on the Flat backend. admin_prune returns disabled. Use FlatDb.HistoryRetention / history pruning instead of Pruning.FullPruningTrigger.");
                     }
 
+                    if (pruningConfig.Mode == PruningMode.None)
+                    {
+                        ILogger archiveLogger = logManager.GetClassLogger<WorldStateDbDeciderModule>();
+                        if (archiveLogger.IsInfo)
+                            archiveLogger.Info("Pruning.Mode=None on the flat backend: archive mode. State history and eth_getProof are kept for every block from genesis, or from the snap-sync pivot on.");
+                    }
+
                     // Flat state can always serve snap requests; set before InitializeNetwork registers capabilities.
                     syncConfig.SnapServingEnabled ??= true;
                     return flatFactory();
