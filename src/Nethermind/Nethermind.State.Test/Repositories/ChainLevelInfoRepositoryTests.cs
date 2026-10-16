@@ -83,6 +83,23 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
+    public void MultiLoadLevel_AtEveryKeyLengthBoundary_PreservesFixedLengthReads(
+        [Values(false, true)] bool native, [ValueSource(nameof(KeyLengthBoundaries))] ulong number)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb db = CreateBatchDb(native, directory);
+        ChainLevelInfoRepository repository = new(db);
+        ChainLevelInfo expected = CreateBatchLevel(number);
+        repository.PersistLevel(number, expected);
+
+        using ArrayPoolListRef<ulong> numbers = new(2, number, number);
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
+        Assert.That(levels.Count, Is.EqualTo(2));
+        AssertChainLevelInfo(levels[0], expected);
+        AssertChainLevelInfo(levels[1], expected);
+    }
+
+    [Test]
     public void MultiLoadLevel_WithMixedLengthKeys_PreservesEncodingAndRequestOrder([Values(false, true)] bool native)
     {
         using TempPath directory = TempPath.GetTempDirectory();
@@ -328,6 +345,18 @@ public class ChainLevelInfoRepositoryTests
             LimboLogs.Instance, validateConfig: false);
         return new DbOnTheRocks(directory.Path, new DbSettings(DbNames.BlockInfos, "levels"),
             config, factory, LimboLogs.Instance);
+    }
+
+    private static IEnumerable<ulong> KeyLengthBoundaries()
+    {
+        yield return 0;
+        for (int bytes = 1; bytes < sizeof(ulong); bytes++)
+        {
+            ulong boundary = 1UL << (bytes * 8);
+            yield return boundary - 1;
+            yield return boundary;
+        }
+        yield return ulong.MaxValue;
     }
 
     private static ChainLevelInfo CreateBatchLevel(ulong number) =>

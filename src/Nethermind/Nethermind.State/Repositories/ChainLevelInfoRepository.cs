@@ -110,15 +110,18 @@ namespace Nethermind.State.Repositories
             int count = blockNumbers.Count;
             if (count == 0) return ArrayPoolList<ChainLevelInfo?>.Empty();
 
-            int keyLength = blockNumbers[0].ToBigEndianSpanWithoutLeadingZeros(out _).Length;
+            int keyLength = GetKeyLength(blockNumbers[0]);
             for (int i = 1; i < count; i++)
             {
-                if (blockNumbers[i].ToBigEndianSpanWithoutLeadingZeros(out _).Length != keyLength)
+                if (GetKeyLength(blockNumbers[i]) != keyLength)
                     return ReadVariableLengthLevels(blockNumbers);
             }
 
             return ReadFixedLengthLevels(blockNumbers, keyLength);
         }
+
+        private static int GetKeyLength(ulong number) =>
+            sizeof(ulong) - Math.Min(BitOperations.LeadingZeroCount(number) / sizeof(ulong), sizeof(ulong) - 1);
 
         private IOwnedReadOnlyList<ChainLevelInfo?> ReadFixedLengthLevels(in ArrayPoolListRef<ulong> blockNumbers, int keyLength)
         {
