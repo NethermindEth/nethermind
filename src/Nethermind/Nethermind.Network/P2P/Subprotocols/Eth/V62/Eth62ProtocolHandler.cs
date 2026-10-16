@@ -27,7 +27,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
+    public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler, IKnownTransactionFilter
     {
         protected bool _statusReceived;
         private readonly TxFloodController _floodController;
@@ -275,7 +275,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             try
             {
-                message = Deserialize<T>(packet.Content);
+                // Pooled responses keep every item: the flood controller and announcement checks judge the response as sent.
+                using (TransactionsMessageSerializer.SkipKnown(typeof(T) == typeof(TransactionsMessage) ? this : null))
+                {
+                    message = Deserialize<T>(packet.Content);
+                }
                 TransactionsMessage transactions = getTransactions(message);
                 reservation.Attach(transactions.Transactions);
                 transactions.Transactions = reservation;
@@ -287,6 +291,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 reservation?.Dispose();
             }
         }
+
+        bool IKnownTransactionFilter.TrySettleKnown(in ValueHash256 hash, TxType type, int size)
+        {
+            // A closing peer's transactions are dropped by HandleSlow, so none is settled.
+            if (Session.IsClosing
+                || !MatchesAnnouncedShape(in hash, type, size)
+                || _txPool is not IRecyclableTxPool recyclablePool
+                || !recyclablePool.TrySubmitKnown(in hash))
+            {
+                return false;
+            }
+
+            NotifiedTransactions.Set(hash);
+            _floodController.Report(AcceptTxResult.AlreadyKnown);
+            return true;
+        }
+
+        /// <summary>Whether a broadcast transaction matches whatever this peer announced about its type and size.</summary>
+        /// <remarks>
+        /// Lets a known transaction be settled undecoded only when <see cref="HandleSlow"/> would also accept its shape;
+        /// on a mismatch the transaction is decoded, and rejected there.
+        /// </remarks>
+        private protected virtual bool MatchesAnnouncedShape(in ValueHash256 hash, TxType type, int size) => true;
 
         protected void Handle(TransactionsMessage msg)
         {

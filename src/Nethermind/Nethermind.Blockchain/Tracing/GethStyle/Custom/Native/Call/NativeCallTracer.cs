@@ -6,7 +6,6 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -51,7 +50,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly BlockLogIndex? _blockLogIndex;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly ArrayPoolList<ulong>? _logIndexAtEntry;
-    private readonly CompositeDisposable _disposables = [];
 
     private EvmExceptionType? _error;
     private ulong _remainingGas;
@@ -94,8 +92,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         }
     }
 
-    protected override GethLikeTxTrace CreateTrace() => new(_disposables);
-
     public override bool IsTracingInstructions => false;
 
     public override GethLikeTxTrace BuildResult()
@@ -111,7 +107,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         {
             NativeCallTracerCallFrame firstCallFrame = _callStack[0];
             _callStack.RemoveAt(0);
-            _disposables.Add(firstCallFrame);
+            result.Disposable = firstCallFrame;
 
             result.TxHash = _txHash;
             result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
@@ -149,9 +145,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             // A frame transaction's top-level invocations each carry their own limit; the whole
             // transaction's belongs to the synthetic root CollapseFrameRoots builds.
             Gas = Depth == 0 && !_isFrameTx ? _gasLimit : gas,
-            Value = callOpcode == Instruction.STATICCALL ? null : value,
-            Input = input.Span.ToPooledList()
+            Value = callOpcode == Instruction.STATICCALL ? null : value
         };
+        // A top-level input is the transaction's own data; a nested one is a view into the caller's pooled memory.
+        if (Depth == 0) callFrame.Input = input;
+        else callFrame.CopyInput(input.Span);
         _callStack.Add(callFrame);
     }
 
@@ -246,7 +244,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
-        firstCallFrame.Output = new ArrayPoolList<byte>(output);
+        firstCallFrame.Output = output;
         ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
 
         if (_config.WithLog)
@@ -266,7 +264,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
         if (output is not null)
-            firstCallFrame.Output = new ArrayPoolList<byte>(output);
+            firstCallFrame.Output = output;
 
         if (_isFrameTx)
         {
@@ -432,7 +430,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             From = frame.Mode == FrameMode.Sender ? _sender : Eip8141Constants.EntryPointAddress,
             To = frame.Target ?? _sender,
             Value = isStatic ? null : frame.Value,
-            Input = frame.Data.Span.ToPooledList(),
+            Input = frame.Data,
             Error = UndispatchedFrameError(frameIndex, frameReceipt)
         };
     }
@@ -528,20 +526,19 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         {
             MarkFrameFailed(callFrame, error.Value);
 
-            if (error == EvmExceptionType.Revert && output?.Length != 0)
+            if (error == EvmExceptionType.Revert && output is { IsEmpty: false } revertOutput)
             {
-                ArrayPoolList<byte> outputList = output?.Span.ToPooledList();
-                callFrame.Output = outputList;
+                callFrame.CopyOutput(revertOutput.Span);
 
-                if (outputList?.Count >= 4)
+                if (revertOutput.Length >= 4)
                 {
-                    ProcessRevertReason(callFrame, output.Value);
+                    ProcessRevertReason(callFrame, revertOutput);
                 }
             }
         }
         else
         {
-            callFrame.Output = output?.Span.ToPooledList();
+            callFrame.CopyOutput(output.GetValueOrDefault().Span);
         }
     }
 

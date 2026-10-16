@@ -100,19 +100,19 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         }
 
         writer.WritePropertyName("input"u8);
-        if (value.Input is null || value.Input.Count == 0)
+        if (value.Input.IsEmpty)
         {
             writer.WriteStringValue("0x"u8);
         }
         else
         {
-            TypeInfoJsonSerializer.Serialize(writer, value.Input.AsReadOnlyMemory(), options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Input, options);
         }
 
-        if (value.Output?.Count > 0)
+        if (!value.Output.IsEmpty)
         {
             writer.WritePropertyName("output"u8);
-            TypeInfoJsonSerializer.Serialize(writer, value.Output.AsReadOnlyMemory(), options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Output, options);
         }
 
         if (value.Error is not null)

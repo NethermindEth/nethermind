@@ -287,6 +287,47 @@ public class Eth68ProtocolHandlerTests
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
+    public enum AnnouncedShape { None, Matching, WrongSize, WrongType }
+
+    [Test]
+    public void Known_broadcast_tx_is_settled_undecoded_only_when_it_matches_the_announced_shape([Values] AnnouncedShape announced)
+    {
+        IRecyclableTxPool recyclablePool = ReplaceWithRecyclableTxPool();
+        recyclablePool.TrySubmitKnown(Arg.Any<ValueHash256>()).Returns(true);
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).SignedAndResolved().TestObject;
+        if (announced is not AnnouncedShape.None)
+        {
+            using NewPooledTransactionHashesMessage68 announcement = new(
+                new ArrayPoolList<byte>(1) { (byte)(announced is AnnouncedShape.WrongType ? TxType.AccessList : tx.Type) },
+                new ArrayPoolList<int>(1) { tx.GetLength() + (announced is AnnouncedShape.WrongSize ? 1 : 0) },
+                new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
+            HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
+        }
+
+        using TransactionsMessage broadcast = new(new ArrayPoolList<Transaction>(1) { tx });
+        HandleZeroMessage(broadcast, Eth62MessageCode.Transactions);
+
+        bool shapeMatches = announced is AnnouncedShape.None or AnnouncedShape.Matching;
+        recyclablePool.Received(shapeMatches ? 1 : 0).TrySubmitKnown(Arg.Any<ValueHash256>());
+        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), out _);
+        _session.Received(shapeMatches ? 0 : 1).InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
+    [Test]
+    public void Known_broadcast_tx_from_a_closing_peer_is_not_settled()
+    {
+        IRecyclableTxPool recyclablePool = ReplaceWithRecyclableTxPool();
+        recyclablePool.TrySubmitKnown(Arg.Any<ValueHash256>()).Returns(true);
+        _session.IsClosing.Returns(true);
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).SignedAndResolved().TestObject;
+
+        using TransactionsMessage broadcast = new(new ArrayPoolList<Transaction>(1) { tx });
+        HandleZeroMessage(broadcast, Eth62MessageCode.Transactions);
+
+        recyclablePool.DidNotReceive().TrySubmitKnown(Arg.Any<ValueHash256>());
+        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), out _);
+    }
+
     [Test]
     public void Should_validate_retained_shape_for_oversized_announcement([Values] bool correlated)
     {
@@ -1082,6 +1123,14 @@ public class Eth68ProtocolHandlerTests
         _handler.Dispose();
         _handler = CreateHandler(txPoolConfig);
         _handler.Init();
+    }
+
+    private IRecyclableTxPool ReplaceWithRecyclableTxPool()
+    {
+        _transactionPool = Substitute.For<ITxPool, IRecyclableTxPool>();
+        ReplaceHandler(Substitute.For<ITxPoolConfig>());
+        HandleIncomingStatusMessage();
+        return (IRecyclableTxPool)_transactionPool;
     }
 
     private void AssertResponseForUnrequestableAnnouncement(Transaction tx, NewPooledTransactionHashesMessage68 announcement, bool correlated)

@@ -923,21 +923,51 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     /// disposed can be read off that pool rather than inferred from the frame.</summary>
     /// <returns>The pool, which receives the rental back when the frame is disposed.</returns>
     /// <remarks>The frame's own buffers come from the shared pool and it exposes no seam to swap that, so the
-    /// probe is attached through <see cref="NativeCallTracerCallFrame.Output"/>. Disposing a frame disposes
+    /// probe is attached through <see cref="NativeCallTracerCallFrame.Logs"/>. Disposing a frame disposes
     /// every buffer it holds, so a returned rental here means the whole frame went back.</remarks>
     private static TrackingPool AttachRentalProbe(NativeCallTracerCallFrame callFrame)
     {
         TrackingPool pool = new();
-        callFrame.Output?.Dispose();
-        callFrame.Output = new ArrayPoolList<byte>(pool, ProbeBufferCapacity);
+        callFrame.Logs?.Dispose();
+        callFrame.Logs = new ArrayPoolList<NativeCallTracerLogEntry>(pool, ProbeBufferCapacity);
         return pool;
     }
 
-    private sealed class TrackingPool : ArrayPool<byte>
+    private sealed class TrackingPool : ArrayPool<NativeCallTracerLogEntry>
     {
-        public List<byte[]> Returned { get; } = [];
-        public override byte[] Rent(int minimumLength) => new byte[minimumLength];
-        public override void Return(byte[] array, bool clearArray = false) => Returned.Add(array);
+        public List<NativeCallTracerLogEntry[]> Returned { get; } = [];
+        public override NativeCallTracerLogEntry[] Rent(int minimumLength) => new NativeCallTracerLogEntry[minimumLength];
+        public override void Return(NativeCallTracerLogEntry[] array, bool clearArray = false) => Returned.Add(array);
+    }
+
+    [Test]
+    public void Test_CallTrace_NestedInputAndOutput_SurviveCallerMemoryReuse([Values] bool childReverts)
+    {
+        byte[] txData = [0xaa, 0xbb];
+        byte[] callerMemory = [1, 2, 3, 4, 5];
+        byte[] txOutput = [0xcc];
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).WithData(txData).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+
+        tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, txData, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, callerMemory.AsMemory(0, 4), ExecutionType.CALL);
+        if (childReverts) tracer.ReportActionRevert(30000, callerMemory.AsMemory(1, 4));
+        else tracer.ReportActionEnd(30000, callerMemory.AsMemory(1, 4));
+        callerMemory.AsSpan().Fill(0xff);
+        tracer.ReportActionEnd(10000, ReadOnlyMemory<byte>.Empty);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000), txOutput, []);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
+        NativeCallTracerCallFrame child = root.Calls[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Input.ToArray(), Is.EqualTo(txData));
+            Assert.That(root.Output.ToArray(), Is.EqualTo(txOutput));
+            Assert.That(child.Input.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3, 4 }));
+            Assert.That(child.Output.ToArray(), Is.EqualTo(new byte[] { 2, 3, 4, 5 }));
+        }
     }
 
     private static GethLikeTxTrace TraceAmsterdamTopCall(bool withSubFrame)

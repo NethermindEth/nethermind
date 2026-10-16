@@ -408,6 +408,11 @@ public class CommitmentEmitterTests
             "a composed depth is rebuilt from its children's exact rows, so it must sit strictly between the stored root and the exact depth");
 
     [Test]
+    public void Adjacent_composed_depths_are_refused() =>
+        Assert.That(() => new CommitmentDepthPolicy(CommitmentDepthPolicy.DefaultIntervalLog2, 3, 5, 2, 4, 6, 4, (1 << 1) | (1 << 2)), Throws.InstanceOf<InvalidConfigurationException>(),
+            "a composed node is built from its children's rows, and a composed depth writes none, so the depth below a composed one must have rows");
+
+    [Test]
     public void A_composed_account_depth_writes_no_row_and_its_children_keep_theirs()
     {
         TreePath root = TreePath.Empty;
