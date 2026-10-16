@@ -489,8 +489,9 @@ public partial struct EvmPooledMemory
     /// A word there needs no expansion gas and no initialization, so reading it in place is the whole access.
     /// The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
     /// </remarks>
+    [Experimental("NMEVM0001")]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal ref byte GetActiveInitializedWord(ulong offset)
+    public ref byte GetActiveInitializedWord(ulong offset)
     {
         Debug.Assert(offset <= uint.MaxValue);
         ulong end = offset + WordSize;
@@ -508,8 +509,9 @@ public partial struct EvmPooledMemory
     /// initialized memory up to the backing's capacity, as <see cref="StoreWordAfterGas"/> lets it. Nothing changes;
     /// <see cref="CommitWordOverwrite"/> does that once the cost has been charged.
     /// </remarks>
+    [Experimental("NMEVM0001")]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal ulong GetWordOverwriteCost(ulong offset)
+    public ulong GetWordOverwriteCost(ulong offset)
     {
         Debug.Assert(offset <= uint.MaxValue);
         ulong end = offset + WordSize;
@@ -529,8 +531,9 @@ public partial struct EvmPooledMemory
     /// <remarks>
     /// The caller must write all 32 bytes. The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
     /// </remarks>
+    [Experimental("NMEVM0001")]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal ref byte CommitWordOverwrite(ulong offset)
+    public ref byte CommitWordOverwrite(ulong offset)
     {
         ulong end = offset + WordSize;
         if (end > Size) Size = (end + (WordSize - 1UL)) & ~(WordSize - 1UL);

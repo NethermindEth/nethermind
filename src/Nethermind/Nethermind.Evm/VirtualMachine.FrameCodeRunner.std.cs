@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -75,7 +76,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private static Dictionary<nint, OpcodeBody>? _bodyRecorder;
 
     /// <summary>What each entry of <paramref name="spec"/>'s untraced dispatch table runs; equal sets are one instance.</summary>
-    internal static OpcodeBodySet GetOpcodeBodySet(IReleaseSpec spec) => _bodySetsBySpec.GetValue(spec, static s => DescribeBodies(s));
+    /// <remarks>The first call for a spec instance builds a table, which takes tens of microseconds.</remarks>
+    [Experimental("NMEVM0001")]
+    public static OpcodeBodySet GetOpcodeBodySet(IReleaseSpec spec) => _bodySetsBySpec.GetValue(spec, static s => DescribeBodies(s));
 
     /// <summary>Builds an untraced table of its own for <paramref name="spec"/>, recording the body behind every entry.</summary>
     /// <remarks>

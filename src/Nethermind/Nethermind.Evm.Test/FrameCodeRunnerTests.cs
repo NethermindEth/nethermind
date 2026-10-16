@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -57,11 +60,11 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
     private readonly record struct Outcome(EvmExceptionType Exception, bool Revert, ulong GasLeft, string Output, int OpCodes, int Polls);
 
     /// <summary>Runs <paramref name="code"/> as a top-level frame on the fixture's machine and undoes its state changes.</summary>
-    private Outcome Run(byte[] code, bool cancelable = false, ulong gas = 1_000_000)
+    private Outcome Run(byte[] code, bool cancelable = false, ulong gas = 1_000_000, byte[]? input = null)
     {
         if (!TestState.AccountExists(Recipient)) TestState.CreateAccount(Recipient, UInt256.Zero);
         UntracedTracer tracer = new(cancelable);
-        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(new CodeInfo(code), Recipient, Sender, Recipient, 0, UInt256.Zero, ReadOnlyMemory<byte>.Empty);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(new CodeInfo(code), Recipient, Sender, Recipient, 0, UInt256.Zero, input ?? ReadOnlyMemory<byte>.Empty);
         using StackAccessTracker accessTracker = new();
         Snapshot snapshot = TestState.TakeSnapshot();
         using VmState<EthereumGasPolicy> state = VmState<EthereumGasPolicy>.RentTopLevel(
@@ -137,6 +140,49 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
         Execute(new InstructionTracer(), CallerCode(DeployCallee()));
 
         Assert.That(counting.Offers, Is.Empty, "an instruction tracer must see every opcode run on the interpreter");
+    }
+
+    /// <summary>Reads the frame through the public accessors on every offer, adds opcodes, and declines.</summary>
+    private sealed class AccessorRunner(int addedOpCodes) : FrameCodeRunner<EthereumGasPolicy>
+    {
+        public readonly List<(nint ProgramCounter, nint Head, byte[] BottomWord, byte[] Input)> Seen = [];
+
+        protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
+            scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+        {
+            byte[] bottom = stack.Head > 0
+                ? MemoryMarshal.CreateReadOnlySpan(ref stack.StackBase, EvmStack.WordSize).ToArray()
+                : [];
+            byte[] input = MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.AsRef(in stack.InputDataStart), (int)stack.InputDataSize).ToArray();
+            Seen.Add((programCounter, stack.Head, bottom, input));
+            vm.AddOpCodes(addedOpCodes);
+            return Declined;
+        }
+    }
+
+    [Test]
+    public void A_runner_reads_the_stack_and_input_and_adds_opcodes_through_the_public_accessors()
+    {
+        byte[] code = CallerCode(DeployCallee());
+        byte[] input = [1, 2, 3];
+        Outcome interpreted = Run(code, input: input);
+        AccessorRunner accessor = new(addedOpCodes: 5);
+        _runner.Inner = accessor;
+
+        Outcome outcome = Run(code, input: input);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameCodeRunner<EthereumGasPolicy>.ContractVersion, Is.EqualTo(1));
+            Assert.That(accessor.Seen.Count, Is.EqualTo(3), "the caller's entry, the callee's entry, and the caller's resume");
+            Assert.That(accessor.Seen[0].Input, Is.EqualTo(input), "the top-level frame's input is the call data");
+            Assert.That(accessor.Seen[1].Input, Is.Empty, "the callee was called with no input");
+            Assert.That(accessor.Seen[2].ProgramCounter, Is.EqualTo((nint)(code.Length - 1)));
+            Assert.That(accessor.Seen[2].Head, Is.EqualTo((nint)1), "CALL leaves its success flag alone on the stack");
+            Assert.That(accessor.Seen[2].BottomWord[0], Is.EqualTo(1), "the success flag is the bottom word, least significant byte first");
+            Assert.That(outcome.OpCodes, Is.EqualTo(interpreted.OpCodes + 3 * 5), "each offer added its opcodes");
+        }
     }
 
     private static readonly string[] Programs =
