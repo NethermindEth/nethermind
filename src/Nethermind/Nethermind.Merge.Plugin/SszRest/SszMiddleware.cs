@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.IO.Pipelines;
@@ -66,6 +67,9 @@ public sealed class SszMiddleware
     private readonly FrozenSet<string> _multiSegmentResources;
     private readonly FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> _multiSegmentLookup;
 
+    // Resources carrying a path parameter between a fixed head and tail ("payloads/{payloadId}/witness").
+    private readonly (string Head, string Tail, string Resource)[] _templatedResources;
+
     private enum SszRequestKind { NotEngine, EngineWrongMediaType, EngineOk }
 
     public SszMiddleware(
@@ -90,6 +94,15 @@ public sealed class SszMiddleware
         foreach (string resource in _getRoutes.Keys) if (resource.Contains('/')) multiSegment.Add(resource);
         _multiSegmentResources = multiSegment.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
         _multiSegmentLookup = _multiSegmentResources.GetAlternateLookup<ReadOnlySpan<char>>();
+
+        List<(string Head, string Tail, string Resource)> templated = [];
+        foreach (string resource in multiSegment)
+        {
+            int open = resource.IndexOf("/{", StringComparison.Ordinal);
+            int close = resource.IndexOf("}/", StringComparison.Ordinal);
+            if (open > 0 && close > open) templated.Add((resource[..open], resource[(close + 2)..], resource));
+        }
+        _templatedResources = [.. templated];
     }
 
     private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
@@ -380,6 +393,13 @@ public sealed class SszMiddleware
             {
                 resource = pathSegment[..firstSlash];
                 extraMem = pathSegment[(firstSlash + 1)..];
+
+                // A templated resource ("payloads/{payloadId}/witness") passes its parameter on as the path extra.
+                if (TryMatchTemplate(resource.Span, extraMem, out string? templated, out ReadOnlyMemory<char> parameter))
+                {
+                    resource = templated.AsMemory();
+                    extraMem = parameter;
+                }
             }
         }
 
@@ -429,6 +449,28 @@ public sealed class SszMiddleware
         return false;
     }
 
+    /// <summary>Matches a <paramref name="head"/> and an <paramref name="extra"/> of <c>{parameter}/{tail}</c> against the templated resources.</summary>
+    private bool TryMatchTemplate(ReadOnlySpan<char> head, ReadOnlyMemory<char> extra,
+        [NotNullWhen(true)] out string? resource, out ReadOnlyMemory<char> parameter)
+    {
+        foreach ((string templateHead, string tail, string templated) in _templatedResources)
+        {
+            int tailStart = extra.Length - tail.Length;
+            if (tailStart > 1
+                && extra.Span[tailStart - 1] == '/'
+                && head.Equals(templateHead, StringComparison.OrdinalIgnoreCase)
+                && extra.Span[tailStart..].Equals(tail, StringComparison.OrdinalIgnoreCase))
+            {
+                resource = templated;
+                parameter = extra[..(tailStart - 1)];
+                return true;
+            }
+        }
+
+        resource = null;
+        parameter = default;
+        return false;
+    }
 
     private SszRequestKind ClassifySszRequest(HttpContext ctx)
     {

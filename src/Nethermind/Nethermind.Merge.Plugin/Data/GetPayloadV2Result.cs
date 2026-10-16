@@ -13,7 +13,7 @@ public class GetPayloadV2Result<TVersionedExecutionPayload>(Block block, UInt256
 {
     private TVersionedExecutionPayload? _executionPayload;
 
-    protected Block Block { get; } = block;
+    protected internal Block Block { get; } = block;
 
     public UInt256 BlockValue { get; } = blockFees;
 
