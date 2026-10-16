@@ -187,7 +187,7 @@ public class LongConverterTests : ConverterTestBase<long>
     [TestCase("x10", typeof(FormatException))]
     [TestCase("0x10000000000000000", typeof(OverflowException))]
     [TestCase("0x010000000000000000", typeof(OverflowException))]
-    [TestCase("​0x1", typeof(FormatException))]
+    [TestCase("\u200B0x1", typeof(FormatException))]
     public void FromString_rejects_invalid_input(string s, Type exceptionType)
     {
         using (Assert.EnterMultipleScope())
