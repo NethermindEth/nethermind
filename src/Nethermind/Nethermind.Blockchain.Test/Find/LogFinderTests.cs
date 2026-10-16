@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
@@ -25,6 +26,7 @@ using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
@@ -106,6 +108,7 @@ public class LogFinderTests
         Assert.That(logs.Length, Is.EqualTo(5));
         int[] indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         Assert.That(indexes, Is.EqualTo(new[] { 0, 1, 0, 1, 2 }));
+        AssertSerializedAsFilterLogs(_logFinder.FindLogs(logFilter));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -412,6 +415,19 @@ public class LogFinderTests
             logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
+    [Test]
+    public void Indexed_logs_serialize_as_their_filter_logs_across_indexed_and_scanned_blocks()
+    {
+        ILogIndexStorage logIndexStorage = CreateLogIndexStorage(1, 3);
+        logIndexStorage.GetEnumerator(TestItem.AddressA, 1, 3).Returns(_ => new[] { 1 }.AsEnumerable().GetEnumerator());
+        LogFilter filter = FilterBuilder.New().FromBlock(0UL).ToBlock(4).WithAddresses(TestItem.AddressA, TestItem.AddressB).Build();
+
+        IEnumerable<FilterLog> logs = CreateIndexedLogFinder(logIndexStorage).FindLogs(filter, _blockTree.FindHeader(0)!, _blockTree.FindHeader(4)!);
+
+        Assert.That(logs.Select(static log => log.BlockNumber), Is.EqualTo(new ulong[] { 1, 1, 4 }));
+        AssertSerializedAsFilterLogs(logs);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void filter_throws_descriptive_exception_when_receipts_exist_in_compact_encoding_but_block_missing()
     {
@@ -451,6 +467,7 @@ public class LogFinderTests
         FilterBuilder builder = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA);
         if (filterByTopic) builder = builder.WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA));
 
+        AssertSerializedAsFilterLogs(finder.FindLogs(builder.Build()));
         FilterLog[] logs = finder.FindLogs(builder.Build()).ToArray();
         Array.Clear(encoded);
 
@@ -690,6 +707,29 @@ public class LogFinderTests
     }
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
+
+    private static void AssertSerializedAsFilterLogs(IEnumerable<FilterLog> logs)
+    {
+        EthereumJsonSerializer serializer = new();
+        string[] expected = logs.Select(log => serializer.Serialize(log)).ToArray();
+        List<string> serialized = [];
+        foreach (SerializedLogs blockLogs in FoundLogs.Serialize(logs))
+        {
+            using (blockLogs)
+            {
+                for (int i = 0; i < blockLogs.Count; i++)
+                {
+                    serialized.Add(Encoding.UTF8.GetString(blockLogs[i]));
+                }
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs, Is.TypeOf<FoundLogs>());
+            Assert.That(serialized, Is.EqualTo(expected));
+        }
+    }
 
     // NSubstitute cannot stub a method with a ref-struct out parameter, so the throwing finder is hand-rolled.
     private sealed class ThrowingReceiptFinder(Type exceptionType) : IReceiptFinder

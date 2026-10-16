@@ -16,6 +16,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
@@ -1186,11 +1187,11 @@ public partial class EthRpcModule(
             return response;
         }
 
-        ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
+        SerializedLogsResult logs = new(filterLogs);
 
-        foreach (FilterLog log in filterLogs)
+        foreach (SerializedLogs blockLogs in FoundLogs.Serialize(filterLogs))
         {
-            logs.Add(log);
+            logs.Add(blockLogs);
             if (enforceMaxLogs && logs.Count > _rpcConfig.MaxLogsPerResponse)
             {
                 logs.Dispose();
