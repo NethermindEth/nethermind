@@ -36,7 +36,8 @@ namespace Nethermind.Consensus.Processing;
 /// every run, <c>w_cold</c>/<c>w_cold_s</c> (backing-store reads, all and storage), <c>w_ops</c>/<c>w_sload</c> (a cut run
 /// has <c>w_part</c>: its opcodes miss the frame segment in progress); <c>m_ops</c>, <c>m_sload</c>, <c>m_cold</c>,
 /// <c>m_cold_s</c> for a transaction the main thread executed; <c>pool</c>, <c>mp_run</c>; <c>act</c> on a missing one;
-/// <c>seed_skip</c> when a worker passed it over because a mempool run was seeded for it by then.</item>
+/// <c>seed_skip</c> when a worker passed it over because a mempool run was seeded for it by then; <c>mp_seed</c>, what Seed
+/// did with a run recorded for it (the <c>mp</c> of a missing one, on every row).</item>
 /// </list>
 /// Warm threads write plain array stores; the coordinator-side summaries and the look-ups are guarded and counted in
 /// <c>warm_faults</c>. With BENCH_HANDOFF_DIAG_FAIL=1 the new main-thread hooks (prepare, ran), the timeline report, the
@@ -224,6 +225,7 @@ internal static partial class HandoffDiag
         }
 
         if (p.SeedSkip[index]) writer.WriteBoolean("seed_skip", true);
+        if (p.Mempool[index] != 0) writer.WriteString("mp_seed", MempoolName(p.Mempool[index]));
         if (p.Pool[index] != 0) writer.WriteBoolean("pool", p.Pool[index] == 1);
         if (p.MempoolRun[index] != 0) writer.WriteString("mp_run", p.MempoolRun[index] == 1 ? "notrun" : WarmName((WarmState)(p.MempoolRun[index] - 2), p.MempoolRunReason[index]));
     }

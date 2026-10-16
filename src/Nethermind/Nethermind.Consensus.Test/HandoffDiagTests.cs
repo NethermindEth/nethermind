@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Text;
 using System.Text.Json;
 using Nethermind.Consensus.Processing;
@@ -169,7 +170,13 @@ public class HandoffDiagTests(bool earlyStart) : PrewarmerHandoffTestBase(Osaka.
             Call(TestItem.PrivateKeyD, 0, Logger));
         Run executed = Process(block, adapter: null);
         PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block), () => PreWarmer.SpeculativeMarkerPublished);
+        // Beside the warms, the runs are seeded first here, as PrewarmerMempoolHandoffTests does, so seed_n does not race.
+        using ManualResetEventSlim seededEvent = new(initialState: false);
+        PreWarmer.Seeded = seededEvent.Set;
+        PreWarmer.BeforeTransactionWorkers = () => seededEvent.Wait(TimeSpan.FromSeconds(10));
         RunPreWarmCaches(PreWarmer, block);
+        PreWarmer.Seeded = null;
+        PreWarmer.BeforeTransactionWorkers = null;
         Run run = ProcessWithDiag(block);
         HandoffDiag.BlockRecords records = HandoffDiag.TakeRecords()!;
 
@@ -203,7 +210,7 @@ public class HandoffDiagTests(bool earlyStart) : PrewarmerHandoffTestBase(Osaka.
             int seeded = 0;
             foreach (JsonElement tx in txs)
             {
-                if (tx.TryGetProperty("mp", out JsonElement mp) && mp.GetString() == "seeded") seeded++;
+                if (tx.TryGetProperty("mp_seed", out JsonElement mp) && mp.GetString() == "seeded") seeded++;
                 if (!records.FailTest && !records.Footprints!.Diag.FailTest) Assert.That(tx.TryGetProperty("mp_run", out _), Is.True, $"mp_run of {tx}");
             }
 
