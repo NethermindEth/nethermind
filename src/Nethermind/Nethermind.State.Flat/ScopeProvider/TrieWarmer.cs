@@ -64,21 +64,32 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         _processors = new Processor[workerCount];
         for (int i = 0; i < _processors.Length; i++)
         {
-            _processors[i] = new Processor(this);
+            _processors[i] = new Processor(this, i);
         }
     }
 
-    private sealed class Processor(TrieWarmer owner) : IThreadPoolWorkItem
+    // A dedicated thread per processor rather than a thread pool work item: block execution keeps the pool saturated,
+    // so pooled warm-ups queue behind it and start too late to help the commit.
+    private sealed class Processor(TrieWarmer owner, int index)
     {
         private readonly TrieWarmer _owner = owner;
+        private readonly SemaphoreSlim _wake = new(0);
         private int _scheduled = 0;
+        private bool _started;
+        private volatile bool _stopping;
 
         public bool TrySchedule()
         {
             if (Interlocked.CompareExchange(ref _scheduled, 1, 0) != 0) return false;
 
             _owner.OnProcessorScheduled();
-            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+            if (!_started)
+            {
+                _started = true;
+                new Thread(Run) { IsBackground = true, Name = $"Trie warmer {index}" }.Start();
+            }
+
+            _wake.Release();
             return true;
         }
 
@@ -86,7 +97,21 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         public bool TryReacquireAfterEmptyCheck() => Interlocked.Exchange(ref _scheduled, 1) == 0;
 
-        void IThreadPoolWorkItem.Execute() => _owner.Execute(this);
+        public void Stop()
+        {
+            _stopping = true;
+            _wake.Release();
+        }
+
+        private void Run()
+        {
+            while (true)
+            {
+                _wake.Wait();
+                if (_stopping) return;
+                _owner.Execute(this);
+            }
+        }
     }
 
     private bool HasReadyWork() => _slotJobBuffer.HasReadyItem || _jobBufferMultiThreaded.HasReadyItem;
@@ -243,6 +268,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             _logger.Warn($"TrieWarmer processors ({Volatile.Read(ref _activeProcessors)}) did not stop within {DisposeTimeoutMilliseconds}ms during dispose");
         }
+
+        foreach (Processor processor in _processors) processor.Stop();
     }
 
     private void OnProcessorScheduled() => Interlocked.Increment(ref _activeProcessors);

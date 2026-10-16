@@ -161,6 +161,22 @@ public class TrieWarmerTests
     }
 
     [Test]
+    public async Task Jobs_RunOffTheThreadPool_OnThreadsThatEndOnDispose()
+    {
+        TrieWarmer warmer = new(_logManager, _config);
+        ThreadRecordingAddressWarmer addressWarmer = new();
+
+        Assert.That(warmer.PushAddressJob(addressWarmer, new Address("0x4444444444444444444444444444444444444444"), sequenceId: 1), Is.True);
+        await WaitForConditionAsync(() => addressWarmer.WorkerThread is not null, "the job should run");
+
+        Thread workerThread = addressWarmer.WorkerThread!;
+        Assert.That(workerThread.IsThreadPoolThread, Is.False);
+
+        await warmer.DisposeAsync();
+        Assert.That(workerThread.Join(TimeSpan.FromSeconds(5)), Is.True);
+    }
+
+    [Test]
     public async Task DisposeAsync_RejectsNewJobs()
     {
         TrieWarmer warmer = new(_logManager, _config);
@@ -214,6 +230,19 @@ public class TrieWarmerTests
         public bool WarmUpStateTrie(Address address, int sequenceId)
         {
             Interlocked.Increment(ref _calls);
+            return true;
+        }
+    }
+
+    private sealed class ThreadRecordingAddressWarmer : ITrieWarmer.IAddressWarmer
+    {
+        private Thread? _workerThread;
+
+        public Thread? WorkerThread => Volatile.Read(ref _workerThread);
+
+        public bool WarmUpStateTrie(Address address, int sequenceId)
+        {
+            Volatile.Write(ref _workerThread, Thread.CurrentThread);
             return true;
         }
     }
