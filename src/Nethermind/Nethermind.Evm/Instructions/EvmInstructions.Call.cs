@@ -105,11 +105,20 @@ public static partial class EvmInstructions
 
         Debug.Assert(vm.ReturnData is null, "Dispatch clears staged output before entering an opcode chain.");
 
+        int traceStackHead;
         // Pop the gas limit for the call.
-        if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 gasLimit))
+        {
+            traceStackHead = 0;
+            goto StackUnderflow;
+        }
         // Pop the code source address from the stack.
         Address? codeSource = stack.PopAddress(vm.AddressCache);
-        if (codeSource is null) goto StackUnderflow;
+        if (codeSource is null)
+        {
+            traceStackHead = 1;
+            goto StackUnderflow;
+        }
 
         ExecutionEnvironment env = vm.VmState.Env;
         // Determine the call value based on the call type.
@@ -126,12 +135,14 @@ public static partial class EvmInstructions
         }
         else if (!stack.PopUInt256(out callValue))
         {
+            traceStackHead = 2;
             goto StackUnderflow;
         }
 
         // Pop additional parameters: data offset, data length, output offset, and output length.
         if (!stack.PopUInt256(out UInt256 dataOffset, out UInt256 dataLength, out UInt256 outputOffset, out UInt256 outputLength))
         {
+            traceStackHead = (int)stack.Head + (TOpCall.ExecutionType is ExecutionType.CALL or ExecutionType.CALLCODE ? 3 : 2);
             goto StackUnderflow;
         }
 
@@ -314,6 +325,8 @@ public static partial class EvmInstructions
 
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
+        if (DispatchFlags.ConstTracing && vm.IsTracingActions)
+            vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {(TOpCall.ExecutionType is ExecutionType.CALL or ExecutionType.CALLCODE ? 7 : 6)})");
         return EvmExceptionType.StackUnderflow;
     OutOfGasTraced:
         if (DispatchFlags.ConstTracing && vm.IsTracingActions)

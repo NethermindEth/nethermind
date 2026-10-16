@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
@@ -56,8 +57,12 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
             using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(size, out byte[] array);
             buffer.ReadBytes(0, buffer.Size, array, 0);
             writer.WriteStartObject();
+            Span<byte> propertyName = stackalloc byte[10];
             for (int i = 0; i < size; i++)
-                writer.WriteNumber(i.ToString(CultureInfo.InvariantCulture), array[i]);
+            {
+                Utf8Formatter.TryFormat(i, propertyName, out int written);
+                writer.WriteNumber(propertyName[..written], array[i]);
+            }
             writer.WriteEndObject();
         }
         else
