@@ -1077,6 +1077,8 @@ public sealed class BlockImporter : IBlockImporter
         {
             PersistAnchor(finalized.Root, finalizedSlot, BeaconStateGloas.Encode(gloasState), gloasState.Validators!.Length);
             _states.PinGloas(finalized.Root, gloasState);
+            // No Fulu block can extend the lineage below a Gloas finalized checkpoint; release its hasher trees and registry index.
+            _lineageCache = new EpochCache();
         }
         else if (!gloasFinalized && _states.GetBlockState(finalized.Root) is { } finalizedState)
         {

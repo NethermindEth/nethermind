@@ -45,6 +45,8 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
         PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
         Assert.That(states.LineageState, Is.Not.Null);
+        FieldInfo lineageCache = typeof(BlockImporter).GetField("_lineageCache", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        object fuluLineageCache = lineageCache.GetValue(importer)!;
 
         Finalize(importer, new CheckpointRef(1, first.Root));
         importer.OnFinalized(new CheckpointRef(1, first.Root));
@@ -53,6 +55,7 @@ public class GloasBlockImporterTests
         Assert.That(states.LineageState, Is.Null);
         Assert.That(states.LineageRoot, Is.Null);
         Assert.That(states.GetHeldBlockState(_chain.AnchorRoot), Is.Null);
+        Assert.That(lineageCache.GetValue(importer), Is.Not.SameAs(fuluLineageCache), "the last Fulu lineage's hasher trees and registry index must not outlive Gloas finality");
     }
 
     [Test]
