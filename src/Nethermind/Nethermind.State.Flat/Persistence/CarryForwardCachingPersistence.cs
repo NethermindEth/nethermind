@@ -179,6 +179,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void OnCommitted(in StateId to, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
     {
+        Db.ColdReadProbe.LogAndReset(to.BlockNumber.ToString());
         using (_lock.EnterScope())
         {
             _generation++;
@@ -263,6 +264,15 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             }
 
             if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardAccountMisses();
+            if (Nethermind.Core.Threading.ProcessingThread.IsBlockProcessingThread)
+            {
+                long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                Db.ColdReadProbe.Arm();
+                Account? probed = inner.GetAccount(address);
+                Db.ColdReadProbe.Disarm(Db.ColdReadProbe.KindAccount, System.Diagnostics.Stopwatch.GetTimestamp() - start, probed is not null);
+                if (current) parent.TryCacheAccount(address, probed, generation);
+                return probed;
+            }
             Account? account = inner.GetAccount(address);
             if (current) parent.TryCacheAccount(address, account, generation);
             return account;
@@ -286,7 +296,18 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             }
 
             if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardSlotMisses();
-            bool found = inner.TryGetSlot(address, slot, ref outValue);
+            bool found;
+            if (Nethermind.Core.Threading.ProcessingThread.IsBlockProcessingThread)
+            {
+                long start = System.Diagnostics.Stopwatch.GetTimestamp();
+                Db.ColdReadProbe.Arm();
+                found = inner.TryGetSlot(address, slot, ref outValue);
+                Db.ColdReadProbe.Disarm(Db.ColdReadProbe.KindSlot, System.Diagnostics.Stopwatch.GetTimestamp() - start, found);
+            }
+            else
+            {
+                found = inner.TryGetSlot(address, slot, ref outValue);
+            }
             if (current) parent.TryCacheSlot(hash, address, slot, found, outValue, generation);
             return found;
         }

@@ -1032,7 +1032,24 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         try
         {
-            int length = _db.Get(key, output, cf, readOptions);
+            int length;
+            if (ColdReadProbe.IsArmed)
+            {
+                ColdReadProbe.BeforeNative();
+                long start = Stopwatch.GetTimestamp();
+                length = _db.Get(key, output, cf, readOptions);
+                ColdReadProbe.AfterNative(Stopwatch.GetTimestamp() - start);
+            }
+            else if (ProcessingThread.IsBlockProcessingThread)
+            {
+                long start = Stopwatch.GetTimestamp();
+                length = _db.Get(key, output, cf, readOptions);
+                ColdReadProbe.OtherNative(Stopwatch.GetTimestamp() - start);
+            }
+            else
+            {
+                length = _db.Get(key, output, cf, readOptions);
+            }
             return length < 0 ? 0 : length;
         }
         catch (RocksDbException e)
