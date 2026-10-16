@@ -11,6 +11,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -95,10 +96,10 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .AddSingleton<IBlockForRpcFactory, BlockForRpcFactory>()
             .AddSingleton<HashesOnlyBlockReader>()
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
-                .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
-                    (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
+                .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope, IReadOnlyQueryModule[]>(
+                    (simEnvFactory, overridableEnvFactory, lifetimeScope, readOnlyQueryModules) =>
                         new BlockchainBridgeFactory(simEnvFactory, overridableEnvFactory, lifetimeScope,
-                            jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount))
+                            jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, readOnlyQueryModules))
                 .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
                     .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
                     .AddSingleton<IEthCapabilitiesProvider, EthCapabilitiesProvider>()

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A startup hook that attaches the plugin's frame runner to the stock Nethermind.Evm.Test.exe of the hook build:
+       DOTNET_STARTUP_HOOKS=<this dll> with the plugin dll next to the test exe. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <AssemblyName>Nethermind.IlEvm.TestHooks</AssemblyName>
+    <Nullable>enable</Nullable>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <TestBin Condition="'$(TestBin)' == ''">C:\tmp\frame-runner-evmtest-bin\</TestBin>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="$(TestBin)Nethermind.Evm.dll" Private="false" />
+    <Reference Include="$(TestBin)Nethermind.Evm.Test.dll" Private="false" />
+    <Reference Include="$(TestBin)Nethermind.Core.dll" Private="false" />
+    <Reference Include="$(TestBin)Nethermind.IlEvm.dll" Private="false" />
+    <Reference Include="$(TestBin)Autofac.dll" Private="false" />
+  </ItemGroup>
+</Project>

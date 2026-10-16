@@ -1,0 +1,689 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Abstractions;
+using System.IO.Pipelines;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain.Find;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Db;
+using Nethermind.Core;
+using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Evm;
+using Nethermind.IlEvm;
+using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+
+namespace RpcReplay;
+
+/// <summary>
+/// Replays raw eth_call JSON-RPC requests through the production JsonRpcProcessor -> JsonRpcService -> EthRpcModule ->
+/// BlockchainBridge path of an in-memory chain, once on the interpreter and once with the IL compiler, comparing every
+/// response byte for byte and timing each request.
+/// </summary>
+public static class Harness
+{
+    private sealed class Sink : IJsonRpcResponseSink
+    {
+        private readonly MemoryStream _stream = new(1 << 20);
+
+        public long BytesWritten => _stream.Length;
+        public bool StopRequested => false;
+        public ReadOnlySpan<byte> Written => _stream.GetBuffer().AsSpan(0, (int)_stream.Length);
+
+        public void Reset() => _stream.SetLength(0);
+
+        public async ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+        {
+            PipeWriter writer = PipeWriter.Create(_stream, new StreamPipeWriterOptions(leaveOpen: true));
+            await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, false, cancellationToken);
+            await writer.FlushAsync(cancellationToken);
+            await writer.CompleteAsync();
+        }
+
+        public ValueTask BeginBatchAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ValueTask EndBatchAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private static double Us(long ticks) => ticks * 1_000_000.0 / Stopwatch.Frequency;
+
+    /// <summary>Turns a captured eth_call request into the same call under another method.</summary>
+    /// <remarks>
+    /// eth_estimateGas re-runs the call in a binary search, so a gas divergence moves its answer; debug_traceCall with
+    /// callTracer reports every frame's gas, output, error and logs, and traces no instructions, so compiled code runs.
+    /// </remarks>
+    private static string Rewrite(string line, string method)
+    {
+        if (method == "eth_call") return line;
+        System.Text.Json.Nodes.JsonNode node = System.Text.Json.Nodes.JsonNode.Parse(line)!;
+        node["method"] = method;
+        if (method == "debug_traceCall")
+        {
+            System.Text.Json.Nodes.JsonArray parameters = node["params"]!.AsArray();
+            System.Text.Json.Nodes.JsonNode overrides = parameters.Count > 2 ? parameters[2]?.DeepClone() : null;
+            while (parameters.Count > 2) parameters.RemoveAt(parameters.Count - 1);
+            System.Text.Json.Nodes.JsonObject options = new()
+            {
+                ["tracer"] = "callTracer",
+                ["tracerConfig"] = new System.Text.Json.Nodes.JsonObject { ["withLog"] = true },
+            };
+            if (overrides is not null) options["stateOverrides"] = overrides;
+            parameters.Add(options);
+        }
+
+        return node.ToJsonString();
+    }
+
+    private static string Describe(ReadOnlySpan<byte> response)
+    {
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(response.ToArray());
+            if (doc.RootElement.TryGetProperty("error", out JsonElement error))
+            {
+                string message = error.TryGetProperty("message", out JsonElement m) ? m.GetString() ?? "" : "";
+                if (message.Length > 70) message = message[..70];
+                return $"error {error.GetProperty("code").GetInt32()} {message}";
+            }
+
+            JsonElement resultElement = doc.RootElement.GetProperty("result");
+            if (resultElement.ValueKind != JsonValueKind.String) return $"ok {resultElement.ValueKind}";
+            string result = resultElement.GetString() ?? "";
+            return $"ok {(result.Length - 2) / 2}B";
+        }
+        catch (Exception e)
+        {
+            return "unparsable " + e.GetType().Name;
+        }
+    }
+
+    /// <summary>
+    /// Starts the Adaptive rules as a node's startup does: the settings from a config - live profiling of the queries
+    /// unless <c>RPCPOC_PREFER</c> names another source, and the RPC list unless <c>RPCPOC_RPC_LIST=0</c> - then the
+    /// plugin's startup step, which compiles the RPC list from the code its entries carry and the shipped list from the
+    /// chain's code database, attaches the inter-block scheduler to the chain's block processing, idle with no blocks,
+    /// with live profiling's scorer on its maintenance, and starts its workers.
+    /// </summary>
+    internal static async Task StartAdaptive(BasicTestBlockchain chain)
+    {
+        IlEvmConfig config = new()
+        {
+            Enabled = true,
+            Prefer = Enum.TryParse(Environment.GetEnvironmentVariable("RPCPOC_PREFER"), ignoreCase: true, out IlEvmPrefer prefer) ? prefer : IlEvmPrefer.Rpc,
+            // Simple is the config's default since it came.
+            Selection = IlEvmSelection.Adaptive,
+        };
+        // Set by name, so the harness also runs a plugin build from before the RPC list.
+        System.Reflection.PropertyInfo rpcList = typeof(IlEvmConfig).GetProperty("PrecompileRpc");
+        rpcList?.SetValue(config, Environment.GetEnvironmentVariable("RPCPOC_RPC_LIST") != "0");
+        IlEvmModule.Configure(config);
+        IlEvmStartupStep step = new(config, chain.Container.Resolve<IDbProvider>(), chain.BlockTree, chain.Container.Resolve<ISpecProvider>(),
+            new Lazy<IMainProcessingContext>(() => chain.Container.Resolve<IMainProcessingContext>()), chain.Container.Resolve<IBlocksConfig>(),
+            new ExitSource(), new OneLineLogManager());
+        await step.Execute(CancellationToken.None);
+        // For experiments: an idle wait before the first call, as a node may have between its startup and its first call.
+        if (int.TryParse(Environment.GetEnvironmentVariable("RPCPOC_IDLE_MS"), out int idleMs) && idleMs > 0)
+            await Task.Delay(idleMs);
+        // The reference pass runs on the interpreter.
+        IlEvmSettings.Enabled = false;
+        Console.WriteLine($"adaptive: prefer {IlEvmSettings.Prefer}, query counting {IlRuntime.QueryCounting}, gate {IlEvmSettings.Gate}, rpc list {rpcList?.GetValue(config) ?? "none"}, " +
+            $"list {IlShippedBacklog.Compiled} compiled, {IlShippedBacklog.MissingCount} not in the chain; {IlScheduler.DescribeCurrent()}");
+    }
+
+    /// <summary>
+    /// Starts the Simple rules as a node's startup does: the settings from a config, with live promotion of the queries
+    /// unless <c>RPCPOC_PREFER</c> names another source, and <c>NETHERMIND_ILEVMCONFIG_LISTSIZE</c>, <c>_PROMOTEMS</c>
+    /// and <c>_PROMOTEOPS</c> read as a node reads them; then the plugin's startup step, which compiles the startup list
+    /// from the chain's code database and starts the promotion rounds.
+    /// </summary>
+    internal static async Task StartSimple(BasicTestBlockchain chain)
+    {
+        IlEvmConfig config = new()
+        {
+            Enabled = true,
+            Prefer = Enum.TryParse(Environment.GetEnvironmentVariable("RPCPOC_PREFER"), ignoreCase: true, out IlEvmPrefer prefer) ? prefer : IlEvmPrefer.Rpc,
+        };
+        if (int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVMCONFIG_LISTSIZE"), out int listSize)) config.ListSize = listSize;
+        if (int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVMCONFIG_PROMOTEMS"), out int promoteMs)) config.PromoteMs = promoteMs;
+        if (long.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVMCONFIG_PROMOTEOPS"), out long promoteOps)) config.PromoteOps = promoteOps;
+        if (int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVMCONFIG_COMPILETHREADS"), out int threads)) config.CompileThreads = threads;
+        IlEvmModule.Configure(config);
+        IlEvmStartupStep step = new(config, chain.Container.Resolve<IDbProvider>(), chain.BlockTree, chain.Container.Resolve<ISpecProvider>(),
+            new Lazy<IMainProcessingContext>(() => chain.Container.Resolve<IMainProcessingContext>()), chain.Container.Resolve<IBlocksConfig>(),
+            new ExitSource(), new OneLineLogManager());
+        await step.Execute(CancellationToken.None);
+        IlEvmSettings.Enabled = false;
+        Console.WriteLine($"simple: prefer {IlEvmSettings.Prefer}, promote {IlSimple.Promote} every {IlSimple.PromoteMs} ms from {IlSimple.PromoteOps} ops/s, " +
+            $"list {IlShippedBacklog.Compiled} compiled, {IlShippedBacklog.MissingCount} not in the chain");
+    }
+
+    /// <summary>A process exit that never comes: the exit line is the harness's to print.</summary>
+    internal sealed class ExitSource : Nethermind.Config.IProcessExitSource
+    {
+        public void Exit(int exitCode) { }
+        public CancellationToken Token => CancellationToken.None;
+    }
+
+    /// <summary>The plugin's info lines on the console, prefixed, for the run's log.</summary>
+    internal sealed class OneLineLogManager : ILogManager
+    {
+        public ILogger GetClassLogger<T>() => new(new ConsoleLine());
+        public ILogger GetLogger(string loggerName) => new(new ConsoleLine());
+
+        private sealed class ConsoleLine : InterfaceLogger
+        {
+            public bool IsInfo => true;
+            public bool IsWarn => true;
+            public bool IsDebug => false;
+            public bool IsTrace => false;
+            public bool IsError => true;
+            public void Info(string text) => Console.WriteLine("  " + text);
+            public void Warn(string text) => Console.WriteLine("  WARN " + text);
+            public void Debug(string text) { }
+            public void Trace(string text) { }
+            public void Error(string text, Exception ex = null) => Console.WriteLine("  ERROR " + text + (ex is null ? "" : " " + ex));
+        }
+    }
+
+    /// <summary>
+    /// The diagnostics' per-code counts of the measured rounds, by keccak: <c>per code 0x... size=... parts=interpreted/compiled
+    /// ops=... us=interpreted/compiled speedup=...</c>, the busiest first, where every part of the code ran on either path.
+    /// </summary>
+    private static IEnumerable<string> ByKeccak()
+    {
+        Dictionary<string, (int Size, long PlainFrames, long PlainOps, long PlainTicks, long CompiledFrames, long CompiledOps, long CompiledTicks)> codes = [];
+        foreach (KeyValuePair<object, IlEvmDiagnostics.ContractStats> entry in IlEvmDiagnostics.Contracts)
+        {
+            if (entry.Key is not Nethermind.Evm.CodeAnalysis.CodeInfo codeInfo) continue;
+            string keccak = Nethermind.Core.Crypto.ValueKeccak.Compute(codeInfo.CodeSpan).ToString();
+            IlEvmDiagnostics.ContractStats c = entry.Value;
+            codes.TryGetValue(keccak, out var sum);
+            codes[keccak] = (c.CodeLength, sum.PlainFrames + c.PlainFrames, sum.PlainOps + c.PlainOps, sum.PlainTicks + c.PlainTicks,
+                sum.CompiledFrames + c.CompiledFrames, sum.CompiledOps + c.CompiledOps, sum.CompiledTicks + c.CompiledTicks);
+        }
+
+        foreach ((string keccak, var c) in codes.OrderByDescending(static kv => kv.Value.PlainTicks + kv.Value.CompiledTicks))
+        {
+            double plain = c.PlainFrames > 0 ? Us(c.PlainTicks) / c.PlainFrames : 0, compiled = c.CompiledFrames > 0 ? Us(c.CompiledTicks) / c.CompiledFrames : 0;
+            yield return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"per code {keccak} size={c.Size} parts={c.PlainFrames}/{c.CompiledFrames} ops={(c.PlainFrames > 0 ? c.PlainOps / c.PlainFrames : 0)} us={plain:F3}/{compiled:F3} speedup={(compiled > 0 ? plain / compiled : 0):F3}");
+        }
+    }
+
+    /// <summary>Where compiled code stores its markers (NETHERMIND_ILEVM_MARKERS=1), for the sampler to read with each sample.</summary>
+    private static unsafe ulong MarkerAddress() => (ulong)System.Runtime.CompilerServices.Unsafe.AsPointer(ref IlEvmDiagnostics.Marker);
+
+    public static async Task<int> Run(string[] a)
+    {
+        using JitInlineListener jitTrace = Environment.GetEnvironmentVariable("RPCPOC_JITTRACE") == "1" ? new JitInlineListener() : null;
+        // For an out-of-process sampler: where the JIT put each method, and a marker file the profile window is announced in.
+        string codeMapPath = Environment.GetEnvironmentVariable("RPCPOC_CODEMAP");
+        // Also for the compiled chunks' native code size, reported at the end with RPCPOC_CODESIZE=1.
+        using CodeMapListener codeMap = string.IsNullOrEmpty(codeMapPath) && Environment.GetEnvironmentVariable("RPCPOC_CODESIZE") != "1" ? null : new CodeMapListener();
+        string profileMarker = Environment.GetEnvironmentVariable("RPCPOC_PROFILE_MARKER");
+        string corpusPath = a[0];
+        string groupsPath = a[1];
+        string outCsv = a[2];
+        int rounds = int.Parse(a[3]);
+        int threshold = int.Parse(a[4]);
+        bool eager = a[5] == "1";
+        ulong gasCap = ulong.Parse(a[6]);
+        int limit = a.Length > 7 ? int.Parse(a[7]) : int.MaxValue;
+        bool runModuleLevel = a.Length > 8 && a[8] == "1";
+        string method = a.Length > 9 ? a[9] : "eth_call";
+        int concurrency = a.Length > 10 ? int.Parse(a[10]) : 0;
+        if (method != "eth_call") runModuleLevel = false;
+
+        List<byte[]> requests = [];
+        foreach (string line in File.ReadLines(corpusPath))
+        {
+            if (line.Length == 0) continue;
+            requests.Add(Encoding.UTF8.GetBytes(Rewrite(line, method)));
+            if (requests.Count >= limit) break;
+        }
+
+        string[] groups = File.ReadAllLines(groupsPath).Take(requests.Count).ToArray();
+        int n = requests.Count;
+        Console.WriteLine($"requests {n}, rounds {rounds}, threshold {threshold}, eager {eager}, gasCap {gasCap}, GC server {System.Runtime.GCSettings.IsServerGC}, cpus {Environment.ProcessorCount}");
+
+        bool adaptive = IlEvmSettings.Mode == IlMode.Adaptive;
+        bool simple = IlEvmSettings.Mode == IlMode.Simple;
+        IlEvmSettings.Enabled = false;
+        IlEvmSettings.Threshold = threshold;
+        // The Legacy rules compile on the frame's thread when eager; the Adaptive ones only ever between blocks, the
+        // Simple ones in their promotion rounds.
+        IlEvmSettings.CompileSynchronously = eager && !adaptive && !simple;
+
+        JsonRpcConfig rpcConfig = new() { Timeout = 600_000, GasCap = gasCap, EnabledModules = [ModuleType.Eth, ModuleType.Debug] };
+        Stopwatch setup = Stopwatch.StartNew();
+        // The plugin attaches its frame runner to the read-only query environments, as on a node.
+        BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Osaka.Instance) { AllowTestChainOverride = false })
+            .AddSingleton<IJsonRpcConfig>(rpcConfig)
+            .AddSingleton<IReadOnlyQueryModule>(new IlEvmQueryModule(ReadOnlyQueryKind.Call)));
+        Console.WriteLine($"il-evm: {IlEvmModule.Unsupported() ?? "supported"}");
+        Console.WriteLine($"chain ready in {setup.ElapsedMilliseconds} ms, head #{chain.BlockTree.Head?.Number} baseFee {chain.BlockTree.Head?.Header.BaseFeePerGas} gasLimit {chain.BlockTree.Head?.Header.GasLimit}");
+        if (adaptive)
+            await StartAdaptive(chain);
+        if (simple)
+            await StartSimple(chain);
+
+        IJsonRpcService service = chain.Container.Resolve<IJsonRpcService>();
+        JsonRpcProcessor processor = new(service, rpcConfig, chain.Container.Resolve<IFileSystem>(), NullLogManager.Instance);
+        JsonRpcUrl url = new("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, [ModuleType.Eth, ModuleType.Debug]);
+        JsonRpcProcessingOptions options = new(JsonRpcInputMode.SingleDocument);
+        Sink sink = new();
+
+        async Task<(long Ticks, byte[] Hash, long Ops)> Send(int i)
+        {
+            sink.Reset();
+            long ops = Nethermind.Evm.Metrics.OpCodes;
+            long start = Stopwatch.GetTimestamp();
+            using (JsonRpcContext context = JsonRpcContext.Http(url))
+            {
+                await processor.ProcessAsync(requests[i], context, sink, options, CancellationToken.None);
+            }
+
+            long elapsed = Stopwatch.GetTimestamp() - start;
+            return (elapsed, SHA256.HashData(sink.Written), Nethermind.Evm.Metrics.OpCodes - ops);
+        }
+
+        static void Collect()
+        {
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+        }
+
+        // Pass 0: the interpreter's answers are the reference.
+        byte[][] reference = new byte[n][];
+        long[] referenceOps = new long[n];
+        Dictionary<string, Dictionary<string, int>> outcomes = [];
+        long pass0 = Stopwatch.GetTimestamp();
+        for (int i = 0; i < n; i++)
+        {
+            (long _, byte[] hash, long ops) = await Send(i);
+            reference[i] = hash;
+            referenceOps[i] = ops;
+            string outcome = Describe(sink.Written);
+            if (!outcomes.TryGetValue(groups[i], out Dictionary<string, int> byOutcome)) outcomes[groups[i]] = byOutcome = [];
+            string key = outcome.StartsWith("ok ") ? "ok" : outcome;
+            byOutcome[key] = byOutcome.GetValueOrDefault(key) + 1;
+        }
+
+        Console.WriteLine($"pass 0 (interpreter, reference) {Us(Stopwatch.GetTimestamp() - pass0) / 1000:F0} ms");
+        foreach ((string group, Dictionary<string, int> byOutcome) in outcomes.OrderBy(static g => g.Key))
+        {
+            Console.WriteLine($"  {group}: {string.Join("; ", byOutcome.OrderByDescending(static o => o.Value).Select(static o => $"{o.Value}x {o.Key}"))}");
+        }
+
+        int Verify(string label, int i, byte[] hash, long ops)
+        {
+            int bad = 0;
+            if (!hash.AsSpan().SequenceEqual(reference[i]))
+            {
+                bad++;
+                Console.WriteLine($"  MISMATCH {label} request {i} ({groups[i]}): response differs: {Describe(sink.Written)}");
+            }
+
+            if (ops != referenceOps[i])
+            {
+                bad++;
+                Console.WriteLine($"  MISMATCH {label} request {i} ({groups[i]}): opcodes {ops} vs {referenceOps[i]}");
+            }
+
+            return bad;
+        }
+
+        // Warm-up on the compiler: contracts cross the threshold and compile in the background.
+        int mismatches = 0;
+        IlEvmSettings.Enabled = true;
+        // Two passes compile; more (RPCPOC_WARMUP_PASSES) also let the helpers compiled code calls tier up before the rounds.
+        int warmUpPasses = int.TryParse(Environment.GetEnvironmentVariable("RPCPOC_WARMUP_PASSES"), out int warmUps) && warmUps > 2 ? warmUps : 2;
+        for (int pass = 1; pass <= warmUpPasses; pass++)
+        {
+            long start = Stopwatch.GetTimestamp();
+            for (int i = 0; i < n; i++)
+            {
+                (long _, byte[] hash, long ops) = await Send(i);
+                mismatches += Verify($"warm-up {pass}", i, hash, ops);
+            }
+
+            Console.WriteLine($"pass {pass} (compiler warm-up) {Us(Stopwatch.GetTimestamp() - start) / 1000:F0} ms, compiled {IlEvmSettings.CompiledContracts}, failed {IlEvmSettings.FailedContracts}");
+        }
+
+        // Simple: promotion needs calls in its rounds' windows, so the corpus is replayed until two rounds in a row
+        // promote nothing, after at least two rounds, for at most 120 s.
+        if (simple)
+        {
+            Stopwatch promoting = Stopwatch.StartNew();
+            int quietRounds = 0, lastRounds = IlSimple.Rounds.Rounds, lastPromoted = IlSimple.Totals.Promoted, passes = 0;
+            while (quietRounds < 2 && promoting.Elapsed.TotalSeconds < 120)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    (long _, byte[] hash, long ops) = await Send(i);
+                    mismatches += Verify("promotion", i, hash, ops);
+                }
+
+                passes++;
+                int roundsNow = IlSimple.Rounds.Rounds, promoted = IlSimple.Totals.Promoted;
+                if (roundsNow > lastRounds)
+                {
+                    quietRounds = promoted > lastPromoted ? 0 : quietRounds + roundsNow - lastRounds;
+                    lastRounds = roundsNow;
+                    lastPromoted = promoted;
+                }
+            }
+
+            Console.WriteLine($"promotion settled after {passes} passes, {promoting.Elapsed.TotalSeconds:F1} s: {IlSimple.Describe()}");
+        }
+
+        // Legacy: until the background compiler has nothing more to do. Adaptive: until the scheduler, idle with no blocks,
+        // has no job left and has run no step for a while, its scorer having promoted what the warm-up counted.
+        long settled = -1;
+        for (int k = 0; k < 120; k++)
+        {
+            if (simple) break;
+            long now = adaptive
+                ? (IlScheduler.Current?.Steps ?? 0) + (IlScheduler.Current?.Pending ?? 0) * 1_000_000_007L + IlLive.Totals().Promoted * 1_000_003L
+                : IlEvmSettings.CompiledContracts + IlEvmSettings.FailedContracts;
+            if (now == settled && (!adaptive || IlScheduler.Current?.Pending == 0)) break;
+            settled = now;
+            await Task.Delay(adaptive ? 2_000 : 500);
+        }
+
+        if (!simple)
+        {
+            Console.WriteLine(adaptive
+                ? $"scheduler settled: {IlLive.Describe()}; {IlScheduler.DescribeCurrent()}"
+                : $"compile queue settled: compiled {IlEvmSettings.CompiledContracts}, failed {IlEvmSettings.FailedContracts}");
+        }
+
+        // The RPC list's ahead copies serve only a node's first seconds: the rounds measure the contracts' own code, once
+        // the copies have gone and a pass has had the helpers tier up on calls. Read by name, so the harness also runs a
+        // plugin build from before them.
+        Type warmUp = typeof(IlEvmSettings).Assembly.GetType("Nethermind.IlEvm.IlWarmUp");
+        long Ahead(string name) => warmUp?.GetProperty(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.GetValue(null) is { } value ? Convert.ToInt64(value) : 0;
+        if (adaptive && Ahead("AheadArmed") > 0)
+        {
+            for (int k = 0; k < 120 && Ahead("AheadSwitched") == 0; k++)
+                await Task.Delay(500);
+            for (int i = 0; i < n; i++)
+            {
+                (long _, byte[] hash, long ops) = await Send(i);
+                mismatches += Verify("after the ahead copies", i, hash, ops);
+            }
+
+            await Task.Delay(1_000);
+            Console.WriteLine($"ahead copies: {Ahead("AheadArmed")} armed, switched {Ahead("AheadSwitchedAfterMs") / 1000.0:F1} s after the first frame");
+        }
+
+        IlEvmDiagnostics.Contracts.Clear();
+
+        // Profile mode: one path only, the corpus cycled for a fixed time, so a sampling profiler sees that path alone.
+        if (int.TryParse(Environment.GetEnvironmentVariable("RPCPOC_PROFILE_SECONDS"), out int profileSeconds) && profileSeconds > 0)
+        {
+            bool compiledPath = Environment.GetEnvironmentVariable("RPCPOC_PROFILE_MODE") != "interpreter";
+            IlEvmSettings.Enabled = compiledPath;
+            Collect();
+            long until = Stopwatch.GetTimestamp() + profileSeconds * Stopwatch.Frequency;
+            long sent = 0, sentOps = 0;
+            long profileStart = Stopwatch.GetTimestamp();
+            Console.WriteLine($"PROFILE START {(compiledPath ? "compiled" : "interpreter")} for {profileSeconds} s");
+            if (!string.IsNullOrEmpty(profileMarker))
+                File.WriteAllText(profileMarker, $"start {Environment.ProcessId} {MarkerAddress():x}");
+            while (Stopwatch.GetTimestamp() < until)
+            {
+                for (int i = 0; i < n && Stopwatch.GetTimestamp() < until; i++)
+                {
+                    (long _, byte[] hash, long ops) = await Send(i);
+                    mismatches += Verify(compiledPath ? "profile compiled" : "profile interpreter", i, hash, ops);
+                    sent++;
+                    sentOps += ops;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(profileMarker))
+            {
+                File.WriteAllText(profileMarker, "end");
+                // The sampler resolves its addresses through this process's runtime before it may exit.
+                for (int k = 0; k < 600; k++)
+                {
+                    await Task.Delay(200);
+                    try
+                    {
+                        if (File.ReadAllText(profileMarker).Trim() == "resolved") break;
+                    }
+                    catch (IOException)
+                    {
+                    }
+                }
+            }
+            double seconds = (Stopwatch.GetTimestamp() - profileStart) / (double)Stopwatch.Frequency;
+            if (codeMap is not null && !string.IsNullOrEmpty(codeMapPath))
+            {
+                await Task.Delay(1_000);
+                codeMap.Write(codeMapPath);
+            }
+            Console.WriteLine($"PROFILE END {sent} requests in {seconds:F1} s ({sent / seconds:F1} req/s, {sentOps / seconds / 1e6:F1} Mops/s), {mismatches} mismatches, gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
+            if (adaptive)
+                Console.WriteLine($"PROFILE STATE {IlLive.Describe()}; {IlScheduler.DescribeCurrent()}");
+            return mismatches == 0 ? 0 : 1;
+        }
+
+        // With NETHERMIND_ILEVM_MARKERS=1 and RPCPOC_MARKER_SAMPLE=1: a thread on a core of its own reads the marker
+        // compiled code stores as it goes, through the measured rounds, for where compiled code and what it calls spend.
+        using MarkerSampler markerSampler = IlEvmDiagnostics.Markers && Environment.GetEnvironmentVariable("RPCPOC_MARKER_SAMPLE") == "1" ? new MarkerSampler() : null;
+
+        // Measured rounds, ABBA within a round and the order flipped between rounds.
+        List<long>[] interpreted = Enumerable.Range(0, n).Select(static _ => new List<long>()).ToArray();
+        List<long>[] compiled = Enumerable.Range(0, n).Select(static _ => new List<long>()).ToArray();
+        for (int round = 0; round < rounds; round++)
+        {
+            bool[] modes = round % 2 == 0 ? [false, true, true, false] : [true, false, false, true];
+            foreach (bool mode in modes)
+            {
+                IlEvmSettings.Enabled = mode;
+                Collect();
+                IlEvmDiagnostics.Reset();
+                long start = Stopwatch.GetTimestamp();
+                for (int i = 0; i < n; i++)
+                {
+                    (long ticks, byte[] hash, long ops) = await Send(i);
+                    mismatches += Verify(mode ? "compiled" : "interpreter", i, hash, ops);
+                    (mode ? compiled : interpreted)[i].Add(ticks);
+                }
+
+                Console.WriteLine($"round {round} {(mode ? "compiled   " : "interpreter")} {Us(Stopwatch.GetTimestamp() - start) / 1000:F0} ms, compiled so far {IlEvmSettings.CompiledContracts}, gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
+                if (IlEvmDiagnostics.Enabled) Console.WriteLine($"  diag: {IlEvmDiagnostics.Describe()}");
+            }
+        }
+
+        markerSampler?.Report();
+        if (IlEvmDiagnostics.Enabled)
+        {
+            Console.WriteLine("IL emitted by category:");
+            foreach (string line in IlEvmDiagnostics.DescribeIl(45)) Console.WriteLine("  " + line);
+            Console.WriteLine("per code over the measured rounds (interpreter / compiled):");
+            foreach (string line in IlEvmDiagnostics.DescribeContracts(40)) Console.WriteLine("  " + line);
+            // The same by code content: the code infos of one code, which a cache's collisions split, summed under its
+            // keccak, for tools/make_rpc_list.py.
+            foreach (string line in ByKeccak()) Console.WriteLine(line);
+        }
+
+        // Module-level: the same calls with pre-parsed arguments, so JSON parsing and serialization are excluded.
+        List<long>[] moduleInterpreted = Enumerable.Range(0, n).Select(static _ => new List<long>()).ToArray();
+        List<long>[] moduleCompiled = Enumerable.Range(0, n).Select(static _ => new List<long>()).ToArray();
+        if (runModuleLevel)
+        {
+            try
+            {
+                IEthRpcModule eth = chain.Container.Resolve<IRpcModuleFactory<IEthRpcModule>>().Create();
+                EthereumJsonSerializer serializer = new();
+                string[] moduleReference = new string[n];
+
+                (SignableTransactionForRpc, Dictionary<Address, AccountOverride>) Parse(int i)
+                {
+                    using JsonDocument doc = JsonDocument.Parse(requests[i]);
+                    JsonElement parameters = doc.RootElement.GetProperty("params");
+                    SignableTransactionForRpc tx = serializer.Deserialize<SignableTransactionForRpc>(parameters[0].GetRawText());
+                    Dictionary<Address, AccountOverride> overrides = parameters.GetArrayLength() > 2
+                        ? serializer.Deserialize<Dictionary<Address, AccountOverride>>(parameters[2].GetRawText())
+                        : null;
+                    return (tx, overrides);
+                }
+
+                long Call(int i, out string signature)
+                {
+                    (SignableTransactionForRpc tx, Dictionary<Address, AccountOverride> overrides) = Parse(i);
+                    long start = Stopwatch.GetTimestamp();
+                    using ResultWrapper<HexBytes> result = eth.eth_call(tx, BlockParameter.Latest, overrides);
+                    long elapsed = Stopwatch.GetTimestamp() - start;
+                    signature = $"{result.Result.ResultType}:{result.ErrorCode}:{result.Result.Error}:{Convert.ToHexString(SHA256.HashData(result.Data.Bytes.Span))}";
+                    return elapsed;
+                }
+
+                IlEvmSettings.Enabled = false;
+                for (int i = 0; i < n; i++) Call(i, out moduleReference[i]);
+                for (int round = 0; round < Math.Max(1, rounds / 2); round++)
+                {
+                    bool[] modes = round % 2 == 0 ? [false, true, true, false] : [true, false, false, true];
+                    foreach (bool mode in modes)
+                    {
+                        IlEvmSettings.Enabled = mode;
+                        Collect();
+                        long start = Stopwatch.GetTimestamp();
+                        for (int i = 0; i < n; i++)
+                        {
+                            long ticks = Call(i, out string signature);
+                            if (signature != moduleReference[i])
+                            {
+                                mismatches++;
+                                Console.WriteLine($"  MISMATCH module {(mode ? "compiled" : "interpreter")} request {i}: {signature} vs {moduleReference[i]}");
+                            }
+
+                            (mode ? moduleCompiled : moduleInterpreted)[i].Add(ticks);
+                        }
+
+                        Console.WriteLine($"module round {round} {(mode ? "compiled   " : "interpreter")} {Us(Stopwatch.GetTimestamp() - start) / 1000:F0} ms");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"module-level pass skipped: {e.GetType().Name}: {e.Message}");
+                runModuleLevel = false;
+            }
+        }
+
+        // Closed-loop throughput: `concurrency` workers split the request list, each with its own response sink.
+        if (concurrency > 0)
+        {
+            async Task<(double Seconds, int Bad)> RunConcurrent(bool mode)
+            {
+                IlEvmSettings.Enabled = mode;
+                Collect();
+                int bad = 0;
+                long start = Stopwatch.GetTimestamp();
+                Task[] workers = new Task[concurrency];
+                for (int w = 0; w < concurrency; w++)
+                {
+                    int worker = w;
+                    workers[w] = Task.Run(async () =>
+                    {
+                        Sink own = new();
+                        for (int i = worker; i < n; i += concurrency)
+                        {
+                            own.Reset();
+                            using (JsonRpcContext context = JsonRpcContext.Http(url))
+                            {
+                                await processor.ProcessAsync(requests[i], context, own, options, CancellationToken.None);
+                            }
+
+                            if (!SHA256.HashData(own.Written).AsSpan().SequenceEqual(reference[i])) Interlocked.Increment(ref bad);
+                        }
+                    });
+                }
+
+                await Task.WhenAll(workers);
+                return (Us(Stopwatch.GetTimestamp() - start) / 1e6, bad);
+            }
+
+            foreach (bool mode in new[] { false, true, true, false, false, true })
+            {
+                (double seconds, int bad) = await RunConcurrent(mode);
+                mismatches += bad;
+                Console.WriteLine($"concurrency {concurrency} {(mode ? "compiled   " : "interpreter")} {n / seconds,8:F1} req/s ({seconds * 1000:F0} ms, {bad} mismatches)");
+            }
+        }
+
+        static double Median(List<long> values)
+        {
+            if (values.Count == 0) return double.NaN;
+            long[] sorted = [.. values.Order()];
+            return sorted.Length % 2 == 1 ? sorted[sorted.Length / 2] : (sorted[sorted.Length / 2 - 1] + sorted[sorted.Length / 2]) / 2.0;
+        }
+
+        using (StreamWriter csv = new(outCsv))
+        {
+            csv.WriteLine("index,group,request_bytes,opcodes,rpc_interpreter_us,rpc_compiled_us,module_interpreter_us,module_compiled_us");
+            for (int i = 0; i < n; i++)
+            {
+                csv.WriteLine(string.Join(',',
+                    i, groups[i], requests[i].Length, referenceOps[i],
+                    (Median(interpreted[i]) * 1_000_000.0 / Stopwatch.Frequency).ToString("F1"),
+                    (Median(compiled[i]) * 1_000_000.0 / Stopwatch.Frequency).ToString("F1"),
+                    runModuleLevel ? (Median(moduleInterpreted[i]) * 1_000_000.0 / Stopwatch.Frequency).ToString("F1") : "",
+                    runModuleLevel ? (Median(moduleCompiled[i]) * 1_000_000.0 / Stopwatch.Frequency).ToString("F1") : ""));
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("group | n   | Mops/req | rpc interp ms | rpc compiled ms | rpc speedup | geomean ratio | module interp ms | module compiled ms | module speedup");
+        foreach (IGrouping<string, int> group in Enumerable.Range(0, n).GroupBy(i => groups[i]).OrderBy(static g => g.Key))
+        {
+            double sumInterpreted = group.Sum(i => Median(interpreted[i]));
+            double sumCompiled = group.Sum(i => Median(compiled[i]));
+            double logRatio = group.Average(i => Math.Log(Median(compiled[i]) / Median(interpreted[i])));
+            double ops = group.Average(i => (double)referenceOps[i]) / 1e6;
+            string module = "";
+            if (runModuleLevel)
+            {
+                double moduleInt = group.Sum(i => Median(moduleInterpreted[i]));
+                double moduleComp = group.Sum(i => Median(moduleCompiled[i]));
+                module = $" | {Us((long)moduleInt) / 1000 / group.Count(),16:F3} | {Us((long)moduleComp) / 1000 / group.Count(),18:F3} | {moduleInt / moduleComp,14:F2}x";
+            }
+
+            Console.WriteLine($"{group.Key,-5} | {group.Count(),3} | {ops,8:F3} | {Us((long)sumInterpreted) / 1000 / group.Count(),13:F3} | {Us((long)sumCompiled) / 1000 / group.Count(),15:F3} | {sumInterpreted / sumCompiled,10:F2}x | {Math.Exp(logRatio),13:F3}{module}");
+        }
+
+        Console.WriteLine($"mismatches {mismatches}; compiled contracts {IlEvmSettings.CompiledContracts}, failed {IlEvmSettings.FailedContracts}");
+        if (simple)
+            Console.WriteLine($"simple at the end: {IlSimple.Describe()}");
+        (int kept, int probation, int givenBack) = IlEvm.SelfCheckVerdicts;
+        Console.WriteLine($"self-check: {kept} kept compiled, {probation} put on probation, {givenBack} given back");
+        jitTrace?.Report();
+        if (codeMap is not null)
+            Console.WriteLine(codeMap.DescribeChunks());
+        IlEvmSettings.Enabled = false;
+        chain.Dispose();
+        return mismatches == 0 ? 0 : 1;
+    }
+}
