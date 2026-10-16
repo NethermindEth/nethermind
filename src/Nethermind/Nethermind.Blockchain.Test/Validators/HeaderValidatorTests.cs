@@ -257,46 +257,46 @@ public class HeaderValidatorTests
         const ulong firstCancun = MainnetSpecProvider.CancunBlockTimestamp;
         const ulong firstPrague = MainnetSpecProvider.PragueBlockTimestamp;
         Hash256 withdrawalsRoot = Keccak.EmptyTreeHash;
-        Hash256 beaconRoot = TestItem.KeccakA;
         Hash256 requestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+        Hash256 beaconRoot = Keccak.Zero;
 
         yield return new TestCaseData(firstShanghai, null, null, null, null, null, BlockErrorMessages.MissingWithdrawalsRoot)
             .SetName("Shanghai_null_withdrawals_root_is_rejected");
         yield return new TestCaseData(lastPreShanghai, withdrawalsRoot, null, null, null, null, BlockErrorMessages.WithdrawalsRootNotEnabled)
             .SetName("Pre_Shanghai_withdrawals_root_is_rejected");
-        yield return new TestCaseData(firstCancun, withdrawalsRoot, 0ul, null, beaconRoot, null, BlockErrorMessages.MissingExcessBlobGas)
+        yield return new TestCaseData(firstCancun, withdrawalsRoot, 0ul, null, null, beaconRoot, BlockErrorMessages.MissingExcessBlobGas)
             .SetName("Cancun_null_excess_blob_gas_is_rejected");
-        yield return new TestCaseData(firstCancun, withdrawalsRoot, null, 0ul, beaconRoot, null, BlockErrorMessages.MissingBlobGasUsed)
+        yield return new TestCaseData(firstCancun, withdrawalsRoot, null, 0ul, null, beaconRoot, BlockErrorMessages.MissingBlobGasUsed)
             .SetName("Cancun_null_blob_gas_used_is_rejected");
         yield return new TestCaseData(lastPreCancun, withdrawalsRoot, null, 0ul, null, null, BlockErrorMessages.NotAllowedExcessBlobGas)
             .SetName("Pre_Cancun_excess_blob_gas_is_rejected");
         yield return new TestCaseData(lastPreCancun, withdrawalsRoot, 0ul, null, null, null, BlockErrorMessages.NotAllowedBlobGasUsed)
             .SetName("Pre_Cancun_blob_gas_used_is_rejected");
+        yield return new TestCaseData(lastPreCancun, withdrawalsRoot, null, null, requestsHash, null, BlockErrorMessages.RequestsNotEnabled)
+            .SetName("Pre_Prague_requests_hash_is_rejected");
         yield return new TestCaseData(firstCancun, withdrawalsRoot, 0ul, 0ul, null, null, BlockErrorMessages.MissingParentBeaconBlockRoot)
             .SetName("Cancun_null_parent_beacon_block_root_is_rejected");
-        yield return new TestCaseData(lastPreCancun, withdrawalsRoot, null, null, beaconRoot, null, BlockErrorMessages.ParentBeaconBlockRootNotEnabled)
+        yield return new TestCaseData(lastPreCancun, withdrawalsRoot, null, null, null, beaconRoot, BlockErrorMessages.ParentBeaconBlockRootNotEnabled)
             .SetName("Pre_Cancun_parent_beacon_block_root_is_rejected");
-        yield return new TestCaseData(lastPreCancun, withdrawalsRoot, null, null, null, requestsHash, BlockErrorMessages.RequestsNotEnabled)
-            .SetName("Pre_Prague_requests_hash_is_rejected");
         yield return new TestCaseData(lastPreShanghai, null, null, null, null, null, null)
             .SetName("Last_pre_Shanghai_header_is_accepted");
         yield return new TestCaseData(firstShanghai, withdrawalsRoot, null, null, null, null, null)
             .SetName("First_Shanghai_header_is_accepted");
-        yield return new TestCaseData(firstCancun, withdrawalsRoot, 0ul, 0ul, beaconRoot, null, null)
+        yield return new TestCaseData(firstCancun, withdrawalsRoot, 0ul, 0ul, null, beaconRoot, null)
             .SetName("First_Cancun_header_is_accepted");
         yield return new TestCaseData(lastPreCancun, withdrawalsRoot, null, null, null, null, null)
             .SetName("Last_pre_Cancun_header_is_accepted");
         // Values no parent could produce: the ExcessBlobGas comparison must still be skipped when orphaned.
-        yield return new TestCaseData(firstCancun, withdrawalsRoot, 131072ul, 393216ul, beaconRoot, null, null)
+        yield return new TestCaseData(firstCancun, withdrawalsRoot, 131072ul, 393216ul, null, beaconRoot, null)
             .SetName("Cancun_header_with_arbitrary_blob_gas_values_is_accepted");
-        yield return new TestCaseData(firstPrague, withdrawalsRoot, 0ul, 0ul, beaconRoot, requestsHash, null)
+        yield return new TestCaseData(firstPrague, withdrawalsRoot, 0ul, 0ul, requestsHash, beaconRoot, null)
             .SetName("Prague_header_is_accepted");
     }
 
     [MaxTime(Timeout.MaxTestTime)]
     [TestCaseSource(nameof(OrphanedHeaderFieldCases))]
     public void When_orphaned_header_field_presence_matches_fork(
-        ulong timestamp, Hash256? withdrawalsRoot, ulong? blobGasUsed, ulong? excessBlobGas, Hash256? parentBeaconBlockRoot, Hash256? requestsHash, string? expectedError)
+        ulong timestamp, Hash256? withdrawalsRoot, ulong? blobGasUsed, ulong? excessBlobGas, Hash256? requestsHash, Hash256? parentBeaconBlockRoot, string? expectedError)
     {
         _validator = new HeaderValidator(_blockTree, Always.Valid, MainnetSpecProvider.Instance,
             new OneLoggerLogManager(new(_testLogger)));
@@ -307,8 +307,8 @@ public class HeaderValidatorTests
             .WithWithdrawalsRoot(withdrawalsRoot)
             .WithBlobGasUsed(blobGasUsed)
             .WithExcessBlobGas(excessBlobGas)
-            .WithParentBeaconBlockRoot(parentBeaconBlockRoot)
             .WithRequestsHash(requestsHash)
+            .WithParentBeaconBlockRoot(parentBeaconBlockRoot)
             .TestObject;
         header.Hash = header.CalculateHash();
 
