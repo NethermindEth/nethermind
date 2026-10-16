@@ -504,7 +504,7 @@ jobs:
       setup_group: all
 
   tests-consensus-spec:
-    name: Run ${{ matrix.project }}
+    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     needs: build
     runs-on: ubuntu-latest
     # The preset archives are streamed and extracted on every run rather than cached. A partially
@@ -514,9 +514,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project:
-          - Ethereum.ConsensusSpec.Test
-          - Ethereum.ConsensusSpec.Minimal.Test
+        # The mainnet vectors run serially for over 30 minutes after the archive download, so that assembly is chunked.
+        include:
+          - { project: Ethereum.ConsensusSpec.Test, chunk: 1of4 }
+          - { project: Ethereum.ConsensusSpec.Test, chunk: 2of4 }
+          - { project: Ethereum.ConsensusSpec.Test, chunk: 3of4 }
+          - { project: Ethereum.ConsensusSpec.Test, chunk: 4of4 }
+          - { project: Ethereum.ConsensusSpec.Minimal.Test, chunk: '' }
     env:
       # Validate both compiled presets before merge, including production-only SSZ layouts.
       NETHERMIND_CONSENSUS_SPEC_MAINNET: '1'
@@ -532,9 +536,11 @@ jobs:
         with:
           variant: release
 
-      - name: ${{ matrix.project }}
+      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           dotnet restore ${{ matrix.project }}.csproj  # binaries from the shared Linux artifact
           # Same dump handling as the other test jobs. The hang timeout is longer than theirs on
@@ -567,7 +573,7 @@ jobs:
         if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.project }}-dumps
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
           path: |
             src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
             src/Nethermind/${{ matrix.project }}/TestResults/*_crash.*
@@ -578,7 +584,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: consensus-spec-report-${{ matrix.project }}
+          name: consensus-spec-report-${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}
           path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/consensus-spec-report.txt
           if-no-files-found: warn
           retention-days: 3
