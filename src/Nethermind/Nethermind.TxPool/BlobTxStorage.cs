@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage, IProcessedBlobTxStorage
 {
     private const int MaxPooledKeys = 128;
     private const int TransactionLockCount = 64;
@@ -456,8 +456,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
                     blockBlobTransactions = null;
                     return false;
                 }
-                RlpReader reader = new(payload.GetSpan());
-                transactions[i] = _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage)
+                transactions[i] = DecodeProcessedTransaction(payload.GetSpan())
                     ?? throw new RlpException($"Null processed blob transaction {i} for block {blockNumber}.");
             }
             blockBlobTransactions = transactions;
@@ -466,6 +465,48 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
 
         blockBlobTransactions = default;
         return false;
+    }
+
+    /// <inheritdoc/>
+    [SkipLocalsInit]
+    bool IProcessedBlobTxStorage.TryGetProcessedTransaction(ulong blockNumber, int position, [NotNullWhen(true)] out Transaction? transaction)
+    {
+        transaction = null;
+        if (position < 0) return false;
+
+        Span<byte> key = stackalloc byte[ProcessedTransactionKeyLength];
+        WriteProcessedTransactionKey(key, blockNumber, position);
+        using MemoryManager<byte>? payload = _processedBlobTxsDb.GetOwnedMemory(key);
+        return payload is not null && TryDecodeProcessedTransaction(payload.GetSpan(), out transaction);
+    }
+
+    /// <inheritdoc/>
+    int IProcessedBlobTxStorage.TryGetProcessedTransactions(scoped ReadOnlySpan<ProcessedBlobTxKey> keys, scoped Span<Transaction?> results)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(results.Length, keys.Length);
+        results[..keys.Length].Clear();
+        if (keys.IsEmpty) return 0;
+
+        // The IDb indexer needs an exact-size array of exact-length keys.
+        byte[][] dbKeys = new byte[keys.Length][];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            dbKeys[i] = new byte[ProcessedTransactionKeyLength];
+            WriteProcessedTransactionKey(dbKeys[i], keys[i].BlockNumber, Math.Max(keys[i].Position, 0));
+        }
+
+        KeyValuePair<byte[], byte[]?>[] dbResults = _processedBlobTxsDb[dbKeys];
+        int found = 0;
+        for (int i = 0; i < keys.Length; i++)
+        {
+            byte[]? payload = dbResults[i].Value;
+            if (keys[i].Position >= 0 && payload is not null && TryDecodeProcessedTransaction(payload, out results[i]))
+            {
+                found++;
+            }
+        }
+
+        return found;
     }
 
     [SkipLocalsInit]
@@ -501,6 +542,33 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         {
             _processedBlobTxsDb.DangerousReleaseMemory(index);
         }
+    }
+
+    private static void WriteProcessedTransactionKey(Span<byte> key, ulong blockNumber, int position)
+    {
+        BinaryPrimitives.WriteUInt64BigEndian(key, blockNumber);
+        BinaryPrimitives.WriteInt32BigEndian(key[sizeof(ulong)..], position);
+    }
+
+    private static Transaction? DecodeProcessedTransaction(ReadOnlySpan<byte> payload)
+    {
+        RlpReader reader = new(payload);
+        return _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+    }
+
+    // A corrupt row reads as a miss so that a lock-free reader never throws on data it cannot lock against.
+    private static bool TryDecodeProcessedTransaction(ReadOnlySpan<byte> payload, [NotNullWhen(true)] out Transaction? transaction)
+    {
+        try
+        {
+            transaction = DecodeProcessedTransaction(payload);
+        }
+        catch (RlpException)
+        {
+            transaction = null;
+        }
+
+        return transaction is not null;
     }
 
     private static bool TryDecodeProcessedTransactionCount(ReadOnlySpan<byte> index, out int count)
