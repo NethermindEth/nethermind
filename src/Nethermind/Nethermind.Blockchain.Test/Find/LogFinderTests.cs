@@ -206,24 +206,6 @@ public class LogFinderTests
             "the scan must have taken the parallel path, or this test cannot cover the AggregateException unwrap");
     }
 
-    [TestCase(-1, false)]
-    [TestCase(0, true)]
-    [MaxTime(Timeout.MaxTestTime)]
-    [NonParallelizable]
-    public void Parallel_scan_starts_at_four_blocks_per_worker(int rangeOffset, bool expectParallel)
-    {
-        int rangeSize = Math.Max(1, Environment.ProcessorCount / 4) * 4 + rangeOffset;
-        SetUp(allowReceiptIterator: true, chainLength: rangeSize + 1);
-
-        ThrowingReceiptFinder throwing = new(typeof(ResourceNotFoundException));
-        LogFinder logFinder = new(_blockTree, throwing, _receiptStorage, LimboLogs.Instance,
-            _receiptsRecovery, MainnetSpecProvider.Instance, new ReceiptConfig { DeriveFromState = true });
-
-        Assert.That(() => logFinder.FindLogs(FilterBuilder.New().FromBlock(1UL).ToBlock((ulong)rangeSize).Build()).ToArray(),
-            Throws.TypeOf<ResourceNotFoundException>());
-        Assert.That(throwing.SawParallelScanSlotHeld, Is.EqualTo(expectParallel));
-    }
-
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void throw_exception_when_receipts_are_missing()
     {
@@ -778,5 +760,29 @@ public class LogFinderTests
             new ReceiptConfig(), new ReceiptArrayStorageDecoder(true)
         )
         { MigratedBlockNumber = 0 };
+    }
+
+    // The parallel scan slot is process-wide; a method-level [NonParallelizable] in the parallel fixture above does
+    // not stop its siblings from holding it while the threshold is sampled.
+    [NonParallelizable]
+    public class ParallelScanThreshold
+    {
+        [TestCase(-1, false)]
+        [TestCase(0, true)]
+        [MaxTime(Timeout.MaxTestTime)]
+        public void Parallel_scan_starts_at_four_blocks_per_worker(int rangeOffset, bool expectParallel)
+        {
+            int rangeSize = Math.Max(1, Environment.ProcessorCount / 4) * 4 + rangeOffset;
+            IReceiptStorage receiptStorage = new InMemoryReceiptStorage(true);
+            IBlockTree blockTree = Build.A.BlockTree().WithTransactions(receiptStorage).OfChainLength(rangeSize + 1).TestObject;
+
+            ThrowingReceiptFinder throwing = new(typeof(ResourceNotFoundException));
+            LogFinder logFinder = new(blockTree, throwing, receiptStorage, LimboLogs.Instance,
+                Substitute.For<IReceiptsRecovery>(), MainnetSpecProvider.Instance, new ReceiptConfig { DeriveFromState = true });
+
+            Assert.That(() => logFinder.FindLogs(FilterBuilder.New().FromBlock(1UL).ToBlock((ulong)rangeSize).Build()).ToArray(),
+                Throws.TypeOf<ResourceNotFoundException>());
+            Assert.That(throwing.SawParallelScanSlotHeld, Is.EqualTo(expectParallel));
+        }
     }
 }
