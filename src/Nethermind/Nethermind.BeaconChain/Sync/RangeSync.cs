@@ -51,8 +51,13 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
     private readonly INodeColumnCustodySource _custodySource = new DiscoveryNodeCustodySource(discovery);
 
+    /// <summary>The wall slot of a peer's first block that missed an anchor, kept across rounds; see <see cref="CountAnchorMismatches"/>.</summary>
+    private AnchorMiss? _firstAnchorMiss;
+
+    private sealed record AnchorMiss(Hash256 Anchor, string PeerId, ulong Since);
+
     /// <summary>The anchor a run restarts from when its first block does not link to the unverified anchor it was given; <paramref name="Rejected"/> runs when that happens.</summary>
-    /// <param name="RequiredMismatches">The distinct peers whose first block must miss the given anchor before the run restarts here.</param>
+    /// <param name="RequiredMismatches">The distinct peers whose first block must miss the given anchor before the run restarts here; a miss persisting for an epoch counts again.</param>
     public sealed record AnchorFallback(Hash256 Root, ulong Slot, Action Rejected, int RequiredMismatches = 1);
 
     /// <summary>Streams linked blocks after <paramref name="anchorSlot"/> until the moving target is reached; callers restart as it advances.</summary>
@@ -137,7 +142,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             }
 
             if (batch is { Linked: false } && fallback is not null && (skippedOnWordOf is not null || from == lastSlot + 1)
-                && (anchorMisses ??= []).Add(peer.Id) && anchorMisses.Count >= fallback.RequiredMismatches)
+                && CountAnchorMismatches(anchorMisses ??= [], lastRoot, peer.Id, target) >= fallback.RequiredMismatches)
             {
                 // The first block names another parent: the unverified anchor is off the peers' chain, not the peer at fault.
                 abandonedOnWordOf = ([.. anchorMisses], lastRoot, lastSlot);
@@ -214,6 +219,23 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             // BeaconBlocksByRange: a limited reply does not prove that its remaining slots are empty.
             nextSlot = batch.Value.Blocks.Count > 0 ? lastSlot + 1 : from + count;
         }
+    }
+
+    /// <summary>Records a miss of <paramref name="anchor"/> by <paramref name="peerId"/> and returns how many peers' word it now carries, or zero for a repeat that adds none.</summary>
+    /// <remarks>A peer's miss that has persisted for an epoch of wall slots, across rounds, counts as a second word, so a lone peer can replace an orphaned tip at most once per epoch.</remarks>
+    private int CountAnchorMismatches(HashSet<string> misses, Hash256 anchor, string peerId, ulong wallSlot)
+    {
+        bool added = misses.Add(peerId);
+        AnchorMiss? first = Volatile.Read(ref _firstAnchorMiss);
+        bool repeated = first is not null && first.Anchor == anchor && first.PeerId == peerId;
+        if (repeated && wallSlot < first!.Since + spec.SlotsPerEpoch)
+        {
+            return added ? misses.Count : 0;
+        }
+
+        // Restarting the epoch here lets each persisted miss count only once.
+        Volatile.Write(ref _firstAnchorMiss, new AnchorMiss(anchor, peerId, wallSlot));
+        return repeated ? misses.Count + 1 : added ? misses.Count : 0;
     }
 
     private async Task<(IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)?> FetchAndVerifyBatchAsync(

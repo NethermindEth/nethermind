@@ -1144,17 +1144,35 @@ public partial class BeaconSyncOrchestratorTests
         old[0].Message!.StateRoot = TestItem.KeccakA;
         TestChain.Persist(store, anchor, anchorRoot, old);
         (_, _, SignedBeaconBlock[] canonical) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102);
+        Hash256 replayedTip = SszRoots.HashTreeRoot(old[0].Message!);
+        Harness harness = null!;
+        // The lone peer's miss persists for an epoch of wall slots while the round retries it.
         RangeSyncTests.StubPeer peer = new("canonical", 102, (start, count) =>
-            [.. canonical.Where(b => b.Message!.Slot >= start && b.Message.Slot < start + count).Select(b => new ForkedSignedBeaconBlock.OfFulu(b))]);
-        Harness harness = CreateHarness(store: store, wallSlot: 102, peers: [peer]);
+        {
+            harness.Timestamper.Add(TimeSpan.FromSeconds(Spec.SlotsPerEpoch * Spec.SecondsPerSlot));
+            return [.. canonical.Where(b => b.Message!.Slot >= start && b.Message.Slot < start + count).Select(b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        });
+        harness = CreateHarness(store: store, wallSlot: 102, peers: [peer]);
         harness.Importer.Known.Add(anchorRoot);
+        // As in production: the replay makes the replayed tip the fork-choice head, so one peer's single miss does not abandon it.
+        harness.Importer.Head = CreateHead(replayedTip, 101, finalizedEpoch: Spec.GetEpoch(AnchorSlot));
         await harness.Orchestrator.ReplayStoredBlocksAsync(token);
-        Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(SszRoots.HashTreeRoot(old[0].Message!)));
+        Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(replayedTip));
 
-        await harness.Orchestrator.FeedRangeSyncRoundAsync(token);
+        using CancellationTokenSource bound = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bound.CancelAfter(TimeSpan.FromSeconds(5));
+        try
+        {
+            await harness.Orchestrator.FeedRangeSyncRoundAsync(bound.Token);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+        }
+
         await harness.Orchestrator.ProcessQueuedAsync(token);
 
-        Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(SszRoots.HashTreeRoot(canonical[^1].Message!)));
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(SszRoots.HashTreeRoot(canonical[^1].Message!)), "the only peer's persisting miss replaces the orphaned head tip");
         Assert.That(peer.Reports, Is.Empty);
     }
 
