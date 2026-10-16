@@ -2338,7 +2338,7 @@ public class TraceRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
 
         Assert.That(JToken.Parse(response)["error"]?["message"]?.Value<string>(),
-            Does.Contain(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction), response);
+            Does.Contain(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes), response);
     }
 
     // Shaped like trace-interop's field-null-blobVersionedHashes-unpriced and field-null-authorizationList-unpriced probes.

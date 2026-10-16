@@ -50,6 +50,8 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly int _maxExactBranches;
     private readonly ClockCache<NodePathKey, bool> _extensionTargets;
     private readonly HashSet<NodePathKey> _blockAdoptedTargets = [];
+    private readonly List<NodePathKey> _composedNodes = [];
+    private readonly bool _recordComposedChildViews;
     private readonly Dictionary<NodePathKey, int> _windows = [];
     private readonly WindowSlab _windowSlab = new();
     private readonly ChildVector _latest = ChildVector.Rent();
@@ -70,8 +72,9 @@ public sealed class CommitmentEmitter : IDisposable
     private ulong _retainedFloor;
     private ulong _fineFloor;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, int extensionTargetEntries, bool respectFloors, bool deepStorageSnapshots, Action<CommitmentEmitter>? release = null)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, int extensionTargetEntries, bool respectFloors, bool deepStorageSnapshots, Action<CommitmentEmitter>? release = null, bool recordComposedChildViews = false)
     {
+        _recordComposedChildViews = recordComposedChildViews;
         _deepStorageSnapshots = deepStorageSnapshots;
         _release = release;
         _exactBranches = new HashSet<NodePathKey>(Math.Min(exactBranchEntries, InitialExactBranchEntries));
@@ -102,7 +105,7 @@ public sealed class CommitmentEmitter : IDisposable
     }
 
     public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, DefaultMaxOpenWindowNodes, TipExactBranchEntries, TipExtensionTargetEntries, respectFloors: true, deepStorageSnapshots: false);
+        new(history, policy, metadata, DefaultMaxOpenWindowNodes, TipExactBranchEntries, TipExtensionTargetEntries, respectFloors: true, deepStorageSnapshots: false, recordComposedChildViews: true);
 
     public CommitmentDepthPolicy Policy => _policy;
 
@@ -227,6 +230,7 @@ public sealed class CommitmentEmitter : IDisposable
 
     public void CompleteBlock()
     {
+        if (_recordComposedChildViews) RecordComposedChildViews();
         PersistStorageDepthsReached();
         bool fine = _floorsEpoch >= _fineFloor;
         if (_floorsEpoch >= _retainedFloor)
@@ -337,6 +341,56 @@ public sealed class CommitmentEmitter : IDisposable
         NoteChangedChild(key);
         if (changed is { } mask) _blockChanged[key] = mask;
         else _blockChanged.Remove(key);
+    }
+
+    /// <summary>The reader builds a node at a composed depth from the rows of its children, and the walk records the view
+    /// of every child, empty or not. At the tip only committed nodes arrive, so a child that holds no node of its own
+    /// (an empty slot, or the path under a leaf or extension) would keep the row of whatever was there before. Records
+    /// those children from the composed node itself; a full branch, which every composed node of a large trie is, adds
+    /// nothing. The children are never composed themselves, since the policy rejects adjacent composed depths.</summary>
+    private void RecordComposedChildViews()
+    {
+        _composedNodes.Clear();
+        foreach ((NodePathKey key, (int _, int length)) in _blockNodes)
+        {
+            if (!key.IsStorage && length != EmptyRecord && _policy.IsComposedAccountDepth(key.Depth) && key.Depth < _policy.AccountCheckpointDepth) _composedNodes.Add(key);
+        }
+
+        foreach (NodePathKey key in _composedNodes)
+        {
+            (int offset, int length) = _blockNodes[key];
+            ReadOnlySpan<byte> rlp = _blockArena.Slice(offset, length);
+            if (BranchRlp.TryReadChildren(rlp, _children))
+            {
+                ushort presence = _children.Presence;
+                for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
+                {
+                    if (((presence >> nibble) & 1) == 0) RecordAbsentChild(key.Child(nibble));
+                }
+
+                continue;
+            }
+
+            bool descended = NodeViews.TryDescend(rlp, out int first, out NodeView child);
+            try
+            {
+                for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
+                {
+                    if (nibble != first) RecordAbsentChild(key.Child(nibble));
+                }
+
+                if (descended && !_blockNodes.ContainsKey(key.Child(first))) Record(key.Child(first), child.Rlp, changed: null);
+            }
+            finally
+            {
+                child.Release();
+            }
+        }
+    }
+
+    private void RecordAbsentChild(in NodePathKey key)
+    {
+        if (!_blockNodes.ContainsKey(key)) RecordEmpty(key);
     }
 
     private void RecordEmpty(in NodePathKey key)
