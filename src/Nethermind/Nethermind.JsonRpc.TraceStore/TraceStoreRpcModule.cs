@@ -244,9 +244,9 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             return _traceModule.trace_filter(traceFilterForRpc);
         }
 
-        IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(fromBlock, toBlock);
+        IEnumerable<SearchResult<BlockHeader>> blocksSearch = _blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock);
 
-        IEnumerable<(SearchResult<Block> BlockSearch, List<ParityLikeTxTrace>? Traces)> blockResults = _parallelization switch
+        IEnumerable<(SearchResult<BlockHeader> BlockSearch, List<ParityLikeTxTrace>? Traces)> blockResults = _parallelization switch
         {
             0 => blocksSearch.AsParallel().AsOrdered().Select(GetBlockTraces),
             1 => blocksSearch.Select(GetBlockTraces),
@@ -254,7 +254,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         };
 
         List<List<ParityLikeTxTrace>>? blockTraces = null;
-        foreach ((SearchResult<Block> blockSearch, List<ParityLikeTxTrace>? traces) in blockResults)
+        foreach ((SearchResult<BlockHeader> blockSearch, List<ParityLikeTxTrace>? traces) in blockResults)
         {
             if (blockSearch.IsError)
             {
@@ -292,15 +292,14 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             },
             runBuffered: () => filter.FilterTxTraces(FlattenStoreItems(blockTraces)));
 
-        (SearchResult<Block> BlockSearch, List<ParityLikeTxTrace>? Traces) GetBlockTraces(SearchResult<Block> blockSearch)
+        (SearchResult<BlockHeader> BlockSearch, List<ParityLikeTxTrace>? Traces) GetBlockTraces(SearchResult<BlockHeader> blockSearch)
         {
             if (blockSearch.IsError)
             {
                 return (blockSearch, null);
             }
 
-            Block block = blockSearch.Object!;
-            TryGetBlockTraces(block.Header, out List<ParityLikeTxTrace>? traces);
+            TryGetBlockTraces(blockSearch.Object!, out List<ParityLikeTxTrace>? traces);
             return (blockSearch, traces);
         }
     }
