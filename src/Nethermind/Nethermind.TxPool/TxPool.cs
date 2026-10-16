@@ -27,6 +27,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -73,6 +74,8 @@ namespace Nethermind.TxPool
         private readonly ISpecChangeValidationStorage? _specChangeValidationStorage;
         private readonly bool _blobReorgsSupportEnabled;
         private readonly RecentlyIncludedBlobs _recentlyIncludedBlobs = new();
+        private readonly IncludedBlobLocations? _includedBlobLocations;
+        private readonly IStateHeaderProvider? _stateHeaderProvider;
         private bool _specChangeMarkerUnpublished;
         private readonly DelegationCache _pendingDelegations;
         private readonly PayerExposureCache _payerExposure = new();
@@ -186,6 +189,7 @@ namespace Nethermind.TxPool
         /// <param name="incomingTxFilters"></param>
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="frameTxPrefixSimulator">Optional EIP-8141 opaque-prefix simulator; unwired on chains without frame transactions.</param>
+        /// <param name="stateHeaderProvider">Optional source of the finalized block number, used to prune the locations of included blobs; without it they are bounded by reorg depth alone.</param>
         public TxPool(IEthereumEcdsa ecdsa,
             IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -198,7 +202,8 @@ namespace Nethermind.TxPool
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter[]? incomingTxFilters = null,
             bool thereIsPriorityContract = false,
-            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null)
+            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null,
+            IStateHeaderProvider? stateHeaderProvider = null)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _senderWidth = frameTxWidthLedger.SenderWidth;
@@ -215,6 +220,10 @@ namespace Nethermind.TxPool
                 : null;
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
+            _includedBlobLocations = _blobReorgsSupportEnabled && blobTxStorage is IProcessedBlobTxStorage
+                ? new IncludedBlobLocations(Reorganization.MaxDepth)
+                : null;
+            _stateHeaderProvider = stateHeaderProvider;
             _frameEvictionRetryBudget = txPoolConfig.FrameTxEvictionRetryBudget;
             _frameRevalidationDeferralBudget = txPoolConfig.FrameTxRevalidationDeferralBudget;
             _frameTxPrefixSimulator = frameTxPrefixSimulator;
@@ -542,6 +551,9 @@ namespace Nethermind.TxPool
 
         // only for testing reasons
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
+
+        /// <summary>The locations of recently included blobs, or <see langword="null"/> unless the pool saves processed blob transactions to a storage that serves single rows.</summary>
+        internal IncludedBlobLocations? IncludedBlobLocations => _includedBlobLocations;
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
@@ -981,6 +993,12 @@ namespace Nethermind.TxPool
                             RequestRevalidation(headChange.Generation);
                         }
 
+                        // Outside _newHeadLock: the finalized number can be a block tree lookup.
+                        if (_stateHeaderProvider is not null)
+                        {
+                            _includedBlobLocations?.PruneFinalized(_stateHeaderProvider.FinalizedBlockNumber);
+                        }
+
                         // Subscribers can re-enter the pool, so invoke them after releasing _newHeadLock.
                         TxPoolHeadChanged?.Invoke(this, args.Block);
                         Metrics.TransactionCount = _transactions.Count;
@@ -1185,8 +1203,8 @@ namespace Nethermind.TxPool
         private void RemoveProcessedTransactions(Block block)
         {
             Transaction[] blockTransactions = block.Transactions;
-            _recentlyIncludedBlobs.StartBlock(block.Number);
-            using ArrayPoolListRef<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
+            // Saved before the removal below, so a blob is in the processed rows by the time its tx leaves the pool.
+            ExceptionDispatchInfo? saveFailure = SaveProcessedBlobTransactions(block);
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long notInMempool = 0;
@@ -1214,17 +1232,6 @@ namespace Nethermind.TxPool
                 {
                     blobTxs++;
                     blobs += (long)blockTx.GetBlobCount();
-
-                    if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
-                    {
-                        _recentlyIncludedBlobs.Add(fullBlobTx);
-                        if (_blobReorgsSupportEnabled)
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
-                            blobTxsToSave.Add(fullBlobTx);
-                        }
-                    }
-                    else if (_blobReorgsSupportEnabled && _logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
                 }
 
                 bool isKnown = IsKnown(txHash);
@@ -1245,10 +1252,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            if (blobTxsToSave.Count > 0)
-            {
-                _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxsToSave);
-            }
+            saveFailure?.Throw();
 
             long transactionsInBlock = blockTransactions.Length;
             if (transactionsInBlock != 0)
@@ -1262,6 +1266,62 @@ namespace Nethermind.TxPool
                 Metrics.TransactionsSourcedPrivateOrderFlow += notInMempool;
                 Metrics.TransactionsSourcedMemPool += transactionsInBlock - notInMempool;
             }
+        }
+
+        /// <summary>Saves the pool-held blob transactions of <paramref name="block"/> to the processed rows and indexes their blobs.</summary>
+        /// <returns>The failure of the save, which the caller rethrows once the block's transactions have left the pool.</returns>
+        /// <remarks>
+        /// The rows are written only when the pool supports reorgs. The index is updated for every block, also when nothing
+        /// was saved or the save failed, so that a block re-processed at a height drops the locations recorded there before.
+        /// The failure is deferred rather than handled: the head update stops at the same point as when the save followed
+        /// the removal.
+        /// </remarks>
+        private ExceptionDispatchInfo? SaveProcessedBlobTransactions(Block block)
+        {
+            Transaction[] blockTransactions = block.Transactions;
+            _recentlyIncludedBlobs.StartBlock(block.Number);
+            using ArrayPoolListRef<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
+            for (int i = 0; i < blockTransactions.Length; i++)
+            {
+                Transaction blockTx = blockTransactions[i];
+                if (!blockTx.CarriesBlobs)
+                {
+                    continue;
+                }
+
+                if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
+                {
+                    _recentlyIncludedBlobs.Add(fullBlobTx);
+                    if (_blobReorgsSupportEnabled)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
+                        blobTxsToSave.Add(fullBlobTx);
+                    }
+                }
+                else if (_blobReorgsSupportEnabled && _logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
+            }
+
+            if (!_blobReorgsSupportEnabled)
+            {
+                return null;
+            }
+
+            try
+            {
+                if (blobTxsToSave.Count > 0)
+                {
+                    _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxsToSave);
+                }
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to save {blobTxsToSave.Count} processed blob txs of block {block.Number}; they cannot be re-added on a reorg: {e.Message}");
+                _includedBlobLocations?.Record(block.Number, []);
+                return ExceptionDispatchInfo.Capture(e);
+            }
+
+            _includedBlobLocations?.Record(block.Number, blobTxsToSave.AsSpan());
+            return null;
         }
 
         private bool RemoveIncludedTransaction(Transaction tx)

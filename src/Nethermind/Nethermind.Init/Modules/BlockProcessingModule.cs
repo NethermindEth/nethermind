@@ -135,7 +135,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 ctx.Resolve<ITransactionComparerProvider>().GetDefaultComparer(),
                 ctx.Resolve<FrameTxWidthLedger>(),
                 ctx.Resolve<ITxGossipPolicy>(),
-                frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>()))
+                frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+                stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>()))
             .AddSingleton<ITxSender, ITxPool, IWallet, ISpecProvider, ITimestamper, INonceManager, IEthereumEcdsa>((txPool, wallet, specProvider, timestamper, nonceManager, ecdsa) =>
                 new TxPoolSender(txPool, new TxSealer(new WalletTxSigner(wallet, specProvider.ChainId), timestamper), nonceManager, ecdsa))
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider, ILogManager>((mainProcessingContext, chainHeadInfoProvider, logManager) => new BackgroundTaskScheduler(
