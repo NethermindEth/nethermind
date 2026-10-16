@@ -300,37 +300,40 @@ public partial class EthRpcModule(
         return ResultWrapper<UInt256>.Success(account.Nonce);
     }
 
-    public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Hash256 blockHash)
-    {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
-        return searchResult.IsError
-            ? ResultWrapper<UInt256?>.Success(null)
-            : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
-    }
+    public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Hash256 blockHash) =>
+        eth_getBlockTransactionCountByNumber(new BlockParameter(blockHash));
 
     public ResultWrapper<UInt256?> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
     {
+        if (FindHashesOnlyBlock(blockParameter) is { } hashesOnly)
+        {
+            return ResultWrapper<UInt256?>.Success((UInt256)hashesOnly.TransactionHashes.Length);
+        }
+
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
             ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
     }
 
-    public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Hash256 blockHash)
-    {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
-        return searchResult.IsError
-            ? ResultWrapper<UInt256?>.Success(null)
-            : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
-    }
+    public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Hash256 blockHash) =>
+        eth_getUncleCountByBlockNumber(new BlockParameter(blockHash));
 
     public ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter? blockParameter)
     {
+        if (FindHashesOnlyBlock(blockParameter) is { } hashesOnly)
+        {
+            return ResultWrapper<UInt256?>.Success((UInt256)hashesOnly.Block.Uncles.Length);
+        }
+
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         return searchResult.IsError
             ? ResultWrapper<UInt256?>.Success(null)
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Uncles.Length);
     }
+
+    private HashesOnlyBlock? FindHashesOnlyBlock(BlockParameter? blockParameter) =>
+        blockParameter is null ? null : _hashesOnlyBlockReader?.Find(_blockFinder, blockParameter);
 
     public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null)
     {
