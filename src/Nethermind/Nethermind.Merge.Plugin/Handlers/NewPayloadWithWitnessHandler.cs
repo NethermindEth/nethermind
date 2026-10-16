@@ -155,7 +155,7 @@ public sealed class NewPayloadWithWitnessHandler(
     /// <summary>Copies <paramref name="witness"/> into a witness that owns no pooled buffers.</summary>
     /// <remarks>Responses dispose their witness only after it is serialized, so a cached one must survive both
     /// that and eviction while another response may still be reading it.</remarks>
-    private static Witness ToUnowned(Witness witness) => new()
+    internal static Witness ToUnowned(Witness witness) => new()
     {
         Codes = new UnownedList(witness.Codes.AsSpan().ToArray()),
         State = new UnownedList(witness.State.AsSpan().ToArray()),

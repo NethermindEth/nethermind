@@ -3,10 +3,13 @@
 
 using System;
 using System.Buffers;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
@@ -19,12 +22,19 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// </summary>
 /// <remarks>
 /// The witness is built on demand by re-executing the returned snapshot on its parent state, so it covers only the
-/// included transactions and equals the one <c>POST /payloads/witness</c> returns for that payload.
+/// included transactions and equals the one <c>POST /payloads/witness</c> returns for that payload. Witnesses of the
+/// last few snapshots are kept, so polling an unchanged snapshot does not re-execute it, and an aborted request
+/// stops the re-execution.
 /// </remarks>
 public sealed class GetPayloadWithWitnessSszHandler(IEngineRpcModule engine, BlockWitnessGenerator witnessGenerator)
     : SszEndpointHandlerBase
 {
     private const int PayloadIdByteLength = 8;
+
+    // Each witness keeps its node and code bytes alive, and only the latest snapshot of a build is worth asking for.
+    private const int RecentWitnessCount = 2;
+
+    private readonly LruCache<Hash256, Witness> _recentWitnesses = new(RecentWitnessCount, nameof(GetPayloadWithWitnessSszHandler));
 
     public override string HttpMethod => "GET";
     public override string Resource => SszRestPaths.BuiltPayloadWithWitness;
@@ -49,15 +59,39 @@ public sealed class GetPayloadWithWitnessSszHandler(IEngineRpcModule engine, Blo
             return;
         }
 
-        using Witness? witness = witnessGenerator.Generate(builtPayload.Block);
-        if (witness is null)
+        Witness? witness;
+        try
+        {
+            witness = GetOrGenerateWitness(builtPayload.Block, ctx.RequestAborted);
+        }
+        catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)
         {
             payload.Dispose();
-            await WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError,
-                $"Cannot generate the witness of payload {builtPayload.Block.Hash}: its parent state is not available");
             return;
         }
 
-        await WriteSszResultAsync(ctx, payload, (result, writer) => SszCodec.EncodeGetPayloadWithWitnessV6Response(result!, witness, writer));
+        using (witness)
+        {
+            if (witness is null)
+            {
+                payload.Dispose();
+                await WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError,
+                    $"Cannot generate the witness of payload {builtPayload.Block.Hash}: its parent state is not available");
+                return;
+            }
+
+            await WriteSszResultAsync(ctx, payload, (result, writer) => SszCodec.EncodeGetPayloadWithWitnessV6Response(result!, witness, writer));
+        }
+    }
+
+    private Witness? GetOrGenerateWitness(Block block, CancellationToken token)
+    {
+        Hash256 blockHash = block.Hash!;
+        if (_recentWitnesses.TryGet(blockHash, out Witness? cached))
+            return cached;
+
+        Witness? witness = witnessGenerator.Generate(block, token);
+        if (witness is not null) _recentWitnesses.Set(blockHash, NewPayloadWithWitnessHandler.ToUnowned(witness));
+        return witness;
     }
 }

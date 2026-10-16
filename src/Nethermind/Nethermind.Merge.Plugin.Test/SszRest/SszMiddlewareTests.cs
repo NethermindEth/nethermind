@@ -1676,26 +1676,32 @@ public class SszMiddlewareTests
 
     private const string BuiltPayloadWitnessPath = "/engine/v1/payloads/0x0102030405060708/witness";
 
-    private void SetUpBuiltPayload(bool payloadKnown, bool hasParentState, Witness witness)
+    private IExistingBlockWitnessCollector SetUpBuiltPayload(bool payloadKnown, bool hasParentState, Witness witness, Action? onGenerate = null)
     {
         Block block = (Block)SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 42UL).TryGetBlock();
         BlockHeader parent = Build.A.BlockHeader.TestObject;
 
-        _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(payloadKnown
+        _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(_ => payloadKnown
             ? ResultWrapper<GetPayloadV6Result?>.Success(new GetPayloadV6Result(block, UInt256.One, new BlobsBundleV2(block), [], shouldOverrideBuilder: false))
             : ResultWrapper<GetPayloadV6Result?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload));
         _blockFinder.FindHeader(block.ParentHash!).Returns(parent);
         _stateReader.HasStateForBlock(parent).Returns(hasParentState);
-        _witnessEnvFactory.CreateScope().Env.CreateExistingBlockWitnessCollector()
-            .GetWitnessForExistingBlock(parent, block).Returns(witness);
+        IExistingBlockWitnessCollector collector = _witnessEnvFactory.CreateScope().Env.CreateExistingBlockWitnessCollector();
+        collector.GetWitnessForExistingBlock(parent, block, Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            onGenerate?.Invoke();
+            call.Arg<CancellationToken>().ThrowIfCancellationRequested();
+            return witness;
+        });
+        return collector;
     }
 
     [Test]
-    public async Task GetPayloadWithWitness_returns_the_built_payload_and_its_witness()
+    public async Task GetPayloadWithWitness_returns_the_built_payload_and_its_witness([Values(1, 3)] int requests)
     {
         byte[] stateNode = [0xde, 0xad];
         byte[] header = [0xbe, 0xef];
-        SetUpBuiltPayload(payloadKnown: true, hasParentState: true, new Witness
+        IExistingBlockWitnessCollector collector = SetUpBuiltPayload(payloadKnown: true, hasParentState: true, new Witness
         {
             State = new ArrayPoolList<byte[]>(1) { stateNode },
             Codes = new ArrayPoolList<byte[]>(0),
@@ -1703,21 +1709,46 @@ public class SszMiddlewareTests
             Headers = new ArrayPoolList<byte[]>(1) { header },
         });
 
+        for (int i = 0; i < requests; i++)
+        {
+            DefaultHttpContext ctx = MakeGetContext(BuiltPayloadWitnessPath, fork: "amsterdam");
+            await _middleware.InvokeAsync(ctx);
+
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            BuiltPayloadWithWitnessV6Wire.Decode(ResponseBytes(ctx), out BuiltPayloadWithWitnessV6Wire wire);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.Response.Headers.CacheControl.ToString(), Is.EqualTo("no-store"));
+                Assert.That(wire.BuiltPayload.BlockValue, Is.EqualTo(UInt256.One));
+                Assert.That(wire.Witness.State!.Select(static n => n.Bytes), Is.EqualTo(new[] { stateNode }));
+                Assert.That(wire.Witness.Codes, Is.Empty);
+                Assert.That(wire.Witness.Headers!.Select(static h => h.Bytes), Is.EqualTo(new[] { header }));
+            }
+        }
+        await _engineModule.Received(requests).engine_getPayloadV6(
+            Arg.Is<byte[]>(static id => Convert.ToHexString(id) == "0102030405060708"));
+        collector.Received(1).GetWitnessForExistingBlock(Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task GetPayloadWithWitness_aborted_request_cancels_witness_generation()
+    {
+        AbortableLifetimeFeature lifetime = new();
+        IExistingBlockWitnessCollector collector = SetUpBuiltPayload(payloadKnown: true, hasParentState: true, new Witness
+        {
+            State = new ArrayPoolList<byte[]>(0),
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(0),
+        }, onGenerate: lifetime.Abort);
+
         DefaultHttpContext ctx = MakeGetContext(BuiltPayloadWitnessPath, fork: "amsterdam");
+        ctx.Features.Set<IHttpRequestLifetimeFeature>(lifetime);
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        BuiltPayloadWithWitnessV6Wire.Decode(ResponseBytes(ctx), out BuiltPayloadWithWitnessV6Wire wire);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ctx.Response.Headers.CacheControl.ToString(), Is.EqualTo("no-store"));
-            Assert.That(wire.BuiltPayload.BlockValue, Is.EqualTo(UInt256.One));
-            Assert.That(wire.Witness.State!.Select(static n => n.Bytes), Is.EqualTo(new[] { stateNode }));
-            Assert.That(wire.Witness.Codes, Is.Empty);
-            Assert.That(wire.Witness.Headers!.Select(static h => h.Bytes), Is.EqualTo(new[] { header }));
-        }
-        await _engineModule.Received(1).engine_getPayloadV6(
-            Arg.Is<byte[]>(static id => Convert.ToHexString(id) == "0102030405060708"));
+        collector.Received(1).GetWitnessForExistingBlock(
+            Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Is<CancellationToken>(static t => t.IsCancellationRequested));
+        Assert.That(ResponseBytes(ctx), Is.Empty, "an aborted request must not be answered");
     }
 
     private static readonly TestCaseData[] GetPayloadWithWitnessErrorCases =
