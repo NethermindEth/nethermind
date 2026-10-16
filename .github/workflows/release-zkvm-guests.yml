@@ -68,30 +68,39 @@ jobs:
             [zisk]=sha256:5712a0eaa811a5bd960c8493538181c14b7cf650716891bd29808065e418c065
             [sp1]=sha256:e13e2d07a10c5cdb0d548bceacbc1cbe468c1dbda3972c3d4611589585f1fede
           )
+          mtime=$(git log -1 --format=%ct)
           digests=$'| zkVM | ELF SHA-256 | VK SHA-256 |\n| --- | --- | --- |'
 
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
           for vm in zisk sp1 openvm; do
+            dir=nethermind-$vm
             name=nethermind-guest-${{ steps.version.outputs.version }}-${{ steps.version.outputs.commit }}-$vm
-            mv "nethermind-$vm/nethermind" "$name.elf"
-            files=("$name.elf")
+            elf_digest=$(sha256sum "$dir/nethermind" | cut -d ' ' -f 1)
             vk_digest=-
 
             # ere-server's OpenVM rejects the guest's entrypoint, so that guest gets no VK. It
-            # cannot run without the config it was built against, so that ships instead
+            # cannot run without the config it was built against, so the two ship as one archive
             if [[ "$vm" == openvm ]]; then
-              cp ../src/Nethermind/Nethermind.Stateless.OpenVMGuest/openvm.toml "$name.toml"
-              files+=("$name.toml")
+              # Artifacts are zipped, which drops the executable bit
+              chmod +x "$dir/nethermind"
+              cp ../src/Nethermind/Nethermind.Stateless.OpenVMGuest/openvm.toml "$dir"
+
+              # Without these flags tar records mtime/uid/gid, so two archives of a
+              # byte-identical guest differ
+              tar --sort=name --owner=0 --group=0 --numeric-owner \
+                --mtime="@$mtime" -czf "$name.tar.gz" -C "$dir" nethermind openvm.toml
+              tar -tzf "$name.tar.gz"
+              files=("$name.tar.gz")
             else
+              mv "$dir/nethermind" "$name.elf"
               docker run --rm -v "$PWD:/output" "ghcr.io/eth-act/ere/ere-server-$vm:$ERE_VERSION@${ere_digests[$vm]}" \
                 --elf-path "/output/$name.elf" keygen --program-vk-path "/output/$name.vk"
-              files+=("$name.vk")
+              files=("$name.elf" "$name.vk")
               # A proof verifies against the VK, which commits to the ELF
               vk_digest="\`$(sha256sum "$name.vk" | cut -d ' ' -f 1)\`"
             fi
 
-            elf_digest=$(sha256sum "$name.elf" | cut -d ' ' -f 1)
             digests+=$'\n'"| ${names[$vm]} | \`$elf_digest\` | $vk_digest |"
 
             for file in "${files[@]}"; do
@@ -158,6 +167,6 @@ jobs:
           fi
 
           echo "Uploading assets"
-          gh release upload "$git_tag" *.elf *.vk *.toml *.asc --clobber
+          gh release upload "$git_tag" *.elf *.vk *.tar.gz *.asc --clobber
 
           echo "Drafting completed. Review and publish the release manually."
