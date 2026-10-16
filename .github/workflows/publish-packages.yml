@@ -178,7 +178,8 @@ jobs:
           run_ids=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?head_sha=$sha&event=workflow_dispatch" \
             --jq '.workflow_runs[].id')
           for id in $run_ids; do
-            if [[ -n $(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts?name=$name" --jq '.artifacts[] | select(.expired | not) | .id') ]]; then
+            artifact_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts?name=$name" --jq '.artifacts[] | select(.expired | not) | .id')
+            if [[ -n "$artifact_id" ]]; then
               run_id=$id
               break
             fi
