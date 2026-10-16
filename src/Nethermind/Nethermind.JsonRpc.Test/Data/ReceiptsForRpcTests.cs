@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -108,6 +109,22 @@ namespace Nethermind.JsonRpc.Test.Data
                 string json = serializer.Serialize(receipt);
                 receipt.Logs = receipt.Logs!.ToArray();
                 Assert.That(json, Is.EqualTo(serializer.Serialize(receipt)));
+            }
+        }
+
+        [Test]
+        public void Serializing_receipt_does_not_retain_its_logs()
+        {
+            new EthereumJsonSerializer().Serialize(BuildReceiptForRpc(TestItem.KeccakA, 2));
+
+            LogEntryForRpc entry = (LogEntryForRpc)typeof(ReceiptLogsForRpc).GetField("t_writeEntry", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry.TransactionHash, Is.Null);
+                Assert.That(entry.BlockHash, Is.Null);
+                Assert.That(entry.Address, Is.Null);
+                Assert.That(entry.Data, Is.Null);
+                Assert.That(entry.Topics, Is.Null);
             }
         }
 

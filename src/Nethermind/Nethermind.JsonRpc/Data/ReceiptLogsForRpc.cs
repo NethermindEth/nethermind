@@ -91,6 +91,12 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
             JsonSerializer.Serialize(writer, entry, typeInfo);
         }
 
+        // The entry outlives the view, so it must not keep this receipt's data reachable.
+        entry.TransactionHash = null;
+        entry.BlockHash = null;
+        entry.Address = null;
+        entry.Data = null;
+        entry.Topics = null;
         writer.WriteEndArray();
     }
 
