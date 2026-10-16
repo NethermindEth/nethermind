@@ -23,6 +23,9 @@ internal static unsafe class BN254
     {
         if (mclBn_init(MCL_BN_SNARK1, MCLBN_COMPILED_TIME_VAR) != 0)
             throw new InvalidOperationException("MCL initialization failed");
+
+        // Let mclBnG2_isValid check only the curve equation; the subgroup is checked once, explicitly
+        mclBn_verifyOrderG2(0);
     }
 
     /// <summary>Adds two BN254 G1 points and writes the normalized result (EIP-196).</summary>
@@ -291,31 +294,10 @@ internal static unsafe class BN254
 
         mclBnFp_setInt32(ref point.z.d0, 1);
 
-        if (mclBnG2_isValid(point) == 1 && mclBnG2_isValidOrder(point) == 1)
-            return null;
+        if (mclBnG2_isValid(point) == 0)
+            return Errors.Bn254NotOnCurve;
 
-        // mcl's validity check covers the order too, so the curve equation tells which of the two failed
-        return IsOnTwist(point) ? Errors.Bn254NotInSubgroup : Errors.Bn254NotOnCurve;
-    }
-
-    /// <summary>Whether an affine point satisfies y^2 = x^3 + 3 / (9 + u), the twist G2 lies on (EIP-197).</summary>
-    private static bool IsOnTwist(in mclBnG2 point)
-    {
-        mclBnFp2 b = default;
-        mclBnFp_setInt32(ref b.d0, 9);
-        mclBnFp_setInt32(ref b.d1, 1);
-        mclBnFp2_inv(ref b, b);
-        mclBnFp2 three = default;
-        mclBnFp_setInt32(ref three.d0, 3);
-        mclBnFp2_mul(ref b, three, b);
-
-        Unsafe.SkipInit(out mclBnFp2 ySquared);
-        Unsafe.SkipInit(out mclBnFp2 xCubedPlusB);
-        mclBnFp2_sqr(ref ySquared, point.y);
-        mclBnFp2_sqr(ref xCubedPlusB, point.x);
-        mclBnFp2_mul(ref xCubedPlusB, xCubedPlusB, point.x);
-        mclBnFp2_add(ref xCubedPlusB, xCubedPlusB, b);
-        return mclBnFp2_isEqual(ySquared, xCubedPlusB) == 1;
+        return mclBnG2_isValidOrder(point) == 1 ? null : Errors.Bn254NotInSubgroup;
     }
 
     private static bool SerializeG1(in mclBnG1 point, byte[] output)
