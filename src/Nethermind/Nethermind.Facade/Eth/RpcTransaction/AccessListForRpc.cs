@@ -19,6 +19,8 @@ public class AccessListForRpc
     private readonly IEnumerable<Item> _items;
     private readonly AccessList? _accessList;
 
+    private static readonly AccessListForRpc Empty = new(AccessList.Empty);
+
     public AccessListForRpc() => _items = Array.Empty<Item>();
 
     private AccessListForRpc(IEnumerable<Item> items) => _items = items;
@@ -41,7 +43,8 @@ public class AccessListForRpc
         }
     }
 
-    public static AccessListForRpc FromAccessList(AccessList? accessList) => new(accessList ?? AccessList.Empty);
+    public static AccessListForRpc FromAccessList(AccessList? accessList) =>
+        accessList is null || accessList.IsEmpty ? Empty : new(accessList);
 
     public AccessList ToAccessList()
     {

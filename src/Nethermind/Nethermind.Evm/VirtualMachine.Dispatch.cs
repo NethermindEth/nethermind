@@ -69,7 +69,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private void PrepareOpcodes<TTracingInst>()
         where TTracingInst : struct, IFlag
     {
-        if (DispatchFlags.Cancelable(_isCancelableCached))
+        if (DispatchFlags.Cancelable(_tracerFlags.IsCancelable))
             PrepareOpcodes<TTracingInst, OnFlag>();
         else
             PrepareOpcodes<TTracingInst, OffFlag>();
