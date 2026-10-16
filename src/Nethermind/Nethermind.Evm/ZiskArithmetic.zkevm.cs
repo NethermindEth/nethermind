@@ -8,10 +8,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-/// <summary>ZisK's 256-bit modular arithmetic precompile, entered directly rather than through a library call.</summary>
+/// <summary>ZisK's 256-bit arithmetic precompiles, entered directly rather than through a library call.</summary>
 /// <remarks>
-/// The ZisK guest lists <c>syscall_arith256_mod</c> in its JIT's <c>JitZkCsrPInvokes</c>, so each call below is the
-/// single CSR write that runs the precompile, which changes no register. The library wrappers it replaces are calls,
+/// The ZisK guest lists <c>syscall_arith256_mod</c> and <c>syscall_arith256</c> in its JIT's <c>JitZkCsrPInvokes</c>,
+/// so each call below is the single CSR write that runs the precompile, which changes no register. The library wrappers it replaces are calls,
 /// around which every handler saved and reloaded the state it carries. Only code behind <c>ZiskFlag</c> reaches this.
 /// Every operand is a 256-bit integer as four 64-bit limbs, least significant first; a result must not alias an
 /// operand, and the modulus must not be zero.
@@ -60,6 +60,37 @@ internal static unsafe class ZiskArithmetic
             Run(a, (ulong*)one, (ulong*)zero, modulus, result);
         }
     }
+
+    /// <summary>The <c>arith256</c> operand block: it computes <c>A * B + C</c> into <c>Dh:Dl</c>.</summary>
+    private struct Arith256Params
+    {
+        public ulong* A;
+        public ulong* B;
+        public ulong* C;
+        public ulong* Dl;
+        public ulong* Dh;
+    }
+
+    /// <summary>Computes the low 256 bits of <c>a * b</c> into <paramref name="low"/>.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void MultiplyLow(ulong* a, ulong* b, ulong* low)
+    {
+        UInt256 high;
+        fixed (UInt256* zero = &Unsafe.AsRef(in UInt256.Zero))
+        {
+            Unsafe.SkipInit(out Arith256Params parameters);
+            parameters.A = a;
+            parameters.B = b;
+            parameters.C = (ulong*)zero;
+            parameters.Dl = low;
+            parameters.Dh = (ulong*)&high;
+            syscall_arith256(&parameters);
+        }
+    }
+
+    [DllImport("__Internal", EntryPoint = "syscall_arith256", ExactSpelling = true), SuppressGCTransition]
+    private static extern void syscall_arith256(Arith256Params* parameters);
 
     /// <summary>Runs the precompile on the operand block it builds; every field is written, so the block is not cleared first.</summary>
     [SkipLocalsInit]

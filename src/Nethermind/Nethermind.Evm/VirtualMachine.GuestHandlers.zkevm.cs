@@ -1970,12 +1970,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref ulong top = ref Unsafe.Add(ref product, LimbsPerWord);
             if (ZiskFlag.IsActive)
             {
-                // The product stays below 2^256 - 1, so reducing it modulo that leaves it whole. The result must not
-                // alias an operand; the stack is pinned.
+                // The result must not alias an operand; the stack is pinned.
                 UInt256 result;
                 ulong* right = (ulong*)Unsafe.AsPointer(ref product);
-                fixed (UInt256* modulus = &Unsafe.AsRef(in UInt256.MaxValue))
-                    ZiskArithmetic.MulMod((ulong*)Unsafe.AsPointer(ref top), right, (ulong*)modulus, (ulong*)&result);
+                ZiskArithmetic.MultiplyLow((ulong*)Unsafe.AsPointer(ref top), right, (ulong*)&result);
                 *(UInt256*)right = result;
             }
             else
@@ -2014,7 +2012,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <remarks>
         /// Entered only from there, with the stack checked and the gas charged. Takes the ten 64-bit products that
         /// reach the low 256 bits of the product, row by row over the second factor's limbs; the ZisK guest takes the
-        /// product of the low halves from its 256-bit arithmetic instead, which leaves six.
+        /// low 256 bits of the whole product from its 256-bit arithmetic instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -2037,21 +2035,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 // The low halves' product whole, as ExecuteMulOfHalfWidthFactors takes it, and the cross products of a low
                 // half with a high one only below 2^128, the part that reaches the low 256 bits of the product.
-                UInt256 left = new(a0, a1, 0, 0);
-                UInt256 right = new(b0, b1, 0, 0);
                 UInt256 low;
-                fixed (UInt256* modulus = &Unsafe.AsRef(in UInt256.MaxValue))
-                    ZiskArithmetic.MulMod((ulong*)&left, (ulong*)&right, (ulong*)modulus, (ulong*)&low);
-
-                ulong cross02 = a0 * b2;
-                ulong cross20 = a2 * b0;
-                ulong crossLow = cross02 + cross20;
-                ulong crossHigh = MultiplyHigh(a0, b2) + MultiplyHigh(a2, b0) + a0 * b3 + a1 * b2 + a2 * b1 + a3 * b0 +
-                    (crossLow < cross20 ? 1UL : 0UL);
+                ZiskArithmetic.MultiplyLow((ulong*)Unsafe.AsPointer(ref top), (ulong*)Unsafe.AsPointer(ref product), (ulong*)&low);
                 r0 = low.u0;
                 r1 = low.u1;
-                r2 = low.u2 + crossLow;
-                r3 = low.u3 + crossHigh + (r2 < crossLow ? 1UL : 0UL);
+                r2 = low.u2;
+                r3 = low.u3;
             }
             else
             {
