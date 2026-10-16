@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <StartupObject>Program</StartupObject>
+    <NoWarn>$(NoWarn);EnableGenerateDocumentationFile</NoWarn>
+    <AssemblyName>Nethermind.JsonRpc.Benchmark</AssemblyName>
+    <DefineConstants Condition="'$(RECEIPT_READ_MODE)' == 'decoded'">$(DefineConstants);DECODED_RECEIPTS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Db.Rocks/Nethermind.Db.Rocks.csproj" />
+  </ItemGroup>
+</Project>

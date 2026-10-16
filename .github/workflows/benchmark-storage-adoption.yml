@@ -22,7 +22,7 @@ on:
         description: Components to measure
         required: true
         type: choice
-        options: [blob, history, both, chain]
+        options: [blob, history, both, chain, receipt]
         default: both
       control_ref:
         description: Exact shared-master decoded API control SHA for chain measurements
@@ -30,6 +30,10 @@ on:
         type: string
       chain_ref:
         description: Exact chain-level candidate SHA
+        required: false
+        type: string
+      receipt_ref:
+        description: Exact common-master published-174 API source for receipt experiment
         required: false
         type: string
       aa_controls:
@@ -41,7 +45,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    if: inputs.components != 'chain'
+    if: inputs.components != 'chain' && inputs.components != 'receipt'
     strategy:
       fail-fast: false
       matrix:
@@ -270,4 +274,99 @@ jobs:
         if: always()
         with:
           name: chain-levels-${{ matrix.os }}
+          path: results
+
+  receipt:
+    if: inputs.components == 'receipt'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref }}
+      RECEIPT_REF: ${{ inputs.receipt_ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: proof
+      - name: Validate source inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BASELINE_REF" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RECEIPT_REF" =~ ^[0-9a-f]{40}$ ]]
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.baseline_ref }}
+          path: baseline
+          fetch-depth: 16
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.receipt_ref }}
+          path: control
+          fetch-depth: 16
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.receipt_ref }}
+          path: candidate
+          fetch-depth: 16
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: baseline/global.json
+      - name: Verify sources and prepare identical harnesses
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir results
+          dotnet --info > results/dotnet.txt
+          lscpu > results/cpu.txt
+          echo "SOURCE_DATE_EPOCH=$(git -C baseline log -1 --format=%ct)" >> "$GITHUB_ENV"
+          python3 proof/benchmarks/storage-adoption/validate-receipt.py sources
+          for source in baseline control candidate; do
+            mkdir -p "$source/benchmarks/receipt-scan"
+            cp proof/benchmarks/storage-adoption/receipt-scan/* "$source/benchmarks/receipt-scan/"
+          done
+          sha256sum proof/benchmarks/storage-adoption/receipt-scan/* > results/harness-sha256.txt
+          python3 -c 'import os; cpu=min(os.sched_getaffinity(0)); assert cpu<63; print("BENCH_AFFINITY="+str(1<<cpu))' >> "$GITHUB_ENV"
+          echo "BENCH_DATA=$RUNNER_TEMP/receipt-bench" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/receipt-bench"
+      - name: Compile harnesses and test receipt paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          for source in baseline control candidate; do
+            mode=legacy
+            [[ "$source" != candidate ]] || mode=decoded
+            RECEIPT_READ_MODE="$mode" dotnet build "$source/benchmarks/receipt-scan/ReceiptScan.csproj" -c Release
+          done
+          for source in baseline candidate; do
+            dotnet build "$source/src/Nethermind/Nethermind.Blockchain.Test/Nethermind.Blockchain.Test.csproj" -c Release
+            dotnet "$source/src/Nethermind/artifacts/bin/Nethermind.Blockchain.Test/release/Nethermind.Blockchain.Test.dll" --filter 'FullyQualifiedName~LogFinderTests|FullyQualifiedName~PersistentReceiptStorageTests|FullyQualifiedName~ReceiptsIteratorTests|FullyQualifiedName~DeferredReceiptStorageTests' | tee "results/$source-Receipt.Test.log"
+            python3 proof/benchmarks/storage-adoption/validate-tests.py "results/$source-Receipt.Test.log"
+          done
+          python3 proof/benchmarks/storage-adoption/validate-chain.py packages
+      - name: Measure master, package control and decoded receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          round=0
+          python3 -c 'import json; from pathlib import Path; Path("results/measurement-order.json").write_text(json.dumps({"receipt":["baseline","baseline","control","candidate","candidate","control","baseline","baseline"]},indent=2)+"\n")'
+          for source in baseline baseline control candidate candidate control baseline baseline; do
+            round=$((round + 1))
+            mode=legacy
+            [[ "$source" != candidate ]] || mode=decoded
+            output="$GITHUB_WORKSPACE/results/receipt/$round-$source"
+            (
+              cd "$source"
+              RECEIPT_READ_MODE="$mode" dotnet run --project benchmarks/receipt-scan/ReceiptScan.csproj -c Release --no-build -- --filter '*' --exporters json markdown --artifacts "$output" --join
+            )
+            python3 proof/benchmarks/storage-adoption/validate-receipt.py results "$output"
+          done
+          python3 proof/benchmarks/storage-adoption/analyze-ordered.py results receipt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: receipt-scan-${{ matrix.os }}
           path: results
