@@ -147,7 +147,9 @@ public class TxValidatorTests
 
     [MaxTime(Timeout.MaxTestTime)]
     [Test]
-    public void Typed_tx_y_parity_above_one_is_not_valid_regardless_of_chain_id_validation([Values] bool validateChainId)
+    public void Typed_tx_y_parity_above_one_is_not_valid_regardless_of_chain_id_validation(
+        [Values(TxType.AccessList, TxType.EIP1559, TxType.Blob, TxType.SetCode)] TxType txType,
+        [Values] bool validateChainId)
     {
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
@@ -155,15 +157,16 @@ public class TxValidatorTests
         sigData[64] = 29; // y_parity 2
         Signature signature = new(sigData);
         Transaction tx = Build.A.Transaction
-            .WithType(TxType.EIP1559)
+            .WithType(txType)
             .WithChainId(TestBlockchainIds.ChainId)
+            .WithGasLimit(100000)
             .WithMaxPriorityFeePerGas(10.GWei)
             .WithMaxFeePerGas(10.GWei)
+            .WithShardBlobTxTypeAndFieldsIfBlobTx(isMempoolTx: false)
+            .WithAuthorizationCodeIfAuthorizationListTx()
             .WithSignature(signature).TestObject;
 
-        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
-        releaseSpec.IsEip1559Enabled.Returns(true);
-        releaseSpec.ValidateChainId.Returns(validateChainId);
+        OverridableReleaseSpec releaseSpec = new(Prague.Instance) { ValidateChainId = validateChainId };
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ValidationResult result = txValidator.IsWellFormed(tx, releaseSpec);
