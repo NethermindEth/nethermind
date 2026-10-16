@@ -28,6 +28,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
+using Nethermind.RocksDbBindings.Native;
 using Testably.Abstractions;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
@@ -43,19 +44,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private static readonly FlushOptions _defaultFlushOptions = new();
 
-    // Compaction threads share the default env; at normal priority they delay the wake-up of foreground readers
-    // whose block read has completed.
-    private static readonly Lazy<bool> _lowerCompactionCpuPriority = new(static () =>
-    {
-        rocksdb_env_lower_thread_pool_cpu_priority(rocksdb_create_default_env());
-        return true;
-    });
-
-    [DllImport("rocksdb")]
-    private static extern IntPtr rocksdb_create_default_env();
-
-    [DllImport("rocksdb")]
-    private static extern void rocksdb_env_lower_thread_pool_cpu_priority(IntPtr env);
+    private static int _compactionCpuPriorityLowered;
 
     private bool _isDisposing;
     private int _pinnedSlices;
@@ -156,6 +145,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (_addedMemoryPressure > 0) GC.AddMemoryPressure(_addedMemoryPressure);
     }
 
+    /// <summary>
+    /// Runs the shared low-priority (compaction) thread pool of the default env at the lowest CPU priority.
+    /// </summary>
+    /// <remarks>
+    /// At normal priority the compaction threads delay the wake-up of block-processing readers whose disk read has
+    /// completed. Flushes run in the high-priority pool and are unaffected. RocksDB applies this on Linux only.
+    /// </remarks>
+    private static unsafe void LowerCompactionCpuPriority()
+    {
+        if (Interlocked.Exchange(ref _compactionCpuPriorityLowered, 1) == 1) return;
+
+        using Env env = Env.CreateDefault();
+        RocksDbNative.rocksdb_env_lower_thread_pool_cpu_priority((rocksdb_env_t*)env.Handle);
+    }
+
     protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
     {
         (DbOptions options, ColumnFamilies? families) = db;
@@ -188,6 +192,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
             DbOptions = new DbOptions();
             BuildOptions(_perTableDbConfig, DbOptions, sharedCache, _settings.MergeOperator);
+            if (dbConfig.LowerCompactionCpuPriority) LowerCompactionCpuPriority();
 
             ColumnFamilies? columnFamilies = null;
             if (columnNames is not null)
@@ -677,7 +682,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         // This one set the threadpool env, so its actually different from the above two
         options.IncreaseParallelism(Environment.ProcessorCount);
-        _ = _lowerCompactionCpuPriority.Value;
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         options.SetMaxSubcompactions((uint)Environment.ProcessorCount);

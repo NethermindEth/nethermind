@@ -40,6 +40,9 @@ public interface IDbConfig : IConfig
         DefaultValue = "WalOnly")]
     FlushOnExitMode FlushOnExit { get; set; }
 
+    [ConfigItem(Description = "Whether RocksDB compaction threads run at the lowest CPU priority so they do not delay block processing.", DefaultValue = "true")]
+    bool LowerCompactionCpuPriority { get; set; }
+
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
 
