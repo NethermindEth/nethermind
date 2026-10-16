@@ -257,7 +257,9 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
     private sealed class Execution
     {
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly Transaction _tx;
+        // Every run reuses one copy: nothing derived from the gas limit or blob fee cap is cached on a transaction.
+        private readonly Transaction _runTx = new();
+        private readonly UInt256? _maxFeePerBlobGas;
         private readonly BlockExecutionContext _blockContext;
         private readonly EstimationTracer _tracer;
         private readonly ITxTracer _cancellableTracer;
@@ -267,7 +269,8 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
         {
             _transactionProcessor = transactionProcessor;
             _token = token;
-            _tx = tx;
+            tx.CopyTo(_runTx, copyHash: false);
+            _maxFeePerBlobGas = tx.MaxFeePerBlobGas;
             _blockContext = blockContext;
             // Only a creation can run out of gas after its frame completes, while depositing the code.
             _tracer = new EstimationTracer(tracksFrames: tx.IsContractCreation);
@@ -279,14 +282,13 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
         private readonly string? _tipAboveFeeCap;
 
         public bool TryDescribeFailure(ulong gasLimit, in Run run, out string text) =>
-            ExecutionFailureText.TryDescribe(_transactionProcessor, CloneWithGasLimit(gasLimit), in _blockContext, run.ExceptionType, run.Error!, _token, out text);
+            ExecutionFailureText.TryDescribe(_transactionProcessor, WithGasLimit(gasLimit), in _blockContext, run.ExceptionType, run.Error!, _token, out text);
 
-        private Transaction CloneWithGasLimit(ulong gasLimit)
+        private Transaction WithGasLimit(ulong gasLimit, UInt256? maxFeePerBlobGas = null)
         {
-            Transaction txClone = new();
-            _tx.CopyTo(txClone, copyHash: false);
-            txClone.GasLimit = gasLimit;
-            return txClone;
+            _runTx.GasLimit = gasLimit;
+            _runTx.MaxFeePerBlobGas = maxFeePerBlobGas ?? _maxFeePerBlobGas;
+            return _runTx;
         }
 
         public Run Run(ulong gasLimit, UInt256? maxFeePerBlobGas = null)
@@ -294,9 +296,7 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
             if (_tipAboveFeeCap is not null)
                 return new Run(RunStatus.Rejected, Error: _tipAboveFeeCap);
 
-            Transaction txClone = CloneWithGasLimit(gasLimit);
-            if (maxFeePerBlobGas is not null)
-                txClone.MaxFeePerBlobGas = maxFeePerBlobGas;
+            Transaction txClone = WithGasLimit(gasLimit, maxFeePerBlobGas);
 
             _tracer.ResetRun();
             TransactionResult result;
