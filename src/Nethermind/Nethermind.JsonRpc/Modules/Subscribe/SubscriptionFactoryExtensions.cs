@@ -15,17 +15,30 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 
 public static class SubscriptionFactoryExtensions
 {
+    /// <param name="jsonRpcConfig">Node defaults for <c>headerOnly</c> and <c>optimistic</c>; both off when not given.</param>
+    /// <param name="optimisticHeads">Source of optimistic heads; without it an <c>optimistic</c> request is ignored.</param>
     public static void RegisterNewHeadSubscription(
         this ISubscriptionFactory subscriptionFactory,
         IBlockTree? blockTree,
         ILogManager? logManager,
         ISpecProvider specProvider,
-        IBlockForRpcFactory blockForRpcFactory)
+        IBlockForRpcFactory blockForRpcFactory,
+        IJsonRpcConfig? jsonRpcConfig = null,
+        IOptimisticHeadSource? optimisticHeads = null)
     {
         NewHeadPayloadCache payloads = new(specProvider, blockForRpcFactory);
-        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
+        bool headerOnlyByDefault = jsonRpcConfig?.NewHeadsHeaderOnly ?? false;
+        bool optimisticByDefault = jsonRpcConfig?.NewHeadsOptimistic ?? false;
+        subscriptionFactory.RegisterSubscriptionType<NewHeadsOption?>(
             SubscriptionType.EthSubscription.NewHeads,
-            (jsonRpcDuplexClient, args) => new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, payloads, args));
+            (jsonRpcDuplexClient, args) => new NewHeadSubscription(
+                jsonRpcDuplexClient,
+                blockTree,
+                logManager,
+                payloads,
+                args?.IncludeTransactions ?? false,
+                args?.HeaderOnly ?? headerOnlyByDefault,
+                (args?.Optimistic ?? optimisticByDefault) ? optimisticHeads : null));
     }
 
     public static void RegisterLogsSubscription(
@@ -105,10 +118,12 @@ public static class SubscriptionFactoryExtensions
         IEthSyncingInfo ethSyncingInfo,
         IPeerPool? peerPool,
         IRlpxHost? rlpxHost,
-        IBlockForRpcFactory blockForRpcFactory
+        IBlockForRpcFactory blockForRpcFactory,
+        IJsonRpcConfig? jsonRpcConfig = null,
+        IOptimisticHeadSource? optimisticHeads = null
         )
     {
-        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory);
+        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory, jsonRpcConfig, optimisticHeads);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
         subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
@@ -126,10 +141,12 @@ public static class SubscriptionFactoryExtensions
         FilterStore? filterStore,
         ITxPool? txPool,
         IEthSyncingInfo ethSyncingInfo,
-        IBlockForRpcFactory blockForRpcFactory
+        IBlockForRpcFactory blockForRpcFactory,
+        IJsonRpcConfig? jsonRpcConfig = null,
+        IOptimisticHeadSource? optimisticHeads = null
         )
     {
-        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory);
+        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory, jsonRpcConfig, optimisticHeads);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
         subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);

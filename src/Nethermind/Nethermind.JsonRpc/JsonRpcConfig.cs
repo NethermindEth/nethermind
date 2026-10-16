@@ -88,6 +88,8 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int WebSocketsProcessingConcurrency { get; set; } = 16;
     public int IpcProcessingConcurrency { get; set; } = 16;
     public bool EnablePerMethodMetrics { get; set; } = true;
+    public bool NewHeadsHeaderOnly { get; set; }
+    public bool NewHeadsOptimistic { get; set; }
     public int FiltersTimeout { get; set; } = 900000;
     public bool PreloadRpcModules { get; set; }
     public bool StrictHexFormat { get; set; } = true;

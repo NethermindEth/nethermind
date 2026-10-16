@@ -243,6 +243,16 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "true")]
     bool EnablePerMethodMetrics { get; set; }
 
+    [ConfigItem(
+        Description = "Whether `newHeads` notifications carry only the block header, as geth sends it, without the transaction hashes and withdrawals. A subscription overrides it with its `headerOnly` parameter; `includeTransactions` takes precedence.",
+        DefaultValue = "false")]
+    bool NewHeadsHeaderOnly { get; set; }
+
+    [ConfigItem(
+        Description = "Whether `newHeads` subscriptions announce a block as soon as it is validated, committed and extends the current head, before the consensus client's forkchoice update makes it canonical. If another block becomes the head instead, that block is announced as in a reorg, and `latest` follows only the forkchoice update. A subscription overrides it with its `optimistic` parameter.",
+        DefaultValue = "false")]
+    bool NewHeadsOptimistic { get; set; }
+
     [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
     int FiltersTimeout { get; set; }
 

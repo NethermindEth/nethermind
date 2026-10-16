@@ -298,6 +298,33 @@ public class JsonRpcSocketsClientTests
     }
 
     [Test]
+    public async Task WebSocket_notification_is_sent_as_one_final_frame()
+    {
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        using Socket listener = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        listener.Listen();
+        using Socket clientSocket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        await clientSocket.ConnectAsync(listener.LocalEndPoint!, deadline.Token);
+        using Socket serverSocket = await listener.AcceptAsync(deadline.Token);
+        using WebSocket clientWebSocket = WebSocket.CreateFromStream(new NetworkStream(clientSocket, ownsSocket: true), isServer: false, subProtocol: null, TimeSpan.Zero);
+        using WebSocket serverWebSocket = WebSocket.CreateFromStream(new NetworkStream(serverSocket, ownsSocket: true), isServer: true, subProtocol: null, TimeSpan.Zero);
+        using TestClient<WebSocketMessageStream> server = new(new WebSocketMessageStream(serverWebSocket, LimboLogs.Instance), RpcEndpoint.Ws);
+        using JsonRpcResult notification = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = "notification" }, default);
+
+        int sent = await server.Client.SendJsonRpcResult(notification, deadline.Token).WaitAsync(deadline.Token);
+        byte[] buffer = new byte[4096];
+        ValueWebSocketReceiveResult first = await clientWebSocket.ReceiveAsync(buffer.AsMemory(), deadline.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.EndOfMessage, Is.True, "the first frame must complete the notification");
+            Assert.That(first.Count, Is.EqualTo(sent));
+            Assert.That(Encoding.UTF8.GetString(buffer, 0, first.Count), Does.Contain("\"notification\""));
+        }
+    }
+
+    [Test]
     public async Task Missing_notification_response_does_not_fault_the_connection()
     {
         using MemoryMessageStream stream = new();

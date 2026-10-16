@@ -7,6 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -36,9 +38,14 @@ public class RegisterRpcModules(
     IPeerPool peerPool,
     IRlpxHost rlpxHost,
     IBlockForRpcFactory blockForRpcFactory,
-    ILogManager logManager
-) : IStep
+    ILogManager logManager,
+    Lazy<IBlockProcessingQueue> blockProcessingQueue,
+    ITimestamper timestamper,
+    IBlocksConfig blocksConfig
+) : IStep, IDisposable
 {
+    private OptimisticHeadSource? _optimisticHeads;
+
     public virtual Task Execute(CancellationToken cancellationToken)
     {
         if (!jsonRpcConfig.Enabled)
@@ -52,6 +59,9 @@ public class RegisterRpcModules(
 
         RpcLimits.Init(jsonRpcConfig.RequestQueueLimit, jsonRpcConfig.MaxConcurrentSharedRequests);
 
+        ILogger logger = logManager.GetClassLogger<RegisterRpcModules>();
+        _optimisticHeads = CreateOptimisticHeadSource(logger);
+
         // Register the standard subscription types in the dictionary
         subscriptionFactory.RegisterStandardSubscriptions(
             blockTree,
@@ -63,13 +73,33 @@ public class RegisterRpcModules(
             ethSyncingInfo,
             peerPool,
             rlpxHost,
-            blockForRpcFactory);
+            blockForRpcFactory,
+            jsonRpcConfig,
+            _optimisticHeads);
 
         // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
-        ILogger logger = logManager.GetClassLogger<RegisterRpcModules>();
         if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Value.Enabled.OrderBy(static x => x))}");
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Value.Enabled.OrderBy(static x => x))}");
 
         return Task.CompletedTask;
     }
+
+    /// <remarks>
+    /// It only listens to the processing queue and does work for a block only while an optimistic newHeads subscription
+    /// exists. Without a processing queue the node serves newHeads as before, and an <c>optimistic</c> request is ignored.
+    /// </remarks>
+    private OptimisticHeadSource? CreateOptimisticHeadSource(ILogger logger)
+    {
+        try
+        {
+            return new OptimisticHeadSource(blockProcessingQueue.Value, blockTree, timestamper, blocksConfig.SecondsPerSlot, logManager);
+        }
+        catch (Exception exception)
+        {
+            if (logger.IsWarn) logger.Warn($"Optimistic newHeads are unavailable: {exception.Message}");
+            return null;
+        }
+    }
+
+    public void Dispose() => _optimisticHeads?.Dispose();
 }

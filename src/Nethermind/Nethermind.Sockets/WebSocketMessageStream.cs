@@ -13,7 +13,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Sockets;
 
-public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logManager) : Stream, IMessageBorderPreservingStream
+public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logManager) : Stream, IMessageBorderPreservingStream, IWholeMessageStream
 {
     private readonly WebSocket _socket = socket;
     private readonly ILogger _logger = logManager.GetClassLogger<WebSocketMessageStream>();
@@ -83,6 +83,16 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
     {
         await _socket.SendAsync(ReadOnlyMemory<byte>.Empty, WebSocketMessageType.Text, true, CancellationToken.None);
         return 0;
+    }
+
+    /// <summary>Sends <paramref name="message"/> as a single final frame.</summary>
+    public async ValueTask WriteMessageAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (_socket.State != WebSocketState.Open) { ThrowSocketNotOpen(); }
+
+        await _socket.SendAsync(message, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_socket is null, _socket);

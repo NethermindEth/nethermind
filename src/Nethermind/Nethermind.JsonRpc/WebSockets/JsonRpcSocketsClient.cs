@@ -191,6 +191,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default)
     {
         JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
+        if (_stream is IWholeMessageStream wholeMessageStream && !response.TryGetStreamableResult(out _))
+        {
+            return await SendWholeMessage(wholeMessageStream, response, cancellationToken);
+        }
+
         await _sendLock.WaitAsync(cancellationToken);
         bool faulted = false;
         try
@@ -217,4 +222,43 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             }
         }
     }
+
+    /// <summary>Serializes <paramref name="response"/> first, then sends it in one transport write.</summary>
+    /// <remarks>
+    /// Over a WebSocket this is one final frame instead of the payload frames and an empty final frame. A serialization
+    /// failure leaves the connection usable, because nothing has reached the stream yet; a failed send faults it.
+    /// </remarks>
+    private async Task<int> SendWholeMessage(IWholeMessageStream stream, JsonRpcResponse response, CancellationToken cancellationToken)
+    {
+        ArrayBufferWriter<byte> message = new(NotificationBufferSize);
+        JsonRpcResponseWriter.Write(message, response, EthereumJsonSerializer.JsonOptions);
+
+        await _sendLock.WaitAsync(cancellationToken);
+        bool faulted = false;
+        try
+        {
+            await stream.WriteMessageAsync(message.WrittenMemory, cancellationToken);
+            return message.WrittenCount;
+        }
+        catch (Exception ex)
+        {
+            _sendLock.Fault(ex);
+            faulted = true;
+            throw;
+        }
+        finally
+        {
+            _sendLock.Release();
+            if (faulted)
+            {
+                lock (_sendFailure)
+                {
+                    if (_disposed == 0) _sendFailure.Cancel();
+                }
+            }
+        }
+    }
+
+    /// <summary>Initial buffer for a serialized notification; a new head without transactions fits.</summary>
+    private const int NotificationBufferSize = 4 * 1024;
 }
