@@ -414,7 +414,7 @@ public class HashesOnlyBlockReaderTests
     }
 
     [Test]
-    public async Task CountMethods_BlockBelowTheHeadWindow_ReturnTheBlockTreeCounts([Values] bool byHash)
+    public async Task CountMethods_BlockBelowTheHeadWindow_ReturnTheBlockTreeCounts([Values] bool byHash, [Values] bool uncles)
     {
         using TestRpcBlockchain chain = await BuildRpcChainWithoutHeadWindow();
         HashesOnlyBlockReader reader = chain.Container.Resolve<HashesOnlyBlockReader>();
@@ -425,15 +425,20 @@ public class HashesOnlyBlockReaderTests
             Block block = chain.BlockFinder.FindBlock(number)!;
             BlockParameter parameter = byHash ? new BlockParameter(block.Hash!) : new BlockParameter(number);
 
-            UInt256? transactions = byHash ? eth.eth_getBlockTransactionCountByHash(block.Hash!).Data : eth.eth_getBlockTransactionCountByNumber(parameter).Data;
-            UInt256? uncles = byHash ? eth.eth_getUncleCountByBlockHash(block.Hash!).Data : eth.eth_getUncleCountByBlockNumber(parameter).Data;
+            // One method per case, so the reader read below can only come from the method under test.
+            UInt256? count = (uncles, byHash) switch
+            {
+                (true, true) => eth.eth_getUncleCountByBlockHash(block.Hash!).Data,
+                (true, false) => eth.eth_getUncleCountByBlockNumber(parameter).Data,
+                (false, true) => eth.eth_getBlockTransactionCountByHash(block.Hash!).Data,
+                (false, false) => eth.eth_getBlockTransactionCountByNumber(parameter).Data,
+            };
 
             // Only the module's own read can have cached the block once its body is gone from the store.
             chain.DbProvider.BlocksDb.Delete(block.Number, block.Hash!);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(transactions, Is.EqualTo((UInt256)block.Transactions.Length), $"block {number} transaction count");
-                Assert.That(uncles, Is.EqualTo((UInt256)block.Uncles.Length), $"block {number} uncle count");
+                Assert.That(count, Is.EqualTo((UInt256)(uncles ? block.Uncles.Length : block.Transactions.Length)), $"block {number} count");
                 Assert.That(reader.Find(chain.BlockFinder, parameter), Is.Not.Null, $"block {number} must have been read through the reader");
             }
         }
