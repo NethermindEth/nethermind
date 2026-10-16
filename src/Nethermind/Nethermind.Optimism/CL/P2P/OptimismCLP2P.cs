@@ -362,8 +362,11 @@ public class OptimismCLP2P : IDisposable
 
 
         if (_logger.IsInfo) _logger.Info("CL P2P is started");
-        _staticPeerKeeperStop = CancellationTokenSource.CreateLinkedTokenSource(token);
-        _staticPeerKeeper = StaticPeerKeeper.RunAsync(_localPeer!, _router!, _staticPeerList, StaticPeerKeeper.CheckInterval, _logger, _staticPeerKeeperStop.Token);
+        CancellationTokenSource keeperStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        // Read before publishing: a concurrent Dispose takes and disposes the published source.
+        CancellationToken keeperToken = keeperStop.Token;
+        _staticPeerKeeperStop = keeperStop;
+        _staticPeerKeeper = StaticPeerKeeper.RunAsync(_localPeer!, _router!, _staticPeerList, StaticPeerKeeper.CheckInterval, _logger, keeperToken);
         _ = _staticPeerKeeper.ContinueWith(keeper =>
         {
             // Observed whatever the log level, so the failure never reaches UnobservedTaskException.
