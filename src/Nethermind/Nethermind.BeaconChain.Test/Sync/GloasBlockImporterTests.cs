@@ -83,6 +83,23 @@ public class GloasBlockImporterTests
     }
 
     [Test]
+    public void Blocks_imported_off_the_head_never_evict_the_head_state()
+    {
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
+        SignedGloasChain.Block headBlock = Import(importer, _chain.Next(first, ForkSlot + 1, full: false, 0xA2));
+        Assert.That(importer.ComputeHead().HeadRoot, Is.EqualTo(headBlock.Root), "fixture: the head is a block that is no checkpoint candidate");
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        BeaconStateGloas headState = states.GetGloasBlockState(headBlock.Root)!;
+
+        for (ulong slot = ForkSlot + 2; slot < ForkSlot + 6; slot++)
+            Import(importer, _chain.Next(first, slot, full: false, (byte)slot));
+
+        // Gossip aggregates, payload attestations, the PTC and the proposer lookahead all read the head's state; without it each is IGNOREd or stale.
+        Assert.That(states.GetGloasBlockState(headBlock.Root), Is.SameAs(headState));
+    }
+
+    [Test]
     public void Gossip_envelope_signature_check_never_decodes_a_persisted_only_state()
     {
         BeaconChainStore store = _chain.CreateStore();

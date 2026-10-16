@@ -1030,6 +1030,7 @@ public sealed class BlockImporter : IBlockImporter
     {
         ForkChoiceNode headNode = _runner.GetHeadNode();
         Hash256 head = headNode.Root;
+        _states.PinHead(head);
         // After GetHeadNode, so the copy carries the weights this head was chosen by.
         ForkChoiceSnapshot? snapshot = _forkChoiceSnapshots is null && _proposerLookaheads is null ? null : _runner.Snapshot();
         _forkChoiceSnapshots?.Current = snapshot;

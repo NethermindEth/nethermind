@@ -37,7 +37,7 @@ namespace Nethermind.BeaconChain.Sync;
 /// above, so a justified root resolved first epochs later has not aged out with the per-block tier.
 /// The finalized Gloas checkpoint's state is pinned (<see cref="PinGloas"/>) and never ages out, and so are the two
 /// latest justified ones, of which the next finalized checkpoint is one: before a checkpoint candidate can evict a
-/// boundary entry, the root <paramref name="justifiedRoot"/> names is pinned while its state is still held. A persisted
+/// boundary entry, the root <paramref name="justifiedRoot"/> names is pinned while its state is still held. So is the head's (<see cref="PinHead"/>). A persisted
 /// Gloas state is read back from the store only for a root <paramref name="isGloasBlock"/> accepts, into the per-block
 /// tier, so the read never evicts a checkpoint candidate unpinned. An undecodable persisted state of either fork is logged and treated as absent.
 /// A checkpoint candidate evicted from the boundary tier while <paramref name="isAboveFinalized"/> holds is persisted,
@@ -88,6 +88,8 @@ internal sealed class PostStateCache(
     private BeaconStateGloas? _pinnedJustifiedState;
     private Hash256? _previousJustifiedRoot;
     private BeaconStateGloas? _previousJustifiedState;
+    private Hash256? _pinnedHeadRoot;
+    private BeaconStateGloas? _pinnedHeadState;
 
     public Hash256? LineageRoot { get; private set; } = lineageRoot;
     public BeaconStateFulu? LineageState { get; private set; } = lineageState;
@@ -279,6 +281,17 @@ internal sealed class PostStateCache(
         _previousJustifiedState = null;
     }
 
+    /// <summary>Pins the head's held Gloas post-state, replacing the previous pin, so blocks imported off the head never evict it.</summary>
+    /// <remarks>A head whose Gloas state is not held keeps the previous pin, so the pin never costs a store read or more than one state.</remarks>
+    public void PinHead(Hash256 headRoot)
+    {
+        if (headRoot != _pinnedHeadRoot && GetHeldGloasBlockState(headRoot) is { } state)
+        {
+            _pinnedHeadRoot = headRoot;
+            _pinnedHeadState = state;
+        }
+    }
+
     /// <summary>Pins justified state and retains the outgoing justification for one more change. Epoch weighing can finalize it during the same import that justifies its successor, before OnFinalized reads it.</summary>
     private void PinJustified()
     {
@@ -315,6 +328,11 @@ internal sealed class PostStateCache(
         if (blockRoot == _previousJustifiedRoot)
         {
             return _previousJustifiedState;
+        }
+
+        if (blockRoot == _pinnedHeadRoot)
+        {
+            return _pinnedHeadState;
         }
 
         if (_retainedGloas.TryGet(blockRoot, out BeaconStateGloas? retained))
