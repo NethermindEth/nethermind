@@ -69,10 +69,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     }
 
     /// <summary>The worker count when <see cref="IFlatDbConfig.TrieWarmerWorkerCount"/> is -1.</summary>
-    /// <remarks>
-    /// The workers mostly wait on storage reads, so on a machine with few cores 3/4 of them keeps too few reads in flight:
-    /// the default is 1.5 per core up to 12, and from 16 cores up 3/4 of them, which is the larger.
-    /// </remarks>
+    /// <remarks>The workers mostly wait on storage reads, so on a machine with few cores 3/4 of them keeps too few reads in flight.</remarks>
     internal static int DefaultWorkerCount(int processorCount) =>
         Math.Max(processorCount * 3 / 4, Math.Min(12, processorCount * 3 / 2));
 
