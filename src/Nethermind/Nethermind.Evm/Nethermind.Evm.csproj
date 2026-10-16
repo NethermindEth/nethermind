@@ -3,6 +3,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
     <IsAotCompatible>true</IsAotCompatible>
+    <!-- FrameCodeRunner and its descriptors are experimental API (NMEVM0001); this assembly defines and wires them. -->
+    <NoWarn>$(NoWarn);NMEVM0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

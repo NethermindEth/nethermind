@@ -11,6 +11,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -795,7 +796,8 @@ namespace Nethermind.Facade
         ISimulateReadOnlyBlocksProcessingEnvFactory simulateEnvFactory,
         IOverridableEnvFactory envFactory,
         ILifetimeScope rootLifetimeScope,
-        int overridableEnvPoolSize
+        int overridableEnvPoolSize,
+        IReadOnlyList<IReadOnlyQueryModule>? readOnlyQueryModules = null
     ) : IBlockchainBridgeFactory
     {
         public IBlockchainBridge CreateBlockchainBridge()
@@ -835,7 +837,9 @@ namespace Nethermind.Facade
                     .AddScoped<ResolvedCodeMemo>()
                     .AddDecorator<ICodeInfoRepository, MemoizingCodeInfoRepository>()
                     .AddDecorator<ITransactionProcessor, ResolvedCodeClearingTransactionProcessor>()
-                    .Add<BlockchainBridge.BlockProcessingComponents>();
+                    .Add<BlockchainBridge.BlockProcessingComponents>()
+                    // Calls with state, block or blob overrides run here rather than in the shared read-only envs.
+                    .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Call);
                 if (adoptsCode)
                 {
                     builder.AddDecorator<IWorldState, ResolvedCodeForgettingWorldState>();

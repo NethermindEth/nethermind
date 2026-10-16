@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- In-process eth_call replay: runs as a startup hook inside a frozen nethtest.exe of the hook build, with the plugin
+       attached through IlEvmQueryModule, comparing every response byte for byte between interpreter and compiled rounds. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <AssemblyName>RpcReplay</AssemblyName>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <NoWarn>$(NoWarn);CS1591;MSB3277;CS8632</NoWarn>
+    <NmBin Condition="'$(NmBin)' == ''">C:\tmp\frame-runner-nmbin\</NmBin>
+    <!-- The plugin as this repository builds it, not the copy in the host's folder: run with RPCPOC_PLUGIN_DIR naming it. -->
+    <PluginBin Condition="'$(PluginBin)' == ''">$(MSBuildThisFileDirectory)..\..\src\Nethermind.IlEvm\bin\Release\net10.0\</PluginBin>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="$(NmBin)Nethermind.*.dll" Exclude="$(NmBin)Nethermind.IlEvm.dll" Private="false" />
+    <Reference Include="$(PluginBin)Nethermind.IlEvm.dll" Private="false" />
+    <Reference Include="$(NmBin)Autofac.dll" Private="false" />
+    <Reference Include="$(NmBin)Testably.Abstractions.FileSystem.Interface.dll" Private="false" />
+    <Reference Include="$(NmBin)Testably.Abstractions.Interface.dll" Private="false" />
+  </ItemGroup>
+</Project>

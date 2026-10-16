@@ -148,9 +148,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 CancellationPollAt = CancellationPollInterval,
             };
 
-            if (_txTracer.IsCancelled)
-                ThrowOperationCanceledException();
-
+            // The caller polled before entering the loop (RunFrameCode), so a frame polls the same number of times
+            // whether a runner ran part of it or not.
             nint pc = programCounter;
             nint opCodeCount = 0;
             EvmExceptionType exceptionType;

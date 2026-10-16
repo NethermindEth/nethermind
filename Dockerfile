@@ -26,6 +26,12 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
+# The ext plugin, built against the published node and loaded from its plugins folder; it stays off unless enabled.
+COPY ext ext
+RUN dotnet build ext/src/Nethermind.IlEvm/Nethermind.IlEvm.csproj -c $BUILD_CONFIG -o /ext-out -p:NethermindBin=/publish/ && \
+  mkdir -p /publish/plugins && \
+  cp /ext-out/Nethermind.IlEvm.dll /publish/plugins/
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.13-resolute@sha256:86ddb370c95d79ec988f94e7d66193b20d02a1df859aa3f5e56451141528f053
 
 ARG COMMIT_HASH=unknown

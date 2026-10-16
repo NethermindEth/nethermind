@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Nethermind.IlEvm</AssemblyName>
+    <RootNamespace>Nethermind.IlEvm</RootNamespace>
+    <!-- Emits IL at run time; never part of an AOT or zkEVM image. -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.IlEvm.Test" />
+    <!-- The replay harness starts the Adaptive rules as a node's startup does, with no node around it. -->
+    <InternalsVisibleTo Include="RpcReplay" />
+  </ItemGroup>
+
+  <!-- The contracts compiled at startup: code hashes, busiest first; the candidates are the wider list measurement runs time. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Precompile.txt" LogicalName="Nethermind.IlEvm.Precompile.txt" />
+    <EmbeddedResource Include="PrecompileCandidates.txt" LogicalName="Nethermind.IlEvm.PrecompileCandidates.txt" />
+    <!-- The RPC list's entries carry their bytecode as hex, which compresses to under a quarter: embedded gzipped. -->
+    <EmbeddedResource Include="$(BaseIntermediateOutputPath)PrecompileRpc.txt.gz" LogicalName="Nethermind.IlEvm.PrecompileRpc.txt.gz" />
+  </ItemGroup>
+
+  <UsingTask TaskName="IlEvmGZip" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Source ParameterType="System.String" Required="true" />
+      <Destination ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.IO.Compression" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(Destination)));
+        using (FileStream input = File.OpenRead(Source))
+        using (FileStream output = File.Create(Destination))
+        using (GZipStream gzip = new GZipStream(output, CompressionLevel.Optimal))
+        {
+            input.CopyTo(gzip);
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="IlEvmCompressRpcList" BeforeTargets="BeforeBuild;PrepareResourceNames" Inputs="PrecompileRpc.txt" Outputs="$(BaseIntermediateOutputPath)PrecompileRpc.txt.gz">
+    <IlEvmGZip Source="PrecompileRpc.txt" Destination="$(BaseIntermediateOutputPath)PrecompileRpc.txt.gz" />
+  </Target>
+
+  <!--
+    Compiled against these, never copied: the node that loads the plugin provides them. With NethermindBin set to a
+    published node's folder, the plugin is built against that node's own assemblies, as for a release; otherwise
+    against the sources.
+  -->
+  <ItemGroup Condition="'$(NethermindBin)' == ''">
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Api/Nethermind.Api.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Config/Nethermind.Config.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Core/Nethermind.Core.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Evm/Nethermind.Evm.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Logging/Nethermind.Logging.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Init/Nethermind.Init.csproj" Private="false" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NethermindBin)' != ''">
+    <!-- A node's folder may hold a copy of the plugin itself, which must not shadow the sources built here. -->
+    <Reference Include="$(NethermindBin)Nethermind.*.dll" Exclude="$(NethermindBin)Nethermind.IlEvm.dll" Private="false" />
+    <Reference Include="$(NethermindBin)Autofac.dll" Private="false" />
+  </ItemGroup>
+</Project>
