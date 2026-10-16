@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -589,6 +591,49 @@ public class Eip8360Tests : VirtualMachineTestsBase
             Assert.That(create.GetProperty("to").GetString(), Is.EqualTo(tcreated.ToString()));
             Assert.That(create.GetProperty("value").GetString(), Is.EqualTo($"0x{endowment:x}"));
         }
+    }
+
+    [Test]
+    public void Transient_storage_and_call_succeed_with_or_without_instruction_tracing([Values] bool traced)
+    {
+        Address tcreated = InstallTracedFactory(0);
+
+        RunForGas(traced);
+
+        Assert.That(FactorySlot(1), Is.EqualTo((UInt256)42));
+        AssertFinalized(tcreated, UInt256.Zero);
+    }
+
+    [Test]
+    public void JavaScript_tracer_observes_transient_create_storage_before_and_after_execution()
+    {
+        InstallTracedFactory(0);
+        (Block block, Transaction tx) = BuildFactoryCall();
+        const string script = """
+            {
+                events: [],
+                record: function(stage, log) {
+                    var op = log.op.toString();
+                    if (log.getDepth() === 2 && (op === 'SLOAD' || op === 'SSTORE'))
+                        this.events.push(stage + ':' + op + ':' + log.getCost() + ':' + log.stack.length());
+                },
+                step: function(log) { this.record('step', log); },
+                postStep: function(log) { this.record('post', log); },
+                fault: function() {},
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, EnabledSpec, GethTraceOptions.Default with { Tracer = script });
+        tracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = ((IBlockTracer)tracer).StartNewTxTrace(tx);
+
+        ExecuteFactoryCall(block, tx, txTracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().Single();
+
+        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions),
+            Is.EqualTo("""["step:SSTORE:100:2","post:SSTORE:100:2","step:SLOAD:100:1","post:SLOAD:100:1"]"""));
     }
 
     [Test]

@@ -42,6 +42,9 @@ public static partial class EvmInstructions
         // Deduct the fixed gas cost for TLOAD.
         if (!TGasPolicy.UpdateGas<TLoadGasCost>(ref gas)) goto OutOfGas;
 
+        if (TTracingInst.IsActive && stack.EnsureDepth(1))
+            vm.TraceOperationReady(TLoadGasCost.GasCost);
+
         // Attempt to pop the key (offset) from the stack; if unavailable, signal a stack underflow.
         ref byte slot = ref stack.PopBytesByRef();
         if (Unsafe.IsNullRef(ref slot)) goto StackUnderflow;
@@ -84,8 +87,9 @@ public static partial class EvmInstructions
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or failure.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionTStore<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionTStore<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
     {
         VmState<TGasPolicy> vmState = vm.VmState;
 
@@ -94,6 +98,9 @@ public static partial class EvmInstructions
 
         // Deduct the gas cost for TSTORE.
         if (!TGasPolicy.UpdateGas<TStoreGasCost>(ref gas)) goto OutOfGas;
+
+        if (TTracingInst.IsActive && stack.EnsureDepth(2))
+            vm.TraceOperationReady(TStoreGasCost.GasCost);
 
         if (!stack.PopUInt256(out UInt256 result, out UInt256 newValue)) goto StackUnderflow;
 

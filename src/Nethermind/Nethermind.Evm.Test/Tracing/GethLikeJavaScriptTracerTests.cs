@@ -31,6 +31,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 {
     [TestCase("new Uint8Array([])", "{}")]
+    [TestCase("new Uint8Array(12)", "{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0,\"6\":0,\"7\":0,\"8\":0,\"9\":0,\"10\":0,\"11\":0}")]
     [TestCase("new Uint8Array([0, 1, 255])", "{\"0\":0,\"1\":1,\"2\":255}")]
     [TestCase("new Uint8Array([7, 1, 255, 8]).subarray(1, 3)", "{\"0\":1,\"1\":255}")]
     [TestCase("[]", "[]")]

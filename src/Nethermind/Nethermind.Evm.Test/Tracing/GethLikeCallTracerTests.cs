@@ -557,6 +557,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         new("600160006110003e", 21100UL, "out of gas"),
         new("600101", 100000UL, "stack underflow (1 <=> 2)"),
         new("60016001f1", 100000UL, "stack underflow (2 <=> 7)"),
+        new("5f5f5f5f5f5ff1", 100000UL, "stack underflow (6 <=> 7)"),
+        new("5f5f5f5f5f5ff2", 100000UL, "stack underflow (6 <=> 7)"),
         new("56", 100000UL, "stack underflow (0 <=> 1)"),
         new("60016000680100000000000000003e", 100000UL, "gas uint64 overflow"),
         new("6001600067ffffffffffffffff3e", 100000UL, "gas uint64 overflow"),
@@ -571,6 +573,18 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         new("60006001680100000000000000003e", 100000UL, "return data out of bounds"),
         new("60006000680100000000000000003e", 100000UL, null)
     ];
+
+    [Test]
+    public void Call_partial_pop_underflow_diagnostics_preserve_initial_depth(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction opcode,
+        [Range(0, 5)] int depth)
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < depth; i++) code.PushData(0);
+        int required = opcode is Instruction.CALL or Instruction.CALLCODE ? 7 : 6;
+        Call_trace_diagnostics_do_not_depend_on_opcode_tracer(code.Op(opcode).Done.ToHexString(), 100000UL,
+            $"stack underflow ({depth} <=> {required})");
+    }
 
     [TestCaseSource(nameof(ActionDiagnosticCompositionCases))]
     public void Call_trace_diagnostics_do_not_depend_on_opcode_tracer(string bytecode, ulong gasLimit, string? expectedError)

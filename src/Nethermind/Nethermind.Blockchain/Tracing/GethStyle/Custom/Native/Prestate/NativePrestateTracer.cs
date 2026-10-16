@@ -176,6 +176,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         {
             foreach (AddressAsKey address in _initiallyEmptyAccounts)
             {
+                // EIP-8250's nonce manager can have storage without an account record.
                 if (!_diffMode || (_prestate.TryGetValue(address, out NativePrestateTracerAccount? account)
                     && account.Storage is not { Count: > 0 }))
                     _prestate.Remove(address);
