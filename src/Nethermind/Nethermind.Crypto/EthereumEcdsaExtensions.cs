@@ -53,7 +53,7 @@ public static class EthereumEcdsaExtensions
 
         if (tx.Type == TxType.Legacy && isEip155Enabled)
         {
-            tx.Signature.V = checked(tx.Signature.V + 8 + 2 * ecdsa.ChainId);
+            tx.Signature.V = CalculateV(ecdsa.ChainId, tx.Signature.RecoveryId == 1);
         }
     }
 
