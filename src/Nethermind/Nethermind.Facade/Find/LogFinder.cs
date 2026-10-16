@@ -31,6 +31,9 @@ namespace Nethermind.Facade.Find
         IPrunedLogsRetention? prunedLogsRetention = null)
         : ILogFinder
     {
+        // PLINQ's fixed setup cost (chunk buffers, thread-pool hops) outweighs scanning a few blocks per worker inline.
+        private const int MinBlocksPerParallelWorker = 4;
+
         private static int ParallelExecutions = 0;
         private static int ParallelLock = 0;
 
@@ -196,9 +199,11 @@ namespace Nethermind.Facade.Find
             }
 
             ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
-            bool tryParallel = rangeSize >= (ulong)_rpcConfigGetLogsThreads;
+            bool tryParallel = ScansInParallel(rangeSize, _rpcConfigGetLogsThreads);
             return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
         }
+
+        internal static bool ScansInParallel(ulong rangeSize, int workers) => rangeSize >= (ulong)(workers * MinBlocksPerParallelWorker);
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken) =>
             block is not null && filter.Matches(block.Bloom!)

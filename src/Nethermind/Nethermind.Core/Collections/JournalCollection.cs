@@ -15,7 +15,7 @@ namespace Nethermind.Core.Collections
     /// </summary>
     /// <typeparam name="T">Item type.</typeparam>
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
-    public sealed class JournalCollection<T> : IToArrayCollection<T>, ICollection<T>, IJournal<int>
+    public sealed partial class JournalCollection<T> : IToArrayCollection<T>, ICollection<T>, IJournal<int>
     {
         private readonly List<T> _list = [];
         public int TakeSnapshot() => Count - 1;
@@ -28,7 +28,7 @@ namespace Nethermind.Core.Collections
             }
 
             // Just remove excessive items after snapshot
-            CollectionsMarshal.SetCount(_list, snapshot + 1);
+            Truncate(snapshot + 1);
         }
 
         [DoesNotReturn, StackTraceHidden]
@@ -38,7 +38,8 @@ namespace Nethermind.Core.Collections
         public IEnumerator<T> GetEnumerator() => _list.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)_list).GetEnumerator();
         public void Add(T item) => _list.Add(item);
-        public void Clear() => _list.Clear();
+        public partial void Clear();
+        private partial void Truncate(int count);
         public bool Contains(T item) => _list.Contains(item);
         public void CopyTo(T[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");

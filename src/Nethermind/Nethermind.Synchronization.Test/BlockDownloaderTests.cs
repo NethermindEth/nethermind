@@ -1445,7 +1445,7 @@ public partial class BlockDownloaderTests
         public void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
             throw new NotImplementedException();
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
+        public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx) =>
             throw new NotImplementedException();
 
         public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) =>
