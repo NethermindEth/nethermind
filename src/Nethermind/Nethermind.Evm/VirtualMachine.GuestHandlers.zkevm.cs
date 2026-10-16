@@ -2105,9 +2105,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // Reloaded rather than held across the call, where each would take a callee-saved register.
             handlers = state.OpcodeHandlers;
             code = ref stack.Code;
-            sp = ref SlotAt(ref stack.Bottom, head);
             head--;
-            sp = ref Moved(ref sp, -1);
+            sp = ref SlotAt(ref stack.Bottom, head);
             ip = ref Unsafe.Add(ref ip, 1);
             nint next = handlers[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
