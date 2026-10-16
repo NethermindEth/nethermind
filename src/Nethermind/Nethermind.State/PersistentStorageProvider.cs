@@ -244,6 +244,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
 
     private OptimizedHashSet<AddressAsKey>? _tempToUpdateRoots;
+    private Dictionary<StorageCell, StorageChangeTrace>? _commitTrace;
     /// <summary>
     /// Called by Commit
     /// Used for persistent storage specific logic
@@ -270,7 +271,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Dictionary<StorageCell, StorageChangeTrace>? trace;
         if (tracer.IsTracingStorage)
         {
-            trace = [];
+            trace = _commitTrace ??= [];
+            trace.ClearAndTrim();
             if (_destroyedThisRound.Count == 0)
             {
                 CommitChanges<OnFlag, OffFlag>(changes, toUpdateRoots, trace);

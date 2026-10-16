@@ -736,7 +736,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlockDirect(ITracer tracer, Block block, ParityLikeBlockTracer parityTracer, bool isSigned = false)
         {
-            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
             CancellationToken cancellationToken = timeout.Token;
             TraceConstructedBlock(tracer, block, parityTracer.WithCancellation(cancellationToken), isSigned);
             return parityTracer.BuildResult();
@@ -777,9 +777,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         /// <summary>The same, writing each transaction's traces out as the workers finish them, so the caller reads
         /// the first of them while the block is still being traced and the block is never held whole.</summary>
-        private bool TryStreamBlockInParallel(BlockHeader parent, Block block, ParityTraceTypes types, StreamingParityLikeBlockTracer streamingTracer, CancellationToken cancellationToken) =>
-            parallelTracer is not null && parallelTracer.TryStream(block, parent,
-                PerTransaction(types), Rewards(types), streamingTracer.WriteTraces, cancellationToken);
+        private bool TryStreamBlockInParallel(BlockHeader parent, Block block, ParityTraceTypes types, StreamingParityLikeBlockTracer streamingTracer, CancellationToken cancellationToken)
+        {
+            if (parallelTracer is null) return false;
+
+            using ParallelParityTxTracerPool txTracers = streamingTracer.CreateParallelTxTracers(block, types & ~ParityTraceTypes.Rewards);
+            return parallelTracer.TryStream(block, parent,
+                (_, txHash) => txTracers.For(txHash), Rewards(types), streamingTracer.WriteTraces, cancellationToken);
+        }
 
         private Func<IWorldState, Hash256, IBlockTracer<ParityLikeTxTrace>> PerTransaction(ParityTraceTypes types)
         {
@@ -792,8 +797,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlockParallelOrReplay(BlockHeader parent, Block block, ParityTraceTypes types, CancellationToken cancellationToken = default)
         {
-            using CancellationTokenSource? timeout = cancellationToken.CanBeCanceled ? null : BuildTimeoutCancellationTokenSource();
-            CancellationToken token = timeout?.Token ?? cancellationToken;
+            using RentedTimeout timeout = cancellationToken.CanBeCanceled ? default : jsonRpcConfig.RentTimeout();
+            CancellationToken token = cancellationToken.CanBeCanceled ? cancellationToken : timeout.Token;
             token.ThrowIfCancellationRequested();
             return TryExecuteBlockInParallel(parent, block, types, token, out IReadOnlyList<ParityLikeTxTrace>? traces)
                 ? traces
@@ -812,8 +817,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             using Scope<ITracer> env = tracerEnv.BuildAndOverrideAtTarget(blockToExecute.Header, specOverride: specOverride);
             ITracer tracer2 = env.Component;
 
-            using CancellationTokenSource? timeout = cancellationToken.CanBeCanceled ? null : BuildTimeoutCancellationTokenSource();
-            CancellationToken token = timeout?.Token ?? cancellationToken;
+            using RentedTimeout timeout = cancellationToken.CanBeCanceled ? default : jsonRpcConfig.RentTimeout();
+            CancellationToken token = cancellationToken.CanBeCanceled ? cancellationToken : timeout.Token;
             token.ThrowIfCancellationRequested();
             // A prefix recorded under the block's own spec says nothing about the block run under another one, even
             // though the header keeps its hash: no seed when the spec is overridden.

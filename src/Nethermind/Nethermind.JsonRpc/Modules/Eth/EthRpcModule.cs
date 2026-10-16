@@ -179,28 +179,28 @@ public partial class EthRpcModule(
         }
     }
 
-    public Task<ResultWrapper<ulong?>> eth_blockNumber()
+    public ResultWrapper<ulong?> eth_blockNumber()
     {
         ulong number = _blockchainBridge.HeadBlock?.Number ?? 0;
-        return Task.FromResult(ResultWrapper<ulong?>.Success(number));
+        return ResultWrapper<ulong?>.Success(number);
     }
 
-    public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter? blockParameter = null)
+    public ResultWrapper<UInt256?> eth_getBalance(Address address, BlockParameter? blockParameter = null)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return Task.FromResult(GetFailureResult<UInt256?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet()));
+            return GetFailureResult<UInt256?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
         if (!_blockchainBridge.HasStateForBlock(header!))
         {
-            return Task.FromResult(GetStateFailureResult<UInt256?>(header));
+            return GetStateFailureResult<UInt256?>(header);
         }
 
         _stateReader.TryGetAccount(header!, address, out AccountStruct account);
-        return Task.FromResult(ResultWrapper<UInt256?>.Success(account.Balance));
+        return ResultWrapper<UInt256?>.Success(account.Balance);
     }
 
     public ResultWrapper<byte[]> eth_getStorageAt(Address address, StorageIndex positionIndex,
@@ -273,28 +273,28 @@ public partial class EthRpcModule(
     private static ResultWrapper<StorageValuesResult> TooManySlotsError() =>
         ResultWrapper<StorageValuesResult>.Fail($"too many slots (max {MaxGetStorageSlots})", ErrorCodes.InvalidParams);
 
-    public virtual Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
+    public virtual ResultWrapper<UInt256> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
     {
         if (blockParameter == BlockParameter.Pending)
         {
             UInt256 pendingNonce = _txPool.GetLatestPendingNonce(address);
-            return Task.FromResult(ResultWrapper<UInt256>.Success(pendingNonce));
+            return ResultWrapper<UInt256>.Success(pendingNonce);
         }
 
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return Task.FromResult(GetFailureResult<UInt256, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet()));
+            return GetFailureResult<UInt256, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
         if (!_blockchainBridge.HasStateForBlock(header!))
         {
-            return Task.FromResult(GetStateFailureResult<UInt256>(header));
+            return GetStateFailureResult<UInt256>(header);
         }
 
         _stateReader.TryGetAccount(header!, address, out AccountStruct account);
-        return Task.FromResult(ResultWrapper<UInt256>.Success(account.Nonce));
+        return ResultWrapper<UInt256>.Success(account.Nonce);
     }
 
     public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Hash256 blockHash)
@@ -554,7 +554,7 @@ public partial class EthRpcModule(
 
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
-            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            using RentedTimeout timeout = _rpcConfig.RentTimeout();
             Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode, checksFork: false);
             if (!frameGasResult)
                 return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
@@ -1018,7 +1018,7 @@ public partial class EthRpcModule(
         {
             if (!timeoutTransferred)
             {
-                timeout.Dispose();
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
             }
         }
     }
@@ -1092,7 +1092,7 @@ public partial class EthRpcModule(
         {
             if (!timeoutTransferred)
             {
-                timeout.Dispose();
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
             }
         }
     }
@@ -1120,7 +1120,7 @@ public partial class EthRpcModule(
             return GetStateFailureResult<AccountProof>(header);
         }
 
-        using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
+        using RentedTimeout timeout = _rpcConfig.RentTimeout();
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
         return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
@@ -1173,7 +1173,7 @@ public partial class EthRpcModule(
         out bool timeoutTransferred)
     {
         timeoutTransferred = false;
-        bool enforceLogsLimits = JsonRpcContext.Current.Value?.IsAuthenticated != true;
+        bool enforceLogsLimits = JsonRpcContext.Current?.IsAuthenticated != true;
         bool enforceMaxLogs = enforceLogsLimits && _rpcConfig.MaxLogsPerResponse != 0;
 
         if (_rpcConfig.EnableLogsStreamMode)

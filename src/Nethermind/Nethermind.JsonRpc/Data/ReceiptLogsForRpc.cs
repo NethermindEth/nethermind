@@ -15,20 +15,31 @@ namespace Nethermind.JsonRpc.Data;
 /// <remarks>
 /// <see cref="LogsForRpcConverter"/> writes the entries one at a time through a single reused <see cref="LogEntryForRpc"/>,
 /// so serializing a receipt does not allocate an entry per log. The indexer and the enumerator build a new entry on each access.
-/// The receipt's coordinates are taken when the view is created.
+/// The receipt's coordinates are taken when the view is created or reset.
 /// </remarks>
 internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
 {
-    private readonly LogEntry[] _logs;
+    private LogEntry[] _logs;
     private readonly int _offset;
-    private readonly int _logIndexStart;
-    private readonly long _transactionIndex;
-    private readonly Hash256? _transactionHash;
-    private readonly Hash256? _blockHash;
-    private readonly ulong _blockNumber;
-    private readonly ulong _blockTimestamp;
+    private int _logIndexStart;
+    private long _transactionIndex;
+    private Hash256? _transactionHash;
+    private Hash256? _blockHash;
+    private ulong _blockNumber;
+    private ulong _blockTimestamp;
+    private LogEntryForRpc? _reusedEntry;
 
-    public ReceiptLogsForRpc(TxReceipt receipt, ulong blockTimestamp, int logIndexStart)
+    public ReceiptLogsForRpc(TxReceipt receipt, ulong blockTimestamp, int logIndexStart) => Set(receipt, blockTimestamp, logIndexStart);
+
+    /// <summary>Points the view at <paramref name="receipt"/>, after which <see cref="Write"/> refills one kept entry.</summary>
+    /// <remarks>For a view that only one writer uses at a time.</remarks>
+    public void Reset(TxReceipt receipt, ulong blockTimestamp, int logIndexStart)
+    {
+        Set(receipt, blockTimestamp, logIndexStart);
+        _reusedEntry ??= new LogEntryForRpc();
+    }
+
+    private void Set(TxReceipt receipt, ulong blockTimestamp, int logIndexStart)
     {
         _logs = receipt.Logs ?? [];
         Count = _logs.Length;
@@ -53,7 +64,7 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
         _blockTimestamp = source._blockTimestamp;
     }
 
-    public int Count { get; }
+    public int Count { get; private set; }
 
     public LogEntryForRpc this[int index]
     {
@@ -77,7 +88,7 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
     public void Write(Utf8JsonWriter writer, JsonSerializerOptions options)
     {
         JsonTypeInfo<LogEntryForRpc> typeInfo = (JsonTypeInfo<LogEntryForRpc>)options.GetTypeInfo(typeof(LogEntryForRpc));
-        LogEntryForRpc entry = CreateEntry();
+        LogEntryForRpc entry = _reusedEntry is null ? CreateEntry() : SetReceipt(_reusedEntry);
         writer.WriteStartArray();
         for (int i = _offset; i < _offset + Count; i++)
         {
@@ -98,15 +109,18 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    private LogEntryForRpc CreateEntry() => new()
+    private LogEntryForRpc CreateEntry() => SetReceipt(new LogEntryForRpc());
+
+    private LogEntryForRpc SetReceipt(LogEntryForRpc entry)
     {
-        Removed = false,
-        TransactionIndex = _transactionIndex,
-        TransactionHash = _transactionHash,
-        BlockHash = _blockHash,
-        BlockNumber = _blockNumber,
-        BlockTimestamp = _blockTimestamp
-    };
+        entry.Removed = false;
+        entry.TransactionIndex = _transactionIndex;
+        entry.TransactionHash = _transactionHash;
+        entry.BlockHash = _blockHash;
+        entry.BlockNumber = _blockNumber;
+        entry.BlockTimestamp = _blockTimestamp;
+        return entry;
+    }
 
     private void SetLog(LogEntryForRpc entry, int logIndex)
     {
