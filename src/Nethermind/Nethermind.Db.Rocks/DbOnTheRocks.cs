@@ -2275,11 +2275,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // stay correct within the seek key's prefix bucket, so a range crossing buckets can come back short or
         // empty. Total order fixes that at the cost of the prefix index and bloom, so it is asked for only when
         // the range can actually leave the bucket; a range that stays inside one keeps the optimisation.
-        if (CrossesPrefixBucket(firstKey, lastKey)) readOptions.SetTotalOrderSeek(true);
+        bool totalOrder = CrossesPrefixBucket(firstKey, lastKey);
+        if (totalOrder) readOptions.SetTotalOrderSeek(true);
         readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = CreateIterator(readOptions, cf);
-        return new RocksdbSortedView(iterator, readOptions, this, firstKey, lastKey);
+        return (flags & ReadFlags.HintRepeatedReads) != 0
+            ? new RebindableRocksdbSortedView(iterator, readOptions, this, firstKey.Length, lastKey.Length, totalOrder)
+            : new RocksdbSortedView(iterator, readOptions);
     }
 
     public bool TryGetCeiling(

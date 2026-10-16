@@ -115,7 +115,7 @@ internal sealed class HistoryStoreV3
 
             _view?.Dispose();
             _view = null;
-            _view = history.GetViewBetween(lower, upper);
+            _view = history.GetViewBetween(lower, upper, ReadFlags.HintRepeatedReads);
             _generation = generation;
             return _view;
         }

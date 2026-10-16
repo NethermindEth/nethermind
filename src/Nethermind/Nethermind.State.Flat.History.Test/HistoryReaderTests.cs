@@ -257,7 +257,7 @@ public class HistoryReaderTests
         HookedColumns<FlatHistoryColumns> observed = new(history,
             storage ? FlatHistoryColumns.StorageHistory : FlatHistoryColumns.AccountHistory, static () => { }, view =>
             {
-                TrackedView tracked = new((IRebindableSortedView)view);
+                TrackedView tracked = new(view);
                 views.Add(tracked);
                 return tracked;
             });
@@ -363,16 +363,16 @@ public class HistoryReaderTests
         public void Dispose() { }
     }
 
-    private sealed class TrackedView(IRebindableSortedView inner) : IRebindableSortedView
+    private sealed class TrackedView(ISortedView inner) : IRebindableSortedView
     {
         internal bool Disposed { get; private set; }
         public ReadOnlySpan<byte> CurrentKey => inner.CurrentKey;
         public ReadOnlySpan<byte> CurrentValue => inner.CurrentValue;
         public bool StartBefore(ReadOnlySpan<byte> value) => inner.StartBefore(value);
         public bool MoveNext() => inner.MoveNext();
-        public bool SeekTo(ReadOnlySpan<byte> key) => inner.SeekTo(key);
+        public bool SeekTo(ReadOnlySpan<byte> key) => ((ISeekableSortedView)inner).SeekTo(key);
         public bool TryResetBounds(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
-            inner.TryResetBounds(firstKeyInclusive, lastKeyExclusive);
+            inner is IRebindableSortedView reusable && reusable.TryResetBounds(firstKeyInclusive, lastKeyExclusive);
 
         public void Dispose()
         {

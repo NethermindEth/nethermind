@@ -261,6 +261,9 @@ namespace Nethermind.Core
 
         // Used for full pruning db to skip duplicate read
         SkipDuplicateRead = 16,
+
+        /// <summary>Requests a view that supports repeated bound changes when the store provides one.</summary>
+        HintRepeatedReads = 32,
     }
 
     [Flags]

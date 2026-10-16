@@ -1221,7 +1221,7 @@ namespace Nethermind.Db.Test
             byte[] lower = new byte[32];
             byte[] upper = new byte[32];
             upper[8] = 1;
-            using IRebindableSortedView view = (IRebindableSortedView)((ISortedKeyValueStore)db).GetViewBetween(lower, upper);
+            using IRebindableSortedView view = (IRebindableSortedView)((ISortedKeyValueStore)db).GetViewBetween(lower, upper, ReadFlags.HintRepeatedReads);
             upper[0] = 1;
             Assert.That(view.TryResetBounds(lower, upper), Is.False);
         }
@@ -1817,12 +1817,21 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void ResetBounds_WhenReused_PreservesSnapshotAndBounds([Values] bool snapshot)
+        public void ResetBounds_WhenReused_PreservesSnapshotAndBounds(
+            [Values] bool snapshot,
+            [Values(ReadFlags.None, ReadFlags.HintCacheMiss, ReadFlags.HintReadAhead,
+                ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead)] ReadFlags flags)
         {
             foreach (byte key in new byte[] { 1, 2, 3, 4, 5 }) _db[[key]] = [key];
             using IKeyValueStoreSnapshot? captured = snapshot ? ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot() : null;
             ISortedKeyValueStore store = captured is null ? (ISortedKeyValueStore)_db : (ISortedKeyValueStore)captured;
-            using IRebindableSortedView view = (IRebindableSortedView)store.GetViewBetween([0, 0], [9, 9]);
+            using (ISortedView ordinary = store.GetViewBetween([0, 0], [9, 9], flags))
+            {
+                Assert.That(ordinary, Is.Not.InstanceOf<IRebindableSortedView>(), "ordinary reads do not retain bound-reset state");
+                Assert.That(ordinary.MoveNext(), Is.True, "the ordinary view reads the same range");
+                Assert.That(ordinary.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 1 }));
+            }
+            using IRebindableSortedView view = (IRebindableSortedView)store.GetViewBetween([0, 0], [9, 9], flags | ReadFlags.HintRepeatedReads);
             Assert.That(view.MoveNext(), Is.True);
             _db[[6]] = [6];
 

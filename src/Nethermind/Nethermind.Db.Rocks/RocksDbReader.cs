@@ -117,10 +117,13 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         ReadOptions readOptions = _readOptionsFactory();
         if ((flags & ReadFlags.HintCacheMiss) != 0) readOptions.SetFillCache(false);
         if ((flags & ReadFlags.HintReadAhead) != 0) readOptions.SetReadaheadSize(_mainDb.ReadAheadSize);
-        if (_mainDb.CrossesPrefixBucket(firstKey, lastKey)) readOptions.SetTotalOrderSeek(true);
+        bool totalOrder = _mainDb.CrossesPrefixBucket(firstKey, lastKey);
+        if (totalOrder) readOptions.SetTotalOrderSeek(true);
         readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        return new RocksdbSortedView(iterator, readOptions, _mainDb, firstKey, lastKey);
+        return (flags & ReadFlags.HintRepeatedReads) != 0
+            ? new RebindableRocksdbSortedView(iterator, readOptions, _mainDb, firstKey.Length, lastKey.Length, totalOrder)
+            : new RocksdbSortedView(iterator, readOptions);
     }
 }
