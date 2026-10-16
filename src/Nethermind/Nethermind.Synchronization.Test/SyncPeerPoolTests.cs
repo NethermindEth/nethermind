@@ -121,7 +121,7 @@ public class SyncPeerPoolTests
 
         public PublicKey Id => Node.Id;
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
+        public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx) { }
 
         public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token) =>
             Task.FromResult<IOwnedReadOnlyList<TxReceipt[]?>>(ArrayPoolList<TxReceipt[]?>.Empty());

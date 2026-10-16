@@ -36,6 +36,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// <summary>Error reported for a frame an unrolled atomic batch or a failed assertion never ran.</summary>
     private const string SkippedFrameError = "frame skipped";
 
+    private static readonly NativeCallTracerConfig DefaultConfig = new();
+
     private readonly ulong _gasLimit;
     private readonly Hash256? _txHash;
     private readonly bool _isEip8037Enabled;
@@ -47,7 +49,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly NativeCallTracerConfig _config;
     private readonly BlockLogIndex? _blockLogIndex;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
-    private readonly ArrayPoolList<ulong> _logIndexAtEntry = new(1024);
+    private readonly ArrayPoolList<ulong>? _logIndexAtEntry;
 
     private EvmExceptionType? _error;
     private ulong _remainingGas;
@@ -78,7 +80,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _frameTx = _isFrameTx ? tx : null;
         _frameTxSpec = _isFrameTx ? spec : null;
 
-        _config = TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
+        _config = TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? DefaultConfig;
 
         if (_config.WithLog)
         {
@@ -86,6 +88,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             _blockLogIndex = options.LogIndex;
             _logIndexStart = (ulong)(_blockLogIndex?.Next ?? 0);
             _logIndex = _logIndexStart;
+            _logIndexAtEntry = new ArrayPoolList<ulong>(16);
         }
     }
 
@@ -121,17 +124,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
         // BuildResult already removed the frame it handed to the trace, so everything still here is ours.
         _callStack.DisposeRecursive();
-        _logIndexAtEntry.Dispose();
+        _logIndexAtEntry?.Dispose();
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
-        if (_config.WithLog)
-        {
-            _logIndexAtEntry.Add(_logIndex);
-        }
+        _logIndexAtEntry?.Add(_logIndex);
 
         if (_config.OnlyTopCall && Depth > 0)
             return;
@@ -173,7 +173,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             log.Data,
             log.Topics,
             index,
-            (ulong)callFrame.Calls.Count);
+            (ulong)callFrame.CallsSpan.Length);
 
         callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(8);
         callFrame.Logs.Add(callLog);
@@ -288,7 +288,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             {
                 // The synthetic root's error is transaction-level, so it must not propagate: the committed
                 // frames keep their logs as the receipt does, having been cleared against it already.
-                foreach (NativeCallTracerCallFrame frameCallFrame in firstCallFrame.Calls.AsSpan())
+                foreach (NativeCallTracerCallFrame frameCallFrame in firstCallFrame.CallsSpan)
                 {
                     ClearFailedLogs(frameCallFrame, parentFailed: false);
                 }
@@ -464,7 +464,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
     private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
-        if (_config.WithLog)
+        if (_logIndexAtEntry is not null)
         {
             // Logs of a halted frame never reach the receipt, so they do not consume an index.
             ulong logIndexAtEntry = _logIndexAtEntry[^1];
@@ -566,7 +566,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             callFrame.Logs = null;
         }
 
-        foreach (NativeCallTracerCallFrame childCallFrame in callFrame.Calls.AsSpan())
+        foreach (NativeCallTracerCallFrame childCallFrame in callFrame.CallsSpan)
         {
             ClearFailedLogs(childCallFrame, failed);
         }

@@ -1033,6 +1033,21 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Test_CallTrace_LeafFrame_OmitsCalls([Values] bool callsTouched)
+    {
+        using NativeCallTracerCallFrame frame = BuildLinearCallChain(1);
+        if (callsTouched)
+        {
+            Assert.That(frame.Calls, Is.Empty);
+        }
+
+        string json = JsonSerializer.Serialize(frame, EthereumJsonSerializer.JsonOptions);
+
+        Assert.That(json, Is.EqualTo("""{"type":"CALL","from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","gas":"0x186a0","gasUsed":"0xc350","input":"0x"}"""));
+        Assert.That(frame.HasCalls, Is.EqualTo(callsTouched), "serializing a leaf frame must not allocate its calls list");
+    }
+
+    [Test]
     public void Test_CallTrace_DeepNesting_StreamedJsonIsComplete()
     {
         int depth = VirtualMachineStatics.MaxCallDepth;
