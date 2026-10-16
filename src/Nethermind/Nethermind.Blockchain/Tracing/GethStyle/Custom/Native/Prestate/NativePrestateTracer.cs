@@ -39,6 +39,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     // EIP-8360: storage opcodes of these accounts act on transient storage, so they read no state.
     private HashSet<AddressAsKey>? _transientCreates;
     private List<AddressAsKey>? _nonexistentAccounts;
+    private List<AddressAsKey>? _initiallyEmptyAccounts;
     private readonly bool _diffMode;
     // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
     private readonly bool _isEip5920Enabled;
@@ -171,12 +172,12 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         GethLikeTxTrace result = base.BuildResult();
 
-        if (!_includeEmpty)
+        if (_initiallyEmptyAccounts is not null)
         {
-            foreach ((AddressAsKey address, NativePrestateTracerAccount account) in _prestate)
+            foreach (AddressAsKey address in _initiallyEmptyAccounts)
             {
-                if (account.Balance.GetValueOrDefault().IsZero && account.Nonce.GetValueOrDefault().IsZero && account.CodeHash is null
-                    && account.Storage is not { Count: > 0 })
+                if (!_diffMode || (_prestate.TryGetValue(address, out NativePrestateTracerAccount? account)
+                    && account.Storage is not { Count: > 0 }))
                     _prestate.Remove(address);
             }
         }
@@ -358,6 +359,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 if (_diffMode && !_worldState.AccountExists(addr))
                     (_nonexistentAccounts ??= []).Add(addr);
             }
+            NativePrestateTracerAccount snapshot = _prestate[addr];
+            if (!_includeEmpty && snapshot.Balance.GetValueOrDefault().IsZero
+                && snapshot.Nonce.GetValueOrDefault().IsZero && snapshot.CodeHash is null)
+                (_initiallyEmptyAccounts ??= []).Add(addr);
         }
     }
 

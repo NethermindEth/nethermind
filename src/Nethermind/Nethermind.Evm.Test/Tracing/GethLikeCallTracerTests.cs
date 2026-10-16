@@ -325,10 +325,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase("fe")]
-    [TestCase("600156")]
-    [TestCase("6001600060003e")]
-    public void File_logger_retains_execution_fault(string bytecode)
+    [Test]
+    public void File_logger_retains_execution_fault([Values("fe", "600156", "6001600060003e")] string bytecode)
     {
         (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, Bytes.FromHexString(bytecode));
         string? lastError = null;

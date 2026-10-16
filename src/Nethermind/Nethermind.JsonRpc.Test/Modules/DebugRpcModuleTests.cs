@@ -790,13 +790,9 @@ public partial class DebugRpcModuleTests
         RpcTest.AssertSuccess(response);
     }
 
-    [TestCase(null, null)]
-    [TestCase(null, "callTracer")]
-    [TestCase(false, null)]
-    [TestCase(false, "callTracer")]
-    [TestCase(true, null)]
-    [TestCase(true, "callTracer")]
-    public async Task Debug_traceCall_validates_requested_chain_id(bool? mismatch, string? tracer)
+    [Test]
+    public async Task Debug_traceCall_validates_requested_chain_id(
+        [Values(null, false, true)] bool? mismatch, [Values(null, "callTracer")] string? tracer)
     {
         TestSpecProvider provider = new(Cancun.Instance);
         using Context ctx = await Context.Create(provider);
@@ -816,8 +812,11 @@ public partial class DebugRpcModuleTests
         }
         else
         {
-            Assert.That(json["error"], Is.Null);
-            Assert.That(json["result"], Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null);
+                Assert.That(json["result"], Is.Not.Null);
+            }
         }
     }
 
@@ -845,8 +844,11 @@ public partial class DebugRpcModuleTests
         JToken json = JToken.Parse(response);
         if (rejectedField is null)
         {
-            Assert.That(json["error"], Is.Null);
-            Assert.That(json["result"], Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null);
+                Assert.That(json["result"], Is.Not.Null);
+            }
         }
         else
         {
@@ -882,10 +884,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase(null)]
-    [TestCase("null")]
-    [TestCase("{}")]
-    public async Task Debug_traceCall_mux_accepts_empty_configuration(string? config)
+    [Test]
+    public async Task Debug_traceCall_mux_accepts_empty_configuration([Values(null, "null", "{}")] string? config)
     {
         using Context ctx = await Context.Create();
         Dictionary<string, object> options = new() { ["tracer"] = "muxTracer" };
@@ -897,9 +897,8 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.Parse(response)["result"], Is.EqualTo(JObject.Parse("{}")).Using(JToken.EqualityComparer));
     }
 
-    [TestCase(null)]
-    [TestCase("0x0")]
-    public async Task Debug_traceCall_mux_matches_individual_native_and_nested_tracers(string? txIndex)
+    [Test]
+    public async Task Debug_traceCall_mux_matches_individual_native_and_nested_tracers([Values(null, "0x0")] string? txIndex)
     {
         using Context ctx = await Context.Create();
         Dictionary<string, object> children = new()
@@ -1041,9 +1040,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase(null)]
-    [TestCase("0x0")]
-    public async Task Debug_traceCall_rejects_prestate_diff_with_include_empty(string? txIndex)
+    [Test]
+    public async Task Debug_traceCall_rejects_prestate_diff_with_include_empty([Values(null, "0x0")] string? txIndex)
     {
         using Context ctx = await Context.Create();
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
@@ -1057,9 +1055,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase(null)]
-    [TestCase("callTracer")]
-    public async Task Debug_traceCall_rejects_conflicting_storage_overrides(string? tracer)
+    [Test]
+    public async Task Debug_traceCall_rejects_conflicting_storage_overrides([Values(null, "callTracer")] string? tracer)
     {
         using Context ctx = await Context.Create();
         const string address = "0xc200000000000000000000000000000000000000";

@@ -342,7 +342,7 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public void JavaScript_input_abort_never_overrides_public_interrupt([Values(0, 1, 2)] int externalOrder)
+    public void JavaScript_input_abort_never_overrides_public_interrupt([Range(0, 2)] int externalOrder)
     {
         using Engine engine = new(Prague.Instance);
         engine.PrepareNullThrowCapture();
@@ -411,6 +411,30 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(engine.TryGetInputError(failure, out _), Is.False);
             Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors([Values] bool nested)
+    {
+        using Context ctx = await Context.Create();
+        const string script = "{fault:function(){},result:function(){throw Error('mux result failure');}}";
+        Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
+        object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceBlockByNumber", "latest",
+            new { tracer = "muxTracer", tracerConfig = config });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JArray entries = (JArray)json["result"]!;
+        Assert.That(entries, Is.Not.Empty);
+        foreach (JToken entry in entries)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)entry["error"] ?? "", Does.Contain("mux result failure"), response);
+                Assert.That(entry["result"], Is.Null, response);
+            }
         }
     }
 
