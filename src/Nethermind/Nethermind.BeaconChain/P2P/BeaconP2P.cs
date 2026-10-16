@@ -447,10 +447,12 @@ public sealed class BeaconP2P : IAsyncDisposable
         {
             throw new OperationCanceledException("The dial was cancelled by the caller", e, token);
         }
-        catch (Exception) when (!token.IsCancellationRequested && remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced)
-                                && IsNotDropped(_sessionInfo, raced))
+        catch (Exception e) when (!token.IsCancellationRequested && remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced))
         {
-            return raced;
+            // The candidate can be the session this dial lost, not yet dropped, so it is handed back only once its identify completes.
+            if (await WhenIdentifiedAsync(_sessionInfo, raced, token) is { } identified) return identified;
+            if (e is AggregateException { InnerExceptions.Count: 0 }) throw new PeerConnectionException($"Session with {address} closed before it was established", e);
+            throw;
         }
         // The library's dial skips cancelled attempts, and closing a session cancels its connection, so an empty error is a closed session.
         catch (AggregateException e) when (e.InnerExceptions.Count == 0)
@@ -459,14 +461,25 @@ public sealed class BeaconP2P : IAsyncDisposable
         }
     }
 
-    /// <summary>Whether <paramref name="session"/> still has a slot whose identify did not fail.</summary>
+    /// <summary>Returns <paramref name="session"/> once its identify completes, or <c>null</c> when its identify fails or the library drops it.</summary>
     /// <remarks>
     /// A session whose identify failed is the one a dial lost, still closing, not a session the peer opened. Its slot is
     /// cancelled and then removed when the library drops it, which can happen between the session snapshot and this
-    /// read, so a missing slot means dropped too.
+    /// read, so a missing slot means dropped too. A slot is always cancelled on removal, so the wait ends.
     /// </remarks>
-    internal static bool IsNotDropped(ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> sessionInfo, ISession session) =>
-        sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot) && !slot.Task.IsCanceled;
+    internal static async Task<ISession?> WhenIdentifiedAsync(ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> sessionInfo, ISession session, CancellationToken token)
+    {
+        if (!sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot)) return null;
+        try
+        {
+            await slot.Task.WaitAsync(token);
+            return session;
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Counts the sessions with <paramref name="peerId"/> the libp2p layer opens in either direction until the watch is disposed.</summary>
     internal SessionWatch WatchSessions(PeerId peerId)

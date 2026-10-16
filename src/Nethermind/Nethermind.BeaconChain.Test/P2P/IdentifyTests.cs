@@ -350,25 +350,41 @@ public class IdentifyTests
         Assert.That(Volatile.Read(ref established), Is.Zero, "a misidentified session is never reported as established");
     }
 
-    [TestCase(null, ExpectedResult = false, TestName = "Dropped session with no slot")]
-    [TestCase(TaskStatus.Canceled, ExpectedResult = false, TestName = "Session whose identify failed")]
-    [TestCase(TaskStatus.WaitingForActivation, ExpectedResult = true, TestName = "Session still identifying")]
-    [TestCase(TaskStatus.RanToCompletion, ExpectedResult = true, TestName = "Identified session")]
-    public bool A_failed_dial_returns_only_a_raced_session_that_is_still_tracked(TaskStatus? slotStatus)
+    [TestCase(null, null, ExpectedResult = false, TestName = "Dropped session with no slot")]
+    [TestCase(TaskStatus.Canceled, null, ExpectedResult = false, TestName = "Session whose identify failed")]
+    [TestCase(TaskStatus.RanToCompletion, null, ExpectedResult = true, TestName = "Identified session")]
+    // The session a dial lost is still listed while its identify is pending; handing it back returns a closed, unidentified session.
+    [TestCase(TaskStatus.WaitingForActivation, TaskStatus.Canceled, ExpectedResult = false, TestName = "Session still identifying whose identify then fails")]
+    [TestCase(TaskStatus.WaitingForActivation, TaskStatus.RanToCompletion, ExpectedResult = true, TestName = "Session still identifying whose identify then completes")]
+    public async Task<bool> A_failed_dial_returns_only_a_raced_session_whose_identify_completes(TaskStatus? slotStatus, TaskStatus? laterStatus)
     {
         ISession session = Substitute.For<ISession>();
         ConcurrentDictionary<ISession, TaskCompletionSource<BeaconP2P.SessionInfo>> sessionInfo = new();
+        TaskCompletionSource<BeaconP2P.SessionInfo> slot = new(TaskCreationOptions.RunContinuationsAsynchronously);
         if (slotStatus is { } status)
         {
-            TaskCompletionSource<BeaconP2P.SessionInfo> slot = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Complete(slot, status);
+            sessionInfo[session] = slot;
+        }
+
+        Task<ISession?> raced = BeaconP2P.WhenIdentifiedAsync(sessionInfo, session, CancellationToken.None);
+        if (laterStatus is { } later)
+        {
+            Assert.That(raced.IsCompleted, Is.False, "a session still identifying is not decided before its identify ends");
+            Complete(slot, later);
+        }
+
+        ISession? result = await raced.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(result, Is.Null.Or.SameAs(session));
+        return result is not null;
+
+        static void Complete(TaskCompletionSource<BeaconP2P.SessionInfo> slot, TaskStatus status)
+        {
             if (status == TaskStatus.Canceled)
                 slot.SetCanceled();
             else if (status == TaskStatus.RanToCompletion)
                 slot.SetResult(new BeaconP2P.SessionInfo(PeerDirection.Inbound, ServerAgent));
-            sessionInfo[session] = slot;
         }
-
-        return BeaconP2P.IsNotDropped(sessionInfo, session);
     }
 
     private static string? VerifyAndRecord(IdentifyMessage message, Libp2p.Core.State session, IdentifyProtocolSettings settings, PeerStore peerStore)
