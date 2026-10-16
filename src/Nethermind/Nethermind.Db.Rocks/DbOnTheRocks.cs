@@ -43,6 +43,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private static readonly FlushOptions _defaultFlushOptions = new();
 
+    // Compaction threads share the default env; at normal priority they delay the wake-up of foreground readers
+    // whose block read has completed.
+    private static readonly Lazy<bool> _lowerCompactionCpuPriority = new(static () =>
+    {
+        rocksdb_env_lower_thread_pool_cpu_priority(rocksdb_create_default_env());
+        return true;
+    });
+
+    [DllImport("rocksdb")]
+    private static extern IntPtr rocksdb_create_default_env();
+
+    [DllImport("rocksdb")]
+    private static extern void rocksdb_env_lower_thread_pool_cpu_priority(IntPtr env);
+
     private bool _isDisposing;
     private int _pinnedSlices;
     private bool _nativeCloseDeferred;
@@ -663,6 +677,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         // This one set the threadpool env, so its actually different from the above two
         options.IncreaseParallelism(Environment.ProcessorCount);
+        _ = _lowerCompactionCpuPriority.Value;
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         options.SetMaxSubcompactions((uint)Environment.ProcessorCount);
