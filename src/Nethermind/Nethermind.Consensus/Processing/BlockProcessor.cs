@@ -240,6 +240,7 @@ public partial class BlockProcessor(
                     // is proven off the production path and the body is rebuilt from dependencies whose proofs exist.
                     if (producing is not null && token.CanBeCanceled && leanProofStore is not null)
                     {
+                        OfferInclusionListProofs(producing, leanProofStore);
                         HashSet<FrameDependency> attempted = [.. deps];
                         IncludableTransactions includable = new(block);
                         (HashSet<FrameDependency> limit, int kept) = includable.ChooseProvenLimit(leanProofStore.ProvenSubsets(attempted));
@@ -265,6 +266,22 @@ public partial class BlockProcessor(
     }
 
     private const int MaxExtensionCandidates = 4;
+
+    /// <summary>Offers the verified recursive proofs behind the committed inclusion lists as reusable statements.</summary>
+    /// <remarks>
+    /// A rebuild under a deadline keeps only transactions whose dependencies form a proven statement. A held list proof is one,
+    /// so the rebuild can keep the list's transactions, which attesters still obligate, and reuse that proof unchanged.
+    /// </remarks>
+    private static void OfferInclusionListProofs(BlockToProduce producing, LeanProofStore store)
+    {
+        if (producing.InclusionListProofInput is not { } inclusionList) return;
+        foreach (RecursiveProofInput child in inclusionList.RecursiveProofs)
+        {
+            if (child.InnerDeps is not { Count: > 0 } dependencies) continue;
+            try { store.AddCachedRecursive(dependencies, child.Proof.ToArray()); }
+            catch (ArgumentException) { }
+        }
+    }
 
     /// <summary>Schedules the cheapest statement that makes more of this body's transactions includable.</summary>
     /// <remarks>
@@ -321,6 +338,7 @@ public partial class BlockProcessor(
     {
         private readonly List<FrameDependency>[] _dependencies;
         private readonly (Address?, UInt256)[] _domains;
+        private readonly bool[] _obligated;
         private readonly HashSet<(Address?, UInt256)> _blocked = [];
 
         public IncludableTransactions(Block block)
@@ -328,8 +346,13 @@ public partial class BlockProcessor(
             Transaction[] transactions = block.Transactions;
             _dependencies = new List<FrameDependency>[transactions.Length];
             _domains = new (Address?, UInt256)[transactions.Length];
+            _obligated = new bool[transactions.Length];
+            HashSet<Hash256> listed = [];
+            foreach (Transaction listedTransaction in block.InclusionListTransactions ?? [])
+                if (listedTransaction?.Hash is { } hash) listed.Add(hash);
             for (int i = 0; i < transactions.Length; i++)
             {
+                _obligated[i] = transactions[i].Hash is { } hash && listed.Contains(hash);
                 _dependencies[i] = Eip8288Dependencies.ForTransaction(transactions[i], FrameTxSigHash.ComputeValue);
                 _domains[i] = (transactions[i].SenderAddress, transactions[i].NonceKeys is { Length: > 0 } keys ? keys[0] : UInt256.Zero);
             }
@@ -369,17 +392,32 @@ public partial class BlockProcessor(
             HashSet<ValueHash256> statements = [];
             foreach (FrameDependency[] subset in proven) statements.Add(Eip8288Dependencies.ComputeDepsHash(subset));
             HashSet<FrameDependency> best = [];
-            int bestKept = Keep(best, []);
+            bool[] kept = new bool[_dependencies.Length];
+            int bestKept = Keep(best, [], kept);
+            int bestListed = Listed(kept);
             foreach (FrameDependency[] subset in proven)
             {
                 HashSet<FrameDependency> needed = [];
-                int kept = Keep(new HashSet<FrameDependency>(subset), needed);
-                if (kept <= bestKept || needed.Count != 0 && !statements.Contains(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.Canonicalize(needed))))
+                Array.Clear(kept);
+                int count = Keep(new HashSet<FrameDependency>(subset), needed, kept);
+                int listed = Listed(kept);
+                // Obligated inclusion-list transactions come first: omitting one fails the list for an honest proposer.
+                if (listed < bestListed || listed == bestListed && count <= bestKept
+                    || needed.Count != 0 && !statements.Contains(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.Canonicalize(needed))))
                     continue;
                 best = needed;
-                bestKept = kept;
+                bestKept = count;
+                bestListed = listed;
             }
             return (best, bestKept);
+        }
+
+        private int Listed(bool[] kept)
+        {
+            int count = 0;
+            for (int i = 0; i < kept.Length; i++)
+                if (kept[i] && _obligated[i]) count++;
+            return count;
         }
 
         /// <summary>The dependencies the body still needs once the transactions kept under <paramref name="limit"/> are included.</summary>

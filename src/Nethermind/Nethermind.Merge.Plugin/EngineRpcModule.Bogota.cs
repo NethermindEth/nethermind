@@ -21,7 +21,8 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     /// <summary>An inclusion list retained for a payload that could not yet be validated.</summary>
-    private readonly record struct RetainedInclusionList(ulong Number, byte[][] Transactions, bool Accepted, InclusionListV1[]? Lists);
+    private readonly record struct RetainedInclusionList(ulong Number, byte[][] Transactions, bool Accepted, InclusionListV1[]? Lists,
+        bool[]? HeldProofs);
     private readonly record struct InclusionListAnswer(ulong Number, bool Satisfied);
 
     private readonly Dictionary<Hash256, InclusionListAnswer> _inclusionListAnswers = [];
@@ -119,9 +120,13 @@ public partial class EngineRpcModule : IEngineRpcModule
         else if (status.Status is PayloadStatus.Accepted or PayloadStatus.Syncing
             && executionPayloadParams is { InclusionListTransactions: { } retained, ExecutionPayload.BlockHash: { } blockHash })
         {
+            InclusionListV1[]? lists = executionPayloadParams.InclusionLists;
+            // EIP-8288 obligations are fixed when the payload arrives, before held proofs can be released.
+            bool[]? heldProofs = lists is null ? null : _inclusionListComplianceEvaluator.ResolveHeldProofs(lists,
+                executionPayloadParams.ExecutionPayload.BlockNumber, executionPayloadParams.ExecutionPayload.Timestamp);
             SetRetainedInclusionList(blockHash,
                 executionPayloadParams.ExecutionPayload.BlockNumber, retained,
-                status.Status == PayloadStatus.Accepted, executionPayloadParams.InclusionLists);
+                status.Status == PayloadStatus.Accepted, lists, heldProofs);
         }
 
         return ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
@@ -194,16 +199,18 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// payload that resolved to <c>ACCEPTED</c>/<c>SYNCING</c>. Concurrent calls for one head recompute the same value.
     /// </remarks>
     /// <returns><c>null</c> when no list was retained for the head, or its state is no longer readable.</returns>
-    private bool? GetInclusionListSatisfied(Hash256 headBlockHash)
+    internal bool? GetInclusionListSatisfied(Hash256 headBlockHash)
     {
         byte[][] retained;
         InclusionListV1[]? lists;
+        bool[]? heldProofs;
         lock (_inclusionListLock)
         {
             if (_inclusionListAnswers.TryGetValue(headBlockHash, out InclusionListAnswer cached)) return cached.Satisfied;
             if (!_retainedInclusionLists.TryGetValue(headBlockHash, out RetainedInclusionList state)) return null;
             retained = state.Transactions;
             lists = state.Lists;
+            heldProofs = state.HeldProofs;
         }
 
         bool? evaluated;
@@ -212,7 +219,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             // Sender recovery and state reads delay the payloadId response; accepted, as only a head newPayloadV6
             // left unanswered pays it, and publishing the answer caps it at once per head.
             evaluated = lists is null ? _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained)
-                : _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained, lists);
+                : _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained, lists, heldProofs);
         }
         // The head is already applied and a build may be under way, and bogota.md permits a null answer, so
         // a state read that hits a pruned or still-healing subtrie must not fail the forkchoice update.
@@ -251,14 +258,15 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    internal void SetRetainedInclusionList(Hash256 blockHash, ulong number, byte[][] retained, bool accepted, InclusionListV1[]? lists = null)
+    internal void SetRetainedInclusionList(Hash256 blockHash, ulong number, byte[][] retained, bool accepted, InclusionListV1[]? lists = null,
+        bool[]? heldProofs = null)
     {
         lock (_inclusionListLock)
         {
             RemoveInclusionListAnswer(blockHash);
             if (!IsAfterFinalization(blockHash, number)) return;
             RemoveRetainedInclusionList(blockHash);
-            _retainedInclusionLists[blockHash] = new(number, retained, accepted, lists);
+            _retainedInclusionLists[blockHash] = new(number, retained, accepted, lists, heldProofs);
             if (!accepted)
             {
                 _syncingInclusionListOrder.Add(blockHash);

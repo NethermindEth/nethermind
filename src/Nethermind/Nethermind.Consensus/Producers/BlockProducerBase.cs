@@ -192,9 +192,10 @@ namespace Nethermind.Consensus.Producers
 
         /// <summary>Processes the block, rebuilding its body from proven dependencies when its own proof is not ready.</summary>
         /// <remarks>
-        /// Each rebuild is limited to a strictly smaller set with an existing proof, so the sequence terminates; a set can
-        /// shrink when its transactions are not includable together, for example behind a skipped nonce. The last rebuild
-        /// has no proof-backed transactions, so a deadline-bound pass always yields a body without waiting for native proving.
+        /// Each rebuild is limited to a set with an existing proof, which can still shrink when its transactions are not
+        /// includable together, for example behind a skipped nonce. At most <see cref="MaxProofFallbacks"/> rebuilds run, and
+        /// the last has no proof-backed transactions, so a deadline-bound pass always yields a body without waiting for native
+        /// proving.
         /// </remarks>
         private Block? ProcessWithProvenDependencies(Block block, BlockHeader parent, IBlockTracer? blockTracer,
             PayloadAttributes? payloadAttributes, IBlockProducer.Flags flags, CancellationToken token)

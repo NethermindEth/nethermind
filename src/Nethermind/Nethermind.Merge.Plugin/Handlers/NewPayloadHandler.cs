@@ -471,6 +471,28 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         => TryEvaluate(blockHash, inclusionListTransactions, null);
 
     public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1>? lists)
+        => TryEvaluate(blockHash, inclusionListTransactions, lists, null);
+
+    /// <inheritdoc/>
+    public bool[]? ResolveHeldProofs(IReadOnlyList<InclusionListV1> lists, ulong blockNumber, ulong timestamp)
+    {
+        if (_inclusionListProofs is null) return null;
+        try
+        {
+            CommitteeInclusionList[] decoded = InclusionListV1.Decode(lists);
+            _inclusionListProofs.ResolveObligations(decoded, _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)));
+            bool[] held = new bool[decoded.Length];
+            for (int i = 0; i < held.Length; i++) held[i] = decoded[i].HoldsValidProof;
+            return held;
+        }
+        catch (Exception exception) when (exception is RlpException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1>? lists, bool[]? heldProofs)
     {
         Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         if (block is null || !_stateReader.HasStateForBlock(block.Header)) return null;
@@ -486,7 +508,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
         }
         CommitteeInclusionList[] decoded = InclusionListV1.Decode(lists);
-        _inclusionListProofs?.ResolveObligations(decoded, _specProvider.GetSpec(block.Header));
+        // Obligations resolved when the payload arrived stand: a proof released since then must not excuse an omission.
+        if (heldProofs is not null && heldProofs.Length == decoded.Length)
+            for (int i = 0; i < decoded.Length; i++) decoded[i].HoldsValidProof = heldProofs[i];
+        else _inclusionListProofs?.ResolveObligations(decoded, _specProvider.GetSpec(block.Header));
         block.InclusionLists = decoded;
         return IsInclusionListSatisfied(block, CommitteeInclusionList.Flatten(decoded));
     }

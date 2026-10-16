@@ -27,6 +27,11 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     private int _producersWaiting;
     private Task? _scheduled;
     private (ulong Timestamp, ulong Number) _latestProduction;
+    private CancellationTokenSource? _scheduledCancellation;
+
+    /// <summary>How far behind the latest recorded production a pass may start before that record is taken as bogus, such as
+    /// a payload with a far-future timestamp, and replaced.</summary>
+    private const ulong MaxProductionRegressSeconds = 32 * 12;
     private const int MaxVerified = 256;
     private readonly Dictionary<ValueHash256, LinkedListNode<ValueHash256>> _verified = [];
     private readonly LinkedList<ValueHash256> _verifiedOrder = [];
@@ -183,27 +188,41 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     /// </remarks>
     internal bool ObserveProduction(ulong timestamp, ulong number)
     {
+        CancellationTokenSource? superseded = null;
         lock (_cacheLock)
         {
-            if (timestamp < _latestProduction.Timestamp
-                || timestamp == _latestProduction.Timestamp && number < _latestProduction.Number) return false;
+            bool bogus = _latestProduction.Timestamp > timestamp && _latestProduction.Timestamp - timestamp > MaxProductionRegressSeconds;
+            if (!bogus && (timestamp < _latestProduction.Timestamp
+                || timestamp == _latestProduction.Timestamp && number < _latestProduction.Number)) return false;
+            // A pass for a later slot supersedes the statement scheduled for an earlier one.
+            if (timestamp > _latestProduction.Timestamp || bogus) superseded = Interlocked.Exchange(ref _scheduledCancellation, null);
             _latestProduction = (timestamp, number);
-            return true;
         }
+        // Cancellation callbacks may run inline, so they run outside the lock.
+        if (superseded is not null)
+        {
+            try { superseded.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+        return true;
     }
 
     /// <summary>Proves a production statement off the deadline-bound path and publishes it for exact reuse.</summary>
     /// <remarks>
     /// At most one statement runs at a time; a later request is dropped and repeated by the next production pass that
-    /// still needs it. The statement is proven with producer priority, so background wrapper aggregation yields to it.
+    /// still needs it. The statement is proven with producer priority, so background wrapper aggregation yields to it, and a
+    /// production pass for a later slot cancels it between fold steps.
     /// </remarks>
     /// <returns>Whether the statement was scheduled.</returns>
     internal bool TrySchedule(IReadOnlyList<FrameDependency> deps, ValueHash256 depsHash, AggregationInput input, Eip8288Verifier forkVerifier,
         LeanProofStore store)
     {
+        CancellationTokenSource cancellation;
         lock (_cacheLock)
         {
             if (_scheduled is { IsCompleted: false }) return false;
+            cancellation = new CancellationTokenSource();
+            _scheduledCancellation = cancellation;
             // The caller's proving scope, if any, must not decide this statement's priority or cancellation.
             using (ExecutionContext.SuppressFlow())
                 _scheduled = Task.Factory.StartNew(Run, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
@@ -217,12 +236,22 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         {
             try
             {
-                byte[] proof = RecursiveStarkAggregator.Prove(input, this, forkVerifier, in depsHash);
+                // A pass for a later slot cancels between fold steps; a started native call still finishes and stays cached.
+                byte[] proof = RecursiveStarkAggregator.Prove(input, this, forkVerifier, in depsHash, cancellation.Token);
                 store.AddCachedRecursive(deps, proof);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug("Scheduled EIP-8288 production proof superseded by a later slot");
             }
             catch (Exception exception)
             {
                 if (_logger.IsWarn) _logger.Warn($"Scheduled EIP-8288 production proof failed: {exception.Message}");
+            }
+            finally
+            {
+                Interlocked.CompareExchange(ref _scheduledCancellation, null, cancellation);
+                cancellation.Dispose();
             }
         }
     }

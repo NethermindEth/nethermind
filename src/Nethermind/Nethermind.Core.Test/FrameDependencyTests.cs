@@ -113,6 +113,23 @@ public class FrameDependencyTests
         }
     }
 
+    // RFC 7693 BLAKE2s-256 at the block boundaries: the empty input is the deps hash of every block without dependencies, and
+    // exactly one 64-byte block must be finalized as the last block rather than compressed early.
+    [TestCase(0, "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9")]
+    [TestCase(64, "56f34e8b96557e90c1f24b52d0c89d51086acf1b00f634cf1dde9233b8eaaa3e")]
+    [TestCase(65, "1b53ee94aaf34e4b159d48de352c7f0661d0a40edff95a0b1639b4090e974472")]
+    public void Blake2s_matches_reference_digests_at_block_boundaries(int length, string expected)
+    {
+        byte[] input = [.. Enumerable.Range(0, length).Select(static i => (byte)i)];
+        Blake2s pieces = Blake2s.Create();
+        for (int offset = 0; offset < input.Length; offset += 7) pieces.Update(input.AsSpan(offset, Math.Min(7, input.Length - offset)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Blake2s.Compute(input).ToString(withZeroX: false), Is.EqualTo(expected));
+            Assert.That(pieces.Finish().ToString(withZeroX: false), Is.EqualTo(expected));
+        }
+    }
+
     [TestCase(new byte[] { (byte)'a', (byte)'b', (byte)'c' }, "508c5e8c327c14e2e1a72ba34eeb452f37458b209ed63a294d999b4c86675982")]
     [TestCase(null, "6d244e1a06ce4ef578dd0f63aff0936706735119ca9c8d22d86c801414ab9741")]
     public void Blake2s_matches_reference_digests(byte[]? input, string expected)

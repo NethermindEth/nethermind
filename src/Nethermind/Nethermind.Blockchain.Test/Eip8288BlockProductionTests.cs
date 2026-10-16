@@ -909,6 +909,43 @@ public class Eip8288BlockProductionTests
         }
     }
 
+    // A held inclusion-list proof is a reusable statement under a deadline, and a rebuild keeps the obligated list
+    // transactions ahead of a larger proven set that would omit them.
+    [Test]
+    public async Task Deadline_production_keeps_inclusion_list_transactions_covered_by_a_held_list_proof()
+    {
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(new CountingVerifier(), proofs);
+        FrameDependency listedDependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("deadline-listed"), default);
+        FrameDependency[] others = [new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("deadline-other-1"), default),
+            new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("deadline-other-2"), default)];
+        foreach (FrameDependency dependency in (FrameDependency[])[listedDependency, .. others]) proofs.AddVerified([dependency], [[1]], null);
+        List<FrameDependency> otherStatement = Eip8288Dependencies.Canonicalize(others);
+        proofs.AddCachedRecursive(otherStatement, Eip8288Dependencies.ComputeDepsHash(otherStatement).ToByteArray());
+        Transaction listed = CreateTransaction(chain, listedDependency, [1]);
+        Transaction[] unlisted = [CreateTransaction(chain, others[0], [2]), CreateTransaction(chain, others[1], [3])];
+        Block? template = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
+        BlockToProduce producing = new(template!.Header, [listed, .. unlisted], [], template.Withdrawals)
+        {
+            InclusionListTransactions = [listed],
+            InclusionListProofInput = new()
+            {
+                RecursiveProofs = [new([listedDependency], Eip8288Dependencies.ComputeDepsHash([listedDependency]).ToByteArray())]
+            }
+        };
+        await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();
+        using CancellationTokenSource deadline = new();
+
+        LeanProofNotReadyException? notReady = Assert.Throws<LeanProofNotReadyException>(() =>
+            environment.ChainProcessor.Process(producing, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, deadline.Token));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(notReady!.Proven, Is.EquivalentTo(new[] { listedDependency }), "the list's statement wins over the larger unlisted one");
+            Assert.That(proofs.TryGetRecursiveProof([listedDependency], out _), Is.True, "the rebuild reuses the held list proof");
+        }
+    }
+
     [Test]
     public async Task Proof_wrappers_preserve_independent_keyed_nonce_domains_through_production()
     {

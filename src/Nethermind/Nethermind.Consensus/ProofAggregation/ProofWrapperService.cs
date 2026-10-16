@@ -88,6 +88,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return forks;
     }
 
+    /// <summary>The verifier the upgrade rule last applied, read without refreshing it.</summary>
+    public Eip8288Verifier? CurrentVerifier
+    {
+        get { lock (_verifierLock) return _verifier; }
+    }
+
     /// <summary>
     /// The verifier of the current target fork, after applying the EIP-8288 upgrade rule if it changed; null while EIP-8288 is
     /// inactive at the target fork.
@@ -269,9 +275,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             // Nothing validated under a verifier the upgrade rule has since replaced may be published or admitted.
             if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
             // Coverage keeps one record per dependency, so a verified recursive proof can otherwise be lost to a direct
-            // witness or eviction; indexed by its exact set, it stays reusable by producers restricted to proven sets.
+            // witness or eviction; indexed by its exact set, it stays reusable by producers restricted to proven sets. The
+            // upgrade rule purges under the commit lock, so a proof cached here never outlives the verifier it was checked under.
             if (decoded.RecursiveStark is { } recursive && decoded.Deps.Count != 0)
-                leanProofStore.AddCachedRecursive(decoded.Deps, recursive.StarkProof);
+            {
+                lock (_commitLock)
+                {
+                    if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
+                    leanProofStore.AddCachedRecursive(decoded.Deps, recursive.StarkProof);
+                }
+            }
             WrapperValidated?.Invoke(wrapper, resolved, verifier);
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> admittedDependencies = [];
@@ -611,6 +624,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Whether the target fork enables dependency-proof wrappers.</summary>
     public bool IsEnabled => TargetSpec?.IsEip8288Enabled == true;
+
+    /// <summary>Whether any scheduled fork of this chain enables EIP-8288; when not, wrapper work never needs to run.</summary>
+    public bool IsScheduled => specProvider.GetFinalSpec().IsEip8288Enabled;
 
     private Transaction? ResolvePending(Hash256 hash) => txPool.TryGetPendingTransaction(hash.ValueHash256, out Transaction? transaction) ? transaction : null;
 

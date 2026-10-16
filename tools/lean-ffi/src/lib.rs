@@ -25,6 +25,16 @@ const MAX_GENERIC_STARKS: usize = eip8288_mixed::MAX_GENERIC_DEPENDENCIES;
 const MAX_DECODE_BYTES: usize = 32 * 1024 * 1024;
 static PROVER: Mutex<()> = Mutex::new(());
 
+/// Takes the prover for one proof. The proving arena allows one proof in flight per process; PROVER, behind the managed
+/// proving gate, serializes every proof.
+fn begin_proof() -> std::sync::MutexGuard<'static, ()> {
+    let guard = PROVER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    lean_vm::init_prover();
+    guard
+}
+
 // leanVM's carry-less-multiply field arithmetic is about 68x slower without these features. An
 // environment RUSTFLAGS replaces .cargo/config.toml's target-cpu=native instead of adding to it, so
 // refuse to build a backend that silently lost them.
@@ -542,12 +552,7 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
             Err(())
         };
     }
-    let _guard = PROVER
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    // The proving arena allows one proof in flight per process; PROVER, behind the managed
-    // proving gate, serializes every proof.
-    lean_vm::init_prover();
+    let _guard = begin_proof();
     let mut r = Reader { bytes: input };
     let mut all = Vec::new();
     let mut raw = Vec::new();
@@ -803,12 +808,7 @@ pub unsafe extern "C" fn nlean_free(ptr: *mut u8, len: usize) {
 }
 
 pub fn prove_stark(source: &str, hash: &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]), ()> {
-    let _guard = PROVER
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    // The proving arena allows one proof in flight per process; PROVER, behind the managed
-    // proving gate, serializes every proof.
-    lean_vm::init_prover();
+    let _guard = begin_proof();
     let program = lean_compiler::compile(&lean_compiler::parse(source).map_err(|_| ())?);
     let key = eip8288_mixed::generic_verification_key(&program).map_err(|_| ())?;
     let code = encode_program(&program);

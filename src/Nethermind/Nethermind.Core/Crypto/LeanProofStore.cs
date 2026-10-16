@@ -364,8 +364,9 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         if (_coverage.TryGetValue(dependency, out ProofRecord? previous))
         {
             if (ReferenceEquals(previous, record)) return;
-            // Pinned recursive coverage may give way to a direct witness, which pinned transactions do not lose: their own
-            // pins keep the recursive record stored. Direct coverage is never replaced by a recursive proof.
+            // Pinned recursive coverage may give way to a direct witness. Pinned transactions do not lose coverage: their pins
+            // keep the recursive record stored, and Remove falls back to it if the witness is evicted. Direct coverage is never
+            // replaced by a recursive proof.
             bool upgrade = previous.Witnesses is null && record.Witnesses is not null;
             if (!upgrade && (previous.Pins != 0 || previous.Witnesses is not null && record.Witnesses is null)) return;
             previous.CoveredDependencies--;
@@ -402,7 +403,30 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         _identities.Remove(record.Identity);
         _storedBytes -= record.Size;
         foreach (FrameDependency dependency in record.Dependencies)
-            if (_coverage.TryGetValue(dependency, out ProofRecord? current) && ReferenceEquals(current, record)) _coverage.Remove(dependency);
+        {
+            if (!_coverage.TryGetValue(dependency, out ProofRecord? current) || !ReferenceEquals(current, record)) continue;
+            _coverage.Remove(dependency);
+            // A record this one displaced, such as pinned recursive coverage replaced by a direct witness, may still be
+            // stored; it covers the dependency again, so pinned transactions keep their coverage.
+            if (FindStoredCoverage(dependency) is { } fallback)
+            {
+                _coverage[dependency] = fallback;
+                fallback.CoveredDependencies++;
+            }
+        }
+    }
+
+    /// <summary>A stored record proving <paramref name="dependency"/>, preferring a direct witness.</summary>
+    private ProofRecord? FindStoredCoverage(in FrameDependency dependency)
+    {
+        ProofRecord? recursive = null;
+        foreach (ProofRecord candidate in _records)
+        {
+            if (Array.IndexOf(candidate.Dependencies, dependency) < 0) continue;
+            if (candidate.Witnesses is not null) return candidate;
+            recursive ??= candidate;
+        }
+        return recursive;
     }
 
     private static void ValidateShape(IReadOnlyList<FrameDependency> dependencies, IReadOnlyList<byte[]>? witnesses, byte[]? recursiveProof)

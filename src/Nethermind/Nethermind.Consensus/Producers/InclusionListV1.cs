@@ -41,12 +41,15 @@ public sealed class InclusionListProofV1
     {
         ilProof = null;
         if (StarkProof is null || ProofDeps is not { } encoded) return "ilProof must set starkProof and proofDeps";
+        // Check every entry before allocating the concatenation, so a malformed list costs no copy.
+        foreach (byte[]? entry in encoded)
+            if (entry is not { Length: Eip8288Constants.DependencyTripleLength })
+                return "ilProof proofDeps entries must be 96-byte dependency encodings";
         byte[] concatenated = new byte[(long)encoded.Length * Eip8288Constants.DependencyTripleLength];
         bool wideScheme = false;
         for (int i = 0; i < encoded.Length; i++)
         {
-            if (encoded[i] is not { Length: Eip8288Constants.DependencyTripleLength } dependency)
-                return "ilProof proofDeps entries must be 96-byte dependency encodings";
+            byte[] dependency = encoded[i];
             wideScheme |= !dependency.AsSpan(0, 31).IsZero();
             dependency.CopyTo(concatenated, i * Eip8288Constants.DependencyTripleLength);
         }

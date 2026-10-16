@@ -22,7 +22,10 @@ Cargo runs from `tools/lean-ffi` so `.cargo/config.toml` applies `-C target-cpu=
 field arithmetic needs carry-less multiply (`pclmulqdq` on x86_64, `aes` on aarch64) and is
 about 68× slower without it. An environment `RUSTFLAGS` replaces those flags instead of adding
 to them, so it must keep `target-cpu=native` (or the features); the crate refuses to build
-otherwise. Proving uses leanVM's arena allocator, which recycles the prover's transient buffers
+otherwise. Because the library targets the build host's CPU, a `BuildLeanFfi` publish can crash
+with an illegal instruction (SIGILL) on an older CPU: build on the oldest CPU that will run it, or
+set `RUSTFLAGS` to that CPU plus the carry-less multiply feature (for example
+`-C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq`). Proving uses leanVM's arena allocator, which recycles the prover's transient buffers
 across proofs; it allows one proof per process at a time, which the backend's prover lock ensures.
 
 `BuildLeanFfi=true` builds and copies the host native library into consumer build/publish

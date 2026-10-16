@@ -31,6 +31,29 @@ public class LeanProofStoreTests
         Assert.That(store.PinPending(Transaction([honest], Sender(2), 0)), Is.True);
     }
 
+    // A direct witness that took over a pinned transaction's recursive coverage can be evicted; the pinned recursive record
+    // then covers the dependency again.
+    [Test]
+    public void Evicted_direct_witness_falls_back_to_pinned_recursive_coverage()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency dependency = Dependency(1);
+        store.AddVerified([dependency], null, [1, 2, 3]);
+        Transaction pending = Transaction([dependency], Sender(1), 0);
+        Assert.That(store.PinPending(pending), Is.True);
+        store.AddVerified([dependency], [[4]], null);
+        Assert.That(store.TryGetInput([dependency], out AggregationInput upgraded) && upgraded.Deps.Count == 1, Is.True,
+            "the direct witness covers the dependency");
+        byte[] witness = new byte[64 * 1024];
+        for (int i = 0; i < 1100; i++) store.AddVerified([Dependency(10_000 + i)], [witness], null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Covers(pending), Is.True);
+            Assert.That(store.TryGetInput([dependency], out AggregationInput input), Is.True);
+            Assert.That(input.RecursiveProofs, Has.Count.EqualTo(1), "the evicted witness gave way to the pinned recursive proof");
+        }
+    }
+
     [Test]
     public void Record_slots_accommodate_the_default_pool_transaction_capacity()
     {
