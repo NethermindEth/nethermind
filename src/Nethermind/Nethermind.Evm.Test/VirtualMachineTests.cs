@@ -931,9 +931,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
     }
 
-    [TestCase(Instruction.JUMP)]
-    [TestCase(Instruction.JUMPI)]
-    public void Trace_invalid_jump_exception(Instruction instruction)
+    [Test]
+    public void Trace_invalid_jump_exception([Values(Instruction.JUMP, Instruction.JUMPI)] Instruction instruction)
     {
         byte[] code = instruction == Instruction.JUMPI
             ? Prepare.EvmCode.PushData(1).PushData(255).Op(instruction).Done
