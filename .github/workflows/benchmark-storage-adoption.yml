@@ -17,15 +17,15 @@ on:
         required: true
         type: string
       binding_ref:
-        description: Exact managed binding fix SHA
+        description: Exact package release commit SHA
         required: true
         type: string
       components:
         description: Components to measure
         required: true
         type: choice
-        options: [blob, history, both, diagnose]
-        default: blob
+        options: [blob, history, both]
+        default: both
 permissions:
   contents: read
 jobs:
@@ -37,11 +37,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     env:
-      COMPONENTS: ${{ inputs.components || 'blob' }}
+      COMPONENTS: ${{ inputs.components || 'both' }}
       BASELINE_REF: ${{ inputs.baseline_ref || '60518b8183ed7e0b81252edad8e48573f891dfba' }}
-      HISTORY_REF: ${{ inputs.history_ref || '5605890ee67991041ee3859b47223b49e386ed24' }}
-      BINDING_REF: ${{ inputs.binding_ref || 'eacc75da34aafc839f2e28af0aabb577b4412f3b' }}
-      MULTIGET_REF: ${{ inputs.multiget_ref || '266ec3f14342bbaa12d5980dcee1eb9b278ee49a' }}
+      HISTORY_REF: ${{ inputs.history_ref || 'edc1f97def7bf1a5fbbd741a0a27576ddf57eff8' }}
+      BINDING_REF: ${{ inputs.binding_ref || '31b352993ea8678348286d50420713c05fff3ccf' }}
+      MULTIGET_REF: ${{ inputs.multiget_ref || 'a63fb8731167fa30dd216a7e87d637353f2ded70' }}
+      PACKAGE_VERSION: '11.8.1.174'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -49,7 +50,7 @@ jobs:
       - name: Validate commit inputs
         shell: bash
         run: |
-          case "$COMPONENTS" in blob|history|both|diagnose) ;; *) exit 1 ;; esac
+          case "$COMPONENTS" in blob|history|both) ;; *) exit 1 ;; esac
           for sha in "$BASELINE_REF" "$HISTORY_REF" "$MULTIGET_REF" "$BINDING_REF"; do
             [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           done
@@ -59,19 +60,12 @@ jobs:
           path: baseline
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.history_ref || '5605890ee67991041ee3859b47223b49e386ed24' }}
+          ref: ${{ inputs.history_ref || 'edc1f97def7bf1a5fbbd741a0a27576ddf57eff8' }}
           path: history
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.multiget_ref || '266ec3f14342bbaa12d5980dcee1eb9b278ee49a' }}
+          ref: ${{ inputs.multiget_ref || 'a63fb8731167fa30dd216a7e87d637353f2ded70' }}
           path: multiget
-      - uses: actions/checkout@v7
-        with:
-          repository: NethermindEth/rocksdb-bindings
-          ref: ${{ inputs.binding_ref || 'eacc75da34aafc839f2e28af0aabb577b4412f3b' }}
-          path: bindings
-          lfs: true
-          fetch-depth: 0
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: baseline/global.json
@@ -83,9 +77,8 @@ jobs:
           for source in baseline history multiget; do
             git -C "$source" rev-parse HEAD > "results/$source-sha.txt"
           done
-          git -C bindings rev-parse HEAD > results/binding-sha.txt
-          test "$(cat results/binding-sha.txt)" = "$BINDING_REF"
-          test -z "$(git -C bindings diff --name-only 94e9fea4337b59d8b248cfae5c16e3ea18f7e2e2 HEAD -- native src/Nethermind.RocksDbBindings/runtimes)"
+          printf "%s\n" "$BINDING_REF" > results/binding-release-sha.txt
+          printf "%s\n" "$PACKAGE_VERSION" > results/package-version.txt
           dotnet --info > results/dotnet.txt
           lscpu > results/cpu.txt
           echo "SOURCE_DATE_EPOCH=$(git -C baseline log -1 --format=%ct)" >> "$GITHUB_ENV"
@@ -95,27 +88,13 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in {1..60}; do
-            if curl -fsS https://api.nuget.org/v3-flatcontainer/nethermind.rocksdbbindings/11.8.1.171/nethermind.rocksdbbindings.nuspec -o results/release171.nuspec; then
+            if curl -fsS https://api.nuget.org/v3-flatcontainer/nethermind.rocksdbbindings/11.8.1.174/nethermind.rocksdbbindings.nuspec -o results/release.nuspec; then
               break
             fi
             sleep 20
           done
-          python3 proof/benchmarks/storage-adoption/validate-release.py results/release171.nuspec
-      - name: Compare released and fixed binding diagnostics
-        shell: bash
-        env:
-          BENCH_DATA: ${{ runner.temp }}/storage-adoption
-        run: |
-          set -euo pipefail
-          mkdir -p multiget/benchmarks/blob-diagnose "$BENCH_DATA"
-          cp proof/benchmarks/storage-adoption/blob-diagnose/* multiget/benchmarks/blob-diagnose/
-          dotnet run --project multiget/benchmarks/blob-diagnose -c Release | tee results/blob-diagnose-released.csv
-          cp "$HOME/.nuget/packages/nethermind.rocksdbbindings/11.8.1.171/nethermind.rocksdbbindings.11.8.1.171.nupkg.sha512" results/package-171.sha512
-          python3 proof/benchmarks/storage-adoption/install-binding-source.py
-          git -C multiget diff > results/binding-source-overlay.diff
-          dotnet run --project multiget/benchmarks/blob-diagnose -c Release | tee results/blob-diagnose-fixed.csv
-      - name: Validate database and transaction-pool tests with the exact binding source
-        if: env.COMPONENTS != 'diagnose'
+          python3 proof/benchmarks/storage-adoption/validate-release.py results/release.nuspec
+      - name: Validate normal package consumption and component tests
         shell: bash
         run: |
           set -euo pipefail
@@ -133,9 +112,9 @@ jobs:
             dotnet "$source/src/Nethermind/artifacts/bin/$project/release/$project.dll" | tee "results/$source-$project.log"
             python3 proof/benchmarks/storage-adoption/validate-tests.py "results/$source-$project.log"
           done
-          cp "$HOME/.nuget/packages/nethermind.rocksdbbindings/11.8.1.171/nethermind.rocksdbbindings.11.8.1.171.nupkg.sha512" results/package-171.sha512
+          python3 proof/benchmarks/storage-adoption/validate-package.py
+          cp "$HOME/.nuget/packages/nethermind.rocksdbbindings/11.8.1.174/nethermind.rocksdbbindings.11.8.1.174.nupkg.sha512" results/package.sha512
       - name: Prepare identical measurement harnesses
-        if: env.COMPONENTS != 'diagnose'
         shell: bash
         run: |
           for source in baseline history; do
@@ -148,7 +127,6 @@ jobs:
           done
           mkdir -p "$RUNNER_TEMP/storage-adoption"
       - name: Measure selected changes against unchanged master in ABBA order
-        if: env.COMPONENTS != 'diagnose'
         shell: bash
         env:
           BENCH_DATA: ${{ runner.temp }}/storage-adoption
