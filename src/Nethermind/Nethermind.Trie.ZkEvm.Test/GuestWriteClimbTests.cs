@@ -24,8 +24,15 @@ public class GuestWriteClimbTests
 
     public enum Write { Update, Insert, Delete }
 
-    [Test]
-    public void Writes_leave_exactly_their_paths_pending([Values] Write first, [Values] Write second, [Values(0, 1, 3)] int sharedNibbles)
+    /// <summary>Every pair of writes; only an insert after the first write reads how many nibbles its key shares with it.</summary>
+    private static IEnumerable<TestCaseData> WritePairs() =>
+        from first in Enum.GetValues<Write>()
+        from second in Enum.GetValues<Write>()
+        from sharedNibbles in second == Write.Insert ? new[] { 0, 1, 3 } : [0]
+        select new TestCaseData(first, second, sharedNibbles);
+
+    [TestCaseSource(nameof(WritePairs))]
+    public void Writes_leave_exactly_their_paths_pending(Write first, Write second, int sharedNibbles)
     {
         Dictionary<string, byte[]> expected = [];
         PatriciaTree tree = new();
