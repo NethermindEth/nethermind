@@ -90,16 +90,16 @@ public static class SszCodec
     {
         return new ExecutionWitnessV1Wire
         {
-            State = ToWitnessItems(witness.State),
-            Codes = ToWitnessItems(witness.Codes),
-            Headers = ToWitnessItems(witness.Headers)
+            State = ToWitnessItems(witness.State, static bytes => new SszWitnessNode { Bytes = bytes }),
+            Codes = ToWitnessItems(witness.Codes, static bytes => new SszWitnessCode { Bytes = bytes }),
+            Headers = ToWitnessItems(witness.Headers, static bytes => new SszWitnessHeader { Bytes = bytes })
         };
 
-        static SszWitnessItem[] ToWitnessItems(IOwnedReadOnlyList<byte[]> items)
+        static T[] ToWitnessItems<T>(IOwnedReadOnlyList<byte[]> items, Func<byte[], T> wrap)
         {
-            SszWitnessItem[] result = new SszWitnessItem[items.Count];
+            T[] result = new T[items.Count];
             for (int i = 0; i < items.Count; i++)
-                result[i] = new SszWitnessItem { Bytes = items[i] };
+                result[i] = wrap(items[i]);
             return result;
         }
     }
