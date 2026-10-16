@@ -9,6 +9,10 @@ set +a
 : "${EEZ_REGISTRY_ADDRESS:?}"
 : "${EEZ_REGISTRY_DEPLOY_BLOCK:?}"
 : "${EEZ_ROLLUP_ID:?}"
+set --
+if [ "${EEZ_PROFILE:-rollup0}" = rollupx ]; then
+    set -- --Eez.L1BeaconUrl "${NETHERMIND_L1_BEACON:?}"
+fi
 exec /nethermind/entrypoint.sh \
     --Init.ChainSpecPath /out/l2-genesis.json \
     --Init.BaseDbPath /data \
@@ -32,4 +36,4 @@ exec /nethermind/entrypoint.sh \
     --JsonRpc.Enabled true \
     --JsonRpc.Host 0.0.0.0 \
     --JsonRpc.Port 8545 \
-    --JsonRpc.EnabledModules Eth,Net,Web3,Debug,Trace
+    --JsonRpc.EnabledModules Eth,Net,Web3,Debug,Trace "$@"

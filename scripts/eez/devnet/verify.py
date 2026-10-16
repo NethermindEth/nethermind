@@ -161,6 +161,7 @@ def main():
     parser.add_argument("--max-blocks", type=int, default=8192)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--genesis-evidence", type=Path)
+    parser.add_argument("--profile", choices=("rollup0", "rollupx"), default="rollup0")
     args = parser.parse_args()
     deadline = time.monotonic() + 600
     l1, reference, candidate = [Rpc(url, deadline) for url in (args.l1, args.reference, args.candidate)]
@@ -184,7 +185,7 @@ def main():
         equal(candidate.call("eth_getBlockByNumber", hex(result["height"]), False)["hash"], commitment, "candidate canonical endpoint")
         if result["verified_native_transactions"] < args.minimum_native:
             raise AssertionError("required native scenarios produced no transactions")
-        result.update({"genesis_state": genesis_state, "phase": args.phase, "canonical_l1_hash": snapshot["hash"], "canonical_l1_number": snapshot["number"], "snapshot_attempts": attempts, "result": "pass", "profile": "legacy-rollup0-0x76"})
+        result.update({"genesis_state": genesis_state, "phase": args.phase, "canonical_l1_hash": snapshot["hash"], "canonical_l1_number": snapshot["number"], "snapshot_attempts": attempts, "result": "pass", "profile": "rollupx-native" if args.profile == "rollupx" else "legacy-rollup0-0x76"})
         args.output.write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps(result))
         return

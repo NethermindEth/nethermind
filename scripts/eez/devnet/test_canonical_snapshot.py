@@ -80,6 +80,14 @@ class CanonicalSnapshotTests(unittest.TestCase):
                     self.assertEqual(record["canonical_l1_hash"], "snapshot")
                     self.assertEqual(record["result"], "pass")
 
+    def test_native_observation_identifies_the_selected_profile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            nodes = {role: Node(role) for role in ("l1", "reference", "candidate")}
+            result = {"height": 1, "endpoint": "end", "verified_blocks": 2, "verified_receipts": 1, "verified_native_transactions": 1}
+            output = Path(directory) / "result.json"
+            self.invoke(output, nodes, result, extra=("--profile", "rollupx"))
+            self.assertEqual(json.loads(output.read_text())["profile"], "rollupx-native")
+
     def test_main_does_not_accept_a_replaced_reference_endpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             nodes = {role: Node(role) for role in ("l1", "reference", "candidate")}

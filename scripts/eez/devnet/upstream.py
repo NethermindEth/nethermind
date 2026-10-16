@@ -115,6 +115,11 @@ def streaming_source(revision):
 def runtime(args):
     manifest = json.loads(args.manifest.read_text())
     revision = sha(manifest["revision"])
+    if manifest["repository"] == PROFILES["rollupx"] and manifest.get("profile") == "rollupx":
+        args.output.mkdir(parents=True, exist_ok=True)
+        manifest["runtime"] = {"source": "build-required"}
+        args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
+        return
     if manifest["repository"] != REPOSITORY:
         raise ValueError("unexpected upstream repository")
     runs = api("actions/runs?event=push&branch=main&head_sha=" + revision + "&status=success&per_page=100")["workflow_runs"]
@@ -181,15 +186,25 @@ def record_build(args):
         if actual != sha(expected):
             raise ValueError("runtime build source differs from selected revision")
     hashes = {}
-    for name in BINARIES:
+    names = BINARIES + (("e2e-causal-verify", "verify_blob_evidence") if manifest.get("profile") == "rollupx" else ())
+    for name in names:
         path = args.output / name
         if not path.is_file() or not os.access(path, os.X_OK) or not 0 < path.stat().st_size <= 1024 * 1024 * 1024:
             raise ValueError("missing or invalid built runtime: " + name)
         with path.open("rb") as stream:
             hashes[name] = hashlib.file_digest(stream, "sha256").hexdigest()
-    manifest["runtime"] = {"source": "source-build", "binaries": hashes,
-        "rustc": subprocess.check_output(["rustc", "--version"], text=True, timeout=30).strip(),
-        "cargo": subprocess.check_output(["cargo", "--version"], text=True, timeout=30).strip()}
+    versions = {}
+    for tool in ("rustc", "cargo"):
+        if manifest.get("profile") == "rollupx":
+            path = args.output / (tool + "-version.txt")
+            if not 0 < path.stat().st_size <= 1024:
+                raise ValueError("invalid build tool version")
+            versions[tool] = path.read_text().strip()
+            if not versions[tool].startswith(tool + " ") or "\n" in versions[tool]:
+                raise ValueError("invalid build tool version")
+        else:
+            versions[tool] = subprocess.check_output([tool, "--version"], text=True, timeout=30).strip()
+    manifest["runtime"] = {"source": "source-build", "binaries": hashes, **versions}
     args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
 
 

@@ -42,7 +42,7 @@ verify() {
         --registry "$EEZ_REGISTRY_ADDRESS" --registry-call "$(cast calldata 'rollups(uint64)' "$EEZ_ROLLUP_ID")" \
         --genesis "$EEZ_INITIAL_BLOCK_HASH" --l1-chain-id "$(cat "$connection/l1-chain-id")" \
         --l2-chain-id "$(cast chain-id --rpc-url "$EEZ_DEVNET_L2_RPC")" \
-        --phase "$name" --minimum-native "$minimum" --minimum-height "$height" \
+        --profile "${EEZ_PROFILE:-rollup0}" --phase "$name" --minimum-native "$minimum" --minimum-height "$height" \
         --output "$EEZ_CI_RESULT_DIR/$name.json" "${genesis_args[@]}"
 }
 if [[ "$phase" == recovery ]]; then

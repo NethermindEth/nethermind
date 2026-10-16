@@ -18,8 +18,13 @@ def image(value, prefix):
 def prepare(args):
     upstream = args.upstream.resolve()
     manifest = json.loads(args.manifest.read_text())
-    if manifest["repository"] != "eez-association/eez-rollup0":
+    profile = manifest.get("profile", "rollup0")
+    repositories = {"rollup0": "eez-association/eez-rollup0", "rollupx": "eez-association/eez-rollupX"}
+    if profile not in repositories or manifest["repository"] != repositories[profile]:
         raise ValueError("unexpected upstream repository")
+    native = profile == "rollupx"
+    if native and "streaming" in manifest:
+        raise ValueError("RollupX composer streaming requires a separately reviewed integration")
     if revision(upstream) != manifest["revision"] or revision(upstream / "eez-core-protocol") != manifest["core_revision"]:
         raise ValueError("integration sources do not match their pinned revisions")
     source = Path(__file__).resolve().parent
@@ -41,8 +46,11 @@ def prepare(args):
             raise ValueError("unexpected streaming profile")
         if not re.search(r"(?m)^  prover_backend: stateless$", (package / "ci-args.yaml").read_text()):
             raise ValueError("the candidate requires the stateless upstream backend")
+    beacon = ", l1_cl.beacon_http_url" if native else ""
+    if native and "l1_cl = participants[0].cl_context" not in original:
+        raise ValueError("upstream beacon endpoint boundary changed")
     main.write_text('nethermind = import_module("./nethermind.star")\n' + original +
-        '\n    nethermind.add_initial(plan, eez, l1_el.rpc_http_url, chain_id, deploy.files_artifacts[0])\n')
+        '\n    nethermind.add_initial(plan, eez, l1_el.rpc_http_url, chain_id, deploy.files_artifacts[0]' + beacon + ')\n')
     shutil.copyfile(source / "nethermind.star", package / "nethermind.star")
     values = {
         "enable_explorers": "false",
@@ -67,16 +75,23 @@ def prepare(args):
         names.append(name)
         return match.group(0) + '\nbash "$NETHERMIND_OBSERVE_SCRIPT" ' + name
     commands = re.sub(r'(?m)^(?:L2="\$l2" )?bash "\$HERE/scripts/([^"\n]+)"$', hook, commands)
+    if native:
+        for phase, name in (("waves-and-state-chaining", "verify-cross-chain-waves"), ("protocol-suite", "run-protocol-e2e")):
+            command = 'timed_phase ' + phase + ' bash "$HERE/scripts/' + name + '.sh"'
+            if commands.count(command) != 1:
+                raise ValueError("upstream native scenario boundary changed: " + phase)
+            commands = commands.replace(command, command + '\nbash "$NETHERMIND_OBSERVE_SCRIPT" ' + name)
+            names.append(name)
     if not names or "verify-cross-chain-waves" not in names:
         raise ValueError("upstream scenario driver changed; no cross-chain observation boundary")
     marker = "\ncapture_service_log eez-proof-signer\n"
     if commands.count(marker) != 1:
         raise ValueError("upstream final verification boundary changed")
     commands = commands.replace(marker, '\nbash "$NETHERMIND_OBSERVE_SCRIPT" recovery\n' + marker)
-    log_loop = 'for service in eez-node eez-proof-signer "$KURTOSIS_BUILDER_SERVICE" mev-relay-api; do'
-    if commands.count(log_loop) != 1:
+    log_loop = 'for service in eez-node eez-proof-signer '
+    if commands.count(log_loop) != (2 if native else 1):
         raise ValueError("upstream diagnostic boundary changed")
-    commands = commands.replace(log_loop, 'for service in nethermind-l2 nethermind-l2-late eez-node eez-proof-signer "$KURTOSIS_BUILDER_SERVICE" mev-relay-api; do')
+    commands = commands.replace(log_loop, 'for service in nethermind-l2 nethermind-l2-late eez-node eez-proof-signer ')
     if "streaming" in manifest:
         capture = '    timeout 30s kurtosis service logs "$KURTOSIS_ENCLAVE" "$service" '
         if commands.count(capture) != 1:
@@ -93,9 +108,10 @@ def late(args):
     shutil.copyfile(source / "nethermind.star", args.output / "nethermind.star")
     (args.output / "kurtosis.yml").write_text("name: github.com/NethermindEth/nethermind/eez-late-follower\n")
     (args.output / "main.star").write_text('follower = import_module("./nethermind.star")\n\ndef run(plan, args):\n'
-        '    follower.add_follower(plan, args["image"], "nethermind-l2-late", args["l1_rpc"], args["l1_chain_id"], "eez-deployments")\n')
+        '    follower.add_follower(plan, args["image"], "nethermind-l2-late", args["l1_rpc"], args["l1_chain_id"], "eez-deployments", args["l1_beacon"])\n')
     (args.output / "args.json").write_text(json.dumps({"image": image(args.follower_image, "eez-nethermind"),
-        "l1_rpc": (args.connection / "l1-rpc").read_text(), "l1_chain_id": int((args.connection / "l1-chain-id").read_text())}) + "\n")
+        "l1_rpc": (args.connection / "l1-rpc").read_text(), "l1_chain_id": int((args.connection / "l1-chain-id").read_text()),
+        "l1_beacon": (args.connection / "l1-beacon").read_text() if (args.connection / "l1-beacon").exists() else ""}) + "\n")
 
 def report(args):
     manifest = json.loads((args.directory / "upstream.json").read_text())
@@ -135,6 +151,32 @@ def report(args):
     (args.directory / "candidate-prover.json").write_text(json.dumps(report, indent=2) + "\n")
 
 
+def follower_report(args):
+    manifest = json.loads((args.directory / "upstream.json").read_text())
+    result = json.loads((args.directory / "result.json").read_text())
+    if manifest.get("profile") != "rollupx" or manifest["repository"] != "eez-association/eez-rollupX" or "streaming" in manifest:
+        raise ValueError("unexpected native follower profile")
+    if result["result"] != "pass" or result["exit_code"] != 0 or result["commits"] != {"root": manifest["revision"], "protocol": manifest["core_revision"]}:
+        raise ValueError("native follower scenarios or source verification failed")
+    counts = result["proof_flow"]
+    if not all(type(counts[name]) is int and counts[name] > 0 for name in ("signed_windows", "remote_attestations")):
+        raise ValueError("upstream proof path did not run")
+    if not re.fullmatch(r"[0-9a-f]{40}", args.revision) or not re.fullmatch(r"sha256:[0-9a-f]{64}", args.image_id):
+        raise ValueError("invalid candidate provenance")
+    observations = {}
+    for phase in ("verify-eezl2-deployment", "before-restart", "after-restart", "fresh-follower"):
+        observation = json.loads((args.directory / (phase + ".json")).read_text())
+        if observation["result"] != "pass" or observation["profile"] != "rollupx-native" or observation["phase"] != phase:
+            raise ValueError("missing native follower observation")
+        if phase != "verify-eezl2-deployment" and not all(type(observation[name]) is int and observation[name] > 0 for name in ("verified_blocks", "verified_receipts", "verified_native_transactions")):
+            raise ValueError("native follower scenario has no verified work")
+        observations[phase] = observation
+    report = {"result": "pass", "implementation": "Nethermind", "role": "follower", "profile": "rollupx-native",
+        "candidate_revision": args.revision, "image_id": args.image_id, "prover": "upstream",
+        "upstream_proof_flow": counts, "observations": observations}
+    (args.directory / "candidate-follower.json").write_text(json.dumps(report, indent=2) + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="mode", required=True)
@@ -148,12 +190,13 @@ def main():
     finish.add_argument("--output", type=Path, required=True)
     finish.add_argument("--connection", type=Path, required=True)
     finish.add_argument("--follower-image", required=True)
-    evidence = commands.add_parser("report")
-    evidence.add_argument("--directory", type=Path, required=True)
-    evidence.add_argument("--revision", required=True)
-    evidence.add_argument("--image-id", required=True)
+    for mode in ("report", "follower-report"):
+        evidence = commands.add_parser(mode)
+        evidence.add_argument("--directory", type=Path, required=True)
+        evidence.add_argument("--revision", required=True)
+        evidence.add_argument("--image-id", required=True)
     args = parser.parse_args()
-    {"prepare": prepare, "late": late, "report": report}[args.mode](args)
+    {"prepare": prepare, "late": late, "report": report, "follower-report": follower_report}[args.mode](args)
 
 if __name__ == "__main__":
     main()
