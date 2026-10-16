@@ -951,7 +951,7 @@ public class SszCodecTests
         if (withinBound)
             Assert.That(EncodeResponse, Throws.Nothing);
         else
-            Assert.That(EncodeResponse, Throws.InstanceOf<System.IO.InvalidDataException>());
+            Assert.That(EncodeResponse, Throws.InstanceOf<InvalidOperationException>());
     }
 
     private static Witness MakeMinimalWitness() => new()
