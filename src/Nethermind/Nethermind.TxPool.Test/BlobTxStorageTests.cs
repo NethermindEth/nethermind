@@ -353,7 +353,8 @@ public class BlobTxStorageTests
     }
 
     [Test]
-    public void TryGetMany_AfterDatabaseCloses_PreservesOwnedTransactions([Values(1, 2, 4)] int count)
+    public void TryGetMany_AfterDatabaseCloses_PreservesOwnedTransactions(
+        [Values(1, 2, 4)] int count, [Values("present", "deleted", "flushed-delete")] string state)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         Transaction[] stored = CreateBlobTransactions(2);
@@ -388,6 +389,18 @@ public class BlobTxStorageTests
 
             int expectedCount = expected.Take(count).Count(static tx => tx is not null);
             Assert.That(storage.TryGetMany(keys, count, results), Is.EqualTo(expectedCount));
+            if (state != "present")
+            {
+                storage.Delete(stored[0].Hash!.ValueHash256, stored[0].Timestamp);
+                if (state == "flushed-delete") db.Flush();
+                for (int i = 0; i < count; i++)
+                {
+                    if (ReferenceEquals(expected[i], stored[0])) expected[i] = null;
+                }
+
+                expectedCount = expected.Take(count).Count(static tx => tx is not null);
+                Assert.That(storage.TryGetMany(keys, count, results), Is.EqualTo(expectedCount));
+            }
         }
 
         for (int i = 0; i < results.Length; i++)
