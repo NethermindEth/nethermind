@@ -1853,6 +1853,40 @@ public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTes
         }
     }
 
+    /// <summary>
+    /// A sender's job is left to the mempool runs only when every one of its transactions was taken over; a transaction
+    /// of that sender the mempool pass never saw is still warmed, and its run is replayed.
+    /// </summary>
+    [Test]
+    public void A_job_only_partly_taken_over_is_still_warmed()
+    {
+        Block block = BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Transfer(TestItem.PrivateKeyA, 1, TestItem.AddressC, 1.Wei), Unrelated());
+        Run executed = Process(block, adapter: null);
+        // The mempool pass saw only the sender's first transaction.
+        PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(BuildBlock(block.Transactions[0]), null),
+            () => PreWarmer.SpeculativeMarkerPublished);
+
+        using ManualResetEventSlim seeded = new(initialState: false);
+        bool seededFirst = false;
+        PreWarmer.Seeded = seeded.Set;
+        PreWarmer.BeforeTransactionWorkers = () => seededFirst = seeded.Wait(TimeSpan.FromSeconds(10));
+        RunPreWarmCaches(PreWarmer, block);
+        PreWarmer.Seeded = null;
+        PreWarmer.BeforeTransactionWorkers = null;
+        TransactionFootprint? second = PreWarmer.Footprints?.Get(1);
+        Run run = Process(block, ProductionAdapter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seededFirst, Is.True, "precondition: the runs were taken over before the transaction workers started");
+            Assert.That(second, Is.Not.Null, "the transaction the mempool pass never saw was not warmed");
+            Assert.That(run.Results, Is.EqualTo(executed.Results));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
+            Assert.That(run.Tally.Replayed, Is.EqualTo(3));
+        }
+    }
+
     /// <summary>A recovery in flight whose one sender lands only once a warm worker waits for it, after the block's jobs were taken.</summary>
     private sealed class LateSender(Transaction tx, Address sender) : ISenderRecoveryTracker, ISenderRecoveryProgress
     {
