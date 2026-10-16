@@ -20,8 +20,8 @@ on:
         description: Components to measure
         required: true
         type: choice
-        options: [blob, history, both]
-        default: blob
+        options: [blob, history, both, diagnose]
+        default: diagnose
 permissions:
   contents: read
 jobs:
@@ -33,7 +33,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     env:
-      COMPONENTS: ${{ inputs.components || 'blob' }}
+      COMPONENTS: ${{ inputs.components || 'diagnose' }}
       BASELINE_REF: ${{ inputs.baseline_ref || '60518b8183ed7e0b81252edad8e48573f891dfba' }}
       HISTORY_REF: ${{ inputs.history_ref || '5605890ee67991041ee3859b47223b49e386ed24' }}
       MULTIGET_REF: ${{ inputs.multiget_ref || '1b69217753ec1f3c1e7c64c29dc7a45694ec0808' }}
@@ -44,7 +44,7 @@ jobs:
       - name: Validate commit inputs
         shell: bash
         run: |
-          case "$COMPONENTS" in blob|history|both) ;; *) exit 1 ;; esac
+          case "$COMPONENTS" in blob|history|both|diagnose) ;; *) exit 1 ;; esac
           for sha in "$BASELINE_REF" "$HISTORY_REF" "$MULTIGET_REF"; do
             [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           done
@@ -87,6 +87,7 @@ jobs:
           done
           python3 proof/benchmarks/storage-adoption/validate-release.py results/release171.nuspec
       - name: Run normal package-based database, history and transaction-pool tests
+        if: env.COMPONENTS != 'diagnose'
         shell: bash
         run: |
           set -euo pipefail
@@ -106,6 +107,7 @@ jobs:
           done
           cp "$HOME/.nuget/packages/nethermind.rocksdbbindings/11.8.1.171/nethermind.rocksdbbindings.11.8.1.171.nupkg.sha512" results/package-171.sha512
       - name: Prepare identical measurement harnesses
+        if: env.COMPONENTS != 'diagnose'
         shell: bash
         run: |
           for source in baseline history; do
@@ -118,6 +120,7 @@ jobs:
           done
           mkdir -p "$RUNNER_TEMP/storage-adoption"
       - name: Measure selected changes against unchanged master in ABBA order
+        if: env.COMPONENTS != 'diagnose'
         shell: bash
         env:
           BENCH_DATA: ${{ runner.temp }}/storage-adoption
@@ -149,6 +152,17 @@ jobs:
               python3 proof/benchmarks/storage-adoption/validate-results.py "$output" "$kind"
             done
           done
+      - name: Diagnose single-hit blob batches
+        if: env.COMPONENTS == 'diagnose'
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/storage-adoption
+        run: |
+          set -euo pipefail
+          mkdir -p multiget/benchmarks/blob-diagnose "$BENCH_DATA"
+          cp proof/benchmarks/storage-adoption/blob-diagnose/* multiget/benchmarks/blob-diagnose/
+          dotnet run --project multiget/benchmarks/blob-diagnose -c Release | tee results/blob-diagnose.csv
+          cp "$HOME/.nuget/packages/nethermind.rocksdbbindings/11.8.1.171/nethermind.rocksdbbindings.11.8.1.171.nupkg.sha512" results/package-171.sha512
       - uses: actions/upload-artifact@v7
         if: always()
         with:

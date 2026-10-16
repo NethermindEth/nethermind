@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Nethermind/Nethermind.TxPool/Nethermind.TxPool.csproj" />
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Db.Rocks/Nethermind.Db.Rocks.csproj" />
+  </ItemGroup>
+</Project>
