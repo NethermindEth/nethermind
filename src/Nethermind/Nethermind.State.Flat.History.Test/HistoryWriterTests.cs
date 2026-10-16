@@ -16,7 +16,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Test;
@@ -1204,6 +1203,22 @@ public class HistoryWriterTests
             Assert.That(_reader.TryGetAccount(100, AddrA, out AccountStruct a) && a.Balance == 500, Is.True);
             Assert.That(_writer.LastCapturedBlock, Is.EqualTo(100UL));
             Assert.That(_reader.IsPrunedBelowFloor(0), Is.True);
+        }
+    }
+
+    [Test]
+    public void SeedPivot_OnAnUnwindowedWriter_OnANonFlatLayout_DisablesCaptureInsteadOfCopyingTheState()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, Layout = FlatLayout.FlatInTrie };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
+
+        writer.SeedPivot(100, StateAt(100).StateRoot, new ListAccountSource((AddrA, new Account(5, 500))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.CaptureHealthy, Is.False);
+            Assert.That(availability.TryGetWatermark(out _), Is.False, "nothing may be published over an image that was never written");
         }
     }
 
