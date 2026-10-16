@@ -14,7 +14,7 @@ public interface IHistoryConfig : IConfig
     PruningModes Pruning { get; set; }
 
     [ConfigItem(
-        Description = "The number of epochs to retain historical blocks and receipts when using 'Rolling' pruning mode. Must be at least the chain's minHistoryRetentionEpochs chainspec parameter, which is the default.",
+        Description = "The number of epochs to retain historical blocks and receipts when using 'Rolling' pruning mode. Must be at least the chain's minHistoryRetentionEpochs chainspec parameter, which is the default: 33024 on Mainnet, 14299 on Sepolia.",
         DefaultValue = "null")]
     uint? RetentionEpochs { get; set; }
 
