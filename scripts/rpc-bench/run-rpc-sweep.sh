@@ -52,7 +52,8 @@ CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-60s}"   # discarded load per n
 CORPUS_WARMUP_RPS="${CORPUS_WARMUP_RPS:-400}"             # floor; a higher measured rate warms at that rate
 CORPUS_BASELINE="${CORPUS_BASELINE:-none}"                # save: persist this run's parity baseline on the runner; use: compare against the saved one
 CORPUS_BASELINE_DIR="${CORPUS_BASELINE_DIR:-$CORPUS_DIR/baselines}"
-CORPUS_RPC_GAS_CAP="1000000000000"
+RPC_GAS_CAP="${RPC_GAS_CAP:-$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo 1000000000000 || echo 1000000000)}"
+[[ "$RPC_GAS_CAP" =~ ^[1-9][0-9]*$ && ${#RPC_GAS_CAP} -le 15 ]] || { echo "::error::RPC_GAS_CAP must be a positive integer of at most 15 digits"; exit 1; }
 DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
 DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-false}"
 SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
@@ -245,6 +246,7 @@ corpus_label() {   # eth-call-corpus[-<label>].jsonl.gz -> <label> | default
 # Sets WARMED_SECONDS/WARMED_RPS to what was delivered. $1 clabel $2 label $3 corpus $4 ctype
 warm_node() {
   WARMED_SECONDS=0; WARMED_RPS=0
+  WARMUP_TARGET_RPS=0
   (( WARMUP_SECONDS > 0 )) || return 0
   local warm_rps="$CORPUS_WARMUP_RPS" r got
   for r in $RPS_LIST; do (( r > warm_rps )) && warm_rps=$r; done
@@ -252,6 +254,7 @@ warm_node() {
   # json-bench pre-generates rps x duration request rows and k6 parses the whole file, so a long warm-up at a high
   # rate can exceed what the generator can hold; the cap trades warm-up pace for warm-up length.
   (( CORPUS_WARMUP_RPS_MAX > 0 && warm_rps > CORPUS_WARMUP_RPS_MAX )) && warm_rps="$CORPUS_WARMUP_RPS_MAX"
+  WARMUP_TARGET_RPS="$warm_rps"
   local warm_cell="$SCRATCH_ROOT/warmup-cell/$1/$2"   # outside OUT_DIR so it is never staged
   echo "-- WARMUP $1 $2 @ rps=${warm_rps} for ${WARMUP_SECONDS}s (discarded) --"
   if [[ -n "$RPS_LIST" ]]; then
@@ -259,13 +262,14 @@ warm_node() {
       echo "::warning::warmup for $2 failed — measured cells may be cold"; return 0
     fi
     WARMED_SECONDS="$WARMUP_SECONDS"
-    got="$(json_number "$warm_cell/summary.json" '.metrics.http_reqs.values.count' 0)"
+    got="$(json_number "$warm_cell/summary.json" '.metrics.http_reqs.values.count // .metrics.http_reqs.count' 0)"
     if (( got > 0 )); then
       WARMED_RPS=$(( got / WARMUP_SECONDS ))
       (( got * 10 >= warm_rps * WARMUP_SECONDS * 8 )) || echo "::warning::warmup for $2 delivered ${got} of $(( warm_rps * WARMUP_SECONDS )) requests — cells may be under-warmed"
     else
-      WARMED_RPS="$warm_rps"
-      echo "::warning::warmup for $2: no usable http_reqs count — recorded warmup_rps is the requested pace"
+      WARMED_SECONDS=0
+      WARMED_RPS=0
+      echo "::warning::warmup for $2: no usable http_reqs count; delivery is unverified"
     fi
     report_fail_rate "$warm_cell" "warmup $1/$2"
   else
@@ -500,7 +504,7 @@ for entry in "${schedule[@]}"; do
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" JSONRPC_MODULES="$JSONRPC_MODULES" \
        LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" ADDITIONAL_FLAGS="$arm_flags" ARM_SCRATCH_DIR="$arm_scratch_dir" \
        HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
-       RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
+       RPC_GAS_CAP="$RPC_GAS_CAP" \
        NODE_ENV_VARS="${NODE_ENV_VARS:-}${arm_env:+ $arm_env}" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" "$here/start-node.sh"; then
     if [[ "$JB_ETH_CALL_CORPUS" == "true" && "$USING_SAVED_BASELINE" != "true" && -z "$BASELINE_LABEL" ]]; then
@@ -518,6 +522,13 @@ for entry in "${schedule[@]}"; do
     for corpus in "${CORPORA[@]}"; do run_corpus "$(corpus_label "$corpus")" "$label" "$corpus" "$ctype" "$cname"; done
     [[ -n "$BASELINE_LABEL" ]] || BASELINE_LABEL="$label"
   else
+    if [[ -n "$RPS_LIST" ]] && (( WARMUP_SECONDS > 0 )); then
+      warm_node synthetic "$label" "" "$ctype"
+      if (( WARMED_SECONDS != WARMUP_SECONDS || WARMED_RPS * 10 < WARMUP_TARGET_RPS * 8 )); then
+        echo "::error::${label}: synthetic warmup was not completed"
+        arm_fail=$((arm_fail + 1))
+      fi
+    fi
     for rps in $RPS_LIST; do
       for icfg in $ISO_CONFIGS; do
         scen="$(basename "$icfg" .yaml)"; cell="$OUT_DIR/iso/${label}/${rps}/${scen}"

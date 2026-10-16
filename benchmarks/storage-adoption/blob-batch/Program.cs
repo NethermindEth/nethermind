@@ -24,7 +24,7 @@ config.AddJob(Job.Default
     .WithToolchain(new Toolchain(toolchain.Name,
         new ExactProjectGenerator(Path.GetFullPath("benchmarks/blob-batch/BlobBatch.csproj")),
         toolchain.Builder, toolchain.Executor))
-    .WithLaunchCount(1).WithWarmupCount(3).WithIterationCount(8));
+    .WithLaunchCount(1).WithWarmupCount(15).WithIterationCount(8));
 BenchmarkSwitcher.FromAssembly(typeof(BlobBatchBenchmarks).Assembly).Run(args, config);
 
 [MemoryDiagnoser]
