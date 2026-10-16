@@ -293,7 +293,7 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
-            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(2));
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(1), "a proof verified when produced is not verified natively again");
             Assert.That(second.StarkProof,
                 Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(second, FrameTxSigHash.ComputeValue).ToByteArray()));
         }
@@ -339,6 +339,28 @@ public class Eip8288BlockProductionTests
             Assert.That(reused, Is.EqualTo(hash.ToByteArray()));
             Assert.That(verifier.ProofCalls, Is.EqualTo(3));
             Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(3));
+        }
+    }
+
+    [Test]
+    public void Verified_recursive_proofs_are_not_verified_natively_again()
+    {
+        CountingVerifier verifier = new();
+        ProductionProofCache cache = new(verifier);
+        ValueHash256 statement = Eip8288Dependencies.ComputeDepsHash([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("verified"), default)]);
+        ValueHash256 other = Eip8288Dependencies.ComputeDepsHash([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other"), default)]);
+        byte[] proof = statement.ToByteArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.VerifyRecursiveStark(other, Eip8288Constants.AggregatedVk, proof), Is.False);
+            Assert.That(cache.VerifyRecursiveStark(other, Eip8288Constants.AggregatedVk, proof), Is.False, "a rejection is never cached");
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(2));
+            Assert.That(cache.VerifyRecursiveStark(statement, Eip8288Constants.AggregatedVk, proof), Is.True);
+            Assert.That(cache.VerifyRecursiveStark(statement, Eip8288Constants.AggregatedVk, proof), Is.True);
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(3));
+            Assert.That(cache.VerifyRecursiveStark(other, Eip8288Constants.AggregatedVk, proof), Is.False, "the statement is part of the key");
+            Assert.That(cache.VerifyRecursiveStark(statement, new byte[32], proof), Is.True, "the verification key is part of the key");
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(5));
         }
     }
 
@@ -392,37 +414,47 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
-    public async Task Canceled_production_releases_the_producer_while_its_native_proof_finishes_for_reuse()
+    public async Task Deadline_production_keeps_plain_transactions_while_the_missing_proof_is_prepared_off_path()
     {
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("detached"), default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("deadline"), default);
         proofs.AddVerified([dependency], [[1]], null);
-        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, dependency, [UInt256.Zero]), TxHandlingOptions.PersistentBroadcast),
-            Is.EqualTo(AcceptTxResult.Accepted));
+        Transaction proofBacked = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction plain = CreatePlainTransaction(chain);
+        Assert.That(chain.TxPool.SubmitTx(proofBacked, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         try
         {
-            using CancellationTokenSource improvement = new();
-            Task<Block?> canceled = Task.Run(() => chain.BlockProducer.BuildBlock(cancellationToken: improvement.Token));
-            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
-            improvement.Cancel();
-            Assert.That(async () => await canceled.WaitAsync(TimeSpan.FromSeconds(5)), Throws.InstanceOf<OperationCanceledException>(),
-                "a canceled improvement returns while its native call is still active");
-            Block? next = await Task.Run(() => chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock)).WaitAsync(TimeSpan.FromSeconds(5));
+            using CancellationTokenSource deadline = new();
+            Block? first = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first, Is.Not.Null, "a pass with a deadline does not wait for the native call");
+                Assert.That(first!.Transactions, Is.EqualTo(new[] { plain }));
+                Assert.That(first.StarkProof, Is.Empty);
+                Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True, "the missing statement is proven off the production path");
+            }
+            Block? next = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock).WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(next, Is.Not.Null, "the next payload is not held behind the noninterruptible call");
         }
         finally
         {
             release.Set();
         }
+        Assert.That(() => proofs.TryGetRecursiveProof([dependency], out _), Is.True.After(5000, 20));
         verifier.OnProof = null;
-        Block? retried = await chain.BlockProducer.BuildBlock();
-        Assert.That(retried, Is.Not.Null);
-        Assert.That(retried!.Transactions, Has.Length.EqualTo(1));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the retry reuses the proof the canceled improvement started");
+        using CancellationTokenSource retryDeadline = new();
+        Block? retried = await chain.BlockProducer.BuildBlock(cancellationToken: retryDeadline.Token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retried, Is.Not.Null);
+            Assert.That(retried!.Transactions, Has.Length.EqualTo(2));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the retry reuses the proof prepared off path");
+        }
     }
 
     [Test]
@@ -539,26 +571,270 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
-    public async Task Cancelled_proving_does_not_publish_but_retains_verified_work_for_retry()
+    public async Task Verified_wrapper_recursive_proof_stays_reusable_after_its_coverage_is_evicted()
     {
-        using CancellationTokenSource cancellation = new();
-        CountingVerifier verifier = new() { OnProof = cancellation.Cancel };
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(new CountingVerifier(), proofs);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("wrapper-recursive"), default);
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
+        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new(transaction)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = new RecursiveStark(hash.ToByteArray(), new Hash256(hash))
+        }).Bytes;
+        Assert.That((await AcceptWrapper(chain.Container.Resolve<ProofWrapperService>(), wrapper, transaction)).IsSuccess, Is.True);
+        Assert.That(chain.TxPool.RemoveTransaction(transaction.Hash), Is.True);
+        byte[] witness = new byte[64 * 1024];
+        for (int i = 0; i < 1100; i++)
+            proofs.AddVerified([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"evict:{i}"), default)], [witness], null);
+        Assert.That(proofs.TryGetRecursiveProof([dependency], out byte[]? proof), Is.True);
+        Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
+    }
+
+    [Test]
+    public async Task Deadline_production_falls_back_to_the_largest_proven_dependency_set()
+    {
+        using ManualResetEventSlim release = new();
+        CountingVerifier verifier = new() { OnProof = () => release.Wait() };
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("cancelled"), default);
-        proofs.AddVerified([dependency], [[1]], null);
-        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, dependency, [UInt256.Zero]), TxHandlingOptions.PersistentBroadcast),
+        FrameDependency proven = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("proven"), default);
+        FrameDependency pending = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending"), default);
+        proofs.AddVerified([proven], [[1]], null);
+        proofs.AddVerified([pending], [[1]], null);
+        proofs.AddCachedRecursive([proven], Eip8288Dependencies.ComputeDepsHash([proven]).ToByteArray());
+        Transaction covered = CreateTransaction(chain, proven, [1]);
+        Transaction uncovered = CreateTransaction(chain, pending, [2]);
+        Assert.That(chain.TxPool.SubmitTx(covered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(uncovered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        try
+        {
+            using CancellationTokenSource deadline = new();
+            Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block, Is.Not.Null);
+                Assert.That(block!.Transactions, Is.EqualTo(new[] { covered }));
+                Assert.That(block.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([proven]).ToByteArray()),
+                    "the body is restricted to a dependency set whose proof is reused unchanged");
+            }
+        }
+        finally
+        {
+            release.Set();
+        }
+        Assert.That(() => proofs.TryGetRecursiveProof([pending], out _), Is.True.After(5000, 20),
+            "the transactions after the proven set are proven for the next block");
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Scheduled_production_proof_leaves_out_what_only_the_proven_transactions_use()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency shared = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("after-shared"), default);
+        FrameDependency proven = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("after-proven"), default);
+        FrameDependency pending = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("after-pending"), default);
+        foreach (FrameDependency dependency in (FrameDependency[])[shared, proven, pending]) proofs.AddVerified([dependency], [[1]], null);
+        List<FrameDependency> statement = Eip8288Dependencies.Canonicalize([shared, proven]);
+        proofs.AddCachedRecursive(statement, Eip8288Dependencies.ComputeDepsHash(statement).ToByteArray());
+        Transaction[] kept = [CreateTransaction(chain, shared, [1]), CreateTransaction(chain, shared, [2]), CreateTransaction(chain, proven, [3])];
+        foreach (Transaction transaction in (Transaction[])[.. kept, CreateTransaction(chain, pending, [4])])
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        using CancellationTokenSource deadline = new();
+        Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        List<FrameDependency> next = Eip8288Dependencies.Canonicalize([shared, pending]);
+        Assert.That(() => proofs.TryGetRecursiveProof(next, out _), Is.True.After(5000, 20),
+            "the shared dependency stays for the transactions that keep reusing it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Transactions, Is.EquivalentTo(kept));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            Assert.That(verifier.LastInput!.Deps, Is.EquivalentTo(next));
+            Assert.That(verifier.LastInput.RecursiveProofs, Is.Empty);
+        }
+    }
+
+    [TestCase(1, false)]
+    [TestCase(8, true)]
+    public async Task Scheduled_production_proof_extends_a_proven_subset_only_when_cheaper(int provenCount, bool extended)
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        // The proven transactions wait behind the added one's nonce, so the statement covers the whole body.
+        FrameDependency added = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("extend-added"), default);
+        proofs.AddVerified([added], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [UInt256.Zero]), TxHandlingOptions.PersistentBroadcast),
             Is.EqualTo(AcceptTxResult.Accepted));
-        Hash256 head = chain.BlockTree.Head!.Hash!;
-        Assert.That(async () => await chain.BlockProducer.BuildBlock(cancellationToken: cancellation.Token),
-            Throws.InstanceOf<OperationCanceledException>());
+        FrameDependency[] proven = new FrameDependency[provenCount];
+        for (int i = 0; i < proven.Length; i++)
+        {
+            proven[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"extend-proven:{i}"), default);
+            proofs.AddVerified([proven[i]], [[1]], null);
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, proven[i], [UInt256.Zero], nonce: (ulong)i + 1), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.Accepted));
+        }
+        List<FrameDependency> provenSet = Eip8288Dependencies.Canonicalize(proven);
+        proofs.AddCachedRecursive(provenSet, Eip8288Dependencies.ComputeDepsHash(provenSet).ToByteArray());
+
+        using CancellationTokenSource deadline = new();
+        await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
+
+        List<FrameDependency> full = Eip8288Dependencies.Canonicalize([.. proven, added]);
+        Assert.That(() => proofs.TryGetRecursiveProof(full, out _), Is.True.After(5000, 20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "one native call proves the statement");
+            Assert.That(verifier.LastInput!.RecursiveProofs, Has.Count.EqualTo(extended ? 1 : 0));
+            Assert.That(verifier.LastInput.Deps, Is.EquivalentTo(extended ? new[] { added } : full.ToArray()),
+                extended ? "eight proven signatures cost more to fold again than one merge" : "one signature is cheaper to fold than to merge");
+        }
+    }
+
+    [Test]
+    public async Task Stale_production_statement_is_narrowed_to_its_pending_transactions_before_the_rest_is_proven()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency[] pending = new FrameDependency[8];
+        for (int i = 0; i < pending.Length; i++)
+        {
+            pending[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"stale-pending:{i}"), default);
+            proofs.AddVerified([pending[i]], [[1]], null);
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, pending[i], [(UInt256)(i + 1)]), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.Accepted));
+        }
+        // A statement proven for an earlier body, one of whose transactions a block has since included.
+        FrameDependency included = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("stale-included"), default);
+        List<FrameDependency> stale = Eip8288Dependencies.Canonicalize([.. pending, included]);
+        proofs.AddCachedRecursive(stale, Eip8288Dependencies.ComputeDepsHash(stale).ToByteArray());
+        FrameDependency added = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("stale-added"), default);
+        proofs.AddVerified([added], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [100]), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        List<FrameDependency> narrowed = Eip8288Dependencies.Canonicalize(pending);
+        using CancellationTokenSource deadline = new();
+
+        Block? first = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
+        Assert.That(() => proofs.TryGetRecursiveProof(narrowed, out _), Is.True.After(5000, 20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first!.Transactions, Is.Empty);
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "one discarding call narrows the stale statement");
+            Assert.That(verifier.LastInput!.RecursiveProofs.Select(static parent => parent.InnerDeps), Is.EqualTo(new[] { stale }));
+            Assert.That(verifier.LastInput.Discards, Is.EqualTo(new[] { included }));
+            Assert.That(verifier.LastInput.Deps, Is.Empty);
+        }
+
+        Block? next = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
+        Assert.That(() => proofs.TryGetRecursiveProof([added], out _), Is.True.After(5000, 20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next!.Transactions, Has.Length.EqualTo(pending.Length), "the narrowed statement makes its transactions includable");
+            Assert.That(verifier.ProofCalls, Is.EqualTo(2), "one native call proves what the narrowed statement leaves out");
+            Assert.That(verifier.LastInput!.RecursiveProofs, Is.Empty);
+            Assert.That(verifier.LastInput.Discards, Is.Empty);
+            Assert.That(verifier.LastInput.Deps, Is.EqualTo(new[] { added }));
+        }
+    }
+
+    [Test]
+    public async Task Superseded_payload_does_not_schedule_a_production_proof([Values] bool earlierSlot)
+    {
+        using ManualResetEventSlim proving = new();
+        CountingVerifier verifier = new() { OnProof = proving.Set };
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        BlockHeader grandparent = chain.BlockTree.Head!.Header;
+        Block parent = await ProduceAndImport(chain, 1);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("superseded"), default);
+        proofs.AddVerified([dependency], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, dependency, [1]), TxHandlingOptions.PersistentBroadcast),
+            Is.EqualTo(AcceptTxResult.Accepted));
+        ulong slot = parent.Timestamp + 12;
+        PayloadAttributes latest = new() { Timestamp = earlierSlot ? slot + 12 : slot };
+        Assert.That(await chain.BlockProducer.BuildBlock(parent.Header, payloadAttributes: latest, flags: IBlockProducer.Flags.EmptyBlock),
+            Is.Not.Null);
+
+        // Either a payload still improving for the previous slot, or the next slot prepared on the proposed block's parent.
+        using CancellationTokenSource deadline = new();
+        Block? superseded = await chain.BlockProducer.BuildBlock(earlierSlot ? parent.Header : grandparent,
+            payloadAttributes: new PayloadAttributes { Timestamp = slot }, cancellationToken: deadline.Token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(superseded!.Transactions, Is.Empty);
+            Assert.That(proving.Wait(200), Is.False, "a superseded payload schedules nothing");
+        }
+
+        await chain.BlockProducer.BuildBlock(parent.Header, payloadAttributes: latest, cancellationToken: deadline.Token);
+        Assert.That(() => proofs.TryGetRecursiveProof([dependency], out _), Is.True.After(5000, 20), "the latest payload's body is proven");
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
-        Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(head));
-        verifier.OnProof = null;
-        Block? fresh = await chain.BlockProducer.BuildBlock();
-        Assert.That(fresh, Is.Not.Null);
-        Assert.That(fresh!.Transactions, Has.Length.EqualTo(1));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Deadline_production_prefers_the_proven_set_that_keeps_the_most_transactions()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency shared = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("prefer-shared"), default);
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("prefer-first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("prefer-second"), default);
+        foreach (FrameDependency dependency in (FrameDependency[])[shared, first, second]) proofs.AddVerified([dependency], [[1]], null);
+        // An equally large proven set whose only transaction waits behind an unproven nonce is listed first.
+        proofs.AddCachedRecursive([second], Eip8288Dependencies.ComputeDepsHash([second]).ToByteArray());
+        proofs.AddCachedRecursive([shared], Eip8288Dependencies.ComputeDepsHash([shared]).ToByteArray());
+        Transaction sharedTransaction = CreateTransaction(chain, shared, [1]);
+        Transaction blocking = CreateTransaction(chain, first, [UInt256.Zero]);
+        Transaction blocked = CreateTransaction(chain, second, [UInt256.Zero], nonce: 1);
+        foreach (Transaction transaction in (Transaction[])[sharedTransaction, blocking, blocked])
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        using CancellationTokenSource deadline = new();
+        Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(block!.Transactions, Is.EqualTo(new[] { sharedTransaction }));
+    }
+
+    [Test]
+    public async Task Deadline_production_keeps_shrinking_past_a_proven_set_that_is_not_includable()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency a = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("includable"), default);
+        FrameDependency b = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first-nonce"), default);
+        FrameDependency c = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("second-nonce"), default);
+        proofs.AddVerified([a], [[1]], null);
+        proofs.AddVerified([b], [[1]], null);
+        proofs.AddVerified([c], [[1]], null);
+        proofs.AddCachedRecursive([a], Eip8288Dependencies.ComputeDepsHash([a]).ToByteArray());
+        // The largest proven set omits b, so its transaction is skipped and the later nonce behind it cannot follow.
+        List<FrameDependency> gapped = Eip8288Dependencies.Canonicalize([a, c]);
+        proofs.AddCachedRecursive(gapped, Eip8288Dependencies.ComputeDepsHash(gapped).ToByteArray());
+        Transaction includable = CreateTransaction(chain, a, [1]);
+        Transaction first = CreateTransaction(chain, b, [UInt256.Zero]);
+        Transaction second = CreateTransaction(chain, c, [UInt256.Zero], nonce: 1);
+        foreach (Transaction transaction in (Transaction[])[includable, first, second])
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        using CancellationTokenSource deadline = new();
+        Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.Not.Null);
+            Assert.That(block!.Transactions, Is.EqualTo(new[] { includable }));
+            Assert.That(block.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([a]).ToByteArray()));
+        }
     }
 
     [Test]
@@ -680,7 +956,7 @@ public class Eip8288BlockProductionTests
             })));
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero],
-            [new(sourceId, 0, matchingRoot ? root : TestItem.KeccakC.ValueHash256)],
+            [new(sourceId, 0, matchingRoot ? root : TestItem.KeccakC.ValueHash256)], 0, null,
             new(FrameMode.Sender, FrameFlags.None, TestItem.AddressD, executionGasLimit: 100_000, stateGasLimit: GasCostOf.SSetState, UInt256.Zero, default),
             FrameTxTestFrames.PostTx(10_000));
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
@@ -740,7 +1016,7 @@ public class Eip8288BlockProductionTests
         });
 
     private static Transaction CreateTransaction(BasicTestBlockchain chain, FrameDependency dependency, UInt256[] keys,
-        RecentRootReference[]? roots = null, params TxFrame[] execution)
+        RecentRootReference[]? roots = null, ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution)
     {
         ulong stateGas = keys.Length == 1 && keys[0].IsZero ? 0 : (ulong)keys.Length * GasCostOf.SSetState;
         TxFrame[] frames =
@@ -756,7 +1032,8 @@ public class Eip8288BlockProductionTests
         {
             Type = TxType.FrameTx,
             ChainId = chain.SpecProvider.ChainId,
-            SenderAddress = TestItem.PrivateKeyB.Address,
+            SenderAddress = (key ?? TestItem.PrivateKeyB).Address,
+            Nonce = nonce,
             NonceKeys = keys,
             RecentRootReferences = roots,
             Frames = frames,
@@ -764,13 +1041,17 @@ public class Eip8288BlockProductionTests
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 100.GWei
         };
-        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        FrameTxTestFrames.SignSecp256k1(transaction, key ?? TestItem.PrivateKeyB, (key ?? TestItem.PrivateKeyB).Address);
         transaction.Hash = transaction.CalculateHash();
         return transaction;
     }
 
     private static async Task<Result<Hash256[]>> AcceptWrapper(ProofWrapperService service, byte[] wrapper, params Transaction[] transactions)
         => (await service.AcceptDetailedAsync(wrapper, transactions.ToDictionary(static tx => tx.Hash!.ValueHash256))).Result;
+    private static Transaction CreatePlainTransaction(BasicTestBlockchain chain) =>
+        Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(chain.SpecProvider.ChainId).WithNonce(0)
+            .WithTo(TestItem.AddressA).WithValue(1).WithGasLimit(100_000).WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
     private static byte[] EncodeWrapper(FrameDependency dependency, params Transaction[] transactions) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
     {
@@ -815,9 +1096,11 @@ public class Eip8288BlockProductionTests
             RecursiveVerificationCalls++;
             return proof.Length == 32 + ProofPaddingBytes && proof[..32].SequenceEqual(depsHash.Bytes);
         }
+        public AggregationInput? LastInput { get; private set; }
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             ProofCalls++;
+            LastInput = input;
             OnProof?.Invoke();
             if (RejectChangedWitness)
                 foreach (ReadOnlyMemory<byte> witness in input.Witnesses)

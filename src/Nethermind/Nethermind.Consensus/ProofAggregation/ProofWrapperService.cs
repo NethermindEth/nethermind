@@ -268,6 +268,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             else if (error is not null) return ProofWrapperAcceptance.Invalid(error);
             // Nothing validated under a verifier the upgrade rule has since replaced may be published or admitted.
             if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
+            // Coverage keeps one record per dependency, so a verified recursive proof can otherwise be lost to a direct
+            // witness or eviction; indexed by its exact set, it stays reusable by producers restricted to proven sets.
+            if (decoded.RecursiveStark is { } recursive && decoded.Deps.Count != 0)
+                leanProofStore.AddCachedRecursive(decoded.Deps, recursive.StarkProof);
             WrapperValidated?.Invoke(wrapper, resolved, verifier);
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> admittedDependencies = [];

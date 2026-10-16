@@ -33,6 +33,42 @@ public static class RecursiveStarkAggregator
             : proof.Length is > 0 and <= Eip8288Constants.MaxAggregateProofBytes
                 && verifier.VerifyRecursiveStark(in depsHash, forkVerifier.AggregatedVk.Bytes, proof);
 
+    // Relative native proving costs measured on a two-core devnet node: folding one leanSPHINCS signature into a leaf
+    // costs about 2.2 s and each recursive merge of two proofs about 20 s, so a merge costs about nine signatures.
+    private const int SignatureCost = 1;
+    private const int GenericLeafCost = 2;
+    private const int MergeCost = 9;
+
+    /// <summary>Estimates the relative native proving cost of an input from its leaves and recursive merges.</summary>
+    /// <remarks>Signatures fold four to a leaf, each generic proof is its own leaf, and every node beyond the first
+    /// needs one recursive merge; a recursive child losing dependencies needs a call of its own unless the whole input
+    /// fits one. The estimate only ranks alternative inputs for the same statement.</remarks>
+    public static long EstimatedCost(AggregationInput input)
+    {
+        int signatures = 0, generics = 0;
+        foreach (FrameDependency dependency in input.Deps)
+            if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) generics++;
+            else signatures++;
+        long nodes = (signatures + DirectBatchSize - 1) / DirectBatchSize + generics + input.RecursiveProofs.Count;
+        long calls = Math.Max(0, nodes - 1);
+        if (input.Discards.Count != 0)
+        {
+            if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize) calls = Math.Max(calls, 1);
+            else
+            {
+                HashSet<FrameDependency> discards = [.. input.Discards];
+                foreach (RecursiveProofInput child in input.RecursiveProofs)
+                    foreach (FrameDependency dependency in child.InnerDeps)
+                        if (discards.Contains(dependency))
+                        {
+                            calls++;
+                            break;
+                        }
+            }
+        }
+        return (long)signatures * SignatureCost + (long)generics * GenericLeafCost + calls * MergeCost;
+    }
+
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
     public static long InputSize(AggregationInput input)
     {
@@ -55,7 +91,15 @@ public static class RecursiveStarkAggregator
     }
 
     /// <summary>Combines selected witnesses, pruning recursive dependencies absent from the final transaction set.</summary>
-    public static AggregationInput Combine(IReadOnlyList<AggregationInput> inputs, IReadOnlyList<FrameDependency> required)
+    /// <param name="inputs">The selected witnesses and recursive proofs.</param>
+    /// <param name="required">The final dependency set.</param>
+    /// <param name="parent">
+    /// An already proven statement; selected inputs it fully covers are left out and its dependencies outside
+    /// <paramref name="required"/> are discarded, so a changing set is proven by extending a previous statement instead of
+    /// re-folding every witness.
+    /// </param>
+    public static AggregationInput Combine(IReadOnlyList<AggregationInput> inputs, IReadOnlyList<FrameDependency> required,
+        RecursiveProofInput? parent = null)
     {
         List<FrameDependency> direct = [];
         List<ReadOnlyMemory<byte>> witnesses = [];
@@ -63,11 +107,19 @@ public static class RecursiveStarkAggregator
         HashSet<FrameDependency> wanted = [.. required];
         HashSet<FrameDependency> covered = [];
         HashSet<ValueHash256> seenProofs = [];
+        if (parent is { } proven)
+        {
+            if (proven.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(parent));
+            seenProofs.Add(proven.ProofHash);
+            recursive.Add(proven);
+            covered.UnionWith(proven.InnerDeps);
+        }
         foreach (AggregationInput input in inputs)
         {
             foreach (RecursiveProofInput child in input.RecursiveProofs)
             {
                 if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(inputs));
+                if (parent is not null && IsCovered(child.InnerDeps, covered) || !Overlaps(child.InnerDeps, wanted)) continue;
                 if (!seenProofs.Add(child.ProofHash)) continue;
                 recursive.Add(child);
                 covered.UnionWith(child.InnerDeps);
@@ -92,6 +144,21 @@ public static class RecursiveStarkAggregator
             RecursiveProofs = recursive,
             Discards = Eip8288Dependencies.DiscardDependencies(covered, wanted)
         };
+
+        static bool IsCovered(IReadOnlyList<FrameDependency> dependencies, HashSet<FrameDependency> covered)
+        {
+            foreach (FrameDependency dependency in dependencies)
+                if (!covered.Contains(dependency)) return false;
+            return true;
+        }
+
+        // A child proving nothing the statement needs would only be discarded whole.
+        static bool Overlaps(IReadOnlyList<FrameDependency> dependencies, HashSet<FrameDependency> wanted)
+        {
+            foreach (FrameDependency dependency in dependencies)
+                if (wanted.Contains(dependency)) return true;
+            return false;
+        }
     }
 
     /// <summary>Folds inputs in bounded batches before generating the final recursive proof.</summary>

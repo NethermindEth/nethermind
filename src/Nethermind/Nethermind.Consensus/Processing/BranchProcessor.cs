@@ -239,7 +239,12 @@ public class BranchProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             processingException = ex;
-            if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            // A canceled pass and a production body waiting for its dependency proof are expected outcomes, not failures.
+            if (ex is OperationCanceledException or ProofAggregation.LeanProofNotReadyException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block processing stopped: {ex.Message}");
+            }
+            else if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             DrainAndClear(ref prewarming);
 

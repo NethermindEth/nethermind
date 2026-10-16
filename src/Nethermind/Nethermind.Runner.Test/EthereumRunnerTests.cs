@@ -172,6 +172,7 @@ public class EthereumRunnerTests
     [TestCase("foundation", false, true, WarmupSecretChange.Replaced)]
     [TestCase("amsterdam", false, false)]
     [TestCase("amsterdam", true, false)]
+    [TestCase("amsterdam-future", false, false)]
     [TestCase("bogota", false, false)]
     [TestCase("foundation", false, false, WarmupSecretChange.None, 10_000_000_000UL)]
     [TestCase("foundation", false, true, WarmupSecretChange.None, 0UL, true)]
@@ -600,12 +601,14 @@ public class EthereumRunnerTests
 
     private static ChainSpec LoadWarmupChainSpec(string chain = "foundation")
     {
-        if (chain is "amsterdam" or "bogota")
+        if (chain is "amsterdam" or "amsterdam-future" or "bogota")
         {
             using Stream source = typeof(IConfig).Assembly.GetManifestResourceStream("Nethermind.Config.chainspec.hoodi.json")!;
             JsonNode genesis = JsonNode.Parse(source)!;
             genesis["config"]!["amsterdamTime"] = 0;
             if (chain == "bogota") genesis["config"]!["bogotaTime"] = 0;
+            // A devnet genesis scheduled after node start.
+            if (chain == "amsterdam-future") genesis["timestamp"] = $"0x{DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600:x}";
             using MemoryStream modified = new(System.Text.Encoding.UTF8.GetBytes(genesis.ToJsonString()));
             return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), NullLogManager.Instance).Load(modified);
         }
