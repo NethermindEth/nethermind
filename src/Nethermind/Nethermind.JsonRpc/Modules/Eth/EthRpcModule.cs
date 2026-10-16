@@ -1211,14 +1211,22 @@ public partial class EthRpcModule(
 
         SerializedLogsResult logs = new(filterLogs);
 
-        foreach (SerializedLogs blockLogs in FoundLogs.Serialize(filterLogs))
+        try
         {
-            logs.Add(blockLogs);
-            if (enforceMaxLogs && logs.Count > _rpcConfig.MaxLogsPerResponse)
+            foreach (SerializedLogs blockLogs in FoundLogs.Serialize(filterLogs))
             {
-                logs.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
+                logs.Add(blockLogs);
+                if (enforceMaxLogs && logs.Count > _rpcConfig.MaxLogsPerResponse)
+                {
+                    logs.Dispose();
+                    return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
+                }
             }
+        }
+        catch
+        {
+            logs.Dispose();
+            throw;
         }
 
         return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
