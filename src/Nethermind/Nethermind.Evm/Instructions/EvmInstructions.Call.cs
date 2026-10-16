@@ -201,7 +201,7 @@ public static partial class EvmInstructions
             // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
             state.AddAccountRead(delegated);
 
-            codeInfo = vm.CodeInfoRepository.GetDelegatedCodeInfo(delegated, spec);
+            codeInfo = vm.ResolveDelegatedCodeInfo(codeSource, delegated, spec);
         }
 
         // EIP-150: forward the requested gas to the child frame, capped at 63/64 of remaining.
@@ -248,6 +248,7 @@ public static partial class EvmInstructions
 
         // Fast-path for calls to externally owned accounts (non-contracts); EIP-8360 transfers need a frame to charge in.
         if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.IsTracingActions
+            && !vm.ShouldSkipEoaCallFastPath(TOpCall.ExecutionType, caller, target, codeSource, in callValue)
             && (!TSpec.IsEip8360Enabled || !hasValueTransfer || vm.VmState.AccessTracker.TransientCreates is null))
         {
             vm.ReturnDataBuffer = default;

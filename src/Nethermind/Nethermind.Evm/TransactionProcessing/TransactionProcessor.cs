@@ -351,9 +351,38 @@ namespace Nethermind.Evm.TransactionProcessing
             return ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsSimpleTransferFastPathCandidate(Transaction tx, bool isCodeOverridable)
-            => !isCodeOverridable && tx.AuthorizationList is null && !ForceSimpleTransferDisabled;
+        /// <summary>
+        /// Determines whether a transaction may use the empty-account simple-transfer optimization.
+        /// </summary>
+        /// <param name="tx">The transaction being prepared.</param>
+        /// <returns><c>true</c> when the optimization may be considered.</returns>
+        /// <remarks>
+        /// Specialized transaction processors can disable the optimization when their execution rules
+        /// require the full virtual-machine frame lifecycle.
+        /// </remarks>
+        protected virtual bool IsSimpleTransferFastPathCandidate(Transaction tx) =>
+            !ForceSimpleTransferDisabled && !_isCodeOverridable && tx.AuthorizationList is null;
+
+        /// <summary>
+        /// Resolves the code used to initialize a top-level transaction frame.
+        /// </summary>
+        /// <param name="codeInfoRepository">The repository associated with the transaction environment.</param>
+        /// <param name="codeSource">The transaction recipient.</param>
+        /// <param name="followDelegation">Whether the effective delegated code should be loaded.</param>
+        /// <param name="spec">The active release specification.</param>
+        /// <param name="delegationAddress">The delegation target encoded by the source account, if any.</param>
+        /// <returns>The code information used to create the top-level execution environment.</returns>
+        /// <remarks>
+        /// This hook runs on the regular top-level frame path. Processors that need it for recipients that
+        /// may use the simple-transfer optimization must also disable that optimization.
+        /// </remarks>
+        protected virtual CodeInfo ResolveTopLevelCodeInfo(
+            ICodeInfoRepository codeInfoRepository,
+            Address codeSource,
+            bool followDelegation,
+            IReleaseSpec spec,
+            out Address? delegationAddress) =>
+            codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, spec, out delegationAddress);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool HasNoExecutableCode(CodeInfo codeInfo, Address? delegationAddress)
@@ -369,7 +398,7 @@ namespace Nethermind.Evm.TransactionProcessing
             preloadedCodeInfo = null;
             preloadedDelegationAddress = null;
             Address? recipient = tx.To;
-            if (recipient is null || !IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)) return null;
+            if (recipient is null || !IsSimpleTransferFastPathCandidate(tx)) return null;
 
             preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);
             return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress) ? recipient : null;
@@ -1369,7 +1398,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: !spec.IsEip8037Enabled, spec, out delegationAddress);
+                    bool followDelegation = !spec.IsEip8037Enabled;
+                    codeInfo = ResolveTopLevelCodeInfo(
+                        codeInfoRepository,
+                        recipient,
+                        followDelegation,
+                        spec,
+                        out delegationAddress);
                 }
 
                 if (delegationAddress is not null)

@@ -378,6 +378,11 @@ public static partial class EvmInstructions
                 goto OutOfGas;
         }
 
+        // Chain-specific SELFDESTRUCT policies run after the standard base charge. Ethereum VMs leave this
+        // hook unhandled.
+        if (vm.TryExecuteSelfDestruct(ref stack, ref gas, out EvmExceptionType customResult))
+            return customResult;
+
         // Pop the inheritor address from the stack; signal underflow if missing.
         Address? inheritor = stack.PopAddress(vm.AddressCache);
         if (inheritor is null)

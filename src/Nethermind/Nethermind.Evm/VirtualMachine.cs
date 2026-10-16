@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -358,67 +359,74 @@ public partial class VirtualMachine<TGasPolicy>(
                 ReturnDataBuffer = default;
             }
 
-            Exception? failure;
-            string? substateError;
+            Exception? failure = null;
+            string? substateError = null;
             try
             {
-                CallResult callResult;
-
-                // If the current state represents a precompiled contract, handle it separately.
-                if (_currentState.IsPrecompile)
+                // Give specialized VMs a chance to finish a frame before the regular EVM or precompile path runs.
+                bool frameInitialized = TryExecuteFrameInitialization(_currentState, out CallResult callResult);
+                if (!frameInitialized)
                 {
-                    callResult = ExecutePrecompile(_currentState, IsTracingActions, out failure, out substateError);
-                    if (failure is not null)
+                    // If the current state represents a precompiled contract, handle it separately.
+                    if (_currentState.IsPrecompile)
                     {
-                        // Jump to the failure handler if a precompile error occurred.
-                        goto Failure;
-                    }
-                }
-                else
-                {
-                    if (!_currentState.IsContinuation)
-                    {
-                        // Report frame start before the EIP-7708 transfer log so it attaches to the frame being entered
-                        if (IsTracingActions) TraceTransactionActionStart(_currentState);
-                        AddTransferLog(_currentState);
-                    }
-
-                    // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
-                    if (_currentState.Env.CodeInfo is not null)
-                    {
-                        callResult = ExecuteCall<TTracingInst>(
-                            _previousCallResult,
-                            previousCallOutputLength,
-                            _previousCallOutputDestination);
+                        callResult = ExecutePrecompile(_currentState, IsTracingActions, out failure, out substateError);
+                        if (failure is not null)
+                        {
+                            // Jump to the failure handler if a precompile error occurred.
+                            goto Failure;
+                        }
                     }
                     else
                     {
-                        // The frame halts without running, so its gas is untouched. Report it to keep
-                        // the contract that ReportActionError is preceded by this frame's gas — otherwise
-                        // a tracer would attribute the caller's gas to it.
-                        if (IsTracingActions) _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(in _currentState.Gas));
-                        callResult = new(EvmExceptionType.InvalidCode);
-                    }
-
-                    // If the call did not finish with a return, set up the next call frame and continue.
-                    if (!callResult.IsReturn)
-                    {
-                        PrepareNextCallFrame(in callResult, ref previousCallOutputLength);
-                        continue;
-                    }
-
-                    // Handle exceptions raised during the call execution.
-                    if (callResult.IsException)
-                    {
-                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutputLength, out bool terminate);
-                        if (terminate)
+                        if (!_currentState.IsContinuation)
                         {
-                            _currentState = null!;
-                            return substate;
+                            // Report frame start before the EIP-7708 transfer log so it attaches to the frame being entered
+                            if (IsTracingActions) TraceTransactionActionStart(_currentState);
+                            AddTransferLog(_currentState);
                         }
-                        // Continue execution if the exception did not immediately finalize the transaction.
-                        continue;
+
+                        // Execute the regular EVM call if valid code is present; otherwise, mark as invalid.
+                        if (_currentState.Env.CodeInfo is not null)
+                        {
+                            callResult = ExecuteCall<TTracingInst>(
+                                _previousCallResult,
+                                previousCallOutputLength,
+                                _previousCallOutputDestination);
+                        }
+                        else
+                        {
+                            // The frame halts without running, so its gas is untouched. Report it to keep
+                            // the contract that ReportActionError is preceded by this frame's gas — otherwise
+                            // a tracer would attribute the caller's gas to it.
+                            if (IsTracingActions) _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(in _currentState.Gas));
+                            callResult = new(EvmExceptionType.InvalidCode);
+                        }
+
                     }
+                }
+
+                // Both regular calls and specialized frame adapters may stage a child frame or return
+                // an exceptional result. Keep their lifecycle handling in one place.
+                if (!callResult.IsReturn)
+                {
+                    PrepareNextCallFrame(in callResult, ref previousCallOutputLength);
+                    continue;
+                }
+
+                // Handle exceptions raised during the call execution.
+                // ExecutePrecompile handles its own failures and jumps to Failure before this point;
+                // only intercepted precompile results and regular frames reach the common handler.
+                if (callResult.IsException && (frameInitialized || !_currentState.IsPrecompile))
+                {
+                    TransactionSubstate substate = HandleException(in callResult, ref previousCallOutputLength, out bool terminate);
+                    if (terminate)
+                    {
+                        _currentState = null!;
+                        return substate;
+                    }
+                    // Continue execution if the exception did not immediately finalize the transaction.
+                    continue;
                 }
 
                 // If the current execution state is the top-level call, finalize tracing and return the result.
@@ -436,6 +444,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
                 // For nested call frames, merge the results and restore the previous execution state.
 #pragma warning disable IDE0063 // Cannot simplify: the `goto Failure` above jumps past this scope, which a `using` declaration would forbid (CS8648)
+                OnChildFrameCompleted(_currentState, callResult.ExceptionType, callResult.ShouldRevert, callResult.Output);
                 using (VmState<TGasPolicy> previousState = _currentState)
                 {
                     // Restore the previous state from the stack and mark it as a continuation.
@@ -506,7 +515,7 @@ public partial class VirtualMachine<TGasPolicy>(
 #pragma warning restore IDE0063
             }
             // Handle specific EVM or overflow exceptions by routing to the failure handling block.
-            catch (Exception ex) when (ex is EvmException or OverflowException)
+            catch (Exception ex) when ((ex is EvmException or OverflowException) && !IsFatalExecutionException(ex))
             {
                 failure = ex;
                 substateError = null;
@@ -529,6 +538,92 @@ public partial class VirtualMachine<TGasPolicy>(
 
     public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
         ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
+
+    /// <summary>
+    /// Gives a specialized virtual machine an opportunity to finish frame initialization before the
+    /// regular EVM or precompile path runs.
+    /// </summary>
+    /// <param name="currentState">The current frame, which may be newly entered or a continuation.</param>
+    /// <param name="result">The result to process when the frame is intercepted.</param>
+    /// <returns><c>true</c> when <paramref name="result"/> replaces normal frame execution.</returns>
+    /// <remarks>
+    /// The hook runs on each frame loop iteration before precompile account credit and before the regular
+    /// transfer log. Implementations should inspect <see cref="VmState{TGasPolicy}.IsContinuation"/> when
+    /// they need to distinguish a newly entered frame. The default implementation preserves Ethereum execution exactly.
+    /// </remarks>
+    protected virtual bool TryExecuteFrameInitialization(VmState<TGasPolicy> currentState, out CallResult result)
+    {
+        result = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Determines whether an exception represents a fatal execution dependency failure that must leave
+    /// the virtual-machine loop unchanged.
+    /// </summary>
+    /// <param name="exception">The exception observed by the execution loop.</param>
+    /// <returns><c>true</c> when the exception must propagate to the caller.</returns>
+    /// <remarks>The default routes EVM and overflow exceptions through Ethereum failure handling.</remarks>
+    protected virtual bool IsFatalExecutionException(Exception exception) => false;
+
+    /// <summary>
+    /// Determines whether the externally owned account call optimization should be skipped.
+    /// </summary>
+    /// <param name="executionType">The call opcode entering the target.</param>
+    /// <param name="caller">The account supplying the call value.</param>
+    /// <param name="target">The account receiving the call.</param>
+    /// <param name="codeSource">The account whose code is being entered.</param>
+    /// <param name="value">The value supplied by the call.</param>
+    /// <returns><c>true</c> when the full child frame path must be used.</returns>
+    /// <remarks>The default keeps the Ethereum empty-account fast path enabled.</remarks>
+    protected internal virtual bool ShouldSkipEoaCallFastPath(
+        ExecutionType executionType,
+        Address caller,
+        Address target,
+        Address codeSource,
+        in UInt256 value) => false;
+
+    /// <summary>Reports the completed result of a nested frame to a specialized virtual machine.</summary>
+    /// <remarks>The callback runs before the frame is merged or disposed and is a no-op for Ethereum.</remarks>
+    protected virtual void OnChildFrameCompleted(
+        VmState<TGasPolicy> childState,
+        EvmExceptionType exceptionType,
+        bool shouldRevert,
+        ReadOnlyMemory<byte> output)
+    {
+    }
+
+    /// <summary>
+    /// Resolves code after an EIP-7702 delegation target has been charged and identified.
+    /// </summary>
+    /// <param name="codeSource">The original account whose code was entered.</param>
+    /// <param name="delegated">The account named by the delegation designator.</param>
+    /// <param name="spec">The active release specification.</param>
+    /// <returns>The code to execute for the delegated call.</returns>
+    /// <remarks>
+    /// Ethereum resolves the delegated account directly. Specialized VMs can use the original source
+    /// to preserve chain-specific code-repository decorators while retaining the same default behavior.
+    /// </remarks>
+    protected internal virtual CodeInfo ResolveDelegatedCodeInfo(Address codeSource, Address delegated, IReleaseSpec spec) =>
+        CodeInfoRepository.GetDelegatedCodeInfo(delegated, spec);
+
+    /// <summary>
+    /// Gives a specialized virtual machine an opportunity to execute SELFDESTRUCT rules after the
+    /// standard fork-specific base cost has been charged.
+    /// </summary>
+    /// <param name="stack">The current EVM stack.</param>
+    /// <param name="gas">The current frame gas policy.</param>
+    /// <param name="result">The custom opcode result.</param>
+    /// <returns><c>true</c> when the specialized implementation handled the opcode.</returns>
+    /// <remarks>The default preserves the standard Ethereum SELFDESTRUCT implementation.</remarks>
+    protected internal virtual bool TryExecuteSelfDestruct(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        out EvmExceptionType result)
+    {
+        result = EvmExceptionType.None;
+        return false;
+    }
 
     private void DisposeActiveFrames(VmState<TGasPolicy> topLevel)
     {
@@ -898,6 +993,11 @@ public partial class VirtualMachine<TGasPolicy>(
         EvmException? evmException = failure as EvmException;
         EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
 
+        if (!_currentState.IsTopLevel)
+        {
+            OnChildFrameCompleted(_currentState, errorType, shouldRevert: false, default);
+        }
+
         // Errors are reported even when no instruction start is open.
         if (TTracingInst.IsActive)
         {
@@ -1101,6 +1201,11 @@ public partial class VirtualMachine<TGasPolicy>(
         _worldState.Restore(_currentState.Snapshot);
 
         RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
+
+        if (!_currentState.IsTopLevel)
+        {
+            OnChildFrameCompleted(_currentState, callResult.ExceptionType, shouldRevert: false, default);
+        }
 
         // If this is the top-level call, return a final transaction substate encapsulating the error.
         // The state-gas reset is performed by TransactionProcessor.Refund (see top-level halt
