@@ -689,8 +689,6 @@ public sealed class BeaconSyncOrchestrator(
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
-                // The imports are not yet reflected in the head, so the next pass runs the step again.
-                _importedSinceHeadStep = true;
                 Interlocked.Increment(ref Metrics.WorkerFaultsCount);
                 if (_logger.IsError) _logger.Error("Import worker failed on the head step and skipped it; the next pass runs it again.", e);
             }
@@ -2658,6 +2656,20 @@ public sealed class BeaconSyncOrchestrator(
     {
         token.ThrowIfCancellationRequested();
         _importedSinceHeadStep = false;
+        try
+        {
+            await RunHeadStepCoreAsync(token);
+        }
+        catch
+        {
+            // Whichever caller absorbs the fault, the imports are not yet reflected in the head, so the next pass runs the step again.
+            _importedSinceHeadStep = true;
+            throw;
+        }
+    }
+
+    private async Task RunHeadStepCoreAsync(CancellationToken token)
+    {
         _importsSinceHeadStep = 0;
         _headStepMs = slotClock.UnixMilliseconds;
 
