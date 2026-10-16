@@ -18,7 +18,7 @@ public sealed class DecliningRunner : FrameCodeRunner<EthereumGasPolicy>
     public int Offers => _offers;
 
     protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
     {
         Interlocked.Increment(ref _offers);
         return Declined;
@@ -35,7 +35,7 @@ public sealed class CountingRunner : FrameCodeRunner<EthereumGasPolicy>
     public long Interpreted => Interlocked.Read(ref _interpreted);
 
     protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
     {
         _offers.Enqueue((programCounter, flags));
         return DeclinedReportingOpcodes;
@@ -60,7 +60,7 @@ public sealed unsafe class CheckedSteppingRunner(int steps) : FrameCodeRunner<Et
     public long Stepped => Interlocked.Read(ref _stepped);
 
     protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
     {
         ReadOnlySpan<byte> code = codeInfo.CodeSpan;
         for (int step = 0; step < steps && (nuint)programCounter < (nuint)code.Length; step++)
@@ -78,6 +78,7 @@ public sealed unsafe class CheckedSteppingRunner(int steps) : FrameCodeRunner<Et
             Execute(body)(ref stack, ref gas, vm, ref next);
             programCounter = next;
             vm.OpCodeCount++;
+            opCodesSincePoll++;
             Interlocked.Increment(ref _stepped);
         }
 
@@ -100,7 +101,7 @@ public sealed unsafe class FinishingRunner : FrameCodeRunner<EthereumGasPolicy>
     public int Finished => _finished;
 
     protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
     {
         ReadOnlySpan<byte> code = codeInfo.CodeSpan;
         while ((nuint)programCounter < (nuint)code.Length)
@@ -127,6 +128,7 @@ public sealed unsafe class FinishingRunner : FrameCodeRunner<EthereumGasPolicy>
             Execute(body)(ref stack, ref gas, vm, ref next);
             programCounter = next;
             vm.AddOpCodes(1);
+            opCodesSincePoll++;
         }
 
         return Declined;
@@ -140,10 +142,14 @@ public sealed unsafe class FinishingRunner : FrameCodeRunner<EthereumGasPolicy>
 public sealed class PollingRunner : FrameCodeRunner<EthereumGasPolicy>
 {
     protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
     {
         if ((flags & FrameRunFlags.Cancelable) != 0)
+        {
             PollCancellation(vm);
+            opCodesSincePoll = 0;
+        }
+
         return Declined;
     }
 }
@@ -154,7 +160,7 @@ public sealed class CodeStateRunner : FrameCodeRunner<EthereumGasPolicy>
     public readonly List<(CodeInfo Code, object? Found, object Kept)> Seen = [];
 
     protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
     {
         ref object? slot = ref CodeState(codeInfo);
         object? found = Volatile.Read(ref slot);
@@ -170,8 +176,8 @@ public sealed class SwitchingRunner : FrameCodeRunner<EthereumGasPolicy>
     public FrameCodeRunner<EthereumGasPolicy>? Inner { get; set; }
 
     protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags) =>
-        Inner is { } inner ? inner.Run(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, flags) : Declined;
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags) =>
+        Inner is { } inner ? inner.Run(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags) : Declined;
 
     protected internal override void OnInterpreted(CodeInfo codeInfo, int opCodes) => Inner?.OnInterpreted(codeInfo, opCodes);
 }

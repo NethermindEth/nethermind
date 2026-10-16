@@ -15,8 +15,10 @@ namespace Nethermind.Evm;
 /// every resume after a child frame, whenever the program counter is inside the code. A frame resumed at the end of
 /// its code stops without an offer, as the dispatch loop stops it. In a cancelable run the machine has polled
 /// cancellation immediately before every offer, so <see cref="Run"/> must not poll before its first opcode; it polls
-/// with <see cref="PollCancellation"/> at taken jumps, once <see cref="CancellationPollInterval"/> opcodes have run
-/// since the offer, as the dispatch loop does.
+/// with <see cref="PollCancellation"/> at the first taken jump once <see cref="CancellationPollInterval"/> opcodes have
+/// run since the offer or its last poll, as the dispatch loop does. On a hand-back it reports the opcodes it ran since
+/// then through <c>opCodesSincePoll</c>, which the loop counts on from, so the frame polls exactly where and as often
+/// as the interpreter alone would.
 /// </para>
 /// <para>
 /// <see cref="Run"/> returns either what the dispatch loop would have returned for the rest of the frame, with the
@@ -28,6 +30,14 @@ namespace Nethermind.Evm;
 /// <para>
 /// <see cref="Run"/> may throw only what opcode bodies and <see cref="PollCancellation"/> throw. One instance serves many
 /// machines and threads.
+/// </para>
+/// <para>
+/// Register a runner only through an <c>IReadOnlyQueryModule</c>, which scopes it to the read-only query environments.
+/// The machine takes a runner wherever the container can resolve one, so a runner registered in any other module is
+/// attached to block processing, prewarming and block validation as well. Only <see cref="VirtualMachine{TGasPolicy}"/>,
+/// <see cref="EthereumVirtualMachine"/> and <see cref="VirtualMachine"/> accept a runner; a subclass that does not pass
+/// one to the base constructor, such as Taiko's <c>TaikoEthereumVirtualMachine</c>, runs every frame on the dispatch
+/// loop, so a query module on such a chain gets no runner.
 /// </para>
 /// </remarks>
 [Experimental("NMEVM0001")]
@@ -49,6 +59,12 @@ public abstract partial class FrameCodeRunner<TGasPolicy> where TGasPolicy : str
 
     /// <summary>Runs the frame of <paramref name="codeInfo"/> from <paramref name="programCounter"/>.</summary>
     /// <param name="bodies">What each entry of the untraced dispatch table the frame would run on executes.</param>
+    /// <param name="opCodesSincePoll">
+    /// Zero on entry. On <see cref="Declined"/> or <see cref="DeclinedReportingOpcodes"/> in a cancelable run, the
+    /// opcodes the runner counted since the offer or its last <see cref="PollCancellation"/>, whichever came later, as
+    /// the dispatch loop counts them; the loop then polls at its first taken jump once the interval is spent. Read only
+    /// on a hand-back in a cancelable run.
+    /// </param>
     protected internal abstract EvmExceptionType Run(
         VirtualMachine<TGasPolicy> vm,
         CodeInfo codeInfo,
@@ -56,6 +72,7 @@ public abstract partial class FrameCodeRunner<TGasPolicy> where TGasPolicy : str
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
         ref nint programCounter,
+        ref int opCodesSincePoll,
         FrameRunFlags flags);
 
     /// <summary>The dispatch loop ran <paramref name="opCodes"/> opcodes of a frame this runner declined with <see cref="DeclinedReportingOpcodes"/>.</summary>

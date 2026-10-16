@@ -170,7 +170,7 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
         public readonly List<(nint ProgramCounter, nint Head, byte[] BottomWord, byte[] Input)> Seen = [];
 
         protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-            scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+            scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
         {
             byte[] bottom = stack.Head > 0
                 ? MemoryMarshal.CreateReadOnlySpan(ref stack.StackBase, EvmStack.WordSize).ToArray()
@@ -267,6 +267,70 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
             Assert.That(interpreted.Polls, Is.GreaterThan(1), "precondition: the loop passes the poll interval");
             Assert.That(stepped, Is.EqualTo(interpreted), "the same polls, gas and opcode count whoever ran the frame");
         }
+    }
+
+    /// <summary>
+    /// 1023 JUMPDESTs, PUSH2 0x0403, JUMP, JUMPDEST, STOP: the JUMP is taken as the 1025th opcode, past the poll interval,
+    /// so the interpreter polls there as well as on entry.
+    /// </summary>
+    private static byte[] PollBoundaryCode() =>
+        Bytes.FromHexString(string.Concat(Enumerable.Repeat("5b", 1023)) + "610403" + "56" + "5b" + "00");
+
+    private static IEnumerable<TestCaseData> HandBackRunners()
+    {
+        yield return new TestCaseData(null).SetArgDisplayNames("no runner");
+        yield return new TestCaseData((Func<FrameCodeRunner<EthereumGasPolicy>>)(static () => new DecliningRunner())).SetArgDisplayNames("declining");
+        yield return new TestCaseData((Func<FrameCodeRunner<EthereumGasPolicy>>)(static () => new CountingRunner())).SetArgDisplayNames("declining, reporting opcodes");
+        foreach (int steps in new[] { 1, 17, 1000, 1023, 1024, 2000 })
+            yield return new TestCaseData((Func<FrameCodeRunner<EthereumGasPolicy>>)(() => new CheckedSteppingRunner(steps))).SetArgDisplayNames($"stepping {steps}");
+        yield return new TestCaseData((Func<FrameCodeRunner<EthereumGasPolicy>>)(static () => new FinishingRunner())).SetArgDisplayNames("finishing");
+    }
+
+    [TestCaseSource(nameof(HandBackRunners))]
+    public void A_hand_back_keeps_the_poll_interval_the_runner_spent(Func<FrameCodeRunner<EthereumGasPolicy>>? runner)
+    {
+        byte[] code = PollBoundaryCode();
+        Outcome interpreted = Run(code, cancelable: true, bare: true);
+        _runner.Inner = runner?.Invoke();
+
+        Outcome run = Run(code, cancelable: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(interpreted.Exception, Is.EqualTo(EvmExceptionType.None), "precondition: the frame runs to its STOP");
+            Assert.That(interpreted.OpCodes, Is.EqualTo(1027), "precondition: the frame's opcodes, its STOP included");
+            Assert.That(interpreted.Polls, Is.EqualTo(2), "precondition: the interpreter polls on entry and at the JUMP past the interval");
+            Assert.That(run.Polls, Is.EqualTo(interpreted.Polls), "the same number of polls whoever ran the start of the frame");
+            Assert.That(run, Is.EqualTo(interpreted), "and the same gas, output and opcode count");
+        }
+    }
+
+    [TestCaseSource(nameof(HandBackRunners))]
+    public void A_hand_back_cancels_at_the_poll_the_interpreter_cancels_at(Func<FrameCodeRunner<EthereumGasPolicy>>? runner)
+    {
+        byte[] code = PollBoundaryCode();
+        int interpreted = RunCancelled(code, cancelAtPoll: 2, bare: true);
+        _runner.Inner = runner?.Invoke();
+
+        int run = RunCancelled(code, cancelAtPoll: 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(interpreted, Is.EqualTo(2), "precondition: the interpreter stops at the JUMP's poll");
+            Assert.That(run, Is.EqualTo(interpreted), "a runner's opcodes before the hand-back cannot let the frame outrun the poll");
+        }
+    }
+
+    [Test]
+    public void A_runner_poll_restarts_the_interval_it_hands_back()
+    {
+        // The runner polls on the offer and reports none of the interval spent, so the loop polls 1024 opcodes later,
+        // at the JUMP again: entry, the runner's own and the JUMP's.
+        _runner.Inner = new PollingRunner();
+
+        Outcome run = Run(PollBoundaryCode(), cancelable: true);
+
+        Assert.That(run.Polls, Is.EqualTo(3));
     }
 
     [Test]

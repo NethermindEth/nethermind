@@ -34,7 +34,7 @@ public class ReadOnlyQueryModuleTests
         public int Offers => Volatile.Read(ref _offers);
 
         protected override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-            scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+            scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
         {
             Interlocked.Increment(ref _offers);
             return Declined;

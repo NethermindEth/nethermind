@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -29,7 +30,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TCancelable : struct, IFlag
     {
         // The dispatch loop's entry poll, taken here so that a runner is offered the frame after it, as the loop's
-        // first opcode would run, and polls the same number of times however the frame then runs.
+        // first opcode would run, and polls the same number of times however the frame then runs. A frame resumed at
+        // the end of its code takes none, with or without a runner: the loop's end-of-code return comes before its poll.
         if (TCancelable.IsActive && (nuint)programCounter < (nuint)stack.CodeLength && _txTracer.IsCancelled)
             ThrowOperationCanceledException();
 
@@ -52,17 +54,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         FrameCodeRunner<TGasPolicy> runner = _frameCodeRunner!;
         CodeInfo codeInfo = VmState.Env.CodeInfo;
+        // The machine polled just before the offer, so the runner starts with none of the interval spent.
+        int opCodesSincePoll = 0;
         EvmExceptionType result = runner.Run(this, codeInfo, _frameCodeBodies ??= GetOpcodeBodySet(Spec), ref stack, ref gas,
-            ref programCounter, TCancelable.IsActive ? FrameRunFlags.Cancelable : FrameRunFlags.None);
+            ref programCounter, ref opCodesSincePoll, TCancelable.IsActive ? FrameRunFlags.Cancelable : FrameRunFlags.None);
         if (result == FrameCodeRunner<TGasPolicy>.Declined)
-            return RunDispatchLoop<OffFlag, TCancelable>(ref stack, ref gas, ref programCounter);
+            return RunDispatchLoop<OffFlag, TCancelable>(ref stack, ref gas, ref programCounter, HandedBackSincePoll<TCancelable>(opCodesSincePoll));
         if (result != FrameCodeRunner<TGasPolicy>.DeclinedReportingOpcodes)
             return result;
 
         int before = OpCodeCount;
-        result = RunDispatchLoop<OffFlag, TCancelable>(ref stack, ref gas, ref programCounter);
+        result = RunDispatchLoop<OffFlag, TCancelable>(ref stack, ref gas, ref programCounter, HandedBackSincePoll<TCancelable>(opCodesSincePoll));
         runner.OnInterpreted(codeInfo, OpCodeCount - before);
         return result;
+    }
+
+    /// <summary>The poll budget a runner handed back with; only a cancelable run reads it.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nint HandedBackSincePoll<TCancelable>(int opCodesSincePoll) where TCancelable : struct, IFlag
+    {
+        if (!TCancelable.IsActive)
+            return 0;
+
+        Debug.Assert(opCodesSincePoll >= 0, "A runner cannot have run a negative number of opcodes since the last poll.");
+        // A negative report would only postpone the next poll; clamp it so a faulty runner cannot.
+        return Math.Max(opCodesSincePoll, 0);
     }
 
     partial void PrepareFrameCodeRunner<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
