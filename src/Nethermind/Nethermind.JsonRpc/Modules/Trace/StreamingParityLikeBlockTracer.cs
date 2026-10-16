@@ -187,16 +187,22 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     /// while the rest of the block is still being traced.</summary>
     public void WriteTraces(IReadOnlyCollection<ParityLikeTxTrace> traces)
     {
-        foreach (ParityLikeTxTrace trace in traces)
+        try
         {
-            _cancellationToken.ThrowIfCancellationRequested();
-            if (_mode == ParityTraceStreamMode.Replay)
-                ParityReplayEnvelopeWriter.WriteFromTrace(_writer, trace, _includeTxHash, _jsonOptions);
-            else
-                EmitStoreItems(trace);
+            foreach (ParityLikeTxTrace trace in traces)
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+                if (_mode == ParityTraceStreamMode.Replay)
+                    ParityReplayEnvelopeWriter.WriteFromTrace(_writer, trace, _includeTxHash, _jsonOptions);
+                else
+                    EmitStoreItems(trace);
+            }
+        }
+        finally
+        {
+            traces.TryDispose();
         }
 
-        traces.TryDispose();
         FlushPipe();
     }
 
