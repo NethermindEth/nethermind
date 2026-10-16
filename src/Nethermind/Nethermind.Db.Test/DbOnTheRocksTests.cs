@@ -20,15 +20,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
 using Nethermind.State.Flat;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -102,47 +99,23 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void BlobBatchRead_AfterDatabaseCloses_PreservesOwnedTransactions([Values(1, 2, 4)] int count)
+        public void GetMany_ThroughBatchCapability_WithInvalidBuffers_PreservesOutput(
+            [Values("default", "column")] string backend, [Values(1, 2, 3, 257)] int count)
         {
-            Transaction[] stored = new Transaction[2];
-            EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
-            for (int i = 0; i < stored.Length; i++)
-            {
-                stored[i] = Build.A.Transaction.WithShardBlobTxTypeAndFields()
-                    .WithNonce(i).WithTimestamp((ulong)(i + 17))
-                    .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
-            }
+            using IDb owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            IBatchReadOnlyDb batch = (IBatchReadOnlyDb)store;
+            long?[] output = Enumerable.Repeat<long?>(-1, count).ToArray();
 
-            Transaction?[] results = Enumerable.Repeat<Transaction?>(stored[0], count + 1).ToArray();
-            Transaction?[] expected = new Transaction?[count + 1];
-            expected[^1] = stored[0];
-            using (ColumnsDb<BlobTxsColumns> db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), _dbConfig,
-                _rocksdbConfigFactory, LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>()))
-            {
-                BlobTxStorage storage = new(db);
-                foreach (Transaction tx in stored) storage.Add(tx);
-                db.Flush();
-                TxLookupKey[] keys = new TxLookupKey[count];
-                for (int i = 0; i < count; i++)
-                {
-                    if (i == 1)
-                    {
-                        keys[i] = new TxLookupKey(TestItem.KeccakC, TestItem.AddressC, 99);
-                        continue;
-                    }
-                    Transaction tx = stored[i == 2 ? 1 : 0];
-                    expected[i] = tx;
-                    keys[i] = new TxLookupKey(tx.Hash!, tx.SenderAddress!, tx.Timestamp);
-                }
-
-                Assert.That(storage.TryGetMany(keys, count, results), Is.EqualTo(count == 1 ? 1 : count - 1));
-            }
-
-            for (int i = 0; i < results.Length; i++)
-            {
-                Assert.That(results[i], Is.EqualTo(expected[i])
-                    .UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
-            }
+            Assert.That(() => batch.GetMany<long?, CountingValueDecoder>(new byte[count], 0, output, default),
+                Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(() => batch.GetMany<long?, CountingValueDecoder>(new byte[count - 1], 1, output, default),
+                Throws.TypeOf<ArgumentException>());
+            Assert.That(() => batch.GetMany<long?, CountingValueDecoder>(new byte[count + 1], 1, output, default),
+                Throws.TypeOf<ArgumentException>());
+            Assert.That(() => batch.GetMany<long?, IValueDecoder<long?>>(new byte[count], 1, output, null!),
+                Throws.TypeOf<ArgumentNullException>());
+            Assert.That(output, Is.All.EqualTo(-1));
         }
 
         [TearDown]

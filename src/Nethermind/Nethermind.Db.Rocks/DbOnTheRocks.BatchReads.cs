@@ -9,8 +9,8 @@ namespace Nethermind.Db.Rocks;
 public partial class DbOnTheRocks
 {
     /// <inheritdoc/>
-    public void GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
-        where TDecoder : IValueDecoder<T> => GetManyWithColumnFamily(keys, keyLength, values, decoder, null);
+    void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder) =>
+        GetManyWithColumnFamily(keys, keyLength, values, decoder, null);
 
     internal void GetManyWithColumnFamily<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
         TDecoder decoder, IColumnFamilyHandle? family) where TDecoder : IValueDecoder<T>
