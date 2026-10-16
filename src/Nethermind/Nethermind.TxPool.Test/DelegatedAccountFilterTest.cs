@@ -105,7 +105,7 @@ internal class DelegatedAccountFilterTest
     private static IEnumerable<TestCaseData> KeyedNonceDelegationCases()
     {
         yield return new TestCaseData((UInt256[])null, AcceptTxResult.NotCurrentNonceForDelegation).SetName("the account nonce domain");
-        yield return new TestCaseData(new UInt256[] { UInt256.Zero }, AcceptTxResult.NotCurrentNonceForDelegation).SetName("the [0] set, which aliases the account nonce");
+        yield return new TestCaseData(System.Array.Empty<UInt256>(), AcceptTxResult.NotCurrentNonceForDelegation).SetName("the empty set, which selects the account nonce");
         yield return new TestCaseData(new UInt256[] { 0xbeef }, AcceptTxResult.Accepted).SetName("a fresh keyed domain");
     }
 

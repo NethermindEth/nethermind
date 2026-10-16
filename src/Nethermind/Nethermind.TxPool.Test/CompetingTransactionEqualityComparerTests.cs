@@ -28,12 +28,13 @@ namespace Nethermind.TxPool.Test
                 yield return new TestCaseData(transaction, transaction).Returns(true).SetArgDisplayNames("Same_instance");
                 yield return new TestCaseData(transaction, Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).Returns(true).SetArgDisplayNames("Same_sender_and_nonce");
 
-                // Under EIP-8250 a keyed transaction's slot is (sender, nonce_keys, nonce_seq); the set [0]
-                // still aliases the account nonce.
+                // Under EIP-8250 a keyed transaction's slot is (sender, nonce_keys, nonce_seq); the empty set
+                // still selects the account nonce.
                 yield return new TestCaseData(KeyedTx([1]), KeyedTx([2])).Returns(false).SetArgDisplayNames("Different_nonce_keys");
                 yield return new TestCaseData(KeyedTx([1, 2]), KeyedTx([1, 2])).Returns(true).SetArgDisplayNames("Same_nonce_keys");
                 yield return new TestCaseData(KeyedTx([1]), Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).Returns(false).SetArgDisplayNames("Keyed_and_account_nonce_domains");
-                yield return new TestCaseData(KeyedTx([0]), Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).Returns(true).SetArgDisplayNames("Nonce_key_zero_aliases_the_account_nonce");
+                yield return new TestCaseData(KeyedTx([]), Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).Returns(true).SetArgDisplayNames("Empty_nonce_keys_selects_the_account_nonce");
+                yield return new TestCaseData(KeyedTx([0]), Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).Returns(false).SetArgDisplayNames("Nonce_key_zero_is_a_keyed_domain");
             }
         }
 
@@ -70,7 +71,6 @@ namespace Nethermind.TxPool.Test
                 yield return new TestCaseData(null).SetArgDisplayNames("Null");
                 yield return new TestCaseData(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).SetArgDisplayNames("Account_nonce");
                 yield return new TestCaseData(KeyedTx([])).SetArgDisplayNames("Empty_nonce_keys");
-                yield return new TestCaseData(KeyedTx([0])).SetArgDisplayNames("Nonce_key_zero");
             }
         }
     }
