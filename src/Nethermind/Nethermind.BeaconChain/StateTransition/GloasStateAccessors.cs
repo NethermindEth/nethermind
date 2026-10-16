@@ -111,29 +111,6 @@ public static partial class GloasStateAccessors
     public static partial ulong ComputeConsolidationEpochAndUpdateChurn(this BeaconStateGloas state, ulong consolidationBalance, EpochCache cache);
     public static partial void InitiateValidatorExit(this BeaconStateGloas state, int index, EpochCache cache);
 
-    /// <summary>Spec <c>add_validator_to_registry</c> (Electra, unmodified in Gloas): appends a deposit-derived validator and its per-validator list entries.</summary>
-    public static void AddValidatorToRegistry(this BeaconStateGloas state, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount)
-    {
-        Validator validator = new()
-        {
-            Pubkey = pubkey,
-            WithdrawalCredentials = withdrawalCredentials,
-            EffectiveBalance = 0,
-            Slashed = false,
-            ActivationEligibilityEpoch = Presets.FarFutureEpoch,
-            ActivationEpoch = Presets.FarFutureEpoch,
-            ExitEpoch = Presets.FarFutureEpoch,
-            WithdrawableEpoch = Presets.FarFutureEpoch,
-        };
-        validator.EffectiveBalance = Math.Min(amount - amount % Presets.EffectiveBalanceIncrement, validator.GetMaxEffectiveBalance());
-
-        state.Validators = [.. state.Validators!, validator];
-        state.Balances = [.. state.Balances!, amount];
-        state.PreviousEpochParticipation = [.. state.PreviousEpochParticipation!, 0];
-        state.CurrentEpochParticipation = [.. state.CurrentEpochParticipation!, 0];
-        state.InactivityScores = [.. state.InactivityScores!, 0UL];
-    }
-
     public static partial ulong[] GetAttestingIndices(this BeaconStateGloas state, AttestationGloas attestation, CommitteeCache committees);
     public static partial IndexedAttestationGloas GetIndexedAttestation(this BeaconStateGloas state, AttestationGloas attestation, CommitteeCache committees);
 
