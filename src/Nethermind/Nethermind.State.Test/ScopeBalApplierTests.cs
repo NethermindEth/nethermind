@@ -24,7 +24,7 @@ public class ScopeBalApplierTests
     [TestCase(0, 7)]
     [TestCase(0, 0)]
     [TestCase(-1, 7)]
-    public void ApplyBal_DisposesEveryStorageBatchWhenWorkerFails(int failingIndex, int failingDisposeIndex)
+    public void ApplyBal_DisposesEveryStorageBatchWhenStorageBatchFails(int failingIndex, int failingDisposeIndex)
     {
         const int count = 16;
         bool disposalAlsoFails = failingDisposeIndex >= 0;

@@ -147,7 +147,6 @@ public static class ScopeBalApplier
                 try { batch?.Dispose(); }
                 catch (Exception e)
                 {
-                    // Secondary to the failure being propagated.
                     ILogger logger = logManager.GetClassLogger(typeof(ScopeBalApplier));
                     if (logger.IsDebug) logger.Debug($"Swallowed storage batch disposal failure after a failed BAL apply: {e}");
                 }
