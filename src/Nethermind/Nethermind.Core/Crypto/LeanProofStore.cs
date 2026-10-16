@@ -29,6 +29,11 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     private readonly Dictionary<ValueHash256, ProofRecord> _identities = [];
     private readonly Dictionary<ValueHash256, ProofRecord> _recursiveByDeps = [];
     private readonly LinkedList<ProofRecord> _recursiveCache = [];
+
+    /// <summary>EIP-8288 inclusion-list proofs answered valid: two slots of <c>IL_COMMITTEE_SIZE</c> commitments, at most
+    /// <c>MAX_AGGREGATE_PROOF_BYTES</c> each, kept servable through their slot whatever the other tiers evict.</summary>
+    public const int MaxRetainedInclusionListProofs = 2 * Eip7805Constants.InclusionListCommitteeSize;
+    private readonly LinkedList<ProofRecord> _inclusionListProofs = [];
     private readonly Dictionary<(object? Owner, ValueHash256 Hash), PendingProof> _pending = [];
     private readonly Dictionary<Address, SenderPins> _senders = [];
     private readonly AsyncLocal<AdmissionScope?> _admission = new();
@@ -503,6 +508,28 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         }
     }
 
+    /// <summary>Retains an inclusion-list proof answered valid, so it stays servable by <c>stark_proof_hash</c> and available for
+    /// building through its slot.</summary>
+    public void RetainInclusionListProof(IReadOnlyList<FrameDependency> dependencies, byte[] proof)
+    {
+        ValidateShape(dependencies, null, proof);
+        if (proof.Length > Eip8288Constants.MaxAggregateProofBytes) throw new ArgumentException("Inclusion-list proof exceeds MAX_AGGREGATE_PROOF_BYTES.");
+        ValueHash256 proofHash = ValueKeccak.Compute(proof);
+        ValueHash256 dependencyHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
+        lock (_lock)
+        {
+            for (LinkedListNode<ProofRecord>? node = _inclusionListProofs.First; node is not null; node = node.Next)
+                if (node.Value.RecursiveInput.ProofHash == proofHash && node.Value.DependencyHash == dependencyHash)
+                {
+                    _inclusionListProofs.Remove(node);
+                    _inclusionListProofs.AddLast(node);
+                    return;
+                }
+            _inclusionListProofs.AddLast(CreateRecord(dependencies, null, proof));
+            if (_inclusionListProofs.Count > MaxRetainedInclusionListProofs) _inclusionListProofs.RemoveFirst();
+        }
+    }
+
     /// <summary>Retrieves a held recursive proof by <c>stark_proof_hash</c> alone, as <c>engine_getInclusionListProofV1</c> serves
     /// an <c>il_proof</c>.</summary>
     public bool TryGetRecursiveProof(in ValueHash256 proofHash, out byte[]? proof, out FrameDependency[]? dependencies)
@@ -518,6 +545,8 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
 
     private ProofRecord? FindRecursive(in ValueHash256 proofHash, ValueHash256? depsHash)
     {
+        foreach (ProofRecord record in _inclusionListProofs)
+            if (record.RecursiveInput.ProofHash == proofHash && (depsHash is null || record.DependencyHash == depsHash)) return record;
         foreach (ProofRecord record in _recursiveCache)
             if (record.RecursiveInput.ProofHash == proofHash && (depsHash is null || record.DependencyHash == depsHash)) return record;
         foreach (ProofRecord record in _identities.Values)

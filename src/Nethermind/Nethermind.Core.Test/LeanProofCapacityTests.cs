@@ -21,8 +21,9 @@ public class LeanProofCapacityTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(LeanProofCapacity.CapacityError(dependencies), Is.Null);
-            // EIP-8288: stark_proof carries no dependencies, so the guest proof is the whole proof budget.
-            Assert.That(Eip8288Constants.MaxMixedGuestProofBytes, Is.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
+            // EIP-8288: stark_proof carries no dependencies, so the guest proof is the whole proof; the native acceptance bound
+            // covers MAX_AGGREGATE_PROOF_BYTES, which callers enforce first.
+            Assert.That(Eip8288Constants.MaxMixedGuestProofBytes, Is.GreaterThanOrEqualTo(Eip8288Constants.MaxAggregateProofBytes));
         }
     }
 

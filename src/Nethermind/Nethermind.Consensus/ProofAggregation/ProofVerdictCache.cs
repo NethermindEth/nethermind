@@ -15,8 +15,10 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// arriving with a different or unresolvable transaction list, or committed to by an inclusion list, is not verified again.
 /// </summary>
 /// <remarks>
-/// <c>covered</c> is a mode-1 wrapper's or <c>il_proof</c>'s dependency set, or a mode-0 witness's single dependency. Both
-/// verdicts are kept: verification is deterministic for a fixed <see cref="Eip8288Constants.AggregatedVk"/>. A recursive verdict
+/// <c>covered</c> is a mode-1 wrapper's or <c>il_proof</c>'s dependency set, or a mode-0 witness's single dependency. Keys also
+/// carry the verification kind and the verifier configuration, so a direct witness never satisfies an aggregate lookup or the
+/// reverse, and a verdict under one <see cref="Eip8288Constants.AggregatedVk"/> never answers another. Both verdicts are kept:
+/// verification is deterministic for a fixed configuration. A recursive verdict
 /// keeps its preimage <c>proof_deps</c>, so an inclusion-list commitment to a held proof is checked by lookup and subset test
 /// (EIPs#12475). One cache exists per backend verifier, so independent verifiers (and tests) never share verdicts.
 /// </remarks>
@@ -31,8 +33,17 @@ public sealed class ProofVerdictCache
     private static readonly ConditionalWeakTable<ILeanProofVerifier, ProofVerdictCache> Caches = [];
 
     private readonly Lock _gate = new();
-    private readonly Dictionary<(ValueHash256 Proof, ValueHash256 Dependencies), bool> _verdicts = [];
-    private readonly Queue<(ValueHash256 Proof, ValueHash256 Dependencies)> _order = new();
+    private readonly Dictionary<VerdictKey, bool> _verdicts = [];
+    private readonly Queue<VerdictKey> _order = new();
+
+    /// <summary>What was verified: a recursive aggregate proof, or a direct witness for one dependency's scheme.</summary>
+    private enum VerificationKind : byte { Aggregate, Direct }
+
+    private readonly record struct VerdictKey(VerificationKind Kind, ValueHash256 Configuration, ValueHash256 Proof, ValueHash256 Dependencies);
+
+    /// <summary>The verifier configuration verdicts are scoped to: the pinned <see cref="Eip8288Constants.AggregatedVk"/>, which
+    /// fixes the aggregate circuit and the enabled schemes' verification parameters.</summary>
+    private static readonly ValueHash256 Configuration = ValueKeccak.Compute(Eip8288Constants.AggregatedVk);
     private readonly Dictionary<ValueHash256, FrameDependency[]> _preimages = [];
     private readonly Queue<ValueHash256> _preimageOrder = new();
     private int _preimageDependencies;
@@ -51,7 +62,7 @@ public sealed class ProofVerdictCache
     {
         ValueHash256 deps = depsHash;
         ProofVerdictCache cache = For(verifier);
-        bool valid = cache.Verify(proof, in deps, () => verifier.VerifyRecursiveStark(in deps, Eip8288Constants.AggregatedVk, proof));
+        bool valid = cache.Verify(VerificationKind.Aggregate, proof, in deps, () => verifier.VerifyRecursiveStark(in deps, Eip8288Constants.AggregatedVk, proof));
         if (valid && proofDeps is not null) cache.RememberPreimage(in deps, proofDeps);
         return valid;
     }
@@ -67,13 +78,14 @@ public sealed class ProofVerdictCache
         };
         if (check is null) return false;
         ValueHash256 covered = Eip8288Dependencies.ComputeDepsHash([dependency]);
-        return For(verifier).Verify(witness, in covered, check);
+        return For(verifier).Verify(VerificationKind.Direct, witness, in covered, check);
     }
 
-    /// <summary>The known verdict for a proof under <paramref name="depsHash"/>, if any.</summary>
+    /// <summary>The known verdict for an aggregate proof under <paramref name="depsHash"/>, if any.</summary>
     public bool? TryGetVerdict(in ValueHash256 proofHash, in ValueHash256 depsHash)
     {
-        lock (_gate) return _verdicts.TryGetValue((proofHash, depsHash), out bool valid) ? valid : null;
+        lock (_gate)
+            return _verdicts.TryGetValue(new(VerificationKind.Aggregate, Configuration, proofHash, depsHash), out bool valid) ? valid : null;
     }
 
     /// <summary>The known preimage <c>proof_deps</c> of <paramref name="depsHash"/>, from any verified proof.</summary>
@@ -99,10 +111,10 @@ public sealed class ProofVerdictCache
         }
     }
 
-    private bool Verify(byte[] proof, in ValueHash256 dependencies, Func<bool> verify)
+    private bool Verify(VerificationKind kind, byte[] proof, in ValueHash256 dependencies, Func<bool> verify)
     {
         ValueHash256 proofHash = ValueKeccak.Compute(proof);
-        (ValueHash256, ValueHash256) key = (proofHash, dependencies);
+        VerdictKey key = new(kind, Configuration, proofHash, dependencies);
         lock (_gate)
             if (_verdicts.TryGetValue(key, out bool known)) return known;
         bool valid = verify();

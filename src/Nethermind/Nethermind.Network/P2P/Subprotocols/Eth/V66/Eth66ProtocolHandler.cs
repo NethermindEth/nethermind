@@ -1,17 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
@@ -20,12 +15,14 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
-using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
 using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage;
 
@@ -36,15 +33,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     /// </summary>
     public class Eth66ProtocolHandler : Eth65ProtocolHandler, IStaticProtocolInfo
     {
-        private readonly object _leanRecoveryLock = new();
-        private readonly Dictionary<long, LeanRecovery> _leanRequests = [];
-        private readonly Queue<long> _leanRetiredOrder = [];
-        private readonly HashSet<long> _leanRetired = [];
-        private readonly LeanEthTransactions? _leanTransactions;
-        private bool _leanRecoveryStopped;
-        private PublicKey? _leanRecoveryKey;
-        private sealed record LeanRecovery(ValueHash256[] Hashes, Func<int, bool> Reserve, TaskCompletionSource<Transaction[]> Completion);
-
         private readonly MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests66;
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, IByteArrayList> _nodeDataRequests66;
@@ -59,21 +47,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             IGossipPolicy gossipPolicy,
             IForkInfo forkInfo,
             ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null,
-            LeanEthTransactions? leanTransactions = null)
-            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, leanTransactions)
+            ITxGossipPolicy? transactionsGossipPolicy = null)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
-            _leanTransactions = leanTransactions;
-            ProtocolInitialized += (_, _) =>
-            {
-                lock (_leanRecoveryLock)
-                    if (!_leanRecoveryStopped && _leanTransactions is not null && Session.RemoteNodeId is { } key)
-                    {
-                        _leanTransactions.Register(key, this, RecoverLeanTransactionsAsync);
-                        _leanRecoveryKey = key;
-                    }
-            };
-            Session.Disconnected += (_, _) => StopLeanRecovery();
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(this);
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, IByteArrayList>(this);
@@ -113,7 +89,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetPooledTransactionsMessage, PooledTransactionsMessage, GetPooledTransactionsHandler>(message);
                     return true;
                 case Eth66MessageCode.PooledTransactions:
-                    if (TryHandleLeanPooledTransactions(message, size)) return true;
                     if (CanReceiveTransactions)
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
@@ -194,103 +169,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         protected void Handle(ReceiptsMessage msg, long size) => _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
         protected void ThrowIfReceiptsNotRequested(IByteBuffer content) => _receiptsRequests66.ThrowIfNotRequested(content);
-
-        protected override void OnDisposed()
-        {
-            StopLeanRecovery();
-            base.OnDisposed();
-        }
-
-        private void StopLeanRecovery()
-        {
-            lock (_leanRecoveryLock)
-            {
-                _leanRecoveryStopped = true;
-                if (_leanRecoveryKey is { } key)
-                {
-                    _leanTransactions?.Remove(key, this);
-                    _leanRecoveryKey = null;
-                }
-                foreach ((long id, LeanRecovery request) in _leanRequests)
-                {
-                    RetireLeanRequest(id);
-                    request.Completion.TrySetResult([]);
-                }
-                _leanRequests.Clear();
-            }
-        }
-
-        private void RetireLeanRequest(long id)
-        {
-            if (_leanRetired.Add(id)) _leanRetiredOrder.Enqueue(id);
-            while (_leanRetiredOrder.Count > 128) _leanRetired.Remove(_leanRetiredOrder.Dequeue());
-        }
-
-        private async Task<Transaction[]> RecoverLeanTransactionsAsync(ValueHash256[] hashes, Func<int, bool> reserve, CancellationToken token)
-        {
-            token.ThrowIfCancellationRequested();
-            GetPooledTransactionsMessage message = new(new ArrayPoolList<ValueHash256>(hashes));
-            LeanRecovery request = new(hashes, reserve, new(TaskCreationOptions.RunContinuationsAsynchronously));
-            lock (_leanRecoveryLock)
-            {
-                if (_leanRecoveryStopped || _leanRequests.Count >= LeanProtocol.MaxRequestsPerPeer || Session.IsClosing)
-                {
-                    message.Dispose();
-                    return [];
-                }
-                _leanRequests.Add(message.RequestId, request);
-            }
-            long id = message.RequestId;
-            try
-            {
-                Send(message);
-                return await request.Completion.Task.WaitAsync(token).ConfigureAwait(false);
-            }
-            finally
-            {
-                lock (_leanRecoveryLock)
-                {
-                    _leanRequests.Remove(id);
-                    RetireLeanRequest(id);
-                }
-            }
-        }
-
-        protected bool TryHandleLeanPooledTransactions(ZeroPacket message, int size)
-        {
-            if (!Eth66RequestId.TryPeek(message.Content, out long id)) return false;
-            LeanRecovery? request;
-            lock (_leanRecoveryLock)
-            {
-                if (_leanRetired.Contains(id)) return true;
-                if (!_leanRequests.Remove(id, out request)) return false;
-                RetireLeanRequest(id);
-            }
-            if (!request.Reserve(size))
-            {
-                request.Completion.TrySetResult([]);
-                return true;
-            }
-            try
-            {
-                using PooledTransactionsMessage response = Deserialize<PooledTransactionsMessage>(message.Content);
-                Transaction[] transactions = response.EthMessage.Transactions.AsSpan().ToArray();
-                HashSet<ValueHash256> seen = [];
-                foreach (Transaction transaction in transactions)
-                {
-                    ValueHash256 hash = (transaction.Hash ?? transaction.CalculateHash()).ValueHash256;
-                    if (Array.IndexOf(request.Hashes, hash) < 0 || !seen.Add(hash))
-                        throw new SubprotocolException("Unrequested or duplicate ETH envelope in lean recovery");
-                }
-                request.Completion.TrySetResult(transactions);
-                return true;
-            }
-            catch (Exception exception)
-            {
-                request.Completion.TrySetException(exception);
-                throw;
-            }
-        }
 
         protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);
 

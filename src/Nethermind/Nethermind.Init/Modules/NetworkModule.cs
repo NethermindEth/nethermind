@@ -31,6 +31,7 @@ using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using V72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
+using V73 = Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using SnapV1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using SnapV2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
@@ -79,16 +80,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IProtocolsManager, ProtocolsManager>()
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
-            .AddLast<IP2PCapabilityResolver, LeanP2PCapabilityResolver>()
-            .AddSingleton<Subprotocols.Lean.LeanEthTransactions>()
-            .AddSingleton<Subprotocols.Lean.LeanObjectTransport>()
-            .AddSingleton<Subprotocols.Lean.LeanProofGossip>()
-            .AddMessageSerializer<Subprotocols.Lean.LeanStatusMessage, Subprotocols.Lean.LeanStatusMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.AnnounceObjectsMessage, Subprotocols.Lean.AnnounceObjectsMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.GetChunksMessage, Subprotocols.Lean.GetChunksMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.ChunkMessage, Subprotocols.Lean.ChunkMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.CompleteMessage, Subprotocols.Lean.CompleteMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.CancelMessage, Subprotocols.Lean.CancelMessageSerializer>()
+            .AddSingleton<V73.ProofWrapperTransport>()
+            .AddSingleton<V73.ProofWrapperGossip>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()
@@ -179,6 +172,13 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V72.GetCellsMessage72, V72.GetCellsMessageSerializer72>()
             .AddMessageSerializer<V72.CellsMessage72, V72.CellsMessageSerializer72>()
 
+            // V73
+            .AddMessageSerializer<V73.Messages.AnnounceProofWrappersMessage, V73.Messages.AnnounceProofWrappersMessageSerializer>()
+            .AddMessageSerializer<V73.Messages.GetProofWrappersMessage, V73.Messages.GetProofWrappersMessageSerializer>()
+            .AddMessageSerializer<V73.Messages.ProofWrappersMessage, V73.Messages.ProofWrappersMessageSerializer>()
+            .AddMessageSerializer<V73.Messages.GetWrapperEnvelopesMessage, V73.Messages.GetWrapperEnvelopesMessageSerializer>()
+            .AddMessageSerializer<V73.Messages.WrapperEnvelopesMessage, V73.Messages.WrapperEnvelopesMessageSerializer>()
+
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
             .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
 
@@ -186,7 +186,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<State.SnapServer.ISnapServer, Synchronization.SnapSync.SnapServer>()
 
             // Protocol handler factories
-            .AddProtocolHandler<Subprotocols.Lean.Lean1ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Snap.V2.Snap2ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
@@ -196,6 +195,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddProtocolHandler<Subprotocols.Eth.V70.Eth70ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V71.Eth71ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V72.Eth72ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V73.Eth73ProtocolHandler>()
 
             ;
     }

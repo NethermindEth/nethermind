@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
@@ -325,16 +326,14 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
-    // EIPs#12475: with every list freshly proven, builder liveness needs IL_COMMITTEE_SIZE + 1 recursive inputs per step, and
-    // discards up to the sum of their dependency lists. The prototype guest folds two inputs per step, so the managed tree
-    // reaches the fan-in over several rounds.
+    // EIPs#12475: a builder may merge the running aggregate with every inclusion-list proof, discarding what its block does not
+    // need. The prototype guest folds two inputs per step, so the managed tree merges them over several bounded steps.
     [Test]
     public void Committee_fan_in_folds_every_inclusion_list_proof_and_the_running_aggregate()
     {
-        Assert.That(Eip8288Constants.MinRecursiveFanInPerStep, Is.EqualTo(17));
         List<RecursiveProofInput> recursive = [];
         List<FrameDependency> deps = [];
-        for (int i = 0; i < Eip8288Constants.MinRecursiveFanInPerStep; i++)
+        for (int i = 0; i <= Eip7805Constants.InclusionListCommitteeSize; i++)
         {
             FrameDependency dependency = Sphincs($"list{i}");
             recursive.Add(new([dependency], [1]));
@@ -557,7 +556,7 @@ public class RecursiveStarkAggregatorTests
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Sphincs("large");
-        byte[] proof = new byte[4 * 1024 * 1024];
+        byte[] proof = new byte[LeanProofStore.MaxWrapperBytes - 1024];
         store.AddVerified([dependency], recursive ? null : [proof], recursive ? proof : null);
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 100; i++)
@@ -670,8 +669,9 @@ public class RecursiveStarkAggregatorTests
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         List<Transaction> pending = [];
-        byte[] rejectedWitness = new byte[4 * 1024 * 1024];
-        for (int i = 0; i < 24; i++)
+        // Enough near-maximum rejected witnesses to exceed the shared store several times over if they were retained.
+        byte[] rejectedWitness = new byte[LeanProofStore.MaxWrapperBytes - 1024];
+        for (int i = 0; i < 40; i++)
         {
             FrameDependency accepted = Sphincs($"accepted:{i}"), rejected = Sphincs($"rejected:{i}");
             Transaction transaction = DependencyTransaction(accepted);
@@ -706,16 +706,18 @@ public class RecursiveStarkAggregatorTests
     public void Sender_quota_counts_shared_recursive_records_once_and_releases_the_last_owner()
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        FrameDependency a = Sphincs("quota-a"), b = Sphincs("quota-b"), c = Sphincs("quota-c");
-        byte[] proof = new byte[5 * 1024 * 1024];
-        store.AddVerified([a], null, proof);
-        store.AddVerified([b], null, proof);
+        // Records are bounded by MAX_WRAPPER_BYTES, so the sender quota holds a few near-maximum ones.
+        byte[] proof = new byte[LeanProofStore.MaxWrapperBytes - 1024];
+        int fitting = (int)(LeanProofStore.MaxSenderPinnedBytes / proof.Length);
+        FrameDependency[] dependencies = [.. Enumerable.Range(0, fitting).Select(i => Sphincs($"quota-{i}"))];
+        FrameDependency c = Sphincs("quota-c");
+        foreach (FrameDependency dependency in dependencies) store.AddVerified([dependency], null, proof);
         store.AddVerified([c], null, proof);
-        Transaction first = DependencyTransaction(a), shared = DependencyTransaction(a), second = DependencyTransaction(b);
+        Transaction first = DependencyTransaction(dependencies[0]), shared = DependencyTransaction(dependencies[0]);
         shared.Hash = Keccak.Compute("shared-transaction");
         Assert.That(store.PinPending(first), Is.True);
         Assert.That(store.PinPending(shared), Is.True, "the same proof is charged once for this sender");
-        Assert.That(store.PinPending(second), Is.True);
+        foreach (FrameDependency dependency in dependencies[1..]) Assert.That(store.PinPending(DependencyTransaction(dependency)), Is.True);
         Assert.That(store.TryReserveTransaction([c], out _, Address.Zero), Is.False);
         Address other = new("0x0000000000000000000000000000000000000001");
         Assert.That(store.TryReserveTransaction([c], out IDisposable? anotherSender, other), Is.True);

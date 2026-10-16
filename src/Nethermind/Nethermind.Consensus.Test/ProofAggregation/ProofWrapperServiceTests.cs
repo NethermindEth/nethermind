@@ -573,7 +573,7 @@ public class ProofWrapperServiceTests
         List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([
             new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("large-root-signature"), default),
             new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("large-root-stark"), default)]);
-        byte[] proof = new byte[5 * 1024 * 1024];
+        byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         if (sameParent) store.AddVerified(dependencies, null, proof);
         else
@@ -598,7 +598,7 @@ public class ProofWrapperServiceTests
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = CreateService([transaction], store, verifier);
         Assert.That(store.TryGetInput(dependencies, out AggregationInput input), Is.True);
-        Assert.That(RecursiveStarkAggregator.InputSize(input), Is.GreaterThan(RecursiveStarkAggregator.MaxProductionWitnessBytes));
+        Assert.That(RecursiveStarkAggregator.InputSize(input), Is.GreaterThan(proof.Length));
         Assert.That(RecursiveStarkAggregator.InputSize(input), Is.LessThan(Eip8288Constants.MaxAggregationInputBytes));
 
         Result<byte[]> result = service.BuildWrapper();
@@ -713,8 +713,9 @@ public class ProofWrapperServiceTests
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
-        byte[] rejectedWitness = new byte[4 * 1024 * 1024];
-        for (int i = 0; i < 20; i++)
+        // Enough near-maximum rejected witnesses to exceed the shared store several times over if they were retained.
+        byte[] rejectedWitness = new byte[LeanProofStore.MaxWrapperBytes - 16 * 1024];
+        for (int i = 0; i < 40; i++)
         {
             FrameDependency accepted = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"accepted:{i}"), default);
             FrameDependency rejected = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"rejected:{i}"), default);

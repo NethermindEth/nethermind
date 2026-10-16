@@ -66,6 +66,20 @@ public class InclusionListProofPackageTests
         Assert.That(backend.VerificationCalls, Is.EqualTo(3));
     }
 
+    // A direct witness and an aggregate proof with the same bytes over the same single dependency are distinct verdicts.
+    [Test]
+    public void Verdict_cache_separates_direct_witnesses_from_aggregate_proofs()
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("single"), default);
+        ValueHash256 covered = Eip8288Dependencies.ComputeDepsHash([dependency]);
+        byte[] bytes = [7];
+        Assert.That(ProofVerdictCache.VerifyDirect(verifier, dependency, bytes), Is.True);
+        Assert.That(ProofVerdictCache.For(verifier).TryGetVerdict(ValueKeccak.Compute(bytes), covered), Is.Null, "no aggregate verdict yet");
+        Assert.That(ProofVerdictCache.VerifyRecursive(verifier, in covered, bytes), Is.True);
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(2));
+    }
+
     [Test]
     public void Verdict_cache_is_bounded()
     {

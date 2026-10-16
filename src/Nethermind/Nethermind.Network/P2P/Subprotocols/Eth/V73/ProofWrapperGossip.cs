@@ -9,15 +9,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
-namespace Nethermind.Network.P2P.Subprotocols.Lean;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
-/// <summary>Drives background aggregation on the EIP-8288 cadence and publishes each new wrapper over <c>lean/1</c>.</summary>
+/// <summary>Drives background aggregation on the EIP-8288 cadence and offers each new wrapper over <c>eth/73</c>.</summary>
 /// <remarks>Peers fetch the announced wrapper on demand, so an unchanged wrapper is never sent or announced again.</remarks>
-public sealed class LeanProofGossip(ProofWrapperService wrappers, LeanObjectTransport transport, ILogManager logManager,
+public sealed class ProofWrapperGossip(ProofWrapperService wrappers, ProofWrapperTransport transport, ILogManager logManager,
     TimeProvider? timeProvider = null) : IAsyncDisposable, IDisposable
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
-    private readonly ILogger _logger = logManager.GetClassLogger<LeanProofGossip>();
+    private readonly ILogger _logger = logManager.GetClassLogger<ProofWrapperGossip>();
     private readonly CancellationTokenSource _stop = new();
     private readonly Lock _lock = new();
     private Task? _loop;
@@ -50,7 +50,7 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, LeanObjectTran
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Lean proof refresh failed: {exception.Message}");
+                    if (_logger.IsWarn) _logger.Warn($"Proof wrapper refresh failed: {exception.Message}");
                 }
             }
         }
@@ -75,7 +75,7 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, LeanObjectTran
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
         catch (Exception exception)
         {
-            if (_logger.IsWarn) _logger.Warn($"Lean proof aggregation failed: {exception.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Proof wrapper aggregation failed: {exception.Message}");
         }
     }
 

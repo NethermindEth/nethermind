@@ -1,13 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.ObjectPool;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -25,6 +18,13 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using System;
+using Microsoft.Extensions.ObjectPool;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
@@ -41,8 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
         ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null,
-        Subprotocols.Lean.LeanEthTransactions? leanTransactions = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null)
         : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
           IBatchMessageHandler<PooledTransactionRequestMessage, ValueHash256>
     {
@@ -163,7 +162,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         continue;
                     }
 
-                    if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    // EIP-8437: a dependency-bearing transaction is answered as unavailable on every eth version.
+                    if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx)
+                        && !Eip8288Dependencies.IsDependencyBearing(tx))
                     {
                         Transaction responseTx = PreparePooledTransactionForResponse(tx);
                         int txSize = responseTx.GetLength();
@@ -198,7 +199,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         /// Gets the representation of a pooled transaction that this protocol version can serve.
         /// </summary>
         protected virtual bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
-            => _txPool.TryGetPendingTransaction(hash, out tx) || leanTransactions?.TryGetRetained(hash, out tx) == true;
+            => _txPool.TryGetPendingTransaction(hash, out tx);
 
         protected virtual Transaction PreparePooledTransactionForResponse(Transaction tx) => tx;
 

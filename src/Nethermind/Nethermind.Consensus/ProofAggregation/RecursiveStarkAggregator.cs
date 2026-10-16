@@ -14,8 +14,10 @@ public static class RecursiveStarkAggregator
 {
     /// <summary>Target serialized-witness size for each direct proving batch, in bytes.</summary>
     public const long MaxProductionWitnessBytes = 4 * 1024 * 1024;
-    // The pinned prototype guest folds two recursive inputs per step, below EIP-8288's IL_COMMITTEE_SIZE + 1 floor
-    // (Eip8288Constants.MinRecursiveFanInPerStep); wider sets fold over a binary tree at the cost of extra proving rounds.
+    // The pinned prototype guest folds two recursive inputs per step and discards at most MaxProofDependencies per step, while
+    // EIP-8288 bounds discards by the sum of a step's input dependency lists. Wider sets, such as the running wrapper aggregate
+    // with every inclusion-list proof, fold over bounded steps of a binary tree, pruning each child separately; only the slot
+    // deadline bounds the rounds.
     private const int MaxRecursiveChildren = 2;
     private const int DirectBatchSize = 4;
 

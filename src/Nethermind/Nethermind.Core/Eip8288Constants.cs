@@ -27,14 +27,6 @@ public static class Eip8288Constants
     /// envelope are refused locally, never treated as invalid.</remarks>
     public const int MaxProofDependencies = 256;
 
-    /// <summary>EIP-8288 per-step recursive fan-in for EIP-7805 builder liveness when every inclusion list is freshly proven: the
-    /// <c>IL_COMMITTEE_SIZE</c> list proofs plus the builder's running aggregate of its mempool wrappers.</summary>
-    /// <remarks>Lists usually commit to wrapper proofs already folded into the running aggregate. The pinned prototype guest
-    /// folds two recursive inputs per step, so the managed aggregator reaches this fan-in through a binary tree, costing extra
-    /// proving rounds on the critical path. Its per-step discard bound, at most <see cref="MaxProofDependencies"/>, is also below
-    /// EIP-8288's, which is the sum of the step's input dependency lists; the managed aggregator prunes each child separately.</remarks>
-    public const int MinRecursiveFanInPerStep = Eip7805Constants.InclusionListCommitteeSize + 1;
-
     public const int MaxGenericStarkProofs = 16;
     public const int MaxLeanStarkInstructions = 2048;
     public const int MaxInclusionListDependencyBytes = MaxProofDependencies * DependencyTripleLength;
@@ -42,14 +34,16 @@ public static class Eip8288Constants
     /// <summary>Maximum encoded native direct witness, such as a mode-0 leanSTARK proof.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
 
-    /// <summary>EIP-8288 <c>MAX_AGGREGATE_PROOF_BYTES</c>: the bound on every serialized recursive aggregate proof, including a
-    /// private recursive input, checked before proof decoding or verification.</summary>
-    /// <remarks>The spec leaves the value to the activating fork as part of the <see cref="AggregatedVk"/> profile; this is the
-    /// pinned prototype profile's value, which the native backend reports back.</remarks>
-    public const int MaxAggregateProofBytes = 8 * 1024 * 1024;
+    /// <summary>EIP-8288 <c>MAX_AGGREGATE_PROOF_BYTES</c> (1.25 MiB): the bound on every serialized recursive aggregate proof,
+    /// including a private recursive input, in blocks, wrappers and inclusion lists alike, checked before proof decoding or
+    /// verification.</summary>
+    /// <remarks>Provisional: the activating fork fixes it with its <see cref="AggregatedVk"/> profile, and it must let a mode-1
+    /// wrapper at the list ceilings fit <see cref="MaxWrapperBytes"/>.</remarks>
+    public const int MaxAggregateProofBytes = 1_310_720;
 
-    /// <summary>Native acceptance bound for the serialized mixed guest proof, which is the whole <c>stark_proof</c>.</summary>
-    public const int MaxMixedGuestProofBytes = MaxAggregateProofBytes;
+    /// <summary>Native acceptance bound for the serialized mixed guest proof, which the pinned backend reports back.</summary>
+    /// <remarks>Above <see cref="MaxAggregateProofBytes"/>, which every caller checks first.</remarks>
+    public const int MaxMixedGuestProofBytes = 8 * 1024 * 1024;
 
     /// <summary>Maximum native aggregation input, including two maximum-sized child proofs and metadata.</summary>
     public const int MaxAggregationInputBytes = 18 * 1024 * 1024;
@@ -91,9 +85,10 @@ public static class Eip8288Constants
     /// <summary>Transactions per wrapper, in either mode (<c>MAX_TXS_PER_WRAPPER</c>).</summary>
     public const int MaxTxsPerWrapper = 4096;
 
-    /// <summary>Serialized wrapper ceiling, in either mode, in the EIP-8288 wrapper encoding (<c>MAX_WRAPPER_BYTES</c>).</summary>
+    /// <summary>Serialized wrapper ceiling, in either mode, in the EIP-8288 wrapper encoding (<c>MAX_WRAPPER_BYTES</c>): the
+    /// <c>eth</c> soft response limit, so EIP-8437 moves each wrapper as one whole object.</summary>
     /// <remarks>A policy ceiling: clients may refuse smaller wrappers under local limits.</remarks>
-    public const int MaxWrapperBytes = 9 * 1024 * 1024;
+    public const int MaxWrapperBytes = 2 * 1024 * 1024;
 
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;

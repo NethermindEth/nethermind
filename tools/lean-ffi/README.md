@@ -342,12 +342,12 @@ integration requirement.
 Legacy inclusion sources and producers without an inclusion source use mutually exclusive
 decoding fallbacks; the proof-aware source overrides that path with its prepared snapshot.
 
-Builder liveness needs a per-step fan-in of up to `IL_COMMITTEE_SIZE + 1` recursive inputs (the
-running wrapper aggregate plus freshly proven list proofs) and a per-step discard bound of at least
-the sum of the step's input dependency lists. The pinned guest folds two recursive inputs per step
-and discards at most 256 dependencies, so the managed aggregator reaches these through a binary
-tree, pruning each child separately, at the cost of extra proving rounds; a conforming activation
-profile must meet them in one step.
+A builder merges its running wrapper aggregate with any inclusion-list proofs it does not cover,
+discarding what its block does not need; EIP-8288 bounds a step's discards by the sum of its
+input dependency lists and leaves the number of bounded steps to the slot deadline. The pinned
+guest folds two recursive inputs per step and discards at most 256 dependencies, so the managed
+aggregator merges over a binary tree, pruning each child separately, at the cost of extra proving
+rounds; the cold case of 16 unheld 4,096-dependency wrapper proofs exceeds what it can prove.
 
 The separate [frame/FOCIL PR #13590](https://github.com/NethermindEth/nethermind/pull/13590)
 adds per-includer VERIFY budgets, claimed evaluation positions and BAL replay. It overlaps

@@ -50,6 +50,17 @@ public static class Eip8288Dependencies
 {
     public static bool IsDependencyFrame(TxFrame frame) => frame.Mode == FrameMode.DepVerify;
 
+    /// <summary>Whether <paramref name="transaction"/> has at least one dependency verification frame.</summary>
+    /// <remarks>EIP-8437: such transactions travel only inside proof wrappers, never in <c>eth</c> transaction exchange.</remarks>
+    public static bool IsDependencyBearing(Transaction transaction)
+    {
+        TxFrame[]? frames = transaction.Frames;
+        if (frames is null) return false;
+        foreach (TxFrame frame in frames)
+            if (IsDependencyFrame(frame)) return true;
+        return false;
+    }
+
     /// <summary>The <c>data_triples</c> of a dependency frame, parsed from its 96·k-byte <c>data</c>.</summary>
     public static IEnumerable<FrameDependency> ParseFrame(TxFrame frame)
     {

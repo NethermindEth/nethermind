@@ -20,14 +20,18 @@ public class DependencyProofTxFilterTests
     public void Sender_quota_rejection_releases_filter_leases_and_can_be_retried_after_removal()
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        FrameDependency a = Dependency("a"), b = Dependency("b"), c = Dependency("c");
-        byte[] proof = new byte[5 * 1024 * 1024];
-        store.AddVerified([a], null, proof);
-        store.AddVerified([b], null, proof);
-        store.AddVerified([c], null, proof);
-        Transaction first = Transaction(a), second = Transaction(b), candidate = Transaction(c);
-        Assert.That(store.PinPending(first), Is.True);
-        Assert.That(store.PinPending(second), Is.True);
+        // Records are bounded by MAX_WRAPPER_BYTES, so the sender quota is reached after a few near-maximum ones.
+        byte[] proof = new byte[LeanProofStore.MaxWrapperBytes - 1024];
+        int pinned = (int)(LeanProofStore.MaxSenderPinnedBytes / proof.Length);
+        Transaction[] transactions = new Transaction[pinned + 1];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            FrameDependency dependency = Dependency($"dependency {i}");
+            store.AddVerified([dependency], null, proof);
+            transactions[i] = Transaction(dependency);
+        }
+        Transaction first = transactions[0], candidate = transactions[^1];
+        for (int i = 0; i < pinned; i++) Assert.That(store.PinPending(transactions[i]), Is.True);
         DependencyProofTxFilter coverage = new(store);
         DependencyProofSenderQuotaTxFilter quota = new(store);
         TxFilteringState filtering = new(candidate, Substitute.For<IAccountStateProvider>(), Eip8288Prototype.Instance);

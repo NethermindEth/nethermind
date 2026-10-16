@@ -9,6 +9,9 @@ public class SpecDrivenTxGossipPolicy(IChainHeadInfoProvider chainHeadInfoProvid
 {
     private IChainHeadInfoProvider ChainHeadInfoProvider { get; } = chainHeadInfoProvider;
 
+    /// <remarks>EIP-8437: dependency-bearing transactions are never announced or broadcast over <c>eth</c>; they propagate
+    /// only inside EIP-8288 proof wrappers.</remarks>
     public bool ShouldGossipTransaction(Transaction tx) =>
-        (!tx.SupportsBlobs && !tx.CarriesBlobs) || tx.GetProofVersion() == ChainHeadInfoProvider.CurrentProofVersion;
+        !Eip8288Dependencies.IsDependencyBearing(tx)
+        && ((!tx.SupportsBlobs && !tx.CarriesBlobs) || tx.GetProofVersion() == ChainHeadInfoProvider.CurrentProofVersion);
 }

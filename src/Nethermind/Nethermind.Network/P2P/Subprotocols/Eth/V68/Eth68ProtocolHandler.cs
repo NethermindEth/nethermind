@@ -40,10 +40,9 @@ public class Eth68ProtocolHandler(ISession session,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
     IChainHeadSpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null,
-        Subprotocols.Lean.LeanEthTransactions? leanTransactions = null
+    ITxGossipPolicy? transactionsGossipPolicy = null
     )
-    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, leanTransactions), IStaticProtocolInfo
+    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
     private const int MaxPooledTransactionHashesPerRequest = 256;
     private static readonly int PooledTransactionsResponseSoftLimit = (int)2.MiB;

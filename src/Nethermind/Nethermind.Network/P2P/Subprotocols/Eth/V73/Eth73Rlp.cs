@@ -2,30 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.P2P.Subprotocols.Lean;
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
-/// <summary>Strict reader for EIP-8437 message data: canonical RLP with exact field counts and bounded nesting.</summary>
+/// <summary>Strict reader for EIP-8437 <c>eth/73</c> message data: canonical RLP with exact field counts and bounded nesting.</summary>
 /// <remarks>
 /// Rejects nonminimal length prefixes, single bytes below 0x80 wrapped in a prefix, integers with leading zeros,
 /// wrong string/list types and trailing bytes. Every list descent is charged against
-/// <see cref="LeanProtocol.MaxRlpDepth"/>.
+/// <see cref="Eth73Protocol.MaxRlpDepth"/>.
 /// </remarks>
-public ref struct LeanRlpReader
+public ref struct Eth73RlpReader
 {
     private readonly ReadOnlySpan<byte> _data;
     private readonly int _depth;
     private int _position;
 
-    public LeanRlpReader(ReadOnlySpan<byte> data) : this(data, 0) { }
+    public Eth73RlpReader(ReadOnlySpan<byte> data) : this(data, 0) { }
 
-    private LeanRlpReader(ReadOnlySpan<byte> data, int depth)
+    private Eth73RlpReader(ReadOnlySpan<byte> data, int depth)
     {
         _data = data;
         _depth = depth;
@@ -35,12 +34,12 @@ public ref struct LeanRlpReader
     public readonly bool HasMore => _position < _data.Length;
 
     /// <summary>Reads a list and returns a reader over its content; the caller must call <see cref="End"/> on it.</summary>
-    public LeanRlpReader ReadList()
+    public Eth73RlpReader ReadList()
     {
-        if (_depth + 1 > LeanProtocol.MaxRlpDepth) throw new RlpException("RLP nesting exceeds MAX_RLP_DEPTH");
+        if (_depth + 1 > Eth73Protocol.MaxRlpDepth) throw new RlpException("RLP nesting exceeds MAX_RLP_DEPTH");
         (bool isList, int offset, int length) = ReadHeader();
         if (!isList) throw new RlpException("Expected an RLP list");
-        return new LeanRlpReader(_data.Slice(offset, length), _depth + 1);
+        return new Eth73RlpReader(_data.Slice(offset, length), _depth + 1);
     }
 
     /// <summary>Reads a byte string's content.</summary>
@@ -58,8 +57,8 @@ public ref struct LeanRlpReader
         (bool isList, int offset, int length) = ReadHeader();
         if (isList)
         {
-            LeanRlpReader nested = new(_data.Slice(offset, length), _depth + 1);
-            if (_depth + 1 > LeanProtocol.MaxRlpDepth) throw new RlpException("RLP nesting exceeds MAX_RLP_DEPTH");
+            Eth73RlpReader nested = new(_data.Slice(offset, length), _depth + 1);
+            if (_depth + 1 > Eth73Protocol.MaxRlpDepth) throw new RlpException("RLP nesting exceeds MAX_RLP_DEPTH");
             while (nested.HasMore) nested.ReadItem();
         }
         return _data[start.._position];
@@ -113,7 +112,7 @@ public ref struct LeanRlpReader
     /// <summary>Counts the remaining items without decoding them, failing once <paramref name="max"/> is exceeded.</summary>
     public readonly int CountRemaining(int max)
     {
-        LeanRlpReader copy = this;
+        Eth73RlpReader copy = this;
         int count = 0;
         while (copy.HasMore)
         {
@@ -165,8 +164,8 @@ public ref struct LeanRlpReader
     }
 }
 
-/// <summary>Canonical RLP writer for EIP-8437 message data.</summary>
-public static class LeanRlp
+/// <summary>Canonical RLP writer for EIP-8437 <c>eth/73</c> message data.</summary>
+public static class Eth73Rlp
 {
     public static int LengthOfBytes(ReadOnlySpan<byte> value) =>
         value.Length == 1 && value[0] < 0x80 ? 1 : LengthOfPrefix(value.Length) + value.Length;
@@ -263,7 +262,4 @@ public static class LeanRlp
     }
 
     private static int ByteCount(ulong value) => (64 - BitOperations.LeadingZeroCount(value) + 7) / 8;
-
-    /// <summary>Writes a fixed-width big-endian integer used by commitment preimages.</summary>
-    internal static void WriteU32(Span<byte> destination, uint value) => BinaryPrimitives.WriteUInt32BigEndian(destination, value);
 }

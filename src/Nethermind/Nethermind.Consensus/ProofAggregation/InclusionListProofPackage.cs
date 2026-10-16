@@ -137,7 +137,7 @@ public static class InclusionListProofValidator
         }
         // A proof answered VALID stays servable through engine_getInclusionListProofV1 and available to builders, which fold it
         // into the block aggregate and discard the dependencies their block does not need.
-        proofStore?.AddCachedRecursive(proof.Deps, proof.Proof);
+        proofStore?.RetainInclusionListProof(proof.Deps, proof.Proof);
         return InclusionListProofStatus.Valid;
     }
 

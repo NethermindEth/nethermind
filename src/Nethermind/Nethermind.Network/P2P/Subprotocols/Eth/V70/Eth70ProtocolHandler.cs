@@ -53,10 +53,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ILogManager logManager,
         ITxPoolConfig txPoolConfig,
         IChainHeadSpecProvider specProvider,
-        ITxGossipPolicy? transactionsGossipPolicy = null,
-        Subprotocols.Lean.LeanEthTransactions? leanTransactions = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, leanTransactions)
+            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
     {
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(this);

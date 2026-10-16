@@ -3,9 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -15,7 +13,6 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -550,65 +547,6 @@ public class SessionTests
     }
 
     [Test]
-    public async Task Bulk_transport_requires_negotiated_lean1([Values] bool negotiated)
-    {
-        _channel.Active.Returns(true);
-        _channel.IsWritable.Returns(false);
-        IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
-        PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
-        sender.HandlerAdded(_channelHandlerContext);
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel,
-            NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, sender);
-        IP2PProtocolHandler p2p = Substitute.For<IP2PProtocolHandler>();
-        p2p.ProtocolCode.Returns("p2p");
-        p2p.Name.Returns("p2p");
-        p2p.MessageIdSpaceSize.Returns(16);
-        p2p.HasAgreedCapability(new Capability("lean", 1)).Returns(negotiated);
-        session.AddProtocolHandler(p2p);
-        session.AddProtocolHandler(BuildHandler("lean", 1));
-        using DisposableByteBuffer small = Unpooled.Buffer(4).WriteZero(4).AsDisposable();
-        TestMessage control = new();
-        serializer.ZeroSerialize(control, Arg.Any<IByteBufferAllocator>()).Returns(small);
-        try
-        {
-            Assert.That(((ILeanBulkSession)session).EnableLeanBulk(), Is.EqualTo(negotiated));
-            Assert.That(session.DeliverMessage(control), Is.EqualTo(negotiated ? 4 : 0));
-            _channel.IsWritable.Returns(true);
-            sender.ChannelWritabilityChanged(_channelHandlerContext);
-            await _channelHandlerContext.Received(negotiated ? 1 : 0).WriteAndFlushAsync(small);
-            if (!negotiated)
-            {
-                ChunkMessage chunk = new(1, default, 0, new byte[1]);
-                Assert.That(await ((ILeanBulkSession)session).DeliverLeanChunkAsync(chunk, CancellationToken.None), Is.Zero);
-                serializer.DidNotReceive().ZeroSerialize(chunk, Arg.Any<IByteBufferAllocator>());
-            }
-        }
-        finally { sender.HandlerRemoved(_channelHandlerContext); }
-    }
-
-    [Test]
-    public void Lean_messages_above_max_message_bytes_are_detected_before_decompression()
-    {
-        _channel.Active.Returns(true);
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
-        session.AddProtocolHandler(BuildHandler("p2p", 16));
-        session.AddProtocolHandler(BuildHandler("eth", 17));
-        session.AddProtocolHandler(BuildHandler(LeanProtocol.Code, LeanProtocol.MessageCount));
-        ILeanBulkSession lean = session;
-        // Adaptive IDs are allocated alphabetically after p2p: eth 16..32, lean 33..42.
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(lean.ExceedsMessageLimit(33, LeanProtocol.MaxMessageBytes + 1), Is.True);
-            Assert.That(lean.ExceedsMessageLimit(33, LeanProtocol.MaxMessageBytes), Is.False);
-            Assert.That(lean.ExceedsMessageLimit(16, LeanProtocol.MaxMessageBytes + 1), Is.False);
-        }
-    }
-
-    [Test]
     public void Cannot_deliver_before_initialized()
     {
         TestMessage message = new();
@@ -726,6 +664,24 @@ public class SessionTests
             .Enqueue(message);
 
         Assert.That(message.WasDisposed, Is.True);
+    }
+
+    // EIP-8437: eth/73 wrapper messages are bounded by their advertised uncompressed size, before decompression.
+    [TestCase(73, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes, false)]
+    [TestCase(73, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes + 1, true)]
+    [TestCase(73, 0x17, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MaxRequestBytes + 1, true)]
+    [TestCase(73, 0x15, 16 * 1024 * 1024, false)]
+    [TestCase(72, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes + 1, false)]
+    public void Eth73_wrapper_messages_are_bounded_before_decompression(int version, int code, int length, bool exceeds)
+    {
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        session.AddProtocolHandler(BuildHandler("p2p", 16));
+        IProtocolHandler eth = BuildHandler("eth", 0x1b);
+        eth.ProtocolVersion.Returns((byte)version);
+        session.AddProtocolHandler(eth);
+        Assert.That(((IMessageLimitSession)session).ExceedsMessageLimit(16 + code, length), Is.EqualTo(exceeds));
     }
 
     [Test]
