@@ -674,8 +674,8 @@ public class GCKeeperTests
     }
 
     // A host with 67,416,633,344 bytes: the runtime records a 70% load as (ulong)(0.70 * total) bytes and reports the
-    // 90% high memory load threshold as (ulong)(0.90 * total) bytes (gc.cpp GCHeap::GetMemoryInfo). Red at 6e61ee48b1:
-    // the derived total is one byte short and the byte comparison reads the recorded 70% as just below 70%.
+    // 90% high memory load threshold as (ulong)(0.90 * total) bytes (gc.cpp GCHeap::GetMemoryInfo). The total derived
+    // from them is one byte short, so an exact byte comparison would read the recorded 70% as just below 70%.
     [Test]
     public async Task Load_recorded_at_exactly_the_threshold_percent_decommits()
     {
