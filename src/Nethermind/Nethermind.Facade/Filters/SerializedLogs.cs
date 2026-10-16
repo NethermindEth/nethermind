@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -52,6 +54,7 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
     }
 
     /// <summary>Writes the log exactly as the JSON writer of <see cref="FilterLog"/> would, without materializing it.</summary>
+    /// <exception cref="ArgumentException"><paramref name="transactionHash"/> is not <see cref="Hash256.Size"/> bytes, as when it was not recovered.</exception>
     internal void Add(
         long logIndex,
         ulong blockNumber,
@@ -62,6 +65,11 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
         scoped in LogEntryStructRef log,
         Hash256[] topics)
     {
+        if (transactionHash.Length != Hash256.Size)
+        {
+            ThrowInvalidTransactionHash(transactionHash.Length);
+        }
+
         Utf8JsonWriter writer = _writer;
         writer.WriteStartObject();
         writer.WritePropertyName("address"u8);
@@ -91,6 +99,10 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
         writer.WriteEndObject();
         CompleteLog();
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidTransactionHash(int length) =>
+        throw new ArgumentException($"Transaction hash must be {Hash256.Size} bytes and was {length} bytes", "transactionHash");
 
     private static void WriteData(Utf8JsonWriter writer, scoped in LogEntryStructRef log)
     {

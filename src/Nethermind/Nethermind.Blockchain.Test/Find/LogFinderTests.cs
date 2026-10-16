@@ -488,6 +488,29 @@ public class LogFinderTests
         }
     }
 
+    [Test]
+    public void FindLogs_WhenCompactReceiptTxHashIsNotRecovered_Throws()
+    {
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled
+            .WithBlockHash(block.Hash)
+            .WithBlockNumber(block.Number)
+            .WithIndex(0)
+            .WithTransactionHash(block.Transactions[0].Hash)
+            .WithLogs(new LogEntry(TestItem.AddressA, [], [TestItem.KeccakA]))
+            .TestObject;
+        byte[] encoded = new ReceiptArrayStorageDecoder(true).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        LogFinder finder = new(_blockTree, new LegacyReceiptFinder(encoded, CompactReceiptStorageDecoder.Instance), _receiptStorage,
+            LimboLogs.Instance, _receiptsRecovery, _specProvider!);
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => finder.FindLogs(filter).ToArray(), Throws.ArgumentException);
+            Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.ArgumentException);
+        }
+    }
+
     private const ulong BoundaryOldestStored = 50;
     private const int BoundaryFrom = 10;
     private const int BoundaryTo = 200;
@@ -711,12 +734,15 @@ public class LogFinderTests
     private static void AssertSerializedAsFilterLogs(IEnumerable<FilterLog> logs)
     {
         EthereumJsonSerializer serializer = new();
-        string[] expected = logs.Select(log => serializer.Serialize(log)).ToArray();
+        FilterLog[] filterLogs = logs.ToArray();
+        string[] expected = filterLogs.Select(log => serializer.Serialize(log)).ToArray();
         List<string> serialized = [];
+        int serializedBlocks = 0;
         foreach (SerializedLogs blockLogs in FoundLogs.Serialize(logs))
         {
             using (blockLogs)
             {
+                serializedBlocks++;
                 for (int i = 0; i < blockLogs.Count; i++)
                 {
                     serialized.Add(Encoding.UTF8.GetString(blockLogs[i]));
@@ -728,6 +754,7 @@ public class LogFinderTests
         {
             Assert.That(logs, Is.TypeOf<FoundLogs>());
             Assert.That(serialized, Is.EqualTo(expected));
+            Assert.That(serializedBlocks, Is.EqualTo(filterLogs.DistinctBy(static log => log.BlockHash).Count()), "logs are serialized a block at a time");
         }
     }
 

@@ -219,7 +219,7 @@ namespace Nethermind.Facade.Find
                 bool logIndexPerReceipt = _eip8116.IsEnabled(blockNumber, blockTimestamp);
                 return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out ReceiptsIterator iterator)
                     ? FilterLogsInBlockLowMemoryAllocation<TBlockLogs, TLog>(filter, ref iterator, blockHash, blockNumber, blockTimestamp, logIndexPerReceipt, cancellationToken)
-                    : TBlockLogs.From(FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, blockTimestamp, logIndexPerReceipt, cancellationToken));
+                    : TBlockLogs.FromBlock(FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, blockTimestamp, logIndexPerReceipt, cancellationToken));
             }
 
             return Array.Empty<TLog>();
@@ -368,7 +368,11 @@ namespace Nethermind.Facade.Find
 
             IEnumerable<TLog> Complete();
 
+            /// <summary>Converts the logs of any number of blocks, a block at a time where they allow it.</summary>
             static abstract IEnumerable<TLog> From(IEnumerable<FilterLog> logs);
+
+            /// <summary>Converts the logs of a single block.</summary>
+            static abstract IEnumerable<TLog> FromBlock(IEnumerable<FilterLog> blockLogs);
         }
 
         private protected struct BlockFilterLogs : IBlockLogs<BlockFilterLogs, FilterLog>
@@ -396,6 +400,8 @@ namespace Nethermind.Facade.Find
             public readonly IEnumerable<FilterLog> Complete() => _logs ?? (IEnumerable<FilterLog>)[];
 
             public static IEnumerable<FilterLog> From(IEnumerable<FilterLog> logs) => logs;
+
+            public static IEnumerable<FilterLog> FromBlock(IEnumerable<FilterLog> blockLogs) => blockLogs;
         }
 
         private protected struct BlockSerializedLogs : IBlockLogs<BlockSerializedLogs, SerializedLogs>
@@ -417,6 +423,25 @@ namespace Nethermind.Facade.Find
             public readonly IEnumerable<SerializedLogs> Complete() => _logs is null ? [] : [_logs];
 
             public static IEnumerable<SerializedLogs> From(IEnumerable<FilterLog> logs) => FoundLogs.Serialize(logs);
+
+            public static IEnumerable<SerializedLogs> FromBlock(IEnumerable<FilterLog> blockLogs)
+            {
+                SerializedLogs? serialized = null;
+                try
+                {
+                    foreach (FilterLog log in blockLogs)
+                    {
+                        (serialized ??= new SerializedLogs()).Add(log);
+                    }
+                }
+                catch
+                {
+                    serialized?.Dispose();
+                    throw;
+                }
+
+                return serialized is null ? [] : [serialized];
+            }
         }
     }
 }
