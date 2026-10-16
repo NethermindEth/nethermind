@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc
         internal override JsonRpcResponse WithResponseContext(in JsonRpcId id, Action? disposableAction)
         {
             // Modules may return the same (cached) instance from many requests, so only its first use can take it in place.
-            if (Interlocked.Exchange(ref _responseContextClaimed, 1) == 0)
+            if (Volatile.Read(ref _responseContextClaimed) == 0 && Interlocked.Exchange(ref _responseContextClaimed, 1) == 0)
             {
                 return base.WithResponseContext(in id, disposableAction);
             }
