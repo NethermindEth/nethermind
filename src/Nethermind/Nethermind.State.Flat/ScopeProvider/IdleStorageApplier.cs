@@ -3,18 +3,23 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
+using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
 /// <summary>
 /// One process-wide thread that applies committed storage writes to early storage trees while the block executes.
-/// It runs under SCHED_IDLE on Linux, never blocks the block thread, and is skipped by blocks processed back to back.
+/// It runs under SCHED_IDLE on Linux unless configured otherwise, never blocks the block thread, and is skipped by blocks
+/// processed back to back.
 /// </summary>
 internal sealed class IdleStorageApplier
 {
+    private const int SchedOther = 0;
     private const int SchedIdle = 5;
+    private const int LowNice = 10;
+    private const int NormalNice = 0;
     private const int YieldsBeforeSleeping = 64;
     private const int SleepsBeforeParking = 50;
 
@@ -27,26 +32,55 @@ internal sealed class IdleStorageApplier
     private readonly ConcurrentQueue<FlatStorageTree> _queue = new();
     private readonly SemaphoreSlim _wake = new(0);
     private readonly ILogger _logger;
+    private readonly IThreadSchedulingCalls _scheduling;
     // 1 while the thread is parked or about to park.
     private int _parked;
     private long _lastBlockCommit;
 
-    private IdleStorageApplier(ILogManager logManager)
+    internal IdleStorageApplier(ILogManager logManager, EarlyStorageApplyPriority priority, IThreadSchedulingCalls scheduling)
     {
         _logger = logManager.GetClassLogger<IdleStorageApplier>();
+        Priority = priority;
+        _scheduling = scheduling;
         Thread thread = new(Run) { IsBackground = true, Name = "Storage early apply" };
         thread.Start();
     }
 
-    public static IdleStorageApplier GetInstance(ILogManager logManager)
+    /// <summary>The priority the thread was started at.</summary>
+    internal EarlyStorageApplyPriority Priority { get; }
+
+    /// <summary>
+    /// The process-wide applier. The first call starts its thread at <paramref name="priority"/>; later calls get that
+    /// same thread whatever priority they pass.
+    /// </summary>
+    public static IdleStorageApplier GetInstance(ILogManager logManager, EarlyStorageApplyPriority priority)
     {
         IdleStorageApplier? instance = Volatile.Read(ref _instance);
         if (instance is not null) return instance;
 
         lock (InstanceLock)
         {
-            return _instance ??= new IdleStorageApplier(logManager);
+            return _instance ??= new IdleStorageApplier(logManager, priority, ThreadSchedulingCalls.Instance);
         }
+    }
+
+    /// <summary>
+    /// Puts <paramref name="instance"/> in place of the process-wide applier until disposed; with null, the next
+    /// <see cref="GetInstance"/> starts a thread of its own. For tests.
+    /// </summary>
+    internal static IDisposable ReplaceInstance(IdleStorageApplier? instance)
+    {
+        IdleStorageApplier? previous;
+        lock (InstanceLock)
+        {
+            previous = _instance;
+            _instance = instance;
+        }
+
+        return new Reactive.AnonymousDisposable(() =>
+        {
+            lock (InstanceLock) _instance = previous;
+        });
     }
 
     public void Enqueue(FlatStorageTree storageTree)
@@ -69,7 +103,8 @@ internal sealed class IdleStorageApplier
 
     private void Run()
     {
-        LowerPriority();
+        string scheduling = SetPriority(Priority, _scheduling, _logger);
+        if (_logger.IsInfo) _logger.Info($"Early storage apply thread runs at {Priority} priority: {scheduling}");
 
         int idleRounds = 0;
         while (true)
@@ -113,33 +148,68 @@ internal sealed class IdleStorageApplier
         Volatile.Write(ref _parked, 0);
     }
 
-    private void LowerPriority()
+    /// <summary>Sets the scheduling of the calling thread for <paramref name="priority"/> and describes what it got.</summary>
+    internal static string SetPriority(EarlyStorageApplyPriority priority, IThreadSchedulingCalls calls, ILogger logger)
     {
+        ThreadPriority fallback = priority switch
+        {
+            EarlyStorageApplyPriority.Low => ThreadPriority.BelowNormal,
+            EarlyStorageApplyPriority.Normal => ThreadPriority.Normal,
+            _ => ThreadPriority.Lowest
+        };
+
         // Best effort: an exception here, e.g. from resolving the libc import, would otherwise end the process.
         try
         {
-            if (OperatingSystem.IsLinux())
+            if (calls.IsLinux)
             {
-                SchedParam param = default;
-                // pid 0 is the calling thread.
-                if (sched_setscheduler(0, SchedIdle, ref param) == 0) return;
-                if (_logger.IsWarn) _logger.Warn($"Could not move the early storage apply thread to SCHED_IDLE (errno {Marshal.GetLastPInvokeError()}); lowering its priority instead.");
+                string? policy = priority switch
+                {
+                    EarlyStorageApplyPriority.Low => TrySetOtherPolicy(LowNice, calls, logger),
+                    EarlyStorageApplyPriority.Normal => TrySetOtherPolicy(NormalNice, calls, logger),
+                    _ => TrySetIdlePolicy(calls, logger)
+                };
+                if (policy is not null) return policy;
             }
 
-            Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+            calls.SetManagedPriority(fallback);
+            return $"thread priority {fallback}";
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Could not lower the priority of the early storage apply thread, so it runs at normal priority: {e.Message}");
+            if (logger.IsWarn) logger.Warn($"Could not set the priority of the early storage apply thread, so it keeps the one it started with: {e.Message}");
+            return "the priority it started with";
         }
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct SchedParam
+    private static string? TrySetIdlePolicy(IThreadSchedulingCalls calls, ILogger logger)
     {
-        public int SchedPriority;
+        if (calls.TrySetSchedulerPolicy(SchedIdle, out int errno)) return "SCHED_IDLE";
+        if (logger.IsWarn) logger.Warn($"Could not move the early storage apply thread to SCHED_IDLE (errno {errno}); lowering its priority instead.");
+        return null;
     }
 
-    [DllImport("libc", SetLastError = true)]
-    private static extern int sched_setscheduler(int pid, int policy, ref SchedParam param);
+    private static string? TrySetOtherPolicy(int nice, IThreadSchedulingCalls calls, ILogger logger)
+    {
+        if (!calls.TrySetSchedulerPolicy(SchedOther, out int errno))
+        {
+            if (logger.IsWarn) logger.Warn($"Could not move the early storage apply thread to SCHED_OTHER (errno {errno}); setting its thread priority instead.");
+            return null;
+        }
+
+        int tid = calls.GetThreadId();
+        if (tid <= 0)
+        {
+            if (logger.IsWarn) logger.Warn("Could not read the kernel id of the early storage apply thread; setting its thread priority instead.");
+            return null;
+        }
+
+        if (!calls.TrySetThreadNice(tid, nice, out errno))
+        {
+            if (logger.IsWarn) logger.Warn($"Could not set nice {nice} for the early storage apply thread {tid} (errno {errno}); setting its thread priority instead.");
+            return null;
+        }
+
+        return $"SCHED_OTHER nice {nice}, tid {tid}";
+    }
 }

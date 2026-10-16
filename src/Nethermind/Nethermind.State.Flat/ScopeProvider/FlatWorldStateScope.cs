@@ -100,7 +100,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
             && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
-            _earlyApplier = IdleStorageApplier.GetInstance(logManager);
+            // One thread for the process: the priority configured for the first such scope is the one it runs at.
+            _earlyApplier = IdleStorageApplier.GetInstance(logManager, configuration.EarlyStorageApplyPriority);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
     }

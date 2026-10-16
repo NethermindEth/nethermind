@@ -148,6 +148,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
     bool ApplyStorageWritesOnIdleThread { get; set; }
 
+    [ConfigItem(Description = "Scheduling priority of the thread that applies storage writes early (see ApplyStorageWritesOnIdleThread). `Idle` runs it under SCHED_IDLE on Linux, so it only takes otherwise idle cores; `Low` under SCHED_OTHER with nice 10; `Normal` under SCHED_OTHER with nice 0. Elsewhere it sets the Lowest, BelowNormal or Normal thread priority. The thread is shared by the whole process and takes the value seen by the first block-processing scope.", DefaultValue = "Idle", HiddenFromDocs = true)]
+    EarlyStorageApplyPriority EarlyStorageApplyPriority { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 

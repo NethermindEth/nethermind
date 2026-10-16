@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -907,11 +908,13 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void EarlyStorageApply_BlockEndBatchReachesTheSameRoot([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
+    public void EarlyStorageApply_BlockEndBatchReachesTheSameRoot([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit,
+        [Values] EarlyStorageApplyPriority priority)
     {
         const int slotCount = 40;
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly, DeferStorageTrieCommit = deferStorageTrieCommit });
+        using IDisposable applier = UseApplierAt(priority);
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly, DeferStorageTrieCommit = deferStorageTrieCommit, EarlyStorageApplyPriority = priority });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -976,11 +979,12 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void EarlyStorageApply_InitializesMutableTrieBeforeQueueing()
+    public void EarlyStorageApply_InitializesMutableTrieBeforeQueueing([Values] EarlyStorageApplyPriority priority)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using IDisposable applier = UseApplierAt(priority);
         ITrieNodeCache nodeCache = Substitute.For<ITrieNodeCache>();
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true },
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true, EarlyStorageApplyPriority = priority },
             trieWarmer: Substitute.For<ITrieWarmer>(), trieNodeCache: nodeCache);
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
@@ -1019,10 +1023,11 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void EarlyStorageApply_SkipsBlocksProcessedBackToBack()
+    public void EarlyStorageApply_SkipsBlocksProcessedBackToBack([Values] EarlyStorageApplyPriority priority)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        using IDisposable applier = UseApplierAt(priority);
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true, EarlyStorageApplyPriority = priority });
         FlatWorldStateScope scope = ctx.Scope;
         Assert.That(scope.AppliesStorageWritesEarly, Is.True);
 
@@ -1030,15 +1035,16 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         Assert.That(scope.AppliesStorageWritesEarly, Is.False);
-        using TestContext next = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        using TestContext next = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true, EarlyStorageApplyPriority = priority });
         Assert.That(next.Scope.AppliesStorageWritesEarly, Is.False);
     }
 
     [Test]
-    public void EarlyStorageApply_WakesTheParkedThread()
+    public void EarlyStorageApply_WakesTheParkedThread([Values] EarlyStorageApplyPriority priority)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        using IDisposable applier = UseApplierAt(priority);
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true, EarlyStorageApplyPriority = priority });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -1052,11 +1058,12 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void EarlyStorageApply_AbandonedPassLeavesTheBlockTreeAlone()
+    public void EarlyStorageApply_AbandonedPassLeavesTheBlockTreeAlone([Values] EarlyStorageApplyPriority priority)
     {
         const int slotCount = 16;
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true });
+        using IDisposable applier = UseApplierAt(priority);
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = true, EarlyStorageApplyPriority = priority });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -1115,6 +1122,28 @@ public class FlatWorldStateScopeProviderTests
         TimeSpan previous = IdleStorageApplier.MinIdleGap;
         IdleStorageApplier.MinIdleGap = gap;
         return new Reactive.AnonymousDisposable(() => IdleStorageApplier.MinIdleGap = previous);
+    }
+
+    // One applier thread per priority for the whole run, in place of the process-wide one until disposed.
+    private static readonly ConcurrentDictionary<EarlyStorageApplyPriority, IdleStorageApplier> AppliersByPriority = new();
+
+    private static IDisposable UseApplierAt(EarlyStorageApplyPriority priority)
+    {
+        IdleStorageApplier applier = AppliersByPriority.GetOrAdd(priority, static p => new IdleStorageApplier(LimboLogs.Instance, p, ThreadSchedulingCalls.Instance));
+        return IdleStorageApplier.ReplaceInstance(applier);
+    }
+
+    [Test]
+    public void EarlyStorageApply_TheFirstScopeSetsThePriorityOfTheSharedThread([Values] EarlyStorageApplyPriority priority)
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using IDisposable noApplier = IdleStorageApplier.ReplaceInstance(null);
+        using TestContext first = new(config: new FlatDbConfig { EarlyStorageApplyPriority = priority });
+        Assert.That(first.Scope.EarlyApplier.Priority, Is.EqualTo(priority));
+
+        EarlyStorageApplyPriority other = priority == EarlyStorageApplyPriority.Idle ? EarlyStorageApplyPriority.Normal : EarlyStorageApplyPriority.Idle;
+        using TestContext later = new(config: new FlatDbConfig { EarlyStorageApplyPriority = other });
+        Assert.That(later.Scope.EarlyApplier, Is.SameAs(first.Scope.EarlyApplier));
     }
 
     [Test]
