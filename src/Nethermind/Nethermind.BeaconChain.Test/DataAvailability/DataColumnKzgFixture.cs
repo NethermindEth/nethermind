@@ -4,6 +4,8 @@
 using System.Collections.Concurrent;
 using CkzgLib;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.Core;
+using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
@@ -31,14 +33,15 @@ internal static class DataColumnKzgFixture
     private static BlobFixture Compute(byte seed)
     {
         byte[] blob = MakeBlob(seed);
-        byte[] commitment = new byte[Ckzg.BytesPerCommitment];
-        Ckzg.BlobToKzgCommitment(commitment, blob, DasKzg.Handle);
+        DasKzg.EnsureInitialized();
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(blob);
+        proofsManager.ComputeProofsAndCommitments(wrapper);
 
         byte[] cells = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell];
-        byte[] proofs = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof];
-        Ckzg.ComputeCellsAndKzgProofs(cells, proofs, blob, DasKzg.Handle);
+        KzgPolynomialCommitments.ComputeCells(blob, cells);
 
-        return new BlobFixture(commitment, cells, proofs);
+        return new BlobFixture(wrapper.Commitments[0], cells, [.. wrapper.Proofs.SelectMany(static proof => proof)]);
     }
 
     public static SszBlobCell CellAt(BlobFixture blob, int columnIndex) =>

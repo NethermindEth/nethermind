@@ -26,14 +26,11 @@ public class DasKzgTests
     }
 
     [Test]
-    public void DasKzg_handle_is_the_same_native_pointer_as_the_execution_layers_handle()
+    public void DasKzg_loads_the_execution_layers_setup_before_first_use()
     {
-        nint handle = Nethermind.BeaconChain.DataAvailability.DasKzg.Handle;
+        Nethermind.BeaconChain.DataAvailability.DasKzg.EnsureInitialized();
 
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(handle, Is.Not.EqualTo(nint.Zero));
         Assert.That(KzgPolynomialCommitments.IsInitialized, Is.True);
-        Assert.That(Nethermind.BeaconChain.DataAvailability.DasKzg.IsSharedWithExecutionLayerHandle(), Is.True);
     }
 
     // Locate the source file, not merely a named directory: artifacts/bin contains matching assembly directories.

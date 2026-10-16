@@ -6,6 +6,7 @@ using CkzgLib;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
 
@@ -154,7 +155,8 @@ public static class DataColumnSidecarVerifier
 
         try
         {
-            return Ckzg.VerifyCellKzgProofBatch(flatCommitments, cellIndices, flatCells, flatProofs, count, DasKzg.Handle);
+            DasKzg.EnsureInitialized();
+            return KzgPolynomialCommitments.VerifyCellProofBatch(flatCommitments, cellIndices, flatCells, flatProofs, count);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {

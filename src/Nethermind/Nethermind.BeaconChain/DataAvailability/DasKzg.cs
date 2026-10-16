@@ -5,28 +5,19 @@ using Nethermind.Crypto;
 
 namespace Nethermind.BeaconChain.DataAvailability;
 
-/// <summary>
-/// This plugin's only point of contact with the KZG trusted setup: the execution layer's own handle,
-/// <see cref="KzgPolynomialCommitments.CkzgSetup"/>, made reachable via
-/// <c>InternalsVisibleTo</c> rather than loaded again. <see cref="KzgPolynomialCommitments.InitializeAsync"/>
-/// is idempotent, so calling it here - needed because a DAS-only code path (e.g. a unit test) may run
-/// before the execution layer's own EIP-4844 init step does - never loads a second copy of the file.
-/// </summary>
+/// <summary>Makes the execution layer's KZG trusted setup available to this plugin's DAS code paths.</summary>
 internal static class DasKzg
 {
-    public static nint Handle
+    /// <summary>Loads the execution layer's KZG trusted setup if nothing has loaded it yet.</summary>
+    /// <remarks>
+    /// A DAS-only code path (e.g. a unit test) may run before the execution layer's own EIP-4844 init step does.
+    /// <see cref="KzgPolynomialCommitments.InitializeAsync"/> is idempotent, so this never loads a second copy of the setup.
+    /// </remarks>
+    public static void EnsureInitialized()
     {
-        get
+        if (!KzgPolynomialCommitments.IsInitialized)
         {
-            if (!KzgPolynomialCommitments.IsInitialized)
-            {
-                KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
-            }
-
-            return KzgPolynomialCommitments.CkzgSetup;
+            KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
         }
     }
-
-    /// <summary>Test-only proof hook: true only if <see cref="Handle"/> is the execution layer's exact native pointer, not a copy.</summary>
-    internal static bool IsSharedWithExecutionLayerHandle() => Handle == KzgPolynomialCommitments.CkzgSetup;
 }

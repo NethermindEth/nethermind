@@ -3,6 +3,7 @@
 
 using CkzgLib;
 using Nethermind.Core.Collections;
+using Nethermind.Crypto;
 
 namespace Nethermind.BeaconChain.DataAvailability;
 
@@ -218,7 +219,8 @@ public static class DataColumnReconstruction
 
         try
         {
-            Ckzg.RecoverCellsAndKzgProofs(recoveredCells, recoveredProofs, heldColumnIndices, heldCellsForRow, heldColumnIndices.Length, DasKzg.Handle);
+            DasKzg.EnsureInitialized();
+            KzgPolynomialCommitments.RecoverCellsAndProofs(recoveredCells, recoveredProofs, heldColumnIndices, heldCellsForRow, heldColumnIndices.Length);
             return true;
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
