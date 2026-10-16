@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
@@ -74,5 +77,40 @@ public partial class StorageProviderTests
 
         bool grown = slotCount > PersistentStorageProvider.RetainedPendingCapacity;
         Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), grown ? Is.Null : Is.Not.Null);
+    }
+
+    /// <remarks>Only debug builds report an undisposed list, from its finalizer, so release builds pass trivially.</remarks>
+    [Test]
+    [NonParallelizable]
+    public void EndScope_KeptPendingBuffer_IsNotReportedAsLeaked()
+    {
+        TextWriter stderr = Console.Error;
+        using StringWriter captured = new();
+        Console.SetError(captured);
+        try
+        {
+            KeepPendingBufferAndDropProvider();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+        finally
+        {
+            Console.SetError(stderr);
+        }
+
+        Assert.That(captured.ToString(), Does.Not.Contain(nameof(PersistentStorageProvider)));
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void KeepPendingBufferAndDropProvider()
+        {
+            using Context ctx = new(UseFlat, setInitialState: false);
+            WorldState provider = BuildStorageProvider(ctx);
+            using (provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.Get(new StorageCell(TestItem.AddressA, UInt256.Zero), out _);
+            }
+
+            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
+        }
     }
 }

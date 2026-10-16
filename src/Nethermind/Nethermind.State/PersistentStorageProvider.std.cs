@@ -44,13 +44,21 @@ internal sealed partial class PersistentStorageProvider
         _lastCapturedCell = cell;
         if (!_originalsIndexed)
         {
-            (_pendingOriginalValues ??= new(PendingOriginalsPool, PooledDictionaryCapacity))
-                .Add(new KeyValuePair<StorageCell, UInt256>(cell, value));
+            (_pendingOriginalValues ??= RentPendingOriginals()).Add(new KeyValuePair<StorageCell, UInt256>(cell, value));
             _lastCapturedOriginal = value;
             return;
         }
 
         _lastCapturedOriginal = CaptureIndexedOriginalValue(in cell, in value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ArrayPoolList<KeyValuePair<StorageCell, UInt256>> RentPendingOriginals()
+    {
+        ArrayPoolList<KeyValuePair<StorageCell, UInt256>> list = new(PendingOriginalsPool, PooledDictionaryCapacity);
+        // A kept list is dropped with its provider rather than disposed, which the debug build would report as a leak.
+        GC.SuppressFinalize(list);
+        return list;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
