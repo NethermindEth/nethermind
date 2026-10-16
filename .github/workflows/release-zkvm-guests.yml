@@ -69,6 +69,7 @@ jobs:
             [sp1]=sha256:e13e2d07a10c5cdb0d548bceacbc1cbe468c1dbda3972c3d4611589585f1fede
           )
           mtime=$(git log -1 --format=%ct)
+          assets=()
           digests=$'| zkVM | ELF SHA-256 | VK SHA-256 |\n| --- | --- | --- |'
 
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
@@ -102,13 +103,15 @@ jobs:
             fi
 
             digests+=$'\n'"| ${names[$vm]} | \`$elf_digest\` | $vk_digest |"
-
-            for file in "${files[@]}"; do
-              gpg --no-tty --batch --yes --pinentry-mode loopback \
-                --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
-                -o "$file.asc" -ab "$file"
-            done
+            assets+=("${files[@]}")
           done
+
+          # One signature over the checksums covers every asset
+          sha256sum "${assets[@]}" > SHA256SUMS
+          cat SHA256SUMS
+          gpg --no-tty --batch --yes --pinentry-mode loopback \
+            --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
+            -o SHA256SUMS.asc -ab SHA256SUMS
 
           echo "$digests" >> $GITHUB_STEP_SUMMARY
           delimiter=$(openssl rand -hex 16)
@@ -137,7 +140,7 @@ jobs:
 
           #### Build signature
 
-          The files are signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
+          `SHA256SUMS` lists every file and is signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
           EOF
           )
 
@@ -167,6 +170,6 @@ jobs:
           fi
 
           echo "Uploading assets"
-          gh release upload "$git_tag" *.elf *.vk *.tar.gz *.asc --clobber
+          gh release upload "$git_tag" *.elf *.vk *.tar.gz SHA256SUMS SHA256SUMS.asc --clobber
 
           echo "Drafting completed. Review and publish the release manually."
