@@ -144,9 +144,12 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                     _retrofit?.Prepare();
                     ulong from = _retrofit?.FirstBlockToBuild(watermark) ?? 0;
                     // A history started at a snap pivot has no rows below its image, so the walk starts there.
-                    if (_availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock > from) from = imageBlock;
+                    bool fromPivot = _availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock >= from;
+                    if (fromPivot) from = imageBlock;
                     ulong to = watermark;
-                    if (from > 0 && _logger.IsInfo) _logger.Info(
+                    if (fromPivot && _logger.IsInfo) _logger.Info(
+                        $"History walk will cover [{from}, {to}]: history starts at the snap-sync pivot, whose state was recorded at block {from}; it builds the proof commitments from there.");
+                    else if (from > 0 && _logger.IsInfo) _logger.Info(
                         $"History walk verification will cover [{from}, {to}] rather than the whole chain: only the most recent commitment epochs are kept, so the blocks below that are neither built nor served, and the walk is a fraction of the work.");
 
                     if (!_metadata.TryGetWalkInProgress(out _, out _) && _metadata.TryGetWalkVerified(out ulong verifiedFrom, out ulong verifiedTo) && verifiedFrom <= from && verifiedTo >= from
