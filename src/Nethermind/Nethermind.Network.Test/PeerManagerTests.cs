@@ -1051,8 +1051,7 @@ namespace Nethermind.Network.Test
                 ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, node.Host, node.Port));
             }
 
-            // A static node that joins the pool while a pass with no candidates idles waits out its 1 s delay.
-            Assert.That(() => ctx.PeerManager.ActivePeers.Count(static p => p.Node.IsStatic), Is.EqualTo(nodesCount).After(5000, 10));
+            Assert.That(() => ctx.PeerManager.ActivePeers.Count(static p => p.Node.IsStatic), Is.EqualTo(nodesCount).After(_delay, 10));
         }
 
         [Test]
@@ -1172,7 +1171,7 @@ namespace Nethermind.Network.Test
                 NetworkConfig.MaxActivePeers = maxActivePeers;
                 NetworkConfig.PeersPersistenceInterval = 50;
                 NetworkConfig.NumConcurrentOutgoingConnects = parallelism;
-                NetworkConfig.MaxOutgoingConnectPerSec = 1000000; // no limit in unit test
+                NetworkConfig.MaxOutgoingConnectPerSec = int.MaxValue; // zero interval: a finite rate can throttle a back-to-back dial off the fast path
                 StaticNodesManager = Substitute.For<IStaticNodesManager>();
                 StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
                 TestNodeSource = new TestNodeSource();
