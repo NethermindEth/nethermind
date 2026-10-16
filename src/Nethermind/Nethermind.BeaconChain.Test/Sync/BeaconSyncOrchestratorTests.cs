@@ -1062,6 +1062,27 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(logger.LogList.Where(static l => l.StartsWith("Import worker spent") && l.EndsWith(" ms on the head step")).ToArray(), Has.Length.EqualTo(pastThreshold ? 1 : 0));
     }
 
+    // A fault that escaped the pass would end RunAsync for good while the process stays up.
+    [Test]
+    public async Task A_head_step_that_throws_after_imports_is_skipped_and_runs_again_on_the_next_pass()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 101);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.OnComputeHead = static () => throw new InvalidOperationException("scripted fault");
+        ulong faultsBefore = Metrics.BeaconChainWorkerFaults;
+
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[0])));
+        Assert.That(() => harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None), Throws.Nothing);
+        harness.Importer.OnComputeHead = null;
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(2), "the skipped head step runs again on the next pass");
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1), "the retried step reaches the execution layer");
+        Assert.That(Metrics.BeaconChainWorkerFaults, Is.GreaterThan(faultsBefore));
+    }
+
     [Test]
     public async Task Slot_tick_releases_a_gossip_block_held_for_its_slot()
     {

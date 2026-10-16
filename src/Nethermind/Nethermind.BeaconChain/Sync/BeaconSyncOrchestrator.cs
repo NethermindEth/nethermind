@@ -682,7 +682,18 @@ public sealed class BeaconSyncOrchestrator(
         if (_importedSinceHeadStep)
         {
             long startMs = Environment.TickCount64;
-            await RunHeadStepAsync(token);
+            try
+            {
+                await RunHeadStepAsync(token);
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                // The imports are not yet reflected in the head, so the next pass runs the step again.
+                _importedSinceHeadStep = true;
+                Interlocked.Increment(ref Metrics.WorkerFaultsCount);
+                if (_logger.IsError) _logger.Error("Import worker failed on the head step and skipped it; the next pass runs it again.", e);
+            }
+
             if (IsSlowForDebug(startMs, out long elapsedMs)) _logger.Debug($"Import worker spent {elapsedMs} ms on the head step");
         }
     }
