@@ -900,6 +900,9 @@ namespace Nethermind.Trie
             /// <remarks>
             /// Only where <see cref="TrieNode.Unseal"/> returns the node itself; see <see cref="UnsealsAncestorsAtOnce"/>.
             /// Deepest first, stopping at a node already pending, dirty and unhashed: an earlier write left its ancestors so too.
+            /// Relies on each frame's node holding the next frame's node by reference in its <c>ChildIdx</c> slot, as the descent
+            /// cached it: the climb's early exit checks only the immediate parent, so a slot left holding a hash (a pruned or
+            /// unresolved child) would have a higher ancestor encode its child's stale hash.
             /// </remarks>
             public void UnsealNodes()
             {
