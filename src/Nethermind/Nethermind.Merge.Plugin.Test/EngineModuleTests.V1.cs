@@ -3177,7 +3177,6 @@ public partial class EngineModuleTests
 
         ResultWrapper<ClientVersionV1[]> result = rpcModule.engine_getClientVersionV1(callerVersion);
 
-        // identification.md: a single execution client answers with exactly one entry; the caller's is not echoed.
         Assert.That(result.Data, Is.EqualTo([new ClientVersionV1()]));
     }
 
