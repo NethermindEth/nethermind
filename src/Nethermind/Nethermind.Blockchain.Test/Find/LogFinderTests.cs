@@ -206,6 +206,10 @@ public class LogFinderTests
             "the scan must have taken the parallel path, or this test cannot cover the AggregateException unwrap");
     }
 
+    [Test]
+    public void Parallel_scan_starts_at_four_blocks_per_worker([Values(1, 3)] int workers, [Values(-1, 0)] int rangeOffset) =>
+        Assert.That(LogFinder.ScansInParallel((ulong)(workers * 4 + rangeOffset), workers), Is.EqualTo(rangeOffset == 0));
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void throw_exception_when_receipts_are_missing()
     {

@@ -195,6 +195,25 @@ internal static class NodeViews
         return isLeaf ? NodeView.Leaf(path, payload) : NodeView.Extension(path, payload);
     }
 
+    /// <summary>Splits a leaf or extension node into the nibble its path starts with and the node that path continues
+    /// as one level down. False for an extension of one nibble, whose child is the node it references.</summary>
+    internal static bool TryDescend(ReadOnlySpan<byte> rlp, out int nibble, out NodeView child)
+    {
+        Span<byte> nibbles = stackalloc byte[MaxNibbles];
+        bool isLeaf = DecodeShortNode(rlp, nibbles, out int nibbleCount, out ReadOnlySpan<byte> payload);
+        if (nibbleCount == 0 || (!isLeaf && nibbleCount == 1))
+        {
+            nibble = nibbleCount == 0 ? -1 : nibbles[0];
+            child = NodeView.Empty;
+            return false;
+        }
+
+        nibble = nibbles[0];
+        ReadOnlySpan<byte> rest = nibbles[1..nibbleCount];
+        child = isLeaf ? NodeView.Leaf(rest, payload) : NodeView.Extension(rest, payload);
+        return true;
+    }
+
     private static NodeView AsBranch(ReadOnlySpan<byte> rlp, Hash256? knownHash)
     {
         ChildVector children = ChildVector.Rent();
