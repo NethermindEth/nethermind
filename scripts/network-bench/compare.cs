@@ -6,7 +6,7 @@
 //
 //   compare.cs <base artifacts directory> <head artifacts directory>
 //
-// Reads BASE_SHA, HEAD_SHA, BASE_OUTCOME, HEAD_OUTCOME and RUNNER_LABEL from the environment.
+// Reads BASE_SHA, HEAD_SHA, BASE_OUTCOME, HEAD_OUTCOME and RUNNER_NAME from the environment.
 // Benchmarks are listed in the head run's order; one missing from the base run shows dashes.
 
 using System.Globalization;
@@ -25,7 +25,7 @@ Dictionary<string, Result> headResults = Load(args[1]);
 
 Console.WriteLine("## Network benchmarks");
 Console.WriteLine();
-Console.WriteLine($"Runner `{Env("RUNNER_LABEL")}`, base `{Short(Env("BASE_SHA"))}` ({Env("BASE_OUTCOME")}), " +
+Console.WriteLine($"Runner `{Env("RUNNER_NAME")}`, base `{Short(Env("BASE_SHA"))}` ({Env("BASE_OUTCOME")}), " +
     $"head `{Short(Env("HEAD_SHA"))}` ({Env("HEAD_OUTCOME")}).");
 Console.WriteLine();
 Console.WriteLine("Medians are compared; a delta within the CV of either side is noise. Allocations are per operation.");

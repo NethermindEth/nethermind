@@ -4,12 +4,6 @@ name: Network Benchmark
 # and writes a comparison table to the job summary. Timings are only comparable within a run.
 
 on:
-  pull_request:
-    types: [labeled]
-  # Dispatch-only workflows on a non-default branch never register, so pushing a change to the file
-  # both registers it and runs it against the branch's merge base with master.
-  push:
-    paths: [.github/workflows/network-benchmark.yml]
   workflow_dispatch:
     inputs:
       base:
@@ -25,44 +19,32 @@ on:
         required: false
         type: string
         default: "*RlpxRoundTripBenchmarks* *OutFlowBenchmarks*"
-      runner:
-        description: Runner to measure on. The self-hosted benchmark pool is quiet; hosted runners are shared and noisy.
-        required: false
-        type: choice
-        default: benchmark
-        options:
-          - benchmark
-          - ubuntu-latest
 
 permissions:
   contents: read
 
 concurrency:
-  # The label is part of the group: every labeled event starts a run, and one for another label must not
-  # cancel a benchmark in progress.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.head || github.ref }}-${{ github.event.label.name || 'run' }}
+  group: ${{ github.workflow }}-${{ inputs.head || github.ref }}
   cancel-in-progress: true
 
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
-  DEFAULT_FILTER: "*RlpxRoundTripBenchmarks* *OutFlowBenchmarks*"
 
 jobs:
   benchmark:
-    name: Network benchmarks on ${{ inputs.runner || 'benchmark' }}
-    if: >-
-      github.repository_owner == 'NethermindEth' &&
-      (github.event_name != 'pull_request' ||
-       (github.event.label.name == 'network-benchmark' &&
-        github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: ${{ inputs.runner || 'benchmark' }}
+    name: Network benchmarks
+    if: github.repository_owner == 'NethermindEth'
+    runs-on: benchmark
     timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Check out head
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.head || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.head || github.sha }}
           # Full history so the base can be any commit-ish and the merge base can be computed.
           fetch-depth: 0
           persist-credentials: false
@@ -76,13 +58,11 @@ jobs:
 
       - name: Resolve base
         id: refs
-        shell: bash
         working-directory: head
         env:
-          # Not the pull request base: that is the tip of master, which may hold commits the head lacks.
+          # Not the tip of master, which may hold commits the head lacks.
           BASE_INPUT: ${{ inputs.base }}
         run: |
-          set -euo pipefail
           base="${BASE_INPUT:-$(git merge-base origin/master HEAD)}"
           {
             echo "base=$(git rev-parse --verify "${base}^{commit}")"
@@ -101,28 +81,30 @@ jobs:
       - name: Run benchmarks at base
         id: run-base
         continue-on-error: true
-        shell: bash
+        working-directory: base/src/Nethermind/Nethermind.Benchmark.Runner
         env:
-          FILTER: ${{ inputs.filter || env.DEFAULT_FILTER }}
-        run: ${{ github.workspace }}/head/scripts/network-bench/run.sh "${GITHUB_WORKSPACE}/base" "${RUNNER_TEMP}/bdn-base"
+          FILTER: ${{ inputs.filter }}
+        run: |
+          read -ra patterns <<< "${FILTER}"
+          dotnet run -c Release -- --filter "${patterns[@]}" --join --buildTimeout 900 --artifacts "${RUNNER_TEMP}/bdn-base"
 
       - name: Run benchmarks at head
         id: run-head
         continue-on-error: true
-        shell: bash
+        working-directory: head/src/Nethermind/Nethermind.Benchmark.Runner
         env:
-          FILTER: ${{ inputs.filter || env.DEFAULT_FILTER }}
-        run: ${{ github.workspace }}/head/scripts/network-bench/run.sh "${GITHUB_WORKSPACE}/head" "${RUNNER_TEMP}/bdn-head"
+          FILTER: ${{ inputs.filter }}
+        run: |
+          read -ra patterns <<< "${FILTER}"
+          dotnet run -c Release -- --filter "${patterns[@]}" --join --buildTimeout 900 --artifacts "${RUNNER_TEMP}/bdn-head"
 
       - name: Compare
         if: always()
-        shell: bash
         env:
           BASE_SHA: ${{ steps.refs.outputs.base }}
           HEAD_SHA: ${{ steps.refs.outputs.head }}
           BASE_OUTCOME: ${{ steps.run-base.outcome }}
           HEAD_OUTCOME: ${{ steps.run-head.outcome }}
-          RUNNER_LABEL: ${{ inputs.runner || 'benchmark' }}
         run: head/scripts/network-bench/compare.cs "${RUNNER_TEMP}/bdn-base" "${RUNNER_TEMP}/bdn-head" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload results
