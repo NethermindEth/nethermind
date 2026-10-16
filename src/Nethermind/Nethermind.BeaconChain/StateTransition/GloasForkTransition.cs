@@ -137,18 +137,6 @@ public static class GloasForkTransition
     public static bool IsBuilderWithdrawalCredential(Hash256 withdrawalCredentials) =>
         withdrawalCredentials.Bytes[0] == Presets.BuilderWithdrawalPrefix;
 
-    /// <summary>Spec <c>is_pending_validator</c>: is there a signature-valid pending deposit for <paramref name="pubkey"/>?</summary>
-    public static bool IsPendingValidator(Hash256 genesisValidatorsRoot, IReadOnlyList<PendingDeposit> pendingDeposits, BlsPublicKey pubkey, BeaconChainSpec? spec = null)
-    {
-        foreach (PendingDeposit deposit in pendingDeposits)
-        {
-            if (deposit.Pubkey.Equals(pubkey) &&
-                DepositSignatureVerifier.IsValid(spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot), deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
-                return true;
-        }
-        return false;
-    }
-
     /// <summary>Spec <c>get_index_for_new_builder</c>: reuse an exited, drained builder slot before appending.</summary>
     public static ulong GetIndexForNewBuilder(IReadOnlyList<Builder> builders, ulong currentEpoch)
     {
