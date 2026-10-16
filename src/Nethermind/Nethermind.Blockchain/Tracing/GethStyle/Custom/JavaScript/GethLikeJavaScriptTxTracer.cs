@@ -61,7 +61,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         if (_captureErrors)
         {
             _callbacks = [];
-            _log.stack = new Log.Stack(default, engine);
+            _log.stack.InputErrorEngine = engine;
             _log.memory.InputErrorEngine = engine;
             engine.PrepareNullThrowCapture();
         }
@@ -193,7 +193,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         _log.pc = pc;
-        _log.op = new Log.Opcode(opcode);
+        _log.op = Log.Opcode.Of(opcode);
         _log.gas = gas;
         _log.depth = env.GetGethTraceDepth();
         _log.error = null;
@@ -284,7 +284,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
-        _log.stack = new Log.Stack(stack, _captureErrors ? _engine : null);
+        _log.stack.Items = stack;
 
         if (_functions.HasFlag(TracerFunctions.step))
         {
