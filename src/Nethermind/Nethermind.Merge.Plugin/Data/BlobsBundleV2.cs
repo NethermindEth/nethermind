@@ -37,7 +37,6 @@ public class BlobsBundleV2
                 continue;
             }
 
-            // An empty bundle for a payload that still carries the blob transaction would be proposed as an invalid block.
             if (tx is not { NetworkWrapper: ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper })
             {
                 throw new ArgumentException("Shard blob transaction should contain network wrapper data");
