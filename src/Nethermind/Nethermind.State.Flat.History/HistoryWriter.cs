@@ -61,6 +61,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private readonly ulong _captureFromBlock;
     private readonly PendingV3Writes? _pendingV3;
     private readonly ForwardCommitmentCapture? _commitments;
+    private readonly ulong _pivotImageGranularity;
     private bool _formatStamped;
 
     public HistoryWriter(
@@ -70,9 +71,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
         ILogManager logManager,
-        ForwardCommitmentCapture? commitments)
+        ForwardCommitmentCapture? commitments,
+        CommitmentDepthPolicy? commitmentPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(history);
+        _pivotImageGranularity = Math.Max(1UL, commitmentPolicy?.Interval ?? 1UL);
         _commitments = commitments is { Enabled: true } ? commitments : null;
         ILogger logger = logManager.GetClassLogger<HistoryWriter>();
         _enabled = config.HistoryEnabled;
@@ -482,7 +485,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _history.SyncWal();
     }
 
-    /// <summary>Seeds a windowed node's floor at a snap-sync pivot, publishing watermark = floor = pivot.</summary>
+    /// <summary>Seeds the floor at a snap-sync pivot, publishing watermark = floor = pivot.</summary>
     /// <remarks>
     /// No rows are needed under v3: the persisted flat column holds exactly the pivot's state and the fallback answers.
     /// A since-block floor already standing above the pivot stays - the state starts at the pivot, the history at the
@@ -491,9 +494,14 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// blocks the pivot passes over are not derivable afterwards. No-op on v2, which has no fallback to lean on. Call
     /// at the sync-completion seam before any block processes on top.
     /// </remarks>
-    public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
+    public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot, IPivotAccountSource? accounts = null)
     {
-        if (!_enabled || !_isV3) return;
+        if (!_enabled) return;
+        if (!_isV3)
+        {
+            SeedUnwindowedPivot(pivotBlock, pivotStateRoot, accounts);
+            return;
+        }
 
         // Raise-only for a rolling floor: seeding a pivot below it would re-admit reads for heights whose rows the
         // pruner has already deleted, and they would answer from live state instead of failing closed. A since-block
@@ -545,6 +553,121 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         if (_captureFromBlock > 0 && pivotBlock > _captureFromBlock && _logger.IsInfo) _logger.Info(
             $"Flat history starts at the sync pivot {pivotBlock}, not at FlatDb.HistoryRetentionSinceBlock {_captureFromBlock}: the node's state starts there.");
+    }
+
+    private const int PivotImageRowsPerBatch = 100_000;
+    private const long PivotImageLogEvery = 10_000_000;
+
+    /// <summary>Starts an unwindowed history at a snap-sync pivot. v2 rows are post-values with no fallback, so a key
+    /// the history has no row for reads as absent; the pivot's whole state is therefore written as rows first, then
+    /// the marker, watermark and floor at the pivot. The rows go at the start of the pivot's checkpoint window rather
+    /// than at the pivot, so the every-block walk can start there and build proof commitments for the pivot itself:
+    /// reads below the floor are refused, so nothing ever sees that image at the blocks before the pivot.</summary>
+    private void SeedUnwindowedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot, IPivotAccountSource? accounts)
+    {
+        if (_availability.TryGetWatermark(out ulong watermark))
+        {
+            throw new InvalidOperationException(
+                $"Cannot start the unwindowed flat history at the sync pivot {pivotBlock}: the flatHistory database already " +
+                $"holds history up to block {watermark}, whose rows resolve through state the snap sync replaced. Resync the " +
+                "flatHistory database.");
+        }
+
+        if (accounts is null)
+        {
+            throw new InvalidOperationException(
+                $"Cannot start the unwindowed flat history at the sync pivot {pivotBlock} without the pivot's accounts.");
+        }
+
+        ulong imageBlock = pivotBlock - pivotBlock % _pivotImageGranularity;
+        if (_logger.IsInfo) _logger.Info(
+            $"Starting unwindowed flat history at the sync pivot {pivotBlock}: writing the pivot state as history rows at block {imageBlock}. This reads the whole state once.");
+
+        long startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        long accountRows = 0;
+        Lock gate = new();
+        IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
+        IWriteBatch accountBatch = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
+        int inBatch = 0;
+        try
+        {
+            accounts.ForEachAccount((path, account) =>
+            {
+                using ArrayPoolSpan<byte> value = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
+                lock (gate)
+                {
+                    _accountHistory!.RecordChange(imageBlock, path.Bytes, value, accountBatch);
+                    if (++accountRows % PivotImageLogEvery == 0 && _logger.IsInfo) _logger.Info($"Pivot history image: {accountRows:N0} accounts written.");
+                    if (++inBatch < PivotImageRowsPerBatch) return;
+
+                    batch.Dispose();
+                    batch = _history.StartWriteBatch();
+                    accountBatch = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
+                    inBatch = 0;
+                }
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            batch.Dispose();
+        }
+
+        long slotRows = WritePivotStorageImage(imageBlock);
+
+        using (IColumnsWriteBatch<FlatHistoryColumns> markerBatch = _history.StartWriteBatch())
+        {
+            HistoryAvailability.MarkBlock(markerBatch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), pivotBlock, pivotStateRoot, _formatVersion);
+        }
+
+        _history.SyncWal();
+        _availability.PublishWatermark(pivotBlock, _formatVersion);
+        _availability.PublishUnwindowedPivotFloor(pivotBlock, imageBlock);
+        _history.SyncWal();
+        _formatStamped = true;
+        Metrics.FlatHistoryWatermark = (long)pivotBlock;
+
+        if (_logger.IsInfo) _logger.Info(
+            $"Unwindowed flat history starts at the sync pivot {pivotBlock}: {accountRows:N0} accounts and {slotRows:N0} storage slots written in {System.Diagnostics.Stopwatch.GetElapsedTime(startedAt)}.");
+    }
+
+    /// <summary>History storage rows key exactly like the flat storage column and encode slots the same way, so the
+    /// pivot's slots copy over verbatim.</summary>
+    private long WritePivotStorageImage(ulong imageBlock)
+    {
+        ISortedKeyValueStore storage = (ISortedKeyValueStore)_persistedStorage;
+        byte[] lower = new byte[BaseFlatPersistence.StorageKeyLength];
+        byte[] upper = new byte[BaseFlatPersistence.StorageKeyLength + 1];
+        upper.AsSpan().Fill(0xFF);
+
+        long rows = 0;
+        int inBatch = 0;
+        IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
+        try
+        {
+            IWriteBatch storageBatch = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
+            using ISortedView view = storage.GetViewBetween(lower, upper);
+            while (view.MoveNext())
+            {
+                ReadOnlySpan<byte> key = view.CurrentKey;
+                ReadOnlySpan<byte> value = view.CurrentValue;
+                if (key.Length != BaseFlatPersistence.StorageKeyLength || value.IsEmpty) continue;
+
+                _storageHistory!.RecordChange(imageBlock, key, value, storageBatch);
+                if (++rows % PivotImageLogEvery == 0 && _logger.IsInfo) _logger.Info($"Pivot history image: {rows:N0} storage slots written.");
+                if (++inBatch < PivotImageRowsPerBatch) continue;
+
+                batch.Dispose();
+                batch = _history.StartWriteBatch();
+                storageBatch = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
+                inBatch = 0;
+            }
+        }
+        finally
+        {
+            batch.Dispose();
+        }
+
+        return rows;
     }
 
     [SkipLocalsInit]
