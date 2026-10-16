@@ -12,7 +12,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Eez.Attester;
 
-internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri L1Rpc, Uri L2Rpc, ulong L1ChainId, Address Registry, Address Manager,
+internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri? L1Rpc, Uri? L2Rpc, ulong L1ChainId, Address? Registry, Address? Manager,
     string ServerCertificate, string ServerPasswordFile, string[] ComposerCertificates, StreamingRegistryLimits RegistryLimits,
     StreamingSessionLimits SessionLimits, StreamingTransportLimits TransportLimits)
 {
@@ -30,13 +30,16 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri L1Rpc, Uri
                 UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
                 MaxDepth = 16,
             }) ?? throw Invalid();
-            if (settings.Profile is not ("rollup0-calldata" or "rollupx-native") || !IPAddress.IsLoopback(attester.ListenAddress.Address) ||
-                settings.L1ChainId == 0 || settings.ComposerCertificates is not { Length: > 0 and <= 16 }) throw Invalid();
-            if (settings.Profile == "rollup0-calldata" && (settings.L1ChainConfigPath is not null || settings.L2GenesisHash is not null)) throw Invalid();
+            bool conditional = settings.Profile == "rollup0-conditional";
+            if (settings.Profile is not ("rollup0-calldata" or "rollup0-conditional" or "rollupx-native") ||
+                !IPAddress.IsLoopback(attester.ListenAddress.Address) || settings.ComposerCertificates is not { Length: > 0 and <= 16 }) throw Invalid();
+            if (conditional ? settings.L1Rpc is not null || settings.L2Rpc is not null || settings.L1ChainId != 0 ||
+                settings.Registry is not null || settings.Manager is not null : settings.L1ChainId == 0) throw Invalid();
+            if (settings.Profile != "rollupx-native" && (settings.L1ChainConfigPath is not null || settings.L2GenesisHash is not null)) throw Invalid();
             IPEndPoint listen = IPEndPoint.Parse(Required(settings.ListenAddress));
             if (listen.Port != 0 && listen.Port == attester.ListenAddress.Port) throw Invalid();
-            Address registry = new(Required(settings.Registry));
-            Address manager = new(Required(settings.Manager));
+            Address? registry = conditional ? null : new(Required(settings.Registry));
+            Address? manager = conditional ? null : new(Required(settings.Manager));
             if (registry == Address.Zero || manager == Address.Zero || settings.MaxSessionBytes > attester.Limits.MaxBytes) throw Invalid();
             StreamingRegistryLimits registryLimits = new(settings.MaxSessions, settings.MaxSessionsPerOwner, settings.MaxReservedBytes,
                 TimeSpan.FromSeconds(settings.RetentionSeconds));
@@ -53,11 +56,16 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri L1Rpc, Uri
             string directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
             string[] pins = new string[settings.ComposerCertificates.Length];
             for (int i = 0; i < pins.Length; i++) pins[i] = Path.GetFullPath(Required(settings.ComposerCertificates[i]), directory);
-            return new StreamingOptions(listen, Rpc(settings.L1Rpc), Rpc(settings.L2Rpc), settings.L1ChainId, registry, manager,
+            return new StreamingOptions(listen, conditional ? null : Rpc(settings.L1Rpc), conditional ? null : Rpc(settings.L2Rpc), settings.L1ChainId, registry, manager,
                 Path.GetFullPath(Required(settings.ServerCertificate), directory), Path.GetFullPath(Required(settings.ServerPasswordFile), directory),
                 pins, registryLimits, sessionLimits, transportLimits)
             {
-                Profile = settings.Profile == "rollupx-native" ? StreamingSettlementProfile.RollupXNative : StreamingSettlementProfile.Rollup0Calldata,
+                Profile = settings.Profile switch
+                {
+                    "rollupx-native" => StreamingSettlementProfile.RollupXNative,
+                    "rollup0-conditional" => StreamingSettlementProfile.Rollup0Conditional,
+                    _ => StreamingSettlementProfile.Rollup0Calldata,
+                },
                 L1ChainConfigPath = settings.Profile == "rollupx-native" ? Path.GetFullPath(Required(settings.L1ChainConfigPath), directory) : null,
                 L2GenesisHash = settings.Profile == "rollupx-native" ? GenesisHash(settings.L2GenesisHash) : null,
             };
@@ -122,4 +130,5 @@ internal enum StreamingSettlementProfile
 {
     Rollup0Calldata,
     RollupXNative,
+    Rollup0Conditional,
 }

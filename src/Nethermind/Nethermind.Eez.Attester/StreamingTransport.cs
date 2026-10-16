@@ -316,7 +316,7 @@ internal sealed class StreamingTransport
             return result switch
             {
                 { Block: { } block, Proof: null } => connection.CommitBlock(work.Operation, block),
-                { Block: null, Proof: { } proof } => connection.CompleteProof(work.Operation, proof),
+                { Block: null, Proof: { } proof } => CompleteProof(connection, work.Operation, proof),
                 _ => throw new InvalidOperationException("invalid streaming backend result"),
             };
         }
@@ -334,6 +334,18 @@ internal sealed class StreamingTransport
             _logger.LogError(exception, "stream execution worker failed");
             return connection.RejectOperation(work.Operation, new Status(StatusCode.Internal, "stream execution worker failed"));
         }
+    }
+
+    private ServerFrame CompleteProof(StreamingConnection connection, SessionOperation operation, Proof proof)
+    {
+        ServerFrame response = connection.CompleteProof(operation, proof);
+        Finalize finalization = operation.Finalize!;
+        _logger.LogInformation(
+            "{{\"event_name\":\"eez.proof_signer.window_signed\",\"fields\":{{" +
+            "\"wire\":\"prove.v2\",\"validated_from_block\":{From},\"validated_to_block\":{To}," +
+            "\"recomputed_public_inputs_hash\":\"0x{Hash}\"}}}}",
+            finalization.FromBlock, finalization.ToBlock, Convert.ToHexStringLower(proof.PublicInputsHash.Span));
+        return response;
     }
 
     private async Task<bool> Read(IAsyncStreamReader<ClientFrame> input, CancellationToken cancellation)

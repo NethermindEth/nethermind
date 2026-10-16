@@ -56,3 +56,17 @@ EIP-4788 and EIP-6110/7002/7251 calls and retains EIP-2935. The default is false
 for compatibility with existing deployments and recorded execution profiles.
 It does not define an activation block for an existing chain. RollupX already
 omits these calls.
+
+The optional `rollup0-conditional` streaming profile validates a transition from
+its selected parent without an independent L1 acceptance lookup. Select it
+explicitly in the trusted streaming configuration. Omit `l1Rpc`, `l2Rpc`,
+`l1ChainId`, `registry` and `manager`; unused authorization settings are rejected.
+Mutual TLS, pinned composer identity, quotas, canonical decoding, full execution
+and settlement validation, and session-owned signing still apply.
+
+This profile accepts inherited proof arrays as bounded input data, as the
+published Rollup0 composer does. Proof bytes are outside the signed public-input
+digest and are never trusted as evidence. Every result is freshly signed after
+validation. This differs from the common spec's proofless-input wording. The
+`rollup0-calldata` and `rollupx-native` profiles keep their existing proofless and
+independent L1 authorization rules.

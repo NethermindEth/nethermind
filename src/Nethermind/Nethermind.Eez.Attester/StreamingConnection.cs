@@ -28,7 +28,8 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
     {
         switch (settlementProfile)
         {
-            case StreamingSettlementProfile.Rollup0Calldata: StreamingFinalizer.ValidateSupportedSettlement(settlement); break;
+            case StreamingSettlementProfile.Rollup0Calldata:
+            case StreamingSettlementProfile.Rollup0Conditional: StreamingFinalizer.ValidateSupportedSettlement(settlement); break;
             case StreamingSettlementProfile.RollupXNative: RollupXStreamingFinalizer.ValidateSupportedSettlement(settlement); break;
             default: throw new InvalidOperationException("unknown settlement profile");
         }

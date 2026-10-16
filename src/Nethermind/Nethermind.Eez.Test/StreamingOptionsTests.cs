@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -53,6 +54,31 @@ public class StreamingOptionsTests
             Assert.That((options.TransportLimits.MaxConnections, options.SessionLimits.MaxBytes, options.RegistryLimits.MaxReservedBytes),
                 Is.EqualTo((8, 64L * 1024 * 1024, 512L * 1024 * 1024)), "default resource budgets are finite");
         }
+    }
+
+    [Test]
+    public void Load_ConditionalProfile_DoesNotRequireUnusedAuthorizationSources()
+    {
+        JsonObject json = Conditional();
+        using TempPath file = Config(json);
+        StreamingOptions options = StreamingOptions.Load(file.Path, Attester());
+        Assert.That((options.Profile, options.L1Rpc, options.L2Rpc, options.Registry, options.Manager, options.L1ChainId),
+            Is.EqualTo((StreamingSettlementProfile.Rollup0Conditional, (Uri?)null, (Uri?)null, (Address?)null, (Address?)null, 0UL)),
+            "conditional proofs bind the selected parent without asserting prior L1 acceptance");
+    }
+
+    [TestCase("l1Rpc", TestName = "Load_ConditionalWithL1Rpc_RejectsUnusedTrustSetting")]
+    [TestCase("l2Rpc", TestName = "Load_ConditionalWithL2Rpc_RejectsUnusedTrustSetting")]
+    [TestCase("l1ChainId", TestName = "Load_ConditionalWithL1Chain_RejectsUnusedTrustSetting")]
+    [TestCase("registry", TestName = "Load_ConditionalWithRegistry_RejectsUnusedTrustSetting")]
+    [TestCase("manager", TestName = "Load_ConditionalWithManager_RejectsUnusedTrustSetting")]
+    public void Load_ConditionalWithAuthorizationSetting_Rejects(string name)
+    {
+        JsonObject json = Conditional();
+        json[name] = Valid()[name]!.DeepClone();
+        using TempPath file = Config(json);
+        Assert.That(() => StreamingOptions.Load(file.Path, Attester()), Throws.TypeOf<FormatException>(),
+            "unused source settings cannot falsely suggest that the conditional profile authenticates L1 acceptance");
     }
 
     [Test]
@@ -297,6 +323,14 @@ public class StreamingOptionsTests
         ["serverPasswordFile"] = "password",
         ["composerCertificates"] = new JsonArray("composer.cer"),
     };
+
+    private static JsonObject Conditional()
+    {
+        JsonObject json = Valid();
+        json["profile"] = "rollup0-conditional";
+        foreach (string key in new[] { "l1Rpc", "l2Rpc", "l1ChainId", "registry", "manager" }) json.Remove(key);
+        return json;
+    }
 
     private static TempPath Config(JsonObject json)
     {

@@ -46,6 +46,7 @@ class ProverBootstrapTests(unittest.TestCase):
             EEZ_KEYSTORE_DIRECTORY=str(self.root / "keystore"),
             EEZ_KEYSTORE_PASSWORD_FILE=str(self.root / "password"),
             PROVER_TRACE=str(self.trace), IMPORTED_ADDRESS=self.address)
+        self.environment.pop("EEZ_CI_STREAMING", None)
         self.environment.pop("EEZ_L2_BLOCK_TIME_SECS", None)
         self.environment.pop("EEZ_SKIP_CONSENSUS_LAYER_CALLS", None)
 
@@ -68,6 +69,17 @@ class ProverBootstrapTests(unittest.TestCase):
         self.assertEqual(calls[1]["skip_consensus_calls"], "true")
         self.assertEqual((self.root / "password").stat().st_mode & 0o777, 0o600)
         self.assertNotIn("fixture-private-key", result.stdout + result.stderr)
+
+    def test_streaming_dispatch_keeps_arguments_and_removes_imported_private_key(self):
+        launcher = self.root / "start-streaming.sh"
+        launcher.write_text('exec "$(dirname "$0")/nethermind-eez-attester" "$@" --streaming-selected\n')
+        self.environment["EEZ_CI_STREAMING"] = "true"
+        result = self.run_launcher()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = json.loads(self.trace.read_text())
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]["args"], ["--listen-addr=0.0.0.0:50061", "--chain-config=/out/l2-genesis.json", "--streaming-selected"])
+        self.assertFalse(calls[1]["key_in_environment"])
 
     def test_legacy_consensus_execution_can_be_selected_for_an_old_source_replay(self):
         self.environment["EEZ_SKIP_CONSENSUS_LAYER_CALLS"] = "false"

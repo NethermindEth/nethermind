@@ -12,6 +12,7 @@ import zipfile
 
 REPOSITORY = "eez-association/eez-rollup0"
 PROFILES = {"rollup0": REPOSITORY, "rollupx": "eez-association/eez-rollupX"}
+REVIEWED_STREAMING_REVISION = "30e6a1fc319d1bf02a4251dbbee240cefcf9310c"
 BINARIES = ("eez-composer", "eez-follower", "eez-proof-signer", "eez-genesis-state-root", "eez-genesis-block-hash")
 
 
@@ -41,19 +42,74 @@ def resolve(args):
 
     head = sha(metadata("commits/main")["sha"])
     source = sha(args.revision) if args.revision else head
-    if source != head:
+    reviewed_replay = getattr(args, "streaming", False) and repository == REPOSITORY and source == REVIEWED_STREAMING_REVISION
+    if source != head and not reviewed_replay:
         comparison = metadata("compare/" + source + "..." + head)
         if comparison["merge_base_commit"]["sha"] != source:
             raise ValueError("replay revision must belong to public upstream main history")
+    streaming = None
+    if getattr(args, "streaming", False):
+        if repository != REPOSITORY:
+            raise ValueError("live streaming requires the Rollup0 source")
+        streaming = streaming_source(source)
+        origin = "reviewed-pr206-replay" if reviewed_replay else "public-main"
+        if streaming is None:
+            if args.revision:
+                raise ValueError("selected replay revision has no streaming composer")
+            pull = metadata("pulls/206")
+            if pull["merged"] or pull["head"]["sha"] != REVIEWED_STREAMING_REVISION or pull["head"]["repo"]["full_name"] != REPOSITORY:
+                raise ValueError("streaming composer changed; review the published source before running it")
+            source = REVIEWED_STREAMING_REVISION
+            streaming = streaming_source(source)
+            origin = "reviewed-pr206-before-merge"
+        if streaming is None:
+            raise ValueError("selected source has no streaming composer")
+        streaming["source"] = origin
     entries = metadata("git/trees/" + source)["tree"]
     core = [entry for entry in entries if entry["path"] == "eez-core-protocol" and entry["mode"] == "160000"]
     if len(core) != 1:
         raise ValueError("missing unique Core gitlink")
     manifest = {"repository": repository, "profile": profile, "revision": source,
         "core_revision": sha(core[0]["sha"]), "main_at_resolution": head}
+    if streaming is not None:
+        manifest["streaming"] = streaming
     args.output.write_text(json.dumps(manifest, indent=2) + "\n")
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
         output.write("revision=" + source + "\n")
+
+
+def source_blob(entry):
+    blob = sha(entry["sha"])
+    content = api("git/blobs/" + blob)
+    if content["sha"] != blob or content["encoding"] != "base64" or not 0 < content["size"] <= 1024 * 1024:
+        raise ValueError("invalid bounded source file")
+    data = base64.b64decode("".join(content["content"].split()), validate=True)
+    actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+    if len(data) != content["size"] or actual != blob:
+        raise ValueError("source differs from selected git blob")
+    return data.decode("utf-8")
+
+
+def streaming_source(revision):
+    tree = api("git/trees/" + sha(revision) + "?recursive=1")
+    if tree.get("truncated"):
+        raise ValueError("upstream source tree is incomplete")
+    files = {entry["path"]: entry for entry in tree["tree"] if entry["type"] == "blob"}
+    client_path = "crates/eez-prover-client/src/lib.rs"
+    execution_path = "crates/eez-evm/src/lib.rs"
+    if client_path not in files:
+        return None
+    client = source_blob(files[client_path])
+    if "StreamingProverClient" not in client or ".prove_stream(" not in client:
+        return None
+    execution = source_blob(files[execution_path])
+    factories = re.findall(r"type BlockExecutorFactory\s*=\s*(\w+)\s*<", execution)
+    if len(factories) != 1 or factories[0] not in ("EthBlockExecutorFactory", "EezBlockExecutorFactory"):
+        raise ValueError("upstream execution factory changed; review consensus-call behavior")
+    return {"wire": "prove.v2", "profile": "rollup0-conditional",
+        "skip_consensus_layer_calls": factories[0] == "EezBlockExecutorFactory",
+        "execution_factory": factories[0],
+        "source_blobs": {path: sha(files[path]["sha"]) for path in (client_path, execution_path)}}
 
 
 def runtime(args):
@@ -296,6 +352,7 @@ def main():
     modes = parser.add_subparsers(dest="mode", required=True)
     resolver = modes.add_parser("resolve")
     resolver.add_argument("--revision", default="")
+    resolver.add_argument("--streaming", action="store_true")
     resolver.add_argument("--profile", choices=PROFILES, default="rollup0")
     resolver.add_argument("--output", type=Path, required=True)
     downloader = modes.add_parser("runtime")

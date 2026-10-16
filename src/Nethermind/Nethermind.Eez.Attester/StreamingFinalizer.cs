@@ -34,7 +34,7 @@ internal sealed class StreamingFinalizer
         cancellation.ThrowIfCancellationRequested();
         Finalize finalization = operation.Finalize ?? throw new InvalidOperationException("not a finalization operation");
         ValidateSupportedSettlement(finalization.Settlement);
-        ValidateProfile(finalization);
+        ValidateProofless(ValidateProfile(finalization, _pipeline.Context));
         L1AuthorizationSnapshot snapshot = await _authorizer.Authorize(operation.Predecessor!, cancellation).ConfigureAwait(false);
         using AdmittedWindow window = ToWindow(operation, finalization);
         ValueHash256 publicInputs = await Task.Run(() => _pipeline.Validate(window, cancellation), CancellationToken.None).ConfigureAwait(false);
@@ -49,24 +49,29 @@ internal sealed class StreamingFinalizer
             throw new RpcException(new Status(StatusCode.Unimplemented, "unsupported settlement profile"));
     }
 
-    private void ValidateProfile(Finalize finalization)
+    internal static SettlementBatch ValidateProfile(Finalize finalization, EezSettlementContext context)
     {
         SettlementBatch batch;
         try { batch = EezCalldata.DecodePostAndVerifyBatch(finalization.Settlement.AbiCalldata.Span); }
         catch (EezAbiException) { throw new RpcException(new Status(StatusCode.InvalidArgument, "invalid PostBatch calldata")); }
+        if (batch.ProofSystems is [{ } proofSystem] && proofSystem != context.ProofSystem ||
+            batch.RollupIdsWithProofSystems is [{ } rollup] && rollup.RollupId != context.RollupId ||
+            batch.BlockNumber != 0 || batch.BindMsgSenderInPublicInput)
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, "settlement claims differ from configured deployment"));
+        foreach (ExecutionEntry entry in batch.Entries)
+            if (entry.DestinationRollupId != context.RollupId)
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "settlement entry targets another rollup"));
+        try { PostBatchProfile.Validate(batch, context.RollupId, context.ProofSystem); }
+        catch (EezSettlementException) { throw new RpcException(new Status(StatusCode.Unimplemented, "unsupported settlement profile")); }
+        return batch;
+    }
+
+    private static void ValidateProofless(SettlementBatch batch)
+    {
         if (batch.Proofs.Length != batch.ProofSystems.Length)
             throw new RpcException(new Status(StatusCode.InvalidArgument, "proof count must match proof systems"));
         foreach (byte[] proof in batch.Proofs)
             if (proof.Length != 0) throw new RpcException(new Status(StatusCode.InvalidArgument, "PostBatch must be proofless"));
-        if (batch.ProofSystems is [{ } proofSystem] && proofSystem != _pipeline.Context.ProofSystem ||
-            batch.RollupIdsWithProofSystems is [{ } rollup] && rollup.RollupId != _pipeline.Context.RollupId ||
-            batch.BlockNumber != 0 || batch.BindMsgSenderInPublicInput)
-            throw new RpcException(new Status(StatusCode.FailedPrecondition, "settlement claims differ from configured deployment"));
-        foreach (ExecutionEntry entry in batch.Entries)
-            if (entry.DestinationRollupId != _pipeline.Context.RollupId)
-                throw new RpcException(new Status(StatusCode.FailedPrecondition, "settlement entry targets another rollup"));
-        try { PostBatchProfile.Validate(batch, _pipeline.Context.RollupId, _pipeline.Context.ProofSystem); }
-        catch (EezSettlementException) { throw new RpcException(new Status(StatusCode.Unimplemented, "unsupported settlement profile")); }
     }
 
     internal static AdmittedWindow ToWindow(SessionOperation operation, Finalize finalization)

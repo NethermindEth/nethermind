@@ -53,9 +53,15 @@ public class StreamingEndpointTests(string fixture, int from, int to)
     [TearDown]
     public async Task TearDown() => await _server.DisposeAsync();
 
-    [Test]
-    public async Task ProveStream_PinnedComposerOverRealTls_ReturnsRecordedProofAndEof()
+    [TestCase(false, TestName = "ProveStream_AuthenticatedProfileOverRealTls_ReturnsRecordedProofAndEof")]
+    [TestCase(true, TestName = "ProveStream_ConditionalProfileOverRealTls_ReturnsRecordedProofAndEof")]
+    public async Task ProveStream_PinnedComposerOverRealTls_ReturnsRecordedProofAndEof(bool conditional)
     {
+        if (conditional)
+        {
+            await _server.DisposeAsync();
+            _server = await EndpointServer.Start(fixture, from, to, profile: StreamingSettlementProfile.Rollup0Conditional);
+        }
         using GrpcChannel channel = _server.Channel(_server.ClientA);
         ProverV2.ProverClient client = new(channel);
         using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = client.ProveStream(Options());
@@ -96,7 +102,7 @@ public class StreamingEndpointTests(string fixture, int from, int to)
             Assert.That(proof.PublicInputsHash.ToByteArray().ToHexString(true), Is.EqualTo(oracle.GetProperty("public_inputs_hash").GetString()), "independent public-input oracle");
             Assert.That(proof.Proof_.ToByteArray().ToHexString(true), Is.EqualTo((oracle.TryGetProperty("mined_proof", out JsonElement mined) ? mined : oracle.GetProperty("expected_test_signature")).GetString()), "independent recorded signature");
             Assert.That(call.ResponseStream.Current.RequestId, Is.EqualTo(999), "Proof preserves Finalize correlation");
-            Assert.That(_server.L1.SnapshotReads, Is.EqualTo(3), "real configured source RPCs authenticate the parent and recheck before signing");
+            Assert.That(_server.L1.SnapshotReads, Is.EqualTo(conditional ? 0 : 3), "real configured source RPCs authenticate the parent and recheck before signing");
         }
         Assert.That(await call.ResponseStream.MoveNext(), Is.False, "Proof ends the server stream");
         await _server.Admission.WaitUntilIdle();
@@ -269,15 +275,16 @@ public class StreamingEndpointTests(string fixture, int from, int to)
             { Headers = registeredParentNumber is null ? null : headers });
         }
 
-        internal static async Task<EndpointServer> Start(string fixture, int from, int to, WindowLimits? limits = null, ulong? registeredParentNumber = null)
+        internal static async Task<EndpointServer> Start(string fixture, int from, int to, WindowLimits? limits = null, ulong? registeredParentNumber = null, StreamingSettlementProfile profile = StreamingSettlementProfile.Rollup0Calldata)
         {
             EndpointServer server = new(fixture, from, to, limits, registeredParentNumber);
-            try { await server.Start(fixture); return server; }
+            try { await server.Start(fixture, profile); return server; }
             catch { await server.DisposeAsync(); throw; }
         }
 
-        private async Task Start(string fixture)
+        private async Task Start(string fixture, StreamingSettlementProfile profile)
         {
+            bool conditional = profile == StreamingSettlementProfile.Rollup0Conditional;
             WebApplicationBuilder rpc = WebApplication.CreateSlimBuilder();
             rpc.Logging.ClearProviders();
             rpc.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(IPAddress.Loopback, 0));
@@ -294,13 +301,13 @@ public class StreamingEndpointTests(string fixture, int from, int to)
             string config = Path.Combine(_directory.Path, "streaming.json");
             File.WriteAllText(config, JsonSerializer.Serialize(new
             {
-                profile = "rollup0-calldata",
+                profile = conditional ? "rollup0-conditional" : "rollup0-calldata",
                 listenAddress = "127.0.0.1:0",
-                l1Rpc = new Uri(source, "l1").ToString(),
-                l2Rpc = new Uri(source, "l2").ToString(),
-                l1ChainId = 31337,
-                registry = TestItem.AddressA.ToString(),
-                manager = TestItem.AddressB.ToString(),
+                l1Rpc = conditional ? null : new Uri(source, "l1").ToString(),
+                l2Rpc = conditional ? null : new Uri(source, "l2").ToString(),
+                l1ChainId = conditional ? 0 : 31337,
+                registry = conditional ? null : TestItem.AddressA.ToString(),
+                manager = conditional ? null : TestItem.AddressB.ToString(),
                 serverCertificate = "server.pfx",
                 serverPasswordFile = "password",
                 composerCertificates = new[] { "composer-a.cer", "composer-b.cer" },

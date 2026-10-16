@@ -40,8 +40,9 @@ cleanup() {
     exit "$status"
 }
 trap cleanup EXIT
-docker build -f "$HERE/Dockerfile" --build-arg BASE_IMAGE="$EEZ_NETHERMIND_BASE_IMAGE" -t "$EEZ_NETHERMIND_IMAGE" "$HERE"
-docker build -f "$HERE/Dockerfile.prover" --build-arg BASE_IMAGE="$EEZ_NETHERMIND_PROVER_BASE_IMAGE" -t "$EEZ_PROOF_SIGNER_IMAGE" "$HERE"
+skip_consensus_calls="$(jq -er 'if .streaming.skip_consensus_layer_calls == true then "true" elif .streaming.skip_consensus_layer_calls == false then "false" else error("missing execution profile") end' "$EEZ_CI_RESULT_DIR/upstream.json")"
+docker build --build-arg SKIP_CONSENSUS_LAYER_CALLS="$skip_consensus_calls" -f "$HERE/Dockerfile" --build-arg BASE_IMAGE="$EEZ_NETHERMIND_BASE_IMAGE" -t "$EEZ_NETHERMIND_IMAGE" "$HERE"
+docker build --build-arg SKIP_CONSENSUS_LAYER_CALLS="$skip_consensus_calls" -f "$HERE/Dockerfile.prover" --build-arg BASE_IMAGE="$EEZ_NETHERMIND_PROVER_BASE_IMAGE" -t "$EEZ_PROOF_SIGNER_IMAGE" "$HERE"
 prover_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$EEZ_PROOF_SIGNER_IMAGE")"
 [[ "$prover_revision" == "$GITHUB_SHA" ]] || { echo "candidate prover image revision mismatch" >&2; exit 1; }
 prover_image_id="$(docker image inspect --format '{{.Id}}' "$EEZ_PROOF_SIGNER_IMAGE")"
@@ -63,6 +64,4 @@ test -s "$EEZ_CI_RESULT_DIR/after-restart.json"
 [[ "$(docker image inspect --format '{{.Id}}' "$EEZ_PROOF_SIGNER_IMAGE")" == "$prover_image_id" ]] \
     || { echo "candidate prover image was replaced during the upstream run" >&2; exit 1; }
 jq -e '.result == "pass" and .proof_flow.signed_windows > 0 and .proof_flow.remote_attestations > 0' "$EEZ_CI_RESULT_DIR/result.json" >/dev/null
-jq --arg revision "$GITHUB_SHA" --arg image_id "$prover_image_id" \
-    '{result: .result, implementation: "Nethermind", wire: "prove.v1", profile: "legacy-rollup0-calldata", candidate_revision: $revision, image_id: $image_id, proof_flow: .proof_flow}' \
-    "$EEZ_CI_RESULT_DIR/result.json" > "$EEZ_CI_RESULT_DIR/candidate-prover.json"
+python3 "$HERE/prepare.py" report --directory "$EEZ_CI_RESULT_DIR" --revision "$GITHUB_SHA" --image-id "$prover_image_id"

@@ -24,4 +24,7 @@ if [ "$imported" != "$expected" ]; then
     exit 1
 fi
 unset EEZ_PROOF_SIGNER_KEY
+if [ "${EEZ_CI_STREAMING:-false}" = true ]; then
+    exec /bin/bash "$HERE/start-streaming.sh" "$@"
+fi
 exec "$HERE/nethermind-eez-attester" "$@"

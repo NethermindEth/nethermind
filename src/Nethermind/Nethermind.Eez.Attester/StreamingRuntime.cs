@@ -23,8 +23,8 @@ namespace Nethermind.Eez.Attester;
 internal sealed class StreamingRuntime : IDisposable
 {
     private readonly X509Certificate2 _certificate;
-    private readonly HttpClient _l1;
-    private readonly HttpClient _l2;
+    private readonly HttpClient? _l1;
+    private readonly HttpClient? _l2;
     private readonly StreamingBlockExecutor _executor;
     private readonly Func<SessionOperation, CancellationToken, Task<Proof>> _finalize;
     private readonly ulong _rollupId;
@@ -34,7 +34,7 @@ internal sealed class StreamingRuntime : IDisposable
     internal StreamingSessionRegistry Registry { get; }
 
     private StreamingRuntime(StreamingOptions options, X509Certificate2 certificate, StreamingIdentity identity,
-        HttpClient l1, HttpClient l2, StreamingSessionRegistry registry, StreamingBlockExecutor executor, Func<SessionOperation, CancellationToken, Task<Proof>> finalize, ulong rollupId)
+        HttpClient? l1, HttpClient? l2, StreamingSessionRegistry registry, StreamingBlockExecutor executor, Func<SessionOperation, CancellationToken, Task<Proof>> finalize, ulong rollupId)
     {
         Options = options;
         _certificate = certificate;
@@ -76,20 +76,22 @@ internal sealed class StreamingRuntime : IDisposable
                 identity = new StreamingIdentity(pins);
             }
             finally { foreach (X509Certificate2? pin in pins) pin?.Dispose(); }
-            l1 = Source(settings.L1Rpc);
-            l2 = Source(settings.L2Rpc);
             registry = new StreamingSessionRegistry(settings.RegistryLimits, settings.SessionLimits, TimeProvider.System);
             EezChainRules rules;
             Func<SessionOperation, CancellationToken, Task<Proof>> finalize;
-            SettlementRpcReader l1Reader = new(l1, TimeSpan.FromSeconds(5));
-            SettlementRpcReader l2Reader = new(l2, TimeSpan.FromSeconds(5));
+            if (settings.Profile != StreamingSettlementProfile.Rollup0Conditional)
+            {
+                l1 = Source(settings.L1Rpc ?? throw StreamingOptions.Invalid());
+                l2 = Source(settings.L2Rpc ?? throw StreamingOptions.Invalid());
+            }
             if (settings.Profile == StreamingSettlementProfile.RollupXNative)
             {
                 rules = chainRules is { IsRollupX: true } ? chainRules : throw StreamingOptions.Invalid();
                 ISpecProvider l1Specs = ChainConfigLoader.LoadL1(settings.L1ChainConfigPath!);
                 if (l1Specs.ChainId != settings.L1ChainId || rules.Schedule!.L1Reference.ChainId != settings.L1ChainId)
                     throw StreamingOptions.Invalid();
-                RollupXParentAuthorizer authorizer = new(l1Reader, l2Reader, settings.Registry, settings.Manager,
+                RollupXParentAuthorizer authorizer = new(new SettlementRpcReader(l1!, TimeSpan.FromSeconds(5)),
+                    new SettlementRpcReader(l2!, TimeSpan.FromSeconds(5)), settings.Registry!, settings.Manager!,
                     pipeline.Context, signer.Address, rules.Schedule, settings.L2GenesisHash!);
                 finalize = new RollupXStreamingFinalizer(l1Specs, specs, rules, pipeline.Context, signer, authorizer, logs).Finalize;
             }
@@ -98,9 +100,16 @@ internal sealed class StreamingRuntime : IDisposable
                 if (chainRules is { IsRollupX: true }) throw StreamingOptions.Invalid();
                 rules = pipeline.Rules;
                 if (options.SkipConsensusLayerCalls != !rules.CallsBeaconRootsContract) throw StreamingOptions.Invalid();
-                Rollup0ParentAuthorizer authorizer = new(l1Reader, l2Reader,
-                    settings.L1ChainId, settings.Registry, settings.Manager, pipeline.Context, signer.Address);
-                finalize = new StreamingFinalizer(pipeline, signer, authorizer).Finalize;
+                if (settings.Profile == StreamingSettlementProfile.Rollup0Conditional)
+                {
+                    finalize = new Rollup0ConditionalFinalizer(pipeline, signer).Finalize;
+                }
+                else
+                {
+                    Rollup0ParentAuthorizer authorizer = new(new SettlementRpcReader(l1!, TimeSpan.FromSeconds(5)),
+                        new SettlementRpcReader(l2!, TimeSpan.FromSeconds(5)), settings.L1ChainId, settings.Registry!, settings.Manager!, pipeline.Context, signer.Address);
+                    finalize = new StreamingFinalizer(pipeline, signer, authorizer).Finalize;
+                }
             }
             return new StreamingRuntime(settings, certificate, identity, l1, l2, registry,
                 new StreamingBlockExecutor(specs, rules, logs), finalize, pipeline.Context.RollupId);
@@ -151,8 +160,8 @@ internal sealed class StreamingRuntime : IDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         Registry.Dispose();
-        _l2.Dispose();
-        _l1.Dispose();
+        _l2?.Dispose();
+        _l1?.Dispose();
         _certificate.Dispose();
     }
 }

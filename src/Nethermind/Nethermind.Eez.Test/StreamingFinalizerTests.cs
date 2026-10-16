@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Grpc.Core;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,7 @@ using Nethermind.Eez.Prove.V2;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 using SettlementBatch = Nethermind.Eez.Execution.Settlement.PostBatch;
 using StreamBlock = Nethermind.Eez.Prove.V2.Block;
 
@@ -87,9 +89,10 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
         using StreamingSessionRegistry registry = new(new StreamingRegistryLimits(4, 4, 128 * 1024 * 1024, TimeSpan.FromMinutes(10)),
             new StreamingSessionLimits(8, 16 * 1024 * 1024, 100_000), TimeProvider.System);
         BackendAdmission admission = new(NullLogger<BackendAdmission>.Instance);
+        RecordingLogger logger = new();
         StreamingTransport transport = new(registry, admission, _executor,
             new StreamingTransportLimits(2, 16 * 1024 * 1024, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1)),
-            1, NullLogger<StreamingTransport>.Instance, finalize: _finalizer.Finalize);
+            1, logger, finalize: _finalizer.Finalize);
         StreamingTransportTests.Reader input = new();
         StreamingTransportTests.Writer output = new();
         Dictionary<ulong, TaskCompletionSource> acknowledged = [];
@@ -120,6 +123,10 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
         await transport.Run(input, output, "composer", CancellationToken.None);
         await admission.WaitUntilIdle();
         JsonElement oracle = StatelessFixtures.ReadJson(_fixture, "oracle.json");
+        JsonElement evidence = JsonSerializer.Deserialize<JsonElement>(logger.Messages.Single(message => message.Contains("eez.proof_signer.window_signed"))).GetProperty("fields");
+        Assert.That((evidence.GetProperty("wire").GetString(), evidence.GetProperty("validated_from_block").GetInt32(),
+            evidence.GetProperty("validated_to_block").GetInt32(), evidence.GetProperty("recomputed_public_inputs_hash").GetString()),
+            Is.EqualTo(("prove.v2", from, to, oracle.GetProperty("public_inputs_hash").GetString())), "wire evidence must name the actual protocol, validated range and independent digest");
         Proof proof = output.Frames[^1].Proof;
         Assert.That(proof, Is.Not.Null, "the recorded window must produce a terminal Proof");
         using (Assert.EnterMultipleScope())
@@ -238,6 +245,58 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
         JsonElement oracle = StatelessFixtures.ReadJson(_fixture, "oracle.json");
         Assert.That((await _finalizer.Finalize(retry, CancellationToken.None)).PublicInputsHash.ToByteArray().ToHexString(true),
             Is.EqualTo(oracle.GetProperty("public_inputs_hash").GetString()), "the unchanged prefix still produces the independent valid digest");
+    }
+
+    [TestCase(0, TestName = "Finalize_ConditionalNoProofSlots_ReturnsRecordedProof")]
+    [TestCase(1, TestName = "Finalize_ConditionalEmptyProofSlot_ReturnsRecordedProof")]
+    [TestCase(2, TestName = "Finalize_ConditionalInheritedProof_ReturnsFreshRecordedProof")]
+    [TestCase(3, TestName = "Finalize_ConditionalInheritedProofCount_ReturnsFreshRecordedProof")]
+    public async Task Finalize_ConditionalProofEncoding_ReturnsIndependentOracle(int encoding)
+    {
+        StreamingSession session = ExecutedSession();
+        Finalize finalization = Finalization();
+        SettlementBatch batch = EezCalldata.DecodePostAndVerifyBatch(finalization.Settlement.AbiCalldata.Span);
+        finalization.Settlement.AbiCalldata = ByteString.CopyFrom(EezCalldata.EncodePostAndVerifyBatch(batch with { Proofs = encoding switch { 0 => [], 1 => [[]], 2 => [[1, 2, 3]], _ => [[1], [2]] } }));
+        using SessionOperation operation = session.AdmitFinalize(session.Binding, 99, finalization);
+        JsonElement oracle = StatelessFixtures.ReadJson(_fixture, "oracle.json");
+        EezAttestationSigner signer = new(AttesterServer.AttesterKey);
+        ISpecProvider specs = StatelessFixtures.ReadSpecProvider(_fixture, "chain-config.json");
+        Rollup0ConditionalFinalizer finalizer = new(new AttestationPipeline(specs, _context, signer, LimboLogs.Instance), signer);
+        Proof proof = await finalizer.Finalize(operation, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof.PublicInputsHash.ToByteArray().ToHexString(true), Is.EqualTo(oracle.GetProperty("public_inputs_hash").GetString()), "proof slots do not alter validated public inputs");
+            Assert.That(proof.Proof_.ToByteArray().ToHexString(true), Is.EqualTo((oracle.TryGetProperty("mined_proof", out JsonElement mined) ? mined : oracle.GetProperty("expected_test_signature")).GetString()), "the original independent signature remains unchanged");
+            Assert.That((_l1.Requests == 0, _l2.Requests == 0), Is.EqualTo((true, true)), "only the explicit conditional profile omits L1/L2 acceptance reads");
+        }
+    }
+
+    [TestCase("parent", StatusCode.FailedPrecondition, TestName = "Finalize_ConditionalFalseParent_Rejects")]
+    [TestCase("terminal", StatusCode.FailedPrecondition, TestName = "Finalize_ConditionalFalseTerminal_Rejects")]
+    [TestCase("proofsystem", StatusCode.FailedPrecondition, TestName = "Finalize_ConditionalWrongProofSystem_Rejects")]
+    [TestCase("blobs", StatusCode.Unimplemented, TestName = "Finalize_ConditionalBlobInput_Rejects")]
+    [TestCase("cancelled", StatusCode.Aborted, TestName = "Finalize_ConditionalCancelledSession_Rejects")]
+    public async Task Finalize_ConditionalInvalidClaim_ReturnsNoProof(string mutation, StatusCode code)
+    {
+        StreamingSession session = ExecutedSession();
+        Finalize finalization = Finalization();
+        SettlementBatch batch = EezCalldata.DecodePostAndVerifyBatch(finalization.Settlement.AbiCalldata.Span);
+        if (mutation == "proofsystem") batch = batch with { ProofSystems = [TestItem.AddressA] };
+        if (mutation is "parent" or "terminal")
+        {
+            ExecutionEntry anchor = batch.Entries[0];
+            RollupUpdate update = anchor.RollupUpdates[0];
+            anchor.RollupUpdates[0] = mutation == "parent" ? update with { CurrentRoot = TestItem.KeccakA.ValueHash256 } : update with { NewRoot = TestItem.KeccakA.ValueHash256 };
+        }
+        finalization.Settlement.AbiCalldata = ByteString.CopyFrom(EezCalldata.EncodePostAndVerifyBatch(batch));
+        if (mutation == "blobs") finalization.Settlement.Blobs.Add(ByteString.CopyFrom(new byte[32]));
+        using SessionOperation operation = session.AdmitFinalize(session.Binding, 99, finalization);
+        if (mutation == "cancelled") session.Cancel(session.Binding, 100);
+        ISpecProvider specs = StatelessFixtures.ReadSpecProvider(_fixture, "chain-config.json");
+        EezAttestationSigner signer = new(AttesterServer.AttesterKey);
+        Rollup0ConditionalFinalizer finalizer = new(new AttestationPipeline(specs, _context, signer, LimboLogs.Instance), signer);
+        RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => finalizer.Finalize(operation, CancellationToken.None)))!;
+        Assert.That((exception.StatusCode, _l1.Requests, _l2.Requests), Is.EqualTo((code, 0, 0)), "conditional admission cannot bypass settlement validation or session-owned signing");
     }
 
     [TestCase("Resume", TestName = "Finalize_ResumedBeforeSigning_DoesNotReturnProof")]
@@ -432,4 +491,13 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
             return threshold;
         }
     }
+    private sealed class RecordingLogger : ILogger<StreamingTransport>
+    {
+        internal List<string> Messages { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel level) => true;
+        public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
+    }
+
 }

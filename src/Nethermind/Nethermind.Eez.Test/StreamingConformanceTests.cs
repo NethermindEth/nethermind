@@ -78,7 +78,7 @@ public class StreamingConformanceTests
             _ => 78,
         };
         await using StreamingEndpointTests.EndpointServer server = await StreamingEndpointTests.EndpointServer.Start(
-            StatelessFixtures.Window84, 79, 84, Limits(scenario), parent);
+            StatelessFixtures.Window84, 79, 84, Limits(scenario), parent, profile: prooflessRequests ? StreamingSettlementProfile.Rollup0Calldata : StreamingSettlementProfile.Rollup0Conditional);
         using GrpcChannel channel = server.Channel(server.ClientA);
         Prover.ProverClient client = new(channel);
         Address attester = new(document.GetProperty("oracle").GetProperty("attester").GetString()!);

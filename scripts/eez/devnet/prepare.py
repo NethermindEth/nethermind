@@ -28,12 +28,19 @@ def prepare(args):
         raise ValueError("upstream no longer supports the candidate prover image")
     main = package / "main.star"
     original = main.read_text()
-    if 'exec eez-proof-signer' not in original or '"EEZ_PROVER_URL": "http://eez-proof-signer:' not in original:
+    if 'exec eez-proof-signer' not in original or not any(endpoint in original for endpoint in (
+        '"EEZ_PROVER_URL": "http://eez-proof-signer:',
+        '"EEZ_PROVER_URL": "http://{}:{}".format(prover_service, PROOF_SIGNER_GRPC_PORT)')):
         raise ValueError("upstream prover deployment seam changed")
     if "nethermind.add_initial" in original:
         raise ValueError("the integration overlay was already applied")
     if 'l1_el = participants[0].el_context' not in original or 'name="eez-deployments"' not in original:
         raise ValueError("upstream deployment seam changed")
+    if "streaming" in manifest:
+        if manifest["streaming"]["wire"] != "prove.v2" or manifest["streaming"]["profile"] != "rollup0-conditional":
+            raise ValueError("unexpected streaming profile")
+        if not re.search(r"(?m)^  prover_backend: stateless$", (package / "ci-args.yaml").read_text()):
+            raise ValueError("the candidate requires the stateless upstream backend")
     main.write_text('nethermind = import_module("./nethermind.star")\n' + original +
         '\n    nethermind.add_initial(plan, eez, l1_el.rpc_http_url, chain_id, deploy.files_artifacts[0])\n')
     shutil.copyfile(source / "nethermind.star", package / "nethermind.star")
@@ -83,6 +90,44 @@ def late(args):
     (args.output / "args.json").write_text(json.dumps({"image": image(args.follower_image, "eez-nethermind"),
         "l1_rpc": (args.connection / "l1-rpc").read_text(), "l1_chain_id": int((args.connection / "l1-chain-id").read_text())}) + "\n")
 
+def report(args):
+    manifest = json.loads((args.directory / "upstream.json").read_text())
+    result = json.loads((args.directory / "result.json").read_text())
+    streaming = manifest["streaming"]
+    counts = result["proof_flow"]
+    if streaming["wire"] != "prove.v2" or streaming["profile"] != "rollup0-conditional" or result["result"] != "pass" or result["exit_code"] != 0:
+        raise ValueError("live streaming scenarios did not pass")
+    if not all(type(counts[name]) is int and counts[name] > 0 for name in ("signed_windows", "remote_attestations")):
+        raise ValueError("missing actual signed windows or remote attestations")
+    if result["commits"] != {"root": manifest["revision"], "protocol": manifest["core_revision"]}:
+        raise ValueError("upstream results do not match selected source")
+    if not re.fullmatch(r"[0-9a-f]{40}", args.revision) or not re.fullmatch(r"sha256:[0-9a-f]{64}", args.image_id):
+        raise ValueError("invalid candidate provenance")
+    log = args.directory / "eez-proof-signer.log"
+    if log.stat().st_size > 64 * 1024 * 1024:
+        raise ValueError("prover log exceeds its limit")
+    signed = []
+    with log.open() as source:
+        for line in source:
+            if '"event_name":"eez.proof_signer.window_signed"' not in line:
+                continue
+            match = re.search(r'(\{"event_name":"eez\.proof_signer\.window_signed".*\})', line)
+            if match is None:
+                raise ValueError("malformed signed-window evidence")
+            event = json.loads(match[1])["fields"]
+            start, end = event["validated_from_block"], event["validated_to_block"]
+            if event.get("wire") != "prove.v2" or type(start) is not int or type(end) is not int or not 0 <= start <= end or not re.fullmatch(r"0x[0-9a-fA-F]{64}", event["recomputed_public_inputs_hash"]):
+                raise ValueError("invalid or fallback signed-window evidence")
+            signed.append(event)
+    if len(signed) != counts["signed_windows"]:
+        raise ValueError("signed-window evidence differs from upstream counts")
+    report = {"result": "pass", "implementation": "Nethermind", "wire": "prove.v2",
+        "profile": "rollup0-conditional", "transport": "isolated-h2-to-mtls",
+        "candidate_revision": args.revision, "image_id": args.image_id,
+        "proof_flow": counts, "signed_windows": signed}
+    (args.directory / "candidate-prover.json").write_text(json.dumps(report, indent=2) + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="mode", required=True)
@@ -96,8 +141,12 @@ def main():
     finish.add_argument("--output", type=Path, required=True)
     finish.add_argument("--connection", type=Path, required=True)
     finish.add_argument("--follower-image", required=True)
+    evidence = commands.add_parser("report")
+    evidence.add_argument("--directory", type=Path, required=True)
+    evidence.add_argument("--revision", required=True)
+    evidence.add_argument("--image-id", required=True)
     args = parser.parse_args()
-    (prepare if args.mode == "prepare" else late)(args)
+    {"prepare": prepare, "late": late, "report": report}[args.mode](args)
 
 if __name__ == "__main__":
     main()
