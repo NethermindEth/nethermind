@@ -3417,6 +3417,74 @@ public class BlockCachePreWarmerTests(bool earlyStart)
             "transactions the main thread has already started must not be speculatively warmed");
     }
 
+    [Test]
+    public async Task PreWarmCaches_Worker_WarmsEveryJobInOneScope()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        const int senders = 8;
+        const int workers = 2;
+        Block block = BuildOneTxPerSenderBlock(senders, 1.Wei);
+        int warmups = 0;
+        ConcurrentDictionary<IReadOnlyTxProcessingScope, bool> warmingScopes = new();
+        int jobsSeeingEarlierJobs = 0;
+        using ManualResetEventSlim openGate = new(initialState: true);
+        WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate,
+            () => Interlocked.Increment(ref warmups), scope =>
+            {
+                warmingScopes.TryAdd(scope, true);
+                // Each sender's job pays AddressC; a job that starts with a non-zero balance sees an earlier job's state.
+                if (!scope.WorldState.GetBalance(TestItem.AddressC).IsZero) Interlocked.Increment(ref jobsSeeingEarlierJobs);
+            });
+        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: workers,
+            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmups, Is.GreaterThanOrEqualTo(senders), "every sender's job must be warmed");
+            Assert.That(warmingScopes, Has.Count.LessThanOrEqualTo(workers), "a worker must reuse its scope for every job of the block");
+            Assert.That(jobsSeeingEarlierJobs, Is.Zero, "a reused scope must not carry an earlier job's speculative state");
+        }
+    }
+
+    /// <summary>
+    /// A block whose blob base fee overflows fails a worker's scope initialization; the scope must still be closed
+    /// when the env goes back to the pool, or every later rental of that env fails to open a world-state scope.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_Worker_ScopeInitializationFails_EnvStaysReusable()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        const int senders = 8;
+        int warmups = 0;
+        using ManualResetEventSlim openGate = new(initialState: true);
+        WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate, () => Interlocked.Increment(ref warmups));
+        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: 2,
+            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+        await RunPreWarmCaches(preWarmer, BuildOneTxPerSenderBlock(senders, 1.Wei, excessBlobGas: ulong.MaxValue), BuildParentHeader(), Osaka.Instance);
+        Assert.That(warmups, Is.Zero, "a block whose context cannot be built must not be warmed");
+
+        await RunPreWarmCaches(preWarmer, BuildOneTxPerSenderBlock(senders, 2.Wei), BuildParentHeader(), Osaka.Instance);
+        Assert.That(warmups, Is.GreaterThanOrEqualTo(senders), "the envs of the failed block must warm the next one");
+    }
+
+    private static Block BuildOneTxPerSenderBlock(int senders, UInt256 value, ulong? excessBlobGas = null)
+    {
+        Transaction[] txs = new Transaction[senders];
+        for (int i = 0; i < senders; i++)
+        {
+            txs[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithValue(value).SignedAndResolved(TestItem.PrivateKeys[i]).TestObject;
+        }
+
+        return Build.A.Block.WithNumber(1).WithTransactions(txs).WithGasLimit(30_000_000).WithExcessBlobGas(excessBlobGas).TestObject;
+    }
+
     /// <summary>
     /// Only the main execution reports per-tx progress to the prewarmer; the prewarmer's own speculative envs
     /// must stay silent, otherwise they would advance its view of main-thread progress and suppress warming.
@@ -3449,26 +3517,27 @@ public class BlockCachePreWarmerTests(bool earlyStart)
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
     }
 
-    /// <summary>Gates scope construction and counts speculative Warmup executions.</summary>
+    /// <summary>Gates scope construction and counts speculative Warmup executions, optionally with the scope each ran in.</summary>
     private sealed class WarmupCountingPolicy(
         PrewarmerEnvFactory factory,
         PreBlockCaches caches,
         ManualResetEventSlim gate,
-        Action onWarmup)
+        Action onWarmup,
+        Action<IReadOnlyTxProcessingScope>? onWarmupIn = null)
         : IPooledObjectPolicy<IPrewarmerEnv>
     {
-        public IPrewarmerEnv Create() => new CountingEnv(factory.Create(caches), gate, onWarmup);
+        public IPrewarmerEnv Create() => new CountingEnv(factory.Create(caches), gate, onWarmup, onWarmupIn);
 
         public bool Return(IPrewarmerEnv obj) => true;
 
-        private sealed class CountingEnv(IPrewarmerEnv inner, ManualResetEventSlim gate, Action onWarmup) : IPrewarmerEnv
+        private sealed class CountingEnv(IPrewarmerEnv inner, ManualResetEventSlim gate, Action onWarmup, Action<IReadOnlyTxProcessingScope>? onWarmupIn) : IPrewarmerEnv
         {
             public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
 
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
                 gate.Wait();
-                scope = new CountingScope(inner.BuildAtTarget(targetBlock), onWarmup);
+                scope = new CountingScope(inner.BuildAtTarget(targetBlock), onWarmup, onWarmupIn);
                 return true;
             }
 
@@ -3477,12 +3546,24 @@ public class BlockCachePreWarmerTests(bool earlyStart)
             public void Dispose() => inner.Dispose();
         }
 
-        private sealed class CountingScope(IReadOnlyTxProcessingScope inner, Action onWarmup) : IReadOnlyTxProcessingScope
+        private sealed class CountingScope : IReadOnlyTxProcessingScope
         {
-            private readonly CountingTxProcessor _processor = new(inner.TransactionProcessor, onWarmup);
+            private readonly IReadOnlyTxProcessingScope _inner;
+            private readonly CountingTxProcessor _processor;
+
+            public CountingScope(IReadOnlyTxProcessingScope inner, Action onWarmup, Action<IReadOnlyTxProcessingScope>? onWarmupIn)
+            {
+                _inner = inner;
+                _processor = new(inner.TransactionProcessor, () =>
+                {
+                    onWarmup();
+                    onWarmupIn?.Invoke(this);
+                });
+            }
+
             public Nethermind.Evm.TransactionProcessing.ITransactionProcessor TransactionProcessor => _processor;
-            public IWorldState WorldState => inner.WorldState;
-            public void Dispose() => inner.Dispose();
+            public IWorldState WorldState => _inner.WorldState;
+            public void Dispose() => _inner.Dispose();
         }
 
         private sealed class CountingTxProcessor(Nethermind.Evm.TransactionProcessing.ITransactionProcessor inner, Action onWarmup)

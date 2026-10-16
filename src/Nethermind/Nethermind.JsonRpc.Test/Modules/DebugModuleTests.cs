@@ -118,13 +118,14 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugGetRawHeader_WhenBlockExists_ReturnsHeaderRlp()
+    public async Task DebugGetRawHeader_WhenHeaderExists_ReturnsHeaderRlpWithoutLoadingBlock()
     {
-        Block block = Build.A.Block.WithNumber(0).TestObject;
-        _debugBridge.GetBlock(new BlockParameter(0UL)).Returns(block);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(0).TestObject;
+        _blockFinder.FindHeader(new BlockParameter(0UL)).Returns(header);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(block.Header).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(header).Bytes));
+        _debugBridge.DidNotReceiveWithAnyArgs().GetBlock(null!);
     }
 
     [TestCaseSource(nameof(RawBlockCases))]
@@ -1006,6 +1007,10 @@ public class DebugModuleTests
             (Action<IDebugBridge>)(b => b.GetBlock(new BlockParameter(Keccak.Zero)).ReturnsNull()),
             "debug_getRawBlock", (object)Keccak.Zero)
         { TestName = "RawBlock_ByHash" };
+        yield return new TestCaseData(
+            (Action<IDebugBridge>)(_ => { }),
+            "debug_getRawHeader", (object)"0x1")
+        { TestName = "RawHeader_ByNumber" };
     }
 
     private static IEnumerable<TestCaseData> RawBlockAccessListErrorCases()

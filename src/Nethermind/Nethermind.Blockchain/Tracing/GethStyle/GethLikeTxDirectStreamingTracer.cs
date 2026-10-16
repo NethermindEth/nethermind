@@ -116,12 +116,14 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _stackByteCount = 0;
         _memoryByteCount = 0;
         _returnDataByteCount = 0;
+        // PooledDictionary.Clear makes the next insert rent new arrays without returning the old ones;
+        // Dispose returns them to the pool and leaves the map reusable.
         foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values)
         {
-            map.Clear();
+            map.Dispose();
             _storageMapPool.Push(map);
         }
-        _storageByAddress.Clear();
+        _storageByAddress.Dispose();
         _pendingStorageMap = null;
         _resultSize = 0;
         ResetTrace();
