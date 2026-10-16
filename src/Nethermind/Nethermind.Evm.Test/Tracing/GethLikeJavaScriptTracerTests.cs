@@ -136,7 +136,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase((Instruction)0x0f, "opcode 0xf not defined")]
     public void Log_opcode_to_string_uses_geth_names(Instruction instruction, string expected)
     {
-        Log.Opcode opcode = new(instruction);
+        Log.Opcode opcode = Log.Opcode.Of(instruction);
 
         Assert.That(opcode.toString(), Is.EqualTo(expected));
     }

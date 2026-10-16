@@ -35,12 +35,14 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
         public ulong getRefund() => (ulong)refund;
         public dynamic getError() => !string.IsNullOrEmpty(error) ? error : Undefined.Value;
 
-        public sealed class Opcode(Instruction value)
+        public sealed class Opcode
         {
             // Shared per instruction so each step hands the script an existing host object rather than a new box.
             private static readonly Opcode[] All = CreateAll();
 
-            public Instruction Value { get; } = value;
+            private Opcode(Instruction value) => Value = value;
+
+            public Instruction Value { get; }
 
             internal static Opcode Of(Instruction value) => All[(byte)value];
 
