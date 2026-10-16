@@ -39,6 +39,10 @@ namespace Nethermind.JsonRpc
         /// </remarks>
         public StringValues ForwardedFor { get; init; }
 
+        /// <remarks>
+        /// Clears <see cref="Current"/> only when the disposing scope made this context current. It is not the main cleanup:
+        /// request processing publishes the context inside an async method, whose return restores the caller's value.
+        /// </remarks>
         public void Dispose()
         {
             if (Current.Value == this)
