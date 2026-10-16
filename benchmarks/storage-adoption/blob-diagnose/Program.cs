@@ -11,17 +11,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
-ManualConfig config = ManualConfig.Create(DefaultConfig.Instance);
-config.BuildTimeout = TimeSpan.FromMinutes(10);
-IToolchain toolchain = CsProjCoreToolchain.NetCoreApp10_0;
-config.AddJob(Job.Default
-    .WithRuntime(CoreRuntime.Core10_0)
-    .WithToolchain(new Toolchain(toolchain.Name,
-        new ExactProjectGenerator(Path.GetFullPath("benchmarks/blob-batch/BlobBatch.csproj")),
-        toolchain.Builder, toolchain.Executor))
-    .WithLaunchCount(1).WithWarmupCount(3).WithIterationCount(8));
-BenchmarkSwitcher.FromAssembly(typeof(BlobBatchBenchmarks).Assembly).Run(args, config);
-
 Console.WriteLine($"Runtime={Environment.Version} ServerGC={GCSettings.IsServerGC} LatencyMode={GCSettings.LatencyMode}");
 Console.WriteLine("count,hits,round,mode,no_gc,ns_per_op,bytes_per_op,gen0,gen1,gen2");
 foreach ((int count, int hits) in new[] { (1, 1), (2, 1), (2, 2), (16, 8) })
