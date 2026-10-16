@@ -23,6 +23,7 @@ using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -55,6 +56,8 @@ public class SszMiddlewareTests
     private IRpcAuthentication _auth = null!;
     private IProcessExitSource _processExitSource = null!;
     private SszMiddleware _middleware = null!;
+    private IContainer? _container;
+    private ServiceProvider? _services;
 
     private const int AuthenticatedPort = 8551;
     private const string OctetStream = "application/octet-stream";
@@ -85,62 +88,39 @@ public class SszMiddlewareTests
         _middleware = BuildMiddleware();
     }
 
-    private SszMiddleware BuildMiddleware(RequestDelegate? next = null)
-    {
-        RequestDelegate passthrough = next ?? (_ => Task.CompletedTask);
+    [TearDown]
+    public void TearDown() => DisposeServices();
 
-        return new SszMiddleware(
-            passthrough,
-            _urlCollection,
-            _auth,
-            BuildHandlers(),
-            _processExitSource,
-            LimboLogs.Instance);
+    private void DisposeServices()
+    {
+        _services?.Dispose();
+        _container?.Dispose();
     }
 
-    private ISszEndpointHandler[] BuildHandlers() =>
-        [
-            new NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV3, NewPayloadV3RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV4, NewPayloadV4RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
-            new NewPayloadV6SszHandler(_engineModule),
+    private SszMiddleware BuildMiddleware(RequestDelegate? next = null)
+    {
+        DisposeServices();
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new BaseMergePluginModule())
+            .AddSingleton(_engineModule)
+            .AddSingleton(_specProvider)
+            .AddSingleton(_blockFinder)
+            .AddSingleton(_stateReader)
+            .AddSingleton(_witnessEnvFactory)
+            .AddSingleton(_auth)
+            .AddSingleton(_processExitSource)
+            .Build();
 
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV1, ForkchoiceUpdatedV1RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV2, ForkchoiceUpdatedV2RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedV5SszHandler(_engineModule, _specProvider),
+        ServiceCollection services = [];
+        new SszMiddlewareConfigurer(_container).Configure(services);
+        services.AddSingleton(_urlCollection);
+        _services = services.BuildServiceProvider();
 
-            new GetPayloadSszHandler<GetPayloadDescriptorV1, GetPayloadV2Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>(_engineModule),
+        return ActivatorUtilities.CreateInstance<SszMiddleware>(_services, next ?? (_ => Task.CompletedTask));
+    }
 
-            new GetInclusionListSszHandler(_engineModule),
-
-            new GetBlobsV1SszHandler(_engineModule),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV2>(_engineModule),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV3>(_engineModule),
-            new GetBlobsV4SszHandler(_engineModule),
-
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule, _blockFinder, _specProvider),
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule, _blockFinder, _specProvider),
-
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule, _blockFinder, _specProvider),
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule, _blockFinder, _specProvider),
-
-            new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
-            new CapabilitiesSszHandler(),
-
-            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
-            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>(_engineModule),
-            new GetPayloadWithWitnessSszHandler(_engineModule, new BlockWitnessGenerator(
-                _blockFinder, _stateReader, [], new Lazy<IWitnessGeneratingBlockProcessingEnvFactory>(() => _witnessEnvFactory))),
-        ];
+    private ISszEndpointHandler[] BuildHandlers() => _services!.GetServices<ISszEndpointHandler>().ToArray();
 
     private static ChainSpecBasedSpecProvider CreateChainSpecProvider() => new(new ChainSpec
     {
@@ -235,18 +215,6 @@ public class SszMiddlewareTests
         }
 
         Assert.That(missing, Is.Empty);
-    }
-
-    // The coverage above only means something if this hand-built set matches what production registers.
-    [Test]
-    public void Configurer_registers_the_handler_set_this_fixture_builds()
-    {
-        ServiceCollection services = [];
-        new SszMiddlewareConfigurer(Substitute.For<IComponentContext>()).Configure(services);
-
-        Assert.That(
-            services.Where(d => d.ServiceType == typeof(ISszEndpointHandler)).Select(d => d.ImplementationType),
-            Is.EquivalentTo(BuildHandlers().Select(h => h.GetType())));
     }
 
     private static DefaultHttpContext MakeBaseContext(string method, string path, int port)
@@ -1775,8 +1743,11 @@ public class SszMiddlewareTests
         DefaultHttpContext ctx = MakeGetContext(path, fork: fork);
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
-        Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain(expectedTypeUri));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
+            Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain(expectedTypeUri));
+        }
     }
 
     private static byte[] BuildMinimalWitnessRequestBody() =>
