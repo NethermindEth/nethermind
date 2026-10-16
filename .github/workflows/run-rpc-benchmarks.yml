@@ -1355,6 +1355,10 @@ jobs:
         if: needs.resolve.outputs.image_ref == 'nethermind-rpcbench:perf-decoded-blob-multiget'
         run: python3 benchmarks/storage-adoption/verify-client-images.py "$OUT_DIR/storage-image-revisions.json" nethermindeth/nethermind:master-ce93457=ce93457f0abde6daa78877ab3756c0002e33208d nethermind-rpcbench:perf-decoded-blob-multiget=02d3ffde15fb6541efaff78899bd6fd667442501
 
+      - name: Verify package-only control image revision
+        if: contains(needs.resolve.outputs.tool_config, 'nethermind-rpcbench:perf-rocksdb-174-control')
+        run: python3 benchmarks/storage-adoption/verify-client-images.py "$OUT_DIR/storage-control-image-revision.json" nethermind-rpcbench:perf-rocksdb-174-control=0e283b2a2496830bc382d641d112fddadaf3d630
+
       - name: Run RPC sweep
         id: run-sweep
         if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep'
