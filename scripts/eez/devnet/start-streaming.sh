@@ -24,8 +24,11 @@ jq -n '{profile: "rollup0-conditional", listenAddress: "127.0.0.1:50062",
 cat > "$stream/haproxy.cfg" <<EOF
 global
     maxconn 8
+    log stdout format raw local0
 defaults
     mode http
+    log global
+    option httplog
     timeout connect 5s
     timeout client 120s
     timeout server 120s
@@ -34,6 +37,7 @@ frontend composer
     http-request deny unless { path /prove.v2.Prover/ProveStream }
     default_backend prover
 backend prover
+    http-request set-uri https://eez-ci-server%[pathq]
     server candidate 127.0.0.1:50062 ssl alpn h2 verify required ca-file $stream/server.crt verifyhost eez-ci-server sni str(eez-ci-server) crt $stream/client.pem
 EOF
 haproxy -c -f "$stream/haproxy.cfg"
