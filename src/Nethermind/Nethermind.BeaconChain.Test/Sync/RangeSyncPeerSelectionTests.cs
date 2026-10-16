@@ -382,7 +382,7 @@ public class RangeSyncPeerSelectionTests
     [TestCase(1, false)]
     [TestCase(2, true)]
     [CancelAfter(30_000)]
-    public async Task A_tip_needing_two_peers_word_is_abandoned_for_finalized_only_on_it_and_charged_to_each_of_them_if_the_chain_links_through_it(int liars, bool fellBack, CancellationToken token)
+    public async Task A_tip_needing_two_peers_word_is_abandoned_for_finalized_only_on_it_and_charged_only_to_the_one_serving_a_chain_through_it(int liars, bool fellBack, CancellationToken token)
     {
         const ulong tipSlot = AnchorSlot + 4;
         const ulong targetSlot = AnchorSlot + 6;
@@ -409,7 +409,62 @@ public class RangeSyncPeerSelectionTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(rejected, Is.EqualTo(fellBack));
         Assert.That(yielded, Is.EqualTo(fellBack ? chainBlocks : chainBlocks.Where(static b => b.Slot > tipSlot)), "a re-download from finalized happens only on two peers' word");
-        Assert.That(peers.Select(static p => p.Reports.Count), Is.EqualTo(fellBack ? new[] { 1, 1 } : new[] { 0 }), "every peer whose word abandoned a tip the chain links through is charged, not only the last");
+        Assert.That(peers.Select(static p => p.Reports.Count), Is.EqualTo(fellBack ? new[] { 1, 0 } : new[] { 0 }), "the first liar served the chain through the tip it denied, the second never contradicted itself");
+    }
+
+    // phase0/p2p-interface.md BeaconBlocksByRange: an empty reply does not prove its slots are empty, so a later peer's unlinked block contradicts it, not the anchor.
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task An_empty_reply_hiding_blocks_after_an_unverified_tip_neither_abandons_the_tip_nor_charges_the_next_supplier([Values(1, 2)] int requiredMismatches, CancellationToken token)
+    {
+        const ulong tipSlot = AnchorSlot + 4;
+        ulong targetSlot = tipSlot + 2 * RangeSync.DefaultBatchSize;
+        ulong[] slots = [.. Enumerable.Range((int)AnchorSlot + 1, (int)(targetSlot - AnchorSlot)).Select(static s => (ulong)s)];
+        (SignedBeaconBlock _, Hash256 finalizedRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, slots);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        ForkedSignedBeaconBlock[] Serve(ulong start, ulong count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)];
+        StubPeer liar = new("liar", targetSlot, (start, count) => start == tipSlot + 1 ? [] : Serve(start, count));
+        StubPeer honest = new("honest", targetSlot, Serve);
+        RangeSync sync = new(new OfferingPool(liar, honest), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+        bool rejected = false;
+        RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true, requiredMismatches);
+
+        List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(chainBlocks[tipSlot - AnchorSlot - 1].ComputeMessageRoot(), tipSlot, () => targetSlot, token, fallback));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(rejected, Is.False, "the tip is on the chain; only the liar's empty reply hid its children");
+        Assert.That(yielded, Is.EqualTo(chainBlocks.Where(static b => b.Slot > tipSlot)), "nothing is downloaded again from finalized");
+        Assert.That(honest.Reports, Is.Empty, "the peer whose block contradicted the empty reply is not charged");
+    }
+
+    // phase0/p2p-interface.md BeaconBlocksByRange: slots below a peer's earliest available slot are not answered, so its first block after them is no evidence against the anchor.
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_first_block_past_slots_no_peer_answered_does_not_abandon_an_unverified_tip(CancellationToken token)
+    {
+        const ulong tipSlot = AnchorSlot + 4;
+        const ulong targetSlot = tipSlot + 4;
+        ulong[] slots = [.. Enumerable.Range((int)AnchorSlot + 1, (int)(targetSlot - AnchorSlot)).Select(static s => (ulong)s)];
+        (SignedBeaconBlock _, Hash256 finalizedRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, slots);
+        ForkedSignedBeaconBlock[] chainBlocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        StubPeer pruned = new("pruned", targetSlot, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)], earliestAvailableSlot: tipSlot + 2);
+        RangeSync sync = new(new OfferingPool(pruned), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
+        bool rejected = false;
+        RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true);
+        using CancellationTokenSource bound = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bound.CancelAfter(TimeSpan.FromSeconds(2));
+
+        try
+        {
+            await RangeSyncTests.CollectAsync(sync.Run(chainBlocks[tipSlot - AnchorSlot - 1].ComputeMessageRoot(), tipSlot, () => targetSlot, bound.Token, fallback));
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+        }
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pruned.RequestedRanges, Is.Not.Empty, "fixture: the peer was asked past its earliest available slot");
+        Assert.That(rejected, Is.False, "the block at the slot the peer did not answer may link the tip to its first block");
     }
 
     [TestCase(2UL, true, TestName = "Range sync behind the wall slot whose peers all report its own head refreshes their status instead of waiting")]

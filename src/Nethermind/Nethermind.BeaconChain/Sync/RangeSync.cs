@@ -85,10 +85,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         HashSet<string> behindTheirWord = [];
         // The peer whose empty answer skipped slots after the last verified block, until a batch links past them.
         IBeaconSyncPeer? skippedOnWordOf = null;
-        // Peers whose first block missed the unverified anchor, by id.
-        Dictionary<string, IBeaconSyncPeer>? anchorMisses = null;
-        // The peers whose misses abandoned the anchor, each charged if the chain from the fallback links through that anchor after all.
-        (IBeaconSyncPeer[] Peers, Hash256 Root, ulong Slot)? abandonedOnWordOf = null;
+        // Peers whose first block after the slots they vouched for missed the unverified anchor, by id.
+        HashSet<string>? anchorMisses = null;
+        // The peers whose misses abandoned the anchor, each charged if it later serves the chain from the fallback through that anchor.
+        (string[] PeerIds, Hash256 Root, ulong Slot)? abandonedOnWordOf = null;
 
         while (!token.IsCancellationRequested && nextSlot <= targetHeadSlot())
         {
@@ -126,8 +126,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             ulong from = Math.Max(nextSlot, peer.EarliestAvailableSlot);
             ulong count = Math.Min(batchSize, target - from + 1);
             (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null || from != lastSlot + 1 || lastSupplier != peer.Id, token, superseded);
-            // Resolve an unverified anchor before attributing a mismatch to an empty reply.
-            if (batch is { Linked: false } && fallback is null && skippedOnWordOf is { } behind)
+            // Another peer's empty answer is contradicted before an unverified anchor is doubted; the answering peer's own may mean the anchor is off its chain.
+            if (batch is { Linked: false } && skippedOnWordOf is { } behind && (fallback is null || behind.Id != peer.Id))
             {
                 if (_logger.IsDebug) _logger.Debug($"Blocks from slot {lastSlot + 1} exist although {behind.Id} answered them empty; asking another peer");
                 behindTheirWord.Add(behind.Id);
@@ -136,10 +136,11 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
-            if (batch is { Linked: false } && fallback is not null && (anchorMisses ??= []).TryAdd(peer.Id, peer) && anchorMisses.Count >= fallback.RequiredMismatches)
+            if (batch is { Linked: false } && fallback is not null && (skippedOnWordOf is not null || from == lastSlot + 1)
+                && (anchorMisses ??= []).Add(peer.Id) && anchorMisses.Count >= fallback.RequiredMismatches)
             {
                 // The first block names another parent: the unverified anchor is off the peers' chain, not the peer at fault.
-                abandonedOnWordOf = ([.. anchorMisses.Values], lastRoot, lastSlot);
+                abandonedOnWordOf = ([.. anchorMisses], lastRoot, lastSlot);
                 lastRoot = fallback.Root;
                 lastSlot = fallback.Slot;
                 lastSupplier = null;
@@ -200,12 +201,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 lastSupplier = peer.Id;
                 if (abandonedOnWordOf is { } abandoned && lastSlot >= abandoned.Slot)
                 {
-                    if (Array.IndexOf(batch.Value.Roots, abandoned.Root) >= 0)
+                    // BeaconBlocksByRange is answered from the responder's own fork choice, so only a peer that serves both views contradicted itself.
+                    if (Array.IndexOf(batch.Value.Roots, abandoned.Root) >= 0 && Array.IndexOf(abandoned.PeerIds, peer.Id) >= 0)
                     {
-                        foreach (IBeaconSyncPeer liar in abandoned.Peers)
-                        {
-                            liar.ReportFailure(PeerFailureReason.ProtocolViolation, $"The first block after {abandoned.Root} named another parent, but the chain from the fallback anchor links through it");
-                        }
+                        peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"The first block after {abandoned.Root} named another parent, but its chain from the fallback anchor links through it");
                     }
 
                     abandonedOnWordOf = null;
