@@ -54,6 +54,8 @@ namespace Nethermind.Blockchain
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly IStateBoundary _stateBoundary;
         private readonly BlockTreeMutationLock _mutationLock;
+        // Odd while DeleteChainSlice runs.
+        private int _sliceDeletions;
 
         private readonly Lock _forkChoiceLock = new();
         // Null while unknown; set only after this exact pair was committed. A persisted (null, null) is not unknown.
@@ -593,6 +595,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            int sliceDeletions = Volatile.Read(ref _sliceDeletions);
             BlockHeader? header = _headerStore.Get(blockHash, shouldCache: false, blockNumber: blockNumber);
             if (header is null)
             {
@@ -646,6 +649,7 @@ namespace Nethermind.Blockchain
             if (header is not null && ShouldCache(header.Number))
             {
                 _headerStore.Cache(header);
+                if (OverlappedSliceDeletion(sliceDeletions)) (_headerStore as IClearableCache)?.ClearCache();
             }
 
             return header;
@@ -1713,6 +1717,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            int sliceDeletions = Volatile.Read(ref _sliceDeletions);
             Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
@@ -1779,9 +1784,26 @@ namespace Nethermind.Blockchain
             {
                 _blockStore.Cache(block);
                 _headerStore.Cache(block.Header);
+                if (OverlappedSliceDeletion(sliceDeletions))
+                {
+                    (_blockStore as IClearableCache)?.ClearCache();
+                    (_headerStore as IClearableCache)?.ClearCache();
+                }
             }
 
             return block;
+        }
+
+        /// <summary>Whether a <see cref="DeleteChainSlice"/> ran during a lookup that began at <paramref name="sliceDeletionsAtLookup"/>.</summary>
+        /// <remarks>
+        /// Lookups cache what they read without the mutation lock, so one overlapping a deletion can re-cache a block it
+        /// has just removed. Call after caching: the fence orders that write before the counter read, so either the
+        /// deletion evicts the entry or this sees the deletion and the caller drops the cache.
+        /// </remarks>
+        private bool OverlappedSliceDeletion(int sliceDeletionsAtLookup)
+        {
+            Interlocked.MemoryBarrier();
+            return (sliceDeletionsAtLookup & 1) != 0 || Volatile.Read(ref _sliceDeletions) != sliceDeletionsAtLookup;
         }
 
         private bool IsTotalDifficultyAlwaysZero() =>
@@ -1920,12 +1942,14 @@ namespace Nethermind.Blockchain
             if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) throw new InvalidOperationException("Chain mutation contention or overlapping maintenance; retry the request.");
             using BlockTreeMutationLock.Scope mutationScope = mutation;
             BlockAcceptingNewBlocks();
+            Interlocked.Increment(ref _sliceDeletions);
             try
             {
                 return DeleteChainSliceCore(startNumber, endNumber, force);
             }
             finally
             {
+                Interlocked.Increment(ref _sliceDeletions);
                 ReleaseAcceptingNewBlocks();
             }
         }
