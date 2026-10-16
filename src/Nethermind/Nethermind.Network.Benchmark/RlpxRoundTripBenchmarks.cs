@@ -52,7 +52,7 @@ public class RlpxRoundTripBenchmarks
     private const int TransactionDataSize = 512;
     private const int CodeCount = 32;
     private const int CodeSize = 24 * 1024;
-    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(30);
     private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
 
     private readonly Hash256[] _blockHashes = new Hash256[BlockCount];
@@ -66,11 +66,7 @@ public class RlpxRoundTripBenchmarks
     public void GlobalSetup() => SetUpAsync().GetAwaiter().GetResult();
 
     [GlobalCleanup]
-    public void GlobalCleanup()
-    {
-        _client.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        _server.DisposeAsync().AsTask().GetAwaiter().GetResult();
-    }
+    public void GlobalCleanup() => CleanUpAsync().GetAwaiter().GetResult();
 
     /// <summary>A single header each way, so the fixed per-message cost dominates.</summary>
     [Benchmark]
@@ -104,7 +100,7 @@ public class RlpxRoundTripBenchmarks
 
     private async Task SetUpAsync()
     {
-        using CancellationTokenSource cancellation = new(ConnectTimeout);
+        using CancellationTokenSource cancellation = new(SetupTimeout);
 
         _server = CreateNode(TestItem.PrivateKeyA);
         await StartNetwork(_server, cancellation.Token);
@@ -122,7 +118,22 @@ public class RlpxRoundTripBenchmarks
         }
 
         (_serverPeer, _serverSnapPeer) = await WaitForServerPeer(_client.Resolve<ISyncPeerPool>(), cancellation.Token);
-        await WarmUpRequestSizes();
+        await WarmUpRequestSizes(cancellation.Token);
+    }
+
+    /// <remarks>
+    /// The hosts are shut down explicitly: <see cref="StartNetwork"/> starts them directly, so disposing the
+    /// containers does not stop them. The cleanup tolerates a setup that failed before creating both nodes.
+    /// </remarks>
+    private async Task CleanUpAsync()
+    {
+        foreach (IContainer node in (IContainer[])[_client, _server])
+        {
+            if (node is null) continue;
+
+            await node.Resolve<IRlpxHost>().Shutdown();
+            await node.DisposeAsync();
+        }
     }
 
     /// <summary>
@@ -132,15 +143,15 @@ public class RlpxRoundTripBenchmarks
     /// The client starts with small request sizes and grows them after each fast response, so the first responses
     /// cover only part of what was asked for.
     /// </remarks>
-    private async Task WarmUpRequestSizes()
+    private async Task WarmUpRequestSizes(CancellationToken cancellationToken)
     {
         const int MaxAttempts = 50;
         string incomplete = string.Empty;
         for (int attempt = 0; attempt < MaxAttempts; attempt++)
         {
-            using OwnedBlockBodies bodies = await _serverPeer.GetBlockBodies(_blockHashes, CancellationToken.None);
-            using IOwnedReadOnlyList<TxReceipt[]> receipts = await _serverPeer.GetReceipts(_blockHashes, CancellationToken.None);
-            using IByteArrayList codes = await _serverSnapPeer.GetByteCodes(_codeHashes, CancellationToken.None);
+            using OwnedBlockBodies bodies = await _serverPeer.GetBlockBodies(_blockHashes, cancellationToken);
+            using IOwnedReadOnlyList<TxReceipt[]> receipts = await _serverPeer.GetReceipts(_blockHashes, cancellationToken);
+            using IByteArrayList codes = await _serverSnapPeer.GetByteCodes(_codeHashes, cancellationToken);
             int completeBodies = bodies.Bodies.Count(static body => body?.Transactions.Length == TransactionsPerBlock);
             int completeReceipts = receipts.Count(static block => block?.Length == TransactionsPerBlock);
             if (completeBodies == BlockCount && completeReceipts == BlockCount && codes.Count == CodeCount)

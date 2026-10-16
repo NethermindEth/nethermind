@@ -8,6 +8,8 @@
 //
 // Reads BASE_SHA, HEAD_SHA, BASE_OUTCOME, HEAD_OUTCOME and RUNNER_NAME from the environment.
 // Benchmarks are listed in the head run's order; one missing from the base run shows dashes.
+// Exits with 1 when the head run has no results or any of its benchmarks failed: the benchmark runner
+// itself exits with 0 regardless.
 
 using System.Globalization;
 using System.Text.Json;
@@ -20,8 +22,9 @@ if (args.Length != 2)
     return 2;
 }
 
-Dictionary<string, Result> baseResults = Load(args[0]);
-Dictionary<string, Result> headResults = Load(args[1]);
+// A null result is a benchmark that failed.
+Dictionary<string, Result?> baseResults = Load(args[0]);
+Dictionary<string, Result?> headResults = Load(args[1]);
 
 Console.WriteLine("## Network benchmarks");
 Console.WriteLine();
@@ -34,25 +37,33 @@ Console.WriteLine();
 if (headResults.Count == 0)
 {
     Console.WriteLine("_No head results; see the run log._");
-    return 0;
+    return 1;
 }
 
 Console.WriteLine("| Benchmark | Base | Head | Δ | CV base | CV head | Alloc base | Alloc head | Δ alloc |");
 Console.WriteLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|");
-foreach ((string name, Result head) in headResults)
+foreach ((string name, Result? head) in headResults)
 {
     Result? @base = baseResults.GetValueOrDefault(name);
     Console.WriteLine(
-        $"| {name} | {FormatTime(@base?.Median)} | {FormatTime(head.Median)} | {FormatDelta(head.Median, @base?.Median)} " +
-        $"| {FormatPercent(@base?.Cv)} | {FormatPercent(head.Cv)} " +
-        $"| {FormatBytes(@base?.Allocated)} | {FormatBytes(head.Allocated)} | {FormatDelta(head.Allocated, @base?.Allocated)} |");
+        $"| {name} | {FormatMedian(baseResults, name)} | {FormatMedian(headResults, name)} | {FormatDelta(head?.Median, @base?.Median)} " +
+        $"| {FormatPercent(@base?.Cv)} | {FormatPercent(head?.Cv)} " +
+        $"| {FormatBytes(@base?.Allocated)} | {FormatBytes(head?.Allocated)} | {FormatDelta(head?.Allocated, @base?.Allocated)} |");
+}
+
+string[] failed = [.. headResults.Where(static result => result.Value is null).Select(static result => result.Key)];
+if (failed.Length > 0)
+{
+    Console.WriteLine();
+    Console.WriteLine($"_Failed at head: {string.Join(", ", failed)}; see the run log._");
+    return 1;
 }
 
 return 0;
 
-static Dictionary<string, Result> Load(string artifactsDirectory)
+static Dictionary<string, Result?> Load(string artifactsDirectory)
 {
-    Dictionary<string, Result> results = [];
+    Dictionary<string, Result?> results = [];
     string resultsDirectory = Path.Combine(artifactsDirectory, "results");
     if (!Directory.Exists(resultsDirectory)) return results;
 
@@ -61,20 +72,24 @@ static Dictionary<string, Result> Load(string artifactsDirectory)
         using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(path));
         foreach (JsonElement benchmark in document.RootElement.GetProperty("Benchmarks").EnumerateArray())
         {
-            // A benchmark that failed has no statistics.
-            if (!TryGetObject(benchmark, "Statistics", out JsonElement statistics)) continue;
-
             string name = $"{benchmark.GetProperty("Type").GetString()}.{benchmark.GetProperty("Method").GetString()}";
             if (benchmark.TryGetProperty("Parameters", out JsonElement parameters) && parameters.GetString() is { Length: > 0 } parameterText)
             {
                 name += $"({parameterText})";
             }
 
+            // A benchmark that failed has no statistics.
+            if (!TryGetObject(benchmark, "Statistics", out JsonElement statistics))
+            {
+                results[name] = null;
+                continue;
+            }
+
             double mean = statistics.GetProperty("Mean").GetDouble();
-            double allocated = TryGetObject(benchmark, "Memory", out JsonElement memory)
+            double? allocated = TryGetObject(benchmark, "Memory", out JsonElement memory)
                 && memory.TryGetProperty("BytesAllocatedPerOperation", out JsonElement bytes)
                 ? bytes.GetDouble()
-                : 0;
+                : null;
             results[name] = new Result(
                 statistics.GetProperty("Median").GetDouble(),
                 mean == 0 ? 0 : statistics.GetProperty("StandardDeviation").GetDouble() / mean * 100,
@@ -92,9 +107,11 @@ static string Env(string name) => Environment.GetEnvironmentVariable(name) ?? ""
 
 static string Short(string sha) => sha.Length > 10 ? sha[..10] : sha;
 
-static string FormatTime(double? nanoseconds) => nanoseconds switch
+static string FormatMedian(Dictionary<string, Result?> results, string name) =>
+    !results.TryGetValue(name, out Result? result) ? "—" : result is null ? "failed" : FormatTime(result.Median);
+
+static string FormatTime(double nanoseconds) => nanoseconds switch
 {
-    null => "—",
     >= 1e9 => $"{nanoseconds / 1e9:F2} s",
     >= 1e6 => $"{nanoseconds / 1e6:F2} ms",
     >= 1e3 => $"{nanoseconds / 1e3:F2} μs",
@@ -111,11 +128,12 @@ static string FormatBytes(double? bytes) => bytes switch
 
 static string FormatPercent(double? percent) => percent is null ? "—" : $"{percent:F1}%";
 
-static string FormatDelta(double head, double? @base) => @base switch
+static string FormatDelta(double? head, double? @base) => (head, @base) switch
 {
-    null => "—",
-    0 => head == 0 ? "0%" : "new",
+    (null, _) or (_, null) => "—",
+    (0, 0) => "0%",
+    (_, 0) => "new",
     _ => $"{(head - @base) / @base * 100:+0.0;-0.0;0.0}%",
 };
 
-record Result(double Median, double Cv, double Allocated);
+record Result(double Median, double Cv, double? Allocated);
