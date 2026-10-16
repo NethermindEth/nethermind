@@ -569,6 +569,52 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
+    public void TryGetReceipt_falls_back_to_Get_when_stored_receipts_do_not_match_the_transactions([Values] bool emptyItem)
+    {
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject).TestObject;
+        PrepareBlock(block);
+        TxReceipt receipt = Build.A.Receipt.WithGasUsedTotal(21_000).TestObject;
+        TxReceipt[] stored = emptyItem ? [receipt, null!, receipt] : [receipt, receipt];
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = _decoder.EncodeAsBytes(stored, RlpBehaviors.Storage);
+
+        Assert.That(_storage.TryGetReceipt(block, 0, out _, out _), Is.False);
+    }
+
+    [Test]
+    public void TryGetReceipt_skips_a_frame_receipt_before_the_requested_one()
+    {
+        Transaction frameTx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, default, default)],
+            FrameSignatures = [],
+        };
+        frameTx.Hash = frameTx.CalculateHash();
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA)
+            .WithTransactions(frameTx, Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject).TestObject;
+        PrepareBlock(block);
+        LogEntry log = new(TestItem.AddressB, [1], [TestItem.KeccakA]);
+        TxReceipt frameReceipt = Build.A.Receipt.WithLogs(log, log).WithGasUsedTotal(50_000).TestObject;
+        frameReceipt.TxType = TxType.FrameTx;
+        frameReceipt.Payer = TestItem.AddressA;
+        frameReceipt.FrameReceipts = [new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 50_000, 0, [log, log])];
+        _storage.Insert(block, [frameReceipt, Build.A.Receipt.WithLogs(log).WithGasUsedTotal(71_000).TestObject]);
+        _storage.ClearCache();
+
+        bool served = _storage.TryGetReceipt(block, 1, out TxReceipt? receipt, out int logIndexStart);
+
+        Assert.That(served, Is.EqualTo(useCompactReceipts));
+        if (!served) return;
+        TxReceipt[] expected = _storage.Get(block);
+        receipt.AssertEquivalentTo(expected[1]);
+        Assert.That(logIndexStart, Is.EqualTo(expected.GetBlockLogFirstIndex(1)));
+    }
+
+    [Test]
     public void Adds_should_prefix_key_with_blockNumber()
     {
         (Block block, _) = InsertBlock();
