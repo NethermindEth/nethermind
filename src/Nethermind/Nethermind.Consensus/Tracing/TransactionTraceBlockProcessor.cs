@@ -27,12 +27,15 @@ public sealed class TransactionTraceBlockProcessor(
     : BlockProcessor(specProvider, blockValidator, rewardCalculator, executor, state, receipts,
         beaconRoot, blockHashes, logManager, withdrawals, requests, balManager)
 {
+    private readonly bool _reportsProcessedTransactions = executor.ReportsProcessedTransactions;
+
     public override (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
         IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (TransactionTraceBoundary.Get(blockTracer, options) is not null && !_balManager.ForceConstructGeneratedBlockAccessList)
             options |= ProcessingOptions.ForceSequentialBlockAccessList;
 
+        ReceiptsTracer.BuildsReceipts = _reportsProcessedTransactions || !TransactionTraceBoundary.IsUnpersistedReplay(options);
         return base.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
     }
 

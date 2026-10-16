@@ -188,6 +188,81 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public async Task TransactionTraceBlockProcessor_Replay_MaterializesLogsOnlyForTracersThatReadThem([Values] bool tracerReadsLogs)
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddLogEmittingBlock(chain);
+        ITxTracer txTracer = Substitute.For<ITxTracer>();
+        txTracer.IsTracingReceipt.Returns(true);
+        txTracer.IsCollectingLogs.Returns(tracerReadsLogs);
+        int successes = 0;
+        int logs = 0;
+        txTracer.When(static t => t.MarkAsSuccess(Arg.Any<Address>(), Arg.Any<GasConsumed>(), Arg.Any<byte[]>(), Arg.Any<LogEntry[]>(), Arg.Any<Hash256?>()))
+            .Do(call =>
+            {
+                successes++;
+                logs += call.ArgAt<LogEntry[]>(3).Length;
+            });
+        IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+        blockTracer.StartNewTxTrace(Arg.Any<Transaction>()).Returns(txTracer);
+
+        ReplayInTraceEnvironment(chain, parent, block, blockTracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(successes, Is.EqualTo(block.Transactions.Length));
+            Assert.That(logs, Is.EqualTo(tracerReadsLogs ? block.Transactions.Length : 0),
+                "a replay builds no receipts, so only a tracer that reads logs makes them materialize");
+        }
+    }
+
+    [Test]
+    public async Task TransactionTraceBlockProcessor_Replay_KeepsReceiptsOfCallerReceiptsTracer()
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddLogEmittingBlock(chain);
+        TxReceipt[] stored = chain.ReceiptStorage.Get(block);
+        BlockReceiptsTracer callerTracer = new();
+
+        ReplayInTraceEnvironment(chain, parent, block, callerTracer);
+
+        Assert.That(callerTracer.TxReceipts.Length, Is.EqualTo(stored.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < stored.Length; i++)
+            {
+                Assert.That(callerTracer.TxReceipts[i].Logs, Is.EqualTo(stored[i].Logs).Using<LogEntry>(static (a, b) =>
+                    a.Address == b.Address && a.Data.AsSpan().SequenceEqual(b.Data) && a.Topics.AsSpan().SequenceEqual(b.Topics)));
+                Assert.That(callerTracer.TxReceipts[i].GasUsedTotal, Is.EqualTo(stored[i].GasUsedTotal));
+            }
+        }
+    }
+
+    private static async Task<Block> AddLogEmittingBlock(BasicTestBlockchain chain)
+    {
+        byte[] logInInitCode = Prepare.EvmCode.PushData(TestItem.KeccakA.Bytes.ToArray()).PushData(0).PushData(0).Op(Instruction.LOG1).Done;
+        Transaction[] deploys = new Transaction[2];
+        for (int i = 0; i < deploys.Length; i++)
+        {
+            deploys[i] = Build.A.Transaction.WithCode(logInInitCode).WithTo(null).WithNonce((ulong)i).WithGasLimit(1_000_000)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(deploys);
+        Assert.That(chain.ReceiptStorage.Get(block).Sum(static r => r.Logs!.Length), Is.EqualTo(deploys.Length),
+            "precondition: every transaction must log");
+        return block;
+    }
+
+    private static void ReplayInTraceEnvironment(BasicTestBlockchain chain, BlockHeader parent, Block block, IBlockTracer tracer)
+    {
+        using ParallelBlockTracer.OwnedEnvironment environment = BuildParallelEnvironment(chain);
+        using Scope<ParallelBlockTracer.Components> scope = environment.BuildAndOverride(parent);
+        scope.Component.Processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer, CancellationToken.None);
+    }
+
+    [Test]
     public async Task Eip7668_ProducedBlock_HasZeroLengthBloomsAndLogsStayFindable([Values] bool eip7668)
     {
         IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
