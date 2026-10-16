@@ -886,6 +886,22 @@ public class TxBroadcasterTests
         Assert.That(gossipPolicy.ShouldGossipTransaction(frameTx), Is.EqualTo(!dependencyFrame));
     }
 
+    // EIP-8288: a dependency-bearing transaction is held only in the pool, where losing its proof coverage evicts it; a
+    // persistent broadcast copy would outlive that.
+    [Test]
+    public void Persistent_broadcast_does_not_keep_dependency_bearing_transactions()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction dependent = Build.A.Transaction.WithType(TxType.FrameTx).WithMaxFeePerGas(1.GWei).WithHash(TestItem.KeccakA).TestObject;
+        dependent.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[Eip8288Constants.DependencyTripleLength])];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_broadcaster.Broadcast(dependent, true), Is.False);
+            Assert.That(_broadcaster.GetSnapshot(), Is.Empty);
+            Assert.That(_broadcaster.TryGetPersistentTx(TestItem.KeccakA.ValueHash256, out _), Is.False);
+        }
+    }
+
     [Test]
     public void Withholds_frame_blob_tx_lacking_a_sidecar()
     {
