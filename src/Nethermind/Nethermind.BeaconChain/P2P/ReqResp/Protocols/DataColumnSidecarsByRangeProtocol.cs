@@ -249,11 +249,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         }
         catch (Eth2ReqRespException e)
         {
-            if (e.ResponseCode is not (ReqRespFraming.ResponseCode.ResourceUnavailable or ReqRespFraming.ResponseCode.ServerError))
-            {
-                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
-            }
-
+            RecordRefusal(Id, e.ResponseCode);
             await ReqRespFraming.WriteErrorChunkAsync(reply, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)

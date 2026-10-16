@@ -61,7 +61,7 @@ public sealed class BeaconBlocksByHeadProtocolV1(BeaconChainSpec spec, BeaconCha
         }
         catch (Eth2ReqRespException e)
         {
-            if (e.ResponseCode == ReqRespFraming.ResponseCode.InvalidRequest) RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            RecordRefusal(Id, e.ResponseCode);
             await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)

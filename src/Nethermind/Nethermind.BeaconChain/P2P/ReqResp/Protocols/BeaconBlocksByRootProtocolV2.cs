@@ -89,7 +89,7 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
         }
         catch (Eth2ReqRespException e)
         {
-            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            RecordRefusal(Id, e.ResponseCode);
             await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)

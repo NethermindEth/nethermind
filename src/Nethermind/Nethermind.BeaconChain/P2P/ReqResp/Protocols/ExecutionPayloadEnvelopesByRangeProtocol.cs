@@ -83,12 +83,7 @@ public sealed class ExecutionPayloadEnvelopesByRangeProtocol(BeaconChainSpec spe
         }
         catch (Eth2ReqRespException e)
         {
-            // A walk past the cap or our own unreadable block is not the peer's fault.
-            if (e.ResponseCode == ReqRespFraming.ResponseCode.InvalidRequest)
-            {
-                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
-            }
-
+            RecordRefusal(Id, e.ResponseCode);
             await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)

@@ -243,6 +243,14 @@ public abstract class ReqRespProtocolBase
     protected static void RecordFailure(string protocolId, ReqRespFailureReason reason) =>
         Metrics.BeaconChainReqRespFailures.Increment(new ReqRespFailureKey(protocolId, reason));
 
+    /// <summary>Records an inbound request this node refused, by the response code it answers with.</summary>
+    /// <remarks>Only an invalid request is the requester's fault; a rate limit is a cap this node enforces, and any other code is this node's own failure.</remarks>
+    protected static void RecordRefusal(string protocolId, byte responseCode)
+    {
+        if (responseCode == ReqRespFraming.ResponseCode.InvalidRequest) RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+        else if (responseCode == ReqRespFraming.ResponseCode.RateLimited) RecordFailure(protocolId, ReqRespFailureReason.LimitExceeded);
+    }
+
     /// <summary>Reserves a protocol slot under MaxConcurrentRequests; dispose it after serving.</summary>
     /// <returns>Null, recording LimitExceeded, when capped; the listener responds with a rate-limit error.</returns>
     /// <remarks>Unidentified sessions share one budget so withholding identity cannot evade the cap.</remarks>
@@ -616,7 +624,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
         }
         catch (Eth2ReqRespException e)
         {
-            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            RecordRefusal(Id, e.ResponseCode);
             await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)

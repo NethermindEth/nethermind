@@ -166,6 +166,40 @@ public class ReqRespLimitsTests
         Assert.That(await PingAsync(protocol, NewPeerContext(), token), Is.EqualTo(0), "a new peer's first ping must be served after 260 requests from other peers");
     }
 
+    [Test]
+    [CancelAfter(10000)]
+    public async Task A_rate_limited_request_is_recorded_as_a_limit_not_as_an_invalid_message([Values] bool blocksByHead, CancellationToken token)
+    {
+        string id;
+        Func<Task<byte?>> send;
+        int servedBeforeTheLimit;
+        if (blocksByHead)
+        {
+            BeaconBlocksByHeadProtocolV1 protocol = new(Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>())) { QuotaTime = new FixedTime() };
+            byte[] request = new byte[40];
+            BinaryPrimitives.WriteUInt64LittleEndian(request.AsSpan(32), 128);
+            (id, servedBeforeTheLimit) = (protocol.Id, 1);
+            send = async () => await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync, request, token) is [ResponseChunk chunk] ? chunk.Result : null;
+        }
+        else
+        {
+            Eth2PingProtocol protocol = new(new LocalMetadataSource()) { QuotaTime = new FixedTime() };
+            ISessionContext context = NewPeerContext();
+            (id, servedBeforeTheLimit) = (protocol.Id, 32);
+            send = () => PingAsync(protocol, context, token);
+        }
+
+        for (int i = 0; i < servedBeforeTheLimit; i++) await send();
+        long invalidBefore = FailureCount(id, ReqRespFailureReason.InvalidMessage);
+        long limitBefore = FailureCount(id, ReqRespFailureReason.LimitExceeded);
+        byte? refused = await send();
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(refused, Is.EqualTo(ReqRespFraming.ResponseCode.RateLimited));
+        Assert.That(FailureCount(id, ReqRespFailureReason.InvalidMessage) - invalidBefore, Is.Zero, "a request over budget is well formed");
+        Assert.That(FailureCount(id, ReqRespFailureReason.LimitExceeded) - limitBefore, Is.EqualTo(1), "the refusal is a cap this node enforces");
+    }
+
     private static async Task<byte?> PingAsync(Eth2PingProtocol protocol, ISessionContext context, CancellationToken token)
     {
         Channel channel = new();

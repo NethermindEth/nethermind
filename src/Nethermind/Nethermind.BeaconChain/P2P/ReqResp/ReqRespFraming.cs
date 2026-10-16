@@ -46,6 +46,8 @@ public static class ReqRespFraming
         public const byte InvalidRequest = 1;
         public const byte ServerError = 2;
         public const byte ResourceUnavailable = 3;
+        /// <summary>Rate limited: an implementation-defined code from the range above 128 that phase0 p2p-interface.md leaves to clients.</summary>
+        public const byte RateLimited = 139;
     }
 
     /// <summary>The spec <c>MAX_PAYLOAD_SIZE</c>: the maximum uncompressed payload size.</summary>

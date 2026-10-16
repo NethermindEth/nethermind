@@ -104,11 +104,7 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
         }
         catch (Eth2ReqRespException e)
         {
-            if (e.ResponseCode != ReqRespFraming.ResponseCode.ResourceUnavailable)
-            {
-                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
-            }
-
+            RecordRefusal(Id, e.ResponseCode);
             await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)
