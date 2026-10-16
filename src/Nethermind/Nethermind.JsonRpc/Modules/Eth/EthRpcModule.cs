@@ -1176,21 +1176,14 @@ public partial class EthRpcModule(
     {
         if (_storedReceiptFinder?.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator) is not true) return null;
 
-        Address? sender = null;
-        int receiptCount = 0;
-        using (ReceiptsIterator receipts = iterator)
-        {
-            while (receipts.TryGetNext(out TxReceiptStructRef receipt))
-            {
-                // An absent sender decodes to the shared zero address, which a stored one never aliases.
-                if (receiptCount++ == index && receipt.Sender.Bytes != Address.Zero.Bytes)
-                {
-                    sender = receipt.Sender.ToAddress();
-                }
-            }
-        }
+        using ReceiptsIterator receipts = iterator;
+        if (receipts.CountRemaining() != block.Transactions.Length) return null;
 
-        return receiptCount == block.Transactions.Length ? sender : null;
+        receipts.Skip(index);
+        // An absent sender decodes to the shared zero address, which a stored one never aliases.
+        return receipts.TryGetNext(out TxReceiptStructRef receipt) && receipt.Sender.Bytes != Address.Zero.Bytes
+            ? receipt.Sender.ToAddress()
+            : null;
     }
 
     private ResultWrapper<IEnumerable<FilterLog>> GetLogsResponse(
