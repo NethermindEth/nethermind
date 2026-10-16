@@ -41,15 +41,18 @@ public sealed class ReceiptTxHashesMigration(
     ISyncModeSelector syncModeSelector,
     IBlockProcessingQueue blockProcessingQueue,
     IHistoryPruner historyPruner,
+    ITimestamper timestamper,
     ILogManager logManager) : IDatabaseMigration, IAsyncDisposable
 {
     internal const int SaveInterval = 64;
     internal const ulong PruningMargin = 1024;
+    internal static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ProcessingPause = TimeSpan.FromMilliseconds(200);
     private static readonly Hash256 NextBlockKey = Keccak.Compute("ReceiptTxHashesMigrationNextBlock");
     private const ulong Completed = 0;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ReceiptTxHashesMigration>();
+    private readonly ProgressLogger _progress = new("Receipt hashes", logManager, timestamper);
     private readonly IDb _receipts = receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
     private readonly IDb _metadata = receiptsDb.GetColumnDb(ReceiptsColumns.Default);
     private readonly CancellationTokenSource _stop = new();
@@ -114,6 +117,9 @@ public sealed class ReceiptTxHashesMigration(
         long rewritten = 0;
         long bytesAdded = 0;
         int sinceSaved = 0;
+        ulong first = next;
+        _progress.Reset(0, first - lowest + 1);
+        DateTime lastProgress = timestamper.UtcNow;
         while (next >= lowest && !cancellationToken.IsCancellationRequested)
         {
             await WaitWhileProcessing(cancellationToken);
@@ -126,6 +132,15 @@ public sealed class ReceiptTxHashesMigration(
             bytesAdded += bytes;
             next--;
 
+            _progress.TargetValue = first - lowest + 1;
+            _progress.Update(first - next);
+            DateTime now = timestamper.UtcNow;
+            if (now - lastProgress >= ProgressInterval)
+            {
+                _progress.LogProgress();
+                lastProgress = now;
+            }
+
             if (++sinceSaved == SaveInterval)
             {
                 WriteNextBlock(next);
@@ -133,6 +148,7 @@ public sealed class ReceiptTxHashesMigration(
             }
         }
 
+        _progress.MarkEnd();
         if (next < lowest)
         {
             WriteNextBlock(Completed);

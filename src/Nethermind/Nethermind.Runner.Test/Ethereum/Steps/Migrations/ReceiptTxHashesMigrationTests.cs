@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -11,10 +12,12 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Init.Steps.Migrations;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -167,6 +170,21 @@ public class ReceiptTxHashesMigrationTests
     }
 
     [Test]
+    public async Task Logs_its_progress_while_it_runs()
+    {
+        using Chain chain = new(3);
+        for (ulong number = 1; number <= 3; number++)
+        {
+            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+        }
+
+        TestLogger logger = new();
+        await chain.RunMigration(new ReceiptConfig(), new OneLoggerLogManager(new(logger)));
+
+        Assert.That(logger.LogList, Has.Some.StartsWith("Receipt hashes"));
+    }
+
+    [Test]
     public async Task Does_nothing_when_disabled()
     {
         using Chain chain = new(1);
@@ -233,16 +251,30 @@ public class ReceiptTxHashesMigrationTests
 
         public Task RunMigration() => RunMigration(new ReceiptConfig());
 
-        /// <summary>Runs a new instance over the same databases, as a node restart does.</summary>
-        public async Task RunMigration(ReceiptConfig config)
+        public Task RunMigration(ReceiptConfig config) => RunMigration(config, LimboLogs.Instance);
+
+        /// <summary>
+        /// Runs a new instance over the same databases, as a node restart does. Each clock read is one progress
+        /// interval later than the previous one, so every block is a point at which progress is due.
+        /// </summary>
+        public async Task RunMigration(ReceiptConfig config, ILogManager logManager)
         {
             await using ILifetimeScope scope = _container.BeginLifetimeScope(builder => builder
                 .AddSingleton<IReceiptConfig>(config)
+                .AddSingleton<ILogManager>(logManager)
+                .AddSingleton<ITimestamper>(new SteppingTimestamper())
                 .AddSingleton<ReceiptTxHashesMigration>());
             ReceiptTxHashesMigration migration = scope.Resolve<ReceiptTxHashesMigration>();
 
             await migration.Run(CancellationToken.None);
             await migration.Completion;
+        }
+
+        private sealed class SteppingTimestamper : ITimestamper
+        {
+            private DateTime _now = DateTime.UnixEpoch;
+
+            public DateTime UtcNow => _now += ReceiptTxHashesMigration.ProgressInterval;
         }
 
         private static void AddToMainChain(IBlockTree blockTree, Block block)
