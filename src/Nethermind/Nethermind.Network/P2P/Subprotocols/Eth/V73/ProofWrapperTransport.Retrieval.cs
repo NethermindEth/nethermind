@@ -420,6 +420,8 @@ public sealed partial class ProofWrapperTransport
         // Wrapper hashes are distinct, so the outstanding set is too.
         List<ValueHash256> outstanding = new(missing.Count);
         foreach (int index in missing) outstanding.Add(hashes[index]);
+        long started = _clock.GetTimestamp();
+        int requests = 0;
         foreach (WrapperPeer source in sources)
         {
             List<ValueHash256> toAsk = [.. outstanding];
@@ -428,6 +430,7 @@ public sealed partial class ProofWrapperTransport
                 ValueHash256[] requested = [.. toAsk.GetRange(0, Math.Min(Eth73Protocol.MaxEnvelopesPerRequest, toAsk.Count))];
                 EnvelopesRequest? request = await SendEnvelopeRequestAsync(source, requested, cancellation).ConfigureAwait(false);
                 if (request is null) break;
+                requests++;
                 byte[][]? envelopes;
                 using (CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
                 {
@@ -441,9 +444,12 @@ public sealed partial class ProofWrapperTransport
                 toAsk.RemoveRange(0, last + 1);
             }
             outstanding.RemoveAll(recovered.ContainsKey);
-            if (outstanding.Count == 0) return true;
+            if (outstanding.Count == 0) break;
         }
-        return false;
+        if (_logger.IsDebug)
+            _logger.Debug($"eth/73 recovered {missing.Count - outstanding.Count} of {missing.Count} envelopes for {fetch.Announcement} with " +
+                $"{requests} GetPooledTransactions in {_clock.GetElapsedTime(started).TotalMilliseconds:F0} ms");
+        return outstanding.Count == 0;
     }
 
     /// <summary>Sends one GetPooledTransactions once the source has a free request slot and the byte budgets allow it.</summary>
@@ -464,6 +470,7 @@ public sealed partial class ProofWrapperTransport
                     ArrayPoolList<ValueHash256> wire = new(hashes.Length);
                     wire.AddRange(hashes);
                     outbox.Send(source, new GetPooledTransactionsMessage66(wire) { RequestId = request.Id });
+                    WrapperMetrics.Record(WrapperEvent.EnvelopeRequested, hashes.Length);
                 }
             }
             outbox.Flush();
@@ -500,6 +507,7 @@ public sealed partial class ProofWrapperTransport
         outbox.Flush();
         if (!accepted) return false;
         foreach (Transaction transaction in transactions) recovered[transaction.Hash!.ValueHash256] = transaction;
+        WrapperMetrics.Record(WrapperEvent.EnvelopeRecovered, transactions.Count);
         return true;
     }
 
