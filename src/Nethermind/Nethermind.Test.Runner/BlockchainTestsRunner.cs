@@ -22,6 +22,8 @@ public readonly record struct BlockchainTestsRunnerOptions(
     bool SuppressOutput = false,
     bool? ParallelExecution = null,
     bool? ParallelExecutionBatchRead = null,
+    bool WithholdBlockAccessLists = false,
+    IBlockAccessListExecutionReport? BlockAccessListExecutionObserver = null,
     Func<bool, string?>? ProgressUpdateFactory = null);
 
 public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITestSourceLoader? testsSource = null) : BlockchainTestBase, IBlockchainTestRunner
@@ -31,6 +33,8 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
         _trace ? LimboLogs.Instance : _suppressOutput ? new TestLogManager(LogLevel.Error) : null;
     protected override bool? ParallelExecutionOverride => _parallelExecution;
     protected override bool? ParallelExecutionBatchReadOverride => _parallelExecutionBatchRead;
+    protected override bool WithholdBlockAccessLists => _withholdBlockAccessLists;
+    protected override IBlockAccessListExecutionReport? BlockAccessListExecutionObserver => _blockAccessListExecutionObserver;
     // A rejection's reason is the consumer's to judge, from the client error each result reports.
     protected override bool MatchExpectedExceptions => false;
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
@@ -46,6 +50,8 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     private readonly bool _suppressOutput = options.SuppressOutput;
     private readonly bool? _parallelExecution = options.ParallelExecution;
     private readonly bool? _parallelExecutionBatchRead = options.ParallelExecutionBatchRead;
+    private readonly bool _withholdBlockAccessLists = options.WithholdBlockAccessLists;
+    private readonly IBlockAccessListExecutionReport? _blockAccessListExecutionObserver = options.BlockAccessListExecutionObserver;
     private readonly Func<bool, string?>? _progressUpdateFactory = options.ProgressUpdateFactory;
 
     public BlockchainTestsRunner(ITestSourceLoader testsSource, in BlockchainTestsRunnerOptions options)

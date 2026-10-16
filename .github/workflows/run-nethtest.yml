@@ -653,8 +653,8 @@ jobs:
           if [ "$FLATDB" != "1" ]; then
             SETUP_ARGS="$SETUP_ARGS --triedb"
           fi
-          if [ -n "$PARALLEL" ]; then
-            SETUP_ARGS="$SETUP_ARGS --parallelExecution $PARALLEL"
+          if [ "$PARALLEL" = "false" ]; then
+            SETUP_ARGS="$SETUP_ARGS --bal-sequential"
           fi
           if [ -n "$BATCHREAD" ]; then
             SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"

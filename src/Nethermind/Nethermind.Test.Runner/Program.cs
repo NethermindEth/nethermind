@@ -86,11 +86,17 @@ internal class Program
         public static Option<bool> TrieDb { get; } =
             new("--triedb") { Description = "Run with the patricia-trie state layout." };
 
-        public static Option<bool?> ParallelExecution { get; } =
-            new("--parallelExecution") { Description = "Force BAL parallel execution on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
+        public static Option<bool> BalSequential { get; } =
+            new("--bal-sequential") { Description = "Run every block on the sequential executor instead of the BAL parallel one, which runs by default. [Only for Blockchain/Engine Test]" };
+
+        public static Option<bool> BalWithhold { get; } =
+            new("--bal-withhold") { Description = "Never deliver a fixture's block access list, so every block executes without one, as a block received without its list does. [Only for Blockchain Test]" };
 
         public static Option<bool?> BatchRead { get; } =
             new("--batchRead") { Description = "Force BAL batch-read prewarming on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
+
+        public static Option<bool> BalReport { get; } =
+            new("--bal-report") { Description = "Print a JSON line on stderr naming the executor (parallel or sequential) that ran each block, and one when a block the parallel executor rejected is re-run sequentially. [Only for Blockchain/Engine Test]" };
 
         public static Option<string[]> ForkAlias { get; } =
             new("--forkAlias") { Description = "Resolve a fixture's declared fork name as another fork, e.g. 'Bogota=Eip8141Prototype'. Repeat the option for more than one alias; needed where separate fixture releases give one fork name incompatible meanings." };
@@ -121,8 +127,10 @@ internal class Program
             Options.Workers,
             Options.Chunk,
             Options.TrieDb,
-            Options.ParallelExecution,
+            Options.BalSequential,
+            Options.BalWithhold,
             Options.BatchRead,
+            Options.BalReport,
             Options.ForkAlias,
         ];
         rootCommand.SetAction((parseResult, cancellationToken) => Run(parseResult, null, cancellationToken));
@@ -207,8 +215,9 @@ internal class Program
         bool traceMemory = !parseResult.GetValue(Options.ExcludeMemory);
         bool excludeStack = parseResult.GetValue(Options.ExcludeStack);
         bool enableWarmup = parseResult.GetValue(Options.EnableWarmup);
-        bool? parallelExecution = parseResult.GetValue(Options.ParallelExecution);
+        bool? parallelExecution = parseResult.GetValue(Options.BalSequential) ? false : null;
         bool? batchRead = parseResult.GetValue(Options.BatchRead);
+        bool balReport = parseResult.GetValue(Options.BalReport);
 
         // Set before any fixture is loaded: the parse workers only ever read the table.
         ForkAliases.Set(parseResult.GetValue(Options.ForkAlias) ?? []);
@@ -248,7 +257,9 @@ internal class Program
                     JsonOutput: true,
                     SuppressOutput: true,
                     ParallelExecution: parallelExecution,
-                    ParallelExecutionBatchRead: batchRead);
+                    ParallelExecutionBatchRead: batchRead,
+                    WithholdBlockAccessLists: parseResult.GetValue(Options.BalWithhold),
+                    BlockAccessListExecutionObserver: balReport ? new BlockAccessListExecutionReport(Console.Error) : null);
                 (List<EthereumTestResult> results, bool allFilesLoaded) = await RunBlockTestFiles(files, runnerOptions, workers);
                 resultsOut.Write(_serializer.Serialize(results, true));
                 if (!allFilesLoaded) exitCode = IncompleteInputExitCode;
