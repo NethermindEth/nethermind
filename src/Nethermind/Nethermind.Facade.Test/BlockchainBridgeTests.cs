@@ -605,7 +605,7 @@ public class BlockchainBridgeTests
                 return TransactionResult.EvmException(EvmExceptionType.Revert);
             });
 
-        CallOutput callOutput = _blockchainBridge.CreateAccessList(header, tx, null, false, null, default);
+        CallOutput callOutput = _blockchainBridge.CreateAccessList(header, tx, null, false, null, cancellationToken: default);
 
         using (Assert.EnterMultipleScope())
         {
@@ -634,7 +634,7 @@ public class BlockchainBridgeTests
                 return TransactionResult.Ok;
             });
 
-        return _blockchainBridge.CreateAccessList(header, tx, null, optimize, null, default);
+        return _blockchainBridge.CreateAccessList(header, tx, null, optimize, null, cancellationToken: default);
     }
 
     [Test]
