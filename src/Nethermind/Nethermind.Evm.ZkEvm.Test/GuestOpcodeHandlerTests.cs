@@ -702,7 +702,7 @@ public class GuestOpcodeHandlerTests
             stack.HoistInputData(env.InputData.Span);
             VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm, Memory = ref frame.Memory };
             exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[Unsafe.ReadUnaligned<ushort>(ref stack.Code)])(
-                ref stack, gas, ref state, ref stack.Code, stack.Head, table, ref stack.Code, ref stack.Bottom);
+                ref stack, gas, ref state, ref stack.Code, stack.Head, table, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
         }
 
         ulong size = frame.Memory.Size;
