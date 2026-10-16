@@ -22,12 +22,26 @@ on:
         description: Components to measure
         required: true
         type: choice
-        options: [blob, history, both]
+        options: [blob, history, both, chain]
         default: both
+      control_ref:
+        description: Exact shared-master decoded API control SHA for chain measurements
+        required: false
+        type: string
+      chain_ref:
+        description: Exact chain-level candidate SHA
+        required: false
+        type: string
+      aa_controls:
+        description: Add separate adjacent unchanged-baseline controls
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   verify:
+    if: inputs.components != 'chain'
     strategy:
       fail-fast: false
       matrix:
@@ -35,6 +49,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     env:
+      AA_CONTROLS: ${{ inputs.aa_controls && '1' || '0' }}
       COMPONENTS: ${{ inputs.components || 'both' }}
       BASELINE_REF: ${{ inputs.baseline_ref || '60518b8183ed7e0b81252edad8e48573f891dfba' }}
       HISTORY_REF: ${{ inputs.history_ref || 'edc1f97def7bf1a5fbbd741a0a27576ddf57eff8' }}
@@ -141,7 +156,12 @@ jobs:
               candidate=multiget
               project=blob-batch
             fi
-            for source in baseline "$candidate" "$candidate" baseline; do
+            sources=(baseline "$candidate" "$candidate" baseline)
+            if [[ "$AA_CONTROLS" == 1 ]]; then
+              sources=(baseline baseline "$candidate" "$candidate" baseline baseline)
+            fi
+            python3 -c 'import json,sys; from pathlib import Path; p=Path("results/measurement-order.json"); d=json.loads(p.read_text()) if p.exists() else {}; d[sys.argv[1]]=sys.argv[2:]; p.write_text(json.dumps(d,indent=2)+"\n")' "$kind" "${sources[@]}"
+            for source in "${sources[@]}"; do
               round=$((round + 1))
               output="$GITHUB_WORKSPACE/results/$kind/$round-$source"
               if [[ "$kind" == history && "$source" == history ]]; then
@@ -155,9 +175,99 @@ jobs:
               )
               python3 proof/benchmarks/storage-adoption/validate-results.py "$output" "$kind"
             done
+            python3 proof/benchmarks/storage-adoption/analyze-ordered.py results "$kind"
           done
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: storage-adoption-${{ matrix.os }}
+          path: results
+
+  chain:
+    if: inputs.components == 'chain'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref }}
+      CONTROL_REF: ${{ inputs.control_ref }}
+      CANDIDATE_REF: ${{ inputs.chain_ref }}
+    steps:
+      - name: Validate source inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for sha in "$BASELINE_REF" "$CONTROL_REF" "$CANDIDATE_REF"; do
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          done
+      - uses: actions/checkout@v7
+        with:
+          path: proof
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.baseline_ref }}
+          path: baseline
+          fetch-depth: 1
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.control_ref }}
+          path: control
+          fetch-depth: 2
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.chain_ref }}
+          path: candidate
+          fetch-depth: 3
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: baseline/global.json
+      - name: Verify source isolation and prepare identical harnesses
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir results
+          dotnet --info > results/dotnet.txt
+          lscpu > results/cpu.txt
+          echo "SOURCE_DATE_EPOCH=$(git -C baseline log -1 --format=%ct)" >> "$GITHUB_ENV"
+          python3 proof/benchmarks/storage-adoption/validate-chain.py sources
+          for source in baseline control candidate; do
+            mkdir -p "$source/benchmarks/chain-levels"
+            cp proof/benchmarks/storage-adoption/chain-levels/* "$source/benchmarks/chain-levels/"
+          done
+          sha256sum proof/benchmarks/storage-adoption/chain-levels/* > results/harness-sha256.txt
+          python3 -c 'import os; cpu=min(os.sched_getaffinity(0)); assert cpu<63; print("BENCH_AFFINITY="+str(1<<cpu))' >> "$GITHUB_ENV"
+      - name: Compile harnesses and run component tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for source in baseline control candidate; do
+            dotnet build "$source/benchmarks/chain-levels/ChainLevels.csproj" -c Release
+            dotnet build "$source/src/Nethermind/Nethermind.State.Test/Nethermind.State.Test.csproj" -c Release
+            dotnet "$source/src/Nethermind/artifacts/bin/Nethermind.State.Test/release/Nethermind.State.Test.dll" | tee "results/$source-State.Test.log"
+            python3 proof/benchmarks/storage-adoption/validate-tests.py "results/$source-State.Test.log"
+          done
+          python3 proof/benchmarks/storage-adoption/validate-chain.py packages
+      - name: Measure three variants with separate baseline controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          round=0
+          python3 -c 'import json; from pathlib import Path; Path("results/measurement-order.json").write_text(json.dumps({"chain":["baseline","baseline","control","candidate","candidate","control","baseline","baseline"]},indent=2)+"\n")'
+          for source in baseline baseline control candidate candidate control baseline baseline; do
+            round=$((round + 1))
+            output="$GITHUB_WORKSPACE/results/chain/$round-$source"
+            (
+              cd "$source"
+              dotnet run --project benchmarks/chain-levels/ChainLevels.csproj -c Release --no-build -- --filter '*' --exporters json markdown --artifacts "$output" --join
+            )
+            python3 proof/benchmarks/storage-adoption/validate-chain.py results "$output"
+          done
+          python3 proof/benchmarks/storage-adoption/analyze-ordered.py results chain
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: chain-levels-${{ matrix.os }}
           path: results
