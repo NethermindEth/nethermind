@@ -155,8 +155,11 @@ public class OptimismPayloadPreparationServiceTests
 
         IBlockProductionContext? context = await service.GetPayload(payloadId, skipCancel: true);
 
-        Assert.That(context, Is.Not.Null);
-        Assert.That(context!.CurrentBestBlock, noTxPool ? Is.Null : Is.SameAs(improved));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context, Is.Not.Null);
+            Assert.That(context?.CurrentBestBlock, noTxPool ? Is.Null : Is.SameAs(improved));
+        }
     }
 
     private sealed class CapturingBlockImprovementContextFactory(IBlockImprovementContextFactory inner) : IBlockImprovementContextFactory
