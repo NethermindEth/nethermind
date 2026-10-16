@@ -3005,6 +3005,56 @@ jobs:
           chmod +x "${yq}"
           yq_version="$("${yq}" --version)"
           [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
+      - name: Prepare pinned master image
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:chain-levels-c08cadf')
+        run: docker pull nethermindeth/nethermind:master-ce93457
+
+      - name: Checkout chain-level parent source
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:chain-levels-c08cadf')
+        uses: actions/checkout@v6
+        with:
+          ref: 02d3ffde15fb6541efaff78899bd6fd667442501
+          path: parent-source
+          persist-credentials: false
+
+      - name: Prepare parent image locally
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:chain-levels-c08cadf')
+        working-directory: parent-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == x86_64 ]]
+          [[ "$(git rev-parse HEAD)" == 02d3ffde15fb6541efaff78899bd6fd667442501 ]]
+          if ! docker image inspect nethermind-rpcbench:perf-decoded-blob-multiget >/dev/null 2>&1; then
+            docker build . -f Dockerfile -t nethermind-rpcbench:perf-decoded-blob-multiget --build-arg BUILD_CONFIG=release --build-arg CI=true \
+              --build-arg COMMIT_HASH=02d3ffde15fb6541efaff78899bd6fd667442501 --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          fi
+
+      - name: Checkout chain-level candidate source
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:chain-levels-c08cadf')
+        uses: actions/checkout@v6
+        with:
+          ref: c08cadffc992ce86b00a8687c823b2f7b895b5ce
+          path: chain-source
+          persist-credentials: false
+
+      - name: Build chain-level candidate locally
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:chain-levels-c08cadf')
+        working-directory: chain-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == x86_64 ]]
+          [[ "$(git rev-parse HEAD)" == c08cadffc992ce86b00a8687c823b2f7b895b5ce ]]
+          docker build . -f Dockerfile -t nethermind-rpcbench:chain-levels-c08cadf --build-arg BUILD_CONFIG=release --build-arg CI=true \
+            --build-arg COMMIT_HASH=c08cadffc992ce86b00a8687c823b2f7b895b5ce --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+
+      - name: Verify chain-level image revision
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:chain-levels-c08cadf')
+        env:
+          CAMPAIGN_ROOT: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
+        run: python3 benchmarks/storage-adoption/verify-client-images.py "$CAMPAIGN_ROOT/chain-image-revision.json" nethermind-rpcbench:chain-levels-c08cadf=c08cadffc992ce86b00a8687c823b2f7b895b5ce
+
       - name: Verify storage comparison image revisions
         env:
           CAMPAIGN_ROOT: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
