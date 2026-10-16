@@ -22,7 +22,7 @@ config.AddJob(Job.Default
         new HistoryBoundsProjectGenerator(Path.GetFullPath("benchmarks/history-bounds/HistoryBounds.csproj")),
         toolchain.Builder, toolchain.Executor))
     .WithLaunchCount(1)
-    .WithWarmupCount(3)
+    .WithWarmupCount(15)
     .WithIterationCount(8));
 BenchmarkSwitcher.FromAssembly(typeof(HistoryBoundsBenchmarks).Assembly).Run(args, config);
 

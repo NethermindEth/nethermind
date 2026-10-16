@@ -15,7 +15,7 @@ config.AddJob(Job.Default
         new ExactProjectGenerator(Path.GetFullPath("benchmarks/chain-levels/ChainLevels.csproj")),
         toolchain.Builder, toolchain.Executor))
     .WithAffinity(new IntPtr(long.Parse(Environment.GetEnvironmentVariable("BENCH_AFFINITY")!)))
-    .WithLaunchCount(1).WithWarmupCount(3).WithIterationCount(8));
+    .WithLaunchCount(1).WithWarmupCount(15).WithIterationCount(8));
 BenchmarkSwitcher.FromAssembly(typeof(ChainLevelBatchReadBenchmark).Assembly).Run(args, config);
 
 sealed class ExactProjectGenerator(string path) : CsProjGenerator("net10.0", null!, null!, null!)
