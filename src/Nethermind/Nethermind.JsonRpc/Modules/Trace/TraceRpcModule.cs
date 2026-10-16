@@ -777,9 +777,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         /// <summary>The same, writing each transaction's traces out as the workers finish them, so the caller reads
         /// the first of them while the block is still being traced and the block is never held whole.</summary>
-        private bool TryStreamBlockInParallel(BlockHeader parent, Block block, ParityTraceTypes types, StreamingParityLikeBlockTracer streamingTracer, CancellationToken cancellationToken) =>
-            parallelTracer is not null && parallelTracer.TryStream(block, parent,
-                PerTransaction(types), Rewards(types), streamingTracer.WriteTraces, cancellationToken);
+        private bool TryStreamBlockInParallel(BlockHeader parent, Block block, ParityTraceTypes types, StreamingParityLikeBlockTracer streamingTracer, CancellationToken cancellationToken)
+        {
+            if (parallelTracer is null) return false;
+
+            using ParallelParityTxTracerPool txTracers = streamingTracer.CreateParallelTxTracers(block, types & ~ParityTraceTypes.Rewards);
+            return parallelTracer.TryStream(block, parent,
+                (_, txHash) => txTracers.For(txHash), Rewards(types), streamingTracer.WriteTraces, cancellationToken);
+        }
 
         private Func<IWorldState, Hash256, IBlockTracer<ParityLikeTxTrace>> PerTransaction(ParityTraceTypes types)
         {

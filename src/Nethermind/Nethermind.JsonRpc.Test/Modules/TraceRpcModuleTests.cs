@@ -3574,6 +3574,21 @@ public class TraceRpcModuleTests
             tracer.ReleaseResources();
             return Task.CompletedTask;
         })).SetName("ReleaseResources: idempotent across repeated calls");
+
+        yield return new TestCaseData((Func<Task>)(() =>
+        {
+            ArrayBufferWriter<byte> sink = new();
+            using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+            using CancellationTokenSource cts = new();
+            cts.Cancel();
+            using StreamingParityLikeBlockTracer tracer = new(ParityTraceTypes.Trace, ParityTraceStreamMode.Store, includeTxHash: false, writer, pipeWriter: null, cts.Token);
+            IReadOnlyCollection<ParityLikeTxTrace> traces = Substitute.For<IReadOnlyCollection<ParityLikeTxTrace>, IDisposable>();
+            traces.GetEnumerator().Returns(_ => new List<ParityLikeTxTrace> { new() }.GetEnumerator());
+
+            Assert.Throws<OperationCanceledException>(() => tracer.WriteTraces(traces));
+            ((IDisposable)traces).Received(1).Dispose();
+            return Task.CompletedTask;
+        })).SetName("WriteTraces: disposes the traces when writing them is cancelled");
     }
 
     [TestCaseSource(nameof(StreamingResourceSafetyCases))]
