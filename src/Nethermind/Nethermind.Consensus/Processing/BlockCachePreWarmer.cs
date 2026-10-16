@@ -61,9 +61,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private readonly bool _parallelExecutionEnabled;
     private readonly BlockCodeCache? _blockCodeCache;
     private readonly bool _handoff;
-    // The mempool pass's runs are taken over alongside a block's warm runs rather than ahead of them.
     private readonly bool _earlyStart;
-    // With _earlyStart, the sender and recipient fan-out is queued behind the transaction workers.
     private readonly bool _transactionWorkersFirst;
     private BlockFootprints? _footprints;
 
