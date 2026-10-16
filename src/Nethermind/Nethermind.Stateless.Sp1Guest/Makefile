@@ -9,10 +9,8 @@ SRC_DIR := /nethermind/src
 
 GUEST_LIBC := sp1
 
-# A 64-bit memcpy in place of libc's 32-bit one; SP1 has no DMA copy to hand copies to.
 # MUL on the uint256_mul precompile without the frame a call from managed code takes.
-GUEST_OBJECTS := memcpy.o mul.o
-GUEST_LDFLAGS := --wrap=memcpy
+GUEST_OBJECTS := mul.o
 
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
