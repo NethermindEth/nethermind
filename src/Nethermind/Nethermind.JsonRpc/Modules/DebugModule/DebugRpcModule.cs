@@ -693,10 +693,10 @@ public class DebugRpcModule(
 
     public ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter)
     {
-        Block? block = debugBridge.GetBlock(blockParameter);
-        return block is null
+        BlockHeader? header = blockFinder.FindHeader(blockParameter);
+        return header is null
             ? ResultWrapper<ArrayPoolList<byte>>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound)
-            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoderOrThrow<BlockHeader>().EncodeToArrayPoolList(block.Header));
+            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoderOrThrow<BlockHeader>().EncodeToArrayPoolList(header));
     }
 
     public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage() => ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());

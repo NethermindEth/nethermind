@@ -35,6 +35,8 @@ using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Test")]
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 
 namespace Nethermind.TxPool
 {
@@ -1749,6 +1751,25 @@ namespace Nethermind.TxPool
             return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle);
         }
 
+        bool IRecyclableTxPool.TrySubmitKnown(in ValueHash256 hash)
+        {
+            // Only what SubmitTx settles without reading the body: a syncing pool answers Syncing first,
+            // and a NewDiscovered subscriber is handed the transaction itself.
+            if (GetType() != typeof(TxPool)
+                || (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
+                || NewDiscovered is not null
+                || !_hashCache.Get(in hash))
+            {
+                return false;
+            }
+
+            Metrics.PendingTransactionsReceived++;
+            Metrics.PendingTransactionsKnown++;
+            Metrics.PendingTransactionsDiscarded++;
+            if (!_retryCache.IsAwaitingAnnouncement(in hash)) _retryCache.Received(in hash);
+            return true;
+        }
+
         private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle, bool reAddedFromReorg = false)
         {
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
@@ -2195,7 +2216,7 @@ namespace Nethermind.TxPool
             bool evictNextTxs = false;
             int invalidatedByFork = 0;
 
-            foreach (Transaction tx in transactions)
+            foreach (Transaction tx in TxDistinctSortedPool.InOrder(transactions))
             {
                 if (KeyedNonceManager.UsesKeyedNonce(tx))
                 {

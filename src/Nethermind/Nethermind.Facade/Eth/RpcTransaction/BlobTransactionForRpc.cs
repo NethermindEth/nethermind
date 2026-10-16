@@ -58,6 +58,9 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
+        if (BlobVersionedHashes is null && MaxFeePerBlobGas is not null)
+            return RpcTransactionErrors.BlobFeeCapWithoutBlobHashes;
+
         if (BlobVersionedHashes is null || BlobVersionedHashes.Length == 0)
             return RpcTransactionErrors.AtLeastOneBlobInBlobTransaction;
 
@@ -164,9 +167,10 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     /// Returns a copy of <paramref name="call"/> without its blob fee cap when that cap is zero, so it converts as omitted;
     /// otherwise returns <paramref name="call"/> unchanged.
     /// </summary>
+    /// <remarks>A zero cap without blob hashes is kept, so the call reports the cap without hashes.</remarks>
     public static TransactionForRpc WithZeroBlobFeeCapOmitted(TransactionForRpc call)
     {
-        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true } blobCall)
+        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true, BlobVersionedHashes: not null } blobCall)
             return call;
 
         BlobTransactionForRpc copy = (BlobTransactionForRpc)blobCall.MemberwiseClone();

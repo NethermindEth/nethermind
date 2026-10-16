@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm.State;
@@ -15,11 +16,12 @@ namespace Nethermind.Evm.State;
 /// <summary>
 /// Generic <see cref="IWorldStateScopeProvider.IScope.ApplyBal"/> built on the scope's own reads and write batches.
 /// </summary>
+/// <remarks>What the list does to each account is computed by <see cref="BalAccountDelta"/>.</remarks>
 public static class ScopeBalApplier
 {
     /// <inheritdoc cref="IWorldStateScopeProvider.IScope.ApplyBal"/>
     /// <param name="scope">The scope to write into.</param>
-    /// <param name="logManager">Reports disposal failures swallowed after a failed apply.</param>
+    /// <param name="logManager">Reports adopted code whose bytecode cannot be found, and storage batch disposal failures swallowed after a failed apply.</param>
     public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal, ILogManager logManager)
     {
         IWorldStateScopeProvider.ICodeSetter? codeSetter = null;
@@ -38,41 +40,33 @@ public static class ScopeBalApplier
 
                     Address address = accountChanges.Address;
                     Account? existing = scope.Get(address);
-                    if (accountChanges.BalanceChanges.Length == 0 && accountChanges.NonceChanges.Length == 0 && accountChanges.CodeChanges.Length == 0)
+                    BalAccountDelta delta = BalAccountDelta.Compute(existing, accountChanges);
+
+                    if (delta.Account is not { } account)
                     {
-                        // Slot writes alone are not an account change: they neither create a missing account nor touch an
-                        // existing one, so EIP-158 leaves an empty account holding storage in place.
-                        if (existing is not null) storageBatches.Add(writeBatch, accountChanges);
+                        if (existing is not null) writeBatch.Set(address, null);
                         continue;
                     }
 
-                    Account account = existing ?? Account.TotallyEmpty;
-
-                    if (accountChanges.BalanceChanges.Length > 0) account = account.WithChangedBalance(accountChanges.BalanceChanges[^1].Value);
-                    if (accountChanges.NonceChanges.Length > 0) account = account.WithChangedNonce(accountChanges.NonceChanges[^1].Value);
-                    if (accountChanges.CodeChanges.Length > 0)
+                    if (delta.Code is { } codeChange
+                        && writtenCodeHashes?.Contains(codeChange.CodeHash) != true && !scope.CodeDb.ContainsCode(codeChange.CodeHash))
                     {
-                        CodeChange codeChange = accountChanges.CodeChanges[^1];
-                        if (writtenCodeHashes?.Contains(codeChange.CodeHash) != true && !scope.CodeDb.ContainsCode(codeChange.CodeHash)
-                            && TryGetCode(bal, codeChange, out byte[]? code))
+                        if (BalAccountDelta.TryGetCode(bal, codeChange, out byte[]? code))
                         {
                             codeSetter ??= scope.CodeDb.BeginCodeWrite();
                             codeSetter.Set(codeChange.CodeHash, code);
                             (writtenCodeHashes ??= new ArrayPoolList<ValueHash256>(1)).Add(codeChange.CodeHash);
                         }
-                        account = account.WithChangedCodeHash(codeChange.CodeHash.ToCommitment());
-                    }
-
-                    // EIP-158 is always active with BALs (EIP-7928 postdates Spurious Dragon), so an empty account is removed.
-                    if (account.IsEmpty)
-                    {
-                        writeBatch.Set(address, null);
-                        continue;
+                        else
+                        {
+                            ReportMissingCode(logManager, address, codeChange.CodeHash);
+                        }
                     }
 
                     // Storage creation reads the account; keep flat state and the trie aligned until that read completes.
-                    storageBatches.Add(writeBatch, accountChanges);
-                    writeBatch.Set(address, account);
+                    storageBatches.Add(writeBatch, delta, existing is not null);
+                    // A slot-only change leaves the account as it was.
+                    if (delta.ChangesAccount) writeBatch.Set(address, account);
                 }
                 storageBatches.Apply();
             }
@@ -94,16 +88,34 @@ public static class ScopeBalApplier
         }
     }
 
+    /// <remarks>
+    /// EIP-8298: the account still takes the adopted hash, as execution would; reads of the code then rely on the
+    /// code database being healed.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ReportMissingCode(ILogManager logManager, Address address, in ValueHash256 codeHash)
+    {
+        Metrics.IncrementBalAdoptedCodeMissing();
+        ILogger logger = logManager.GetClassLogger(typeof(ScopeBalApplier));
+        if (logger.IsWarn) logger.Warn($"Block access list adopts code {codeHash} for {address}, but its bytecode is neither in the code database nor deposited in the block.");
+    }
+
     private sealed class StorageBatches(ILogManager logManager) : IDisposable
     {
         private const int MinParallelBatches = 3;
-        private readonly ArrayPoolList<(IWorldStateScopeProvider.IStorageWriteBatch? Batch, ReadOnlySlotChanges[] Changes)> _batches = new(0);
+        private readonly ArrayPoolList<(IWorldStateScopeProvider.IStorageWriteBatch? Batch, BalAccountDelta Delta)> _batches = new(0);
 
-        public void Add(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ReadOnlyAccountChanges changes)
+        public void Add(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, in BalAccountDelta delta, bool existed)
         {
-            if (changes.StorageChanges.Length == 0) return;
+            bool clear = delta.WipesStorage && existed;
+            int count = delta.Changes.StorageChanges.Length;
+            if (count == 0 && !clear) return;
+
             // Scope-owned storage-tree lookup stays serial; only independent batches are handed to workers.
-            _batches.Add((writeBatch.CreateStorageWriteBatch(changes.Address, changes.StorageChanges.Length), changes.StorageChanges));
+            IWorldStateScopeProvider.IStorageWriteBatch batch = writeBatch.CreateStorageWriteBatch(delta.Changes.Address, count);
+            _batches.Add((batch, delta));
+            // Clearing can touch scope-wide caches, so it stays serial too; it must precede any slot write.
+            if (clear) batch.Clear();
         }
 
         public void Apply()
@@ -114,7 +126,7 @@ public static class ScopeBalApplier
                 return;
             }
 
-            _batches.AsSpan().Sort(static (a, b) => b.Changes.Length.CompareTo(a.Changes.Length));
+            _batches.AsSpan().Sort(static (a, b) => b.Delta.Changes.StorageChanges.Length.CompareTo(a.Delta.Changes.StorageChanges.Length));
             ParallelUnbalancedWork.For(0, _batches.Count, this, static (i, state) =>
             {
                 state.Apply(i);
@@ -124,11 +136,11 @@ public static class ScopeBalApplier
 
         private void Apply(int index)
         {
-            ref (IWorldStateScopeProvider.IStorageWriteBatch? Batch, ReadOnlySlotChanges[] Changes) work = ref _batches.GetRef(index);
+            ref (IWorldStateScopeProvider.IStorageWriteBatch? Batch, BalAccountDelta Delta) work = ref _batches.GetRef(index);
             IWorldStateScopeProvider.IStorageWriteBatch batch = work.Batch!;
-            foreach (ReadOnlySlotChanges changes in work.Changes)
+            foreach (ReadOnlySlotChanges changes in work.Delta.Changes.StorageChanges)
             {
-                if (changes.Changes.Length > 0) batch.Set(changes.Key, changes.Changes[^1].Value);
+                if (work.Delta.TryGetFinalValue(changes, out UInt256 value)) batch.Set(changes.Key, value);
             }
             // Claimed only once its writes succeed: a failed batch is left to Dispose, so its own disposal cannot mask the failure.
             work.Batch = null;
@@ -153,27 +165,5 @@ public static class ScopeBalApplier
             }
             _batches.Dispose();
         }
-    }
-
-    /// <remarks>
-    /// EIP-8298: an adopted change carries only a hash. Bytecode the code database lacks was deposited earlier in the
-    /// block, possibly by an account whose final code differs, so it is taken from that change.
-    /// </remarks>
-    private static bool TryGetCode(ReadOnlyBlockAccessList bal, in CodeChange codeChange, [NotNullWhen(true)] out byte[]? code)
-    {
-        if (!codeChange.IsAdopted)
-        {
-            code = codeChange.Code;
-            return true;
-        }
-
-        if (bal.GetCodeChangesByHash()?.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) declared) == true)
-        {
-            code = declared.Code;
-            return true;
-        }
-
-        code = null;
-        return false;
     }
 }
