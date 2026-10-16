@@ -80,6 +80,22 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void GetMany_WithScalarFallback_ReplacesPreviousValueAfterDecoding([Values(1, 2, 3, 257)] int count)
+        {
+            using IDb store = new MemDb();
+            store.PutSpan([0], [1, 2, 3]);
+            byte[] previous = new byte[131072];
+            byte[]?[] output = Enumerable.Repeat<byte[]?>(previous, count).ToArray();
+            byte[] keys = Enumerable.Repeat((byte)1, count).ToArray();
+            keys[0] = 0;
+
+            store.GetMany<byte[]?, ReplacementValueDecoder>(keys, 1, output, new(output, previous));
+
+            Assert.That(output[0], Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(output.Skip(1), Is.All.Null);
+        }
+
+        [Test]
         public void GetMany_WhenDecoderThrows_PreservesPrefixAndClearsTail(
             [Values("memory", "default", "column")] string backend)
         {
@@ -1373,6 +1389,16 @@ namespace Nethermind.Db.Test
             _ => new ColumnsDb<ReceiptsColumns>(DbPath, GetRocksDbSettings(DbPath, "Blocks"), _dbConfig,
                 _rocksdbConfigFactory, LimboLogs.Instance, [ReceiptsColumns.Blocks, ReceiptsColumns.Transactions])
         };
+
+        private readonly struct ReplacementValueDecoder(byte[]?[] output, byte[] previous) : IValueDecoder<byte[]?>
+        {
+            public byte[]? Decode(ReadOnlySpan<byte> buffer)
+            {
+                if (!ReferenceEquals(output[0], previous))
+                    throw new InvalidOperationException("The previous result must stay in place until decoding completes.");
+                return buffer.ToArray();
+            }
+        }
 
         private struct CountingValueDecoder : IValueDecoder<long?>
         {

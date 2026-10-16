@@ -28,18 +28,26 @@ namespace Nethermind.Db
                 return;
             }
 
-            values.Clear();
-            for (int i = 0; i < values.Length; i++)
+            int completed = 0;
+            try
             {
-                Span<byte> value = db.GetSpan(keys.Slice(i * keyLength, keyLength));
-                try
+                for (; completed < values.Length; completed++)
                 {
-                    if (!value.IsNull()) values[i] = decoder.Decode(value);
+                    Span<byte> value = db.GetSpan(keys.Slice(completed * keyLength, keyLength));
+                    try
+                    {
+                        values[completed] = value.IsNull() ? default! : decoder.Decode(value);
+                    }
+                    finally
+                    {
+                        db.DangerousReleaseMemory(value);
+                    }
                 }
-                finally
-                {
-                    db.DangerousReleaseMemory(value);
-                }
+            }
+            catch
+            {
+                values[completed..].Clear();
+                throw;
             }
         }
 
