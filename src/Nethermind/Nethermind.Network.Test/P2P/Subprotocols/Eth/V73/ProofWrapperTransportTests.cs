@@ -269,29 +269,37 @@ public class ProofWrapperTransportTests
         }
     }
 
-    [Test]
-    public async Task Omitted_envelopes_are_requested_again_from_the_same_source_while_it_makes_progress()
+    // devp2p PooledTransactions: entries skipped before the last returned one are unavailable from that peer, those after it
+    // were cut by the response limit and are requested again.
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Omitted_envelopes_go_to_the_next_source_and_truncated_ones_to_the_same(bool omitFirst)
     {
         Transaction first = FrameTransaction(1), second = FrameTransaction(2);
         byte[] wrapper = Wrapper(64, first, second);
+        WrapperAnnouncement announcement = Describe(wrapper);
         using WrapperTestNode node = new();
-        FakeWrapperLink link = new();
-        WrapperPeer peer = node.Connect(link);
-        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
-        Answer(node, peer, link, wrapper);
-        await WrapperTestNode.Until(() => link.Sent<GetPooledTransactionsMessage66>().Length == 1);
-        (long requestId, ValueHash256[] requested) = EnvelopeRequest(link);
+        FakeWrapperLink a = new("a"), b = new("b");
+        WrapperPeer peerA = node.Connect(a), peerB = node.Connect(b);
+        node.Transport.OnAnnounce(peerA, new([announcement]));
+        node.Transport.OnAnnounce(peerB, new([announcement]));
+        Answer(node, peerA, a, wrapper);
+        await WrapperTestNode.Until(() => a.Sent<GetPooledTransactionsMessage66>().Length == 1);
+        (long requestId, ValueHash256[] requested) = EnvelopeRequest(a);
         Transaction Of(ValueHash256 hash) => hash == first.Hash!.ValueHash256 ? first : second;
-        // The source omits the first requested envelope, which PooledTransactions allows.
-        node.Transport.OnPooledEnvelopes(peer, requestId, [Envelope(Of(requested[1]))]);
-        await WrapperTestNode.Until(() => link.Sent<GetPooledTransactionsMessage66>().Length == 2);
-        (long retryId, ValueHash256[] retried) = EnvelopeRequest(link, 1);
-        Assert.That(retried, Is.EqualTo(new[] { requested[0] }));
-        node.Transport.OnPooledEnvelopes(peer, retryId, [Envelope(Of(requested[0]))]);
-        await WrapperTestNode.Until(() => node.Transport.IsStored(Describe(wrapper).Hash));
+        node.Transport.OnPooledEnvelopes(peerA, requestId, [Envelope(Of(requested[omitFirst ? 1 : 0]))]);
+        FakeWrapperLink next = omitFirst ? b : a;
+        int sent = omitFirst ? 1 : 2;
+        await WrapperTestNode.Until(() => next.Sent<GetPooledTransactionsMessage66>().Length == sent);
+        (long retryId, ValueHash256[] retried) = EnvelopeRequest(next, sent - 1);
+        ValueHash256 remaining = requested[omitFirst ? 0 : 1];
+        Assert.That(retried, Is.EqualTo(new[] { remaining }));
+        node.Transport.OnPooledEnvelopes(omitFirst ? peerB : peerA, retryId, [Envelope(Of(remaining))]);
+        await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(link.Penalties, Is.Empty);
+            Assert.That(a.Penalties, Is.Empty);
+            Assert.That(b.Penalties, Is.Empty);
             Assert.That(node.Pending.Select(t => t.Hash), Is.EquivalentTo(new[] { first.Hash, second.Hash }));
         }
     }

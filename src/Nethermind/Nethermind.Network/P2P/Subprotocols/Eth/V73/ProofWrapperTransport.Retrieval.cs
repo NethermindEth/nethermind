@@ -402,8 +402,9 @@ public sealed partial class ProofWrapperTransport
 
     /// <summary>Recovers missing envelopes through GetPooledTransactions from the peer that served the wrapper, then other
     /// announcers, within the source budget and the recovery deadline.</summary>
-    /// <remarks>PooledTransactions may omit or truncate entries, so a source is asked again for what is still missing while each
-    /// response makes progress, and the next source is tried once one returns nothing new.</remarks>
+    /// <remarks>As for any PooledTransactions response, requested envelopes skipped before the last one returned are
+    /// unavailable from that source and go to the next one, while those after it were cut by the response limit and are
+    /// requested from the same source again.</remarks>
     /// <returns>Whether every missing envelope was recovered.</returns>
     private async Task<bool> RecoverEnvelopesAsync(WrapperFetch fetch, ValueHash256[] hashes, List<int> missing,
         Dictionary<ValueHash256, Transaction> recovered, CancellationToken cancellation)
@@ -421,9 +422,10 @@ public sealed partial class ProofWrapperTransport
         foreach (int index in missing) outstanding.Add(hashes[index]);
         foreach (WrapperPeer source in sources)
         {
-            while (outstanding.Count > 0)
+            List<ValueHash256> toAsk = [.. outstanding];
+            while (toAsk.Count > 0)
             {
-                ValueHash256[] requested = [.. outstanding.GetRange(0, Math.Min(Eth73Protocol.MaxEnvelopesPerRequest, outstanding.Count))];
+                ValueHash256[] requested = [.. toAsk.GetRange(0, Math.Min(Eth73Protocol.MaxEnvelopesPerRequest, toAsk.Count))];
                 EnvelopesRequest? request = await SendEnvelopeRequestAsync(source, requested, cancellation).ConfigureAwait(false);
                 if (request is null) break;
                 byte[][]? envelopes;
@@ -435,8 +437,10 @@ public sealed partial class ProofWrapperTransport
                 }
                 // No response, or an empty one, means unavailable from this source: no penalty, try another.
                 if (envelopes is not { Length: > 0 } || !AcceptEnvelopes(fetch, source, envelopes, recovered)) break;
-                outstanding.RemoveAll(recovered.ContainsKey);
+                int last = Array.FindLastIndex(requested, recovered.ContainsKey);
+                toAsk.RemoveRange(0, last + 1);
             }
+            outstanding.RemoveAll(recovered.ContainsKey);
             if (outstanding.Count == 0) return true;
         }
         return false;
