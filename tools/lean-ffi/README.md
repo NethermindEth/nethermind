@@ -13,10 +13,17 @@ Rust 1.99+ is required for the pinned upstream APIs.
 
 ```sh
 export LEANVM_NUM_THREADS=1
-cargo test --release --locked --manifest-path tools/lean-ffi/Cargo.toml -- --test-threads=1
+(cd tools/lean-ffi && cargo test --release --locked -- --test-threads=1)
 dotnet run --project src/Nethermind/Nethermind.Crypto.LeanFfi.Test/Nethermind.Crypto.LeanFfi.Test.csproj -c release -p:BuildLeanFfi=true
 dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -c release -p:BuildLeanFfi=true
 ```
+
+Cargo runs from `tools/lean-ffi` so `.cargo/config.toml` applies `-C target-cpu=native`: the
+field arithmetic needs carry-less multiply (`pclmulqdq` on x86_64, `aes` on aarch64) and is
+about 68× slower without it. An environment `RUSTFLAGS` replaces those flags instead of adding
+to them, so it must keep `target-cpu=native` (or the features); the crate refuses to build
+otherwise. Proving uses leanVM's arena allocator, which recycles the prover's transient buffers
+across proofs; it allows one proof per process at a time, which the backend's prover lock ensures.
 
 `BuildLeanFfi=true` builds and copies the host native library into consumer build/publish
 outputs and rejects a different target RID. Build on each target platform; cross compilation
@@ -25,7 +32,7 @@ A chain with a scheduled EIP-8288 fork checks the native ABI and guest key at st
 and fails with installation instructions if the backend is unavailable. Other chains do
 not load it. Verification also fails closed; proving requires the library.
 
-`cargo run --release --locked --manifest-path tools/lean-ffi/Cargo.toml --example fixtures -- <directory>`
+`cargo run --release --locked --example fixtures -- <directory>`, run from `tools/lean-ffi`,
 produces genuine test signatures/proofs and the pinned recursive verification key. The live
 FFI tests build these fixtures with `BuildLeanFfi=true` and fail if the native library cannot load.
 The main solution compiles the test project without requiring Rust. Without the opt-in property,
