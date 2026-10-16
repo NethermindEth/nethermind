@@ -143,6 +143,54 @@ public class BeaconChainStoreBlockSummaryTests
         Assert.That(_store.TryGetBlockSummary(GloasRoot, out _), Is.False);
     }
 
+    [Test]
+    public void Startup_pruning_scan_returns_unfinalized_and_non_canonical_finalized_blocks()
+    {
+        (ulong anchorSlot, HashSet<(Hash256, ulong)> expected, _) = StoreBlocksAroundAnchor();
+        Assert.That(_store.StoredBlocksForPruning(anchorSlot), Is.EquivalentTo(expected));
+    }
+
+    [Test]
+    public void Startup_pruning_scan_reads_summaries_from_the_iterator()
+    {
+        (ulong anchorSlot, _, int finalizedSummaries) = StoreBlocksAroundAnchor();
+        MemDb index = (MemDb)_db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
+        long readsBefore = index.ReadsCount;
+        _ = _store.StoredBlocksForPruning(anchorSlot).ToList();
+        // The scan runs on every restart over the whole history, so only the canonical-index lookup of a finalized block may cost a read.
+        Assert.That(index.ReadsCount - readsBefore, Is.EqualTo(finalizedSummaries), "summaries come with the scanned keys, not from a Get per key");
+    }
+
+    /// <returns>The anchor slot, the blocks a restart must seed for pruning, and how many stored blocks are at or below the anchor.</returns>
+    private (ulong AnchorSlot, HashSet<(Hash256, ulong)> Expected, int FinalizedSummaries) StoreBlocksAroundAnchor()
+    {
+        ulong anchorSlot = FirstGloasSlot - 10;
+        HashSet<(Hash256, ulong)> expected = [];
+        int finalizedSummaries = 0;
+        Store("finalized canonical", anchorSlot - 5, canonical: true, seeded: false);
+        Store("finalized sibling", anchorSlot - 5, canonical: false, seeded: true);
+        Store("finalized without canonical entry", anchorSlot - 3, canonical: false, seeded: true);
+        Store("anchor", anchorSlot, canonical: true, seeded: false);
+        Store("unfinalized canonical", anchorSlot + 2, canonical: true, seeded: true);
+        Store("unfinalized sibling", anchorSlot + 2, canonical: false, seeded: true);
+        // A finalization delete loop interrupted between two non-canonical blocks of the same slot.
+        Hash256 deleted = Store("deleted before interruption", anchorSlot - 4, canonical: false, seeded: false);
+        _store.DeleteBlock(deleted);
+        finalizedSummaries--;
+        Store("left by interruption", anchorSlot - 4, canonical: false, seeded: true);
+        return (anchorSlot, expected, finalizedSummaries);
+
+        Hash256 Store(string name, ulong slot, bool canonical, bool seeded)
+        {
+            Hash256 root = Keccak.Compute(name);
+            _store.PutForkedBlock(root, new ForkedSignedBeaconBlock.OfFulu(CreateMinimalBlock(slot)));
+            if (canonical) _store.SetCanonicalRoot(slot, root);
+            if (seeded) expected.Add((root, slot));
+            if (slot <= anchorSlot) finalizedSummaries++;
+            return root;
+        }
+    }
+
     private static byte[] SummaryKey() => new[] { BeaconChainStore.BlockSummaryKeyPrefix }.Concat(GloasRoot.Bytes.ToArray()).ToArray();
 
     private static SignedBeaconBlockGloas BlockWithBlobs()

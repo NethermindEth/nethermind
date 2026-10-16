@@ -251,10 +251,10 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
     internal IEnumerable<(Hash256 Root, ulong Slot)> StoredBlocksForPruning(ulong finalizedSlot)
     {
-        foreach (byte[] key in _blockIndex.GetAllKeys())
+        foreach ((byte[] key, byte[] value) in _blockIndex.GetAll())
         {
             if (key.Length == BlockSummaryKeyLength && key[0] == BlockSummaryKeyPrefix
-                && TryDecodeBlockSummary(_blockIndex.Get(key), out StoredBlockSummary summary))
+                && TryDecodeBlockSummary(value, out StoredBlockSummary summary))
             {
                 Hash256 root = new(key.AsSpan(1));
                 if (summary.Slot > finalizedSlot || !TryGetCanonicalRoot(summary.Slot, out Hash256? canonical) || canonical != root)
