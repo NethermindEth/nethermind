@@ -16,12 +16,16 @@ on:
         description: Exact decoded MultiGet adoption SHA
         required: true
         type: string
+      binding_ref:
+        description: Exact managed binding fix SHA
+        required: true
+        type: string
       components:
         description: Components to measure
         required: true
         type: choice
         options: [blob, history, both, diagnose]
-        default: diagnose
+        default: blob
 permissions:
   contents: read
 jobs:
@@ -33,10 +37,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     env:
-      COMPONENTS: ${{ inputs.components || 'diagnose' }}
+      COMPONENTS: ${{ inputs.components || 'blob' }}
       BASELINE_REF: ${{ inputs.baseline_ref || '60518b8183ed7e0b81252edad8e48573f891dfba' }}
       HISTORY_REF: ${{ inputs.history_ref || '5605890ee67991041ee3859b47223b49e386ed24' }}
-      MULTIGET_REF: ${{ inputs.multiget_ref || '1b69217753ec1f3c1e7c64c29dc7a45694ec0808' }}
+      BINDING_REF: ${{ inputs.binding_ref || 'eacc75da34aafc839f2e28af0aabb577b4412f3b' }}
+      MULTIGET_REF: ${{ inputs.multiget_ref || '266ec3f14342bbaa12d5980dcee1eb9b278ee49a' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -45,7 +50,7 @@ jobs:
         shell: bash
         run: |
           case "$COMPONENTS" in blob|history|both|diagnose) ;; *) exit 1 ;; esac
-          for sha in "$BASELINE_REF" "$HISTORY_REF" "$MULTIGET_REF"; do
+          for sha in "$BASELINE_REF" "$HISTORY_REF" "$MULTIGET_REF" "$BINDING_REF"; do
             [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           done
       - uses: actions/checkout@v7
@@ -58,8 +63,15 @@ jobs:
           path: history
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.multiget_ref || '1b69217753ec1f3c1e7c64c29dc7a45694ec0808' }}
+          ref: ${{ inputs.multiget_ref || '266ec3f14342bbaa12d5980dcee1eb9b278ee49a' }}
           path: multiget
+      - uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/rocksdb-bindings
+          ref: ${{ inputs.binding_ref || 'eacc75da34aafc839f2e28af0aabb577b4412f3b' }}
+          path: bindings
+          lfs: true
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: baseline/global.json
@@ -71,6 +83,9 @@ jobs:
           for source in baseline history multiget; do
             git -C "$source" rev-parse HEAD > "results/$source-sha.txt"
           done
+          git -C bindings rev-parse HEAD > results/binding-sha.txt
+          test "$(cat results/binding-sha.txt)" = "$BINDING_REF"
+          test -z "$(git -C bindings diff --name-only 94e9fea4337b59d8b248cfae5c16e3ea18f7e2e2 HEAD -- native src/Nethermind.RocksDbBindings/runtimes)"
           dotnet --info > results/dotnet.txt
           lscpu > results/cpu.txt
           echo "SOURCE_DATE_EPOCH=$(git -C baseline log -1 --format=%ct)" >> "$GITHUB_ENV"
@@ -86,7 +101,20 @@ jobs:
             sleep 20
           done
           python3 proof/benchmarks/storage-adoption/validate-release.py results/release171.nuspec
-      - name: Run normal package-based database, history and transaction-pool tests
+      - name: Compare released and fixed binding diagnostics
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/storage-adoption
+        run: |
+          set -euo pipefail
+          mkdir -p multiget/benchmarks/blob-diagnose "$BENCH_DATA"
+          cp proof/benchmarks/storage-adoption/blob-diagnose/* multiget/benchmarks/blob-diagnose/
+          dotnet run --project multiget/benchmarks/blob-diagnose -c Release | tee results/blob-diagnose-released.csv
+          cp "$HOME/.nuget/packages/nethermind.rocksdbbindings/11.8.1.171/nethermind.rocksdbbindings.11.8.1.171.nupkg.sha512" results/package-171.sha512
+          python3 proof/benchmarks/storage-adoption/install-binding-source.py
+          git -C multiget diff > results/binding-source-overlay.diff
+          dotnet run --project multiget/benchmarks/blob-diagnose -c Release | tee results/blob-diagnose-fixed.csv
+      - name: Validate database and transaction-pool tests with the exact binding source
         if: env.COMPONENTS != 'diagnose'
         shell: bash
         run: |
@@ -152,17 +180,6 @@ jobs:
               python3 proof/benchmarks/storage-adoption/validate-results.py "$output" "$kind"
             done
           done
-      - name: Diagnose single-hit blob batches
-        if: env.COMPONENTS == 'diagnose'
-        shell: bash
-        env:
-          BENCH_DATA: ${{ runner.temp }}/storage-adoption
-        run: |
-          set -euo pipefail
-          mkdir -p multiget/benchmarks/blob-diagnose "$BENCH_DATA"
-          cp proof/benchmarks/storage-adoption/blob-diagnose/* multiget/benchmarks/blob-diagnose/
-          dotnet run --project multiget/benchmarks/blob-diagnose -c Release | tee results/blob-diagnose.csv
-          cp "$HOME/.nuget/packages/nethermind.rocksdbbindings/11.8.1.171/nethermind.rocksdbbindings.11.8.1.171.nupkg.sha512" results/package-171.sha512
       - uses: actions/upload-artifact@v7
         if: always()
         with:
