@@ -1940,7 +1940,7 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Recovers a held parent's payload needed by a parked child, checking held envelopes before ByRoot requests.</summary>
-    /// <remarks>Requests use at most <see cref="MaxBackfillPeersPerRequest"/> peers, once per root per slot; fetched envelopes wake children.
+    /// <remarks>Requests ask at most <see cref="MaxBackfillPeersPerRequest"/> peers in turn until one serves it, once per root per slot a fetch starts; fetched envelopes wake children.
     /// This includes anchors: gloas/fork-choice.md get_forkchoice_store starts with no payloads. Wrong-root replies penalize their peer.</remarks>
     /// <returns>Whether the payload was recorded or already known.</returns>
     private async Task<bool> RecoverParentEnvelopeAsync(Hash256 parentRoot, CancellationToken token)
@@ -1962,7 +1962,6 @@ public sealed class BeaconSyncOrchestrator(
             return false;
         }
 
-        _envelopeRequestedAtSlot.Set(parentRoot, currentSlot);
         if (!_envelopePeerSelections.TryGet(parentRoot, out RangeSync.ColumnFetchRotation? rotation))
         {
             rotation = new RangeSync.ColumnFetchRotation(slotClock);
@@ -1970,6 +1969,7 @@ public sealed class BeaconSyncOrchestrator(
         }
         if (Volatile.Read(ref _activeEnvelopeFetches) < MaxConcurrentAncestorFetches)
         {
+            _envelopeRequestedAtSlot.Set(parentRoot, currentSlot);
             IReadOnlyList<IBeaconSyncPeer> peers = rotation.Take(peerPool.GetBestPeers(0), MaxBackfillPeersPerRequest);
             Interlocked.Increment(ref _activeEnvelopeFetches);
             _ = FetchParentEnvelopesAsync(parentRoot, peers, token);
@@ -1995,6 +1995,7 @@ public sealed class BeaconSyncOrchestrator(
                     continue;
                 }
 
+                bool served = false;
                 foreach (SignedExecutionPayloadEnvelope envelope in envelopes)
                 {
                     if (envelope.Message?.BeaconBlockRoot != parentRoot)
@@ -2004,6 +2005,13 @@ public sealed class BeaconSyncOrchestrator(
                     }
 
                     await _work.Writer.WriteAsync(new FetchedEnvelopeItem(envelope, peer), token);
+                    served = true;
+                }
+
+                // An envelope that then fails on the worker is asked of other peers by the next slot's retry.
+                if (served)
+                {
+                    return;
                 }
             }
         }

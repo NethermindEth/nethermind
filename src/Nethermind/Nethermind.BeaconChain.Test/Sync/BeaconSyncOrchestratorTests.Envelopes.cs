@@ -350,6 +350,72 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
     }
 
+    // Each copy of a payload-sized envelope after the first is download and worker load that records nothing.
+    [Test]
+    public async Task Parent_envelope_recovery_stops_at_the_first_peer_serving_it()
+    {
+        Hash256 root = AnchorRoot();
+        ForkedSignedBeaconBlock child = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(EnvelopeBlockSlot, root));
+        EnvelopeServingPeer[] serving = [.. Enumerable.Range(0, 3).Select(i => new EnvelopeServingPeer($"serving-{i}", WallSlot, byRoot: roots => [EnvelopeFor(roots[0], AnchorSlot)]))];
+        Harness harness = CreateHarness(peers: serving);
+        harness.Importer.Known.Add(root);
+        harness.Importer.UnverifiedPayloads.Add(root);
+
+        await harness.Orchestrator.ImportBlockAsync(child, CancellationToken.None);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(serving.Select(static p => p.RootRequests.Count), Is.EqualTo(new[] { 1, 0, 0 }), "the peers after the first one serving the envelope are not asked");
+        Assert.That(harness.Importer.Envelopes, Is.EqualTo(new[] { root }));
+        Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
+    }
+
+    // A root refused for the fetch cap has not been asked, so it is not held back for the rest of the slot.
+    [Test]
+    public async Task Parent_envelope_refused_for_the_fetch_cap_is_requested_once_a_place_frees_in_the_same_slot()
+    {
+        Dictionary<Hash256, TaskCompletionSource<IReadOnlyList<SignedExecutionPayloadEnvelope>>> fetches = [];
+        IBeaconSyncPeer peer = Substitute.For<IBeaconSyncPeer>();
+        peer.Id.Returns("slow");
+        peer.HeadSlot.Returns(WallSlot);
+        peer.RequestExecutionPayloadEnvelopesByRootAsync(Arg.Any<Hash256[]>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            TaskCompletionSource<IReadOnlyList<SignedExecutionPayloadEnvelope>> fetch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            fetches[call.Arg<Hash256[]>()[0]] = fetch;
+            return fetch.Task;
+        });
+        Harness harness = CreateHarness(peers: [peer]);
+        Hash256[] parents = [.. Enumerable.Range(0, BeaconSyncOrchestrator.MaxConcurrentAncestorFetches + 1).Select(static i => Keccak.Compute($"parent {i}"))];
+        harness.Importer.Known.UnionWith(parents);
+        harness.Importer.UnverifiedPayloads.UnionWith(parents);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+        foreach (Hash256 parent in parents)
+        {
+            await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(EnvelopeBlockSlot, parent)), cts.Token);
+        }
+
+        Assert.That(fetches.Keys, Is.EquivalentTo(parents[..^1]), "fixture: the last parent finds every fetch place taken");
+        fetches[parents[0]].SetResult([]);
+        // The freed place is released on the thread pool, so the same slot's retries are driven until one may start a fetch.
+        for (int retry = 0; retry < 100 && !fetches.ContainsKey(parents[^1]); retry++)
+        {
+            await Task.Delay(10, cts.Token);
+            await harness.Orchestrator.ProcessSlotAsync(WallSlot, cts.Token);
+        }
+
+        try
+        {
+            Assert.That(fetches.Keys, Does.Contain(parents[^1]), "the capped parent is asked in the slot it was refused once a place frees");
+        }
+        finally
+        {
+            foreach (TaskCompletionSource<IReadOnlyList<SignedExecutionPayloadEnvelope>> fetch in fetches.Values)
+            {
+                fetch.TrySetResult([]);
+            }
+        }
+    }
+
     [Test]
     public async Task Envelope_by_root_for_another_block_penalizes_its_peer()
     {
