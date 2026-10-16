@@ -251,7 +251,7 @@ internal sealed class StateRequestLimiter : IDisposable
     /// <c>root</c> reads the block's <c>state_root</c> and <c>fork</c> a 176-byte prefix, so they hold no state-sized memory and are exempt.
     /// <c>finality_checkpoints</c> and <c>randao</c> read a persisted prefix of about 2.7 MB on mainnet, so they stay in the query pool.
     /// The <c>head</c> lists (<c>pending_deposits</c>, <c>pending_partial_withdrawals</c>, <c>pending_consolidations</c>, <c>proposer_lookahead</c>)
-    /// and <c>validators/{validator_id}</c> read the in-memory head state, so they stay in the query pool; for any other state id they decode a whole persisted state, so they are downloads.
+    /// and <c>validators/{validator_id}</c> read the in-memory head state, so they stay in the query pool; any other state id, <c>justified</c> included, can decode a whole persisted state when it is not held, so they are downloads.
     /// The registry-sized routes materialize every validator, so they share the download pool and its per-minute cap, and a slow reader of one never holds a query permit.
     /// </remarks>
     private static StateRouteKind Classify(PathString stateRoute)
