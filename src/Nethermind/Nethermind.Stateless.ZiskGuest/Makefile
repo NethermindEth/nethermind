@@ -11,10 +11,6 @@ GUEST_LIBC := zisk
 # The only target whose bindings library is not named after its libc.
 GUEST_EXTLIB := libziskos
 
-# The JUMPDEST bitmap precompile is a csrs/add pair the transpiler fuses only while
-# adjacent, which no compiler emits, so the guest links it as assembly.
-GUEST_OBJECTS := jump_dest.o
-
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
@@ -26,9 +22,6 @@ OPT_FLAGS += \
 	--codegenopt JitExtDefaultPolicyMaxILRoot=800 \
 	--codegenopt JitExtDefaultPolicyMaxBB=40
 
-# The precompile P/Invokes the JIT emits as the CSR write itself, with no call (hex CSR numbers): bflat's
-# own list plus the 256-bit arithmetic the guest's handlers reach directly (ZiskArithmetic).
-OPT_FLAGS += --codegenopt JitZkCsrPInvokes=syscall_keccak_f:800,syscall_sha256_f:805,memmove:813,memcpy:813,syscall_arith256_mod:802,syscall_arith256:801
 
 ZISK_IMAGE ?= nethermindeth/zisk:1.3.2-alpha@sha256:31a0c7f9de175765e7e81da719bdc2409060de8d23ec8683672d7ee22b798a3f
 
