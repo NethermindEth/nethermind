@@ -257,7 +257,7 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
     private sealed class Execution
     {
         private readonly ITransactionProcessor _transactionProcessor;
-        // Every run reuses one copy: nothing derived from the gas limit or blob fee cap is cached on a transaction.
+        // Every run reuses one copy; PrepareRun drops its memoized encoded length, the only state derived from the gas limit or blob fee cap.
         private readonly Transaction _runTx = new();
         private readonly UInt256? _maxFeePerBlobGas;
         private readonly BlockExecutionContext _blockContext;
@@ -288,6 +288,7 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
         {
             _runTx.GasLimit = gasLimit;
             _runTx.MaxFeePerBlobGas = maxFeePerBlobGas ?? _maxFeePerBlobGas;
+            _runTx.ClearLengthCache();
             return _runTx;
         }
 
