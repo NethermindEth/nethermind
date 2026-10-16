@@ -196,7 +196,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>The slot at <paramref name="index"/>, counted up from <paramref name="bottom"/>, for callers that have bounded the index.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ref byte SlotAt(ref byte bottom, nint index) => ref Unsafe.Add(ref bottom, index * EvmStack.WordSize);
+        private static ref byte SlotAt(ref byte bottom, nint index) => ref Unsafe.Add(ref AlignedBottom(ref bottom), index * EvmStack.WordSize);
+
+        /// <summary><paramref name="bottom"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
+        /// <remarks>The rounding is a no-op the JIT sees through (dotnet-riscv perf-67), so it proves every slot access word aligned and drops its alignment test.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe ref byte AlignedBottom(ref byte bottom)
+        {
+            Debug.Assert(((nuint)Unsafe.AsPointer(ref bottom) & (EvmStack.WordSize - 1)) == 0);
+            return ref StrictAlignmentFlag.IsActive
+                ? ref Unsafe.AsRef<byte>((void*)((nuint)Unsafe.AsPointer(ref bottom) & ~(nuint)(EvmStack.WordSize - 1)))
+                : ref bottom;
+        }
 
         /// <summary>The big-endian 16-bit value in the two lowest bytes of <paramref name="bytes"/>; the bytes above them are ignored.</summary>
         /// <remarks>
@@ -851,7 +862,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     uint branch = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 7));
                     if ((byte)branch == (byte)Instruction.PUSH2 && branch >> 24 == (byte)Instruction.JUMPI)
                     {
-                        ulong selector = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 2)));
+                        // The selector's word, reversed, holds it zero-extended above bit 32, where a 32-bit read needs extending.
+                        ulong selector = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref opcode, 2))) >> 32;
                         // DUP1 is charged; the fused step charges the rest.
                         if (((top ^ selector) | Unsafe.Add(ref top, 1) | Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3)) != 0)
                         {
@@ -1849,8 +1861,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>MUL of the top two stack words.</summary>
         /// <remarks>
-        /// Factors below 2^64 multiply here. Wider factors go to <see cref="ExecuteMulOfHalfWidthFactors"/> or <see cref="ExecuteMulOfWideFactors"/>, so
-        /// this handler needs no frame. A short stack or gas runs the shared MUL handler instead.
+        /// Factors below 2^64 multiply here. Wider factors go to <see cref="ExecuteMulOfHalfWidthFactors"/> or <see cref="ExecuteMulOfWideFactors"/>,
+        /// or in the OpenVM guest to <see cref="ExecuteMulOnOpenVmBigInt"/>, so this handler needs no frame. A short stack or gas runs the shared MUL handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1872,16 +1884,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong upperHalves = Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3) | Unsafe.Add(ref product, 2) | Unsafe.Add(ref product, 3);
                 if ((Unsafe.Add(ref top, 1) | Unsafe.Add(ref product, 1) | upperHalves) != 0)
                 {
-                    nint wide = upperHalves == 0
-                        ? Entry(&ExecuteMulOfHalfWidthFactors)
-                        : Entry(&ExecuteMulOfWideFactors);
+                    nint wide = OpenVmBigIntFlag.IsActive
+                        ? Entry(&ExecuteMulOnOpenVmBigInt)
+                        : upperHalves == 0
+                            ? Entry(&ExecuteMulOfHalfWidthFactors)
+                            : Entry(&ExecuteMulOfWideFactors);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, wide);
                 }
 
                 ulong left = top;
                 ulong right = product;
                 product = left * right;
-                Unsafe.Add(ref product, 1) = (left | right) >> 32 == 0 ? 0 : MultiplyHigh(left, right);
+                Unsafe.Add(ref product, 1) = (left | right) >> 32 == 0 ? 0 : MultiplyHighWithoutFrame(left, right);
                 head--;
                 ip = ref Unsafe.Add(ref ip, 1);
                 nint next = handlers[PairAt(ref ip)];
@@ -2031,6 +2045,37 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
         }
 
+        /// <summary>The rest of <see cref="ExecuteMul"/> in the OpenVM guest, for factors at least one of which is 2^64 or more.</summary>
+        /// <remarks>
+        /// Entered only from there, with the stack checked and the gas charged. One instruction of OpenVM's bigint extension
+        /// takes the product in place of the second word, where software takes up to ten 64-bit products.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ExecuteMulOnOpenVmBigInt(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte bottom)
+        {
+            // The stack is pinned and its words 32-byte aligned.
+            ulong* product = (ulong*)Unsafe.AsPointer(ref SlotAt(ref bottom, head - 2));
+            Accelerators.UInt256Mul(product, product + LimbsPerWord, product);
+
+            // Reloaded rather than held across the call, where each would take a callee-saved register.
+            handlers = state.OpcodeHandlers;
+            code = ref stack.Code;
+            bottom = ref stack.Bottom;
+            head--;
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = handlers[PairAt(ref ip)];
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+        }
+
         /// <summary>The low limb of <paramref name="left"/> times <paramref name="right"/> plus <paramref name="addend"/>, with the high limb in <paramref name="high"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MultiplyAdd(ulong left, ulong right, ulong addend, out ulong high)
@@ -2056,9 +2101,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>The high 64 bits of the product of <paramref name="left"/> and <paramref name="right"/>.</summary>
-        /// <remarks><see cref="Math.BigMul(ulong, ulong, out ulong)"/> is a call here, which would cost the MUL handler every callee-saved register.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong MultiplyHigh(ulong left, ulong right)
+        private static ulong MultiplyHigh(ulong left, ulong right) => Math.BigMul(left, right, out _);
+
+        /// <inheritdoc cref="MultiplyHigh"/>
+        /// <remarks><see cref="Math.BigMul(ulong, ulong, out ulong)"/> takes one instruction, but gives the frameless MUL handler a frame.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong MultiplyHighWithoutFrame(ulong left, ulong right)
         {
             ulong leftLow = (uint)left;
             ulong leftHigh = left >> 32;

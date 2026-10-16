@@ -8,6 +8,7 @@ using System.Linq;
 using FastEnumUtility;
 using Nethermind.Config;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc
 {
@@ -47,7 +48,8 @@ namespace Nethermind.JsonRpc
             if (enabledModules.Length == 0)
                 throw new FormatException("Third part must contain at least one module delimited by ';'");
 
-            bool isAuthenticated = enabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase);
+            bool hasEngineApi = enabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase);
+            bool isAuthenticated = hasEngineApi;
 
             // Check if authentication disabled for this url
             if (parts.Length == 4)
@@ -60,7 +62,9 @@ namespace Nethermind.JsonRpc
                 isAuthenticated = false;
             }
 
-            JsonRpcUrl result = new(uri.Scheme, uri.Host, uri.Port, endpoint, isAuthenticated, enabledModules);
+            // Engine payloads exceed the public JSON-RPC body cap, so an engine-bearing URL needs the engine one.
+            long? maxRequestBodySize = hasEngineApi ? SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API : null;
+            JsonRpcUrl result = new(uri.Scheme, uri.Host, uri.Port, endpoint, isAuthenticated, enabledModules, maxRequestBodySize);
 
             return result;
         }
@@ -104,7 +108,7 @@ namespace Nethermind.JsonRpc
         }
 
         public override int GetHashCode() => HashCode.Combine(Scheme, Host, Port, RpcEndpoint, EnabledModules as IStructuralEquatable);
-        public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, EnabledModules.ToArray());
+        public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, EnabledModules.ToArray(), MaxRequestBodySize);
         public override string ToString() => $"{Scheme}://{Host}:{Port}";
     }
 }

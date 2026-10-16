@@ -226,6 +226,44 @@ public class GuestDispatchDifferentialTests
             : [(byte)Instruction.PUSH1, immediate, (byte)pair[1], (byte)Instruction.NOT, (byte)Instruction.STOP];
     }
 
+    /// <remarks>
+    /// The masks run as one step only with the gas and stack for all of their opcodes, so each runs at every gas around
+    /// the sequence's charge and at both ends of the stack, as do near misses that share only the step's leading bytes.
+    /// Each also masks a word of all ones pushed before it, which the words the stack starts with never are.
+    /// </remarks>
+    [Test]
+    public void Mask_sequences_match_the_shared_handlers([Values] bool afterAllOnes,
+        [Values(
+            "6001600160A01B0316",
+            "6001600160001B0316",
+            "6001600160FF1B0316",
+            "6001600160A01B03",
+            "6001600160401B03",
+            "6001600160A01B0216",
+            "6001600260A01B0316",
+            "600160016001",
+            "73FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF16",
+            "73FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE16",
+            "73FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF17",
+            "63FFFFFFFF16",
+            "63FFFFFFFE16",
+            "63FFFFFFFF17")] string sequence)
+    {
+        byte[] allOnes = afterAllOnes ? [(byte)Instruction.PUSH32, .. UInt256.MaxValue.ToBigEndian()] : [];
+        byte[] code = [.. allOnes, .. Convert.FromHexString(sequence), (byte)Instruction.NOT, (byte)Instruction.STOP];
+        List<string> mismatches = [];
+        foreach (int head in (int[])[0, 1, 2, 3, 1020, 1021, 1022, 1023, 1024])
+            for (ulong gas = 0; gas <= 25 && mismatches.Count < 5; gas++)
+            {
+                Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced);
+                Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced);
+                if (!Matches(untraced, traced))
+                    mismatches.Add($"code {Convert.ToHexString(code)} head {head} gas {gas}\n untraced {untraced}\n traced   {traced}");
+            }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
     /// <remarks>POP, CALLDATALOAD and CLZ run checked in every table, so the random programs cannot cover them.</remarks>
     [Test]
     public void Always_checked_bodies_keep_the_carried_head([Values] Table table)
@@ -565,9 +603,10 @@ public class GuestDispatchDifferentialTests
                 case < 80:
                     {
                         // A selector dispatch, sometimes matching a selector pushed just before it.
-                        byte high = (byte)random.Next(4), low = (byte)random.Next(256);
-                        if (random.Next(2) == 0) code.AddRange([(byte)Instruction.PUSH4, 0, 0, high, low]);
-                        code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.PUSH4, 0, 0, high, low, (byte)Instruction.EQ]);
+                        // The top byte's sign bit is set at times, so a selector read that sign-extends fails to match.
+                        byte top = (byte)(random.Next(2) << 7), high = (byte)random.Next(4), low = (byte)random.Next(256);
+                        if (random.Next(2) == 0) code.AddRange([(byte)Instruction.PUSH4, top, 0, high, low]);
+                        code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.PUSH4, top, 0, high, low, (byte)Instruction.EQ]);
                         destinationImmediates.Add(code.Count + 1);
                         code.AddRange([(byte)Instruction.PUSH2, 0, 0, (byte)Instruction.JUMPI]);
                         break;

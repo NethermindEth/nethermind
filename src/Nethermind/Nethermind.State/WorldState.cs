@@ -473,6 +473,7 @@ namespace Nethermind.State
             _localMetrics.Flush();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
         {
             DebugGuardInScope();

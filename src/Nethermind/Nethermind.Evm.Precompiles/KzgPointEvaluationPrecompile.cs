@@ -21,8 +21,6 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
     // FIELD_ELEMENTS_PER_BLOB and BLS_MODULUS as padded 32 byte big endian values
     private static readonly byte[] _successResult = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 0, 115, 237, 167, 83, 41, 157, 125, 72, 51, 57, 216, 8, 9, 161, 216, 5, 83, 189, 164, 2, 255, 254, 91, 254, 255, 255, 255, 255, 0, 0, 0, 1];
 
-    public static Address Address { get; } = Address.FromNumber(0x0a);
-
     public string Name => "KZG_POINT_EVALUATION";
 
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => 50_000UL;
