@@ -217,6 +217,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("sepolia.json", 5)]
     [TestCase("sepolia_archive.json", 5)]
+    [TestCase("hoodi.json", 5)]
+    [TestCase("hoodi_archive.json", 5)]
     [TestCase("mainnet.json", 30)]
     [TestCase("mainnet_archive.json", 30)]
     [TestCase("mainnet_aztec.json", 30)]
