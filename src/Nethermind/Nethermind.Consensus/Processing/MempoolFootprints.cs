@@ -73,8 +73,14 @@ internal sealed class MempoolFootprints(BlockHeader head)
     /// Stores the footprints that hold in <paramref name="block"/> at their transactions' positions where no footprint is
     /// stored yet, alongside the block's warm runs: a footprint a warm run stored first is kept.
     /// </summary>
+    /// <param name="cancellationToken">Ends the takeover at the next transaction once the warm pass is over.</param>
     /// <returns>How many were stored.</returns>
-    public int SeedWhereEmpty(Block block, IReleaseSpec spec, BlockFootprints footprints)
+    /// <remarks>
+    /// Stopping early only stores fewer runs. Each store writes and indexes its footprint at once, and moves
+    /// <see cref="BlockFootprints.WritesVersion"/> once, so a refresh is checked against the runs stored as if the ones
+    /// left out had never been recorded.
+    /// </remarks>
+    public int SeedWhereEmpty(Block block, IReleaseSpec spec, BlockFootprints footprints, CancellationToken cancellationToken)
     {
         BlockHeader header = block.Header;
         if (!HoldsFor(header, out Address? coinbase)) return 0;
@@ -83,6 +89,7 @@ internal sealed class MempoolFootprints(BlockHeader head)
         Transaction[] transactions = block.Transactions;
         for (int i = 0; i < transactions.Length; i++)
         {
+            if (cancellationToken.IsCancellationRequested) break;
             // A position a warm run already filled is passed over before the run is adapted to the block; the store checks again.
             if (footprints.Get(i) is not null) continue;
             Transaction tx = transactions[i];

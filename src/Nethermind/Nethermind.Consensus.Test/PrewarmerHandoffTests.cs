@@ -36,6 +36,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -2170,7 +2171,7 @@ public class MempoolFootprintsTests
         TransactionFootprint warmed = new(txs[1], [], [], [], default, default, default);
         footprints.Store(1, warmed);
 
-        int stored = recorded.SeedWhereEmpty(block, Osaka.Instance, footprints);
+        int stored = recorded.SeedWhereEmpty(block, Osaka.Instance, footprints, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -2178,6 +2179,52 @@ public class MempoolFootprintsTests
             Assert.That(footprints.Get(0)?.FromMempool, Is.True);
             Assert.That(footprints.Get(1), Is.SameAs(warmed), "the warm run that got there first keeps its footprint");
             Assert.That(footprints.Get(2)?.FromMempool, Is.True);
+        }
+    }
+
+    [Test]
+    public void Taking_over_stops_at_the_next_transaction_once_the_pass_is_cancelled()
+    {
+        const int count = 4;
+        BlockHeader head = Build.A.BlockHeader.WithNumber(10).WithHash(TestItem.KeccakA).TestObject;
+        BlockHeader predicted = Build.A.BlockHeader.WithParentHash(head.Hash!).WithNumber(11).WithTimestamp(112).WithGasLimit(30_000_000)
+            .WithBaseFee(7).WithExcessBlobGas(0).TestObject;
+        MempoolFootprints recorded = new(head);
+        Transaction[] signed = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            signed[i] = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(2.GWei).WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(TestItem.PrivateKeys[i]).TestObject;
+            StateEffect fee = new() { Kind = EffectKind.AddToBalanceAndCreateIfNotExists, Cell = new StorageCell(recorded.Coinbase, 0), Value = Fee };
+            recorded.Record(new TransactionFootprint(signed[i], [], [], [fee], default, default, default), predicted, Osaka.Instance);
+        }
+
+        // Decoded as a payload is: a transaction's hash is computed under its own lock on the first read.
+        Transaction[] txs = TxsDecoder.DecodeTxs(
+            [.. signed.Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)], skipErrors: false).Transactions;
+        Block block = Build.A.Block.WithParentHash(head.Hash!).WithNumber(11).WithBeneficiary(TestItem.AddressF).WithTimestamp(112)
+            .WithGasLimit(30_000_000).WithBaseFeePerGas(7).WithExcessBlobGas(0).WithTransactions(txs).TestObject;
+        BlockFootprints footprints = new(block, seedsAlongsideWarms: true);
+        using CancellationTokenSource cancellation = new();
+        Task<int> takingOver;
+        bool firstTaken;
+        // Held at the second transaction's hash until the pass is cancelled, once the first run is taken over.
+        lock (txs[1])
+        {
+            takingOver = Task.Run(() => recorded.SeedWhereEmpty(block, Osaka.Instance, footprints, cancellation.Token));
+            firstTaken = SpinWait.SpinUntil(() => footprints.Get(0) is not null, TimeSpan.FromSeconds(10));
+            cancellation.Cancel();
+        }
+
+        int stored = takingOver.GetAwaiter().GetResult();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstTaken, Is.True, "precondition: the first run is taken over before the pass is cancelled");
+            // The second transaction was already being taken over when the pass was cancelled.
+            Assert.That(footprints.Get(2), Is.Null);
+            Assert.That(footprints.Get(3), Is.Null);
+            Assert.That(stored, Is.EqualTo(Enumerable.Range(0, count).Count(i => footprints.Get(i) is not null)));
         }
     }
 }

@@ -326,8 +326,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     {
         try
         {
-            // A pass that ended before the seeding started has no transaction left to take over.
-            if (!token.IsCancellationRequested) Blockchain.Metrics.PrewarmMempoolRunsStored += recorded.SeedWhereEmpty(block, spec, footprints);
+            Blockchain.Metrics.PrewarmMempoolRunsStored += recorded.SeedWhereEmpty(block, spec, footprints, token);
         }
         catch (Exception ex)
         {
