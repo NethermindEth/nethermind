@@ -375,9 +375,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         PublishCustodyShortfall();
     }
 
-    /// <summary>Trims to TargetPeerCount when above MaxPeerCount.</summary>
+    /// <summary>Trims back down to MaxPeerCount when above it.</summary>
     /// <remarks>Keep static peers and the last custodian of each sampled column (fulu/das-core.md). Rank others by health failures, then
-    /// stale head; protected peers may leave the pool above target.</remarks>
+    /// stale head; protected peers may leave the pool above the ceiling. An admission one over the ceiling drops its replaced peer itself
+    /// once complete, so a trim that runs first must take only that one peer.</remarks>
     private async Task TrimToPeerBandAsync(string[] staticAddresses, CancellationToken token)
     {
         if (_peers.Count <= _config.MaxPeerCount)
@@ -388,8 +389,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         List<ManagedPeer> trimmable = TrimmableWorstFirst(staticAddresses);
         IReadOnlyList<ulong> sampled = _localCustody.Current?.SampledColumns ?? [];
         int[] custodians = CustodianCounts(sampled);
-        int target = Math.Min(_config.TargetPeerCount, _config.MaxPeerCount);
-        int toDrop = Math.Min(trimmable.Count, _peers.Count - target);
+        int toDrop = Math.Min(trimmable.Count, _peers.Count - _config.MaxPeerCount);
         for (int i = 0; i < trimmable.Count && toDrop > 0; i++)
         {
             if (trimmable[i].Direction == PeerDirection.Outbound && OutboundCount <= OutboundFloor) continue;

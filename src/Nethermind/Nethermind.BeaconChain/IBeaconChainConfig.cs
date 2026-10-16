@@ -46,7 +46,7 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "The low watermark: below this many connected peers the node is under-peered, and the peer manager runs its maintenance round (static-peer reconnect, health checks) on a shorter cadence. Candidate discovery pacing is still BeaconDiscovery's own concern, not this config's.", DefaultValue = "20")]
     int MinPeerCount { get; set; }
 
-    [ConfigItem(Description = "The high watermark. Above this many connected peers, the peer manager trims the worst peers back down to TargetPeerCount.", DefaultValue = "80")]
+    [ConfigItem(Description = "The high watermark. Above this many connected peers, the peer manager trims the worst peers back down to this many.", DefaultValue = "80")]
     int MaxPeerCount { get; set; }
 
     [ConfigItem(Description = "The max number of outbound dials the peer manager will have in flight at once, static and discovered peers combined.", DefaultValue = "8")]

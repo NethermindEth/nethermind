@@ -556,6 +556,46 @@ public class PeerBandTests
         }
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_trim_during_a_static_peer_admission_over_the_ceiling_drops_only_the_overflow(CancellationToken token)
+    {
+        Node local = CreateNode();
+        Node first = CreateNode();
+        Node second = CreateNode();
+        SetMatchingStatus(local, first, second);
+        // Answers identify and status but not metadata, so its admission stays in the pool one over the ceiling for the metadata timeout.
+        await using PlainPeer staticPeer = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
+            new ScriptedStatusSource(_ => local.StatusHolder.CurrentStatus));
+        string staticAddress = staticPeer.Address.ToString();
+        if (!staticAddress.Contains("/p2p/", StringComparison.Ordinal))
+        {
+            staticAddress += $"/p2p/{staticPeer.Peer.Identity.PeerId}";
+        }
+
+        await using PeerHostScope hosts = new(local.P2P, first.P2P, second.P2P);
+        await hosts.StartAsync(token, first.P2P, second.P2P, local.P2P);
+        PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+        Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(first.P2P), token), Is.True);
+        Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(second.P2P), token), Is.True);
+        local.Config.TargetPeerCount = 1;
+        local.Config.MaxPeerCount = 2;
+        local.Config.StaticPeers = staticAddress;
+
+        Task<bool> staticAdmission = manager.TryAddPeerAsync(staticAddress, token);
+        await WaitUntilAsync(() => manager.PeerCount == 3, token, "fixture: the static peer never entered the pool");
+        // The trim alone: a full round's ping to a peer without the ping protocol waits out the request timeout, past the window.
+        await (Task)typeof(PeerManager).GetMethod("TrimToPeerBandAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(manager, [new[] { staticAddress }, token])!;
+        bool trimmedInsideTheWindow = !staticAdmission.IsCompleted;
+        bool admitted = await staticAdmission.WaitAsync(token);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(trimmedInsideTheWindow, Is.True, "fixture: the trim ran while the static peer's metadata was awaited");
+        Assert.That(admitted, Is.True);
+        Assert.That(manager.PeerCount, Is.EqualTo(2), "one peer over the ceiling costs one peer, not the whole band down to the target");
+    }
+
     [TestCase(false, TestName = "A_banned_static_peer_is_not_reconnected_even_though_it_is_reachable")]
     [TestCase(true, TestName = "A_banned_static_peer_is_reconnected_once_its_ban_has_ended")]
     [CancelAfter(60_000)]
