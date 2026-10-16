@@ -33,6 +33,25 @@ public class FrameDependencyTests
         Assert.That(deps[1].Scheme, Is.EqualTo(Eip8288Constants.LeanStarkScheme));
     }
 
+    // EIP-8288 Inclusion Enforcement: a transaction is dependency-bearing iff it has a dependency verification frame, even one
+    // carrying no triples, so dependencies(tx) == [] does not make it dependency-free.
+    [TestCase(FrameMode.DepVerify, 1, true)]
+    [TestCase(FrameMode.DepVerify, 0, true)]
+    [TestCase(FrameMode.Verify, 1, false)]
+    public void Dependency_bearing_iff_a_dependency_frame_is_present(FrameMode mode, int triples, bool dependencyBearing)
+    {
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            Frames = [new(mode, 0, null, 0, UInt256.Zero, new byte[triples * Eip8288Constants.DependencyTripleLength])]
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.IsDependencyBearing(transaction), Is.EqualTo(dependencyBearing));
+            Assert.That(Eip8288Dependencies.ForTransaction(transaction, static _ => default), Has.Count.EqualTo(mode == FrameMode.DepVerify ? triples : 0));
+        }
+    }
+
     [Test]
     public void Serialize_and_Parse_round_trip()
     {

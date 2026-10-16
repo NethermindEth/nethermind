@@ -52,12 +52,14 @@ public partial class EngineRpcModule : IEngineRpcModule
             ?? ResultWrapper<InclusionListProofV1?>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
 
     public ResultWrapper<InclusionListProofStatusV1> engine_verifyInclusionListProofV1(ulong timestamp, byte[][] transactions,
-        RecursiveStarkV1 recursiveStark, InclusionListProofV1? ilProof = null)
-        => verifyInclusionListProofHandler?.Handle(new VerifyInclusionListProofRequest(timestamp, transactions, recursiveStark, ilProof))
+        RecursiveStarkV1 recursiveStark, InclusionListProofV1? ilProof, ulong attestationDeadlineMs)
+        => verifyInclusionListProofHandler?.Handle(new VerifyInclusionListProofRequest(timestamp, transactions, recursiveStark, ilProof,
+                attestationDeadlineMs))
             ?? ResultWrapper<InclusionListProofStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
 
-    public ResultWrapper<InclusionListProofStatusV1> engine_submitInclusionListProofV1(ulong timestamp, InclusionListProofV1 ilProof)
-        => submitInclusionListProofHandler?.Handle(new SubmitInclusionListProofRequest(timestamp, ilProof))
+    public ResultWrapper<InclusionListProofStatusV1> engine_submitInclusionListProofV1(ulong timestamp, InclusionListProofV1 ilProof,
+        ulong viewFreezeDeadlineMs)
+        => submitInclusionListProofHandler?.Handle(new SubmitInclusionListProofRequest(timestamp, ilProof, viewFreezeDeadlineMs))
             ?? ResultWrapper<InclusionListProofStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
 
     public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)

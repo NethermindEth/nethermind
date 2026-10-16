@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
@@ -977,8 +978,8 @@ public class ProofWrapperServiceTests
         ValueHash256 upgradedVk = ValueKeccak.Compute("next AGGREGATED_VK");
         CustomSpecProvider specs = new(((ForkActivation)0, Eip8288Prototype.Instance),
             (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = upgradedVk }));
-        Block head = Build.A.Block.WithNumber(9).WithTimestamp(980).TestObject;
         IBlockFinder finder = Substitute.For<IBlockFinder>();
+        Block head = HeadWithParent(finder, 9, 980);
         finder.Head.Returns(_ => head);
         ProofWrapperService service = new(pool, specs, finder, store, verifier);
         List<Eip8288Verifier> changes = [];
@@ -986,7 +987,7 @@ public class ProofWrapperServiceTests
 
         Eip8288Verifier? before = service.RefreshVerifier();
         bool transitionBefore = service.IsInVerifierTransition(64);
-        head = Build.A.Block.WithNumber(10).WithTimestamp(990).TestObject;
+        head = HeadWithParent(finder, 10, 990);
         Eip8288Verifier? after = service.RefreshVerifier();
 
         using (Assert.EnterMultipleScope())
@@ -1000,13 +1001,52 @@ public class ProofWrapperServiceTests
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the direct verdict is reused under unchanged scheme parameters");
             pool.Received(1).RemoveTransaction(aggregatedTx.Hash);
             pool.DidNotReceive().RemoveTransaction(directTx.Hash);
-            head = Build.A.Block.WithNumber(74).WithTimestamp(1_800).TestObject;
+            head = HeadWithParent(finder, 74, 1_800);
             Assert.That(service.IsInVerifierTransition(64), Is.True);
-            head = Build.A.Block.WithNumber(75).WithTimestamp(1_812).TestObject;
+            head = HeadWithParent(finder, 75, 1_810);
             Assert.That(service.IsInVerifierTransition(64), Is.False, "64 blocks past the fork");
             Assert.That(service.RefreshVerifier(), Is.EqualTo(after));
             Assert.That(changes, Has.Count.EqualTo(1));
         }
+    }
+
+    // EIP-8288 target fork: the fork active at head.timestamp + L, with L = (head.timestamp - parent.timestamp) /
+    // (head.slot_number - parent.slot_number) from the EIP-7843 slot numbers, so a missed slot or another slot length changes the
+    // estimate and no configured slot length is used. Without a parent slot number the target fork is the head's fork.
+    [TestCase(9UL, 980UL, 990UL, 10UL, true, TestName = "Ten-second slots reach the fork")]
+    [TestCase(9UL, 984UL, 990UL, 6UL, false, TestName = "Six-second slots stop short of the fork")]
+    [TestCase(8UL, 970UL, 990UL, 10UL, true, TestName = "A missed slot does not stretch the estimate")]
+    [TestCase(9UL, 978UL, 990UL, 12UL, true, TestName = "Twelve-second slots pass the fork")]
+    [TestCase(null, 980UL, 990UL, null, false, TestName = "Without a parent slot number the head's fork is the target")]
+    [TestCase(null, 990UL, 1_000UL, null, true, TestName = "Without a parent slot number a head on the fork keeps it")]
+    public void Target_fork_is_predicted_from_the_local_slot_length(ulong? parentSlot, ulong parentTimestamp, ulong headTimestamp,
+        ulong? slotLength, bool upgraded)
+    {
+        ValueHash256 upgradedVk = ValueKeccak.Compute("next AGGREGATED_VK");
+        CustomSpecProvider specs = new(((ForkActivation)0, Eip8288Prototype.Instance),
+            (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = upgradedVk }));
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(9).WithTimestamp(parentTimestamp).WithSlotNumber(parentSlot).TestObject;
+        BlockHeader head = Build.A.BlockHeader.WithParent(parent).WithNumber(10).WithTimestamp(headTimestamp).WithSlotNumber(10).TestObject;
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder.FindHeader(parent.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+        finder.Head.Returns(new Block(head));
+        ProofWrapperService service = new(Substitute.For<ITxPool>(), specs, finder, new LeanProofStore(FrameTxSigHash.ComputeValue),
+            new FakeLeanProofVerifier(true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(WrapperTargetFork.SlotLength(head, parent), Is.EqualTo(slotLength));
+            Assert.That(service.TargetSpec?.Eip8288AggregatedVk, Is.EqualTo(upgraded ? upgradedVk : Eip8288Verifier.PinnedAggregatedVk));
+        }
+    }
+
+    /// <summary>A head at <paramref name="number"/> and <paramref name="timestamp"/> whose parent, found through
+    /// <paramref name="finder"/>, is one EIP-7843 slot of <paramref name="slotLength"/> seconds earlier.</summary>
+    private static Block HeadWithParent(IBlockFinder finder, ulong number, ulong timestamp, ulong slotLength = 10)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(number - 1).WithTimestamp(timestamp - slotLength).WithSlotNumber(number - 1).TestObject;
+        finder.FindHeader(parent.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+        return Build.A.Block.WithParent(parent).WithNumber(number).WithTimestamp(timestamp).WithSlotNumber(number).TestObject;
     }
 
     private static (ProofWrapperService, FakeLeanProofVerifier) Create(int count, int payloadBytes)

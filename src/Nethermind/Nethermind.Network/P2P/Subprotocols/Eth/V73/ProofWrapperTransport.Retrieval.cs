@@ -331,7 +331,7 @@ public sealed partial class ProofWrapperTransport
                 WrapperMetrics.Record(WrapperEvent.Validated);
                 if (_logger.IsDebug) _logger.Debug($"eth/73 validated {fetch.Descriptor}");
                 break;
-            // Around a fork that changes the verifier, peers can disagree about the fork of the next block: a proof failure is a
+            // Around a fork that changes the verifier, peers' target-fork estimates can differ by a slot: a proof failure is a
             // local refusal for the configured grace window (EIP-8437).
             case Verdict.Invalid when _wrappers.IsInVerifierTransition(_forkGraceBlocks):
                 WrapperMetrics.Record(WrapperEvent.GraceRefused);

@@ -5,8 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -20,14 +20,14 @@ namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>Shared proof-wrapper validation, admission and aggregation for RPC and eth/73 peers.</summary>
 /// <remarks>
-/// Wrappers are validated under their target fork, the fork of the next block on the local head, which fixes the verifier.
+/// Wrappers are validated under their target fork, which fixes the verifier: the fork active at the next slot's timestamp,
+/// predicted from the local head with the local slot-length estimate (see <see cref="WrapperTargetFork"/>).
 /// When the local head advances to a target fork whose verifier differs, the EIP-8288 upgrade rule applies: every held
 /// aggregate proof is dropped, direct witnesses are kept only if they re-validate, and pending transactions left without
 /// proof coverage leave the pool.
 /// </remarks>
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
-    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier, IChainHeadInfoProvider? headInfo = null,
-    IBlocksConfig? blocksConfig = null)
+    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier, IChainHeadInfoProvider? headInfo = null)
 {
     internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxTxsPerWrapper * (Hash256.Size + 1);
 
@@ -43,7 +43,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private readonly object _aggregationLock = new();
     private int _rotation;
     private int _admissionActive;
-    private readonly ulong _secondsPerSlot = blocksConfig?.SecondsPerSlot ?? 12;
     // Remembered verifications are keyed by AGGREGATED_VK too, so none answers under another verifier.
     private readonly Dictionary<(ValueHash256 Wrapper, ValueHash256 Verifier), string?> _verifiedWrappers = [];
     private readonly Queue<(ValueHash256 Wrapper, ValueHash256 Verifier)> _verifiedWrapperOrder = [];
@@ -55,6 +54,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private readonly Lock _verifierLock = new();
     private Eip8288Verifier? _verifier;
     private long _verifierChangedAt = -1;
+    private TargetForks? _targetForks;
+
+    /// <summary>The target fork and the fork after it, predicted from <paramref name="Head"/>.</summary>
+    private sealed record TargetForks(Hash256? Head, IReleaseSpec Target, IReleaseSpec Following);
 
     /// <summary>Verifies a wrapper and admits its proof-backed transactions.</summary>
     public async Task<Result<Hash256[]>> AcceptAsync(byte[] wrapper, CancellationToken cancellationToken = default)
@@ -69,19 +72,28 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>Raised with the new verifier after the upgrade rule dropped what the previous one validated.</summary>
     public event Action<Eip8288Verifier>? VerifierChanged;
 
-    /// <summary>The fork of the next block on the local head: the target fork of every wrapper this node validates.</summary>
-    public IReleaseSpec? TargetSpec => blockFinder.Head is { } head ? TargetSpecOf(head.Header) : null;
+    /// <summary>The fork active at the next slot's timestamp after the local head: the target fork of every wrapper this node
+    /// validates.</summary>
+    public IReleaseSpec? TargetSpec => blockFinder.Head is { } head ? TargetForksOf(head.Header).Target : null;
 
-    private IReleaseSpec TargetSpecOf(BlockHeader head) => specProvider.GetSpec(head.Number + 1, head.Timestamp + _secondsPerSlot);
+    private TargetForks TargetForksOf(BlockHeader head)
+    {
+        TargetForks? cached = Volatile.Read(ref _targetForks);
+        if (cached is not null && head.Hash is not null && cached.Head == head.Hash) return cached;
+        BlockHeader? parent = head.Number == 0 || head.ParentHash is null ? null : blockFinder.FindParentHeader(head, BlockTreeLookupOptions.None);
+        TargetForks forks = new(head.Hash, WrapperTargetFork.Predict(specProvider, head, parent), WrapperTargetFork.Predict(specProvider, head, parent, 2));
+        if (head.Hash is not null) Volatile.Write(ref _targetForks, forks);
+        return forks;
+    }
 
     /// <summary>
     /// The verifier of the current target fork, after applying the EIP-8288 upgrade rule if it changed; null while EIP-8288 is
-    /// inactive for the next block.
+    /// inactive at the target fork.
     /// </summary>
     public Eip8288Verifier? RefreshVerifier()
     {
         if (blockFinder.Head is not { } head) return null;
-        IReleaseSpec spec = TargetSpecOf(head.Header);
+        IReleaseSpec spec = TargetForksOf(head.Header).Target;
         if (!spec.IsEip8288Enabled) return null;
         Eip8288Verifier current = Eip8288Verifier.For(spec);
         lock (_verifierLock)
@@ -97,19 +109,20 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     }
 
     /// <summary>
-    /// Whether proof failures from peers should be local refusals: within <paramref name="windowBlocks"/> of the local head
-    /// passing a fork that changed the verifier, or when the fork after the target fork changes it.
+    /// Whether proof failures from peers should be local refusals: from when the local target fork switched to a fork that
+    /// changed the verifier until the head is <paramref name="windowBlocks"/> blocks past that fork, or when the fork after the
+    /// target fork changes it.
     /// </summary>
-    /// <remarks>EIP-8437 leaves this window to local policy, since peers negotiate no verifier and can disagree about the fork of
-    /// the next block.</remarks>
+    /// <remarks>EIP-8437 leaves this window to local policy, since peers negotiate no verifier and their target-fork estimates
+    /// can differ by a slot around an activation or a slot-length change; the second condition covers peers whose estimate
+    /// switches a slot before this node's.</remarks>
     public bool IsInVerifierTransition(long windowBlocks)
     {
         if (blockFinder.Head is not { } head) return false;
         long changedAt = Volatile.Read(ref _verifierChangedAt);
         // The fork's first block is the one after the head at which the change was seen.
         if (changedAt >= 0 && (long)head.Number < changedAt + 1 + windowBlocks) return true;
-        IReleaseSpec target = TargetSpecOf(head.Header);
-        IReleaseSpec following = specProvider.GetSpec(head.Number + 2, head.Header.Timestamp + 2 * _secondsPerSlot);
+        (_, IReleaseSpec target, IReleaseSpec following) = TargetForksOf(head.Header);
         return target.IsEip8288Enabled && following.IsEip8288Enabled && target.Eip8288AggregatedVk != following.Eip8288AggregatedVk;
     }
 

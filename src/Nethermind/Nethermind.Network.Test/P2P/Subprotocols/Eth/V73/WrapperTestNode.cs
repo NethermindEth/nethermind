@@ -104,6 +104,16 @@ internal sealed class WrapperTestNode : IDisposable
     public ProofWrapperService Wrappers { get; }
     public ProofWrapperTransport Transport { get; }
 
+    /// <summary>Moves the local head to <paramref name="number"/> at <paramref name="timestamp"/>, with a parent one EIP-7843 slot
+    /// of <paramref name="slotLength"/> seconds earlier, so the target fork is the one active at <c>timestamp + slotLength</c>.</summary>
+    public void SetHead(ulong number, ulong timestamp, ulong slotLength = 10)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(number - 1).WithTimestamp(timestamp - slotLength).WithSlotNumber(number - 1).TestObject;
+        Block head = Build.A.Block.WithParent(parent).WithNumber(number).WithTimestamp(timestamp).WithSlotNumber(number).TestObject;
+        Tree.FindHeader(parent.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+        Tree.Head.Returns(head);
+    }
+
     public WrapperPeer Connect(FakeWrapperLink link) =>
         Transport.Accept(link) ?? throw new InvalidOperationException("Wrapper exchange is inactive");
 

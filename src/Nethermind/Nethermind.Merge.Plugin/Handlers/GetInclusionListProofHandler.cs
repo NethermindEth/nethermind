@@ -13,11 +13,13 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public sealed record GetInclusionListProofRequest(ulong Timestamp, Hash256 StarkProofHash);
 
 /// <summary>
-/// EIP-8288 <c>engine_getInclusionListProofV1</c>: the <c>il_proof = [stark_proof, proof_deps]</c> this node holds under
-/// <c>stark_proof_hash</c> with an aggregate verdict under the fork at <c>timestamp</c>, or null (EIPs#12475).
+/// EIP-8288 <c>engine_getInclusionListProofV1</c>: the <c>il_proof = [stark_proof, proof_deps]</c> whose bytes this node holds
+/// under <c>stark_proof_hash</c> with a <c>VALID</c> verdict under the fork at <c>timestamp</c>, or null (EIPs#12475,
+/// execution-apis#945).
 /// </summary>
 /// <remarks>The proof comes from a fully validated mode-1 wrapper, whose <c>deps</c> are its <c>proof_deps</c>, or from a held
-/// <c>il_proof</c>. The consensus layer answers its peers' requests for committed proofs from here.</remarks>
+/// <c>il_proof</c>; a verdict whose bytes were released yields null. The consensus layer answers its peers' requests for
+/// committed proofs from here.</remarks>
 public sealed class GetInclusionListProofHandler(ISpecProvider specProvider, InclusionListProofService inclusionListProofs)
     : IHandler<GetInclusionListProofRequest, InclusionListProofV1?>
 {

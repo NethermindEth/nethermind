@@ -219,8 +219,10 @@ peer ingress retries temporary contention for a bounded interval. The Network pr
 the shared Consensus admission service so RPC and `eth/73` peers use the same verification, pool
 insertion and witness-retention rules.
 
-Wrappers are validated under their target fork, the fork of the next block on the local head,
-which fixes the verifier: `AGGREGATED_VK` for mode-1 proofs and each scheme's parameters for
+Wrappers are validated under their target fork, the fork active at `head.timestamp + L`, where
+`L = (head.timestamp - parent.timestamp) / (head.slot_number - parent.slot_number)` is the local
+EIP-7843 slot-length estimate (the head's fork when the parent has no slot number). The target fork
+fixes the verifier: `AGGREGATED_VK` for mode-1 proofs and each scheme's parameters for
 mode-0 witnesses. Two bounded verdict caches hold direct-witness verdicts keyed by
 `(dep, keccak256(witness), scheme_params)` and aggregate verdicts keyed by
 `(keccak256(stark_proof), deps_hash, AGGREGATED_VK)`; a lookup consults only the cache of the
@@ -257,8 +259,9 @@ Local policy follows the EIP-8437 recommended defaults: 30-second requests, 120-
 across at most three sources, 8 MiB/s served per peer, four announcements per second per peer and
 1,024 pending descriptors kept for 60 seconds. Received wrappers and recovered envelopes are
 charged to per-peer and global byte budgets before allocation. Around a fork that changes the
-verifier, a peer's proof failure is a local refusal until the head is
-`Network.ProofWrapperForkGraceBlocks` (default 64) blocks past the fork.
+verifier, a peer's proof failure is a local refusal from when the local target fork switches to it,
+or the fork after the target fork does, until the head is `Network.ProofWrapperForkGraceBlocks`
+(default 64) blocks past the fork.
 
 The EIP-8288 one-second tick refreshes pending selections independently of one tracked
 aggregation worker. Ticks coalesce while proving; they do not imply one-second proving.
@@ -286,28 +289,33 @@ A signed inclusion list commits to `recursive_stark = [stark_proof_hash, deps_ha
 The committed proof usually is a mempool wrapper's, which other nodes already hold, and may
 cover a superset of the list's dependencies; otherwise it travels as an
 `il_proof = [stark_proof, proof_deps]` on the consensus layer. A node holds a valid proof for a
-commitment when it has the proof bytes, their `proof_deps` and a valid aggregate verdict under the
-target block fork's `AGGREGATED_VK`, and `proof_deps` contain the list's `deps`, the union over
-entries that decode and pass EIP-8141/EIP-8288 static validity.
+commitment only with all three of the proof bytes, their `proof_deps` and a `VALID` aggregate
+verdict under the target block fork's `AGGREGATED_VK`, and `proof_deps` contain the list's `deps`,
+the union over entries that decode and pass EIP-8141/EIP-8288 static validity. A verdict whose
+bytes were released only spares verifying the proof again when it is supplied again.
 
-Every method takes the target block's `timestamp`, whose fork fixes static validity and the key:
+The methods follow [execution-apis#945](https://github.com/ethereum/execution-apis/pull/945). Each
+takes the target block's `timestamp`, whose fork fixes static validity and the key, and fails with
+`-38005` outside EIP-8288:
 
-* `engine_verifyInclusionListProofV1(timestamp, transactions, recursiveStark, ilProof|null)`
-  returns `{status, validationError}`: `VALID` when such a proof is held, a cache lookup, or the
-  supplied matching `il_proof` verifies; `INVALID` when the list has no dependencies, the known
-  `proof_deps` omit one, or the matching proof fails; `PROOF_UNKNOWN` otherwise. An `il_proof`
-  that does not hash to the commitment is ignored.
+* `engine_verifyInclusionListProofV1(timestamp, transactions, recursiveStark, ilProof|null,
+  attestationDeadlineMs)` returns `{status, validationError}`: `VALID` when the proof's bytes are
+  held, a lookup, or the supplied matching `il_proof` matches a cached `VALID` verdict or verifies,
+  retaining the bytes until `attestationDeadlineMs`; `INVALID` when the list has no dependencies,
+  the known `proof_deps` omit one, an `INVALID` verdict is held (with or without an `il_proof`), or
+  the matching proof fails; `PROOF_UNKNOWN` otherwise, including for a `VALID` verdict whose bytes
+  were released. An `il_proof` that does not hash to the commitment is ignored.
 * `engine_getInclusionListProofV1(timestamp, starkProofHash)` returns the held `il_proof`, from
-  a validated mode-1 wrapper or a verified `il_proof`, or null.
-* `engine_submitInclusionListProofV1(timestamp, ilProof)` verifies a proof-topic `il_proof` and
-  records its verdict with its `proof_deps`, returning `VALID` or `INVALID`; size bounds and
-  noncanonical `proof_deps` are `INVALID` before verification.
+  a validated mode-1 wrapper or a retained `il_proof`, or null once its bytes are released.
+* `engine_submitInclusionListProofV1(timestamp, ilProof, viewFreezeDeadlineMs)` verifies a
+  proof-topic `il_proof` and records its verdict, `VALID` or `INVALID`, retaining a valid proof
+  until `viewFreezeDeadlineMs`; size bounds and noncanonical `proof_deps` are `INVALID` without
+  verification.
 
-Proofs are retained per slot: a proof answered `VALID` for a list stays servable through the
-attestation deadline of the target slot, a submitted topic proof until the view freeze deadline of
-its list slot, after which only proofs answered `VALID` remain; a proof stays while any slot still
-needs it. The deadlines are EIP-7805's `t=9s` and `t=4s` scaled to `Blocks.SecondsPerSlot`, and
-the store is bounded by EIP-8288's peak of 80 `il_proof`s (130 MiB).
+Retention follows the deadlines the consensus layer supplies, in Unix milliseconds: a proof stays
+until the latest deadline any call gave it, and a deadline already past adds none. The execution
+client derives no deadline from slot lengths. The store is bounded by EIP-8288's peak of 80
+`il_proof`s (130 MiB).
 
 With both EIP-8288 and EIP-7805 active, `engine_forkchoiceUpdatedV6` accepts
 `PayloadAttributesV6.inclusionLists` and `engine_newPayloadV7` receives separate
@@ -317,8 +325,9 @@ Earlier API versions retain their existing formats. The execution client assumes
 client supplies the lists counted by EIP-7805; it does not authenticate consensus-layer
 signatures.
 
-A counted list always obligates its dependency-free entries; its dependency-bearing entries only
-when this node holds a valid proof for its commitment. A commitment to an unknown or failing
+A counted list always obligates its dependency-free entries, those without a dependency frame; its
+dependency-bearing entries, including one whose dependency frame carries no triples, only when this
+node holds a valid proof for its commitment. A commitment to an unknown or failing
 proof, one whose `proof_deps` omit a list dependency, or one on a list without dependencies is
 treated as null. Request bounds (positions, sizes, an incomplete commitment) fail the call; an
 undecodable entry only affects its own list. Builders fold each held committed proof into the

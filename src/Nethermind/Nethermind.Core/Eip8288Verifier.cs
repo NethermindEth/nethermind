@@ -11,7 +11,7 @@ namespace Nethermind.Core;
 /// parameters for direct witnesses.
 /// </summary>
 /// <remarks>
-/// Peers negotiate no verifier: a node validates wrappers under the fork of the next block on its local head, inclusion lists
+/// Peers negotiate no verifier: a node validates wrappers under the fork it predicts for the next slot, inclusion lists
 /// under their target block's fork, and blocks under their own fork. Proof verdicts are scoped to the verifier in their key, so
 /// a fork that changes <see cref="AggregatedVk"/> invalidates every aggregate verdict while direct-witness verdicts survive as
 /// long as their scheme parameters do.

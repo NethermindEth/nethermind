@@ -263,10 +263,10 @@ public class ProofWrapperTransportTests
     private static ISpecProvider UpgradingChain() => new CustomSpecProvider(((ForkActivation)0, Eip8288Prototype.Instance),
         (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = UpgradedVk }));
 
-    /// <summary>Moves the local head so the next block's fork changes the verifier, and lets the transport apply it.</summary>
+    /// <summary>Moves the local head so the next slot's fork changes the verifier, and lets the transport apply it.</summary>
     private static void CrossVerifierFork(WrapperTestNode node, ulong number = 10)
     {
-        node.Tree.Head.Returns(Build.A.Block.WithNumber(number).WithTimestamp(990).TestObject);
+        node.SetHead(number, 990);
         node.Tick(WrapperTransportLimits.Tick);
     }
 
@@ -280,7 +280,7 @@ public class ProofWrapperTransportTests
         byte[] mode1 = Wrapper(64, aggregated);
         byte[] mode0 = DirectWrapper(direct);
         using WrapperTestNode node = new(UpgradingChain());
-        node.Tree.Head.Returns(Build.A.Block.WithNumber(10).WithTimestamp(100).TestObject);
+        node.SetHead(10, 100);
         node.Pending.AddRange([aggregated, direct]);
         Assert.That(node.Transport.PublishWrapper(mode1), Is.True);
         Assert.That(node.Transport.PublishWrapper(mode0), Is.True);
@@ -310,10 +310,10 @@ public class ProofWrapperTransportTests
     public async Task Proof_failures_within_the_fork_grace_window_are_local_refusals(ulong headNumber, bool penalized)
     {
         using WrapperTestNode node = new(UpgradingChain());
-        node.Tree.Head.Returns(Build.A.Block.WithNumber(10).WithTimestamp(100).TestObject);
+        node.SetHead(10, 100);
         node.Wrappers.RefreshVerifier();
         CrossVerifierFork(node);
-        node.Tree.Head.Returns(Build.A.Block.WithNumber(headNumber).WithTimestamp(1_800).TestObject);
+        node.SetHead(headNumber, 1_800);
         node.Verifier.Valid = false;
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
         FakeWrapperLink link = new();

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Config;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -18,42 +17,45 @@ public sealed record InclusionListProof(byte[] StarkProof, IReadOnlyList<FrameDe
 /// <summary>The answer of <c>engine_verifyInclusionListProofV1</c> and <c>engine_submitInclusionListProofV1</c>.</summary>
 public enum InclusionListProofStatus
 {
-    /// <summary>A verified proof is held under the commitment for the target fork and its <c>proof_deps</c> contain the
-    /// list's dependencies, or a submitted proof verified.</summary>
+    /// <summary>A verified proof is held under the commitment for the target fork, with its bytes retained until the
+    /// attestation deadline, and its <c>proof_deps</c> contain the list's dependencies; or a submitted proof verified.</summary>
     Valid,
 
-    /// <summary>Final for the list: its dependencies are empty, the known <c>proof_deps</c> omit one, or the matching proof
-    /// fails verification under the target fork.</summary>
+    /// <summary>Final for the list: its dependencies are empty, the known <c>proof_deps</c> omit one, an <c>INVALID</c> verdict
+    /// is held under the commitment for the target fork, or the matching proof fails verification.</summary>
     Invalid,
 
-    /// <summary>No proof is held under the commitment for the target fork and no matching <c>il_proof</c> was supplied.</summary>
+    /// <summary>The proof's bytes are not held under the commitment for the target fork, even if its <c>VALID</c> verdict is,
+    /// and no matching <c>il_proof</c> was supplied.</summary>
     ProofUnknown
 }
 
 /// <summary>
-/// EIP-8288 inclusion-list proofs (EIPs#12475): commitment checks, <c>il_proof</c> serving and submission, per-slot retention,
-/// and the obligations a counted list imposes.
+/// EIP-8288 inclusion-list proofs (EIPs#12475, execution-apis#945): commitment checks, <c>il_proof</c> serving and submission,
+/// retention until consensus-layer deadlines, and the obligations a counted list imposes.
 /// </summary>
 /// <remarks>
 /// Every call takes the target block's timestamp, whose fork fixes the static validity rules and <c>AGGREGATED_VK</c>; a
-/// verdict or held proof under another fork's key never counts. A proof is held under <c>(stark_proof_hash, deps_hash)</c> when
-/// this node knows its <c>proof_deps</c> and a valid aggregate verdict under the target fork's key: from a fully validated
-/// mode-1 wrapper, or from an <c>il_proof</c> verified through this service. Serving and folding the proof also need its
-/// bytes, which retention keeps through the slots that need them.
+/// verdict or held proof under another fork's key never counts. A proof is held under <c>(stark_proof_hash, deps_hash)</c> only
+/// with all three of its bytes, a <c>VALID</c> aggregate verdict under the target fork's key and its <c>proof_deps</c>: from a
+/// fully validated mode-1 wrapper, or from an <c>il_proof</c> retained by this service. A verdict without the bytes only spares
+/// verifying the same proof again when it is supplied again.
 /// </remarks>
 public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanProofVerifier verifier, LeanProofStore proofStore,
-    ITimestamper timestamper, IBlocksConfig? blocksConfig = null, ProofWrapperService? wrappers = null)
+    ITimestamper timestamper, ProofWrapperService? wrappers = null)
 {
-    /// <summary>Proofs retained for their slots, released as their EIP-7805 deadlines pass.</summary>
-    public InclusionListProofRetention Retention { get; } = new(timestamper, blocksConfig?.SecondsPerSlot ?? 12);
+    /// <summary>Proofs retained until the deadlines the consensus layer supplied.</summary>
+    public InclusionListProofRetention Retention { get; } = new(timestamper);
 
     /// <summary><c>engine_verifyInclusionListProofV1</c>: whether a counted list's non-null <paramref name="commitment"/> is valid
     /// for its <paramref name="transactions"/> under the fork at <paramref name="timestamp"/>.</summary>
     /// <remarks>A commitment to a held proof is a lookup and subset test with no verification. An <paramref name="ilProof"/>
-    /// that does not hash to the commitment is ignored; a matching one is verified. A proof answered valid is retained through
-    /// the target block's retrieval window.</remarks>
+    /// that does not hash to the commitment is ignored; a matching one is checked against a cached verdict, and verified only
+    /// without one. A held <c>INVALID</c> verdict is final with or without an <paramref name="ilProof"/>.</remarks>
+    /// <param name="attestationDeadlineMs">The EIP-7805 attestation deadline of the target block's slot, in Unix milliseconds,
+    /// until which a proof answered valid keeps its bytes and <c>proof_deps</c>.</param>
     public InclusionListProofStatus Verify(ulong timestamp, IReadOnlyList<Transaction> transactions, in InclusionListCommitment commitment,
-        InclusionListProof? ilProof, out string? error)
+        InclusionListProof? ilProof, ulong attestationDeadlineMs, out string? error)
     {
         error = null;
         IReleaseSpec spec = SpecAt(timestamp);
@@ -64,20 +66,26 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
             error = InclusionListProofValidator.EmptyDependencies;
             return InclusionListProofStatus.Invalid;
         }
-        InclusionListProof? matching = ilProof is not null && InclusionListProofValidator.Matches(ilProof, commitment, spec) ? ilProof : null;
+        InclusionListProof? matching = ilProof is not null && InclusionListProofValidator.Matches(ilProof, commitment) ? ilProof : null;
+        ValueHash256 proofHash = commitment.StarkProofHash;
         ValueHash256 depsHash = commitment.DepsHash;
-        bool held = TryGetVerified(commitment.StarkProofHash, depsHash, forkVerifier, out byte[]? heldProof, out FrameDependency[]? heldDeps);
-        IReadOnlyList<FrameDependency>? proofDeps = ProofVerdictCache.For(verifier).TryGetPreimage(in depsHash, out FrameDependency[] known)
+        ProofVerdictCache cache = ProofVerdictCache.For(verifier);
+        bool held = TryGetHeld(proofHash, depsHash, forkVerifier, out byte[]? heldProof, out FrameDependency[]? heldDeps);
+        IReadOnlyList<FrameDependency>? proofDeps = cache.TryGetPreimage(in depsHash, out FrameDependency[] known)
             ? known : held ? heldDeps : matching?.ProofDeps;
         if (proofDeps is not null && !InclusionListProofValidator.Covers(proofDeps, deps))
         {
             error = InclusionListProofValidator.UncoveredDependency;
             return InclusionListProofStatus.Invalid;
         }
+        if (cache.TryGetVerdict(proofHash, depsHash, forkVerifier.AggregatedVk) == false)
+        {
+            error = InclusionListProofValidator.InvalidProof;
+            return InclusionListProofStatus.Invalid;
+        }
         if (held)
         {
-            if (heldProof is not null)
-                Retention.Retain(heldProof, heldDeps!, commitment, forkVerifier, timestamp, InclusionListProofRetention.Requirement.Valid);
+            Retention.Retain(heldProof!, heldDeps!, commitment, forkVerifier, attestationDeadlineMs);
             return InclusionListProofStatus.Valid;
         }
         if (matching is null)
@@ -85,18 +93,24 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
             error = InclusionListProofValidator.UnknownProof;
             return InclusionListProofStatus.ProofUnknown;
         }
-        if (!ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in depsHash, matching.StarkProof, matching.ProofDeps))
+        // A cached VALID verdict answers without verifying again; a new verdict is recorded under the target fork's key.
+        string? shapeError = InclusionListProofValidator.CheckShape(matching, spec);
+        if (shapeError is not null || !ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in depsHash, matching.StarkProof, matching.ProofDeps))
         {
-            error = InclusionListProofValidator.InvalidProof;
+            error = shapeError ?? InclusionListProofValidator.InvalidProof;
             return InclusionListProofStatus.Invalid;
         }
-        Retention.Retain(matching.StarkProof, [.. matching.ProofDeps], commitment, forkVerifier, timestamp, InclusionListProofRetention.Requirement.Valid);
+        Retention.Retain(matching.StarkProof, [.. matching.ProofDeps], commitment, forkVerifier, attestationDeadlineMs);
         return InclusionListProofStatus.Valid;
     }
 
     /// <summary><c>engine_submitInclusionListProofV1</c>: verifies a proof-topic <c>il_proof</c> under the fork at
-    /// <paramref name="timestamp"/>, recording its verdict with its <c>proof_deps</c> and retaining it on success.</summary>
-    public InclusionListProofStatus Submit(ulong timestamp, InclusionListProof ilProof, out string? error)
+    /// <paramref name="timestamp"/> and records its verdict, retaining a valid proof's bytes with its <c>proof_deps</c>.</summary>
+    /// <remarks>A proof over the size bounds or with noncanonical <c>proof_deps</c> is <c>INVALID</c> without verification. A
+    /// verdict already held under the same key answers without verifying again.</remarks>
+    /// <param name="viewFreezeDeadlineMs">The EIP-7805 view freeze deadline of the proof's slot, in Unix milliseconds, until which
+    /// a valid proof is retained.</param>
+    public InclusionListProofStatus Submit(ulong timestamp, InclusionListProof ilProof, ulong viewFreezeDeadlineMs, out string? error)
     {
         IReleaseSpec spec = SpecAt(timestamp);
         Eip8288Verifier forkVerifier = Eip8288Verifier.For(spec);
@@ -109,12 +123,12 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
             return InclusionListProofStatus.Invalid;
         }
         InclusionListCommitment commitment = new(ValueKeccak.Compute(ilProof.StarkProof), depsHash);
-        Retention.Retain(ilProof.StarkProof, [.. ilProof.ProofDeps], commitment, forkVerifier, timestamp, InclusionListProofRetention.Requirement.Topic);
+        Retention.Retain(ilProof.StarkProof, [.. ilProof.ProofDeps], commitment, forkVerifier, viewFreezeDeadlineMs);
         return InclusionListProofStatus.Valid;
     }
 
-    /// <summary><c>engine_getInclusionListProofV1</c>: the held <c>il_proof</c> hashing to <paramref name="starkProofHash"/> with
-    /// an aggregate verdict under the fork at <paramref name="timestamp"/>, or <c>null</c>.</summary>
+    /// <summary><c>engine_getInclusionListProofV1</c>: the held <c>il_proof</c> hashing to <paramref name="starkProofHash"/> with a
+    /// <c>VALID</c> verdict under the fork at <paramref name="timestamp"/>, or <c>null</c>, including once its bytes are released.</summary>
     public InclusionListProof? Get(ulong timestamp, in ValueHash256 starkProofHash)
     {
         Eip8288Verifier forkVerifier = Eip8288Verifier.For(SpecAt(timestamp));
@@ -150,7 +164,7 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
         foreach (CommitteeInclusionList list in lists)
             if (list.HoldsValidProof && list.Commitment is { } commitment
                 && Covers(list.Transactions, commitment, targetSpec, forkVerifier, out byte[]? proof, out FrameDependency[]? proofDeps)
-                && proof is not null && added.Add(commitment.StarkProofHash))
+                && added.Add(commitment.StarkProofHash))
                 proven.Add(new RecursiveProofInput(Array.AsReadOnly(proofDeps!), proof!, commitment.StarkProofHash));
         return proven;
     }
@@ -160,25 +174,19 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
         in Eip8288Verifier forkVerifier, out byte[]? proof, out FrameDependency[]? proofDeps)
     {
         List<FrameDependency> deps = InclusionListProofValidator.StaticallyValidDependencies(transactions, spec);
-        bool held = TryGetVerified(commitment.StarkProofHash, commitment.DepsHash, forkVerifier, out proof, out proofDeps);
+        bool held = TryGetHeld(commitment.StarkProofHash, commitment.DepsHash, forkVerifier, out proof, out proofDeps);
         return held && deps.Count != 0 && InclusionListProofValidator.Covers(proofDeps!, deps);
     }
 
-    /// <summary>Whether a proof under <c>(stark_proof_hash, deps_hash)</c> is verified under <paramref name="forkVerifier"/> with
-    /// known <c>proof_deps</c>, and its bytes when this node still has them.</summary>
-    private bool TryGetVerified(in ValueHash256 proofHash, in ValueHash256 depsHash, in Eip8288Verifier forkVerifier, out byte[]? proof,
+    /// <summary>Whether this node holds the bytes of a proof under <c>(stark_proof_hash, deps_hash)</c> with its
+    /// <c>proof_deps</c> and a <c>VALID</c> verdict under <paramref name="forkVerifier"/>.</summary>
+    private bool TryGetHeld(in ValueHash256 proofHash, in ValueHash256 depsHash, in Eip8288Verifier forkVerifier, out byte[]? proof,
         out FrameDependency[]? proofDeps)
     {
         if (Retention.TryGet(proofHash, depsHash, forkVerifier, out proof, out proofDeps)) return true;
         if (proofStore.TryGetRecursiveProof(proofHash, depsHash, out proof, out proofDeps) && IsVerifiedUnder(proofHash, depsHash, forkVerifier))
             return true;
         proof = null;
-        ProofVerdictCache cache = ProofVerdictCache.For(verifier);
-        if (cache.TryGetVerdict(proofHash, depsHash, forkVerifier.AggregatedVk) == true && cache.TryGetPreimage(in depsHash, out FrameDependency[] known))
-        {
-            proofDeps = known;
-            return true;
-        }
         proofDeps = null;
         return false;
     }
@@ -200,17 +208,17 @@ public static class InclusionListProofValidator
     public const string EmptyProof = "an empty stark_proof is never a valid inclusion-list proof";
     public const string OversizedProof = "stark_proof exceeds MAX_AGGREGATE_PROOF_BYTES";
     public const string UncoveredDependency = "the committed proof_deps omit a dependency of the list";
-    public const string UnknownProof = "no proof is held under the commitment for the target fork";
+    public const string UnknownProof = "the committed proof's bytes are not held for the target fork";
     public const string EmptyProofDeps = "proof_deps must not be empty";
     public const string TooManyProofDeps = "proof_deps exceed MAX_DEPS_PER_AGGREGATE_WRAPPER";
     public const string NonCanonicalProofDeps = "proof_deps must be sorted and deduplicated";
     public const string DisabledScheme = "proof_deps name a scheme outside the target fork's ENABLED_SCHEMES";
 
-    /// <summary>Whether an <c>il_proof</c> is the proof <paramref name="commitment"/> names: well formed for
-    /// <paramref name="spec"/>, hashing to <c>stark_proof_hash</c>, with <c>proof_deps</c> hashing to <c>deps_hash</c>.</summary>
-    public static bool Matches(InclusionListProof ilProof, in InclusionListCommitment commitment, IReleaseSpec spec)
-        => CheckShape(ilProof, spec) is null
-            && ValueKeccak.Compute(ilProof.StarkProof) == commitment.StarkProofHash
+    /// <summary>Whether an <c>il_proof</c> is the proof <paramref name="commitment"/> names: hashing to <c>stark_proof_hash</c>,
+    /// with <c>proof_deps</c> hashing to <c>deps_hash</c>.</summary>
+    /// <remarks>A matching proof that is not well formed fails like any proof failing verification.</remarks>
+    public static bool Matches(InclusionListProof ilProof, in InclusionListCommitment commitment)
+        => ValueKeccak.Compute(ilProof.StarkProof) == commitment.StarkProofHash
             && Eip8288Dependencies.ComputeDepsHash(ilProof.ProofDeps) == commitment.DepsHash;
 
     /// <summary>The <c>il_proof</c> bounds, checked before any verification: a nonempty proof within
@@ -276,9 +284,10 @@ public static class InclusionListProofValidator
     }
 
     /// <summary>One list's binding transactions: every statically valid entry with a held proof, otherwise its statically
-    /// valid entries with <c>dependencies(tx) == []</c>.</summary>
-    /// <remarks>An entry whose dependency frame fails static validity is not dependency-free, and EIP-7805 excuses its
-    /// omission as an invalid transaction.</remarks>
+    /// valid dependency-free entries, those without a <c>DEP_VERIFY_FRAME_MODE</c> frame.</summary>
+    /// <remarks>An entry with a dependency verification frame is dependency-bearing even when the frame carries no triples or
+    /// fails static validity, and EIP-7805 excuses its omission as an invalid transaction. An entry that does not decode never
+    /// reaches a list, so, like a dependency-bearing one, it is not obligated without a proof.</remarks>
     private static Transaction[] SelectEligible(IReadOnlyList<Transaction> transactions, bool holdsValidProof, IReleaseSpec spec)
     {
         List<Transaction> eligible = new(transactions.Count);

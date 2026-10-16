@@ -22,7 +22,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
 
-using NSubstitute;
 
 namespace Nethermind.Consensus.Test;
 

@@ -10,42 +10,30 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
-/// EIP-8288 inclusion-list proof retention: each proof is kept, servable with its <c>proof_deps</c>, while any slot's retention
-/// requirement on it applies.
+/// EIP-8288 inclusion-list proof retention: each proof's bytes are kept, servable with its <c>proof_deps</c>, until the latest
+/// deadline the consensus layer supplied for it.
 /// </summary>
 /// <remarks>
-/// <para>For the lists of slot <c>N</c>, whose target block of slot <c>N + 1</c> has timestamp <c>T</c>: a proof answered
-/// <see cref="Requirement.Valid"/> for a list is kept through the EIP-7805 attestation deadline of slot <c>N + 1</c>, and a
-/// proof-topic submission (<see cref="Requirement.Topic"/>) until the view freeze deadline of slot <c>N</c>, when its
-/// requirement is released unless it was also answered valid for a list. Releasing one slot's requirement never deletes a
-/// proof another slot still needs, and evicting a mempool wrapper does not shorten retention: this store holds its own copy.</para>
-/// <para>The deadlines are EIP-7805's <c>t=9s</c> and <c>t=4s</c> of a 12-second slot, scaled to the configured slot length.
-/// Storage is bounded by EIP-8288's peak of <see cref="MaxProofs"/> <c>il_proof</c>s; beyond it the proof whose requirements
-/// end first is dropped.</para>
+/// <para>A proof-topic submission is retained until its <c>view_freeze_deadline_ms</c>, and a proof answered valid for a list
+/// until that call's <c>attestation_deadline_ms</c>, both Unix milliseconds. A later deadline extends an earlier one, so releasing
+/// one requirement never drops a proof another still needs, and a deadline already past adds no retention. Evicting a mempool
+/// wrapper does not shorten retention: this store holds its own copy. The execution layer derives no deadline itself.</para>
+/// <para>Storage is bounded by EIP-8288's peak of <see cref="MaxProofs"/> <c>il_proof</c>s; beyond it the proof whose deadline
+/// comes first is dropped.</para>
 /// </remarks>
-public sealed class InclusionListProofRetention(ITimestamper timestamper, ulong secondsPerSlot)
+public sealed class InclusionListProofRetention(ITimestamper timestamper)
 {
     /// <summary>EIP-8288 peak FOCIL retention: slot <c>N</c>'s 16 committed proofs, slot <c>N + 1</c>'s 32 topic and 16 requested
     /// proofs, and slot <c>N + 2</c>'s 16 early proofs.</summary>
     public const int MaxProofs = 5 * Eip7805Constants.InclusionListCommitteeSize;
 
-    /// <summary>One <c>il_proof</c> at its bounds: <c>MAX_AGGREGATE_PROOF_BYTES</c> plus <c>MAX_DEPS_PER_AGGREGATE_WRAPPER</c>
-    /// 96-byte dependencies, 1.625 MiB.</summary>
+    /// <summary>One <c>il_proof</c> at its bounds: <c>MAX_AGGREGATE_PROOF_BYTES</c> (1,310,720) of proof plus
+    /// <c>MAX_DEPS_PER_AGGREGATE_WRAPPER</c> 96-byte <c>proof_deps</c> (393,216), 1.625 MiB.</summary>
     public const long MaxProofBytes = Eip8288Constants.MaxAggregateProofBytes
         + (long)Eip8288Constants.MaxDepsPerAggregateWrapper * Eip8288Constants.DependencyTripleLength;
 
     /// <summary>EIP-8288 peak retention in bytes, 130 MiB.</summary>
     public const long MaxBytes = MaxProofs * MaxProofBytes;
-
-    /// <summary>Why a slot retains a proof.</summary>
-    public enum Requirement
-    {
-        /// <summary>Submitted from the proof topic; released at the view freeze deadline of the list slot.</summary>
-        Topic,
-
-        /// <summary>Answered valid for a list; kept through the attestation deadline of the target slot.</summary>
-        Valid
-    }
 
     private readonly Lock _gate = new();
     private readonly Dictionary<(ValueHash256 ProofHash, ValueHash256 DepsHash, ValueHash256 AggregatedVk), Entry> _entries = [];
@@ -57,8 +45,8 @@ public sealed class InclusionListProofRetention(ITimestamper timestamper, ulong 
         public FrameDependency[] ProofDeps { get; } = proofDeps;
         public long Size { get; } = proof.Length + (long)proofDeps.Length * Eip8288Constants.DependencyTripleLength;
 
-        /// <summary>The strongest requirement per target-block timestamp.</summary>
-        public Dictionary<ulong, Requirement> Requirements { get; } = [];
+        /// <summary>The latest retention deadline, in Unix milliseconds.</summary>
+        public ulong DeadlineMs { get; set; }
     }
 
     public int Count
@@ -71,24 +59,24 @@ public sealed class InclusionListProofRetention(ITimestamper timestamper, ulong 
         get { lock (_gate) return _bytes; }
     }
 
-    /// <summary>Adds a <paramref name="requirement"/> of the slot whose target block has <paramref name="targetTimestamp"/>.</summary>
+    /// <summary>Keeps a verified proof's bytes and <c>proof_deps</c> until at least <paramref name="deadlineMs"/>.</summary>
+    /// <param name="deadlineMs">The consensus-layer deadline in Unix milliseconds; one already past adds no retention.</param>
     public void Retain(byte[] proof, FrameDependency[] proofDeps, in InclusionListCommitment commitment, in Eip8288Verifier verifier,
-        ulong targetTimestamp, Requirement requirement)
+        ulong deadlineMs)
     {
         (ValueHash256, ValueHash256, ValueHash256) key = (commitment.StarkProofHash, commitment.DepsHash, verifier.AggregatedVk);
-        ulong now = Now;
+        ulong now = NowMs;
         lock (_gate)
         {
             Prune(now);
-            if (Expiry(targetTimestamp, requirement) <= now) return;
+            if (deadlineMs <= now) return;
             if (!_entries.TryGetValue(key, out Entry? entry))
             {
                 entry = new((byte[])proof.Clone(), proofDeps);
                 _entries.Add(key, entry);
                 _bytes += entry.Size;
             }
-            if (!entry.Requirements.TryGetValue(targetTimestamp, out Requirement existing) || existing < requirement)
-                entry.Requirements[targetTimestamp] = requirement;
+            entry.DeadlineMs = Math.Max(entry.DeadlineMs, deadlineMs);
             while (_entries.Count > MaxProofs || _bytes > MaxBytes) Evict(key);
         }
     }
@@ -97,7 +85,7 @@ public sealed class InclusionListProofRetention(ITimestamper timestamper, ulong 
     public bool TryGet(in ValueHash256 proofHash, ValueHash256? depsHash, in Eip8288Verifier verifier, out byte[]? proof,
         out FrameDependency[]? proofDeps)
     {
-        ulong now = Now;
+        ulong now = NowMs;
         lock (_gate)
         {
             Prune(now);
@@ -114,36 +102,17 @@ public sealed class InclusionListProofRetention(ITimestamper timestamper, ulong 
         return false;
     }
 
-    private ulong Now => (ulong)timestamper.UnixTime.Seconds;
-
-    /// <summary>When a slot's requirement ends: the view freeze deadline of the list slot for a topic proof, the attestation
-    /// deadline of the target slot for a valid one.</summary>
-    private ulong Expiry(ulong targetTimestamp, Requirement requirement) => requirement == Requirement.Valid
-        ? targetTimestamp + secondsPerSlot / 3
-        : targetTimestamp - Math.Min(targetTimestamp, secondsPerSlot / 4);
-
-    private ulong LatestExpiry(Entry entry)
-    {
-        ulong latest = 0;
-        foreach ((ulong timestamp, Requirement requirement) in entry.Requirements) latest = Math.Max(latest, Expiry(timestamp, requirement));
-        return latest;
-    }
+    private ulong NowMs => timestamper.UnixTime.Milliseconds;
 
     private void Prune(ulong now)
     {
         List<(ValueHash256, ValueHash256, ValueHash256)>? released = null;
         foreach (((ValueHash256, ValueHash256, ValueHash256) key, Entry entry) in _entries)
-        {
-            List<ulong>? ended = null;
-            foreach ((ulong timestamp, Requirement requirement) in entry.Requirements)
-                if (Expiry(timestamp, requirement) <= now) (ended ??= []).Add(timestamp);
-            foreach (ulong timestamp in ended ?? []) entry.Requirements.Remove(timestamp);
-            if (entry.Requirements.Count == 0) (released ??= []).Add(key);
-        }
+            if (entry.DeadlineMs <= now) (released ??= []).Add(key);
         foreach ((ValueHash256, ValueHash256, ValueHash256) key in released ?? []) Remove(key);
     }
 
-    /// <summary>Drops the proof whose requirements end first, sparing <paramref name="keep"/> unless it is the only one.</summary>
+    /// <summary>Drops the proof whose deadline comes first, sparing <paramref name="keep"/> unless it is the only one.</summary>
     private void Evict((ValueHash256, ValueHash256, ValueHash256) keep)
     {
         (ValueHash256, ValueHash256, ValueHash256)? victim = null;
@@ -151,8 +120,7 @@ public sealed class InclusionListProofRetention(ITimestamper timestamper, ulong 
         foreach (((ValueHash256, ValueHash256, ValueHash256) key, Entry entry) in _entries)
         {
             if (key == keep && _entries.Count > 1) continue;
-            ulong expiry = LatestExpiry(entry);
-            if (expiry < earliest) { earliest = expiry; victim = key; }
+            if (entry.DeadlineMs < earliest) { earliest = entry.DeadlineMs; victim = key; }
         }
         if (victim is { } evicted) Remove(evicted);
     }

@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -71,7 +70,8 @@ public class Eth73ProtocolHandler(
             return handled;
         }
         if (!Eth73MessageCode.IsWrapperMessage(message.PacketType)) return base.HandleMessageCore(message);
-        // Before Status, or while EIP-8288 is inactive, there is no wrapper exchange; such messages establish nothing.
+        // A wrapper message before Status is a protocol violation, rejected like any other eth message before this is reached.
+        // While EIP-8288 is inactive there is no wrapper exchange; such messages establish nothing.
         if (_wrapperPeer is not { } peer)
         {
             ReportIn($"eth/73 wrapper message {message.PacketType} ignored without wrapper exchange", size);

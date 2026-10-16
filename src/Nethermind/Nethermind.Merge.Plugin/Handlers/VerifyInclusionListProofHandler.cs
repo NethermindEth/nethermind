@@ -11,19 +11,22 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-/// <summary>Parameters of <c>engine_verifyInclusionListProofV1(timestamp, transactions, recursive_stark, il_proof)</c>.</summary>
+/// <summary>Parameters of <c>engine_verifyInclusionListProofV1(timestamp, transactions, recursiveStark, ilProof, attestationDeadlineMs)</c>.</summary>
 /// <param name="Timestamp">The target block's timestamp, whose fork fixes static validity and <c>AGGREGATED_VK</c>.</param>
 /// <param name="Transactions">The signed list's EIP-2718 transaction encodings, in order.</param>
 /// <param name="RecursiveStark">The list's non-null <c>recursive_stark</c>.</param>
 /// <param name="IlProof">The <c>il_proof</c> fetched by <c>stark_proof_hash</c>, or null.</param>
-public sealed record VerifyInclusionListProofRequest(ulong Timestamp, byte[][]? Transactions, RecursiveStarkV1? RecursiveStark, InclusionListProofV1? IlProof);
+/// <param name="AttestationDeadlineMs">The EIP-7805 attestation deadline of the target block's slot, in Unix milliseconds.</param>
+public sealed record VerifyInclusionListProofRequest(ulong Timestamp, byte[][]? Transactions, RecursiveStarkV1? RecursiveStark, InclusionListProofV1? IlProof,
+    ulong AttestationDeadlineMs);
 
 /// <summary>
 /// EIP-8288 <c>engine_verifyInclusionListProofV1</c>: whether a counted list's commitment is valid, so the consensus layer
-/// passes it to block building and <c>engine_newPayload</c> (EIPs#12475).
+/// passes it to block building and <c>engine_newPayload</c> (EIPs#12475, execution-apis#945).
 /// </summary>
-/// <remarks>A commitment to a proof this node already holds, usually a validated mode-1 wrapper's, is a cache lookup with a
-/// subset test. Otherwise the answer is <c>PROOF_UNKNOWN</c> until the consensus layer supplies the matching <c>il_proof</c>.</remarks>
+/// <remarks>A commitment to a proof whose bytes this node holds, usually a validated mode-1 wrapper's or a submitted topic
+/// proof's, is a cache lookup with a subset test, and <c>VALID</c> retains the bytes until the attestation deadline. Otherwise
+/// the answer is <c>PROOF_UNKNOWN</c> until the consensus layer supplies the matching <c>il_proof</c>.</remarks>
 public sealed class VerifyInclusionListProofHandler(ISpecProvider specProvider, InclusionListProofService inclusionListProofs)
     : IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>
 {
@@ -37,7 +40,8 @@ public sealed class VerifyInclusionListProofHandler(ISpecProvider specProvider, 
         // Undecodable entries contribute no dependencies, as in the counted list.
         Transaction[] transactions = TxsDecoder.DecodeTxs(request.Transactions!, skipErrors: true).Transactions;
         InclusionListCommitment commitment = request.RecursiveStark!.ToCommitment();
-        InclusionListProofStatus status = inclusionListProofs.Verify(request.Timestamp, transactions, in commitment, ilProof, out string? reason);
+        InclusionListProofStatus status = inclusionListProofs.Verify(request.Timestamp, transactions, in commitment, ilProof,
+            request.AttestationDeadlineMs, out string? reason);
         return ResultWrapper<InclusionListProofStatusV1>.Success(InclusionListProofStatusV1.From(status, reason));
     }
 

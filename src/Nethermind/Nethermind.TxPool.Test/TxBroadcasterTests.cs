@@ -871,16 +871,17 @@ public class TxBroadcasterTests
         Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTx), Is.EqualTo(versionMatches));
     }
 
-    // EIP-8437: dependency-bearing transactions are never announced or broadcast; they propagate only in proof wrappers.
+    // EIP-8437: dependency-bearing transactions, those with a dependency frame even if it carries no triples, are never
+    // announced or broadcast; they propagate only in proof wrappers.
     [Test]
-    public void Withholds_dependency_bearing_transactions([Values] bool dependencyFrame)
+    public void Withholds_dependency_bearing_transactions([Values] bool dependencyFrame, [Values] bool withoutTriples)
     {
         SpecDrivenTxGossipPolicy gossipPolicy = new(Substitute.For<IChainHeadInfoProvider>());
         Transaction frameTx = new()
         {
             Type = TxType.FrameTx,
             Frames = [new(dependencyFrame ? FrameMode.DepVerify : FrameMode.Verify, FrameFlags.None, null, 0, UInt256.Zero,
-                new byte[Eip8288Constants.DependencyTripleLength])]
+                new byte[withoutTriples ? 0 : Eip8288Constants.DependencyTripleLength])]
         };
         Assert.That(gossipPolicy.ShouldGossipTransaction(frameTx), Is.EqualTo(!dependencyFrame));
     }
