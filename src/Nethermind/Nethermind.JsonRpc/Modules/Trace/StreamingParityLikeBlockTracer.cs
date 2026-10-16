@@ -196,8 +196,14 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
                 EmitStoreItems(trace);
         }
 
+        traces.TryDispose();
         FlushPipe();
     }
+
+    /// <summary>Tracers for the transactions of <paramref name="block"/> when it is traced in parallel; their traces are
+    /// recycled once <see cref="WriteTraces"/> has written them.</summary>
+    internal ParallelParityTxTracerPool CreateParallelTxTracers(Block block, ParityTraceTypes types) =>
+        new(_writer, _cancellationToken, types, _specProvider?.GetSpec(block.Header));
 
     public override void EndBlockTrace()
     {
