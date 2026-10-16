@@ -24,7 +24,7 @@ public readonly record struct Eip8288Verifier(ValueHash256 AggregatedVk)
     /// <summary>The pinned leanSPHINCS verification parameters: the NiceTry/Daisugi Keccak SPHINCS profile.</summary>
     private static readonly ValueHash256 LeanSphincsParams = ValueKeccak.Compute("ethereum/8288/leanSPHINCS/pinned-keccak-sphincs"u8);
 
-    /// <summary>The pinned leanSTARK verification parameters: the generic CPU-proof profile of the pinned backend.</summary>
+    /// <summary>The pinned leanSTARK verification parameters: the pinned backend's generic CPU proof format.</summary>
     private static readonly ValueHash256 LeanStarkParams = ValueKeccak.Compute("ethereum/8288/leanSTARK/pinned-generic-cpu"u8);
 
     public static Eip8288Verifier Pinned { get; } = new(PinnedAggregatedVk);
