@@ -15,28 +15,12 @@ internal readonly record struct ResolvedState(Hash256 Root, ApiState State);
 
 internal static class StateIdResolver
 {
-    private const string HeadStateNotReady = "The head state is not ready yet; retry shortly.";
-
-    /// <summary>The <c>fork</c> field of a state at <paramref name="epoch"/>: the upgrade functions set it to the live version, the one before it and the epoch it went live.</summary>
-    private static Fork ForkAt(BeaconChainSpec spec, ulong epoch)
-    {
-        ForkScheduleEntry[] forks = spec.Forks;
-        int live = forks.Length - 1;
-        while (live > 0 && forks[live].Epoch > epoch) live--;
-        while (live > 0 && forks[live - 1].Version.AsSpan().SequenceEqual(forks[live].Version)) live--;
-        return new Fork { PreviousVersion = forks[live > 0 ? live - 1 : 0].Version, CurrentVersion = forks[live].Version, Epoch = forks[live].Epoch };
-    }
-
     public static bool TryResolveBlock(BeaconApiContext ctx, string stateId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage)
     {
         resolved = default;
         if (!TryResolveRoot(ctx, stateId, out Hash256? root, out errorStatus, out errorMessage)) return false;
         return BlockIdResolver.TryResolve(ctx, root!.ToString(), out resolved, out errorStatus, out errorMessage);
     }
-
-    /// <summary>Whether <paramref name="stateId"/> resolves to the head of the request's get_head view.</summary>
-    internal static bool NamesHead(BeaconApiContext ctx, string stateId) =>
-        TryResolveRoot(ctx, stateId, out Hash256? root, out _, out _) && root == ctx.StatusSource.CurrentStatus.HeadRoot;
 
     private static bool TryResolveRoot(BeaconApiContext ctx, string stateId, out Hash256? root, out int errorStatus, out string? errorMessage)
     {
@@ -70,15 +54,6 @@ internal static class StateIdResolver
             ForkedBeaconState.OfGloas gloas => BeaconStateGloas.Encode(gloas.State),
             _ => null,
         } : null;
-        if (ssz is null && root == ctx.StatusSource.CurrentStatus.HeadRoot && ctx.DeferredHeadState is { } deferred)
-        {
-            // The head's state is taken off this thread; a later request finds it ready instead of waiting here.
-            _ = deferred.TakeAsync();
-            errorStatus = StatusCodes.Status503ServiceUnavailable;
-            errorMessage = HeadStateNotReady;
-            return false;
-        }
-
         if (ssz is null && !ctx.Store.TryGetState(root!, out ssz))
         {
             errorStatus = StatusCodes.Status404NotFound;
@@ -106,18 +81,6 @@ internal static class StateIdResolver
         if (!TryResolveRoot(ctx, stateId, out Hash256? root, out errorStatus, out errorMessage)) return false;
         if (root == ctx.StatusSource.CurrentStatus.HeadRoot && ctx.HeadState is not null)
             return TryResolve(ctx, stateId, out resolved, out errorStatus, out errorMessage);
-
-        // A fork read never waits for the head's state: the head's fork follows from its slot and the fork schedule.
-        if (forkOnly && root == ctx.StatusSource.CurrentStatus.HeadRoot && ctx.DeferredHeadState is not null)
-        {
-            ulong headSlot = ctx.StatusSource.CurrentStatus.HeadSlot;
-            ulong headEpoch = ctx.Spec.GetEpoch(headSlot);
-            if (headEpoch < ctx.Spec.ElectraForkEpoch)
-                throw new UnsupportedForkException(new NotSupportedException("State predates Electra."));
-            BeaconStateElectra head = new() { Slot = headSlot, Fork = ForkAt(ctx.Spec, headEpoch) };
-            resolved = new ResolvedState(root!, ApiState.Of(headEpoch >= ctx.Spec.GloasForkEpoch ? BeaconFork.Gloas : headEpoch >= ctx.Spec.FuluForkEpoch ? BeaconFork.Fulu : BeaconFork.Electra, head));
-            return true;
-        }
 
         const int forkOffset = 48;
         int randaoOffset = checked(176 + 64 * (int)Presets.SlotsPerHistoricalRoot + 96);

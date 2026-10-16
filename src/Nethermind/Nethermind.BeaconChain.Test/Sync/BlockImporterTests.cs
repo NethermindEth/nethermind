@@ -63,6 +63,27 @@ public class BlockImporterTests
     }
 
     [Test]
+    public void Api_state_of_a_fulu_block_is_its_held_state_not_a_copy_and_never_a_store_read()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        IDataAvailabilityRule availability = Substitute.For<IDataAvailabilityRule>();
+        availability.IsDataAvailable(Arg.Any<BeaconBlock>(), Arg.Any<Hash256>(), chain.Spec).Returns(true);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        Hash256 persistedOnly = new(Enumerable.Repeat((byte)0x5A, Hash256.Size).ToArray());
+        store.PutState(persistedOnly, BeaconStateFulu.Encode(chain.AnchorState));
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), availability: availability, store: store);
+        Assert.That(importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported), "fixture: the block imports");
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That((importer.GetStateForApi(chain.BlockRoot) as ForkedBeaconState.OfFulu)?.State, Is.SameAs(states.LineageState),
+            "a head change must not copy the full state on the import worker");
+        Assert.That((importer.GetStateForApi(chain.AnchorRoot) as ForkedBeaconState.OfFulu)?.State, Is.SameAs(states.GetHeldBlockState(chain.AnchorRoot)),
+            "the retained checkpoint state is shared as is");
+        Assert.That(importer.GetStateForApi(persistedOnly), Is.Null, "publishing a head must not decode a persisted state on the import worker");
+    }
+
+    [Test]
     public void Unavailable_data_precedes_fulu_proposal_validation([Values] bool wrongProposer)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();

@@ -1492,7 +1492,7 @@ public class DeferredBlockColumnFetchTests
 
         public int AdmissionSubscribers => _pool.Subscribers;
 
-        public BeaconSyncOrchestrator CreateOrchestrator(bool routeAdmissions = true, ILogManager? logs = null)
+        public BeaconSyncOrchestrator CreateOrchestrator(bool routeAdmissions = true, ILogManager? logs = null, HeadSnapshotHolder? headSnapshots = null)
         {
             MutablePool pool = _pool = new(Peers);
             BeaconSyncOrchestrator orchestrator = new(
@@ -1508,7 +1508,8 @@ public class DeferredBlockColumnFetchTests
                 new BeaconChainStatusHolder(Chain.Spec, Timestamper.Default),
                 logs ?? LimboLogs.Instance,
                 discovery: _discovery,
-                columnPool: SidecarPool)
+                columnPool: SidecarPool,
+                headSnapshots: headSnapshots)
             {
                 GossipStarted = true,
             };

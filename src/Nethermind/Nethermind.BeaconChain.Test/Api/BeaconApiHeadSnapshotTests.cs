@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -105,57 +106,46 @@ public class BeaconApiHeadSnapshotTests
         await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
         BeaconStateFulu state = BeaconApiTestHost.RichState(host.Spec, Slot);
         host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, Hash256.Zero));
-        int copies = 0;
         snapshots.Current = new HeadSnapshot(new StatusMessageV2 { HeadRoot = Head, HeadSlot = Slot, FinalizedRoot = Hash256.Zero }, null, Hash256.Zero, true)
         {
-            DeferredState = new DeferredHeadState(() =>
-            {
-                Interlocked.Increment(ref copies);
-                return Task.FromResult<ForkedBeaconState?>(new ForkedBeaconState.OfFulu(state));
-            }),
+            State = new ForkedBeaconState.OfFulu(state),
         };
 
         using HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/beacon/states/head/{endpoint}");
-        using HttpResponseMessage again = await host.Client.GetAsync($"/eth/v1/beacon/states/head/{endpoint}");
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That((response.StatusCode, again.StatusCode), Is.EqualTo((HttpStatusCode.OK, HttpStatusCode.OK)));
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         Assert.That(host.Store.TryGetState(Head, out _), Is.False);
-        Assert.That(copies, Is.EqualTo(1), "requests for one head share the one copy the first request takes");
     }
 
     [Test]
-    [CancelAfter(20_000)]
-    public async Task Head_fork_requests_answer_from_the_fork_schedule_while_the_import_thread_holds_the_head_state(CancellationToken token)
+    [CancelAfter(60_000)]
+    public async Task Head_state_routes_serve_the_state_the_block_importer_holds_once_the_head_step_publishes_it(CancellationToken token)
     {
-        HeadSnapshotHolder snapshots = new();
-        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots);
-        host.Store.PutBlock(Head, BeaconApiTestHost.RichBlock(Slot, Hash256.Zero));
-        TaskCompletionSource<ForkedBeaconState?> busyImportThread = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        int takes = 0;
-        snapshots.Current = new HeadSnapshot(new StatusMessageV2 { HeadRoot = Head, HeadSlot = Slot, FinalizedRoot = Hash256.Zero }, null, Hash256.Zero, true)
+        await using DeferredBlockColumnFetchTests.Fixture fixture = DeferredBlockColumnFetchTests.Fixture.Create();
+        HeadSnapshotHolder snapshots = new() { CaptureState = true };
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator(headSnapshots: snapshots);
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(fixture.Chain.Spec, headSnapshots: snapshots);
+        // Right after checkpoint sync the anchor is the head, at the start slot of the finalized epoch.
+        await orchestrator.RunHeadStepAsync(token);
+        using HttpResponseMessage anchorFork = await host.Client.GetAsync("/eth/v1/beacon/states/head/fork", token);
+        foreach (ulong column in fixture.Sampled)
         {
-            DeferredState = new DeferredHeadState(() =>
-            {
-                Interlocked.Increment(ref takes);
-                return busyImportThread.Task;
-            }),
-        };
+            fixture.GiveColumn(column);
+        }
 
-        HttpResponseMessage[] forks = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => host.Client.GetAsync("/eth/v1/beacon/states/head/fork", token)));
-        int takesByForkReads = takes;
-        using JsonDocument fork = await BeaconApiTestHost.ReadJsonAsync(forks[0]);
-        using HttpResponseMessage checkpoints = await host.Client.GetAsync("/eth/v1/beacon/states/head/finality_checkpoints", token);
+        BlockImportResult imported = await orchestrator.ImportAndSettleAsync(fixture.Importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+        await orchestrator.RunHeadStepAsync(token);
+        using JsonDocument checkpoints = await GetAsync(host, "/eth/v1/beacon/states/head/finality_checkpoints");
+        using JsonDocument validators = await GetAsync(host, "/eth/v1/beacon/states/head/validators");
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(forks.Select(r => r.StatusCode), Is.All.EqualTo(HttpStatusCode.OK), "a fork read never waits for the import thread");
-        Assert.That(takesByForkReads, Is.Zero, "a fork read never asks the import thread for the state");
-        JsonElement data = fork.RootElement.GetProperty("data");
-        Assert.That((data.GetProperty("previous_version").GetString(), data.GetProperty("current_version").GetString(), data.GetProperty("epoch").GetString()),
-            Is.EqualTo(("0x05000000", "0x06000000", "411392")), "the mainnet Fulu head's fork");
-        Assert.That(checkpoints.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable), "a read of the state itself gives up after its timeout");
-        Assert.That(takes, Is.EqualTo(1), "only the request that reads the state itself asks the import thread for it");
-        foreach (HttpResponseMessage response in forks) response.Dispose();
+        Assert.That(anchorFork.StatusCode, Is.EqualTo(HttpStatusCode.OK), "the fork of a head at the finalized checkpoint");
+        Assert.That(imported, Is.EqualTo(BlockImportResult.Imported), "fixture: the block imports");
+        Assert.That(snapshots.Current!.Status.HeadRoot, Is.EqualTo(fixture.Chain.BlockRoot), "fixture: the imported block is the head");
+        Assert.That(host.Store.TryGetState(fixture.Chain.BlockRoot, out _), Is.False, "the head state is not persisted");
+        Assert.That(checkpoints.RootElement.GetProperty("data").GetProperty("finalized").GetProperty("root").GetString(), Is.EqualTo(fixture.Chain.AnchorState.FinalizedCheckpoint!.Root!.ToString()));
+        Assert.That(validators.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(fixture.Chain.AnchorState.Validators!.Length));
     }
 
     [Test]

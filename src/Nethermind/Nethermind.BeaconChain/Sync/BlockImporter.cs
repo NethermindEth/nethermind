@@ -174,11 +174,11 @@ public sealed class BlockImporter : IBlockImporter
         _canonicalIndexTopSlot = Math.Max(anchorBlock.Slot, store.GetCanonicalIndexTopSlot() ?? 0);
     }
 
-    /// <summary>The post-state of <paramref name="root"/> for the Beacon API to read off the import worker, or <c>null</c> when it is not held.</summary>
-    /// <remarks>A Gloas state is retained frozen (<see cref="PostStateCache.RetainGloas"/>) and is shared as is; a held Fulu state may be the lineage the next import advances in place, so it is cloned.</remarks>
+    /// <summary>The post-state of <paramref name="root"/> for the Beacon API to read off the import worker, or <c>null</c> when no tier in memory holds it.</summary>
+    /// <remarks>Shared as is, not copied: every import applies its block to a copy of the parent state, so a held state is never mutated afterwards.</remarks>
     internal ForkedBeaconState? GetStateForApi(Hash256 root) => IsGloasBlock(root)
-        ? _states.GetGloasBlockState(root) is { } gloas ? new ForkedBeaconState.OfGloas(gloas) : null
-        : _states.GetHeldBlockState(root) is { } fulu ? new ForkedBeaconState.OfFulu(fulu.Clone()) : null;
+        ? _states.GetHeldGloasBlockState(root) is { } gloas ? new ForkedBeaconState.OfGloas(gloas) : null
+        : _states.GetHeldBlockState(root, readStore: false) is { } fulu ? new ForkedBeaconState.OfFulu(fulu) : null;
 
     /// <inheritdoc/>
     public bool IsKnown(Hash256 blockRoot) => _runner.ContainsBlock(blockRoot);
@@ -187,7 +187,7 @@ public sealed class BlockImporter : IBlockImporter
 
     /// <summary>The root of the live Fulu lineage state; for tests.</summary>
     internal Hash256? LineageRoot => _states.LineageRoot;
-    internal bool IsGloasBlock(Hash256 blockRoot) => _runner.GetBlockSlot(blockRoot) is ulong slot && SignedBeaconBlockCodec.IsGloasSlot(slot, _spec);
+    private bool IsGloasBlock(Hash256 blockRoot) => _runner.GetBlockSlot(blockRoot) is ulong slot && SignedBeaconBlockCodec.IsGloasSlot(slot, _spec);
     private Hash256 GetJustifiedRoot() => _runner.JustifiedCheckpoint.Root;
 
     private IEnumerable<Hash256> AncestorRoots(Hash256 blockRoot)
@@ -686,8 +686,7 @@ public sealed class BlockImporter : IBlockImporter
             }
             else if (fuluParent is not null)
             {
-                // Keep checkpoint ownership separate from the live lineage.
-                _states.Retain(parentRoot, parentRoot == _states.LineageRoot ? fuluParent.Clone() : fuluParent, checkpointCandidate: true);
+                _states.Retain(parentRoot, fuluParent, checkpointCandidate: true);
             }
         }
 
@@ -1330,7 +1329,7 @@ public sealed class BlockImporter : IBlockImporter
 
         if (_logger.IsInfo) _logger.Info($"Beacon chain reorg: adopting head {head} at slot {_runner.GetBlockSlot(head)} (was {lineageRoot})");
         _states.Retain(lineageRoot, lineageState);
-        _states.SetLineage(head, headState.Clone());
+        _states.SetLineage(head, headState);
         _lineageCache = new EpochCache { Hasher = new CachedBeaconStateHasher() };
         // Unknown here; forces retention at the next epoch advance, which is harmless.
         _lineageBlockStartsEpoch = true;

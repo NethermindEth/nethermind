@@ -200,7 +200,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Answers the PTC of a head root and slot for the gossip router; tests script it, otherwise the <see cref="BlockImporter"/> reads its head state.</summary>
     internal Func<Hash256, ulong, ulong[]?>? PtcReader { get; set; }
 
-    /// <summary>Reads the post-state of a head root for the Beacon API; tests count it, otherwise the <see cref="BlockImporter"/> copies it.</summary>
+    /// <summary>Reads the post-state of a head root for the Beacon API; tests script it, otherwise the <see cref="BlockImporter"/> reads its held state.</summary>
     internal Func<Hash256, ForkedBeaconState?>? ApiStateReader { get; set; }
 
     private volatile Tip _syncTip = new(Hash256.Zero, 0);
@@ -2742,11 +2742,10 @@ public sealed class BeaconSyncOrchestrator(
         if (headSnapshots is not null)
         {
             HeadSnapshot? previousSnapshot = headSnapshots.Current;
-            DeferredHeadState? apiState = headSnapshots.CaptureState
-                ? previousSnapshot?.Status.HeadRoot == head.HeadRoot && previousSnapshot.FullHeadRoot == fullHeadRoot && previousSnapshot.DeferredState is { } previousState
-                    ? previousState : DeferApiState(importer as BlockImporter, head.HeadRoot)
-                : null;
-            headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync) { DeferredState = apiState };
+            ForkedBeaconState? apiState = !headSnapshots.CaptureState ? null
+                : previousSnapshot?.Status.HeadRoot == head.HeadRoot && previousSnapshot.State is { } previousState ? previousState
+                : ApiStateReader is { } reader ? reader(head.HeadRoot) : (importer as BlockImporter)?.GetStateForApi(head.HeadRoot);
+            headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync) { State = apiState };
         }
 
         // A payload attestation is accepted for the wall slot and, within the clock disparity, its neighbours.
@@ -2761,33 +2760,6 @@ public sealed class BeaconSyncOrchestrator(
         {
             StartGossip();
         }
-    }
-
-    /// <summary>Defers the API's copy of the post-state of <paramref name="root"/> to the first request that asks for it.</summary>
-    /// <remarks>
-    /// A held Fulu state is cloned on the import thread, which owns it, so a head change with no API reader copies nothing; a request
-    /// awaits the copy without blocking a thread. A frozen Gloas state is taken now, before its retained tier can evict it.
-    /// </remarks>
-    private DeferredHeadState? DeferApiState(BlockImporter? blockImporter, Hash256 root)
-    {
-        if (ApiStateReader is null && blockImporter?.IsGloasBlock(root) == true && blockImporter.GetStateForApi(root) is { } gloas)
-        {
-            return new DeferredHeadState(gloas);
-        }
-
-        Func<ForkedBeaconState?>? read = ApiStateReader is { } reader ? () => reader(root) : blockImporter is null ? null : () => blockImporter.GetStateForApi(root);
-        return read is null ? null : new DeferredHeadState(async () =>
-        {
-            try
-            {
-                return await _importThread.RunAsync(read);
-            }
-            catch (Exception e) when (e is not OutOfMemoryException)
-            {
-                if (_logger.IsError) _logger.Error($"Copying the head state of {root} for the Beacon API failed", e);
-                return null;
-            }
-        });
     }
 
     /// <summary>Applies the execution layer's forkchoice verdict for <paramref name="headRoot"/> to fork choice, dropping one that contradicts an earlier verdict.</summary>

@@ -59,60 +59,48 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public async Task Head_changes_with_no_api_reader_copy_no_state_and_the_first_read_copies_it_once()
+    public async Task A_head_step_publishes_the_held_head_state_and_reads_it_once_per_head()
     {
         HeadSnapshotHolder snapshots = new() { CaptureState = true };
         Harness harness = CreateHarness(headSnapshots: snapshots);
-        int copies = 0;
-        harness.Orchestrator.ApiStateReader = _ =>
+        List<(Hash256 Root, ForkedBeaconState State)> reads = [];
+        harness.Orchestrator.ApiStateReader = root =>
         {
-            Interlocked.Increment(ref copies);
-            return new ForkedBeaconState.OfFulu(new BeaconStateFulu());
+            ForkedBeaconState state = new ForkedBeaconState.OfFulu(new BeaconStateFulu());
+            reads.Add((root, state));
+            return state;
         };
-        for (int i = 0; i < 10; i++)
+        Hash256[] heads = [TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakB];
+        ForkedBeaconState?[] published = new ForkedBeaconState?[heads.Length];
+        for (int i = 0; i < heads.Length; i++)
         {
-            harness.Importer.Head = CreateHead(Keccak.Compute($"head {i}"), AnchorSlot + 1 + (ulong)i, finalizedEpoch: 3);
+            harness.Importer.Head = CreateHead(heads[i], AnchorSlot + 1 + (ulong)i, finalizedEpoch: 3);
             await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+            published[i] = snapshots.Current!.State;
         }
 
-        int copiesWithoutReader = copies;
-        HeadSnapshot published = snapshots.Current!;
-        ForkedBeaconState? unread = published.State;
-        ForkedBeaconState? first = await published.DeferredState!.TakeAsync();
-        ForkedBeaconState? second = await published.DeferredState.TakeAsync();
-
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(copiesWithoutReader, Is.Zero, "a head change must not copy the full state on the import worker when no request reads it");
-        Assert.That(unread, Is.Null, "reading the snapshot's state never starts the copy");
-        Assert.That(copies, Is.EqualTo(1));
-        Assert.That(second, Is.Not.Null.And.SameAs(first), "every read of one head shares one copy");
-        Assert.That(published.State, Is.SameAs(first));
+        Assert.That(reads.Select(r => r.Root), Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakB }), "a step that keeps the head keeps its state");
+        Assert.That(published[0], Is.Not.Null.And.SameAs(reads[0].State), "the state is published with the head, never taken later on the import thread");
+        Assert.That(published[1], Is.SameAs(published[0]));
+        Assert.That(published[2], Is.SameAs(reads[1].State));
     }
 
     [Test]
-    public async Task A_head_state_copy_that_finds_no_state_is_taken_again_by_the_next_reader([Values] bool throws)
+    public async Task A_head_state_the_previous_step_did_not_find_is_read_again_by_the_next_step()
     {
         HeadSnapshotHolder snapshots = new() { CaptureState = true };
         Harness harness = CreateHarness(headSnapshots: snapshots);
-        int copies = 0;
-        harness.Orchestrator.ApiStateReader = _ => Interlocked.Increment(ref copies) switch
-        {
-            1 when throws => throw new InvalidOperationException("state evicted"),
-            1 => null,
-            _ => new ForkedBeaconState.OfFulu(new BeaconStateFulu()),
-        };
+        int reads = 0;
+        harness.Orchestrator.ApiStateReader = _ => ++reads == 1 ? null : new ForkedBeaconState.OfFulu(new BeaconStateFulu());
         harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot + 1, finalizedEpoch: 3);
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
-        DeferredHeadState deferred = snapshots.Current!.DeferredState!;
-
-        ForkedBeaconState? missed = await deferred.TakeAsync();
-        ForkedBeaconState? retried = await deferred.TakeAsync();
-        ForkedBeaconState? kept = await deferred.TakeAsync();
+        ForkedBeaconState? missed = snapshots.Current!.State;
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(missed, Is.Null);
-        Assert.That(retried, Is.Not.Null, "a copy that found no state must not pin the head's API state to null");
-        Assert.That(kept, Is.SameAs(retried));
-        Assert.That(copies, Is.EqualTo(2));
+        Assert.That(snapshots.Current!.State, Is.Not.Null, "a missing state must not pin the head's API state to null");
+        Assert.That(reads, Is.EqualTo(2));
     }
 }

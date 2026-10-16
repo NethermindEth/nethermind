@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.RateLimiting;
-using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Api.Endpoints;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
@@ -44,12 +43,8 @@ internal sealed record BeaconApiContext(
 {
     /// <summary>Captures one get_head view for all reads in a request (fork-choice.md).</summary>
     public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead(), ForkChoiceSnapshot = ForkChoiceSnapshots?.Current };
-    /// <summary>The head's post-state once taken, otherwise <c>null</c>; reading it never waits.</summary>
+    /// <summary>The head's post-state published with the head, otherwise <c>null</c>.</summary>
     internal ForkedBeaconState? HeadState => (StatusSource as FrozenHead)?.State;
-    /// <summary>The head's post-state, taken on the first request that waits for it.</summary>
-    internal DeferredHeadState? DeferredHeadState => (StatusSource as FrozenHead)?.Deferred;
-    /// <summary>How long a request waits for the head's post-state before it is refused as unavailable.</summary>
-    internal TimeSpan HeadStateTimeout { get; init; } = TimeSpan.FromSeconds(2);
     public ForkChoiceSnapshot? ForkChoiceSnapshot { get; private init; }
     /// <summary>Bounds the blob rebuilds of this host's getBlobs requests that run at once; a request past it is refused, never queued.</summary>
     public EventsEndpoint.EventCache Events { get; } = new();
@@ -67,31 +62,9 @@ internal sealed record BeaconApiContext(
         return new FrozenHead(new HeadSnapshot(status, fullHeadRoot, StatusSource.JustifiedRoot, StatusSource.ExecutionInSync));
     }
 
-    /// <summary>Waits, without blocking a thread, for the head's post-state when <paramref name="stateId"/> names the head.</summary>
-    /// <returns><c>false</c> when the state is not taken within <see cref="HeadStateTimeout"/>.</returns>
-    /// <exception cref="OperationCanceledException"><paramref name="token"/> was cancelled.</exception>
-    internal async Task<bool> WaitForHeadStateAsync(string stateId, CancellationToken token)
-    {
-        if (DeferredHeadState is not { } deferred || deferred.Taken is not null || !StateIdResolver.NamesHead(this, stateId))
-        {
-            return true;
-        }
-
-        try
-        {
-            await deferred.TakeAsync().WaitAsync(HeadStateTimeout, token);
-            return true;
-        }
-        catch (TimeoutException)
-        {
-            return false;
-        }
-    }
-
     private sealed class FrozenHead(HeadSnapshot snapshot) : IBeaconChainStatusSource
     {
         internal ForkedBeaconState? State => snapshot.State;
-        internal DeferredHeadState? Deferred => snapshot.DeferredState;
         public StatusMessageV2 CurrentStatus => snapshot.Status;
         public Hash256 JustifiedRoot => snapshot.JustifiedRoot;
         public bool ExecutionInSync => snapshot.ExecutionInSync;

@@ -118,8 +118,12 @@ internal sealed class PostStateCache(
     BeaconStateFulu? IForkChoiceStateProvider.GetHeldBlockState(Hash256 blockRoot) => GetHeldBlockState(blockRoot);
 
     /// <summary>The post-state of <paramref name="blockRoot"/> if it is held, without regenerating it from stored blocks.</summary>
-    /// <remarks>A held copy of the lineage root comes first: a trusted import advances the lineage state to its child before fork choice replays the child's body votes.</remarks>
-    internal BeaconStateFulu? GetHeldBlockState(Hash256 blockRoot)
+    internal BeaconStateFulu? GetHeldBlockState(Hash256 blockRoot) => GetHeldBlockState(blockRoot, readStore: true);
+
+    /// <inheritdoc cref="GetHeldBlockState(Hash256)"/>
+    /// <param name="blockRoot">The block root.</param>
+    /// <param name="readStore">Whether a state persisted in the store counts as held; otherwise only the tiers in memory are read.</param>
+    internal BeaconStateFulu? GetHeldBlockState(Hash256 blockRoot, bool readStore)
     {
         if (_retained.TryGet(blockRoot, out BeaconStateFulu? retained))
         {
@@ -142,7 +146,7 @@ internal sealed class PostStateCache(
         }
 
         // A Gloas snapshot is not this root's Fulu state, so it is refused by its slot before a full decode; the Gloas getter serves it.
-        if (store.TryGetState(blockRoot, out byte[]? ssz) && !IsGloasSnapshot(ssz) && DecodePersisted(blockRoot, ssz) is ForkedBeaconState.OfFulu { State: BeaconStateFulu state })
+        if (readStore && store.TryGetState(blockRoot, out byte[]? ssz) && !IsGloasSnapshot(ssz) && DecodePersisted(blockRoot, ssz) is ForkedBeaconState.OfFulu { State: BeaconStateFulu state })
         {
             _retained.Set(blockRoot, state);
             return state;
