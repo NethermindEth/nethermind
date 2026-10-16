@@ -1854,6 +1854,35 @@ public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTes
     }
 
     /// <summary>
+    /// The takeover belongs to the warm pass, so the pass does not end while the takeover still runs. The takeover is held
+    /// until the pass ends or a second passes.
+    /// </summary>
+    [Test]
+    public void The_warm_pass_ends_only_once_the_runs_are_taken_over()
+    {
+        Block block = BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei), Unrelated());
+        PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block, null), () => PreWarmer.SpeculativeMarkerPublished);
+
+        BlockFootprints? footprints = null;
+        bool? endedWhileTakingOver = null;
+        PreWarmer.Seeded = () =>
+        {
+            footprints = PreWarmer.Footprints;
+            endedWhileTakingOver = SpinWait.SpinUntil(() => footprints?.WarmPassEnded == true, TimeSpan.FromSeconds(1));
+        };
+        RunPreWarmCaches(PreWarmer, block);
+        PreWarmer.Seeded = null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints, Is.Not.Null, "precondition: the takeover ran on the block's footprints");
+            Assert.That(endedWhileTakingOver, Is.False, "the warm pass ended while the takeover was still running");
+            Assert.That(footprints?.WarmPassEnded, Is.True, "the warm pass ended once the takeover returned");
+        }
+    }
+
+    /// <summary>
     /// A sender's job is left to the mempool runs only when every one of its transactions was taken over; a transaction
     /// of that sender the mempool pass never saw is still warmed, and its run is replayed.
     /// </summary>
