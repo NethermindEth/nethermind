@@ -115,6 +115,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
             bool hasFloor = _availability.TryGetGlobalFloor(out ulong floor);
             if (hasFloor) Metrics.FlatHistoryFloor = (long)floor;
+            if (!_isV3) EnsurePivotImageMarkers();
             if (_captureFromBlock > 0) PublishSinceBlockFloor();
             else if (hasFloor && config.HistoryRetention == HistoryRetentionMode.None)
             {
@@ -621,10 +622,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         long slotRows = WritePivotStorageImage(imageBlock);
 
-        using (IColumnsWriteBatch<FlatHistoryColumns> markerBatch = _history.StartWriteBatch())
-        {
-            HistoryAvailability.MarkBlock(markerBatch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), pivotBlock, pivotStateRoot, _formatVersion);
-        }
+        WritePivotImageMarkers(imageBlock, pivotBlock, pivotStateRoot);
 
         _history.SyncWal();
         _availability.PublishWatermark(pivotBlock, _formatVersion);
@@ -635,6 +633,35 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         if (_logger.IsInfo) _logger.Info(
             $"Unwindowed flat history starts at the sync pivot {pivotBlock}: {accountRows:N0} accounts and {slotRows:N0} storage slots written in {System.Diagnostics.Stopwatch.GetElapsedTime(startedAt)}.");
+    }
+
+    /// <summary>Marks every block from the image up to and including the pivot with the pivot's root: the rows hold
+    /// the pivot's state at each of them, which the every-block walk checks. Below the floor, so never served.</summary>
+    private void WritePivotImageMarkers(ulong imageBlock, ulong pivotBlock, in ValueHash256 pivotStateRoot)
+    {
+        using IColumnsWriteBatch<FlatHistoryColumns> markerBatch = _history.StartWriteBatch();
+        IWriteBatch availableBlocks = markerBatch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks);
+        for (ulong block = imageBlock; block <= pivotBlock; block++)
+        {
+            HistoryAvailability.MarkBlock(availableBlocks, block, pivotStateRoot, _formatVersion);
+        }
+    }
+
+    /// <summary>Backfills the image markers for a pivot seeded before they were written.</summary>
+    private void EnsurePivotImageMarkers()
+    {
+        if (!_availability.TryGetPivotImageBlock(out ulong imageBlock)
+            || !_availability.TryGetGlobalFloor(out ulong pivotBlock)
+            || imageBlock >= pivotBlock
+            || _availability.TryGetMarker(imageBlock, out _)
+            || !_availability.TryGetMarker(pivotBlock, out ValueHash256 pivotStateRoot))
+        {
+            return;
+        }
+
+        WritePivotImageMarkers(imageBlock, pivotBlock - 1, pivotStateRoot);
+        _history.SyncWal();
+        if (_logger.IsInfo) _logger.Info($"Marked blocks {imageBlock} to {pivotBlock - 1} with the sync pivot's state root for the history walk.");
     }
 
     private void DiscardGenesisCapture()

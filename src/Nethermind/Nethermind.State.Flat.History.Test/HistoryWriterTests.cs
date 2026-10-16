@@ -1175,6 +1175,7 @@ public class HistoryWriterTests
             Assert.That(reader.IsPrunedBelowFloor(999), Is.True, "nothing below the pivot may be served, the image included");
             Assert.That(availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock == 512, Is.True, "the image sits at the start of the pivot's 512-block checkpoint window");
             Assert.That(reopened.IsV3, Is.False, "the pivot floor must not stamp the database windowed");
+            Assert.That(HasMarker(512) && HasMarker(999) && availability.RootMatches(700, pivot.StateRoot), Is.True, "every block from the image to the pivot carries the pivot's root for the walk");
         }
     }
 
