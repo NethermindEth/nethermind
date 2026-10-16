@@ -92,10 +92,10 @@ public class ReadOnlyQueryModuleTests
     }
 
     [Test]
-    public async Task A_module_for_other_queries_is_not_loaded_for_calls()
+    public async Task A_module_for_no_query_kind_is_not_loaded_for_calls()
     {
         CountingRunner runner = new();
-        using TestRpcBlockchain chain = await Chain(runner, ReadOnlyQueryKind.Simulate);
+        using TestRpcBlockchain chain = await Chain(runner, ReadOnlyQueryKind.None);
         Dictionary<Address, AccountOverride> overrides = new() { [OverrideTarget] = new() { Code = Returning42() } };
 
         string overridden = await chain.TestEthRpc("eth_call", Query(chain, OverrideTarget), "latest", overrides);
@@ -103,7 +103,7 @@ public class ReadOnlyQueryModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.Parse(overridden)["result"]?.Value<string>(), Does.EndWith("2a"), overridden);
-            Assert.That(runner.Offers, Is.Zero, "a Simulate module configures only eth_simulateV1 environments");
+            Assert.That(runner.Offers, Is.Zero, "a module applies only to the query kinds it names");
         }
     }
 }

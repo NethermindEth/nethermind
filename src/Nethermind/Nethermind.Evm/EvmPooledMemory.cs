@@ -484,7 +484,10 @@ public partial struct EvmPooledMemory
     /// Returns the 32 bytes at <paramref name="offset"/> when they lie inside both the active and the initialized memory,
     /// or a null reference when they do not.
     /// </summary>
-    /// <param name="offset">The start of the word, below 2^32.</param>
+    /// <param name="offset">
+    /// The start of the word, which the caller must keep at most <see cref="uint.MaxValue"/>: the bound is asserted only
+    /// in debug builds, and a larger offset wraps the bounds check and reaches outside the memory.
+    /// </param>
     /// <remarks>
     /// A word there needs no expansion gas and no initialization, so reading it in place is the whole access.
     /// The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
@@ -503,7 +506,10 @@ public partial struct EvmPooledMemory
     /// The expansion gas an overwrite of the 32 bytes at <paramref name="offset"/> needs when they need no clearing and
     /// no new backing, or <see cref="ulong.MaxValue"/>, which no gas covers, when they do.
     /// </summary>
-    /// <param name="offset">The start of the word, below 2^32.</param>
+    /// <param name="offset">
+    /// The start of the word, which the caller must keep at most <see cref="uint.MaxValue"/>: the bound is asserted only
+    /// in debug builds, and a larger offset wraps the bounds check and reaches outside the memory.
+    /// </param>
     /// <remarks>
     /// A word that starts inside the initialized memory leaves no gap to clear below it, so it may extend the
     /// initialized memory up to the backing's capacity, as <see cref="StoreWordAfterGas"/> lets it. Nothing changes;
@@ -527,7 +533,9 @@ public partial struct EvmPooledMemory
     /// <summary>
     /// Makes the 32 bytes at <paramref name="offset"/> active and initialized, and returns them to be overwritten.
     /// </summary>
-    /// <param name="offset">The start of the word, whose <see cref="GetWordOverwriteCost"/> has been charged.</param>
+    /// <param name="offset">
+    /// The start of the word, at most <see cref="uint.MaxValue"/>, whose <see cref="GetWordOverwriteCost"/> has been charged.
+    /// </param>
     /// <remarks>
     /// The caller must write all 32 bytes. The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
     /// </remarks>

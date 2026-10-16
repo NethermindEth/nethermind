@@ -26,13 +26,14 @@ public enum OpcodeFlow : byte
 [Experimental("NMEVM0001")]
 public sealed class OpcodeBody
 {
-    internal static readonly OpcodeBody Unrecorded = new(null, OpcodeFlow.Unrecorded, isDefined: false, hasCheckedBody: false, usesVm: false,
+    internal static readonly OpcodeBody Unrecorded = new(null, 0, OpcodeFlow.Unrecorded, isDefined: false, hasCheckedBody: false, usesVm: false,
         chargesFixedGas: false, mayJump: false, hasUntracedFastPath: false, stackInputs: 0, stackGrowth: 0, fixedGas: 0);
 
-    internal OpcodeBody(Type? bodyType, OpcodeFlow flow, bool isDefined, bool hasCheckedBody, bool usesVm, bool chargesFixedGas, bool mayJump,
+    internal OpcodeBody(Type? bodyType, nint execute, OpcodeFlow flow, bool isDefined, bool hasCheckedBody, bool usesVm, bool chargesFixedGas, bool mayJump,
         bool hasUntracedFastPath, int stackInputs, int stackGrowth, ulong fixedGas)
     {
         BodyType = bodyType;
+        Execute = execute;
         Flow = flow;
         IsDefined = isDefined;
         HasCheckedBody = hasCheckedBody;
@@ -47,12 +48,24 @@ public sealed class OpcodeBody
 
     /// <summary>The body's type; null for JUMPI, which its handler runs, and for unrecorded entries.</summary>
     /// <remarks>
-    /// Its public static <c>Execute(ref EvmStack, ref TGasPolicy, VirtualMachine&lt;TGasPolicy&gt;, ref nint)</c>
-    /// receives the program counter past the opcode byte. It may leave the counter past instructions it fuses with,
-    /// so a caller continues from the counter it leaves.
+    /// The type is not public: it identifies the body, for comparisons, cache keys and logs. Call the body through
+    /// <see cref="Execute"/>.
     /// </remarks>
     public Type? BodyType { get; }
 
+    /// <summary>
+    /// The address of the body's Execute, a
+    /// <c>delegate*&lt;ref EvmStack, ref TGasPolicy, VirtualMachine&lt;TGasPolicy&gt;, ref nint, EvmExceptionType&gt;</c>
+    /// for the gas policy of the machine whose table the set describes; 0 where <see cref="BodyType"/> is null.
+    /// </summary>
+    /// <remarks>
+    /// It receives the program counter past the opcode byte. It may leave the counter past instructions it fuses with,
+    /// so a caller continues from the counter it leaves. A checked body (<see cref="HasCheckedBody"/>) runs only after
+    /// the caller has made its checks; an unchecked one makes its own.
+    /// </remarks>
+    public nint Execute { get; }
+
+    /// <summary>How the frame continues once the body has run.</summary>
     public OpcodeFlow Flow { get; }
 
     /// <summary>False for the bad-instruction body undefined opcodes run.</summary>
@@ -102,7 +115,10 @@ public sealed class OpcodeBodySet
     /// <summary>256 entries, indexed by opcode.</summary>
     public IReadOnlyList<OpcodeBody> Bodies { get; }
 
-    /// <summary>Whether EIP-7979 subroutines are enabled.</summary>
+    /// <summary>
+    /// Whether the table follows EIP-7979 call destinations (subroutines), which change how PUSH and the jumps run;
+    /// mirrors <see cref="Nethermind.Core.Specs.IReleaseSpec.IsEip7979Enabled"/>.
+    /// </summary>
     public bool UsesCallDestinations { get; }
 
     /// <summary>Unique within the process; for logs and cache keys.</summary>

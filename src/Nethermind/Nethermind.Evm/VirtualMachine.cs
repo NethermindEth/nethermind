@@ -29,6 +29,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
+[method: Experimental("NMEVM0001")]
 public sealed class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
@@ -165,6 +166,7 @@ internal struct ReturnDataScratch
     internal int GetLength(byte[] output) => ReferenceEquals(output, _staged) ? _stagedLength : output.Length;
 }
 
+[method: Experimental("NMEVM0001")]
 public partial class VirtualMachine<TGasPolicy>(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
@@ -1941,6 +1943,7 @@ public partial class VirtualMachine<TGasPolicy>(
 /// <summary>
 /// Non-generic VirtualMachine for backward compatibility with EthereumGasPolicy.
 /// </summary>
+[method: Experimental("NMEVM0001")]
 public sealed class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,

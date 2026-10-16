@@ -12,9 +12,11 @@ namespace Nethermind.Evm;
 /// <remarks>
 /// <para>
 /// A machine constructed with a runner offers it every frame it runs without an instruction tracer: on entry and on
-/// every resume after a child frame. In a cancelable run the machine has polled cancellation immediately before every
-/// offer, so <see cref="Run"/> must not poll before its first opcode; it polls with <c>PollCancellation</c> at taken
-/// jumps, once <c>CancellationPollInterval</c> opcodes have run since the offer, as the dispatch loop does.
+/// every resume after a child frame, whenever the program counter is inside the code. A frame resumed at the end of
+/// its code stops without an offer, as the dispatch loop stops it. In a cancelable run the machine has polled
+/// cancellation immediately before every offer, so <see cref="Run"/> must not poll before its first opcode; it polls
+/// with <see cref="PollCancellation"/> at taken jumps, once <see cref="CancellationPollInterval"/> opcodes have run
+/// since the offer, as the dispatch loop does.
 /// </para>
 /// <para>
 /// <see cref="Run"/> returns either what the dispatch loop would have returned for the rest of the frame, with the
@@ -24,7 +26,7 @@ namespace Nethermind.Evm;
 /// interpreter holds before the instruction at the program counter, from where the loop runs the frame.
 /// </para>
 /// <para>
-/// <see cref="Run"/> may throw only what opcode bodies and <c>PollCancellation</c> throw. One instance serves many
+/// <see cref="Run"/> may throw only what opcode bodies and <see cref="PollCancellation"/> throw. One instance serves many
 /// machines and threads.
 /// </para>
 /// </remarks>

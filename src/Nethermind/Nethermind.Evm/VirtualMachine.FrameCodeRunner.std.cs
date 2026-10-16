@@ -46,6 +46,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ref nint programCounter)
         where TCancelable : struct, IFlag
     {
+        // A frame resumed at the end of its code stops in the loop's entry check, which took no poll, so it is not offered.
+        if ((nuint)programCounter >= (nuint)stack.CodeLength)
+            return RunDispatchLoop<OffFlag, TCancelable>(ref stack, ref gas, ref programCounter);
+
         FrameCodeRunner<TGasPolicy> runner = _frameCodeRunner!;
         CodeInfo codeInfo = VmState.Env.CodeInfo;
         EvmExceptionType result = runner.Run(this, codeInfo, _frameCodeBodies ??= GetOpcodeBodySet(Spec), ref stack, ref gas,
@@ -114,7 +118,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void RecordJumpIf(nint handler) => _bodyRecorder?.TryAdd(handler, _jumpIfBody);
 
-    private static readonly OpcodeBody _jumpIfBody = new(null, OpcodeFlow.ConditionalJump, isDefined: true, hasCheckedBody: false, usesVm: true,
+    private static readonly OpcodeBody _jumpIfBody = new(null, 0, OpcodeFlow.ConditionalJump, isDefined: true, hasCheckedBody: false, usesVm: true,
         chargesFixedGas: true, mayJump: true, hasUntracedFastPath: false, stackInputs: 2, stackGrowth: -2, fixedGas: JumpIGasCost.GasCost);
 
     /// <summary>A body's own static declarations, read once per body type and flow.</summary>
@@ -123,7 +127,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static readonly OpcodeBody Continuing = Describe(OpcodeFlow.Continues);
         public static readonly OpcodeBody Terminating = Describe(OpcodeFlow.Terminates);
 
-        private static OpcodeBody Describe(OpcodeFlow flow) => new(typeof(TOpcode), flow, typeof(TOpcode) != typeof(BadInstructionOpcode),
+        private static OpcodeBody Describe(OpcodeFlow flow) => new(typeof(TOpcode),
+            (nint)(delegate*<ref EvmStack, ref TGasPolicy, VirtualMachine<TGasPolicy>, ref nint, EvmExceptionType>)&TOpcode.Execute, flow, typeof(TOpcode) != typeof(BadInstructionOpcode),
             TOpcode.HasCheckedBody, TOpcode.UsesVm, TOpcode.ChargesFixedGas, TOpcode.MayJump, TOpcode.HasUntracedFastPath,
             TOpcode.StackInputs, TOpcode.StackGrowth, TOpcode.HasCheckedBody ? MeasureFixedGas() : 0);
 

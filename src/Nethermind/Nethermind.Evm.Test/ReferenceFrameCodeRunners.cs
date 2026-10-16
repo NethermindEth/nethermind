@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
@@ -53,11 +52,8 @@ public sealed class CountingRunner : FrameCodeRunner<EthereumGasPolicy>
 /// It stops before anything it would have to model further: an entry that is not a checked, continuing body, a
 /// check the interpreter would fail, or the end of the code. A hand-back must leave exactly the interpreter's state.
 /// </remarks>
-public sealed class CheckedSteppingRunner(int steps) : FrameCodeRunner<EthereumGasPolicy>
+public sealed unsafe class CheckedSteppingRunner(int steps) : FrameCodeRunner<EthereumGasPolicy>
 {
-    private delegate EvmExceptionType Execute(ref EvmStack stack, ref EthereumGasPolicy gas, VirtualMachine<EthereumGasPolicy> vm, ref nint programCounter);
-
-    private static readonly ConcurrentDictionary<Type, Execute> _bodies = new();
     private long _stepped;
 
     /// <summary>The opcodes this runner ran itself.</summary>
@@ -79,14 +75,91 @@ public sealed class CheckedSteppingRunner(int steps) : FrameCodeRunner<EthereumG
 
             gas.Value -= body.FixedGas;
             nint next = programCounter + 1;
-            _bodies.GetOrAdd(body.BodyType!, static type => type
-                .GetMethod("Execute", BindingFlags.Public | BindingFlags.Static)!
-                .CreateDelegate<Execute>())(ref stack, ref gas, vm, ref next);
+            Execute(body)(ref stack, ref gas, vm, ref next);
             programCounter = next;
             vm.OpCodeCount++;
             Interlocked.Increment(ref _stepped);
         }
 
+        return Declined;
+    }
+
+    private static delegate*<ref EvmStack, ref EthereumGasPolicy, VirtualMachine<EthereumGasPolicy>, ref nint, EvmExceptionType> Execute(OpcodeBody body) =>
+        (delegate*<ref EvmStack, ref EthereumGasPolicy, VirtualMachine<EthereumGasPolicy>, ref nint, EvmExceptionType>)body.Execute;
+}
+
+/// <summary>
+/// Runs the frame itself from each offer while it meets only checked straight-line bodies and the unchecked bodies that
+/// end the frame, returning the frame's own result when it reaches one of those; declines at anything else.
+/// </summary>
+public sealed unsafe class FinishingRunner : FrameCodeRunner<EthereumGasPolicy>
+{
+    private int _finished;
+
+    /// <summary>The frames this runner ran to their end.</summary>
+    public int Finished => _finished;
+
+    protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+    {
+        ReadOnlySpan<byte> code = codeInfo.CodeSpan;
+        while ((nuint)programCounter < (nuint)code.Length)
+        {
+            OpcodeBody body = bodies.Bodies[code[(int)programCounter]];
+            nint next = programCounter + 1;
+            if (body.Flow == OpcodeFlow.Terminates && !body.HasCheckedBody && body.Execute != 0)
+            {
+                EvmExceptionType result = Execute(body)(ref stack, ref gas, vm, ref next);
+                programCounter = next;
+                vm.AddOpCodes(1);
+                Interlocked.Increment(ref _finished);
+                return result;
+            }
+
+            if (!body.HasCheckedBody || body.Flow != OpcodeFlow.Continues || body.MayJump || body.FixedGas == ulong.MaxValue ||
+                gas.Value < body.FixedGas || stack.Head < body.StackInputs ||
+                (body.StackGrowth > 0 && stack.Head + body.StackGrowth >= EvmStack.MaxStackSize))
+            {
+                break;
+            }
+
+            gas.Value -= body.FixedGas;
+            Execute(body)(ref stack, ref gas, vm, ref next);
+            programCounter = next;
+            vm.AddOpCodes(1);
+        }
+
+        return Declined;
+    }
+
+    private static delegate*<ref EvmStack, ref EthereumGasPolicy, VirtualMachine<EthereumGasPolicy>, ref nint, EvmExceptionType> Execute(OpcodeBody body) =>
+        (delegate*<ref EvmStack, ref EthereumGasPolicy, VirtualMachine<EthereumGasPolicy>, ref nint, EvmExceptionType>)body.Execute;
+}
+
+/// <summary>Polls cancellation through the runner API on every cancelable offer, then declines.</summary>
+public sealed class PollingRunner : FrameCodeRunner<EthereumGasPolicy>
+{
+    protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+    {
+        if ((flags & FrameRunFlags.Cancelable) != 0)
+            PollCancellation(vm);
+        return Declined;
+    }
+}
+
+/// <summary>Keeps one marker object per code in the runner's per-code slot, recording what each offer found there.</summary>
+public sealed class CodeStateRunner : FrameCodeRunner<EthereumGasPolicy>
+{
+    public readonly List<(CodeInfo Code, object? Found, object Kept)> Seen = [];
+
+    protected internal override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, FrameRunFlags flags)
+    {
+        ref object? slot = ref CodeState(codeInfo);
+        object? found = Volatile.Read(ref slot);
+        object kept = found ?? Interlocked.CompareExchange(ref slot, new object(), null) ?? Volatile.Read(ref slot)!;
+        Seen.Add((codeInfo, found, kept));
         return Declined;
     }
 }

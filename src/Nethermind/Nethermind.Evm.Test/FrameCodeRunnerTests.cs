@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
@@ -15,6 +16,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -27,6 +29,9 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
 {
     private readonly SwitchingRunner _runner = new();
 
+    /// <summary>A machine constructed without a runner, for the baselines that must match master's behaviour.</summary>
+    private EthereumVirtualMachine _bare = null!;
+
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
     protected override FrameCodeRunner<EthereumGasPolicy> CreateFrameCodeRunner() => _runner;
@@ -35,6 +40,13 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
     {
         _runner.Inner = null;
         base.Setup();
+        _bare = new EthereumVirtualMachine(new TestBlockhashProvider(SpecProvider), SpecProvider, LimboLogs.Instance);
+    }
+
+    public override void TearDown()
+    {
+        _bare?.Dispose();
+        base.TearDown();
     }
 
     /// <summary>Results and receipts without instruction tracing; optionally cancelable, counting the machine's polls.</summary>
@@ -51,30 +63,40 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
         bool ITxTracer.IsCancelled => ++PollCount >= cancelAtPoll;
     }
 
-    /// <summary>Traces instructions whatever the suite's untraced switch says.</summary>
-    private sealed class InstructionTracer : TestAllTracerWithOutput
-    {
-        public override bool IsTracingInstructions => true;
-    }
-
     private readonly record struct Outcome(EvmExceptionType Exception, bool Revert, ulong GasLeft, string Output, int OpCodes, int Polls);
 
     /// <summary>Runs <paramref name="code"/> as a top-level frame on the fixture's machine and undoes its state changes.</summary>
-    private Outcome Run(byte[] code, bool cancelable = false, ulong gas = 1_000_000, byte[]? input = null)
+    private Outcome Run(byte[] code, bool cancelable = false, ulong gas = 1_000_000, byte[]? input = null, bool bare = false) =>
+        Run(code, new UntracedTracer(cancelable), gas, input, bare);
+
+    /// <summary>Runs <paramref name="code"/> on a tracer that cancels at its <paramref name="cancelAtPoll"/>th poll, returning the polls taken.</summary>
+    private int RunCancelled(byte[] code, int cancelAtPoll, bool bare = false)
     {
+        UntracedTracer tracer = new(cancelable: true, cancelAtPoll);
+        Assert.Throws<OperationCanceledException>(() => Run(code, tracer, 200_000, null, bare));
+        return tracer.PollCount;
+    }
+
+    private Outcome Run(byte[] code, UntracedTracer tracer, ulong gas, byte[]? input, bool bare)
+    {
+        EthereumVirtualMachine machine = bare ? _bare : Machine;
         if (!TestState.AccountExists(Recipient)) TestState.CreateAccount(Recipient, UInt256.Zero);
-        UntracedTracer tracer = new(cancelable);
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(new CodeInfo(code), Recipient, Sender, Recipient, 0, UInt256.Zero, input ?? ReadOnlyMemory<byte>.Empty);
         using StackAccessTracker accessTracker = new();
         Snapshot snapshot = TestState.TakeSnapshot();
         using VmState<EthereumGasPolicy> state = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, environment, in accessTracker, in snapshot);
-        Machine.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.WithNumber(BlockNumber).WithTimestamp(Timestamp).TestObject, Spec));
-        Machine.SetTxExecutionContext(new TxExecutionContext(Sender, CodeInfoRepository, null, UInt256.Zero));
-        TransactionSubstate result = Machine.ExecuteTransaction<OffFlag>(state, TestState, tracer);
-        Outcome outcome = new(result.EvmExceptionType, result.ShouldRevert, state.Gas.Value, result.Output.ToArray().ToHexString(), Machine.OpCodeCount, tracer.PollCount);
-        TestState.Restore(snapshot);
-        return outcome;
+        machine.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.WithNumber(BlockNumber).WithTimestamp(Timestamp).TestObject, Spec));
+        machine.SetTxExecutionContext(new TxExecutionContext(Sender, CodeInfoRepository, null, UInt256.Zero));
+        try
+        {
+            TransactionSubstate result = machine.ExecuteTransaction<OffFlag>(state, TestState, tracer);
+            return new(result.EvmExceptionType, result.ShouldRevert, state.Gas.Value, result.Output.ToArray().ToHexString(), machine.OpCodeCount, tracer.PollCount);
+        }
+        finally
+        {
+            TestState.Restore(snapshot);
+        }
     }
 
     private const string CalleeCode = "60006000f3"; // PUSH1 0 PUSH1 0 RETURN
@@ -137,7 +159,7 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
         CountingRunner counting = new();
         _runner.Inner = counting;
 
-        Execute(new InstructionTracer(), CallerCode(DeployCallee()));
+        Execute(new TestAllTracerWithOutput(), CallerCode(DeployCallee()));
 
         Assert.That(counting.Offers, Is.Empty, "an instruction tracer must see every opcode run on the interpreter");
     }
@@ -166,7 +188,7 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
     {
         byte[] code = CallerCode(DeployCallee());
         byte[] input = [1, 2, 3];
-        Outcome interpreted = Run(code, input: input);
+        Outcome interpreted = Run(code, input: input, bare: true);
         AccessorRunner accessor = new(addedOpCodes: 5);
         _runner.Inner = accessor;
 
@@ -205,7 +227,7 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
     public void A_stepping_runner_hands_back_exactly([ValueSource(nameof(Programs))] string program, [Values(1, 3, 17)] int steps)
     {
         byte[] code = Bytes.FromHexString(program);
-        Outcome interpreted = Run(code);
+        Outcome interpreted = Run(code, bare: true);
         CheckedSteppingRunner stepping = new(steps);
         _runner.Inner = stepping;
 
@@ -218,7 +240,7 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
     public void A_stepping_runner_also_runs_called_frames_exactly([Values(1, 3, 17)] int steps)
     {
         byte[] code = CallerCode(DeployCallee());
-        Outcome interpreted = Run(code);
+        Outcome interpreted = Run(code, bare: true);
         _runner.Inner = new CheckedSteppingRunner(steps);
 
         Assert.That(Run(code), Is.EqualTo(interpreted));
@@ -235,7 +257,7 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
     public void Polls_as_often_with_a_runner_as_without([ValueSource(nameof(Loops))] string loop, [Values(1, 3, 17)] int steps)
     {
         byte[] code = Bytes.FromHexString(loop);
-        Outcome interpreted = Run(code, cancelable: true, gas: 200_000);
+        Outcome interpreted = Run(code, cancelable: true, gas: 200_000, bare: true);
         _runner.Inner = new CheckedSteppingRunner(steps);
 
         Outcome stepped = Run(code, cancelable: true, gas: 200_000);
@@ -244,6 +266,116 @@ public class FrameCodeRunnerTests : VirtualMachineTestsBase
         {
             Assert.That(interpreted.Polls, Is.GreaterThan(1), "precondition: the loop passes the poll interval");
             Assert.That(stepped, Is.EqualTo(interpreted), "the same polls, gas and opcode count whoever ran the frame");
+        }
+    }
+
+    [Test]
+    public void Does_not_offer_a_frame_resumed_at_the_end_of_its_code([Values(false, true)] bool cancelable)
+    {
+        byte[] withStop = CallerCode(DeployCallee());
+        byte[] code = withStop[..^1]; // CALL is the last byte: the caller resumes at the end of its code.
+        Outcome interpreted = Run(code, cancelable, bare: true);
+        CountingRunner counting = new();
+        _runner.Inner = counting;
+
+        Outcome outcome = Run(code, cancelable);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counting.Offers.Select(static o => o.ProgramCounter), Is.EqualTo(new nint[] { 0, 0 }), "the caller's and the callee's entries only");
+            Assert.That(outcome, Is.EqualTo(interpreted));
+        }
+    }
+
+    [Test]
+    public void Cancels_as_without_a_runner([ValueSource(nameof(Loops))] string loop, [Values(1, 2, 3)] int cancelAtPoll, [Values(0, 1, 3, 17)] int steps)
+    {
+        byte[] code = Bytes.FromHexString(loop);
+        int interpreted = RunCancelled(code, cancelAtPoll, bare: true);
+        if (steps > 0)
+            _runner.Inner = new CheckedSteppingRunner(steps);
+
+        int run = RunCancelled(code, cancelAtPoll);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(interpreted, Is.EqualTo(cancelAtPoll), "precondition: the run stops at the poll that sees the cancellation");
+            Assert.That(run, Is.EqualTo(interpreted), "the same poll stops the run whoever ran the frame");
+        }
+    }
+
+    [Test]
+    public void A_runner_poll_throws_the_loop_exception()
+    {
+        _runner.Inner = new PollingRunner();
+
+        // Poll 1 is the machine's own before the offer; poll 2 is the runner's.
+        int polls = RunCancelled(Bytes.FromHexString(Loops[0]), cancelAtPoll: 2);
+
+        Assert.That(polls, Is.EqualTo(2));
+    }
+
+    private static readonly string[] Finishable =
+    [
+        // Arithmetic, then STOP.
+        "600160020100",
+        // RETURN of nothing.
+        "60006000f3",
+        // Arithmetic, then REVERT of nothing.
+        "6001600201" + "60006000fd",
+        // An undefined opcode after arithmetic: its bad-instruction body ends the frame with a fault, which the runner returns.
+        "6001600201" + "0c",
+    ];
+
+    [Test]
+    public void A_runner_that_finishes_frames_returns_the_interpreter_result([ValueSource(nameof(Finishable))] string program)
+    {
+        byte[] code = Bytes.FromHexString(program);
+        Outcome interpreted = Run(code, bare: true);
+        FinishingRunner finishing = new();
+        _runner.Inner = finishing;
+
+        Outcome finished = Run(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finishing.Finished, Is.EqualTo(1), "the runner returned the frame's result itself");
+            Assert.That(finished, Is.EqualTo(interpreted));
+        }
+    }
+
+    [Test]
+    public void A_runner_finishes_called_and_resumed_frames_exactly()
+    {
+        byte[] code = CallerCode(DeployCallee());
+        Outcome interpreted = Run(code, bare: true);
+        FinishingRunner finishing = new();
+        _runner.Inner = finishing;
+
+        Outcome finished = Run(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finishing.Finished, Is.EqualTo(2), "the callee's RETURN and the caller's STOP after resuming");
+            Assert.That(finished, Is.EqualTo(interpreted));
+        }
+    }
+
+    [Test]
+    public void Keeps_runner_state_per_code_across_offers()
+    {
+        CodeStateRunner codeState = new();
+        _runner.Inner = codeState;
+
+        Run(CallerCode(DeployCallee()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeState.Seen.Count, Is.EqualTo(3), "the caller's entry, the callee's entry, and the caller's resume");
+            Assert.That(codeState.Seen[0].Found, Is.Null, "a new code starts with an empty slot");
+            Assert.That(codeState.Seen[2].Code, Is.SameAs(codeState.Seen[0].Code), "precondition: the resume runs the caller's code");
+            Assert.That(codeState.Seen[2].Found, Is.SameAs(codeState.Seen[0].Kept), "the caller's resume finds what its entry kept");
+            Assert.That(codeState.Seen[1].Kept, Is.Not.SameAs(codeState.Seen[0].Kept), "the callee's code has a slot of its own");
         }
     }
 }

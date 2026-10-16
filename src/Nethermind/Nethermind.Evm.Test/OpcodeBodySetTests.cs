@@ -48,6 +48,19 @@ public class OpcodeBodySetTests
     }
 
     [TestCaseSource(nameof(Forks))]
+    public void Gives_every_body_an_entry_point(IReleaseSpec spec)
+    {
+        OpcodeBodySet set = Of(spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(set.Bodies.Where(static body => body.BodyType is not null).Select(static body => body.Execute), Is.All.Not.EqualTo((nint)0),
+                "a body with a type is callable through its entry point");
+            Assert.That(set.Bodies[(int)Instruction.JUMPI].Execute, Is.EqualTo((nint)0), "JUMPI is run by its handler, not a body");
+        }
+    }
+
+    [TestCaseSource(nameof(Forks))]
     public void Describes_jumpi_and_add_as_dispatch_charges_them(IReleaseSpec spec)
     {
         OpcodeBodySet set = Of(spec);

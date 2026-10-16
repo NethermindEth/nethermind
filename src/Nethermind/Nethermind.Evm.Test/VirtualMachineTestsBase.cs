@@ -71,14 +71,8 @@ public abstract class VirtualMachineTestsBase
 
     protected virtual ILogManager GetLogManager() => LimboLogs.Instance;
 
-    /// <summary>Makes the frame code runner every test machine is constructed with, for running the suite on one.</summary>
-    /// <remarks>Set before any test runs, e.g. from a startup hook; a fixture that needs its own overrides <see cref="CreateFrameCodeRunner"/>.</remarks>
-    public static Func<FrameCodeRunner<EthereumGasPolicy>?>? FrameCodeRunnerFactory { get; set; }
-
-    /// <summary>The frame code runner this fixture's machine is constructed with.</summary>
-    protected virtual FrameCodeRunner<EthereumGasPolicy>? CreateFrameCodeRunner() => FrameCodeRunnerFactory?.Invoke();
-
-    protected IBlockhashProvider BlockhashProvider { get; private set; }
+    /// <summary>The frame code runner this fixture's machine is constructed with; none by default.</summary>
+    protected virtual FrameCodeRunner<EthereumGasPolicy>? CreateFrameCodeRunner() => null;
 
     [SetUp]
     public virtual void Setup()
@@ -91,7 +85,6 @@ public abstract class VirtualMachineTestsBase
         _worldStateCloser = TestState.BeginScope(IWorldState.PreGenesis);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        BlockhashProvider = blockhashProvider;
         CodeInfoRepository = new EthereumCodeInfoRepository(TestState);
         Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager, CreateFrameCodeRunner());
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, logManager);

@@ -3,12 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Autofac.Core;
 
 namespace Nethermind.Core.Container;
 
 /// <summary>The kinds of read-only query an environment serves.</summary>
+[Experimental("NMEVM0001")]
 [Flags]
 public enum ReadOnlyQueryKind
 {
@@ -18,24 +20,27 @@ public enum ReadOnlyQueryKind
     /// user of the shared read-only transaction processor source.
     /// </summary>
     Call = 1,
-    /// <summary>eth_simulateV1. Reserved: no environment loads these modules yet.</summary>
-    Simulate = 2,
-    /// <summary>debug_* and trace_* re-execution. Reserved: no environment loads these modules yet.</summary>
-    Trace = 4,
-    All = Call | Simulate | Trace,
 }
 
-/// <summary>
-/// Marker for modules that configure only the environments serving read-only queries, whose results never feed block
-/// processing. Never applied to main processing, block production, prewarming, validation or sync.
-/// </summary>
-/// <remarks>Register the module itself in the root container as an <see cref="IReadOnlyQueryModule"/>.</remarks>
+/// <summary>Marker for modules that configure only the environments serving read-only queries.</summary>
+/// <remarks>
+/// <para>Register the module itself in the root container as an <see cref="IReadOnlyQueryModule"/>.</para>
+/// <para>
+/// The modules are never applied to main block processing, prewarming, validation or sync. A
+/// <see cref="ReadOnlyQueryKind.Call"/> module configures every environment of the shared read-only transaction
+/// processor source, though, and other users also run calls there whose results they act on: Taiko builds its transaction
+/// lists there, Shutter reads its eon keys and validator registry there, and the Flashbots rbuilder module serves its
+/// calls there. A module must therefore leave every result exactly as it would be without it.
+/// </para>
+/// </remarks>
+[Experimental("NMEVM0001")]
 public interface IReadOnlyQueryModule : IModule
 {
     /// <summary>The query environments the module configures.</summary>
-    ReadOnlyQueryKind AppliesTo => ReadOnlyQueryKind.All;
+    ReadOnlyQueryKind AppliesTo => ReadOnlyQueryKind.Call;
 }
 
+[Experimental("NMEVM0001")]
 public static class ReadOnlyQueryModuleExtensions
 {
     /// <summary>Registers the modules among <paramref name="modules"/> that apply to <paramref name="kind"/>.</summary>
