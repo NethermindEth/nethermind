@@ -567,10 +567,17 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     {
         if (_availability.TryGetWatermark(out ulong watermark))
         {
-            throw new InvalidOperationException(
-                $"Cannot start the unwindowed flat history at the sync pivot {pivotBlock}: the flatHistory database already " +
-                $"holds history up to block {watermark}, whose rows resolve through state the snap sync replaced. Resync the " +
-                "flatHistory database.");
+            if (watermark > 0 || _availability.TryGetGlobalFloor(out _))
+            {
+                throw new InvalidOperationException(
+                    $"Cannot start the unwindowed flat history at the sync pivot {pivotBlock}: the flatHistory database already " +
+                    $"holds history up to block {watermark}, whose rows resolve through state the snap sync replaced. Resync the " +
+                    "flatHistory database.");
+            }
+
+            // A fresh node executes genesis before it syncs, and that capture would read through below the image: a
+            // genesis key gone by the pivot would resurface. Only genesis can be here, so drop it all.
+            DiscardGenesisCapture();
         }
 
         if (accounts is null)
@@ -628,6 +635,21 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         if (_logger.IsInfo) _logger.Info(
             $"Unwindowed flat history starts at the sync pivot {pivotBlock}: {accountRows:N0} accounts and {slotRows:N0} storage slots written in {System.Diagnostics.Stopwatch.GetElapsedTime(startedAt)}.");
+    }
+
+    private void DiscardGenesisCapture()
+    {
+        _commitments?.DiscardForPivot();
+        foreach (FlatHistoryColumns column in (FlatHistoryColumns[])[FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears, FlatHistoryColumns.AvailableBlocks])
+        {
+            IDb db = _history.GetColumnDb(column);
+            using IWriteBatch batch = db.StartWriteBatch();
+            foreach (byte[] key in db.GetAllKeys()) batch.Remove(key);
+        }
+
+        _history.SyncWal();
+        _formatStamped = false;
+        if (_logger.IsInfo) _logger.Info("Dropped the genesis history captured before the snap sync; history restarts at the pivot.");
     }
 
     /// <summary>History storage rows key exactly like the flat storage column and encode slots the same way, so the

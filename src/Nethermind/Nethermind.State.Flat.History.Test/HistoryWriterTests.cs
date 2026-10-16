@@ -1179,12 +1179,31 @@ public class HistoryWriterTests
     }
 
     [Test]
-    public void SeedPivot_OnAnUnwindowedWriter_WithHistoryAlreadyCaptured_Throws()
+    public void SeedPivot_OnAnUnwindowedWriter_WithHistoryPastGenesis_Throws()
     {
         SeedGenesisFloor();
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
         Assert.That(() => _writer.SeedPivot(100, StateAt(100).StateRoot, new ListAccountSource()),
             Throws.InvalidOperationException.With.Message.Contains("already holds history"));
+    }
+
+    [Test]
+    public void SeedPivot_OnAnUnwindowedWriter_DropsTheGenesisCapturedBeforeTheSync()
+    {
+        // Genesis knew AddrB; by the pivot it is gone, so the image has no row for it.
+        _writer.SeedGenesis([new(AddrB, new Account(0, 42))], StateAt(0).StateRoot);
+
+        _writer.SeedPivot(100, StateAt(100).StateRoot, new ListAccountSource((AddrA, new Account(5, 500))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.TryGetAccount(100, AddrB, out _), Is.False, "a genesis row must not read through below the pivot image");
+            Assert.That(_reader.TryGetAccount(100, AddrA, out AccountStruct a) && a.Balance == 500, Is.True);
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(100UL));
+            Assert.That(_reader.IsPrunedBelowFloor(0), Is.True);
+        }
     }
 
     private sealed class ListAccountSource(params (Address Address, Account Account)[] accounts) : IPivotAccountSource
