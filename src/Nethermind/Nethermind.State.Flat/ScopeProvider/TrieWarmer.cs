@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -57,7 +58,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount * 3 / 4, 1)
+            ? Environment.ProcessorCount * 2
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
@@ -105,6 +106,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         private void Run()
         {
+            _owner.LowerPriority();
             while (true)
             {
                 _wake.Wait();
@@ -113,6 +115,33 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             }
         }
     }
+
+    // The walks mostly wait on the database, so more threads than cores overlap the reads, and a raised nice value
+    // keeps them from taking cores from block execution and the prewarmer.
+    private void LowerPriority()
+    {
+        try
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                // Linux keeps the nice value per thread, and who 0 is the calling thread.
+                if (setpriority(PrioProcess, 0, WarmerNice) != 0 && _logger.IsWarn) _logger.Warn($"Could not raise the trie warmer thread nice value (errno {Marshal.GetLastPInvokeError()}), so it runs at normal priority.");
+                return;
+            }
+
+            Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not lower the trie warmer thread priority, so it runs at normal priority: {e.Message}");
+        }
+    }
+
+    private const int PrioProcess = 0;
+    private const int WarmerNice = 10;
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int setpriority(int which, int who, int prio);
 
     private bool HasReadyWork() => _slotJobBuffer.HasReadyItem || _jobBufferMultiThreaded.HasReadyItem;
 
