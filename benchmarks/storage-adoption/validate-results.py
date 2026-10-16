@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 root=Path(sys.argv[1])
 kind=sys.argv[2]
-expected=({f"State={state}&ScopeSize={scope}" for state in ("active","deleted95","compacted95","deleted-gap") for scope in (1,24,256)} if kind=="history" else {f"Count={count}&HitPercent={hit}" for count in (1,2,16,64) for hit in (0,50,100)})
+expected=({f"State={state}&ScopeSize={scope}" for state in ("active","deleted95","compacted95","deleted-gap") for scope in (1,24,256)} if kind=="history" else {f"Count={count}&HitPercent={hit}&DataState={state}" for count in (1,2,16,64) for hit in (0,50,100) for state in ("active","deleted")})
 reports=list((root/"results").glob("*-report-full-compressed.json"))
 if len(reports)!=1: raise SystemExit("Expected exactly one report")
 rows=json.loads(reports[0].read_text())["Benchmarks"]

@@ -47,7 +47,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, ubuntu-26.04-arm]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 150
+    timeout-minutes: 240
     env:
       AA_CONTROLS: ${{ inputs.aa_controls && '1' || '0' }}
       COMPONENTS: ${{ inputs.components || 'both' }}

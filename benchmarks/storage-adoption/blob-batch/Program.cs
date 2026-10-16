@@ -45,12 +45,15 @@ public class BlobBatchBenchmarks
     [Params(0, 50, 100)]
     public int HitPercent { get; set; }
 
+    [Params("active", "deleted")]
+    public string DataState { get; set; } = "active";
+
     [GlobalSetup]
     public void Setup()
     {
         _root = Path.Combine(Environment.GetEnvironmentVariable("BENCH_DATA")!, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
-        DbConfig config = new();
+        DbConfig config = new() { BlobTransactionsDbAdditionalRocksDbOptions = "disable_auto_compactions=true;" };
         RocksDbConfigFactory factory = new(config, new PruningConfig(), new HardwareInfo(), LimboLogs.Instance, validateConfig: false);
         _db = new(_root, new DbSettings(DbNames.BlobTransactions, "blobs"), config, factory,
             LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>());
@@ -86,11 +89,26 @@ public class BlobBatchBenchmarks
         _results = new Transaction?[Count];
         _expected = new Transaction?[Count];
         int hits = Count * HitPercent / 100;
+        HashSet<Hash256> retained = new();
         for (int i = 0; i < Count; i++)
         {
             Transaction tx = stored[(i * 17 + 3) % Records];
-            _keys[i] = new(tx.Hash!, sender, i < hits ? tx.Timestamp : tx.Timestamp + 10000);
-            if (i < hits) _expected[i] = tx;
+            _keys[i] = new(tx.Hash!, sender, i < hits || DataState == "deleted" ? tx.Timestamp : tx.Timestamp + 10000);
+            if (i < hits)
+            {
+                _expected[i] = tx;
+                retained.Add(tx.Hash!);
+            }
+        }
+        if (DataState == "deleted")
+        {
+            if (_storage.TryGetMany(_keys, Count, _results) != Count)
+                throw new InvalidOperationException("Every deletion-case key must exist before deletion.");
+            foreach (Transaction tx in stored)
+            {
+                if (!retained.Contains(tx.Hash!)) _storage.Delete(tx.Hash!.ValueHash256, tx.Timestamp);
+            }
+            _db.Flush();
         }
         Verify();
     }
