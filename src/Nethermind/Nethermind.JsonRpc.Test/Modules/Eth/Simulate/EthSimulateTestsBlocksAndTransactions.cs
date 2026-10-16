@@ -57,7 +57,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
     [TestCase("{\"blockOverrides\":{\"Number\":\"0x80\"}," + Calls + "}", TestName = "Simulate takes a block override key in another case")]
     [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"Code\":\"0x00\"}}," + Calls + "}", TestName = "Simulate takes an account override key in another case")]
-    [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"time\":\"0xffffffff\",\"gasLimit\":\"0x1c9c380\",\"feeRecipient\":\"0xc200000000000000000000000000000000000000\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"baseFeePerGas\":\"0x0\",\"blobBaseFee\":\"0x1\"},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"nonce\":\"0x1\",\"balance\":\"0x1\",\"code\":\"0x00\",\"stateDiff\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}," + Calls + "}", TestName = "Simulate takes every supported override key")]
+    [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"time\":\"0xffffffff\",\"gasLimit\":\"0x1c9c380\",\"feeRecipient\":\"0xc200000000000000000000000000000000000000\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"baseFeePerGas\":\"0x0\",\"blobBaseFee\":\"0x1\",\"withdrawals\":[]},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"nonce\":\"0x1\",\"balance\":\"0x1\",\"code\":\"0x00\",\"stateDiff\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}},\"0xc200000000000000000000000000000000000000\":{\"state\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}},\"0x0000000000000000000000000000000000000001\":{\"movePrecompileToAddress\":\"0xc400000000000000000000000000000000000000\"}}," + Calls + "}", TestName = "Simulate takes every supported override key")]
     public async Task Simulate_takes_override_keys_it_supports(string blockStateCall)
     {
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
@@ -90,6 +90,20 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(blocks[1].GetProperty("withdrawalsRoot").GetString(), Is.EqualTo(Keccak.EmptyTreeHash.ToString()), response);
             Assert.That(blocks[1].GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo("0x" + 2_000_000_000UL.ToString("x64")), response);
         }
+    }
+
+    [TestCase("debug_simulateV1")]
+    [TestCase("trace_simulateV1")]
+    public async Task Debug_and_trace_simulate_reject_an_unknown_override_key(string method)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement payload = SimulatePayloadJson("{\"blockOverrides\":{\"bogusField\":\"0x1\"}," + Calls + "}");
+
+        string response = method == "debug_simulateV1"
+            ? await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, payload, "latest")
+            : await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, payload, "latest");
+
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
     }
 
     [Test]

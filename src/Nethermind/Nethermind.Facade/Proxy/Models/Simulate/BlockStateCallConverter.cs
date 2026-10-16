@@ -29,10 +29,12 @@ public sealed class BlockStateCallConverterFactory : JsonConverterFactory
 }
 
 /// <summary>
-/// Reads a block of <c>eth_simulateV1</c> and rejects a block or account override key that names no supported field,
-/// or two keys that name the same field, as the spec requires. Keys match fields case-insensitively. Other
-/// methods that take overrides keep ignoring unknown keys.
+/// Reads a block of a simulate request (<c>eth_simulateV1</c>, <c>debug_simulateV1</c> and <c>trace_simulateV1</c>) and
+/// rejects a block or account override key that names no supported field, or two keys that name the same field, as the
+/// spec requires. Keys match fields case-insensitively. <c>eth_call</c> and the other methods that take overrides keep
+/// ignoring unknown keys.
 /// </summary>
+/// <remarks>The keys are checked on a copy of the reader, so the block is read and deserialized in one pass.</remarks>
 public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>>
 {
     private static readonly FrozenDictionary<string, string> BlockOverrideFields = GetFields<BlockOverride>();
@@ -41,38 +43,33 @@ public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>
     public override BlockStateCall<T>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null) return null;
-
-        using JsonDocument document = JsonDocument.ParseValue(ref reader);
-        JsonElement root = document.RootElement;
-        if (root.ValueKind != JsonValueKind.Object)
+        if (reader.TokenType != JsonTokenType.StartObject)
         {
-            throw new JsonException($"Expected an object for a block state call, got {root.ValueKind}.");
+            throw new JsonException($"Expected an object for a block state call, got {reader.TokenType}.");
         }
 
         BlockStateCall<T> result = new();
-        foreach (JsonProperty property in root.EnumerateObject())
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
         {
-            JsonElement value = property.Value;
-            if (IsName(property, nameof(BlockStateCall<T>.BlockOverrides)))
+            string? name = reader.GetString();
+            reader.Read();
+            if (IsName(name, nameof(BlockStateCall<T>.BlockOverrides)))
             {
-                CheckKeys(value, BlockOverrideFields, "block override");
-                result.BlockOverrides = TypeInfoJsonSerializer.Deserialize<BlockOverride>(value, options);
+                CheckKeys(reader, BlockOverrideFields, "block override");
+                result.BlockOverrides = TypeInfoJsonSerializer.Deserialize<BlockOverride>(ref reader, options);
             }
-            else if (IsName(property, nameof(BlockStateCall<T>.StateOverrides)))
+            else if (IsName(name, nameof(BlockStateCall<T>.StateOverrides)))
             {
-                if (value.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (JsonProperty account in value.EnumerateObject())
-                    {
-                        CheckKeys(account.Value, AccountOverrideFields, $"state override for {account.Name}");
-                    }
-                }
-
-                result.StateOverrides = TypeInfoJsonSerializer.Deserialize<Dictionary<Address, AccountOverride>>(value, options);
+                CheckAccountKeys(reader);
+                result.StateOverrides = TypeInfoJsonSerializer.Deserialize<Dictionary<Address, AccountOverride>>(ref reader, options);
             }
-            else if (IsName(property, nameof(BlockStateCall<T>.Calls)))
+            else if (IsName(name, nameof(BlockStateCall<T>.Calls)))
             {
-                result.Calls = TypeInfoJsonSerializer.Deserialize<T[]>(value, options);
+                result.Calls = TypeInfoJsonSerializer.Deserialize<T[]>(ref reader, options);
+            }
+            else
+            {
+                reader.Skip();
             }
         }
 
@@ -97,28 +94,46 @@ public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>
         TypeInfoJsonSerializer.Serialize(writer, value, options);
     }
 
-    private static bool IsName(JsonProperty property, string name) =>
-        string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase);
+    private static bool IsName(string? name, string expected) =>
+        string.Equals(name, expected, StringComparison.OrdinalIgnoreCase);
 
-    private static void CheckKeys(JsonElement overrides, FrozenDictionary<string, string> fields, string what)
+    /// <summary>Checks the keys of each account of a <c>stateOverrides</c> object. Takes a copy of the reader.</summary>
+    private static void CheckAccountKeys(Utf8JsonReader reader)
     {
-        if (overrides.ValueKind != JsonValueKind.Object) return;
+        if (reader.TokenType != JsonTokenType.StartObject) return;
+
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            string? address = reader.GetString();
+            reader.Read();
+            CheckKeys(reader, AccountOverrideFields, $"state override for {address}");
+            reader.Skip();
+        }
+    }
+
+    /// <summary>Checks the keys of an override object. Takes a copy of the reader.</summary>
+    private static void CheckKeys(Utf8JsonReader reader, FrozenDictionary<string, string> fields, string what)
+    {
+        if (reader.TokenType != JsonTokenType.StartObject) return;
 
         Dictionary<string, string>? seen = null;
-        foreach (JsonProperty property in overrides.EnumerateObject())
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
         {
-            if (!fields.TryGetValue(property.Name, out string? field))
+            string key = reader.GetString()!;
+            if (!fields.TryGetValue(key, out string? field))
             {
-                throw new JsonException($"unknown field \"{property.Name}\" in {what}");
+                throw new JsonException($"unknown field \"{key}\" in {what}");
             }
 
             seen ??= new Dictionary<string, string>(StringComparer.Ordinal);
-            if (seen.TryGetValue(field, out string? previous) && !string.Equals(previous, property.Name, StringComparison.Ordinal))
+            if (seen.TryGetValue(field, out string? previous) && !string.Equals(previous, key, StringComparison.Ordinal))
             {
-                throw new JsonException($"keys \"{previous}\" and \"{property.Name}\" in {what} name the same field");
+                throw new JsonException($"keys \"{previous}\" and \"{key}\" in {what} name the same field");
             }
 
-            seen[field] = property.Name;
+            seen[field] = key;
+            reader.Read();
+            reader.Skip();
         }
     }
 
