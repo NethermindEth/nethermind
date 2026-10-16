@@ -1341,6 +1341,75 @@ public partial class StorageProviderTests(bool useFlat)
     }
 
     /// <summary>
+    /// World states whose scopes overlap, as the prewarmer's do, must not each allocate the list that captures the
+    /// originals of the slots they load: it is kept with the world state rather than handed back at every scope end.
+    /// </summary>
+    /// <remarks>
+    /// More scopes than the shared pool can serve at once, which tries two larger sizes before allocating. Reports the
+    /// cheapest of several rounds, as <see cref="Transient_write_does_not_allocate"/> does.
+    /// </remarks>
+    [Test]
+    [NonParallelizable]
+    public void Overlapping_scopes_reuse_their_original_value_lists()
+    {
+        const int Scopes = 4;
+        const int Rounds = 5;
+
+        StorageCell cell = new(TestItem.AddressA, 1);
+        Context[] contexts = new Context[Scopes];
+        BlockHeader[] bases = new BlockHeader[Scopes];
+        IDisposable[] scopes = new IDisposable[Scopes];
+        try
+        {
+            for (int i = 0; i < Scopes; i++)
+            {
+                contexts[i] = new Context(useFlat, setInitialState: false);
+                bases[i] = WriteSlot(contexts[i].StateProvider, in cell);
+            }
+
+            ReadOverlapping();
+            long allocated = long.MaxValue;
+            for (int round = 0; round < Rounds; round++)
+            {
+                allocated = Math.Min(allocated, ReadOverlapping());
+            }
+
+            Assert.That(allocated, Is.LessThan(PersistentStorageProvider.PooledDictionaryCapacity * 16));
+        }
+        finally
+        {
+            foreach (Context context in contexts) context?.Dispose();
+        }
+
+        long ReadOverlapping()
+        {
+            for (int i = 0; i < Scopes; i++) scopes[i] = contexts[i].StateProvider.BeginScope(bases[i]);
+            try
+            {
+                long start = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < Scopes; i++) contexts[i].StateProvider.Get(in cell, out _);
+                return GC.GetAllocatedBytesForCurrentThread() - start;
+            }
+            finally
+            {
+                for (int i = 0; i < Scopes; i++) scopes[i].Dispose();
+            }
+        }
+
+        static BlockHeader WriteSlot(WorldState provider, in StorageCell cell)
+        {
+            using (provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.CreateAccount(cell.Address, 1);
+                provider.Set(in cell, (UInt256)7);
+                provider.Commit(Frontier.Instance);
+                provider.CommitTree(0);
+                return Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+            }
+        }
+    }
+
+    /// <summary>
     /// Commit will reset transient state
     /// </summary>
     [Test]
