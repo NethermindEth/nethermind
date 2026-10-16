@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
@@ -19,12 +20,15 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
 using Nethermind.State.Flat;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -45,6 +49,100 @@ namespace Nethermind.Db.Test
         {
             Directory.CreateDirectory(DbPath);
             _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+        }
+
+        [Test]
+        public void GetMany_WithMissingEmptyAndDuplicateKeys_PreservesResultsAndDecoderState(
+            [Values("memory", "default", "column")] string backend, [Values(0, 1, 2, 3, 257)] int count)
+        {
+            using IDb owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            Span<byte> key = stackalloc byte[sizeof(int)];
+            for (int i = 0; i < 7; i++)
+            {
+                if (i == 1) continue;
+                BinaryPrimitives.WriteInt32BigEndian(key, i);
+                store.PutSpan(key, i == 0 ? [] : new byte[] { (byte)i, (byte)(i + 1), 99 });
+            }
+
+            byte[] keys = new byte[count * sizeof(int)];
+            long?[] expected = new long?[count + 1];
+            expected[^1] = -1;
+            int decoded = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int number = i % 7;
+                BinaryPrimitives.WriteInt32BigEndian(keys.AsSpan(i * sizeof(int)), number);
+                if (number != 1) expected[i] = ++decoded * 1000 + (number == 0 ? 0 : 2 * number + 100);
+            }
+            long?[] output = Enumerable.Repeat<long?>(-1, count + 1).ToArray();
+
+            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output.AsSpan(0, count), default);
+
+            Assert.That(output, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void GetMany_WhenDecoderThrows_PreservesPrefixAndClearsTail(
+            [Values("memory", "default", "column")] string backend)
+        {
+            using IDb owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            store.PutSpan([1], [10]);
+            store.PutSpan([2], [20]);
+            store.PutSpan([3], [30]);
+            long?[] output = [-1, -1, -1, -1];
+
+            Assert.That(() => store.GetMany<long?, ThrowingValueDecoder>([1, 2, 3], 1, output.AsSpan(0, 3), default),
+                Throws.TypeOf<InvalidOperationException>());
+            Assert.That(output, Is.EqualTo(new long?[] { 1, null, null, -1 }));
+
+            store.GetMany<long?, CountingValueDecoder>([1, 2, 3], 1, output.AsSpan(0, 3), default);
+            Assert.That(output, Is.EqualTo(new long?[] { 1010, 2020, 3030, -1 }));
+        }
+
+        [Test]
+        public void BlobBatchRead_AfterDatabaseCloses_PreservesOwnedTransactions([Values(1, 2, 4)] int count)
+        {
+            Transaction[] stored = new Transaction[2];
+            EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
+            for (int i = 0; i < stored.Length; i++)
+            {
+                stored[i] = Build.A.Transaction.WithShardBlobTxTypeAndFields()
+                    .WithNonce(i).WithTimestamp((ulong)(i + 17))
+                    .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
+            }
+
+            Transaction?[] results = Enumerable.Repeat<Transaction?>(stored[0], count + 1).ToArray();
+            Transaction?[] expected = new Transaction?[count + 1];
+            expected[^1] = stored[0];
+            using (ColumnsDb<BlobTxsColumns> db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), _dbConfig,
+                _rocksdbConfigFactory, LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>()))
+            {
+                BlobTxStorage storage = new(db);
+                foreach (Transaction tx in stored) storage.Add(tx);
+                db.Flush();
+                TxLookupKey[] keys = new TxLookupKey[count];
+                for (int i = 0; i < count; i++)
+                {
+                    if (i == 1)
+                    {
+                        keys[i] = new TxLookupKey(TestItem.KeccakC, TestItem.AddressC, 99);
+                        continue;
+                    }
+                    Transaction tx = stored[i == 2 ? 1 : 0];
+                    expected[i] = tx;
+                    keys[i] = new TxLookupKey(tx.Hash!, tx.SenderAddress!, tx.Timestamp);
+                }
+
+                Assert.That(storage.TryGetMany(keys, count, results), Is.EqualTo(count == 1 ? 1 : count - 1));
+            }
+
+            for (int i = 0; i < results.Length; i++)
+            {
+                Assert.That(results[i], Is.EqualTo(expected[i])
+                    .UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+            }
         }
 
         [TearDown]
@@ -1295,6 +1393,34 @@ namespace Nethermind.Db.Test
 
             return db.CrossesPrefixBucket(first, last);
         }
+        private IDb CreateBatchDatabase(string backend) => backend switch
+        {
+            "memory" => new MemDb(),
+            "default" => CreateFreshDb("Blocks"),
+            _ => new ColumnsDb<ReceiptsColumns>(DbPath, GetRocksDbSettings(DbPath, "Blocks"), _dbConfig,
+                _rocksdbConfigFactory, LimboLogs.Instance, [ReceiptsColumns.Blocks, ReceiptsColumns.Transactions])
+        };
+
+        private struct CountingValueDecoder : IValueDecoder<long?>
+        {
+            private int _calls;
+
+            public long? Decode(ReadOnlySpan<byte> buffer)
+            {
+                long result = ++_calls * 1000;
+                foreach (byte value in buffer) result += value;
+                return result;
+            }
+        }
+
+        private struct ThrowingValueDecoder : IValueDecoder<long?>
+        {
+            private int _calls;
+
+            public long? Decode(ReadOnlySpan<byte> buffer) =>
+                ++_calls == 2 ? throw new InvalidOperationException("Decoder failure") : _calls;
+        }
+
     }
 
     [TestFixture(true)]
