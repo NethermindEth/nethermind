@@ -96,24 +96,32 @@ public class IdleStorageApplierTests
     }
 
     [Test]
-    public void Thread_SetsItsOwnPriorityBeforeTakingWork([Values] EarlyStorageApplyPriority priority)
+    public void Thread_SetsItsOwnPriorityBeforeTakingWork_AndLogsItOnce([Values] EarlyStorageApplyPriority priority)
     {
         RecordingCalls calls = new(isLinux: true);
-        string[] expected = priority switch
+        TestLogger logger = new();
+        string[] expectedCalls = priority switch
         {
             EarlyStorageApplyPriority.Idle => ["sched_setscheduler(5)"],
             EarlyStorageApplyPriority.Low => ["sched_setscheduler(0)", "gettid", "setpriority(4242, 10)"],
             _ => ["sched_setscheduler(0)", "gettid", "setpriority(4242, 0)"]
         };
+        string expectedPolicy = priority switch
+        {
+            EarlyStorageApplyPriority.Idle => "SCHED_IDLE",
+            EarlyStorageApplyPriority.Low => "SCHED_OTHER nice 10, tid 4242",
+            _ => "SCHED_OTHER nice 0, tid 4242"
+        };
 
-        IdleStorageApplier applier = new(LimboLogs.Instance, priority, calls);
+        IdleStorageApplier applier = new(new OneLoggerLogManager(new ILogger(logger)), priority, calls);
 
         Assert.That(() => applier.IsParked, Is.True.After(5000, 10));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(applier.Priority, Is.EqualTo(priority));
-            Assert.That(calls.Calls, Is.EqualTo(expected));
+            Assert.That(calls.Calls, Is.EqualTo(expectedCalls));
             Assert.That(calls.Threads, Is.All.EqualTo("Storage early apply"));
+            Assert.That(logger.LogList, Is.EqualTo(new[] { $"Early storage apply thread runs at {priority} priority: {expectedPolicy}" }));
         }
     }
 
@@ -131,7 +139,8 @@ public class IdleStorageApplierTests
         };
         HashSet<int> before = ApplierThreads();
 
-        IdleStorageApplier applier = new(LimboLogs.Instance, priority, ThreadSchedulingCalls.Instance);
+        // Info goes to the test output, so the run shows the line a node logs.
+        IdleStorageApplier applier = new(new TestLogManager(LogLevel.Info), priority, ThreadSchedulingCalls.Instance);
 
         Assert.That(() => applier.IsParked, Is.True.After(5000, 10));
         HashSet<int> started = ApplierThreads();
