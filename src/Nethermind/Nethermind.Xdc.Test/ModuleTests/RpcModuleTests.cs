@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -12,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
@@ -570,14 +572,25 @@ public class RpcModuleTests
     }
 
     [Test]
-    public void GetMasternodesByNumber_ShouldReturnFail_WhenFinalizedBlockNotFound()
+    public void BlockNumberMethods_ShouldReturnFail_WhenFinalizedBlockNotFound()
     {
         _blockTree.FinalizedHash.Returns((Hash256?)null);
 
-        ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
+        IResultWrapper[] results =
+        [
+            _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized),
+            _rpcModule.XDPoS_getV2BlockByNumber(BlockParameter.Finalized),
+            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(BlockParameter.Finalized)
+        ];
 
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (IResultWrapper result in results)
+            {
+                Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+                Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+            }
+        }
     }
 
     [Test]
@@ -659,6 +672,30 @@ public class RpcModuleTests
             blockNumber is null ? BlockParameter.Latest : new BlockParameter(blockNumber.Value));
 
         AssertCommitted(result, expectedCommitted);
+    }
+
+    /// <remarks>
+    /// The XDC relayer reads the checkpoint tip with <c>XDPoS_getV2BlockByNumber("committed")</c>, so the tag has to
+    /// survive the JSON-RPC parameter parsing, not only the module call.
+    /// </remarks>
+    [TestCase("committed", FinalizedBlockNumber)]
+    [TestCase("finalized", FinalizedBlockNumber)]
+    [TestCase("latest", HeadBlockNumber)]
+    [TestCase("0x61", FinalizedBlockNumber - 1)]
+    public async Task GetV2BlockByNumber_ShouldResolveBlockTag_OverJsonRpc(string blockTag, ulong expectedNumber)
+    {
+        ArrangeChainWithFinalizedTip();
+        XdcBlockParameterConverter.Register();
+
+        string json = await RpcTest.TestSerializedRequest<IXdcRpcModule>(_rpcModule, "XDPoS_getV2BlockByNumber", blockTag);
+
+        using JsonDocument response = JsonDocument.Parse(json);
+        JsonElement result = response.RootElement.GetProperty("result");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("number").GetString(), Is.EqualTo($"0x{expectedNumber:x}"));
+            Assert.That(result.GetProperty("committed").GetBoolean(), Is.EqualTo(expectedNumber <= FinalizedBlockNumber));
+        }
     }
 
     [TestCase(null, false)]
@@ -858,7 +895,7 @@ public class RpcModuleTests
 
 
     [Test]
-    public void GetMissedRoundsInEpochByBlockNum_RoundGap_ReturnsOnlySkippedRounds()
+    public void GetMissedRoundsInEpochByBlockNum_RoundGap_ReturnsOnlySkippedRounds([Values] bool byFinalizedTag)
     {
         const long epochBlockNumber = 1800;
         const ulong epochRound = 900;
@@ -869,6 +906,8 @@ public class RpcModuleTests
         Address[] masternodes = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
 
         _blockTree.FindHeader(1803).Returns(block1803);
+        _blockTree.FinalizedHash.Returns(block1803.Hash);
+        _blockTree.FindHeader(block1803.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(block1803);
         _blockTree.FindHeader(block1802.Hash!).Returns(block1802);
         _blockTree.FindHeader(block1801.Hash!).Returns(block1801);
         _blockTree.FindHeader(epochHeader.Hash!).Returns(epochHeader);
@@ -880,7 +919,7 @@ public class RpcModuleTests
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(XdcTestHelper.CreateXdcReleaseSpec(epochLength: 900));
 
         ResultWrapper<PublicApiMissedRoundsMetadata> result =
-            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(new BlockParameter(1803));
+            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(byFinalizedTag ? BlockParameter.Finalized : new BlockParameter(1803));
 
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         Assert.That(result.Data, Is.Not.Null);
