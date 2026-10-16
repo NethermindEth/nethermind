@@ -70,3 +70,29 @@ digest and are never trusted as evidence. Every result is freshly signed after
 validation. This differs from the common spec's proofless-input wording. The
 `rollup0-calldata` and `rollupx-native` profiles keep their existing proofless and
 independent L1 authorization rules.
+
+The `rollupx-native` profile selects its streaming wire rules at startup. It
+retains the published RollupX status and bound-control response behavior while
+Rollup0 retains its existing behavior. A bound cursor is returned only for the
+exact current session and epoch. Retired or foreign attachments receive no
+cursor.
+
+RollupX byte quotas charge the complete accepted Begin and Block protobuf
+frames plus the candidate Finalize frame. Duplicate validated blocks are not
+charged twice. A rejected Finalize preserves the retained prefix and its byte
+charges. Rollup0 keeps separate retained-block and settlement budgets.
+
+At capacity, RollupX may evict the same owner's oldest detached, idle session.
+Active attachments and draining workers keep their reservations. A resumed
+attachment cannot be detached by cleanup from an older stream. Completed proof
+streams retain ownership through terminal delivery and release it on cleanup.
+
+Malformed physical inputs remain `InvalidArgument`. Canonical calldata with
+inconsistent configured settlement claims returns `FailedPrecondition`.
+RollupX uses `OutOfRange` only for the known gRPC receive-size error; other
+capacity errors remain `ResourceExhausted`.
+
+Original recorded proof expectations do not replace required settlement
+authority. RollupX retains complete Sync interval checks and independent L1
+acceptance evidence for non-genesis parents. Fixture cases missing that evidence
+remain unresolved interoperability gates, even when execution succeeds.

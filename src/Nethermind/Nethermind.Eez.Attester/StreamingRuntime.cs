@@ -76,7 +76,7 @@ internal sealed class StreamingRuntime : IDisposable
                 identity = new StreamingIdentity(pins);
             }
             finally { foreach (X509Certificate2? pin in pins) pin?.Dispose(); }
-            registry = new StreamingSessionRegistry(settings.RegistryLimits, settings.SessionLimits, TimeProvider.System);
+            registry = new StreamingSessionRegistry(settings.RegistryLimits, settings.SessionLimits, TimeProvider.System, settings.Profile);
             EezChainRules rules;
             Func<SessionOperation, CancellationToken, Task<Proof>> finalize;
             if (settings.Profile != StreamingSettlementProfile.Rollup0Conditional)
@@ -126,7 +126,7 @@ internal sealed class StreamingRuntime : IDisposable
     }
 
     internal StreamingTransport CreateTransport(BackendAdmission admission, ILogger<StreamingTransport> logger) =>
-        new(Registry, admission, _executor, Options.TransportLimits, _rollupId, logger, finalize: _finalize, settlementProfile: Options.Profile);
+        new(Registry, admission, _executor, Options.TransportLimits, _rollupId, logger, finalize: _finalize);
 
     internal void ConfigureListeners(IWebHostBuilder host, AttesterOptions options) => host.ConfigureKestrel(kestrel =>
     {

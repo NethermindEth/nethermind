@@ -23,14 +23,17 @@ internal sealed class StreamingSessionRegistry : IDisposable
     private readonly long _reservation;
     private long _reservedBytes;
     private bool _disposed;
+    internal StreamingProtocolRules Rules { get; }
 
-    internal StreamingSessionRegistry(StreamingRegistryLimits limits, StreamingSessionLimits sessionLimits, TimeProvider time)
+    internal StreamingSessionRegistry(StreamingRegistryLimits limits, StreamingSessionLimits sessionLimits, TimeProvider time,
+        StreamingSettlementProfile profile = StreamingSettlementProfile.Rollup0Calldata)
     {
         sessionLimits.Validate();
         limits.Validate();
         if (sessionLimits.MaxBytes > long.MaxValue / ReservationCopies) throw new ArgumentOutOfRangeException(nameof(sessionLimits));
         _reservation = sessionLimits.MaxBytes * ReservationCopies;
         if (_reservation > limits.MaxReservedBytes) throw new ArgumentOutOfRangeException(nameof(limits));
+        Rules = new StreamingProtocolRules(profile);
         _limits = limits;
         _sessionLimits = sessionLimits;
         _time = time;
@@ -38,7 +41,7 @@ internal sealed class StreamingSessionRegistry : IDisposable
             limits.Retention, limits.Retention);
     }
 
-    internal StreamingSession Begin(string authenticatedOwner, Begin begin)
+    internal StreamingSession Begin(string authenticatedOwner, Begin begin, int frameBytes = 0)
     {
         ArgumentException.ThrowIfNullOrEmpty(authenticatedOwner);
         if (authenticatedOwner.Length > 256) throw new ArgumentOutOfRangeException(nameof(authenticatedOwner));
@@ -46,13 +49,16 @@ internal sealed class StreamingSessionRegistry : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             SweepCore();
+            StreamingSession session = new(authenticatedOwner, begin, _sessionLimits, Rules, frameBytes);
             int owned = 0;
             foreach (Entry entry in _sessions.Values)
                 if (StringComparer.Ordinal.Equals(entry.Owner, authenticatedOwner)) owned++;
             if (_sessions.Count >= _limits.MaxSessions || owned >= _limits.MaxSessionsPerOwner ||
                 _reservation > _limits.MaxReservedBytes - _reservedBytes)
-                throw Error(StatusCode.ResourceExhausted, "session registry limit exceeded");
-            StreamingSession session = new(authenticatedOwner, begin, _sessionLimits);
+            {
+                if (!Rules.EvictsDetachedSessions || !EvictDetached(authenticatedOwner))
+                    throw Error(StatusCode.ResourceExhausted, "session registry limit exceeded");
+            }
             _sessions.Add(session.Id, new Entry(session, authenticatedOwner, _time.GetTimestamp()));
             _reservedBytes += _reservation;
             return session;
@@ -92,6 +98,27 @@ internal sealed class StreamingSessionRegistry : IDisposable
             session.CheckCurrent(binding);
             entry.LastUsed = now;
         }
+    }
+
+    internal void Detach(StreamingSession session, SessionBinding binding)
+    {
+        lock (_lock)
+        {
+            if (!_disposed && _sessions.TryGetValue(session.Id, out Entry? entry) && ReferenceEquals(entry.Session, session) && session.Detach(binding))
+                entry.LastUsed = _time.GetTimestamp();
+        }
+    }
+
+    private bool EvictDetached(string owner)
+    {
+        Entry? oldest = null;
+        foreach (Entry entry in _sessions.Values)
+            if (StringComparer.Ordinal.Equals(entry.Owner, owner) && entry.Session.CanEvict &&
+                (oldest is null || entry.LastUsed < oldest.LastUsed)) oldest = entry;
+        if (oldest is null || !oldest.Session.RetireDetached()) return false;
+        _sessions.Remove(oldest.Session.Id);
+        _reservedBytes -= _reservation;
+        return true;
     }
 
     internal void Sweep()

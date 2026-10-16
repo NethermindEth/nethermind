@@ -9,8 +9,7 @@ using Nethermind.Eez.Prove.V2;
 
 namespace Nethermind.Eez.Attester;
 
-internal sealed class StreamingConnection(StreamingSessionRegistry registry, string authenticatedOwner, ulong rollupId,
-    StreamingSettlementProfile settlementProfile = StreamingSettlementProfile.Rollup0Calldata)
+internal sealed class StreamingConnection(StreamingSessionRegistry registry, string authenticatedOwner, ulong rollupId)
 {
     private static readonly Task Unbound = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
     private readonly object _lock = new();
@@ -26,7 +25,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
 
     private void ValidateSettlement(SettlementInput? settlement)
     {
-        switch (settlementProfile)
+        switch (registry.Rules.Profile)
         {
             case StreamingSettlementProfile.Rollup0Calldata:
             case StreamingSettlementProfile.Rollup0Conditional: StreamingFinalizer.ValidateSupportedSettlement(settlement); break;
@@ -61,7 +60,12 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
     {
         if (_retired || _attachmentRevoked.IsCompleted) return Retire(frame);
         if (frame.KindCase is ClientFrame.KindOneofCase.Begin or ClientFrame.KindOneofCase.Resume)
-            return StreamingDispatch.Reply(RejectUnbound(frame.RequestId, new Status(StatusCode.InvalidArgument, "stream already bound")));
+        {
+            Status status = new(StatusCode.InvalidArgument, "stream already bound");
+            if (registry.Rules.ReturnsBoundControlErrors && frame.SessionId == _session!.Id && frame.Epoch == _binding.Epoch)
+                return StreamingDispatch.Reply(Reject(frame.RequestId, status));
+            return StreamingDispatch.Reply(RejectUnbound(frame.RequestId, status));
+        }
         if (frame.SessionId.Length != 32)
             return StreamingDispatch.Reply(RejectUnbound(frame.RequestId, new Status(StatusCode.InvalidArgument, "session id must be 32 bytes")));
         if (frame.SessionId != _session!.Id || frame.Epoch != _binding.Epoch)
@@ -112,8 +116,9 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         {
             case ClientFrame.KindOneofCase.Begin:
                 if (!frame.SessionId.IsEmpty) throw Error(StatusCode.InvalidArgument, "Begin requires empty session id");
+                if (frame.Begin.RollupId == 0) throw Error(registry.Rules.ZeroRollup, "rollup identity missing");
                 if (frame.Begin.RollupId != _rollupId) throw Error(StatusCode.Unimplemented, "rollup identity unsupported");
-                _session = registry.Begin(_owner, frame.Begin);
+                _session = registry.Begin(_owner, frame.Begin, WireSize(frame));
                 _binding = _session.Binding;
                 _attachmentRevoked = _session.AttachmentRevoked(_binding);
                 return StreamingDispatch.Reply(_session.Ready(_binding, frame.RequestId));
@@ -126,7 +131,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
                 throw Error(StatusCode.Unimplemented, "unsupported operation");
             default:
                 if (!frame.SessionId.IsEmpty) throw Error(frame.SessionId.Length == 32 ? StatusCode.PermissionDenied : StatusCode.InvalidArgument, "unbound session id");
-                throw Error(StatusCode.InvalidArgument, "Begin or Resume must be first");
+                throw Error(registry.Rules.UnboundControl, "Begin or Resume must be first");
         }
     }
 
@@ -136,11 +141,11 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         {
             case ClientFrame.KindOneofCase.Block:
                 if (frame.Block.Data is null) throw Error(StatusCode.InvalidArgument, "block data missing");
-                _pending = _session!.AdmitBlock(_binding, frame.RequestId, frame.Block.Data);
+                _pending = _session!.AdmitBlock(_binding, frame.RequestId, frame.Block.Data, WireSize(frame));
                 return StreamingDispatch.Work(_pending);
             case ClientFrame.KindOneofCase.Finalize:
                 ValidateSettlement(frame.Finalize.Settlement);
-                _pending = _session!.AdmitFinalize(_binding, frame.RequestId, frame.Finalize);
+                _pending = _session!.AdmitFinalize(_binding, frame.RequestId, frame.Finalize, WireSize(frame));
                 return StreamingDispatch.Work(_pending);
             case ClientFrame.KindOneofCase.Rewind:
                 (ServerFrame response, SessionBinding binding, Task revoked) = _session!.RewindAttachment(_binding, frame.RequestId, frame.Rewind.AncestorHash);
@@ -172,7 +177,8 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         lock (_lock)
         {
             CheckPending(operation);
-            (ServerFrame response, Task revoked) = _session!.CompleteProofAndFence(operation, proof);
+            (ServerFrame response, SessionBinding binding, Task revoked) = _session!.CompleteProofAndFence(operation, proof);
+            _binding = binding;
             _proofRevoked = revoked;
             _ended = true;
             return response;
@@ -242,7 +248,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
             _retired = true;
             StatusCode code = frame.SessionId.Length != 32 ? StatusCode.InvalidArgument :
                 frame.SessionId == _session?.Id && (frame.Epoch == _binding.Epoch || frame.Resume is not null && frame.Epoch == 0)
-                    ? StatusCode.Aborted : StatusCode.PermissionDenied;
+                    ? registry.Rules.RetiredAttachment : StatusCode.PermissionDenied;
             return StreamingDispatch.Reply(RejectUnbound(frame.RequestId, new Status(code, "session attachment retired")));
         }
     }
@@ -255,7 +261,11 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
 
     internal void Detach()
     {
-        lock (_lock) _ended = true;
+        lock (_lock)
+        {
+            _ended = true;
+            if (_session is not null) registry.Detach(_session, _binding);
+        }
     }
 
     internal void FinishOperation(SessionOperation operation)
@@ -289,6 +299,8 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         };
         return response;
     }
+
+    private int WireSize(ClientFrame frame) => registry.Rules.ChargesWireFrames ? frame.CalculateSize() : 0;
 
     private static string ValidateOwner(string owner)
     {

@@ -19,6 +19,8 @@ internal sealed class StreamingSession
     private readonly object _lock = new();
     private readonly string _owner;
     private readonly StreamingSessionLimits _limits;
+    private readonly StreamingProtocolRules _rules;
+    private bool _attached = true;
     private readonly ulong _initialAnchorNumber;
     private readonly List<RetainedBlock> _blocks = [];
     private Begin _anchor;
@@ -32,7 +34,7 @@ internal sealed class StreamingSession
     internal ulong RollupId { get; }
     internal ByteString Id { get; } = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(32));
 
-    internal StreamingSession(string authenticatedOwner, Begin begin, StreamingSessionLimits limits)
+    internal StreamingSession(string authenticatedOwner, Begin begin, StreamingSessionLimits limits, StreamingProtocolRules rules = default, int frameBytes = 0)
     {
         ArgumentException.ThrowIfNullOrEmpty(authenticatedOwner);
         limits.Validate();
@@ -51,6 +53,10 @@ internal sealed class StreamingSession
             AnchorHash = begin.AnchorHash,
             AnchorStateRoot = begin.AnchorStateRoot,
         };
+        _rules = rules;
+        if (rules.ChargesWireFrames && (frameBytes <= 0 || frameBytes > limits.MaxBytes))
+            throw Error(StatusCode.ResourceExhausted, "session anchor limit exceeded");
+        _bytes = rules.ChargesWireFrames ? frameBytes : 0;
         _limits = limits;
         _binding = new SessionBinding(Guid.NewGuid(), 1);
     }
@@ -77,6 +83,31 @@ internal sealed class StreamingSession
     internal bool CanRelease
     {
         get { lock (_lock) return _cancelled && _pending is null; }
+    }
+
+    internal bool CanEvict
+    {
+        get { lock (_lock) return !_attached && !_cancelled && _pending is null; }
+    }
+
+    internal bool Detach(SessionBinding binding)
+    {
+        lock (_lock)
+        {
+            if (_binding != binding) return false;
+            _attached = false;
+            return true;
+        }
+    }
+
+    internal bool RetireDetached()
+    {
+        lock (_lock)
+        {
+            if (!CanEvict) return false;
+            Retire();
+            return true;
+        }
     }
 
     internal void Retire()
@@ -107,6 +138,7 @@ internal sealed class StreamingSession
             if (_cancelled || !StringComparer.Ordinal.Equals(_owner, authenticatedOwner))
                 throw Error(StatusCode.NotFound, "session unavailable");
             AdvanceEpoch();
+            _attached = true;
             return (_binding, _revoked.Task);
         }
     }
@@ -119,7 +151,7 @@ internal sealed class StreamingSession
         lock (_lock)
         {
             CheckBinding(binding);
-            if (ancestorHash.Length != 32) throw Error(StatusCode.InvalidArgument, "ancestor hash must be 32 bytes");
+            if (ancestorHash.Length != 32) throw Error(_rules.InvalidAncestor, "ancestor hash must be 32 bytes");
             int index = FindAncestor(ancestorHash);
             if (index == -2) throw Error(StatusCode.FailedPrecondition, "ancestor outside validated prefix");
             AdvanceEpoch();
@@ -141,7 +173,7 @@ internal sealed class StreamingSession
         }
     }
 
-    internal SessionOperation AdmitBlock(SessionBinding binding, ulong requestId, BlockWitness block)
+    internal SessionOperation AdmitBlock(SessionBinding binding, ulong requestId, BlockWitness block, int frameBytes = 0)
     {
         lock (_lock)
         {
@@ -162,7 +194,8 @@ internal sealed class StreamingSession
             else if (TipNumber == ulong.MaxValue || block.Number != TipNumber + 1 || block.ParentHash != TipHash)
                 throw Error(StatusCode.FailedPrecondition, "block outside next validated height");
 
-            long size = block.CalculateSize();
+            long size = _rules.ChargesWireFrames ? frameBytes : block.CalculateSize();
+            if (size <= 0) throw new ArgumentOutOfRangeException(nameof(frameBytes));
             long items = (long)block.Witness.State.Count + block.Witness.Codes.Count + block.Witness.Keys.Count + block.Witness.Headers.Count;
             long availableBytes = duplicate >= 0 ? _limits.MaxBytes : _limits.MaxBytes - _bytes;
             long availableItems = duplicate >= 0 ? _limits.MaxWitnessItems : _limits.MaxWitnessItems - _witnessItems;
@@ -175,19 +208,21 @@ internal sealed class StreamingSession
         }
     }
 
-    internal SessionOperation AdmitFinalize(SessionBinding binding, ulong requestId, Finalize finalize)
+    internal SessionOperation AdmitFinalize(SessionBinding binding, ulong requestId, Finalize finalize, int frameBytes = 0)
     {
         lock (_lock)
         {
             CheckBinding(binding);
             CheckIdle();
             if (finalize.Settlement is null || finalize.TerminalHash.Length != 32 || finalize.FromBlock <= _initialAnchorNumber || finalize.FromBlock > finalize.ToBlock)
-                throw Error(StatusCode.InvalidArgument, "invalid finalization range or settlement");
+                throw Error(_rules.InvalidRange, "invalid finalization range or settlement");
             int first = FindBlock(finalize.FromBlock);
             int last = FindBlock(finalize.ToBlock);
             if (first < 0 || last < first || _blocks[last].Data.Hash != finalize.TerminalHash)
                 throw Error(StatusCode.FailedPrecondition, "range outside validated prefix");
-            if (finalize.CalculateSize() > _limits.MaxBytes)
+            long settlementBytes = _rules.ChargesWireFrames ? frameBytes : finalize.CalculateSize();
+            if (settlementBytes <= 0) throw new ArgumentOutOfRangeException(nameof(frameBytes));
+            if (settlementBytes > (_rules.ChargesWireFrames ? _limits.MaxBytes - _bytes : _limits.MaxBytes))
                 throw Error(StatusCode.ResourceExhausted, "session settlement limit exceeded");
             BlockWitness[] blocks = new BlockWitness[last - first + 1];
             for (int i = 0; i < blocks.Length; i++) blocks[i] = _blocks[first + i].Data.Clone();
@@ -246,7 +281,7 @@ internal sealed class StreamingSession
 
     internal ServerFrame CompleteProof(SessionOperation operation, Proof proof) => CompleteProofAndFence(operation, proof).Response;
 
-    internal (ServerFrame Response, Task Revoked) CompleteProofAndFence(SessionOperation operation, Proof proof)
+    internal (ServerFrame Response, SessionBinding Binding, Task Revoked) CompleteProofAndFence(SessionOperation operation, Proof proof)
     {
         lock (_lock)
         {
@@ -261,7 +296,7 @@ internal sealed class StreamingSession
             for (int i = 0; i < first; i++) Release(_blocks[i]);
             _blocks.RemoveRange(0, first);
             operation.Completed = true;
-            return (response, _revoked.Task);
+            return (response, _binding, _revoked.Task);
         }
     }
 

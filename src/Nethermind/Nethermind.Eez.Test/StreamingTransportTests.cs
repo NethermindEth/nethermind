@@ -52,6 +52,23 @@ public class StreamingTransportTests
     [TearDown]
     public void TearDown() => _registry.Dispose();
 
+    [TestCase((int)StreamingSettlementProfile.RollupXNative, "Received message exceeds the maximum configured message size.", StatusCode.OutOfRange, TestName = "Run_RollupXReaderSizeLimit_IsOutOfRange")]
+    [TestCase((int)StreamingSettlementProfile.RollupXNative, "other capacity", StatusCode.ResourceExhausted, TestName = "Run_RollupXReaderOtherCapacity_RemainsResourceExhausted")]
+    [TestCase((int)StreamingSettlementProfile.RollupXNative, "Received message exceeds the maximum configured message size. suffix", StatusCode.ResourceExhausted, TestName = "Run_RollupXReaderNonexactSizeError_RemainsResourceExhausted")]
+    [TestCase((int)StreamingSettlementProfile.Rollup0Calldata, "Received message exceeds the maximum configured message size.", StatusCode.ResourceExhausted, TestName = "Run_Rollup0ReaderSizeLimit_RemainsResourceExhausted")]
+    public async Task Run_ReaderCapacityException_MapsOnlyExactSdkMessageSizeInSelectedProfile(int profile, string detail, StatusCode expected)
+    {
+        _registry.Dispose();
+        _registry = new StreamingSessionRegistry(new StreamingRegistryLimits(4, 4, 16000, TimeSpan.FromMinutes(10)),
+            new StreamingSessionLimits(8, 1000, 16), TimeProvider.System, (StreamingSettlementProfile)profile);
+        _transport = Transport(Execute);
+        _input = new Reader();
+        _input.AddAsync(() => Task.FromException<ClientFrame?>(new RpcException(new Status(StatusCode.ResourceExhausted, detail))));
+        RpcException error = (await Assert.ThrowsAsync<RpcException>(() => _transport.Run(_input, _output, "composer", CancellationToken.None)))!;
+        Assert.That(error.StatusCode, Is.EqualTo(expected));
+        Assert.That(_executions, Is.Zero, "reader rejection cannot admit execution or sign a claim");
+    }
+
     [Test]
     public async Task Run_RecordedBlock_UsesRealStatelessExecutorBeforeValidation()
     {

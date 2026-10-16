@@ -463,6 +463,35 @@ public class StreamingSessionTests
         Assert.That((cancelled.RequestId, cancelled.Epoch, cancelled.KindCase), Is.EqualTo((9UL, 2UL, ServerFrame.KindOneofCase.Cancelled)));
     }
 
+    [Test]
+    public void Finalize_RollupXAggregateWireQuota_AcceptsExactLimitAndRejectsOneByteOver()
+    {
+        ClientFrame begin = new() { RequestId = 1, Begin = Anchor() };
+        ClientFrame block = new() { SessionId = Hash(90), Epoch = 1, RequestId = 2, Block = new Nethermind.Eez.Prove.V2.Block { Data = Block(11, AnchorHash) } };
+        ClientFrame finalization = new() { SessionId = Hash(90), Epoch = 1, RequestId = 3, Finalize = FinalizeRange(11, 11) };
+        long limit = begin.CalculateSize() + block.CalculateSize() + finalization.CalculateSize();
+        StreamingSession session = new("composer", begin.Begin, new StreamingSessionLimits(8, limit, 16),
+            new StreamingProtocolRules(StreamingSettlementProfile.RollupXNative), begin.CalculateSize());
+        using (SessionOperation append = session.AdmitBlock(session.Binding, 2, block.Block.Data, block.CalculateSize()))
+            session.CommitBlock(append, Executed(append));
+        using (SessionOperation exact = session.AdmitFinalize(session.Binding, 3, finalization.Finalize, finalization.CalculateSize()))
+            Assert.That(exact.CopyBlocks()[0].Number, Is.EqualTo(11));
+        finalization.Finalize.Settlement.AbiCalldata = ByteString.CopyFrom([.. finalization.Finalize.Settlement.AbiCalldata.Span, 1]);
+        AssertCode(() => session.AdmitFinalize(session.Binding, 4, finalization.Finalize, finalization.CalculateSize()), StatusCode.ResourceExhausted);
+        Assert.That(session.Ready(session.Binding, 5).Ready.ValidatedThrough, Is.EqualTo(11));
+    }
+
+    [TestCase((int)StreamingSettlementProfile.Rollup0Calldata, StatusCode.InvalidArgument, TestName = "Rewind_Rollup0MalformedAncestor_IsInvalidArgument")]
+    [TestCase((int)StreamingSettlementProfile.RollupXNative, StatusCode.FailedPrecondition, TestName = "Rewind_RollupXMalformedAncestor_IsFailedPrecondition")]
+    public void Rewind_MalformedAncestor_UsesSelectedRulesWithoutChangingPrefix(int profileValue, StatusCode expected)
+    {
+        StreamingSettlementProfile profile = (StreamingSettlementProfile)profileValue;
+        StreamingSession session = new("composer", Anchor(), Limits(), new StreamingProtocolRules(profile), 74);
+        SessionBinding binding = session.Binding;
+        AssertCode(() => session.Rewind(binding, 2, ByteString.Empty), expected);
+        Assert.That((session.Binding, session.Ready(binding, 3).Ready.ValidatedThrough), Is.EqualTo((binding, 10UL)));
+    }
+
     private static StreamingSession Session() => new("composer", Anchor(), Limits());
     private static StreamingSessionLimits Limits() => new(8, 10000, 16);
     private static Begin Anchor() => new() { RollupId = 1, AnchorNumber = 10, AnchorHash = AnchorHash, AnchorStateRoot = AnchorRoot };

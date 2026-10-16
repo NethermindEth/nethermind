@@ -21,22 +21,19 @@ internal sealed class StreamingTransport
     private readonly ILogger<StreamingTransport> _logger;
     private readonly ulong _rollupId;
     private readonly TimeProvider _time;
-    private readonly StreamingSettlementProfile _settlementProfile;
     private int _connections;
 
     internal StreamingTransport(StreamingSessionRegistry registry, BackendAdmission admission, StreamingBlockExecutor executor,
         StreamingTransportLimits limits, ulong rollupId, ILogger<StreamingTransport> logger, TimeProvider? time = null,
-        Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null,
-        StreamingSettlementProfile settlementProfile = StreamingSettlementProfile.Rollup0Calldata)
+        Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null)
         : this(registry, admission, (operation, cancellation) => Task.Run(() => executor.Execute(operation, cancellation), CancellationToken.None),
-            limits, rollupId, logger, time, finalize, settlementProfile)
+            limits, rollupId, logger, time, finalize)
     { }
 
     internal StreamingTransport(StreamingSessionRegistry registry, BackendAdmission admission,
         Func<SessionOperation, CancellationToken, Task<ExecutedStreamingBlock>> execute,
         StreamingTransportLimits limits, ulong rollupId, ILogger<StreamingTransport> logger, TimeProvider? time = null,
-        Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null,
-        StreamingSettlementProfile settlementProfile = StreamingSettlementProfile.Rollup0Calldata)
+        Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null)
     {
         limits.Validate();
         if (rollupId == 0) throw new ArgumentOutOfRangeException(nameof(rollupId));
@@ -44,7 +41,6 @@ internal sealed class StreamingTransport
         _admission = admission;
         _execute = execute;
         _finalize = finalize;
-        _settlementProfile = settlementProfile;
         _limits = limits;
         _rollupId = rollupId;
         _logger = logger;
@@ -54,7 +50,7 @@ internal sealed class StreamingTransport
     internal async Task Run(IAsyncStreamReader<ClientFrame> input, IServerStreamWriter<ServerFrame> output,
         string authenticatedOwner, CancellationToken cancellation)
     {
-        StreamingConnection connection = new(_registry, authenticatedOwner, _rollupId, _settlementProfile);
+        StreamingConnection connection = new(_registry, authenticatedOwner, _rollupId);
         if (Interlocked.Increment(ref _connections) > _limits.MaxConnections)
         {
             Interlocked.Decrement(ref _connections);
@@ -292,7 +288,7 @@ internal sealed class StreamingTransport
     private void CheckMessage(ClientFrame frame)
     {
         if (frame.CalculateSize() > _limits.MaxMessageBytes)
-            throw Error(StatusCode.ResourceExhausted, "stream message exceeds decoding limit");
+            throw Error(_registry.Rules.MessageSize, "stream message exceeds decoding limit");
     }
 
     internal static ServerFrame RejectUnstarted(StreamingConnection connection, SessionOperation operation, Status status)
@@ -353,6 +349,12 @@ internal sealed class StreamingTransport
         using CancellationTokenSource deadline = new(_limits.ReadTimeout, _time);
         using CancellationTokenSource idle = CancellationTokenSource.CreateLinkedTokenSource(cancellation, deadline.Token);
         try { return await input.MoveNext(idle.Token).ConfigureAwait(false); }
+        catch (RpcException exception) when (_registry.Rules.MessageSize == StatusCode.OutOfRange &&
+            exception.StatusCode == StatusCode.ResourceExhausted &&
+            exception.Status.Detail == "Received message exceeds the maximum configured message size.")
+        {
+            throw Error(StatusCode.OutOfRange, exception.Status.Detail);
+        }
         catch (Exception exception) when (exception is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled } && !cancellation.IsCancellationRequested)
         {
             throw Error(StatusCode.DeadlineExceeded, "stream idle timeout");

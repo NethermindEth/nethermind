@@ -68,6 +68,44 @@ public class RollupXStreamingConformanceTests
         await server.Admission.WaitUntilIdle();
     }
 
+    [TestCase("single-block-proof.json", StatusCode.FailedPrecondition, TestName = "Finalize_RollupXIncompleteSyncWindow_ReturnsNoProof")]
+    [TestCase("terminal-before-tip.json", StatusCode.FailedPrecondition, TestName = "Finalize_RollupXNonSyncTerminal_ReturnsNoProof")]
+    [TestCase("subrange-promoted-anchor.json", StatusCode.Unavailable, TestName = "Finalize_RollupXParentWithoutAcceptanceEvidence_ReturnsNoProof")]
+    public async Task Finalize_OriginalRecordingWithoutRequiredSettlementAuthority_ReturnsNoProof(string name, StatusCode expected)
+    {
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, name);
+        await using RollupXStreamingServer server = await RollupXStreamingServer.Start(DirectoryPath, document.RootElement);
+        using GrpcChannel channel = server.Channel();
+        using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = new ProverV2.ProverClient(channel).ProveStream(new CallOptions(deadline: DateTime.UtcNow.AddMinutes(2)));
+        ServerFrame? previous = null;
+        foreach (JsonElement item in document.RootElement.GetProperty("events").EnumerateArray())
+        {
+            if (item.GetProperty("direction").GetString() != "client") continue;
+            ClientFrame request = ClientFrame.Parser.ParseFrom(Convert.FromHexString(item.GetProperty("protobuf_hex").GetString()!));
+            if (previous is not null) { request.SessionId = previous.SessionId; request.Epoch = previous.Epoch; }
+            await call.RequestStream.WriteAsync(request);
+            Assert.That(await call.ResponseStream.MoveNext(), Is.True, "the original request has a correlated response");
+            ServerFrame response = call.ResponseStream.Current;
+            if (request.Finalize is not null)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(response.Proof, Is.Null, "recorded expected signatures cannot replace required Sync and canonical-parent authority");
+                    Assert.That(response.Rejected?.Code, Is.EqualTo((int)expected));
+                    Assert.That(response.RequestId, Is.EqualTo(request.RequestId));
+                    Assert.That(response.Rejected?.ValidatedThrough, Is.EqualTo(previous!.Validated.Number), "failed authorization preserves the executed prefix");
+                }
+                await call.RequestStream.CompleteAsync();
+                Assert.That(await call.ResponseStream.MoveNext(), Is.False);
+                await server.Admission.WaitUntilIdle();
+                return;
+            }
+            Assert.That(response.Rejected, Is.Null, "the original prefix remains executable");
+            previous = response;
+        }
+        Assert.Fail("the original recording has no finalization request");
+    }
+
     private static IEnumerable<TestCaseData> Cases()
     {
         using JsonDocument provenance = JsonDocument.Parse(File.ReadAllText(Path.Combine(DirectoryPath, "provenance.json")));

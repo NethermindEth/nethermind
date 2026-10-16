@@ -33,8 +33,12 @@ internal sealed record RollupXSettlementInput(PostBatch Batch, NativeStream Stre
         try
         {
             PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(snapshot.AbiCalldata.Span);
-            RollupXPostBatchProfile.Validate(batch, context.RollupId, context.ProofSystem, count);
             if (batch.Proofs is not ([] or [{ Length: 0 }])) throw Invalid();
+            try { RollupXPostBatchProfile.Validate(batch, context.RollupId, context.ProofSystem, count); }
+            catch (EezSettlementException exception) when (exception.Failure == EezSettlementFailure.Rejected)
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "RollupX settlement claims differ from configured profile"));
+            }
             foreach (ByteString blob in snapshot.Blobs)
                 if (blob.Length != BlobStream.BytesPerBlob) throw Invalid();
             byte[] logical = new byte[checked(count * BlobStream.DataBytesPerBlob)];

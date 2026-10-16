@@ -429,6 +429,130 @@ public class StreamingRegistryTests
             Is.EqualTo(((int)StatusCode.Unimplemented, 11UL, Hash(11))));
     }
 
+    [Test]
+    public void RollupXCapacity_DetachedOldestSessionIsEvictedWithoutTouchingActiveSessions()
+    {
+        ManualTime time = new();
+        using StreamingSessionRegistry registry = NativeRegistry(time, 2);
+        StreamingConnection first = new(registry, "first", 1);
+        ServerFrame firstReady = first.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        first.Detach();
+        time.Advance(TimeSpan.FromSeconds(1));
+        StreamingConnection active = new(registry, "first", 1);
+        ServerFrame activeReady = active.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        ServerFrame replacement = new StreamingConnection(registry, "first", 1).Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replacement.Ready, Is.Not.Null);
+            AssertCode(() => registry.Resume("first", firstReady.SessionId, 1), StatusCode.NotFound);
+            Assert.That(registry.Resume("first", activeReady.SessionId, 1).Session.Id, Is.EqualTo(activeReady.SessionId));
+        }
+    }
+
+    [TestCase("active", TestName = "RollupXCapacity_ActiveSession_IsNotEvicted")]
+    [TestCase("foreign", TestName = "RollupXCapacity_OtherOwnerDetachedSession_IsNotEvicted")]
+    [TestCase("worker", TestName = "RollupXCapacity_DetachedWorker_MustDrainBeforeEviction")]
+    [TestCase("resumed", TestName = "RollupXCapacity_ResumedSession_RejectsStaleDetach")]
+    public void RollupXCapacity_SessionStillOwnedOrOwnedByAnotherComposer_IsNotEvicted(string state)
+    {
+        using StreamingSessionRegistry registry = NativeRegistry(new ManualTime(), 1);
+        StreamingConnection first = new(registry, "first", 1);
+        ServerFrame ready = first.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        SessionOperation? pending = null;
+        if (state == "worker")
+        {
+            ClientFrame block = Frame(ready, 2);
+            block.Block = new Nethermind.Eez.Prove.V2.Block { Data = Block() };
+            pending = first.Dispatch(block).Operation!;
+        }
+        if (state == "resumed")
+            new StreamingConnection(registry, "first", 1).Dispatch(new ClientFrame { SessionId = ready.SessionId, Resume = new Resume() });
+        if (state != "active") first.Detach();
+        StreamingConnection other = new(registry, state == "foreign" ? "second" : "first", 1);
+        ServerFrame rejected = other.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        Assert.That(rejected.Rejected.Code, Is.EqualTo((int)StatusCode.ResourceExhausted), "capacity cannot evict active, resumed, worker-owned or other-owner state");
+        if (pending is not null)
+        {
+            first.FinishOperation(pending);
+            Assert.That(other.Dispatch(new ClientFrame { Begin = Anchor() }).Response!.Ready, Is.Not.Null, "capacity is released only after the detached worker drains");
+        }
+    }
+
+    [TestCase((int)StreamingSettlementProfile.Rollup0Calldata, 0, TestName = "RepeatControl_Rollup0Binding_RetainsEmptyErrorCursor")]
+    [TestCase((int)StreamingSettlementProfile.RollupXNative, 32, TestName = "RepeatControl_RollupXBinding_ReturnsOnlyItsOwnCursor")]
+    public void RepeatControl_ExactCurrentBindingUsesProfileCursor_ForeignBindingNeverDisclosesIt(int profileValue, int expectedLength)
+    {
+        StreamingSettlementProfile profile = (StreamingSettlementProfile)profileValue;
+        using StreamingSessionRegistry registry = new(new StreamingRegistryLimits(2, 2, 8000, TimeSpan.FromMinutes(1)),
+            new StreamingSessionLimits(8, 1000, 16), TimeProvider.System, profile);
+        StreamingConnection connection = new(registry, "first", 1);
+        ServerFrame ready = connection.Dispatch(new ClientFrame { RequestId = 1, Begin = Anchor() }).Response!;
+        ClientFrame repeated = Frame(ready, 2);
+        repeated.Resume = new Resume();
+        ServerFrame current = connection.Dispatch(repeated).Response!;
+        repeated.SessionId = Hash(99);
+        ServerFrame foreign = connection.Dispatch(repeated).Response!;
+        repeated.SessionId = ready.SessionId;
+        repeated.Epoch++;
+        ServerFrame stale = connection.Dispatch(repeated).Response!;
+        Assert.That((current.SessionId.Length, foreign.SessionId.Length, stale.SessionId.Length), Is.EqualTo((expectedLength, 0, 0)));
+        Assert.That((foreign.Rejected.ValidatedHash.Length, stale.Rejected.ValidatedHash.Length), Is.EqualTo((0, 0)));
+    }
+
+    [TestCase("attached", TestName = "RollupXCapacity_FinalProofDelivery_RetainsAttachment")]
+    [TestCase("detached", TestName = "RollupXCapacity_CompletedDetachedProof_IsEvictable")]
+    [TestCase("resumed", TestName = "RollupXCapacity_ResumedAfterProof_RejectsStaleDetach")]
+    public void RollupXCapacity_CompletedProofRemainsOwnedUntilItsActualAttachmentDetaches(string state)
+    {
+        using StreamingSessionRegistry registry = NativeRegistry(new ManualTime(), 1);
+        StreamingConnection connection = new(registry, "first", 1);
+        ServerFrame ready = connection.Dispatch(new ClientFrame { RequestId = 1, Begin = Anchor() }).Response!;
+        Commit(connection, ready, 2);
+        ClientFrame finalize = Frame(ready, 3);
+        finalize.Finalize = new Finalize
+        {
+            FromBlock = 11,
+            ToBlock = 11,
+            TerminalHash = Hash(11),
+            Settlement = new SettlementInput { AbiCalldata = Hash(20), PostingContext = new L1PostingContext(), Blobs = { Hash(21) } }
+        };
+        SessionOperation operation = connection.Dispatch(finalize).Operation!;
+        ServerFrame proof = connection.CompleteProof(operation, new Proof { PublicInputsHash = Hash(25), Proof_ = Hash(26) });
+        connection.FinishOperation(operation);
+        StreamingConnection replacement = new(registry, "first", 1);
+        if (state == "resumed")
+            new StreamingConnection(registry, "first", 1).Dispatch(new ClientFrame { SessionId = ready.SessionId, Resume = new Resume() });
+        if (state != "attached") connection.Detach();
+        ServerFrame result = replacement.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        Assert.That(proof.Epoch, Is.EqualTo(ready.Epoch), "wire proof keeps its admitted epoch");
+        if (state == "detached") Assert.That(result.Ready, Is.Not.Null, "completed and detached proof sessions release capacity");
+        else Assert.That(result.Rejected.Code, Is.EqualTo((int)StatusCode.ResourceExhausted), "in-flight terminal delivery and a resumed owner remain protected");
+    }
+
+    [Test]
+    public void RollupXCapacity_RefreshedDetachedSessionIsNewerThanAnotherDetachedSession()
+    {
+        ManualTime time = new();
+        using StreamingSessionRegistry registry = NativeRegistry(time, 2);
+        StreamingConnection first = new(registry, "first", 1);
+        ServerFrame firstReady = first.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        first.Detach();
+        time.Advance(TimeSpan.FromSeconds(1));
+        StreamingConnection second = new(registry, "first", 1);
+        ServerFrame secondReady = second.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        second.Detach();
+        time.Advance(TimeSpan.FromSeconds(1));
+        (StreamingSession refreshed, SessionBinding binding) = registry.Resume("first", firstReady.SessionId, 1);
+        registry.Detach(refreshed, binding);
+        Assert.That(new StreamingConnection(registry, "first", 1).Dispatch(new ClientFrame { Begin = Anchor() }).Response!.Ready, Is.Not.Null);
+        AssertCode(() => registry.Resume("first", secondReady.SessionId, 1), StatusCode.NotFound);
+        Assert.That(registry.Resume("first", firstReady.SessionId, 1).Session.Id, Is.EqualTo(firstReady.SessionId));
+    }
+
+    private static StreamingSessionRegistry NativeRegistry(ManualTime time, int count) =>
+        new(new StreamingRegistryLimits(count, count, 4000 * count, TimeSpan.FromSeconds(10)),
+            new StreamingSessionLimits(8, 1000, 16), time, StreamingSettlementProfile.RollupXNative);
+
     private static void Commit(StreamingConnection connection, ServerFrame ready, ulong requestId)
     {
         ClientFrame block = Frame(ready, requestId);

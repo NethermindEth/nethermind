@@ -92,6 +92,14 @@ public class RollupXSettlementInputTests
         Invalid(_input);
     }
 
+    [TestCaseSource(nameof(InvalidClaims))]
+    public void Decode_CanonicalSettlementClaimMismatch_IsFailedPrecondition(Action<SettlementInput> mutate)
+    {
+        mutate(_input);
+        RpcException error = Assert.Throws<RpcException>(() => Decode(_input))!;
+        Assert.That(error.StatusCode, Is.EqualTo(StatusCode.FailedPrecondition), "a canonical but unsupported settlement claim is not malformed encoding");
+    }
+
     [TestCaseSource(nameof(InvalidIndices))]
     public void Decode_BlobSelectionOutsideCompleteOrder_IsInvalidArgument(ulong[] indices)
     {
@@ -317,11 +325,18 @@ public class RollupXSettlementInputTests
         yield return Case("PopulatedProof", static input => Rewrite(input, static batch => batch with { Proofs = [[1]] }));
         yield return Case("ExtraProofSlot", static input => Rewrite(input, static batch => batch with { Proofs = [[], []] }));
         yield return Case("CalldataTail", static input => Rewrite(input, static batch => batch with { CallData = [1] }));
-        yield return Case("LegacyBlockNumber", static input => Rewrite(input, static batch => batch with { BlockNumber = 0 }));
-        yield return Case("SenderBound", static input => Rewrite(input, static batch => batch with { BindMsgSenderInPublicInput = true }));
-        yield return Case("WrongVerifier", static input => Rewrite(input, static batch => batch with { ProofSystems = [TestItem.AddressA] }));
-        yield return Case("WrongRollup", static input => Rewrite(input, static batch => batch with { RollupIdsWithProofSystems = [new RollupProofSystems(2, [0])] }));
     }
+
+    private static IEnumerable<TestCaseData> InvalidClaims()
+    {
+        yield return Claim("LegacyBlockNumber", static batch => batch with { BlockNumber = 0 });
+        yield return Claim("SenderBound", static batch => batch with { BindMsgSenderInPublicInput = true });
+        yield return Claim("WrongVerifier", static batch => batch with { ProofSystems = [TestItem.AddressA] });
+        yield return Claim("WrongRollup", static batch => batch with { RollupIdsWithProofSystems = [new RollupProofSystems(2, [0])] });
+    }
+
+    private static TestCaseData Claim(string name, Func<PostBatch, PostBatch> mutate) =>
+        new TestCaseData((Action<SettlementInput>)(input => Rewrite(input, mutate))).SetName("Decode_" + name + "_IsFailedPrecondition");
 
     private static void SetTopByte(SettlementInput input, int offset)
     {

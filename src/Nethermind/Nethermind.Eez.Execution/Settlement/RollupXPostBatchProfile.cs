@@ -60,8 +60,8 @@ public static class RollupXPostBatchProfile
             "the immediate entry count must be the leading run of entries without a proxy entry hash");
         Require(batch.BlockNumber == CurrentBlock, "the block number must read the custom data of the block the batch lands in");
         Require(!batch.BindMsgSenderInPublicInput, "the sender must not be bound into the public input");
-        Require(batch.CallData.Length == 0, "the stream must travel in blobs, not calldata");
-        Require(blobCount > 0 && SelectsEveryBlob(batch.BlobIndices, blobCount), "the batch must select every blob of its transaction once, in order");
+        Require(batch.CallData.Length == 0, "the stream must travel in blobs, not calldata", EezSettlementFailure.InvalidDaPayload);
+        Require(blobCount > 0 && SelectsEveryBlob(batch.BlobIndices, blobCount), "the batch must select every blob of its transaction once, in order", EezSettlementFailure.InvalidDaPayload);
     }
 
     /// <summary>The public inputs hash of a batch in the profile, for the proof system's verification key.</summary>
@@ -121,11 +121,11 @@ public static class RollupXPostBatchProfile
         return count;
     }
 
-    private static void Require(bool condition, string rule)
+    private static void Require(bool condition, string rule, EezSettlementFailure failure = EezSettlementFailure.Rejected)
     {
         if (!condition)
         {
-            throw new EezSettlementException($"Unsupported batch: {rule}.");
+            throw new EezSettlementException(failure, $"Unsupported batch: {rule}.");
         }
     }
 }
