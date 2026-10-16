@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.IO;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -20,7 +18,7 @@ namespace Nethermind.Benchmarks.Store;
 [MemoryDiagnoser]
 public class ChainLevelBatchReadBenchmark
 {
-    private TempPath _directory = null!;
+    private string _directory = null!;
     private DbOnTheRocks _db = null!;
     private ChainLevelInfoRepository _repository = null!;
     private ulong[] _numbers = null!;
@@ -37,11 +35,12 @@ public class ChainLevelBatchReadBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        _directory = TempPath.GetTempDirectory();
+        _directory = Path.Combine(Path.GetTempPath(), "chain-levels-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_directory);
         DbConfig config = new();
-        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB),
+        RocksDbConfigFactory factory = new(config, new PruningConfig(), new HardwareInfo(),
             LimboLogs.Instance, validateConfig: false);
-        _db = new DbOnTheRocks(_directory.Path, new DbSettings(DbNames.BlockInfos, "levels"),
+        _db = new DbOnTheRocks(_directory, new DbSettings(DbNames.BlockInfos, "levels"),
             config, factory, LimboLogs.Instance);
         _repository = new ChainLevelInfoRepository(_db);
         _numbers = new ulong[Count];
@@ -51,7 +50,7 @@ public class ChainLevelBatchReadBenchmark
             ulong number = MixedLengths && (i & 1) != 0 ? (ulong)i + 1 : 25_000_000UL + (ulong)i;
             _numbers[i] = number;
             if (i < hits)
-                _repository.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, number)));
+                _repository.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(Hash256.Zero, number)));
         }
         _db.Flush();
 
@@ -66,7 +65,7 @@ public class ChainLevelBatchReadBenchmark
                 if (level is not null) throw new InvalidOperationException("Missing level returned a value.");
             }
             else if (level is null || !level.HasBlockOnMainChain || level.BlockInfos.Length != 1
-                || level.BlockInfos[0].BlockHash != TestItem.KeccakA
+                || level.BlockInfos[0].BlockHash != Hash256.Zero
                 || level.BlockInfos[0].TotalDifficulty != _numbers[i])
             {
                 throw new InvalidOperationException("Wrong decoded level or request order.");
@@ -86,6 +85,12 @@ public class ChainLevelBatchReadBenchmark
     public void Cleanup()
     {
         _db.Dispose();
-        _directory.Dispose();
+        Directory.Delete(_directory, recursive: true);
+    }
+
+    private sealed class HardwareInfo : IHardwareInfo
+    {
+        public long AvailableMemoryBytes => 1L << 30;
+        public int? MaxOpenFilesLimit => null;
     }
 }
