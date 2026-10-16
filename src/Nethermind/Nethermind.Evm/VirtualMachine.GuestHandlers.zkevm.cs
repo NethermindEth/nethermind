@@ -1894,7 +1894,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>MUL of the top two stack words.</summary>
         /// <remarks>
         /// Factors below 2^64 multiply here. Wider factors go to <see cref="ExecuteMulOfHalfWidthFactors"/> or <see cref="ExecuteMulOfWideFactors"/>,
-        /// or in the OpenVM guest to <see cref="ExecuteMulOnOpenVmBigInt"/>, so this handler needs no frame. A short stack or gas runs the shared MUL handler instead.
+        /// so this handler needs no frame; in the SP1 and OpenVM guests every product goes to <see cref="GuestMul.MultiplyAndDispatch"/>.
+        /// A short stack or gas runs the shared MUL handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1910,17 +1911,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (head > 1 && TryCharge(ref gas, LowGasCost.GasCost))
             {
+                if (GuestMulFlag.IsActive)
+                {
+                    nint native = (nint)(delegate*<void>)&GuestMul.MultiplyAndDispatch;
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, native);
+                }
+
                 // The product replaces the second word.
                 ref ulong product = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
                 ref ulong top = ref Unsafe.Add(ref product, LimbsPerWord);
                 ulong upperHalves = Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3) | Unsafe.Add(ref product, 2) | Unsafe.Add(ref product, 3);
                 if ((Unsafe.Add(ref top, 1) | Unsafe.Add(ref product, 1) | upperHalves) != 0)
                 {
-                    nint wide = OpenVmBigIntFlag.IsActive
-                        ? Entry(&ExecuteMulOnOpenVmBigInt)
-                        : upperHalves == 0
-                            ? Entry(&ExecuteMulOfHalfWidthFactors)
-                            : Entry(&ExecuteMulOfWideFactors);
+                    nint wide = upperHalves == 0
+                        ? Entry(&ExecuteMulOfHalfWidthFactors)
+                        : Entry(&ExecuteMulOfWideFactors);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, wide);
                 }
 
@@ -2075,37 +2080,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             Unsafe.Add(ref product, 3) = r3;
             head--;
             sp = ref Moved(ref sp, -1);
-            ip = ref Unsafe.Add(ref ip, 1);
-            nint next = handlers[PairAt(ref ip)];
-            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
-        }
-
-        /// <summary>The rest of <see cref="ExecuteMul"/> in the OpenVM guest, for factors at least one of which is 2^64 or more.</summary>
-        /// <remarks>
-        /// Entered only from there, with the stack checked and the gas charged. One instruction of OpenVM's bigint extension
-        /// takes the product in place of the second word, where software takes up to ten 64-bit products.
-        /// </remarks>
-        [SkipLocalsInit]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static EvmExceptionType ExecuteMulOnOpenVmBigInt(
-            ref EvmStack stack,
-            ulong gas,
-            ref DispatchState state,
-            ref byte ip,
-            nint head,
-            nint* handlers,
-            ref byte code,
-            ref byte sp)
-        {
-            // The stack is pinned and its words 32-byte aligned.
-            ulong* product = (ulong*)Unsafe.AsPointer(ref SlotBelow(ref sp, 2));
-            Accelerators.UInt256Mul(product, product + LimbsPerWord, product);
-
-            // Reloaded rather than held across the call, where each would take a callee-saved register.
-            handlers = state.OpcodeHandlers;
-            code = ref stack.Code;
-            head--;
-            sp = ref SlotAt(ref stack.Bottom, head);
             ip = ref Unsafe.Add(ref ip, 1);
             nint next = handlers[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
