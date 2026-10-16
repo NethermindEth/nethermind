@@ -33,7 +33,7 @@ public class ReqRespLimitsTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private static readonly TimeSpan ShortTtfbTimeout = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan ShortRespTimeout = TimeSpan.FromMilliseconds(200);
-    private static IResolveConstraint RateLimited => Throws.TypeOf<Eth2ReqRespException>().With.Property(nameof(Eth2ReqRespException.ResponseCode)).EqualTo(139);
+    private static IResolveConstraint RateLimited => Throws.TypeOf<Eth2ReqRespException>().With.Property(nameof(Eth2ReqRespException.ResponseCode)).EqualTo(ReqRespFraming.ResponseCode.RateLimited);
 
     [Test]
     public async Task Blocks_by_head_serves_the_requested_ancestry_in_reverse_order()

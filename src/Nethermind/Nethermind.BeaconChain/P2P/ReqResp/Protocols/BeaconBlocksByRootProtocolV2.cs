@@ -58,7 +58,7 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
         if (inboundSlot is null)
         {
             using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
-            await ReqRespFraming.WriteErrorChunkAsync(stream, 139, "Too many concurrent requests", refusal.Token);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, ReqRespFraming.ResponseCode.RateLimited, "Too many concurrent requests", refusal.Token);
             return;
         }
 

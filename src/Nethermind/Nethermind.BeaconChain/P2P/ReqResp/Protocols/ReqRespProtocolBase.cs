@@ -111,7 +111,7 @@ public abstract class ReqRespProtocolBase
     {
         // Any key can open a session, so fresh identities could drain the global budget before admission refuses them.
         if (!perPeerOnly && IsAdmitted is { } isAdmitted && (context.State.RemotePeerId is not { } requester || !isAdmitted(requester)))
-            throw new Eth2ReqRespException("Request from a peer that is not admitted", 139);
+            throw new Eth2ReqRespException("Request from a peer that is not admitted", ReqRespFraming.ResponseCode.RateLimited);
         items = Math.Max(1, items);
         lock (_quotaLock)
         {
@@ -149,7 +149,7 @@ public abstract class ReqRespProtocolBase
 
             quota.Refill(now, capacity);
             if (quota.Tokens < items || global is not null && global.Tokens < items || host is not null && host.Tokens < items)
-                throw new Eth2ReqRespException("Request rate limit exceeded", 139);
+                throw new Eth2ReqRespException("Request rate limit exceeded", ReqRespFraming.ResponseCode.RateLimited);
             quota.Tokens -= items;
             if (global is not null) global.Tokens -= items;
             if (host is not null) host.Tokens -= items;
@@ -600,7 +600,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
         if (inboundSlot is null)
         {
             using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
-            await ReqRespFraming.WriteErrorChunkAsync(stream, 139, "Too many concurrent requests", refusal.Token);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, ReqRespFraming.ResponseCode.RateLimited, "Too many concurrent requests", refusal.Token);
             return;
         }
 

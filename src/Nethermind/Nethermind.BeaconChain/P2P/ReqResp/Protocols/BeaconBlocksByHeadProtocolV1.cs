@@ -19,6 +19,7 @@ public sealed class BeaconBlocksByHeadProtocolV1(BeaconChainSpec spec, BeaconCha
 
     /// <summary>The phase0 <c>compute_min_epochs_for_block_requests</c>, in force until Gloas replaces it (phase0 p2p-interface.md).</summary>
     private static readonly ulong MinEpochsForBlockRequestsBeforeGloas = Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2;
+
     public string Id => "/eth2/beacon_chain/req/beacon_blocks_by_head/1/ssz_snappy";
 
     public Task DialAsync(IChannel downChannel, ISessionContext context) => throw new NotSupportedException("Use block range or root requests for outbound sync");
@@ -30,7 +31,7 @@ public sealed class BeaconBlocksByHeadProtocolV1(BeaconChainSpec spec, BeaconCha
         if (inbound is null)
         {
             using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
-            await ReqRespFraming.WriteErrorChunkAsync(stream, 139, "Too many concurrent requests", refusal.Token);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, ReqRespFraming.ResponseCode.RateLimited, "Too many concurrent requests", refusal.Token);
             return;
         }
 

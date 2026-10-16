@@ -142,7 +142,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         if (inboundSlot is null)
         {
             using CancellationTokenSource refusal = StartTimeout(TtfbTimeout);
-            await ReqRespFraming.WriteErrorChunkAsync(reply, 139, "Too many concurrent requests", refusal.Token);
+            await ReqRespFraming.WriteErrorChunkAsync(reply, ReqRespFraming.ResponseCode.RateLimited, "Too many concurrent requests", refusal.Token);
             return;
         }
 
