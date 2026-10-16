@@ -105,7 +105,7 @@ public class RpcAllocationMeasurement
             {
                 for (int i = 0; i < count; i++)
                 {
-                    using JsonRpcContext context = new(RpcEndpoint.Http);
+                    JsonRpcContext context = new(RpcEndpoint.Http);
                     await processor.ProcessAsync(request, context, sink, new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
                 }
             }
