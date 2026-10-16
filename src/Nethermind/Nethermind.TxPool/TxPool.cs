@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -73,7 +75,7 @@ namespace Nethermind.TxPool
         private readonly string? _specChangeValidationFingerprint;
         private readonly ISpecChangeValidationStorage? _specChangeValidationStorage;
         private readonly bool _blobReorgsSupportEnabled;
-        private readonly RecentlyIncludedBlobs _recentlyIncludedBlobs = new();
+        private readonly IProcessedBlobTxStorage? _processedBlobTxStorage;
         private readonly IncludedBlobLocations? _includedBlobLocations;
         private readonly IStateHeaderProvider? _stateHeaderProvider;
         private bool _specChangeMarkerUnpublished;
@@ -220,9 +222,8 @@ namespace Nethermind.TxPool
                 : null;
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
-            _includedBlobLocations = _blobReorgsSupportEnabled && blobTxStorage is IProcessedBlobTxStorage
-                ? new IncludedBlobLocations(Reorganization.MaxDepth)
-                : null;
+            _processedBlobTxStorage = _blobReorgsSupportEnabled ? blobTxStorage as IProcessedBlobTxStorage : null;
+            _includedBlobLocations = _processedBlobTxStorage is null ? null : new IncludedBlobLocations(Reorganization.MaxDepth);
             _stateHeaderProvider = stateHeaderProvider;
             _frameEvictionRetryBudget = txPoolConfig.FrameTxEvictionRetryBudget;
             _frameRevalidationDeferralBudget = txPoolConfig.FrameTxRevalidationDeferralBudget;
@@ -562,23 +563,132 @@ namespace Nethermind.TxPool
         public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
-            => _blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof)
-               || _recentlyIncludedBlobs.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof);
+        {
+            if (_blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof))
+            {
+                return true;
+            }
+
+            if (!TryGetIncludedBlob(blobVersionedHash, ProofVersion.V0, out ShardBlobNetworkWrapper? wrapper, out int blobIndex))
+            {
+                return false;
+            }
+
+            blob = wrapper.Blobs[blobIndex];
+            proof = wrapper.Proofs[blobIndex];
+            return true;
+        }
 
         public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[][]? cellProofs)
-            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs)
-               || _recentlyIncludedBlobs.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
+            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
 
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
         {
             int found = _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
-            return found == requestedBlobVersionedHashes.Length
+            return found == requestedBlobVersionedHashes.Length || _includedBlobLocations is null
                 ? found
-                : found + _recentlyIncludedBlobs.TryFillBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
+                : found + FillIncludedBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
         }
+
+        /// <summary>Gets the blob with versioned hash <paramref name="blobVersionedHash"/> from the processed row of a recently included transaction.</summary>
+        /// <returns><see langword="true"/> if the indexed row holds that blob in full with <paramref name="requiredVersion"/> proofs.</returns>
+        private bool TryGetIncludedBlob(byte[] blobVersionedHash, ProofVersion requiredVersion,
+            [NotNullWhen(true)] out ShardBlobNetworkWrapper? wrapper, out int blobIndex)
+        {
+            wrapper = null;
+            blobIndex = -1;
+            if (_includedBlobLocations is null
+                || !_includedBlobLocations.TryGetLocation(blobVersionedHash, out IncludedBlobLocation location)
+                || !_processedBlobTxStorage!.TryGetProcessedTransaction(location.BlockNumber, location.Position, out Transaction? row))
+            {
+                return false;
+            }
+
+            blobIndex = location.BlobIndex;
+            return TryGetServableIncludedBlob(row, blobVersionedHash, blobIndex, requiredVersion, out wrapper);
+        }
+
+        /// <summary>Fills the entries the blob pool left empty from the processed rows of recently included transactions.</summary>
+        /// <returns>The number of entries filled.</returns>
+        /// <remarks>Requests are grouped by row, so a row holding several requested blobs is read and decoded once.</remarks>
+        private int FillIncludedBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
+        {
+            using ArrayPoolListRef<ProcessedBlobTxKey> rowKeys = new(requestedBlobVersionedHashes.Length);
+            using ArrayPoolListRef<IncludedBlobRead> reads = new(requestedBlobVersionedHashes.Length);
+            for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
+            {
+                if (blobs[i] is not null
+                    || !_includedBlobLocations!.TryGetLocation(requestedBlobVersionedHashes[i], out IncludedBlobLocation location))
+                {
+                    continue;
+                }
+
+                ProcessedBlobTxKey rowKey = new(location.BlockNumber, location.Position);
+                int rowIndex = rowKeys.AsSpan().IndexOf(rowKey);
+                if (rowIndex < 0)
+                {
+                    rowIndex = rowKeys.Count;
+                    rowKeys.Add(rowKey);
+                }
+
+                reads.Add(new IncludedBlobRead(i, rowIndex, location.BlobIndex));
+            }
+
+            if (reads.Count == 0)
+            {
+                return 0;
+            }
+
+            using ArrayPoolListRef<Transaction?> rows = new(rowKeys.Count, rowKeys.Count);
+            _processedBlobTxStorage!.TryGetProcessedTransactions(rowKeys.AsSpan(), rows.AsSpan());
+
+            int filled = 0;
+            foreach (IncludedBlobRead read in reads.AsSpan())
+            {
+                if (TryGetServableIncludedBlob(rows[read.RowIndex], requestedBlobVersionedHashes[read.OutputIndex], read.BlobIndex,
+                        ProofVersion.V1, out ShardBlobNetworkWrapper? wrapper))
+                {
+                    blobs[read.OutputIndex] = wrapper.Blobs[read.BlobIndex];
+                    proofs[read.OutputIndex] = new ReadOnlyMemory<byte[]>(wrapper.Proofs, Ckzg.CellsPerExtBlob * read.BlobIndex, Ckzg.CellsPerExtBlob);
+                    filled++;
+                }
+            }
+
+            return filled;
+        }
+
+        /// <summary>Checks that a processed row read back for an indexed location still holds the requested blob in a servable form.</summary>
+        /// <remarks>
+        /// The rows change independently of the index, by a reorg rewriting a height or by finalization cleanup, so a row
+        /// is served only when it holds the requested versioned hash at the indexed blob index, with full blobs and proofs
+        /// of <paramref name="requiredVersion"/>, as the blob pool requires of its own transactions.
+        /// </remarks>
+        private static bool TryGetServableIncludedBlob(Transaction? row, byte[] blobVersionedHash, int blobIndex,
+            ProofVersion requiredVersion, [NotNullWhen(true)] out ShardBlobNetworkWrapper? wrapper)
+        {
+            int proofsPerBlob = requiredVersion == ProofVersion.V1 ? Ckzg.CellsPerExtBlob : 1;
+            if (row?.BlobVersionedHashes is { } rowBlobVersionedHashes
+                && (uint)blobIndex < (uint)rowBlobVersionedHashes.Length
+                && Bytes.AreEqual(rowBlobVersionedHashes[blobIndex], blobVersionedHash)
+                && row.NetworkWrapper is ShardBlobNetworkWrapper rowWrapper
+                && rowWrapper.Version == requiredVersion
+                && rowWrapper.HasFullBlobs()
+                && blobIndex < rowWrapper.Blobs.Length
+                && rowWrapper.Proofs.Length / proofsPerBlob > blobIndex)
+            {
+                wrapper = rowWrapper;
+                return true;
+            }
+
+            wrapper = null;
+            return false;
+        }
+
+        private readonly record struct IncludedBlobRead(int OutputIndex, int RowIndex, int BlobIndex);
 
         public bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask)
             => _blobTransactions.TryGetAvailableCellMask(hash, out availableMask);
@@ -598,7 +708,28 @@ namespace Nethermind.TxPool
             => _blobTransactions.TryGetCells(hash, requestedMask, out availableMask, out cells);
 
         public bool TryGetBlobCellsAndProofsV1(byte[] blobVersionedHash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells, [NotNullWhen(true)] out byte[][]? proofs)
-            => _blobTransactions.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out availableMask, out cells, out proofs);
+            => _blobTransactions.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out availableMask, out cells, out proofs)
+               || TryGetIncludedBlobCellsAndProofs(blobVersionedHash, requestedMask, out availableMask, out cells, out proofs);
+
+        /// <summary>Gets the requested cells and their proofs of a blob from the processed row of a recently included transaction.</summary>
+        /// <remarks>The row holds the full blob, so the cells are computed from that blob alone, as the blob pool does for its full-blob transactions.</remarks>
+        private bool TryGetIncludedBlobCellsAndProofs(byte[] blobVersionedHash, BlobCellMask requestedMask, out BlobCellMask availableMask,
+            [NotNullWhen(true)] out byte[][]? cells, [NotNullWhen(true)] out byte[][]? proofs)
+        {
+            if (!TryGetIncludedBlob(blobVersionedHash, ProofVersion.V1, out ShardBlobNetworkWrapper? wrapper, out int blobIndex)
+                || !BlobTxDistinctSortedPool.TryBuildBlobCellsAndProofsResponse(
+                    [new BlobTxDistinctSortedPool.BlobCellsCandidate(wrapper, blobIndex)], requestedMask, out availableMask, out cells, out proofs)
+                || cells is null
+                || proofs is null)
+            {
+                availableMask = default;
+                cells = null;
+                proofs = null;
+                return false;
+            }
+
+            return true;
+        }
 
         public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) =>
             MergeBlobCells(hash, cellMask, cells) == BlobCellMergeResult.Accepted;
@@ -1271,15 +1402,19 @@ namespace Nethermind.TxPool
         /// <summary>Saves the pool-held blob transactions of <paramref name="block"/> to the processed rows and indexes their blobs.</summary>
         /// <returns>The failure of the save, which the caller rethrows once the block's transactions have left the pool.</returns>
         /// <remarks>
-        /// The rows are written only when the pool supports reorgs. The index is updated for every block, also when nothing
+        /// Does nothing unless the pool supports reorgs. Otherwise the index is updated for every block, also when nothing
         /// was saved or the save failed, so that a block re-processed at a height drops the locations recorded there before.
         /// The failure is deferred rather than handled: the head update stops at the same point as when the save followed
         /// the removal.
         /// </remarks>
         private ExceptionDispatchInfo? SaveProcessedBlobTransactions(Block block)
         {
+            if (!_blobReorgsSupportEnabled)
+            {
+                return null;
+            }
+
             Transaction[] blockTransactions = block.Transactions;
-            _recentlyIncludedBlobs.StartBlock(block.Number);
             using ArrayPoolListRef<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
             for (int i = 0; i < blockTransactions.Length; i++)
             {
@@ -1291,19 +1426,10 @@ namespace Nethermind.TxPool
 
                 if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
                 {
-                    _recentlyIncludedBlobs.Add(fullBlobTx);
-                    if (_blobReorgsSupportEnabled)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
-                        blobTxsToSave.Add(fullBlobTx);
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
+                    blobTxsToSave.Add(fullBlobTx);
                 }
-                else if (_blobReorgsSupportEnabled && _logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
-            }
-
-            if (!_blobReorgsSupportEnabled)
-            {
-                return null;
+                else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
             }
 
             try

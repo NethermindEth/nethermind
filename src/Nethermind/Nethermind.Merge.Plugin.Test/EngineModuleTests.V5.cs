@@ -225,7 +225,8 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> newPayloadResult = await rpcModule.engine_newPayloadV4(
             executionPayload, blobVersionedHashes.Select(static h => new Hash256(h)).ToArray(), executionPayload.ParentBeaconBlockRoot, payload.ExecutionRequests);
         Assert.That(newPayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        await rpcModule.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash), null);
+        // Not finalized: the blobs of finalized blocks are no longer served.
+        await rpcModule.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(executionPayload.BlockHash, Keccak.Zero, Keccak.Zero), null);
 
         Assert.That(() => chain.TxPool.GetPendingBlobTransactionsCount(), Is.Zero.After(5000, 10), "precondition: the transaction left the blob pool");
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashes);

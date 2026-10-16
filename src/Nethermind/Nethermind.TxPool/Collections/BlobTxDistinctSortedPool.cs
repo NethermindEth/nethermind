@@ -492,7 +492,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
-    protected static bool TryBuildBlobCellsAndProofsResponse(
+    protected internal static bool TryBuildBlobCellsAndProofsResponse(
         List<BlobCellsCandidate>? candidates,
         BlobCellMask requestedMask,
         out BlobCellMask availableMask,
@@ -677,5 +677,5 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return true;
     }
 
-    protected readonly record struct BlobCellsCandidate(ShardBlobNetworkWrapper Wrapper, int BlobIndex);
+    protected internal readonly record struct BlobCellsCandidate(ShardBlobNetworkWrapper Wrapper, int BlobIndex);
 }
