@@ -261,7 +261,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             nuint analyzed;
             nint skipped;
-            if (head >= TCondition.Inputs && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head >= TCondition.Inputs)
             {
                 // Addressed off the head: keeps the handler frameless.
                 ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0));
@@ -274,36 +274,34 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     if ((byte)branch == (byte)Instruction.PUSH2 && branch >> 24 == (byte)Instruction.JUMPI)
                     {
-                        // The comparison is charged; the fused step charges the rest.
+                        // The fused step charges the comparison with every opcode after it in one test.
                         if (condition == 0)
                         {
-                            ulong notTakenGas = VeryLowGasCost.GasCost + JumpIGasCost.GasCost;
-                            if (gas >= notTakenGas)
+                            if (TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost))
                             {
                                 head -= TCondition.Inputs;
                                 sp = ref Moved(ref sp, -TCondition.Inputs);
-                                gas -= notTakenGas;
                                 ip = ref Unsafe.Add(ref ip, 5);
                                 goto Dispatch;
                             }
                         }
                         else
                         {
-                            ulong takenGas = VeryLowGasCost.GasCost + JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
+                            ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                             nuint destination = ReadBigEndianUInt16(branch >> 8);
-                            if (gas >= takenGas && destination < (nuint)stack.CodeLength)
+                            if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
                             {
                                 if (!stack.IsAnalyzedJumpDestination(destination))
                                 {
                                     analyzed = destination;
                                     skipped = 1 + 3;
-                                    gas -= VeryLowGasCost.GasCost;
+                                    // The analysis charges the jump itself.
+                                    gas += jumpGas;
                                     goto AnalyzeBranch;
                                 }
 
                                 head -= TCondition.Inputs;
                                 sp = ref Moved(ref sp, -TCondition.Inputs);
-                                gas -= takenGas;
                                 ip = ref Unsafe.Add(ref code, (nint)destination + 1);
                                 goto Dispatch;
                             }
@@ -317,33 +315,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         {
                             if (condition != 0)
                             {
-                                ulong notTakenGas = 2 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost;
-                                if (gas >= notTakenGas)
+                                if (TryCharge(ref gas, 3 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost))
                                 {
                                     head -= TCondition.Inputs;
                                     sp = ref Moved(ref sp, -TCondition.Inputs);
-                                    gas -= notTakenGas;
                                     ip = ref Unsafe.Add(ref ip, 6);
                                     goto Dispatch;
                                 }
                             }
                             else
                             {
-                                ulong takenGas = 2 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
+                                ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                                 nuint destination = ReadBigEndianUInt16(inverted >> 8);
-                                if (gas >= takenGas && destination < (nuint)stack.CodeLength)
+                                if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, 3 * VeryLowGasCost.GasCost + jumpGas))
                                 {
                                     if (!stack.IsAnalyzedJumpDestination(destination))
                                     {
                                         analyzed = destination;
                                         skipped = 1 + 1 + 3;
-                                        gas -= 2 * VeryLowGasCost.GasCost;
+                                        // The analysis charges the jump itself.
+                                        gas += jumpGas;
                                         goto AnalyzeBranch;
                                     }
 
                                     head -= TCondition.Inputs;
                                     sp = ref Moved(ref sp, -TCondition.Inputs);
-                                    gas -= takenGas;
                                     ip = ref Unsafe.Add(ref code, (nint)destination + 1);
                                     goto Dispatch;
                                 }
@@ -353,16 +349,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 // Unfused: the result replaces the deepest input, in limb layout.
-                nint result = -TCondition.Inputs * LimbsPerWord;
-                Unsafe.Add(ref end, result) = condition;
-                Unsafe.Add(ref end, result + 1) = 0;
-                Unsafe.Add(ref end, result + 2) = 0;
-                Unsafe.Add(ref end, result + 3) = 0;
-                head -= TCondition.Inputs - 1;
-                sp = ref Moved(ref sp, -(TCondition.Inputs - 1));
-                ip = ref Unsafe.Add(ref ip, 1);
-                nint unfused = handlers[(ushort)branch];
-                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
+                if (TryCharge(ref gas, VeryLowGasCost.GasCost))
+                {
+                    nint result = -TCondition.Inputs * LimbsPerWord;
+                    Unsafe.Add(ref end, result) = condition;
+                    Unsafe.Add(ref end, result + 1) = 0;
+                    Unsafe.Add(ref end, result + 2) = 0;
+                    Unsafe.Add(ref end, result + 3) = 0;
+                    head -= TCondition.Inputs - 1;
+                    sp = ref Moved(ref sp, -(TCondition.Inputs - 1));
+                    ip = ref Unsafe.Add(ref ip, 1);
+                    nint unfused = handlers[(ushort)branch];
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
+                }
             }
 
             nint shared = TCondition.SharedHandler;
@@ -865,7 +864,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
         {
             // One unsigned test bounds the depth on both sides: on an empty stack the difference wraps past the limit.
-            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2))
             {
                 ref ulong top = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 // PUSH4, its four immediates, EQ, PUSH2, its two immediates and JUMPI.
@@ -879,22 +878,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         // The selector's word, reversed, holds it zero-extended above bit 32, where a 32-bit read needs extending.
                         ulong selector = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref opcode, 2))) >> 32;
-                        // DUP1 is charged; the fused step charges the rest.
+                        // The fused step charges DUP1 with every opcode after it in one test.
                         if (((top ^ selector) | Unsafe.Add(ref top, 1) | Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3)) != 0)
                         {
-                            ulong notTakenGas = 3 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost;
-                            if (gas >= notTakenGas)
+                            if (TryCharge(ref gas, 4 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost))
                             {
-                                gas -= notTakenGas;
                                 ip = ref Unsafe.Add(ref ip, 11);
                                 goto Dispatch;
                             }
                         }
                         else
                         {
-                            ulong takenGas = 3 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
+                            ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                             nuint destination = ReadBigEndianUInt16(branch >> 8);
-                            if (gas >= takenGas && destination < (nuint)stack.CodeLength)
+                            if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, 4 * VeryLowGasCost.GasCost + jumpGas))
                             {
                                 if (!stack.IsAnalyzedJumpDestination(destination))
                                 {
@@ -904,13 +901,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     SetWord(ref Unsafe.Add(ref taken, LimbsPerWord), destination);
                                     head += 2;
                                     sp = ref Moved(ref sp, 2);
-                                    gas -= 3 * VeryLowGasCost.GasCost;
+                                    // The analysis charges the jump itself.
+                                    gas += jumpGas;
                                     ip = ref Unsafe.Add(ref ip, 10);
                                     nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
                                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
                                 }
 
-                                gas -= takenGas;
                                 ip = ref Unsafe.Add(ref code, (nint)destination + 1);
                                 goto Dispatch;
                             }
@@ -918,16 +915,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                ref ulong copy = ref Unsafe.Add(ref top, EvmStack.WordSize / sizeof(ulong));
-                copy = top;
-                Unsafe.Add(ref copy, 1) = Unsafe.Add(ref top, 1);
-                Unsafe.Add(ref copy, 2) = Unsafe.Add(ref top, 2);
-                Unsafe.Add(ref copy, 3) = Unsafe.Add(ref top, 3);
-                head++;
-                sp = ref Moved(ref sp, 1);
-                ip = ref Unsafe.Add(ref ip, 1);
-                nint unfused = handlers[following];
-                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
+                if (TryCharge(ref gas, VeryLowGasCost.GasCost))
+                {
+                    ref ulong copy = ref Unsafe.Add(ref top, EvmStack.WordSize / sizeof(ulong));
+                    copy = top;
+                    Unsafe.Add(ref copy, 1) = Unsafe.Add(ref top, 1);
+                    Unsafe.Add(ref copy, 2) = Unsafe.Add(ref top, 2);
+                    Unsafe.Add(ref copy, 3) = Unsafe.Add(ref top, 3);
+                    head++;
+                    sp = ref Moved(ref sp, 1);
+                    ip = ref Unsafe.Add(ref ip, 1);
+                    nint unfused = handlers[following];
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
+                }
             }
 
             nint shared = Entry(&ExecuteOpcode<DupOpcode<EvmInstructions.Op1, OffFlag>, OffFlag, OffFlag, OnFlag>);
@@ -1266,10 +1266,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
         {
             ulong pushGas = VeryLowGasCost.GasCost;
-            if (head >= EvmStack.MaxStackSize - 1 || !TryCharge(ref gas, pushGas))
+            if (head >= EvmStack.MaxStackSize - 1)
                 goto Shared;
 
-            // The push is charged; a fused step charges the rest, and a miss pays the push back.
+            // A fused step charges the push with the rest in one test, and short of all of it runs the shared handler.
             ref byte opcode = ref ip;
             nuint value = ReadBigEndianUInt16(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref opcode, 1)));
             byte following = Unsafe.Add(ref opcode, 3);
@@ -1278,17 +1278,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 if (value < (nuint)stack.CodeLength)
                 {
-                    ulong fusedGas = JumpGasCost.GasCost + JumpDestGasCost.GasCost;
-                    if (gas < fusedGas)
-                        goto Refund;
+                    ulong jumpGas = JumpGasCost.GasCost + JumpDestGasCost.GasCost;
+                    if (!TryCharge(ref gas, pushGas + jumpGas))
+                        goto Shared;
 
                     if (!stack.IsAnalyzedJumpDestination(value))
                     {
+                        // The analysis charges the jump itself.
+                        gas += jumpGas;
                         analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
                         goto Analyze;
                     }
 
-                    gas -= fusedGas;
                     ip = ref Unsafe.Add(ref code, (nint)value + 1);
                     goto Dispatch;
                 }
@@ -1297,41 +1298,43 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 // The JUMPI would find no condition; the shared handler faults on it as the unfused pair does.
                 if (head == 0)
-                    goto Refund;
+                    goto Shared;
 
                 ref ulong condition = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((condition | Unsafe.Add(ref condition, 1) | Unsafe.Add(ref condition, 2) | Unsafe.Add(ref condition, 3)) == 0)
                 {
-                    ulong notTakenGas = JumpIGasCost.GasCost;
-                    if (gas < notTakenGas)
-                        goto Refund;
+                    if (!TryCharge(ref gas, pushGas + JumpIGasCost.GasCost))
+                        goto Shared;
 
                     head--;
                     sp = ref Moved(ref sp, -1);
-                    gas -= notTakenGas;
                     ip = ref Unsafe.Add(ref ip, 4);
                     goto Dispatch;
                 }
 
                 if (value < (nuint)stack.CodeLength)
                 {
-                    ulong takenGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-                    if (gas < takenGas)
-                        goto Refund;
+                    ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
+                    if (!TryCharge(ref gas, pushGas + jumpGas))
+                        goto Shared;
 
                     if (!stack.IsAnalyzedJumpDestination(value))
                     {
+                        // The analysis charges the jump itself.
+                        gas += jumpGas;
                         analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
                         goto Analyze;
                     }
 
                     head--;
                     sp = ref Moved(ref sp, -1);
-                    gas -= takenGas;
                     ip = ref Unsafe.Add(ref code, (nint)value + 1);
                     goto Dispatch;
                 }
             }
+
+            if (!TryCharge(ref gas, pushGas))
+                goto Shared;
 
             SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), value);
             ip = ref Unsafe.Add(ref ip, 3);
@@ -1352,8 +1355,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             sp = ref Moved(ref sp, 1);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
 
-        Refund:
-            gas += pushGas;
         Shared:
             nint shared = Entry(&ExecuteOpcode<Push2Opcode<OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
