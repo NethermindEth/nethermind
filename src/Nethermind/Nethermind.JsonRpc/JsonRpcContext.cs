@@ -11,7 +11,11 @@ namespace Nethermind.JsonRpc
     public class JsonRpcContext
     {
         /// <summary>The context of the request whose RPC method is executing synchronously on this thread, if any.</summary>
-        /// <remarks>Thread-static rather than async-local because publishing an async-local value allocates on every request.</remarks>
+        /// <remarks>
+        /// Thread-static rather than async-local because publishing an async-local value allocates on every request.
+        /// Only valid before the method's first await; after that it may be <see langword="null"/> or belong to another
+        /// request, so it is no authentication signal there. Use <see cref="IContextAwareRpcModule.Context"/> instead.
+        /// </remarks>
         [field: ThreadStatic]
         public static JsonRpcContext? Current { get; internal set; }
 
