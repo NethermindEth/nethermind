@@ -820,6 +820,40 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase(TxType.SetCode, null, null)]
+    [TestCase(TxType.SetCode, null, "0x0")]
+    [TestCase(TxType.Blob, "0x0", null)]
+    [TestCase(TxType.Blob, "0x0", "0x0")]
+    [TestCase(TxType.Blob, "0x1", null)]
+    [TestCase(TxType.Blob, "0x1", "0x0")]
+    public async Task Debug_traceCall_rejects_transaction_types_before_activation(TxType type, string? blobFeeCap, string? txIndex)
+    {
+        IReleaseSpec spec = type == TxType.SetCode ? Cancun.Instance : Shanghai.Instance;
+        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+        Dictionary<string, object> call = new()
+        {
+            ["to"] = TestItem.AddressC.ToString(),
+            ["gas"] = "0x186a0",
+            ["type"] = "0x" + ((byte)type).ToString("x")
+        };
+        if (type == TxType.SetCode)
+            call["authorizationList"] = new[] { new { chainId = "0x1", address = TestItem.AddressB.ToString(), nonce = "0x0", yParity = "0x0", r = "0x1", s = "0x1" } };
+        else
+        {
+            call["maxFeePerBlobGas"] = blobFeeCap!;
+            call["blobVersionedHashes"] = new[] { "0x01" + new string('0', 62) };
+        }
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest", new { txIndex });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(TxErrorMessages.InvalidTxType(spec.Name)), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+        }
+    }
+
     private static IEnumerable<TestCaseData> UnsupportedBlockOverrides()
     {
         (string Json, string? Field)[] cases =
