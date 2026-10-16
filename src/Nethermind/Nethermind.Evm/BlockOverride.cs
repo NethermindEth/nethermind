@@ -18,6 +18,12 @@ public class BlockOverride
     public UInt256? BaseFeePerGas { get; set; }
     public UInt256? BlobBaseFee { get; set; }
 
+    /// <summary>
+    /// The withdrawals of a block of <c>eth_simulateV1</c>, processed after its calls from Shanghai on. Other methods
+    /// that take block overrides do not apply them.
+    /// </summary>
+    public Withdrawal[]? Withdrawals { get; set; }
+
     /// <summary>A copy of <paramref name="header"/> with these overrides applied.</summary>
     public BlockHeader ApplyTo(BlockHeader header)
     {
