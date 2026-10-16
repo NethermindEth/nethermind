@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -9,9 +10,14 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
 
@@ -37,6 +43,149 @@ public class ChainLevelInfoRepositoryTests
         using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(new ArrayPoolListRef<ulong>(2, 1UL, 10UL));
         AssertChainLevelInfo(levels[0], level1);
         AssertChainLevelInfo(levels[1], level10);
+    }
+
+    [Test]
+    public void MultiLoadLevel_WithFixedLengthKeys_PreservesOwnedResults(
+        [Values(false, true)] bool native, [Values(0, 1, 2, 33, 257)] int count)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        ulong[] requested = new ulong[count];
+        ChainLevelInfo[] expected = new ChainLevelInfo[count];
+        IOwnedReadOnlyList<ChainLevelInfo> levels;
+        using (IDb db = CreateBatchDb(native, directory))
+        {
+            ChainLevelInfoRepository repository = new(db);
+            for (int i = 0; i < count; i++)
+            {
+                ulong number = 25_000_000UL + (ulong)(i % 7);
+                requested[i] = number;
+                if (i % 7 == 1) continue;
+                if (i % 7 == 2)
+                {
+                    db.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), []);
+                    continue;
+                }
+
+                expected[i] = CreateBatchLevel(number);
+                repository.PersistLevel(number, expected[i]);
+            }
+
+            using ArrayPoolListRef<ulong> numbers = new(requested);
+            levels = repository.MultiLoadLevel(numbers);
+        }
+
+        using (levels)
+        {
+            Assert.That(levels.Count, Is.EqualTo(count), "the batch must retain the request length");
+            for (int i = 0; i < count; i++) AssertBatchLevel(levels[i], expected[i]);
+        }
+    }
+
+    [Test]
+    public void MultiLoadLevel_AtEveryKeyLengthBoundary_PreservesFixedLengthReads(
+        [Values(false, true)] bool native, [ValueSource(nameof(KeyLengthBoundaries))] ulong number)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb db = CreateBatchDb(native, directory);
+        ChainLevelInfoRepository repository = new(db);
+        ChainLevelInfo expected = CreateBatchLevel(number);
+        repository.PersistLevel(number, expected);
+
+        using ArrayPoolListRef<ulong> numbers = new(2, number, number);
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
+        Assert.That(levels.Count, Is.EqualTo(2));
+        AssertChainLevelInfo(levels[0], expected);
+        AssertChainLevelInfo(levels[1], expected);
+    }
+
+    [Test]
+    public void MultiLoadLevel_WithMixedLengthKeys_PreservesEncodingAndRequestOrder([Values(false, true)] bool native)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb db = CreateBatchDb(native, directory);
+        ChainLevelInfoRepository repository = new(db);
+        ulong[] requested = [ulong.MaxValue, 0, 256, 255, 65_535, 65_536, 16_777_215, 16_777_216, 256, 0];
+        for (int i = 0; i < requested.Length; i++)
+        {
+            ulong number = requested[i];
+            if (number == 256) continue;
+            if (number == 65_535)
+                db.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), []);
+            else
+                repository.PersistLevel(number, CreateBatchLevel(number));
+        }
+
+        using ArrayPoolListRef<ulong> numbers = new(requested);
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
+        Assert.That(levels.Count, Is.EqualTo(requested.Length), "mixed key lengths must not drop requests");
+        for (int i = 0; i < requested.Length; i++)
+        {
+            ulong number = requested[i];
+            ChainLevelInfo expected = number is 256 or 65_535 ? null : CreateBatchLevel(number);
+            AssertBatchLevel(levels[i], expected);
+        }
+    }
+
+    [Test]
+    public void MultiLoadLevel_WithFixedOrMixedKeyLengths_UsesExpectedBatchPath([Values(false, true)] bool mixedLengths)
+    {
+        BatchTrackingDb db = new(mixedLengths);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ulong[] requested = mixedLengths ? [255, 256, 255] : [1, 2, 1];
+        foreach (ulong number in requested) repository.PersistLevel(number, CreateBatchLevel(number));
+
+        using ArrayPoolListRef<ulong> numbers = new(requested);
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
+        Assert.That(levels.Count, Is.EqualTo(requested.Length));
+        for (int i = 0; i < requested.Length; i++) AssertChainLevelInfo(levels[i], CreateBatchLevel(requested[i]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.DecodedBatchReads, Is.EqualTo(mixedLengths ? 0 : 1));
+            Assert.That(db.LegacyBatchReads, Is.EqualTo(mixedLengths ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void MultiLoadLevel_WhenStoredValueChanges_BypassesSingleLevelCache([Values(false, true)] bool native)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb db = CreateBatchDb(native, directory);
+        ChainLevelInfoRepository repository = new(db);
+        ChainLevelInfo cached = CreateBatchLevel(1);
+        ChainLevelInfo replacement = CreateBatchLevel(2);
+        repository.PersistLevel(1, cached);
+        db.PutSpan(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), Rlp.Encode(replacement).Bytes);
+        Assert.That(repository.LoadLevel(1), Is.SameAs(cached), "precondition: the single-key cache still has the old level");
+
+        using ArrayPoolListRef<ulong> numbers = new(1, 1UL);
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
+        AssertChainLevelInfo(levels[0], replacement);
+    }
+
+    [Test]
+    public void MultiLoadLevel_WhenDecodeFails_AllowsTheNextBatch(
+        [Values(false, true)] bool native, [Values(2UL, 256UL)] ulong secondNumber)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb db = CreateBatchDb(native, directory);
+        ChainLevelInfoRepository repository = new(db);
+        repository.PersistLevel(1, CreateBatchLevel(1));
+        db.PutSpan(secondNumber.ToBigEndianSpanWithoutLeadingZeros(out _), [0x01]);
+
+        Assert.Throws<RlpException>(() =>
+        {
+            using ArrayPoolListRef<ulong> invalid = new(2, 1UL, secondNumber);
+            using IOwnedReadOnlyList<ChainLevelInfo> ignored = repository.MultiLoadLevel(invalid);
+        });
+
+        ChainLevelInfo expected = CreateBatchLevel(secondNumber);
+        repository.PersistLevel(secondNumber, expected);
+        using ArrayPoolListRef<ulong> numbers = new(2, 1UL, secondNumber);
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
+        AssertChainLevelInfo(levels[0], CreateBatchLevel(1));
+        AssertChainLevelInfo(levels[1], expected);
     }
 
     [Test]
@@ -188,6 +337,39 @@ public class ChainLevelInfoRepositoryTests
         .AddKeyedSingleton<IDb>(DbNames.BlockInfos, blockInfosDb)
         .Build();
 
+    private static IDb CreateBatchDb(bool native, TempPath directory)
+    {
+        if (!native) return new MemDb();
+        DbConfig config = new();
+        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB),
+            LimboLogs.Instance, validateConfig: false);
+        return new DbOnTheRocks(directory.Path, new DbSettings(DbNames.BlockInfos, "levels"),
+            config, factory, LimboLogs.Instance);
+    }
+
+    private static IEnumerable<ulong> KeyLengthBoundaries()
+    {
+        yield return 0;
+        for (int bytes = 1; bytes < sizeof(ulong); bytes++)
+        {
+            ulong boundary = 1UL << (bytes * 8);
+            yield return boundary - 1;
+            yield return boundary;
+        }
+        yield return ulong.MaxValue;
+    }
+
+    private static ChainLevelInfo CreateBatchLevel(ulong number) =>
+        new(true, new BlockInfo(TestItem.KeccakA, number), new BlockInfo(TestItem.KeccakB, UInt256.One));
+
+    private static void AssertBatchLevel(ChainLevelInfo actual, ChainLevelInfo expected)
+    {
+        if (expected is null)
+            Assert.That(actual, Is.Null, "missing and empty database values must remain null");
+        else
+            AssertChainLevelInfo(actual, expected);
+    }
+
     /// <summary>Persists <paramref name="level"/> at number 1 and leaves the cache cold, returning its stored RLP.</summary>
     private static byte[] PersistUncached(IChainLevelInfoRepository repository, IDb db, ChainLevelInfo level)
     {
@@ -209,6 +391,33 @@ public class ChainLevelInfoRepositoryTests
             Assert.That(actual.HasBlockOnMainChain, Is.EqualTo(expected.HasBlockOnMainChain));
             Assert.That(actual.BlockInfos, Is.EqualTo(expected.BlockInfos));
         });
+    }
+
+    private sealed class BatchTrackingDb(bool mixedLengths) : MemDb, IDb, IBatchReadOnlyDb
+    {
+        public int DecodedBatchReads { get; private set; }
+        public int LegacyBatchReads { get; private set; }
+
+        KeyValuePair<byte[], byte[]>[] IDb.this[byte[][] keys]
+        {
+            get
+            {
+                if (!mixedLengths) throw new InvalidOperationException("Fixed-width keys must use decoded batch reads.");
+                LegacyBatchReads++;
+                return base[keys];
+            }
+        }
+
+        void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
+        {
+            if (mixedLengths) throw new InvalidOperationException("Mixed-width keys must use one legacy batch.");
+            DecodedBatchReads++;
+            for (int i = 0; i < values.Length; i++)
+            {
+                byte[] value = Get(keys.Slice(i * keyLength, keyLength));
+                values[i] = value is null ? default! : decoder.Decode(value);
+            }
+        }
     }
 
     private sealed class RemoveHookDb : TestMemDb
