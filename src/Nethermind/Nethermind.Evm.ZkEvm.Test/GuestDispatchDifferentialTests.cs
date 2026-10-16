@@ -280,7 +280,10 @@ public class GuestDispatchDifferentialTests
             "63123456788063123456781461001157005B1900",
             "63123456788063123456791461001157005B1900",
             "602A604081521900",
-            "6020602001511900")] string sequence)
+            "6020602001511900",
+            "808000",
+            "808200",
+            "809100")] string sequence)
     {
         byte[] code = Convert.FromHexString(sequence);
         List<string> mismatches = [];
@@ -397,9 +400,9 @@ public class GuestDispatchDifferentialTests
     /// </remarks>
     [Test]
     public void Fused_operands_match_the_shared_handlers(
-        [Values(Instruction.PUSH0, Instruction.PUSH1, Instruction.DUP2, Instruction.DUP3, Instruction.DUP5)] Instruction first,
+        [Values(Instruction.PUSH0, Instruction.PUSH1, Instruction.DUP1, Instruction.DUP2, Instruction.DUP3, Instruction.DUP5)] Instruction first,
         [Values(Instruction.ADD, Instruction.SUB, Instruction.AND, Instruction.OR, Instruction.XOR, Instruction.SAR, Instruction.SHL,
-            Instruction.SHR, Instruction.NOT, Instruction.SIGNEXTEND, Instruction.BYTE, Instruction.SWAP1, Instruction.SWAP2)] Instruction op,
+            Instruction.SHR, Instruction.NOT, Instruction.SIGNEXTEND, Instruction.BYTE, Instruction.SWAP1, Instruction.SWAP2, Instruction.DUP1, Instruction.DUP3)] Instruction op,
         [Range(0, 3)] int seed)
     {
         List<string> mismatches = [];
