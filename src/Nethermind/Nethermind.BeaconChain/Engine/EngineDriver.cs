@@ -238,7 +238,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     };
 
     /// <summary>Runs one engine call and records whether it returned a verdict.</summary>
-    /// <exception cref="EngineUnavailableException">The call produced no verdict, threw, or a timed-out forkchoice update is still running.</exception>
+    /// <exception cref="EngineUnavailableException">The call produced no verdict, threw, a timed-out forkchoice update is still running, or an external engine call is in flight.</exception>
     /// <exception cref="OperationCanceledException">An external consensus client took over the engine API.</exception>
     private async Task<PayloadStatusV1> CallEngineAsync(string method, string? details, Func<Task<(PayloadStatusV1 Status, TimeSpan Elapsed)>> call, Hash256? graffiti = null, ulong? blockNumber = null)
     {
