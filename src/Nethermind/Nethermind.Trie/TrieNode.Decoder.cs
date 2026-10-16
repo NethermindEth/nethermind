@@ -1159,7 +1159,12 @@ namespace Nethermind.Trie
                         cursor += nodeRlp.PeekNextRlpLength(cursor);
                     }
 
+                    Debug.Assert(item.SeekChildPosition(nodeRlp, BranchesCount) == cursor, "The tail does not end at the branch value");
                     tailEnd = cursor;
+                }
+                else
+                {
+                    Debug.Assert(previousRlp[^1] == 128, "The copied branch value is not empty");
                 }
 
                 const int valueRlpLength = 1;

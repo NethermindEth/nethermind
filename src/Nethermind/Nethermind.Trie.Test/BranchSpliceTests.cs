@@ -9,7 +9,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
-/// <summary>Re-encoding a branch under 532 bytes, which splices its changed children into its previous RLP.</summary>
+/// <summary>Re-encoding a branch that cannot be patched in place, which splices its changed children into its previous RLP.</summary>
 /// <remarks>
 /// The guest keeps the previous value rather than walking to it (see <c>TrieNode.zkevm.cs</c>), so
 /// <c>Nethermind.Trie.ZkEvm.Test</c> links this file. Children are hashes or embedded leaves, so nothing is hashed: in a
@@ -61,6 +61,31 @@ public class BranchSpliceTests
         }
 
         Assert.That(Encode(restored), Is.EqualTo(Encode(expected)));
+    }
+
+    /// <remarks>A full branch is patched in place unless a child is deleted or embedded, which falls back to the splice.</remarks>
+    [Test]
+    public void Splice_from_a_full_branch_matches_fresh_encoding([Values(0, 7, 15)] int index, [Values] Change change)
+    {
+        byte[] previous = Encode(FullBranch());
+        Assert.That(previous, Has.Length.EqualTo(532));
+
+        TrieNode restored = Decode(previous);
+        TrieNode expected = FullBranch();
+        Apply(restored, expected, index, change);
+
+        Assert.That(Encode(restored), Is.EqualTo(Encode(expected)));
+    }
+
+    private static TrieNode FullBranch()
+    {
+        TrieNode branch = new(NodeType.Branch);
+        for (int i = 0; i < TrieNode.BranchesCount; i++)
+        {
+            branch.SetChild(i, HashChild(i));
+        }
+
+        return branch;
     }
 
     private static void Apply(TrieNode restored, TrieNode expected, int index, Change change)
