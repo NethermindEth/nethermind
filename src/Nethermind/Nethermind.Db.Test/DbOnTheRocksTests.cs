@@ -1215,6 +1215,36 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void SnapshotCeiling_WhenBoundsCrossPrefixBuckets_FindsTheNextBucket([Values] bool flush, [Values] bool snapshot)
+        {
+            using DbOnTheRocks db = CreateFreshDb("Code");
+            byte[] key = new byte[32];
+            key[0] = 1;
+            db.PutSpan(key, new byte[] { 0x11, 0x22 }, WriteFlags.None);
+            if (flush) db.Flush();
+            using IKeyValueStoreSnapshot? captured = snapshot ? db.CreateSnapshot() : null;
+            ISnapshotSortedKeyValueStore store = captured is null ? db : (ISnapshotSortedKeyValueStore)captured;
+            db.PutSpan(key, new byte[] { 0x33, 0x44 }, WriteFlags.None);
+            if (flush) db.Flush();
+            byte[] lower = new byte[32];
+            byte[] upper = new byte[32];
+            upper[0] = 2;
+            byte[] found = new byte[32];
+            byte[] value = new byte[2];
+
+            Assert.That(store.TryGetCeilingInSnapshot(lower, upper, found, out int keyLength, value, out int valueLength), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keyLength, Is.EqualTo(32));
+                Assert.That(valueLength, Is.EqualTo(2));
+                Assert.That(found, Is.EqualTo(key));
+                Assert.That(value, Is.EqualTo(snapshot ? new byte[] { 0x11, 0x22 } : new byte[] { 0x33, 0x44 }));
+            }
+            db.Remove(key);
+            Assert.That(store.TryGetCeilingInSnapshot(lower, upper, found, out _, value, out _), Is.EqualTo(snapshot));
+        }
+
+        [Test]
         public void ResetBounds_WhenNewRangeCrossesPrefixBuckets_RequiresANewView()
         {
             using DbOnTheRocks db = CreateFreshDb("Code");
@@ -1496,6 +1526,46 @@ namespace Nethermind.Db.Test
                 bool found = sorted.TryGetCeiling(lowerBoundIncl, upperBoundExcl, key, out _, value, out _);
                 Assert.That(found, Is.False, $"the pooled iterator must not report a stale hit ({because})");
             }
+        }
+
+        [Test]
+        public void SnapshotCeiling_WhenValuesChange_PreservesVisibilityAndBufferLengths(
+            [Values] bool snapshot, [Values(0, 1, 2, 4)] int bufferSize, [Values(0, 4)] int initialLength)
+        {
+            byte[] initial = Enumerable.Repeat((byte)0x11, initialLength).ToArray();
+            _db[[1, 3]] = initial;
+            using IKeyValueStoreSnapshot? captured = snapshot ? ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot() : null;
+            ISnapshotSortedKeyValueStore store = captured is null ? (ISnapshotSortedKeyValueStore)_db : (ISnapshotSortedKeyValueStore)captured;
+            byte[] changed = [0x22, 0x33, 0x44, 0x55];
+            _db[[1, 3]] = changed;
+            byte[] key = Enumerable.Repeat((byte)0xA5, bufferSize).ToArray();
+            byte[] value = Enumerable.Repeat((byte)0xA5, bufferSize).ToArray();
+            byte[] expectedKey = (byte[])key.Clone();
+            byte[] expectedValue = (byte[])value.Clone();
+            byte[] visible = snapshot ? initial : changed;
+            if (bufferSize >= 2) new byte[] { 1, 3 }.CopyTo(expectedKey, 0);
+            if (bufferSize >= visible.Length) visible.CopyTo(expectedValue, 0);
+
+            Assert.That(store.TryGetCeilingInSnapshot([1, 2], [1, 4], key, out int keyLength, value, out int valueLength), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keyLength, Is.EqualTo(2));
+                Assert.That(valueLength, Is.EqualTo(visible.Length));
+                Assert.That(key, Is.EqualTo(expectedKey), "a short key buffer stays unchanged");
+                Assert.That(value, Is.EqualTo(expectedValue), "a short value buffer stays unchanged");
+            }
+
+            Assert.That(store.TryGetCeilingInSnapshot([1, 2], [1, 3], key, out keyLength, value, out valueLength), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keyLength, Is.Zero);
+                Assert.That(valueLength, Is.Zero);
+                Assert.That(key, Is.EqualTo(expectedKey), "a miss leaves the key buffer unchanged");
+                Assert.That(value, Is.EqualTo(expectedValue), "a miss leaves the value buffer unchanged");
+            }
+            _db[[1, 3]] = null;
+            Assert.That(store.TryGetCeilingInSnapshot([1, 2], [1, 4], key, out _, value, out _), Is.EqualTo(snapshot),
+                "a fresh call sees deletion while a pinned snapshot keeps its original row");
         }
 
         [Test]

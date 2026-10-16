@@ -112,6 +112,33 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
     }
 
+    internal bool TryGetCeilingInSnapshot(
+        scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
+    {
+        _mainDb.ThrowIfDisposing();
+        keyLength = valueLength = 0;
+        // The shared options are immutable and non-tailing. Crossing prefix buckets needs total-order options.
+        using ReadOptions? ownedOptions = _mainDb.CrossesPrefixBucket(lowerBoundInclusive, upperBoundExclusive)
+            ? _readOptionsFactory().SetTotalOrderSeek(true) : null;
+        using Iterator iterator = _mainDb.CreateIterator(ownedOptions ?? _options, _columnFamily);
+        iterator.Seek(lowerBoundInclusive);
+        if (!iterator.Valid())
+        {
+            iterator.ThrowIfError();
+            return false;
+        }
+
+        ReadOnlySpan<byte> key = iterator.GetKeySpan();
+        if (key.SequenceCompareTo(upperBoundExclusive) >= 0) return false;
+        ReadOnlySpan<byte> value = iterator.GetValueSpan();
+        keyLength = key.Length;
+        valueLength = value.Length;
+        key.TryCopyTo(keyBuffer);
+        value.TryCopyTo(valueBuffer);
+        return true;
+    }
+
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None)
     {
         ReadOptions readOptions = _readOptionsFactory();

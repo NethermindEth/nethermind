@@ -67,6 +67,17 @@ internal sealed class HistoryStoreV3
         flatKey.CopyTo(upperBound);
         upperBound[flatKey.Length..].Fill(0xFF);
 
+        if (scope is null && _history is ISnapshotSortedKeyValueStore snapshotHistory)
+        {
+            Span<byte> found = stackalloc byte[seekKey.Length];
+            if (!snapshotHistory.TryGetCeilingInSnapshot(seekKey, upperBound, found, out int keyLength, outBuffer, out int valueLength)
+                || keyLength != found.Length || !found[..flatKey.Length].SequenceEqual(flatKey)) return -1;
+
+            nextChangeBlock = BinaryPrimitives.ReadUInt64BigEndian(found[flatKey.Length..]);
+            ValidateValueLength(valueLength, outBuffer.Length, nextChangeBlock);
+            return valueLength;
+        }
+
         using ISortedView? ownedView = scope is null ? _history.GetViewBetween(seekKey, upperBound) : null;
         ISortedView view = ownedView ?? scope!.GetView(_history, seekKey, upperBound, generation);
         if (!view.MoveNext()) return -1;
@@ -77,14 +88,19 @@ internal sealed class HistoryStoreV3
 
         nextChangeBlock = BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
         ReadOnlySpan<byte> value = view.CurrentValue;
-        if (value.Length > outBuffer.Length)
-        {
-            throw new StateUnavailableException(
-                $"History value of {value.Length} bytes at block {nextChangeBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.");
-        }
+        ValidateValueLength(value.Length, outBuffer.Length, nextChangeBlock);
 
         value.CopyTo(outBuffer);
         return value.Length;
+    }
+
+    private static void ValidateValueLength(int valueLength, int bufferLength, ulong nextChangeBlock)
+    {
+        if (valueLength > bufferLength)
+        {
+            throw new StateUnavailableException(
+                $"History value of {valueLength} bytes at block {nextChangeBlock} exceeds the {bufferLength}-byte encoder maximum - the row is corrupt; resync the flatHistory database.");
+        }
     }
 
     /// <summary>Retains a bounded view until its capture generation changes.</summary>

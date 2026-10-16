@@ -168,6 +168,17 @@ namespace Nethermind.Core
         }
     }
 
+    /// <summary>Provides ceiling reads whose key and value come from one point-in-time view.</summary>
+    public interface ISnapshotSortedKeyValueStore : ISortedKeyValueStore
+    {
+        /// <summary>Finds the first key in the range using a fresh view, or the store's pinned snapshot.</summary>
+        /// <remarks>Reports the stored lengths. A buffer too short for its part remains unchanged.
+        /// Neither buffer changes on a miss. The lower bound is inclusive; the upper bound is exclusive.</remarks>
+        bool TryGetCeilingInSnapshot(
+            scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength);
+    }
+
     /// <summary>
     /// Provides the capability to create read-only snapshots of a key-value store.
     /// </summary>
