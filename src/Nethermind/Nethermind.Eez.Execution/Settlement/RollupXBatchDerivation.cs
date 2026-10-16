@@ -101,11 +101,6 @@ public sealed class RollupXBatchDerivation(EezSettlementContext context, EezChai
     }
 }
 
-/// <summary>
-/// The cross-chain transactions of a RollupX stream, every outbound one before any inbound one. Each bracket is one
-/// flat call: an outbound bracket carries the signed L2 transaction that makes it, and an inbound bracket whose call
-/// fails is a lookup, with no L2 transaction.
-/// </summary>
 internal sealed class CrossChainTransactions
 {
     private readonly List<(ExecutionEntry Entry, byte[] UserTransaction)> _outbound = [];
@@ -120,15 +115,41 @@ internal sealed class CrossChainTransactions
     public static CrossChainTransactions Parse(StreamMessage[] messages, EezSettlementContext context)
     {
         CrossChainTransactions transactions = new(messages.Length != 0);
-        for (int i = 0; i < messages.Length; i += 4)
+        bool inbound = false;
+        int index = 0;
+        while (index < messages.Length)
         {
-            if (messages.AsSpan(i) is not [StreamMessage.Initiate initiate, StreamMessage.Call call, StreamMessage.Return result, StreamMessage.Finish, ..])
+            if (messages[index++] is not StreamMessage.Initiate initiate)
             {
-                throw new EezSettlementException(EezSettlementFailure.InvalidDaPayload,
-                    $"Cross-chain transaction {transactions.Count} is not a single flat call; nested, static and reverting calls are not supported yet.");
+                throw transactions.Invalid("has no transaction boundary");
             }
 
-            transactions.Add(initiate, call, result, context);
+            bool outbound = initiate.ChainId == context.RollupId;
+            if (outbound && inbound)
+            {
+                throw transactions.Invalid("follows an inbound transaction");
+            }
+
+            inbound |= initiate.ChainId == EezConstants.L1RollupId;
+            int calls = 0;
+            while (index < messages.Length && messages[index] is not StreamMessage.Finish)
+            {
+                if (messages.AsSpan(index) is not [StreamMessage.Call call, StreamMessage.Return result, ..] || outbound && calls != 0)
+                {
+                    throw transactions.Invalid("is not a supported flat call sequence");
+                }
+
+                transactions.Add(initiate, call, result, context);
+                index += 2;
+                calls++;
+            }
+
+            if (calls == 0 || index == messages.Length)
+            {
+                throw transactions.Invalid("is empty or unfinished");
+            }
+
+            index++;
         }
 
         return transactions;
