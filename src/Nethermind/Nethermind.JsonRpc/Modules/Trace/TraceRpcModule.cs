@@ -540,7 +540,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                         foreach ((BlockHeader header, BlockHeader? parentHeader) in blocks)
                         {
                             if (filter.IsExhausted) break;
-                            Block block = FindValidatedBlock(header);
+                            Block block = LoadBlock(header);
                             if (!TryStreamBlockInParallel(parentHeader!, block, types, streamingTracer, ct))
                                 ExecuteBlockStreaming(parentHeader!, block, streamingTracer, ct);
                         }
@@ -563,7 +563,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     if (filter.IsExhausted) break;
                     cancellationToken.ThrowIfCancellationRequested();
-                    Block block = FindValidatedBlock(header);
+                    Block block = LoadBlock(header);
                     IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlockParallelOrReplay(parentHeader!, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken);
                     result.AddRange(filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
                 }
@@ -578,7 +578,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         // Bodies are loaded one at a time so a long range never holds all of them.
-        private Block FindValidatedBlock(BlockHeader header) =>
+        private Block LoadBlock(BlockHeader header) =>
             blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.None, header.Number)
             ?? throw new InvalidOperationException($"Body of block {header.ToString(BlockHeader.Format.FullHashAndNumber)} is no longer available");
 
