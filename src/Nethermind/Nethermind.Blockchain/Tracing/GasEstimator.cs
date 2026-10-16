@@ -282,9 +282,9 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
         private readonly string? _tipAboveFeeCap;
 
         public bool TryDescribeFailure(ulong gasLimit, in Run run, out string text) =>
-            ExecutionFailureText.TryDescribe(_transactionProcessor, WithGasLimit(gasLimit), in _blockContext, run.ExceptionType, run.Error!, _token, out text);
+            ExecutionFailureText.TryDescribe(_transactionProcessor, PrepareRun(gasLimit), in _blockContext, run.ExceptionType, run.Error!, _token, out text);
 
-        private Transaction WithGasLimit(ulong gasLimit, UInt256? maxFeePerBlobGas = null)
+        private Transaction PrepareRun(ulong gasLimit, UInt256? maxFeePerBlobGas = null)
         {
             _runTx.GasLimit = gasLimit;
             _runTx.MaxFeePerBlobGas = maxFeePerBlobGas ?? _maxFeePerBlobGas;
@@ -296,13 +296,13 @@ public partial class GasEstimator(ITransactionProcessor transactionProcessor, IR
             if (_tipAboveFeeCap is not null)
                 return new Run(RunStatus.Rejected, Error: _tipAboveFeeCap);
 
-            Transaction txClone = WithGasLimit(gasLimit, maxFeePerBlobGas);
+            Transaction runTx = PrepareRun(gasLimit, maxFeePerBlobGas);
 
             _tracer.ResetRun();
             TransactionResult result;
             try
             {
-                result = _transactionProcessor.CallAndRestore(txClone, in _blockContext, _cancellableTracer);
+                result = _transactionProcessor.CallAndRestore(runTx, in _blockContext, _cancellableTracer);
             }
             catch (InsufficientBalanceException)
             {
