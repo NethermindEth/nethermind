@@ -1186,7 +1186,7 @@ public partial class EthRpcModule(
             return response;
         }
 
-        ArrayPoolList<FilterLog> logs = new(_rpcConfig.MaxLogsPerResponse);
+        ArrayPoolList<FilterLog> logs = new(0);
 
         foreach (FilterLog log in filterLogs)
         {

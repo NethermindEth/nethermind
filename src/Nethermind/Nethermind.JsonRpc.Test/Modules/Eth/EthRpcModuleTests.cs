@@ -827,26 +827,38 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expected));
     }
 
-    [Test]
-    public async Task Eth_get_filter_logs_respects_max_logs_per_response()
+    [TestCase(2, 1)]
+    [TestCase(0, 20_000)]
+    [TestCase(40, 0)]
+    [TestCase(40, 40)]
+    [TestCase(41, 40)]
+    public async Task Eth_get_filter_logs_respects_max_logs_per_response(int logCount, int maxLogsPerResponse)
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
-            .Returns(static x =>
+            .Returns(x =>
             {
-                x[1] = new[] { CreateTestFilterLog(), CreateTestFilterLog() };
+                x[1] = Enumerable.Range(0, logCount).Select(static _ => CreateTestFilterLog()).ToArray();
                 return true;
             });
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithBlockchainBridge(bridge)
-            .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = false, MaxLogsPerResponse = 1 })
+            .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = false, MaxLogsPerResponse = maxLogsPerResponse })
             .Build();
 
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x1");
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32005,\"message\":\"Too many logs requested. Max logs per response is 1.\"},\"id\":67}"));
+        if (maxLogsPerResponse != 0 && logCount > maxLogsPerResponse)
+        {
+            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32005,\"message\":\"Too many logs requested. Max logs per response is {maxLogsPerResponse}.\"}},\"id\":67}}"));
+        }
+        else
+        {
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            Assert.That(document.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(logCount));
+        }
     }
 
     [Test]
