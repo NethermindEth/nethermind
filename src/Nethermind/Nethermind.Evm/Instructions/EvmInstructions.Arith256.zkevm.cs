@@ -25,12 +25,6 @@ public static unsafe partial class EvmInstructions
             return;
         }
 
-        if (m.IsZero)
-        {
-            result = default;
-            return;
-        }
-
         Unsafe.SkipInit(out result);
         fixed (UInt256* pa = &a, pb = &b, pm = &m, pr = &result)
             ZiskArithmetic.AddMod((ulong*)pa, (ulong*)pb, (ulong*)pm, (ulong*)pr);
@@ -45,12 +39,6 @@ public static unsafe partial class EvmInstructions
                 Sp1MulMod256(in a, in b, in m, out result);
             else if (!OpenVmMulModHintFlag.IsActive || a >= m || b >= m || !TryMulModHint(in a, in b, in m, out result))
                 UInt256.MultiplyMod(in a, in b, in m, out result);
-            return;
-        }
-
-        if (m.IsZero)
-        {
-            result = default;
             return;
         }
 
@@ -101,12 +89,6 @@ public static unsafe partial class EvmInstructions
         if (!ZiskFlag.IsActive)
         {
             UInt256.Mod(in a, in b, out result);
-            return;
-        }
-
-        if (b.IsZero)
-        {
-            result = default;
             return;
         }
 
