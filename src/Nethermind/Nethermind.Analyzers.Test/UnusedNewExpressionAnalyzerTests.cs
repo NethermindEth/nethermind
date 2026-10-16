@@ -146,6 +146,31 @@ public class UnusedNewExpressionAnalyzerTests
         await Verify(source, Diagnostic().WithLocation(0).WithArguments("f", "Foo"));
     }
 
+    [TestCase("using Foo f = new();")]
+    [TestCase("using (Foo f = new()) { }")]
+    [TestCase("await using Foo f = new();")]
+    [TestCase("await using (Foo f = new()) { }")]
+    public async Task Using_locals_are_read_by_disposal(string declaration)
+    {
+        string source = $$"""
+            class Foo : System.IDisposable, System.IAsyncDisposable
+            {
+                public void Dispose() { }
+                public System.Threading.Tasks.ValueTask DisposeAsync() => default;
+            }
+            class Test
+            {
+                async System.Threading.Tasks.Task M()
+                {
+                    {{declaration}}
+                    await System.Threading.Tasks.Task.CompletedTask;
+                }
+            }
+            """;
+
+        await Verify(source);
+    }
+
     private static DiagnosticResult Diagnostic() =>
         CSharpAnalyzerVerifier<UnusedNewExpressionAnalyzer, DefaultVerifier>.Diagnostic(UnusedNewExpressionAnalyzer.DiagnosticId);
 

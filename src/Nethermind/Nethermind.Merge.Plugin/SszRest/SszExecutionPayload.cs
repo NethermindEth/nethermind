@@ -184,33 +184,7 @@ public partial class SszExecutionPayloadV2(ExecutionPayload payload)
         set
         {
             field = value;
-
-            if (value is null)
-            {
-                Inner.Withdrawals = null;
-                return;
-            }
-
-            if (value.Length == 0)
-            {
-                Inner.Withdrawals = [];
-                return;
-            }
-
-            Withdrawal[] result = new Withdrawal[value.Length];
-
-            for (int i = 0; i < value.Length; i++)
-            {
-                result[i] = new Withdrawal
-                {
-                    Index = value[i].Index,
-                    ValidatorIndex = value[i].ValidatorIndex,
-                    Address = value[i].Address,
-                    AmountInGwei = value[i].Amount
-                };
-            }
-
-            Inner.Withdrawals = result;
+            Inner.Withdrawals = value is null ? null : value.ToDomain();
         }
     }
 }

@@ -43,6 +43,12 @@ public static class BlsSigner
     [SkipLocalsInit]
     public static bool Verify(G1Affine publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
+        // IETF BLS draft v4, CoreVerify (section 2.7): signatures must be in the prime-order subgroup.
+        if (!signature.Point.InGroup())
+        {
+            return false;
+        }
+
         int len = 2 * GT.Sz;
         using ArrayPoolListRef<long> buf = new(len, len);
 

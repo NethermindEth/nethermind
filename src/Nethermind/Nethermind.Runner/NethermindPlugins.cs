@@ -12,6 +12,7 @@ public static class NethermindPlugins
     [
         typeof(Nethermind.PortfolioViewer.Plugin.PortfolioViewerPlugin),
         typeof(Nethermind.BalRecorder.BalRecorderPlugin),
+        typeof(Nethermind.BeaconChain.BeaconChainPlugin),
         typeof(Nethermind.BlockProfiler.BlockProfilerPlugin),
         typeof(Nethermind.CensorshipDetector.Plugin.CensorshipDetectorPlugin),
         typeof(Nethermind.Consensus.AuRa.AuRaPlugin),

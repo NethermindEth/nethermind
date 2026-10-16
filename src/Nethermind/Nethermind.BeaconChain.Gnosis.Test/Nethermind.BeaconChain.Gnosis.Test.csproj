@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../tests.props" />
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NSubstitute" />
+    <ProjectReference Include="../Nethermind.BeaconChain/Nethermind.BeaconChain.csproj" />
+    <Compile Include="../Nethermind.BeaconChain.Test/BeaconChainTestContainer.cs" Link="BeaconChainTestContainer.cs" />
+    <Compile Include="../Nethermind.BeaconChain.Test/GlobalUsings.cs" Link="GlobalUsings.cs" />
+  </ItemGroup>
+</Project>

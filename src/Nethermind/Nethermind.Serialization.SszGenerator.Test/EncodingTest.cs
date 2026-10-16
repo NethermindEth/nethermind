@@ -22,6 +22,36 @@ namespace Nethermind.Serialization.SszGenerator.Test;
 
 public class EncodingTest
 {
+    [Test, NonParallelizable]
+    public void Preset_dimensions_apply_to_nested_offsets_limits_and_roots([Values] bool alternate)
+    {
+        TestPreset.Alternate = alternate;
+        try
+        {
+            int count = alternate ? 2 : 4;
+            PresetContainer value = new() { Head = new() { Values = new ulong[count] }, Tail = [1, 2, 3, 4] };
+            byte[] encoded = PresetContainer.Encode(value);
+            Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(encoded.AsSpan(count * 8)), Is.EqualTo(count * 8 + 4));
+            PresetContainer.Decode(encoded, out PresetContainer decoded);
+            Assert.That(decoded.Head.Values, Has.Length.EqualTo(count));
+            Assert.That(decoded.Tail, Is.EqualTo(value.Tail));
+            UInt256 tail = new(1, 2, 3, 4);
+            if (!alternate) tail = HashConcat(tail, UInt256.Zero);
+            UInt256 expected = HashConcat(UInt256.Zero, HashConcat(tail, (UInt256)4));
+            PresetContainer.Merkleize(value, out UInt256 root);
+            Assert.That(root, Is.EqualTo(expected));
+            value.Head.Values = new ulong[alternate ? 4 : 2];
+            Assert.Throws<InvalidDataException>(() => PresetContainer.Encode(value));
+            value.Head.Values = new ulong[count];
+            value.Tail = new ulong[(alternate ? 4 : 8) + 1];
+            Assert.Throws<InvalidDataException>(() => PresetContainer.Encode(value));
+        }
+        finally
+        {
+            TestPreset.Alternate = false;
+        }
+    }
+
     [Test]
     public void Container_merkleization_does_not_allocate_scratch_arrays([Values] bool progressive)
     {
