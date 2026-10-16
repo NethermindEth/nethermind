@@ -545,7 +545,7 @@ public partial class GossipRouterTests
     public void Envelopes_for_unseen_blocks_are_throttled_past_their_byte_budget_until_the_import_pipeline_ends_their_verdicts()
     {
         EnvelopeFixture fixture = new(withStore: true);
-        ulong laterSlot = EnvelopeFixture.WallSlot + GossipRouter.UnseenBlockEnvelopeSlots + 1;
+        ulong laterSlot = EnvelopeFixture.WallSlot + 3;
         SignedExecutionPayloadEnvelope Unseen(int index, ulong slot = 0)
         {
             SignedExecutionPayloadEnvelope envelope = fixture.Envelope(Keccak.Compute($"unseen block {index}"));
@@ -584,17 +584,18 @@ public partial class GossipRouterTests
     }
 
     [Test]
-    public void Unseen_block_envelope_charge_expires_only_after_its_verdict_ends_without_giving_it_back([Values] bool verdictEnded)
+    public void Byte_budget_charge_released_twice_gives_its_bytes_back_once()
     {
-        SlotExpiringByteBudget budget = new(maxBytes: 10, lifetimeSlots: 2);
-        GossipVerdict verdict = GossipVerdict.Local();
-        budget.TryCharge(10, currentSlot: 1)!.Bind(verdict);
-        if (verdictEnded) verdict.Complete(MessageValidity.Ignored);
+        ByteBudget budget = new(maxBytes: 10);
+        ByteBudget.Charge charge = budget.TryCharge(10)!;
+        bool overBudget = budget.TryCharge(1) is not null;
+        charge.Release();
+        charge.Release();
+        bool refilled = budget.TryCharge(10) is not null;
+        bool pastRefill = budget.TryCharge(1) is not null;
 
-        bool beforeLifetime = budget.TryCharge(10, currentSlot: 3) is not null;
-        bool afterLifetime = budget.TryCharge(10, currentSlot: 4) is not null;
-
-        Assert.That((beforeLifetime, afterLifetime), Is.EqualTo((false, verdictEnded)));
+        Assert.That((overBudget, refilled, pastRefill, budget.Bytes), Is.EqualTo((false, true, false, 10L)),
+            "a repeated release must not free bytes another charge holds");
     }
 
     [Test]

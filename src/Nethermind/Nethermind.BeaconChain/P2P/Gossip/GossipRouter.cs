@@ -138,13 +138,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>The most decoded bytes of envelopes for unseen blocks raised to the import pipeline and not yet taken from its queue or refused by it.</summary>
     /// <remarks>
     /// The pubsub verdict of such an envelope is given at once, so no pending-validation bound holds it while it waits in the import queue.
-    /// The pipeline ends the charge when it takes the envelope from its queue, and a charge whose verdict is still pending never expires;
-    /// <see cref="UnseenBlockEnvelopeSlots"/> only frees a charge whose verdict ended without giving it back.
+    /// The pipeline ends the charge when it takes the envelope from its queue.
     /// </remarks>
     internal const long UnseenBlockEnvelopeBytes = 64 * 1024 * 1024;
-
-    /// <summary>The slots after the one it was taken in after which a charge on <see cref="UnseenBlockEnvelopeBytes"/> expires once its verdict has ended without giving it back.</summary>
-    internal const ulong UnseenBlockEnvelopeSlots = 16;
 
     private readonly ILogger _logger = logManager.GetClassLogger<GossipRouter>();
     private readonly LruKeyCache<ValueHash256> _seenMessages = new(SeenCacheSize, "beacon gossip seen messages");
@@ -185,7 +181,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private readonly PerSlotBudget _votedBlockSlotReads = new(VotedBlockSlotReadsPerSlot);
     private readonly PerSlotBudget _envelopeBlockDecodes = new(StoreDecodesPerSlot);
     private readonly PerSlotBudget _ptcBlockSlotReads = new(PtcBlockSlotReadsPerSlot);
-    private readonly SlotExpiringByteBudget _unseenBlockEnvelopes = new(UnseenBlockEnvelopeBytes, UnseenBlockEnvelopeSlots);
+    private readonly ByteBudget _unseenBlockEnvelopes = new(UnseenBlockEnvelopeBytes);
 
     // A held block never changes, so its bid is decoded once, not once per envelope; a root not held is never cached, as it may arrive a moment later.
     private readonly LruCache<Hash256, EnvelopeBlock> _envelopeBlocks = new(EnvelopeBlockCacheSize, "beacon gossip envelope blocks");
@@ -656,8 +652,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
         // A consumer that refuses the message for local load leaves no id in the pubsub router, so a later copy is checked again.
         Action releaseSeen = () => seenMessages.Delete(seenKey);
-        SlotExpiringByteBudget.Charge? charge = null;
-        if (verdict is { UnseenBlock: true } && (charge = _unseenBlockEnvelopes.TryCharge(payload!.Length, slotClock.CurrentSlot)) is null)
+        ByteBudget.Charge? charge = null;
+        if (verdict is { UnseenBlock: true } && (charge = _unseenBlockEnvelopes.TryCharge(payload!.Length)) is null)
         {
             releaseSeen();
             releaseClaim?.Invoke(value);
@@ -686,7 +682,6 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             consumed.ReleaseOnThrottle(() => refused = true);
             if (charge is not null)
             {
-                charge.Bind(consumed);
                 consumed.ReleaseOnEnd(charge.Release);
             }
 
