@@ -80,13 +80,15 @@ public enum ExecutionPayloadEnvelopeImportResult
 /// can never be skipped by omission.
 /// </param>
 /// <param name="hasher">Supplies the hasher for the block-root check's state root, asked once per envelope; <c>null</c> merkleizes the whole state.</param>
+/// <param name="heldStates">The post-states <see cref="VerifySignature"/> may read, which must cost no store decode; <c>null</c> reads <paramref name="states"/>.</param>
 public sealed class ExecutionPayloadEnvelopeImporter(
     IGloasBlockStateProvider states,
     INewPayloadNotifier engine,
     PubkeyCache pubkeys,
     Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable,
     ILogManager logManager,
-    Func<IBeaconStateHasher>? hasher = null)
+    Func<IBeaconStateHasher>? hasher = null,
+    Func<Hash256, BeaconStateGloas?>? heldStates = null)
 {
     // No gossip_ prefix: envelopes also arrive by req/resp and from the local builder, and every source is judged here.
     private static readonly StringLabel EnvelopeRejected = new("execution_payload_envelope");
@@ -158,7 +160,7 @@ public sealed class ExecutionPayloadEnvelopeImporter(
     /// <returns><c>null</c> when that state is not held; otherwise whether the signer the state names for it signed it.</returns>
     public bool? VerifySignature(SignedExecutionPayloadEnvelope signedEnvelope)
     {
-        if (signedEnvelope.Message?.BeaconBlockRoot is not { } blockRoot || states.GetGloasBlockState(blockRoot) is not { } state)
+        if (signedEnvelope.Message?.BeaconBlockRoot is not { } blockRoot || (heldStates ?? states.GetGloasBlockState)(blockRoot) is not { } state)
         {
             return null;
         }

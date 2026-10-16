@@ -297,7 +297,10 @@ internal sealed class PostStateCache(
     }
 
     /// <inheritdoc/>
-    public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot)
+    public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot) => GetHeldGloasBlockState(blockRoot) ?? ReadPersistedGloasState(blockRoot);
+
+    /// <summary>The post-state of the Gloas block <paramref name="blockRoot"/> if a tier holds it, without reading the store.</summary>
+    internal BeaconStateGloas? GetHeldGloasBlockState(Hash256 blockRoot)
     {
         if (blockRoot == _pinnedGloasRoot)
         {
@@ -329,6 +332,11 @@ internal sealed class PostStateCache(
             return regeneratedState;
         }
 
+        return null;
+    }
+
+    private BeaconStateGloas? ReadPersistedGloasState(Hash256 blockRoot)
+    {
         if (isGloasBlock?.Invoke(blockRoot) == true
             && store.TryGetState(blockRoot, out byte[]? ssz)
             && DecodePersisted(blockRoot, ssz) is ForkedBeaconState.OfGloas { State: BeaconStateGloas state })

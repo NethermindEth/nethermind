@@ -167,7 +167,7 @@ public sealed class BlockImporter : IBlockImporter
             _unfinalized[root] = slot;
         }
 
-        _envelopes = new ExecutionPayloadEnvelopeImporter(_states, engine, pubkeys, isEnvelopeDataAvailable, logManager, () => _gloasLineageCache.Hasher);
+        _envelopes = new ExecutionPayloadEnvelopeImporter(_states, engine, pubkeys, isEnvelopeDataAvailable, logManager, () => _gloasLineageCache.Hasher, _states.GetHeldGloasBlockState);
         store.SetCanonicalRoot(anchorBlock.Slot, anchorRoot);
         PruneStore(anchorBlock.Slot);
         // A restart must clear what the previous run indexed above the head it replays up to.

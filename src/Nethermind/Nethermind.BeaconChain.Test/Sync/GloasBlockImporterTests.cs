@@ -83,6 +83,28 @@ public class GloasBlockImporterTests
     }
 
     [Test]
+    public void Gossip_envelope_signature_check_never_decodes_a_persisted_only_state()
+    {
+        BeaconChainStore store = _chain.CreateStore();
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store);
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
+        SignedGloasChain.Block target = Import(importer, _chain.Next(first, ForkSlot + 1, full: false, 0xA2));
+        SignedGloasChain.Block tip = target;
+        for (ulong slot = ForkSlot + 2; slot < ForkSlot + 7; slot++)
+            tip = Import(importer, _chain.Next(tip, slot, full: false, (byte)slot));
+        store.PutState(target.Root, BeaconStateGloas.Encode(target.PostState));
+        PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        Assert.That(states.GetHeldGloasBlockState(target.Root), Is.Null, "fixture: the target's state is persisted only");
+
+        bool? signed = importer.VerifyEnvelopeSignature(target.Envelope);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(signed, Is.Null, "an unverified gossip envelope must not buy the decode of a full persisted state");
+        Assert.That(states.GetHeldGloasBlockState(target.Root), Is.Null, "the read-back would also evict a live state from the per-block tier");
+        Assert.That(importer.ImportEnvelope(target.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "a req/resp import still reads the persisted state");
+    }
+
+    [Test]
     public void Invalid_envelope_invalidates_optimistic_ancestors_after_latest_valid_hash()
     {
         SignedGloasChain.EnvelopeEngine engine = new() { EnvelopeVerdict = ExecutionStatus.Optimistic };
