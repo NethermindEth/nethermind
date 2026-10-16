@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Threading;
 using Nethermind.Core;
@@ -54,11 +55,7 @@ internal sealed class MempoolFootprints(BlockHeader head)
     public HashSet<Hash256>? Seed(Block block, IReleaseSpec spec, BlockFootprints footprints)
     {
         BlockHeader header = block.Header;
-        if (_entries.IsEmpty || _parentHash is null || header.ParentHash != _parentHash || header.Number != _number
-            || header.GasBeneficiary is not { } coinbase)
-        {
-            return null;
-        }
+        if (!HoldsFor(header, out Address? coinbase)) return null;
 
         HashSet<Hash256>? seeded = null;
         Transaction[] transactions = block.Transactions;
@@ -103,6 +100,65 @@ internal sealed class MempoolFootprints(BlockHeader head)
 
         reason = 0;
         return 1;
+    }
+
+    /// <summary>
+    /// Stores the footprints that hold in <paramref name="block"/> at their transactions' positions where no footprint is
+    /// stored yet, alongside the block's warm runs: a footprint a warm run stored first is kept.
+    /// </summary>
+    /// <returns>How many were stored.</returns>
+    public int SeedWhereEmpty(Block block, IReleaseSpec spec, BlockFootprints footprints)
+    {
+        BlockHeader header = block.Header;
+        if (!HoldsFor(header, out Address? coinbase)) return 0;
+
+        int stored = 0;
+        Transaction[] transactions = block.Transactions;
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            // A position a warm run already filled is passed over before the run is adapted to the block; the store checks again.
+            if (footprints.Get(i) is not null)
+            {
+                DiagWarmFirst(footprints, i, transactions[i]); // BENCH ONLY
+                continue;
+            }
+
+            Transaction tx = transactions[i];
+            if (!tx.IsHashCalculated) footprints.Diag.SeedHash(tx); // BENCH ONLY
+            if (tx.Hash is not { } hash || !_entries.TryGetValue(hash, out Entry entry)) continue;
+            if (ForBlock(in entry, tx, header, spec, coinbase) is not { } footprint)
+            {
+                // BENCH ONLY
+                footprints.Diag.MempoolSeed(i, !RanOnBlockContext(in entry, header, spec) ? (byte)2 : DependsOnCoinbase(entry.Footprint, coinbase) ? (byte)3 : (byte)4);
+                continue;
+            }
+
+            if (footprints.TryStoreIfEmpty(i, footprint))
+            {
+                stored++;
+                footprints.Diag.MempoolSeed(i, 1); // BENCH ONLY
+            }
+            else
+            {
+                footprints.Diag.MempoolSeed(i, 5); // BENCH ONLY
+            }
+        }
+
+        return stored;
+    }
+
+    // BENCH ONLY: a run this pass recorded for the transaction at the position, whose warm run stored a footprint first.
+    private void DiagWarmFirst(BlockFootprints footprints, int position, Transaction tx)
+    {
+        if (tx.IsHashCalculated && tx.Hash is { } hash && _entries.ContainsKey(hash)) footprints.Diag.MempoolSeed(position, 5);
+    }
+
+    /// <summary>Whether runs are recorded and the block <paramref name="header"/> heads follows the head they were recorded on; its coinbase when it does.</summary>
+    private bool HoldsFor(BlockHeader header, [NotNullWhen(true)] out Address? coinbase)
+    {
+        coinbase = null;
+        return !_entries.IsEmpty && _parentHash is not null && header.ParentHash == _parentHash && header.Number == _number
+            && (coinbase = header.GasBeneficiary) is not null;
     }
 
     private TransactionFootprint? ForBlock(in Entry entry, Transaction tx, BlockHeader header, IReleaseSpec spec, Address coinbase) =>

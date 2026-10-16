@@ -79,6 +79,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Hand pre-warm runs over to block processing. Requires PreWarming. Not applied with a block access list (EIP-7928), from EIP-8037, nor on chains with their own transaction processor.", DefaultValue = "true", HiddenFromDocs = true)]
     bool PreWarmHandoff { get; set; }
 
+    [ConfigItem(Description = "Start a block's transaction pre-warm workers without waiting for the mempool pass's runs to be taken over; those are taken over alongside the workers. Requires PreWarming.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmEarlyStart { get; set; }
+
+    [ConfigItem(Description = "With PreWarmEarlyStart, queue a block's transaction pre-warm workers ahead of the pre-warming of its senders and recipients.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmTransactionWorkersFirst { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 
