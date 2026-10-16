@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Receipts
 
         private const int CacheSize = 64;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
-        private Hash256? _lastSingleReceiptBlock;
+        private readonly LruKeyCache<ValueHash256> _singleReceiptBlocks = new(CacheSize, CacheSize, "single receipt blocks");
 
         private readonly IDeferredBlockDataWriter? _deferredWriter;
 
@@ -480,7 +480,7 @@ namespace Nethermind.Blockchain.Receipts
                 || _receiptsCache.Contains(blockHash)
                 || (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out _))
                 // A repeat lookup in one block, e.g. a backfill of all its transactions, is cheaper from the receipts cache Get fills.
-                || Interlocked.Exchange(ref _lastSingleReceiptBlock, blockHash) == blockHash)
+                || !_singleReceiptBlocks.Set(blockHash))
             {
                 return false;
             }
@@ -980,7 +980,7 @@ namespace Nethermind.Blockchain.Receipts
         internal void ClearCache()
         {
             _receiptsCache.Clear();
-            _lastSingleReceiptBlock = null;
+            _singleReceiptBlocks.Clear();
         }
 
         [SkipLocalsInit]

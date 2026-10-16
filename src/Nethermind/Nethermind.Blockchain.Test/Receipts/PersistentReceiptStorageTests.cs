@@ -541,6 +541,34 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
+    public void TryGetReceipt_falls_back_to_Get_on_a_repeat_lookup_in_interleaved_blocks()
+    {
+        CreateStorage();
+        Block[] blocks = [InsertTwoTransactionBlock(1), InsertTwoTransactionBlock(2)];
+        _storage.ClearCache();
+
+        foreach (Block block in blocks)
+        {
+            Assert.That(_storage.TryGetReceipt(block, 0, out _, out _), Is.EqualTo(useCompactReceipts));
+        }
+
+        foreach (Block block in blocks)
+        {
+            Assert.That(_storage.TryGetReceipt(block, 1, out _, out _), Is.False, $"a repeat lookup in block {block.Number} is served by Get");
+        }
+
+        Block InsertTwoTransactionBlock(ulong number)
+        {
+            Block block = Build.A.Block.WithNumber(number).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(
+                Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+                Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject).TestObject;
+            PrepareBlock(block);
+            _storage.Insert(block, [Build.A.Receipt.WithGasUsedTotal(21_000).TestObject, Build.A.Receipt.WithGasUsedTotal(42_000).TestObject]);
+            return block;
+        }
+    }
+
+    [Test]
     public void Adds_should_prefix_key_with_blockNumber()
     {
         (Block block, _) = InsertBlock();
