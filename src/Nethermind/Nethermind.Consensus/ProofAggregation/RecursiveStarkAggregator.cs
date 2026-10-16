@@ -309,8 +309,9 @@ public static class RecursiveStarkAggregator
         depsHash = default;
 
         if (input.Deps.Count != input.Witnesses.Count) return false;
-        // Every list the circuit reads holds enabled schemes only, discarded dependencies included.
-        if (!Eip8288Dependencies.AreSchemesEnabled(input.Deps) || !Eip8288Dependencies.AreSchemesEnabled(input.Discards)) return false;
+        // The circuit checks direct dependencies against ENABLED_SCHEMES; a verified recursive input can prove only enabled
+        // schemes, so checking its list as well rejects nothing a valid input carries.
+        if (!Eip8288Dependencies.AreSchemesEnabled(input.Deps)) return false;
         foreach (RecursiveProofInput recursiveProof in input.RecursiveProofs)
         {
             if (recursiveProof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
@@ -342,6 +343,12 @@ public static class RecursiveStarkAggregator
         }
 
         HashSet<FrameDependency> discards = input.Discards.Count == 0 ? [] : [.. input.Discards];
+        // EIP-8288: every discard must occur in the verified input union, matched by its full triple.
+        if (discards.Count != 0)
+        {
+            HashSet<FrameDependency> inputs = [.. allDeps];
+            if (!discards.IsSubsetOf(inputs)) return false;
+        }
 
         List<FrameDependency> filtered = [];
         HashSet<FrameDependency> seen = [];

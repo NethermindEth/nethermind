@@ -92,10 +92,11 @@ public class RecursiveStarkAggregatorTests
         Assert.That(RecursiveStarkAggregator.TryAggregate(input, Rejecting, Eip8288Verifier.Pinned, out _, out _), Is.False);
     }
 
+    // EIP-8288 Test Case 10: a discard absent from the verified input union is rejected, whatever its scheme.
     [TestCase("direct")]
     [TestCase("recursive")]
     [TestCase("discard")]
-    public void Aggregate_rejects_unknown_schemes_in_every_list(string list)
+    public void Aggregate_rejects_unknown_schemes_and_discards_outside_the_inputs(string list)
     {
         FrameDependency a = Sphincs("a");
         FrameDependency unknown = new(0x12, a.DataHash, a.VerificationKey);
@@ -105,6 +106,15 @@ public class RecursiveStarkAggregatorTests
             "recursive" => new() { RecursiveProofs = [new RecursiveProofInput([a, unknown], [9])], Discards = [unknown] },
             _ => new() { Deps = [a], Witnesses = [new byte[] { 1 }], Discards = [unknown] },
         };
+
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out _, out _), Is.False);
+    }
+
+    [Test]
+    public void Aggregate_rejects_a_canonical_enabled_discard_absent_from_the_inputs()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        AggregationInput input = new() { Deps = [a, b], Witnesses = [new byte[] { 1 }, new byte[] { 1 }], Discards = [a, c] };
 
         Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out _, out _), Is.False);
     }
