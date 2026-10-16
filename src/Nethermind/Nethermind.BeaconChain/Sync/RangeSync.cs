@@ -501,7 +501,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
     }
 
-    /// <summary>Adds each sidecar that verifies against the block it names in <paramref name="blocksByRoot"/>; any other penalizes <paramref name="peer"/>, once per (root, index) of the reply.</summary>
+    /// <summary>Adds each sidecar that verifies against the block it names in <paramref name="blocksByRoot"/>; any other, except one whose header signature differs from that block's, penalizes <paramref name="peer"/>, once per (root, index) of the reply.</summary>
     /// <remarks>Only KZG failures shadow later copies of a requested column; consensus-specs v1.7.0-beta.2 fulu/p2p-interface.md defines the three independent checks.</remarks>
     private void AddVerifiedSidecars(IBeaconSyncPeer peer, IReadOnlyList<DataColumnSidecar> sidecars, Dictionary<Hash256, SignedBeaconBlock> blocksByRoot)
     {
@@ -529,10 +529,14 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
-            // The header root is the block root, so a genuine header carries the block's own signature.
-            bool reachedKzg = requested
-                && DataColumnAvailability.MatchesBlock(sidecar, sidecarBlockRoot, block!.Message!.Body!.BlobKzgCommitments!)
-                && sidecar.SignedBlockHeader.Signature == block.Signature
+            bool matchesBlock = requested && DataColumnAvailability.MatchesBlock(sidecar, sidecarBlockRoot, block!.Message!.Body!.BlobKzgCommitments!);
+            // The header root is the block root, so a genuine header carries the block's own signature; neither side is verified yet, so neither is blamed.
+            if (matchesBlock && sidecar.SignedBlockHeader.Signature != block!.Signature)
+            {
+                continue;
+            }
+
+            bool reachedKzg = matchesBlock
                 && DataColumnSidecarVerifier.VerifyStructure(sidecar)
                 && DataColumnSidecarVerifier.VerifyBlobCount(sidecar, spec)
                 && DataColumnSidecarVerifier.VerifyInclusionProof(sidecar);
