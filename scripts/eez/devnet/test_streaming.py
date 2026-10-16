@@ -143,6 +143,34 @@ class StreamingProxyTests(unittest.TestCase):
             self.assertEqual((stream / "server.pfx").stat().st_mode & 0o777, 0o600)
             self.assertNotIn((stream / "password").read_text().strip(), result.stdout + result.stderr)
 
+    def test_proxy_output_cannot_interleave_with_signed_window_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            launcher = root / "start-streaming.sh"
+            shutil.copyfile(Path(__file__).with_name("start-streaming.sh"), launcher)
+            proxy = root / "haproxy"
+            proxy.write_text('#!/bin/bash\nif [[ "$1" == -c ]]; then exit 0; fi\n'
+                'read -r ready < "$EEZ_TEST_READY_PIPE"\necho proxy-stdout\necho proxy-stderr >&2\nexit 7\n')
+            proxy.chmod(0o555)
+            prover = root / "nethermind-eez-attester"
+            event = json.dumps({"event_name": "eez.proof_signer.window_signed", "fields": {"wire": "prove.v2"}}, separators=(",", ":"))
+            prover.write_text("#!/bin/bash\nprintf '%s\\n' '" + event + "'\n"
+                'echo ready > "$EEZ_TEST_READY_PIPE"\nexec sleep 30\n')
+            prover.chmod(0o555)
+            ready = root / "ready"
+            os.mkfifo(ready, 0o600)
+            environment = dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"],
+                EEZ_KEYSTORE_DIRECTORY=str(root / "keystore"), EEZ_TEST_READY_PIPE=str(ready))
+            result = subprocess.run(["bash", str(launcher), "--listen-addr=0.0.0.0:50061", "--chain-config=/out/l2-genesis.json"],
+                env=environment, text=True, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 7, result.stderr)
+            self.assertIn(event + "\n", result.stdout)
+            self.assertNotIn("proxy-stdout", result.stdout + result.stderr)
+            self.assertNotIn("proxy-stderr", result.stdout + result.stderr)
+            log = root / "keystore/streaming/haproxy.log"
+            self.assertEqual(log.read_text(), "proxy-stdout\nproxy-stderr\n")
+            self.assertEqual(log.stat().st_mode & 0o777, 0o600)
+
     def test_changed_upstream_arguments_fail_before_certificate_generation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

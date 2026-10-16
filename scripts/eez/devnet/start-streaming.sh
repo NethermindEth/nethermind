@@ -60,7 +60,7 @@ trap 'exit 130' INT
 "$HERE/nethermind-eez-attester" --listen-addr=127.0.0.1:50063 \
     --chain-config=/out/l2-genesis.json --streaming-config="$stream/config.json" &
 prover_pid=$!
-haproxy -db -f "$stream/haproxy.cfg" &
+haproxy -db -f "$stream/haproxy.cfg" > "$stream/haproxy.log" 2>&1 &
 proxy_pid=$!
 set +e
 wait -n "$prover_pid" "$proxy_pid"
