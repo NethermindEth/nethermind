@@ -47,6 +47,7 @@ namespace Nethermind.JsonRpc.Test;
 /// Run with <c>DOTNET_TieredCompilation=0</c>: tier-0 code boxes in places optimized code does not (e.g. <c>Enum.HasFlag</c>).
 /// Environment: <c>RPC_ALLOC_FILTER</c> (label substring), <c>RPC_ALLOC_ITER</c> (iterations per method),
 /// <c>RPC_ALLOC_BREAKDOWN=1</c> (sampled per-type breakdown), <c>RPC_ALLOC_REPORT</c> (report file path).
+/// B/req counts every thread's allocations, and with the breakdown on also the listener's own, so compare runs made with the same settings.
 /// </remarks>
 [Explicit("measurement harness")]
 public class RpcAllocationMeasurement
@@ -60,7 +61,7 @@ public class RpcAllocationMeasurement
     public async Task Measure()
     {
         string? filter = Environment.GetEnvironmentVariable("RPC_ALLOC_FILTER");
-        int? forcedIterations = int.TryParse(Environment.GetEnvironmentVariable("RPC_ALLOC_ITER"), out int iter) ? iter : null;
+        int? forcedIterations = int.TryParse(Environment.GetEnvironmentVariable("RPC_ALLOC_ITER"), out int iter) && iter > 0 ? iter : null;
         bool breakdown = Environment.GetEnvironmentVariable("RPC_ALLOC_BREAKDOWN") == "1";
         string reportPath = Environment.GetEnvironmentVariable("RPC_ALLOC_REPORT") ?? Path.Combine(Path.GetTempPath(), "rpc-alloc-report.txt");
 
@@ -91,11 +92,13 @@ public class RpcAllocationMeasurement
         File.WriteAllText(reportPath, $"{"method",-LabelWidth} {"B/req",12} {"resp B",10} {"alloc/resp",10}{Environment.NewLine}");
         List<string> errors = [];
         int id = 0;
+        int casesRun = 0;
         foreach ((string method, string parameters, int defaultIterations) in Cases(contract, blocks))
         {
             string label = $"{method} {parameters}";
-            label = label.Length > LabelWidth ? label[..LabelWidth] : label;
             if (filter is not null && !label.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+            label = label.Length > LabelWidth ? label[..LabelWidth] : label;
+            casesRun++;
 
             byte[] request = Encoding.UTF8.GetBytes($$"""{"jsonrpc":"2.0","id":{{++id}},"method":"{{method}}","params":{{parameters}}}""");
             async Task Run(int count)
@@ -107,11 +110,12 @@ public class RpcAllocationMeasurement
                 }
             }
 
+            sink.ErrorCount = 0;
             stream.Captured = new MemoryStream();
             await Run(1);
             string response = Encoding.UTF8.GetString(stream.Captured.ToArray());
+            long firstResponseSize = stream.Captured.Length;
             stream.Captured = null;
-            if (response.Contains("\"error\"")) errors.Add($"{label}: {response[..Math.Min(300, response.Length)]}");
 
             int iterations = forcedIterations ?? defaultIterations;
             await Run(Math.Max(2, iterations / 10));
@@ -124,7 +128,10 @@ public class RpcAllocationMeasurement
             await Run(iterations);
             long perRequest = (GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore) / iterations;
             listener?.Stop();
-            long responseSize = (stream.Count - responseBytesBefore) / iterations;
+            long responseBytes = stream.Count - responseBytesBefore;
+            long responseSize = responseBytes / iterations;
+            if (sink.ErrorCount > 0) errors.Add($"{label}: {sink.ErrorCount} error responses, first: {response[..Math.Min(300, response.Length)]}");
+            else if (responseBytes != firstResponseSize * iterations) errors.Add($"{label}: {responseBytes} response bytes over {iterations} requests, the first response was {firstResponseSize}");
 
             StringBuilder line = new($"{label,-LabelWidth} {perRequest,12:N0} {responseSize,10:N0} {(double)perRequest / Math.Max(1, responseSize),10:F2}{Environment.NewLine}");
             if (listener is not null)
@@ -139,6 +146,7 @@ public class RpcAllocationMeasurement
         }
 
         await TestContext.Out.WriteLineAsync(File.ReadAllText(reportPath));
+        Assert.That(casesRun, Is.Positive, $"no case matches RPC_ALLOC_FILTER '{filter}'");
         Assert.That(errors, Is.Empty, "error responses are not representative measurements");
     }
 
@@ -257,9 +265,11 @@ public class RpcAllocationMeasurement
     {
         public long BytesWritten => stream.Count;
         public bool StopRequested => false;
+        public int ErrorCount { get; set; }
 
         public async ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
+            if (response is JsonRpcErrorResponse) ErrorCount++;
             await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, false, cancellationToken);
             await writer.FlushAsync(cancellationToken);
         }
