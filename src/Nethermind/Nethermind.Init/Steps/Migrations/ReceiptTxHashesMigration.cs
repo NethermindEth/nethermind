@@ -48,7 +48,7 @@ public sealed class ReceiptTxHashesMigration(
     internal const ulong PruningMargin = 1024;
     internal static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ProcessingPause = TimeSpan.FromMilliseconds(200);
-    private static readonly Hash256 NextBlockKey = Keccak.Compute("ReceiptTxHashesMigrationNextBlock");
+    internal static readonly Hash256 NextBlockKey = Keccak.Compute("ReceiptTxHashesMigrationNextBlock");
     private const ulong Completed = 0;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ReceiptTxHashesMigration>();
@@ -117,8 +117,9 @@ public sealed class ReceiptTxHashesMigration(
         long rewritten = 0;
         long bytesAdded = 0;
         int sinceSaved = 0;
-        ulong first = next;
-        _progress.Reset(0, first - lowest + 1);
+        // After a restart the pass resumes below the head; blocks above its position already carry the hashes.
+        ulong head = Math.Max(blockTree.Head?.Number ?? next, next);
+        _progress.Reset(head - next, head - lowest + 1);
         DateTime lastProgress = timestamper.UtcNow;
         while (next >= lowest && !cancellationToken.IsCancellationRequested)
         {
@@ -132,8 +133,8 @@ public sealed class ReceiptTxHashesMigration(
             bytesAdded += bytes;
             next--;
 
-            _progress.TargetValue = first - lowest + 1;
-            _progress.Update(first - next);
+            _progress.TargetValue = head - lowest + 1;
+            _progress.Update(head - next);
             DateTime now = timestamper.UtcNow;
             if (now - lastProgress >= ProgressInterval)
             {
@@ -149,6 +150,7 @@ public sealed class ReceiptTxHashesMigration(
         }
 
         _progress.MarkEnd();
+        _progress.LogProgress();
         if (next < lowest)
         {
             WriteNextBlock(Completed);
