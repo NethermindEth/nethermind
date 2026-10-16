@@ -23,7 +23,9 @@ public class SimulateTxExecutor<TTrace>(
     IJsonRpcConfig rpcConfig,
     ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
-    ulong? secondsPerSlot = null)
+    ulong? secondsPerSlot = null,
+    bool readLoneBlobFeeCapAsAbsent = true,
+    bool callSemantics = false)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
@@ -45,18 +47,22 @@ public class SimulateTxExecutor<TTrace>(
                 if (blockStateCall.Calls is not null)
                 {
                     calls = new TransactionWithSourceDetails[blockStateCall.Calls.Length];
+                    // The calls convert against the fork of the block they are simulated in, which the
+                    // normalized block overrides number and time.
+                    BlockOverride overrides = blockStateCall.BlockOverrides!;
+                    IReleaseSpec spec = specProvider.GetSpec(overrides.Number!.Value, overrides.Time);
 
                     for (int i = 0; i < blockStateCall.Calls.Length; i++)
                     {
-                        TransactionForRpc callTransactionModel = blockStateCall.Calls[i];
+                        TransactionForRpc callTransactionModel = readLoneBlobFeeCapAsAbsent
+                            ? BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(blockStateCall.Calls[i])
+                            : blockStateCall.Calls[i];
                         LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
-                        IReleaseSpec spec = specProvider.GetSpec(header);
-                        Result<Transaction> txResult = call.Validation
-                            ? callTransactionModel.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec)
-                            : callTransactionModel.ToTransaction(validateUserInput: false, gasCap: _rpcConfig.GasCap, spec: spec);
+                        Result<Transaction> txResult = callTransactionModel.ToCallTransaction(spec, _rpcConfig.GasCap,
+                            validateUserInput: call.Validation, validateFeeCapOrder: call.Validation);
                         if (!txResult.Success(out Transaction? tx, out string? error))
                         {
                             return error;
@@ -67,6 +73,8 @@ public class SimulateTxExecutor<TTrace>(
                         calls[i] = new TransactionWithSourceDetails
                         {
                             HadGasLimitInRequest = hadGasLimitInRequest,
+                            // The block checks the gas as requested, before the conversion clamped it to the RPC gas cap.
+                            GasLimitToFitBlock = !callSemantics && hadGasLimitInRequest ? asLegacy!.Gas : null,
                             HadNonceInRequest = hadNonceInRequest,
                             Transaction = tx
                         };

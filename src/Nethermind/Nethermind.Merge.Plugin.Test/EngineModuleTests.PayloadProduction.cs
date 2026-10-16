@@ -597,9 +597,10 @@ public partial class EngineModuleTests
             .Result.Data.PayloadId!;
         await improvedBlockWait;
 
-        improvedBlockWait = chain.WaitForImprovedBlock(minTransactions: 2);
+        ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        Task storedImprovementTask = payloadPreparation.WaitForStoredBlockAsync(payloadId, static block => block.Transactions.Length == 2, chain.CancellationToken);
         chain.AddTransactions(tx2);
-        await improvedBlockWait;
+        await storedImprovementTask;
 
         // An improvement can finish before its context is published for getPayload.
         ObservablePayloadPreparationService preparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -18,18 +18,18 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         {
             ForcedNumberConversion.Value = NumberConversion.Hex;
 
-            Stack<(NativeCallTracerCallFrame Frame, int NextChild)> work = new();
-            work.Push((value, -1));
+            using ArrayPoolListRef<(NativeCallTracerCallFrame Frame, int NextChild)> work = new(16);
+            work.Add((value, -1));
 
             while (work.Count > 0)
             {
-                (NativeCallTracerCallFrame frame, int nextChild) = work.Pop();
+                (NativeCallTracerCallFrame frame, int nextChild) = work.RemoveLast();
 
                 if (nextChild == -1)
                 {
                     WriteFrameHeader(writer, frame, options);
 
-                    if (frame.Calls is { Count: > 0 })
+                    if (frame.CallsSpan.Length > 0)
                     {
                         writer.WritePropertyName("calls"u8);
                         writer.WriteStartArray();
@@ -42,11 +42,11 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
                     }
                 }
 
-                if (nextChild < frame.Calls.Count)
+                ReadOnlySpan<NativeCallTracerCallFrame> calls = frame.CallsSpan;
+                if (nextChild < calls.Length)
                 {
-                    NativeCallTracerCallFrame child = frame.Calls[nextChild];
-                    work.Push((frame, nextChild + 1));
-                    work.Push((child, -1));
+                    work.Add((frame, nextChild + 1));
+                    work.Add((calls[nextChild], -1));
                 }
                 else
                 {
@@ -66,71 +66,71 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         writer.WriteStartObject();
 
         writer.WritePropertyName("type"u8);
-        JsonSerializer.Serialize(writer, Enum.GetName(value.Type), options);
+        TypeInfoJsonSerializer.Serialize(writer, Enum.GetName(value.Type), options);
 
         writer.WritePropertyName("from"u8);
-        JsonSerializer.Serialize(writer, value.From, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.From, options);
 
         if (value.To is not null)
         {
             writer.WritePropertyName("to"u8);
-            JsonSerializer.Serialize(writer, value.To, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.To, options);
         }
 
         if (value.Value is not null)
         {
             writer.WritePropertyName("value"u8);
-            JsonSerializer.Serialize(writer, value.Value, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Value, options);
         }
 
         writer.WritePropertyName("gas"u8);
-        JsonSerializer.Serialize(writer, value.Gas, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.Gas, options);
 
         writer.WritePropertyName("gasUsed"u8);
-        JsonSerializer.Serialize(writer, value.GasUsed, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.GasUsed, options);
 
         if (value.Eip8037Gas is { } eip8037Gas)
         {
             writer.WritePropertyName("regularGasUsed"u8);
-            JsonSerializer.Serialize(writer, eip8037Gas.RegularGasUsed, options);
+            TypeInfoJsonSerializer.Serialize(writer, eip8037Gas.RegularGasUsed, options);
             writer.WritePropertyName("stateGasUsed"u8);
-            JsonSerializer.Serialize(writer, eip8037Gas.StateGasUsed, options);
+            TypeInfoJsonSerializer.Serialize(writer, eip8037Gas.StateGasUsed, options);
             writer.WritePropertyName("gasRefund"u8);
-            JsonSerializer.Serialize(writer, eip8037Gas.GasRefund, options);
+            TypeInfoJsonSerializer.Serialize(writer, eip8037Gas.GasRefund, options);
         }
 
         writer.WritePropertyName("input"u8);
-        if (value.Input is null || value.Input.Count == 0)
+        if (value.Input.IsEmpty)
         {
             writer.WriteStringValue("0x"u8);
         }
         else
         {
-            JsonSerializer.Serialize(writer, value.Input.AsReadOnlyMemory(), options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Input, options);
         }
 
-        if (value.Output?.Count > 0)
+        if (!value.Output.IsEmpty)
         {
             writer.WritePropertyName("output"u8);
-            JsonSerializer.Serialize(writer, value.Output.AsReadOnlyMemory(), options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Output, options);
         }
 
         if (value.Error is not null)
         {
             writer.WritePropertyName("error"u8);
-            JsonSerializer.Serialize(writer, value.Error, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Error, options);
         }
 
         if (value.RevertReason is not null)
         {
             writer.WritePropertyName("revertReason"u8);
-            JsonSerializer.Serialize(writer, value.RevertReason, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.RevertReason, options);
         }
 
         if (value.Logs?.Count > 0)
         {
             writer.WritePropertyName("logs"u8);
-            JsonSerializer.Serialize(writer, value.Logs.AsMemory(), options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Logs.AsMemory(), options);
         }
     }
 

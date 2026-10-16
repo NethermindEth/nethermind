@@ -46,7 +46,7 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
                 processor.SetBlockExecutionContext(processedBlock.Header.Clone());
                 try
                 {
-                    return processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FramePrefixAtExecutionBlock)
+                    return processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly)
                         && !tracer.Violated && tracer.Payer is not null;
                 }
                 catch (OperationCanceledException) when (tracer.Violated)

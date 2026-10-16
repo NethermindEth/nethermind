@@ -12,13 +12,40 @@ namespace Nethermind.Optimism.Rpc;
 
 public class OptimismReceiptForRpc : ReceiptForRpc
 {
+    public OptimismReceiptForRpc()
+    {
+    }
+
     public OptimismReceiptForRpc(
         Hash256 txHash,
         OptimismTxReceipt receipt,
         ulong blockTimestamp,
         TxGasInfo gasInfo,
         L1TxGasInfo l1GasInfo,
-        int logIndexStart = 0) : base(txHash, receipt, blockTimestamp, gasInfo, logIndexStart)
+        int logIndexStart = 0) : base(txHash, receipt, blockTimestamp, gasInfo, logIndexStart) =>
+        SetOptimismFields(receipt, l1GasInfo);
+
+    /// <summary>Refills this instance as the constructor for <paramref name="receipt"/>'s type builds it.</summary>
+    /// <param name="l1GasInfo">The transaction's L1 gas, required for an <see cref="OptimismTxReceipt"/>.</param>
+    internal void Populate(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, TxGasInfo gasInfo, L1TxGasInfo? l1GasInfo, int logIndexStart)
+    {
+        Populate(txHash, receipt, blockTimestamp, gasInfo, logIndexStart);
+        DepositNonce = null;
+        DepositReceiptVersion = null;
+        L1Fee = null;
+        L1GasPrice = null;
+        L1GasUsed = null;
+        L1FeeScalar = null;
+        L1BaseFeeScalar = null;
+        L1BlobBaseFee = null;
+        L1BlobBaseFeeScalar = null;
+        OperatorFeeScalar = null;
+        OperatorFeeConstant = null;
+        DaFootprintGasScalar = null;
+        if (receipt is OptimismTxReceipt optimismReceipt && l1GasInfo is { } info) SetOptimismFields(optimismReceipt, info);
+    }
+
+    private void SetOptimismFields(OptimismTxReceipt receipt, L1TxGasInfo l1GasInfo)
     {
         if (receipt.TxType == TxType.DepositTx)
         {

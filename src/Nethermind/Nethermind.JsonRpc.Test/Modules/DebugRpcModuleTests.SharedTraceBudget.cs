@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -33,6 +35,104 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
+    public async Task Debug_traceCall_log_indices_include_prefix_transactions([Values] bool revertFirst)
+    {
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+            RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+                new { from = TestItem.AddressB.ToString(), input = block.Transactions[2].Data.ToArray().ToHexString(true), gas = "0x186a0" },
+                block.Hash!, new { tracer = "callTracer", tracerConfig = new { withLog = true }, txIndex = "0x2" }));
+
+        AssertLastTransactionLogIndex(responses, revertFirst);
+    }
+
+
+    [Test]
+    public async Task Debug_traceTransaction_log_indices_include_preceding_transactions([Values] bool revertFirst, [Values(true, "true")] object withLog)
+    {
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+            RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", block.Transactions[2].Hash!,
+                new { tracer = "callTracer", tracerConfig = new { withLog } }));
+
+        AssertLastTransactionLogIndex(responses, revertFirst);
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_log_indices_span_transactions(
+        [Values("debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
+        [Values] bool revertFirst, [Values(true, "true")] object withLog)
+    {
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+        {
+            object blockParameter = method switch
+            {
+                "debug_traceBlockByHash" => block.Hash!,
+                "debug_traceBlockByNumber" => "latest",
+                "debug_traceBlock" => Nethermind.Serialization.Rlp.Rlp.Encode(block).ToString(),
+                _ => throw new AssertionException($"Unexpected block tracing method: {method}")
+            };
+            return RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter,
+                new { tracer = "callTracer", tracerConfig = new { withLog } });
+        });
+
+        foreach (string response in responses)
+        {
+            JToken json = JToken.Parse(response);
+            Assert.That(json["error"], Is.Null, response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                if (revertFirst)
+                    Assert.That(traces[0]["result"]?["logs"], Is.Null, response);
+                for (int i = revertFirst ? 1 : 0; i < traces.Count; i++)
+                    Assert.That((string?)traces[i]["result"]?["logs"]?[0]?["index"], Is.EqualTo($"0x{i - (revertFirst ? 1 : 0):x}"), response);
+            }
+        }
+    }
+
+    private static void AssertLastTransactionLogIndex(string[] responses, bool revertFirst)
+    {
+        foreach (string response in responses)
+        {
+            JToken json = JToken.Parse(response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((string?)json["result"]?["logs"]?[0]?["index"], Is.EqualTo(revertFirst ? "0x1" : "0x2"), response);
+            }
+        }
+    }
+
+    private static async Task<string[]> TraceLogsBeforeAndAfterIndexing(
+        bool revertFirst, Func<TestRpcBlockchain, Block, Task<string>> trace)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            byte[] code = revertFirst && i == 0
+                ? Prepare.EvmCode.Log(0, 0).Revert(0, 0).Done
+                : Prepare.EvmCode.Log(0, 0).STOP().Done;
+            transactions[i] = Build.A.Transaction.WithCode(code).WithNonce(nonce + (ulong)i)
+                .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(3));
+        string replayed = await trace(chain, block);
+        IndexThroughTheCapture(chain, index, block, parent);
+        string indexed = await trace(chain, block);
+        return [replayed, indexed];
+    }
+
+    [Test]
     public async Task DebugAndTraceFactories_UseTheSameExecutionBudget()
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
@@ -46,7 +146,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
-                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
@@ -92,6 +192,75 @@ public partial class DebugRpcModuleTests
             Task.Run(() => RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_block", block.Hash)));
     }
 
+    [TestCase("trace_block", null)]
+    [TestCase("trace_filter", null)]
+    [TestCase("trace_replayBlockTransactions", "trace")]
+    [TestCase("trace_replayBlockTransactions", "trace,stateDiff")]
+    [TestCase("trace_replayBlockTransactions", "trace,vmTrace,stateDiff")]
+    [TestCase("trace_replayBlockTransactions", "stateDiff")]
+    public async Task ParityTraces_OnAnIndexedBlock_StreamLikeTheReplay(string method, string? traceTypes)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        OpenedBlockCount seeds = new(new ChangesetPrefixStateSeedSource(index));
+        using ParallelTraceBudget budget = new(2);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = true })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        byte[][] codes =
+        [
+            Prepare.EvmCode.CallWithValue(TestItem.AddressC, 5_000, 1).Call(TestItem.AddressD, 5_000).Log(0, 0).STOP().Done,
+            Prepare.EvmCode.Call(TestItem.AddressC, 5_000).Revert(0, 0).Done,
+            Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(Prepare.EvmCode.Op(Instruction.STOP).Done).Done, 0).STOP().Done,
+            Prepare.EvmCode.Call(TestItem.AddressC, 5_000).Op(Instruction.INVALID).Done,
+            Prepare.EvmCode.PersistData("0x01", "0x02").PushData(TestItem.AddressC).Op(Instruction.SELFDESTRUCT).Done,
+            Prepare.EvmCode.CallWithValue(TestItem.AddressE, 5_000, 1_000).STOP().Done,
+        ];
+        // More transactions than workers, in two rounds, so each recycled tracer meets every kind of frame.
+        Transaction[] transactions = new Transaction[2 * (codes.Length + 1)];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            int kind = i % (codes.Length + 1);
+            TransactionBuilder<Transaction> tx = kind == codes.Length
+                ? Build.A.Transaction.WithTo(TestItem.AddressC)
+                : Build.A.Transaction.WithCode(codes[kind]);
+            transactions[i] = tx.WithValue(kind == codes.Length - 1 ? 0 : 10).WithNonce(nonce + (ulong)i)
+                .WithGasLimit(300_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(transactions.Length), "precondition: every transaction is in the block");
+
+        object[] parameters = method switch
+        {
+            "trace_block" => [block.Hash!],
+            "trace_filter" => [new { fromBlock = $"0x{block.Number:x}", toBlock = $"0x{block.Number:x}" }],
+            _ => [block.Hash!, traceTypes!.Split(',')],
+        };
+        string replayed = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, parameters);
+        Assert.That(seeds.Opened, Is.Zero, "precondition: before the block is indexed it is replayed");
+        IndexThroughTheCapture(chain, index, block, parent);
+        string first = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, parameters);
+        string second = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, parameters);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.Opened, Is.EqualTo(2), "precondition: the indexed block is traced in parallel");
+            Assert.That(JToken.Parse(replayed)["error"], Is.Null, replayed);
+            Assert.That(second, Is.EqualTo(first));
+            // The streamed replay writes a vmTrace operation's sub-trace ahead of its other fields.
+            if (traceTypes?.Contains("vmTrace") == true)
+                Assert.That(JToken.DeepEquals(JToken.Parse(first), JToken.Parse(replayed)), Is.True, first);
+            else
+                Assert.That(first, Is.EqualTo(replayed));
+        }
+    }
+
     [Test]
     public async Task Debug_traceBlockByHash_WithATransactionFilter_ReturnsThatTransactionAlone_OnAnIndexedBlock()
     {
@@ -106,7 +275,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
-                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
@@ -138,6 +307,52 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("debug_traceTransaction", 0)]
+    [TestCase("debug_traceTransaction", 1)]
+    [TestCase("debug_traceTransaction", 2)]
+    [TestCase("debug_traceBlockByHash", 1)]
+    public async Task JavaScript_transaction_context_preserves_the_block_index(string method, int txIndex)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(21_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length));
+        Transaction target = block.Transactions[txIndex];
+        bool traceTransaction = method == "debug_traceTransaction";
+        GethTraceOptions options = new()
+        {
+            Tracer = "{fault:function(){},result:function(ctx){return {txIndex:ctx.txIndex,block:ctx.block}}}",
+            TxHash = traceTransaction ? null : target.Hash
+        };
+        object parameter = traceTransaction ? target.Hash! : block.Hash!;
+        string replayed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameter, options);
+        IndexThroughTheCapture(chain, index, block, parent);
+        string indexed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameter, options);
+
+        foreach (string response in new[] { replayed, indexed })
+        {
+            JToken json = JToken.Parse(response);
+            Assert.That(json["error"], Is.Null, response);
+            JToken result = traceTransaction ? json["result"]! : json["result"]![0]!["result"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result["txIndex"]!.Value<int>(), Is.EqualTo(txIndex), response);
+                Assert.That(result["block"]!.Value<long>(), Is.EqualTo(block.Number));
+            }
+        }
+    }
+
     public enum ReceiptAvailability { Stored, Missing, Unreproducible }
 
     // Without usable receipts both paths number the logs from the body they replay, as the receipts would.
@@ -154,7 +369,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
-                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
                 .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => new CountingReceiptFinder(ctx.Resolve<IReceiptFinder>(), availability)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
@@ -245,5 +460,21 @@ public partial class DebugRpcModuleTests
 
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
         public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
+    }
+
+    private sealed class OpenedBlockCount(IPrefixStateSeedSource inner) : IPrefixStateSeedSource
+    {
+        public int Opened;
+
+        public bool Enabled => inner.Enabled;
+
+        public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot) => inner.TrySeed(block, transactionIndex, slot);
+
+        public bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
+        {
+            if (!inner.TryOpenBlock(block, out covered)) return false;
+            Interlocked.Increment(ref Opened);
+            return true;
+        }
     }
 }

@@ -132,7 +132,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceAfter(string payloadId, Block emptyBlock)
+        void TraceAfter(string payloadId, Block? emptyBlock)
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
@@ -440,11 +440,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     }
                 }
 
+                // Stopped before reading, so a build finishing later cannot change what this and later calls return.
+                blockContext.DisposeAndCancelOngoingImprovements();
                 return blockContext.Best;
             }
             finally
             {
-                // Stop any on-going improvements as they won't be used
+                // Also stops the context when retrieval throws or is cancelled
                 blockContext.DisposeAndCancelOngoingImprovements();
                 RetainRetrievedContext(payloadId, blockContext);
             }

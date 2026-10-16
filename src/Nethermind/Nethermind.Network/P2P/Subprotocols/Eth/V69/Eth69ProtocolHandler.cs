@@ -69,7 +69,7 @@ public class Eth69ProtocolHandler(
                 Handle(statusMsg);
                 return true;
             case Eth69MessageCode.Receipts:
-                ThrowIfReceiptsNotRequested(message.Content);
+                ThrowIfReceiptsUnexpected(message.Content);
                 ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
                 ReportIn(receiptsMessage, size);
                 base.Handle(receiptsMessage, size);

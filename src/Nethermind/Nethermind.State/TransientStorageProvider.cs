@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -26,7 +25,7 @@ namespace Nethermind.State
                 return;
             }
 
-            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            ref HeadChange head = ref _intraBlockCache.GetValueRefOrAddDefault(cell, out bool exists);
             if (exists && value == head.Value) return;
             PushUpdate(in cell, in value, ref head, exists);
         }
@@ -35,7 +34,7 @@ namespace Nethermind.State
         private void SetZero(in StorageCell cell)
         {
             if (_intraBlockCache.Count == 0) return;
-            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, cell);
+            ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(cell);
             if (Unsafe.IsNullRef(ref head) || head.Value.IsZero) return;
             PushUpdate(in cell, in UInt256.Zero, ref head, exists: true);
         }

@@ -3,9 +3,11 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
@@ -167,8 +169,8 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
                        || string.IsNullOrEmpty(message);
 
         string body = omitDetail
-            ? $"{{\"type\":{JsonSerializer.Serialize(type)}}}"
-            : $"{{\"type\":{JsonSerializer.Serialize(type)},\"detail\":{JsonSerializer.Serialize(message)}}}";
+            ? $"{{\"type\":{JsonSerializer.Serialize(type, SszRestJsonContext.Default.String)}}}"
+            : $"{{\"type\":{JsonSerializer.Serialize(type, SszRestJsonContext.Default.String)},\"detail\":{JsonSerializer.Serialize(message, SszRestJsonContext.Default.String)}}}";
 
         await ctx.Response.WriteAsync(body, ctx.RequestAborted);
     }
@@ -186,3 +188,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         _ => StatusCodes.Status400BadRequest
     };
 }
+
+[JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(IEnumerable<string>))]
+internal partial class SszRestJsonContext : JsonSerializerContext;

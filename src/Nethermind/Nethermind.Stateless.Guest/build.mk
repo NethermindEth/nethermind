@@ -25,7 +25,7 @@ GUEST_EXTLIB ?= lib$(GUEST_LIBC)
 # .NET 11, not 10: both pass the soft-float suite, but 11 is the line it is
 # maintained on. It costs ~2.6% more SP1 cycles and ~2.5% more ZisK steps over
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:0eefff0d1a6d9ddefe4e63758d41436be6c4617a@sha256:9405ea361e7854dba5502ba6b20fa75d6e4659eb0a869e7d06ae81804cffdb11
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:e10cdcb7e02f9a165bd4b992c1b6afbcad5689e6@sha256:f346253179300513e2a96036880fac327410766cd3fc943f1c25a276f49cf5d5
 
 # Every target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
@@ -43,6 +43,10 @@ OPT_FLAGS ?= -Ot
 # Worth roughly 45% of the image on the sp1 and openvm guests.
 TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 
+# Objects a guest links besides the managed closure and its bindings library, each
+# assembled from the .S of the same name in the guest's directory.
+GUEST_OBJECTS ?=
+
 # Main, the ZkvmThrow export and the failure protocol are one file shared by all
 # three guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
 # sources, not the managed assembly, so the shared file has to be mounted and
@@ -58,6 +62,11 @@ GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SRC_DIR)/Program.cs
 # Pinned rather than derived: with more than one source bflat names the output
 # after the first, which is the shared one.
 GUEST_OUT := -o $(SRC_DIR)/Program
+
+# Every guest applies the shared substitutions; one that has its own substitutions.xml
+# applies that on top.
+GUEST_SUBSTITUTIONS := --substitution $(SHARED_SRC_DIR)/substitutions.xml \
+  $(if $(wildcard $(GUEST_DIR)/substitutions.xml),--substitution $(SRC_DIR)/substitutions.xml)
 
 # The managed closure. BIN_DIR is the guest's own artifacts directory, bound in
 # by its build target.
@@ -106,7 +115,7 @@ dotnet-build:
 
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
-build: dotnet-build
+build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 	docker run --platform linux/amd64 --rm \
 		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
 		-e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
@@ -122,9 +131,10 @@ build: dotnet-build
 		--no-pthread \
 		--no-globalization \
 		--nostdlibrefs \
-		--substitution $(SRC_DIR)/substitutions.xml \
+		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
+		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
 		$(GUEST_OUT) \
@@ -136,6 +146,15 @@ build: dotnet-build
 	echo "Resource verification: OK - no manifest resources in the guest image"
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
+
+# Assembled by the bflat image's own clang, for the ISA the gates above allow.
+$(GUEST_DIR)/%.o: $(GUEST_DIR)/%.S
+	docker run --platform linux/amd64 --rm \
+		-w $(SRC_DIR) \
+		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+		--entrypoint clang \
+		$(BFLAT_IMAGE) \
+		--target=riscv64-unknown-elf -march=rv64im -mabi=lp64 -mno-relax -c $*.S -o $*.o
 
 # SP1 and OpenVM take the SSZ payload as-is; the shared fixtures are framed for
 # ZisK (8-byte little-endian length, payload, padding to 8), so the frame is
@@ -158,7 +177,8 @@ clean:
 		$(GUEST_DIR)/bin/** \
 		$(GUEST_DIR)/Program \
 		$(GUEST_DIR)/Program.o \
-		$(GUEST_DIR)/Program.map.xml
+		$(GUEST_DIR)/Program.map.xml \
+		$(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
 
 .PHONY: \

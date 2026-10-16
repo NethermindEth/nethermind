@@ -97,15 +97,13 @@ public class ProofWrapperServiceTests
 
     [TestCase("post-tx")]
     [TestCase("keyed")]
-    [TestCase("recent-roots")]
     [TestCase("scalar")]
     public async Task Frame_fork_mismatch_is_local_and_can_be_retried_without_a_negative_memo(string scenario)
     {
         OverridableReleaseSpec spec = new(Eip8288Prototype.Instance)
         {
             IsEip7906Enabled = scenario != "post-tx",
-            IsEip8250Enabled = scenario != "keyed",
-            IsEip8272Enabled = scenario != "recent-roots"
+            IsEip8250Enabled = scenario != "keyed"
         };
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         TxFrame dependencyFrame = new(FrameMode.DepVerify, FrameFlags.None, null,
@@ -116,7 +114,6 @@ public class ProofWrapperServiceTests
             ChainId = 1,
             SenderAddress = Address.Zero,
             NonceKeys = scenario == "scalar" ? null : [UInt256.Zero],
-            RecentRootReferences = scenario == "recent-roots" ? [] : null,
             Frames = scenario == "post-tx"
                 ? [dependencyFrame, new(FrameMode.PostTx, FrameFlags.None, Address.Zero, 1000, UInt256.Zero, default)]
                 : [dependencyFrame]
@@ -137,7 +134,6 @@ public class ProofWrapperServiceTests
         Assert.That(verifier.VerificationCalls, Is.Zero);
         spec.IsEip7906Enabled = true;
         spec.IsEip8250Enabled = scenario != "scalar";
-        spec.IsEip8272Enabled = true;
         Assert.That((await AcceptResolvedDetailedAsync(service, wrapper, transaction)).HasValidProof, Is.True);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
 
@@ -204,35 +200,6 @@ public class ProofWrapperServiceTests
             Assert.That(accepted.Error, Is.EqualTo(FrameTxValidation.LegacyNonceNotAllowed));
             Assert.That(verifier.VerificationCalls, Is.Zero);
         }
-    }
-
-    [Test]
-    public async Task Recent_root_envelopes_before_their_fork_are_rejected_before_proof_verification()
-    {
-        FakeLeanProofVerifier verifier = new(true);
-        IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEip8272Enabled = false };
-        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier, spec);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = new()
-        {
-            Type = TxType.FrameTx,
-            NonceKeys = [UInt256.Zero],
-            ChainId = 1,
-            SenderAddress = Address.Zero,
-            RecentRootReferences = [new(default, 0, default)],
-            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
-                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
-        };
-        RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
-        Result<Hash256[]> accepted = await AcceptResolvedAsync(service, MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-        {
-            Transactions = [new WrapperTransaction(transaction)],
-            Deps = [dependency],
-            Mode = MempoolWrapper.ModeRecursive,
-            RecursiveStark = recursive
-        }).Bytes, transaction);
-        Assert.That(accepted.Error, Is.EqualTo(FrameTxValidation.RecentRootReferencesNotEnabled));
-        Assert.That(verifier.VerificationCalls, Is.Zero);
     }
 
     [Test]
@@ -839,7 +806,8 @@ public class ProofWrapperServiceTests
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1], [1]]
         }).Bytes;
-        Assert.ThrowsAsync<OperationCanceledException>(async () => { await AcceptResolvedAsync(service, encoded, transactions, cancellation.Token); });
+        Assert.That(async () => await AcceptResolvedAsync(service, encoded, transactions, cancellation.Token),
+            Throws.InstanceOf<OperationCanceledException>());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Covers(transactions[0]), Is.EqualTo(firstAccepted));

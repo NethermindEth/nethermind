@@ -972,76 +972,6 @@ public class Eip8288BlockProductionTests
         Assert.That(result.IsSuccess, Is.False);
     }
 
-    [TestCase(true, 1UL, 1)]
-    [TestCase(true, 8192UL, 0)]
-    [TestCase(false, 1UL, 0)]
-    public async Task Proof_wrappers_enforce_recent_root_commitments_and_execution_slot_age(bool matchingRoot, ulong slot, int included)
-    {
-        CountingVerifier verifier = new();
-        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
-        ValueHash256 sourceId = RecentRootStore.SourceId(TestItem.AddressD, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = TestItem.KeccakB.ValueHash256;
-        using BasicTestBlockchain chain = await CreateChain(verifier, proofs, builder =>
-            builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((state, spec) => new FunctionalGenesisPostProcessor(_ =>
-            {
-                state.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, nonce: 1);
-                state.Set(RecentRootStore.ReferenceCell(sourceId, 0), RecentRootStore.EntryHash(sourceId, 0, root).ToUInt256());
-                state.CreateAccount(TestItem.AddressD, UInt256.Zero);
-                state.InsertCode(TestItem.AddressD, Prepare.EvmCode.PushData(0).PushData(2).Op(Instruction.RECENTROOTREFLOAD)
-                    .PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done, spec.GenesisSpec);
-                state.RecalculateStateRoot();
-            })));
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero],
-            [new(sourceId, 0, matchingRoot ? root : TestItem.KeccakC.ValueHash256)], 0, null,
-            new(FrameMode.Sender, FrameFlags.None, TestItem.AddressD, executionGasLimit: 100_000, stateGasLimit: GasCostOf.SSetState, UInt256.Zero, default),
-            FrameTxTestFrames.PostTx(10_000));
-        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
-        Result<Hash256[]> accepted = await AcceptWrapper(service, EncodeWrapper(dependency, transaction), transaction);
-        Assert.That(accepted.IsSuccess, Is.EqualTo(matchingRoot));
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(matchingRoot ? 1 : 0));
-        if (matchingRoot) Assert.That(service.BuildWrapper().IsSuccess, Is.True);
-        if (!matchingRoot)
-        {
-            Assert.That(proofs.TryBeginAdmission([dependency], [[1]], null, out IDisposable? admission), Is.True);
-            using (admission)
-                Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.FrameTxRecentRootUnmet));
-        }
-        Block block = await ProduceAndImport(chain, slot);
-        Assert.That(block.Transactions, Has.Length.EqualTo(included));
-        using (chain.MainWorldState.BeginScope(block.Header))
-        {
-            chain.MainWorldState.Get(new StorageCell(TestItem.AddressD, UInt256.Zero), out UInt256 stored);
-            Assert.That(stored, Is.EqualTo(included == 1 ? root.ToUInt256() : UInt256.Zero));
-        }
-    }
-
-    [Test]
-    public async Task Expired_recent_roots_are_rejected_before_native_wrapper_verification()
-    {
-        CountingVerifier verifier = new();
-        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
-        ValueHash256 source = TestItem.KeccakA.ValueHash256;
-        ValueHash256 root = TestItem.KeccakB.ValueHash256;
-        using BasicTestBlockchain chain = await CreateChain(verifier, proofs, builder =>
-            builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((state, spec) => new FunctionalGenesisPostProcessor(_ =>
-            {
-                state.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, nonce: 1);
-                state.Set(RecentRootStore.ReferenceCell(source, 0), RecentRootStore.EntryHash(source, 0, root).ToUInt256());
-            })));
-        await ProduceAndImport(chain, 8191);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero], [new(source, 0, root)]);
-        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
-        Result<Hash256[]> accepted = await AcceptWrapper(service, EncodeWrapper(dependency, transaction), transaction);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(accepted.IsSuccess, Is.False);
-            Assert.That(verifier.VerificationCalls, Is.Zero);
-            Assert.That(chain.TxPool.GetPendingTransactionsCount(), Is.Zero);
-        }
-    }
-
     private static Task<BasicTestBlockchain> CreateChain(CountingVerifier verifier, LeanProofStore proofs, Action<ContainerBuilder>? configure = null) =>
         BasicTestBlockchain.Create(builder =>
         {
@@ -1053,7 +983,7 @@ public class Eip8288BlockProductionTests
         });
 
     private static Transaction CreateTransaction(BasicTestBlockchain chain, FrameDependency dependency, UInt256[] keys,
-        RecentRootReference[]? roots = null, ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution)
+        ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution)
     {
         ulong stateGas = keys.Length == 1 && keys[0].IsZero ? 0 : (ulong)keys.Length * GasCostOf.SSetState;
         TxFrame[] frames =
@@ -1072,7 +1002,6 @@ public class Eip8288BlockProductionTests
             SenderAddress = (key ?? TestItem.PrivateKeyB).Address,
             Nonce = nonce,
             NonceKeys = keys,
-            RecentRootReferences = roots,
             Frames = frames,
             GasLimit = FrameTxValidation.TotalGasLimit(frames),
             GasPrice = 1.GWei,

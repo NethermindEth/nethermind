@@ -38,6 +38,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IForkInfo forkInfo,
         IEthCapabilitiesProvider capabilitiesProvider,
         IBlockForRpcFactory blockForRpcFactory,
+        HashesOnlyBlockReader hashesOnlyBlockReader,
+        IReceiptStorage receiptStorage,
         ProofWrapperService? proofWrapperService = null)
         : ModuleFactoryBase<IEthRpcModule>
     {
@@ -66,6 +68,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _headBlockSignal,
                 capabilitiesProvider,
                 blockForRpcFactory,
+                hashesOnlyBlockReader,
+                receiptStorage,
                 proofWrapperService);
     }
 }

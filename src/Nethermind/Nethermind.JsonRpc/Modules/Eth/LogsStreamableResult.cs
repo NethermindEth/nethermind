@@ -139,7 +139,7 @@ internal sealed class LogsStreamableResult(
 
                 itemBuffer.Clear();
                 itemWriter.Reset(itemBuffer);
-                JsonSerializer.Serialize(itemWriter, enumerator.Current, EthereumJsonSerializer.JsonOptions);
+                TypeInfoJsonSerializer.Serialize(itemWriter, enumerator.Current, EthereumJsonSerializer.JsonOptions);
                 return null;
             }
             catch (OperationCanceledException)

@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// proof coverage leave the pool.
 /// </remarks>
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
-    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier, IChainHeadInfoProvider? headInfo = null)
+    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier)
 {
     internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxTxsPerWrapper * (Hash256.Size + 1);
 
@@ -233,8 +233,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             // Envelopes resolving the received hash entries, from the pool or recovered from peers.
             Dictionary<ValueHash256, Transaction> resolved = [];
-            string? currentStateError = null;
-            int admissible = 0;
             for (int i = 0; i < decoded.Transactions.Count; i++)
             {
                 WrapperTransaction entry = decoded.Transactions[i];
@@ -242,15 +240,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (transaction is null) return ProofWrapperAcceptance.LocalFailure(MempoolWrapperValidator.UnknownTransaction);
                 if (!Preflight(transaction, out string? frameError, admissionSpec))
                     return frameError is FrameTxValidation.PostTxNotEnabled or FrameTxValidation.KeyedNoncesNotEnabled
-                        or FrameTxValidation.RecentRootReferencesNotEnabled or FrameTxValidation.LegacyNonceNotAllowed
+                        or FrameTxValidation.LegacyNonceNotAllowed
                         ? ProofWrapperAcceptance.LocalFailure(frameError) : ProofWrapperAcceptance.Invalid(frameError!);
                 if (received[i].Hash is { } hash) resolved[hash.ValueHash256] = transaction;
-                if (RecentRootError(transaction) is { } rootError) currentStateError ??= rootError;
-                else admissible++;
             }
-            // Admission is per transaction; a wrapper none of whose transactions could be admitted now is refused before
-            // verification, without judging its proof.
-            if (admissible == 0 && currentStateError is not null) return ProofWrapperAcceptance.LocalFailure(currentStateError);
             (ValueHash256, ValueHash256) wrapperHash = (ValueKeccak.Compute(wrapper), verifier.AggregatedVk);
             if (!_verifiedWrappers.TryGetValue(wrapperHash, out string? error))
             {
@@ -403,13 +396,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         };
     }
 
-    /// <summary>Why a transaction's recent-root references cannot be admitted against the current head, if they cannot.</summary>
-    private string? RecentRootError(Transaction transaction) =>
-        transaction.RecentRootReferences is not { Length: > 0 } ? null
-        : headInfo is null ? "Recent-root state is unavailable."
-        : AreAdmissionRootsValid(transaction) ? null
-        : TxPoolErrorMessages.FrameTxRecentRootUnmet;
-
     private void RememberVerification((ValueHash256, ValueHash256) hash, string? error)
     {
         if (_verifiedWrappers.ContainsKey(hash)) return;
@@ -441,12 +427,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             Hash256 hash = entry.Full.Hash!;
             hashes[i] = hash;
-            // Admission is per transaction: a current-state rejection leaves the proof and the other transactions intact.
-            if (RecentRootError(entry.Full) is { } rootError)
-            {
-                firstError ??= rootError;
-                continue;
-            }
+            // Admission is per transaction: a pool rejection, including EIP-8272 recent-root mempool rules, leaves the proof and
+            // the other transactions intact.
             AcceptTxResult result = txPool.SubmitTx(entry.Full, TxHandlingOptions.PersistentBroadcast);
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
             else admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(entry.Full, FrameTxSigHash.ComputeValue));
@@ -630,10 +612,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     private Transaction? ResolvePending(Hash256 hash) => txPool.TryGetPendingTransaction(hash.ValueHash256, out Transaction? transaction) ? transaction : null;
 
-    private bool AreAdmissionRootsValid(Transaction transaction)
-        => RecentRootReferences.Validate(headInfo!.ReadOnlyStateProvider, transaction.RecentRootReferences,
-            headInfo.HeadSlotNumber is { } slot && slot < ulong.MaxValue ? slot + 1 : null);
-
     private bool Preflight(Transaction transaction, out string? error, IReleaseSpec? admissionSpec = null)
     {
         error = null;
@@ -647,14 +625,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         IReleaseSpec spec = admissionSpec;
         if (!FrameTxValidation.IsWellFormed(transaction, spec, out error)) return false;
         ValidationResult nonceKeys = FrameTxNonceKeysTxValidator.Instance.IsWellFormed(transaction, spec);
-        if (!nonceKeys)
-        {
-            error = nonceKeys.Error;
-            return false;
-        }
-        ValidationResult envelope = FrameTxEnvelopeTxValidator.Instance.IsWellFormed(transaction, spec);
-        error = envelope.Error;
-        return envelope;
+        error = nonceKeys.Error;
+        return nonceKeys;
     }
 
     private static MempoolWrapper DecodeProofWrapper(byte[] encoded)

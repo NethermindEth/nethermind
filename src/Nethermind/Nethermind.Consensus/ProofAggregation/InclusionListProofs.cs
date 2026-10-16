@@ -333,7 +333,6 @@ public static class InclusionListProofValidator
         if (tx is null) return false;
         if (!tx.SupportsFrames) return true;
         return FrameTxValidation.IsWellFormed(tx, spec, out _)
-            && FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, spec)
-            && FrameTxEnvelopeTxValidator.Instance.IsWellFormed(tx, spec);
+            && FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, spec);
     }
 }

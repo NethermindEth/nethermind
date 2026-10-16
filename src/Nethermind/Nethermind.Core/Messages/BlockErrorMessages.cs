@@ -17,6 +17,9 @@ public static class BlockErrorMessages
     public static string InvalidLogsBloom(Bloom expected, Bloom actual) =>
         $"InvalidLogsBloom: Logs bloom in header does not match. Expected {expected}, got {actual}";
 
+    public static string InvalidLogsBloomLength(bool eip7668Enabled) =>
+        $"InvalidLogsBloom: Logs bloom in header does not match. Expected a {(eip7668Enabled ? "zero-length" : "256-byte")} bloom";
+
     public static string InvalidTxRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidTxRoot: Expected {expected}, got {actual}";
 
@@ -124,6 +127,12 @@ public static class BlockErrorMessages
 
     public const string RequestsNotEnabled =
         "RequestsNotEnabled: Requests must be null in block when EIP-6110 and EIP-7002 are not activated.";
+
+    public const string MissingParentBeaconBlockRoot =
+        "MissingParentBeaconBlockRoot: Parent beacon block root cannot be null in header when EIP-4788 is activated.";
+
+    public const string ParentBeaconBlockRootNotEnabled =
+        "ParentBeaconBlockRootNotEnabled: Parent beacon block root must be null in header when EIP-4788 is not activated.";
 
     public static string InvalidRequestsHash(Hash256? expected, Hash256? actual) =>
         $"InvalidRequestsHash: Requests hash mismatch in block: expected {expected}, got {actual}";

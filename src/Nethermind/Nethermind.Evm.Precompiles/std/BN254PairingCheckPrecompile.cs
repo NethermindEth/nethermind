@@ -9,15 +9,18 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class BN254PairingCheckPrecompile
 {
+    public static Address Address { get; } = Address.FromNumber(8);
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         Metrics.Bn254PairingPrecompile++;
 
         if (!ValidateInputLength(inputData))
-            return Errors.InvalidInputLength;
+            return Errors.Bn254PairingInputLength;
 
         byte[] output = new byte[32];
 
-        return BN254.CheckPairing(output, inputData.Span) ? output : Errors.Failed;
+        string? error = BN254.CheckPairing(output, inputData.Span);
+        return error is null ? output : error;
     }
 }

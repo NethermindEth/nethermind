@@ -20,4 +20,7 @@
     <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization.Test\Nethermind.Synchronization.Test.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="ModuleTests\BlockForRpcFixtures\*.json" />
+  </ItemGroup>
 </Project>

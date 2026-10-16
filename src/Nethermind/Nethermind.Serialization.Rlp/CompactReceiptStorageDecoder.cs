@@ -82,7 +82,11 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Position = receiptEnd;
             }
 
-            txReceipt.Bloom = new Bloom(txReceipt.Logs);
+            // EIP-7668: the bloom would be discarded. Otherwise TxReceipt computes it from the logs on first read.
+            if ((rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0)
+            {
+                txReceipt.Bloom = Bloom.ZeroLength;
+            }
 
             return txReceipt;
         }

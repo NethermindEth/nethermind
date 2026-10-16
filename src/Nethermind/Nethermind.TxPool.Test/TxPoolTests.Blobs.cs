@@ -632,10 +632,8 @@ namespace Nethermind.TxPool.Test
         public async Task reloaded_frame_blobs_seed_every_ledger_when_head_state_is_unavailable([Values] bool senderHasCode)
         {
             bool stateAvailable = false;
-            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
-            storage.GetAll().Returns([
-                new LightTransaction(RestorableFrameBlobTx(nonce: 0, payer: TestItem.AddressC)),
-                new LightTransaction(RestorableFrameBlobTx(nonce: 1, payer: TestItem.AddressD))]);
+            Transaction[] restored = [RestorableFrameBlobTx(nonce: 0, payer: TestItem.AddressC), RestorableFrameBlobTx(nonce: 1, payer: TestItem.AddressD)];
+            IBlobTxStorage storage = StorageServing(restored);
             IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
             state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(callInfo =>
             {
@@ -670,11 +668,31 @@ namespace Nethermind.TxPool.Test
             return tx;
         }
 
-        private IBlobTxStorage CreateStorageWithOneReloadedBlobTx()
+        private IBlobTxStorage CreateStorageWithOneReloadedBlobTx() =>
+            StorageServing(CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance));
+
+        /// <remarks>
+        /// Serves the bodies as well as the light records: the constructor's spec revalidation runs in the background
+        /// and evicts a record whose body storage cannot return.
+        /// </remarks>
+        private static IBlobTxStorage StorageServing(params Transaction[] restored)
         {
-            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
             IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
-            storage.GetAll().Returns([new LightTransaction(transaction)]);
+            storage.GetAll().Returns(Array.ConvertAll(restored, tx => new LightTransaction(tx)));
+            storage.TryGetMany(default, default, default).ReturnsForAnyArgs(callInfo =>
+            {
+                TxLookupKey[] keys = callInfo.ArgAt<TxLookupKey[]>(0);
+                int count = callInfo.ArgAt<int>(1);
+                Transaction[] results = callInfo.ArgAt<Transaction[]>(2);
+                int found = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    results[i] = Array.Find(restored, tx => tx.Hash!.ValueHash256 == keys[i].Hash);
+                    if (results[i] is not null) found++;
+                }
+
+                return found;
+            });
             return storage;
         }
 
@@ -1493,6 +1511,35 @@ namespace Nethermind.TxPool.Test
                 Assert.That(returnedFirstTx, Is.EqualTo(firstTx).UsingTransactionComparer());
                 Assert.That(returnedSecondTx, Is.Null);
             }
+        }
+
+        [Test]
+        public void should_reject_underpriced_sparse_blob_replacement_before_sampling([Values] bool bumpsFee)
+        {
+            _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction BlobTx(UInt256 fee, UInt256 value) => Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(0)
+                .WithMaxFeePerGas(fee)
+                .WithMaxPriorityFeePerGas(fee)
+                .WithMaxFeePerBlobGas(fee)
+                .WithValue(value)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(_txPool.SubmitTx(BlobTx(1.GWei, 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction replacement = BlobTx(bumpsFee ? 2.GWei : 1.GWei, 2);
+            replacement.NetworkWrapper = (ShardBlobNetworkWrapper)replacement.NetworkWrapper! with
+            {
+                Blobs = [],
+                CellMask = BlobCellMask.Empty,
+                Cells = null,
+            };
+            replacement.ClearLengthCache();
+
+            Assert.That(_txPool.ValidateTxForBlobSampling(replacement), Is.EqualTo(bumpsFee ? AcceptTxResult.Accepted : AcceptTxResult.ReplacementNotAllowed));
         }
 
         [Test]
@@ -2825,6 +2872,60 @@ namespace Nethermind.TxPool.Test
             _txPool.ForgetRejectedBlobTransaction(tx.Hash!);
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+        }
+
+        [Test]
+        public void should_forget_full_blob_hash_rejected_for_invalid_blob_proofs()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction valid = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction invalid = CloneFullBlobTransactionWithSameSidecar(valid, 0);
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)valid.NetworkWrapper!;
+            byte[][] invalidProofs = new byte[wrapper.Proofs.Length][];
+            for (int i = 0; i < invalidProofs.Length; i++)
+            {
+                invalidProofs[i] = [.. wrapper.Proofs[i]];
+            }
+
+            invalidProofs[0][0] ^= 1;
+            invalid.NetworkWrapper = wrapper with { Proofs = invalidProofs };
+
+            Assert.That(invalid.Hash, Is.EqualTo(valid.Hash));
+            Assert.That(_txPool.SubmitTx(invalid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+            Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+
+            Assert.That(_txPool.ForgetInvalidBlobProofs(valid.Hash!), Is.True);
+            Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.TryGetPendingBlobTransaction(valid.Hash!, out Transaction pending), Is.True);
+            Assert.That(pending.NetworkWrapper, Is.InstanceOf<ShardBlobNetworkWrapper>());
+            Assert.That(_txPool.ForgetInvalidBlobProofs(valid.Hash!), Is.False, "a pooled transaction stays known");
+        }
+
+        [Test]
+        public void should_not_forget_blob_hash_rejected_for_another_reason()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction gap = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(2UL)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceGap));
+            Assert.That(_txPool.ForgetInvalidBlobProofs(gap.Hash!), Is.False);
+            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
         }
 
         [Test]
@@ -5957,7 +6058,7 @@ namespace Nethermind.TxPool.Test
             .WithMaxPriorityFeePerGas(1.GWei)
             .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
 
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null)
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null, bool withRecentRoot = false)
         {
             ShardBlobNetworkWrapper wrapper = null;
             byte[][] versionedHashes = null;
@@ -5999,6 +6100,11 @@ namespace Nethermind.TxPool.Test
             if (deadline is not null)
             {
                 frames.Add(FrameTxTestFrames.ExpiryAt(deadline.Value, gasLimit: 40_000));
+            }
+
+            if (withRecentRoot)
+            {
+                frames.Add(FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple));
             }
 
             // Sized to leave the prefix headroom under the verify-gas ceiling once an expiry frame and

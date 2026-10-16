@@ -40,6 +40,7 @@ public class ChainParametersTests
             "Eip6110TransitionTimestamp",
             // Switches Eip8288AggregatedVk rather than enabling an EIP; see the test below.
             "Eip8288AggregatedVkTransitionTimestamp",
+            "Eip8272TransitionTimestamp",
         ];
 
         const ulong testValue = 1ul;

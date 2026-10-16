@@ -217,11 +217,15 @@ public class BlockAccessListPrefixStateSeedSourceTests
         Account underlying = new(1);
         ReadAll(overlay, underlying);
 
+        const int iterations = 1_000;
+        // Below the 24-byte minimum object size: any per-read allocation exceeds it, while a one-off
+        // runtime allocation on the test thread (2,016 bytes has been seen in CI) does not.
+        const int maxBytesPerIteration = 8;
         long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1_000; i++) ReadAll(overlay, underlying);
+        for (int i = 0; i < iterations; i++) ReadAll(overlay, underlying);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        Assert.That(allocated, Is.Zero, "slot reads, storage probes, code lookups and reads of accounts the prefix left alone must not allocate");
+        Assert.That(allocated, Is.LessThan(iterations * maxBytesPerIteration), "slot reads, storage probes, code lookups and reads of accounts the prefix left alone must not allocate");
 
         static void ReadAll(BlockAccessListReadOverlay overlay, Account underlying)
         {

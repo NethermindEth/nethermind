@@ -239,8 +239,9 @@ public class BranchProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             processingException = ex;
-            // A canceled pass and a production body waiting for its dependency proof are expected outcomes, not failures.
-            if (ex is OperationCanceledException or ProofAggregation.LeanProofNotReadyException)
+            // A production body waiting for its dependency proof is an expected outcome, and cancelling the token is reported by
+            // whoever cancelled it: a processing timeout or shutdown.
+            if (ex is ProofAggregation.LeanProofNotReadyException || ex is OperationCanceledException && token.IsCancellationRequested)
             {
                 if (_logger.IsDebug) _logger.Debug($"Block processing stopped: {ex.Message}");
             }

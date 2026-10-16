@@ -11,7 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -39,6 +39,13 @@ public class CliqueBlockProducerTests
         private readonly ILogManager _logManager = LimboLogs.Instance;
         private readonly ILogger _logger;
         private static readonly ITimestamper _timestamper = Timestamper.Default;
+        // Pinned to Sepolia's latest scheduled fork, so scheduling a fork (not the wall clock) moves the suite onto it.
+        private static readonly TestSpecProvider _specProvider = new(SepoliaSpecProvider.Instance.GetFinalSpec())
+        {
+            GenesisSpec = SepoliaSpecProvider.Instance.GenesisSpec,
+            ChainId = BlockchainIds.Sepolia,
+            NetworkId = BlockchainIds.Sepolia
+        };
         private readonly CliqueConfig _cliqueConfig;
         private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Sepolia);
         private readonly Dictionary<PrivateKey, ILogManager> _logManagers = [];
@@ -78,7 +85,7 @@ public class CliqueBlockProducerTests
                 .AddModule(new TestNethermindModule())
                 .AddModule(new CliqueModule())
                 .AddSingleton<IBlockValidator>(Always.Valid)
-                .AddSingleton<ISpecProvider>(SepoliaSpecProvider.Instance)
+                .AddSingleton<ISpecProvider>(_specProvider)
                 .AddSingleton<CliqueChainSpecEngineParameters>(new CliqueChainSpecEngineParameters()
                 {
                     Epoch = _cliqueConfig.Epoch,
@@ -97,34 +104,15 @@ public class CliqueBlockProducerTests
 
             _containers[privateKey] = container;
 
-            SepoliaSpecProvider testnetSpecProvider = SepoliaSpecProvider.Instance;
-            IReleaseSpec finalSpec = testnetSpecProvider.GetFinalSpec();
+            IReleaseSpec finalSpec = _specProvider.GetFinalSpec();
 
             IWorldState stateProvider = container.Resolve<IMainProcessingContext>().WorldState;
             using (stateProvider.BeginScope(IWorldState.PreGenesis))
             {
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether);
-                if (finalSpec.WithdrawalsEnabled)
-                {
-                    stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                    stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
-                }
+                TestBlockchain.DeployRequestPredeploys(stateProvider, finalSpec, _specProvider.GenesisSpec);
 
-                if (finalSpec.ConsolidationRequestsEnabled)
-                {
-                    stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                    stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
-                }
-
-                if (finalSpec.BuilderRequestsEnabled)
-                {
-                    stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
-                    stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, testnetSpecProvider.GenesisSpec);
-                    stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
-                    stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, testnetSpecProvider.GenesisSpec);
-                }
-
-                stateProvider.Commit(testnetSpecProvider.GenesisSpec);
+                stateProvider.Commit(_specProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
             }
@@ -161,7 +149,7 @@ public class CliqueBlockProducerTests
                 new CryptoRandom(),
                 snapshotManager,
                 container.Resolve<ISealer>(),
-                new TargetAdjustedGasLimitCalculator(testnetSpecProvider, new BlocksConfig()),
+                new TargetAdjustedGasLimitCalculator(_specProvider, new BlocksConfig()),
                 MainnetSpecProvider.Instance,
                 _cliqueConfig,
                 nodeLogManager);
@@ -215,7 +203,6 @@ public class CliqueBlockProducerTests
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             Block genesis = new(header);
             genesis.Header.Hash = genesis.Header.CalculateHash();
-            genesis.Header.StateRoot = new Hash256("0xba946bf2140ef68f7d9d57ef06a8ac0b28002b62060c462ba398389c97f1f1fa");
             genesis.Header.TxRoot = Keccak.EmptyTreeHash;
             genesis.Header.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesis.Header.Bloom = Bloom.Empty;
@@ -302,11 +289,12 @@ public class CliqueBlockProducerTests
         public On ProcessBadGenesis(PrivateKey nodeKey)
         {
             if (_logger.IsInfo) _logger.Info($"SUGGESTING BAD GENESIS ON {nodeKey.Address}");
-            Block genesis = GetGenesis();
-            genesis.Header.ExtraData[0] ^= 1;
-            genesis.Header.StateRoot = _genesis.StateRoot;
-            genesis.Header.Hash = genesis.Header.CalculateHash();
-            _blockTrees[nodeKey].SuggestBlock(genesis);
+            Block badGenesis = GetGenesis();
+            // Same state as the good genesis, but its own hash.
+            badGenesis.Header.Timestamp = _genesis.Header.Timestamp - 1;
+            badGenesis.Header.StateRoot = _genesis.Header.StateRoot;
+            badGenesis.Header.Hash = badGenesis.Header.CalculateHash();
+            _blockTrees[nodeKey].SuggestBlock(badGenesis);
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
         }

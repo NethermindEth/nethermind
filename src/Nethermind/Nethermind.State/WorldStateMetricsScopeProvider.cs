@@ -86,5 +86,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => baseScope.HintBal(bal, sink);
+
+        public void ApplyBal(ReadOnlyBlockAccessList bal)
+            => baseScope.ApplyBal(bal);
     }
 }
