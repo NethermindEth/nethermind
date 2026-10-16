@@ -528,6 +528,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(block.Transactions[i].SenderAddress, Is.EqualTo(senders[i]));
         }
 
+        Assert.That(_storage.TryGetReceipt(block, 0, out _, out _), Is.False, "a repeat lookup in one block is served by Get, which caches its receipts");
         Assert.That(_storage.TryGetReceipt(block, receipts.Length, out _, out _), Is.False);
         _storage.Get(block);
         Assert.That(_storage.TryGetReceipt(block, 0, out _, out _), Is.False, "cached receipts are served by Get");
