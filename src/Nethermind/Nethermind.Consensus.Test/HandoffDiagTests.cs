@@ -24,7 +24,9 @@ namespace Nethermind.Consensus.Test;
 /// With HANDOFF_DIAG_OUT set, the JSON is appended there as a slow-block log line, for opt/handoff_residual_check.py.
 /// </summary>
 [NonParallelizable]
-public class HandoffDiagTests() : PrewarmerHandoffTestBase(Osaka.Instance)
+[TestFixture(true)]
+[TestFixture(false)]
+public class HandoffDiagTests(bool earlyStart) : PrewarmerHandoffTestBase(Osaka.Instance, earlyStart)
 {
     private const double Slack = 0.002;
 
@@ -154,6 +156,75 @@ public class HandoffDiagTests() : PrewarmerHandoffTestBase(Osaka.Instance)
             Assert.That(Number(unfunded, "m_ops"), Is.Zero, "a transfer runs no opcodes");
             if (!warmFailTest) Assert.That(Number(unfunded, "act"), Is.GreaterThanOrEqualTo(0));
         }
+    }
+
+    [Test]
+    public void A_block_with_mempool_runs_prints_where_its_seed_ran()
+    {
+        Assume.That(HandoffDiag.Enabled, "BENCH_HANDOFF_DIAG=0");
+        Block block = BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Counter),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyD, 0, Logger));
+        Run executed = Process(block, adapter: null);
+        PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block), () => PreWarmer.SpeculativeMarkerPublished);
+        RunPreWarmCaches(PreWarmer, block);
+        Run run = ProcessWithDiag(block);
+        HandoffDiag.BlockRecords records = HandoffDiag.TakeRecords()!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Results, Is.EqualTo(executed.Results));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
+        }
+
+        string json = Report(records, block);
+        TestContext.Out.WriteLine(json);
+        if (Environment.GetEnvironmentVariable("HANDOFF_DIAG_OUT") is { Length: > 0 } path)
+        {
+            File.AppendAllText(path, $"2026-10-16 00:00:00.0000|WARN|SlowBlocks|2|{json}\n");
+        }
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement handoff = document.RootElement.GetProperty("handoff");
+        JsonElement[] txs = [.. document.RootElement.GetProperty("transactions").EnumerateArray()];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handoff.GetProperty("b1").GetProperty("early_start").GetBoolean(), Is.EqualTo(EarlyStart));
+            Assert.That(handoff.GetProperty("b1").GetProperty("workers_first").GetBoolean(), Is.True);
+            Assert.That(Number(handoff, "seed_n"), Is.GreaterThanOrEqualTo(1), "a mempool run is seeded");
+            Assert.That(Number(handoff, "t_seed_end"), Is.GreaterThanOrEqualTo(Number(handoff, "t_seed0") - Slack));
+            Assert.That(Number(handoff, "t_seed0"), Is.GreaterThanOrEqualTo(Number(handoff, "t_session") - Slack));
+            // Ahead of the workers without the early start; beside them with it.
+            if (!EarlyStart) Assert.That(Number(handoff, "t_seed_end"), Is.LessThanOrEqualTo(Number(handoff, "t_load0") + Slack));
+            Assert.That(Number(handoff, "t_fanout"), Is.GreaterThanOrEqualTo(Number(handoff, "t_addr0") - Slack));
+            if (EarlyStart) Assert.That(Number(handoff, "t_fanout"), Is.GreaterThanOrEqualTo(Number(handoff, "t_load1") - Slack), "the fan-out waits for the workers");
+            int seeded = 0;
+            foreach (JsonElement tx in txs)
+            {
+                if (tx.TryGetProperty("mp", out JsonElement mp) && mp.GetString() == "seeded") seeded++;
+                if (!records.FailTest && !records.Footprints!.Diag.FailTest) Assert.That(tx.TryGetProperty("mp_run", out _), Is.True, $"mp_run of {tx}");
+            }
+
+            Assert.That(seeded, Is.EqualTo((int)Number(handoff, "seed_n")));
+        }
+    }
+
+    // As the mempool prewarmer builds the block it predicts: copies of the block's transactions on a simulated child.
+    private Block Predicted(Block block)
+    {
+        BlockHeader header = Parent.CreateSimulatedChild(block.Timestamp);
+        header.Beneficiary = Parent.GasBeneficiary ?? Address.Zero;
+        header.BaseFeePerGas = block.BaseFeePerGas;
+        header.ExcessBlobGas = block.Header.ExcessBlobGas;
+        Transaction[] copies = new Transaction[block.Transactions.Length];
+        for (int i = 0; i < copies.Length; i++)
+        {
+            copies[i] = new Transaction();
+            block.Transactions[i].CopyTo(copies[i], copyHash: true);
+        }
+
+        return new Block(header, new BlockBody(copies, [], null));
     }
 
     [Test]

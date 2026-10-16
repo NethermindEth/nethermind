@@ -26,13 +26,17 @@ namespace Nethermind.Consensus.Processing;
 /// Seed computed itself), <c>seed_n</c> (footprints stored), <c>t_load0</c>/<c>t_load1</c> around the grouping, <c>jobs</c>,
 /// <c>hoisted</c>, <c>split</c>, <c>unclaimed_at_load</c>, <c>recov_at_load</c>, <c>workers</c> (fan-out size),
 /// <c>workers_run</c>, <c>t_worker</c> (each slot's start), <c>helpers</c>, <c>t_helper0</c>, <c>t_addr0</c>,
-/// <c>t_addr_end</c>, <c>t_calldata0</c>/<c>t_calldata1</c>, <c>t_disc0</c>/<c>t_disc1</c>, <c>t_jobs_out</c> (the first
-/// worker to find the jobs handed out), <c>t_lookup</c> (the txpool look-ups done), <c>prep_us</c>, <c>diag_us_blk</c>.</item>
+/// <c>t_addr_end</c>, <c>t_fanout</c> (the sender and recipient fan-out starts, after its hold under
+/// Blocks.PreWarmTransactionWorkersFirst), <c>t_calldata0</c>/<c>t_calldata1</c>, <c>t_disc0</c>/<c>t_disc1</c>,
+/// <c>t_jobs_out</c> (the first worker to find the jobs handed out), <c>t_lookup</c> (the txpool look-ups done),
+/// <c>prep_us</c>, <c>diag_us_blk</c>, and <c>b1</c>: the flags Blocks.PreWarmEarlyStart and
+/// Blocks.PreWarmTransactionWorkersFirst the block was warmed under. With the early start, Seed runs beside the workers.</item>
 /// <item>Transaction: <c>gl</c>; <c>job</c> (g grouped, s split, h hoisted, l late claim), <c>rank</c>, <c>slot</c> (worker
 /// slot, helpers from <see cref="HelperSlotBase"/>), <c>snd_ms</c> (late claim), <c>w0</c>/<c>w1</c> and <c>w_state</c> for
 /// every run, <c>w_cold</c>/<c>w_cold_s</c> (backing-store reads, all and storage), <c>w_ops</c>/<c>w_sload</c> (a cut run
 /// has <c>w_part</c>: its opcodes miss the frame segment in progress); <c>m_ops</c>, <c>m_sload</c>, <c>m_cold</c>,
-/// <c>m_cold_s</c> for a transaction the main thread executed; <c>pool</c>, <c>mp_run</c>; <c>act</c> on a missing one.</item>
+/// <c>m_cold_s</c> for a transaction the main thread executed; <c>pool</c>, <c>mp_run</c>; <c>act</c> on a missing one;
+/// <c>seed_skip</c> when a worker passed it over because a mempool run was seeded for it by then.</item>
 /// </list>
 /// Warm threads write plain array stores; the coordinator-side summaries and the look-ups are guarded and counted in
 /// <c>warm_faults</c>. With BENCH_HANDOFF_DIAG_FAIL=1 the new main-thread hooks (prepare, ran), the timeline report, the
@@ -59,12 +63,25 @@ internal static partial class HandoffDiag
     private static int _nextPayload;
     private static readonly Lock PayloadLock = new();
 
+    // The b1 flags (Blocks.PreWarmEarlyStart, Blocks.PreWarmTransactionWorkersFirst) of the last prewarmer built.
+    private static bool _earlyStart;
+    private static bool _workersFirst;
+
+    /// <summary>The prewarmer's b1 flags, printed for blocks without a session of their own.</summary>
+    public static void Configure(bool earlyStart, bool workersFirst)
+    {
+        _earlyStart = earlyStart;
+        _workersFirst = workersFirst;
+    }
+
     /// <summary>Hands the session's footprints of the block about to be processed to <see cref="Prepare"/>.</summary>
-    public static void Publish(BlockFootprints footprints, Hash256? blockHash, long prewarmTicks)
+    public static void Publish(BlockFootprints footprints, Hash256? blockHash, long prewarmTicks, bool earlyStart, bool workersFirst)
     {
         Positions positions = footprints.Diag;
         positions.BlockHash = blockHash;
         positions.Prewarm = prewarmTicks;
+        positions.EarlyStart = earlyStart;
+        positions.WorkersFirst = workersFirst;
         if (Enabled) Volatile.Write(ref _published, footprints);
     }
 
@@ -206,6 +223,7 @@ internal static partial class HandoffDiag
             if (p.RunCountsPartial[index]) writer.WriteBoolean("w_part", true);
         }
 
+        if (p.SeedSkip[index]) writer.WriteBoolean("seed_skip", true);
         if (p.Pool[index] != 0) writer.WriteBoolean("pool", p.Pool[index] == 1);
         if (p.MempoolRun[index] != 0) writer.WriteString("mp_run", p.MempoolRun[index] == 1 ? "notrun" : WarmName((WarmState)(p.MempoolRun[index] - 2), p.MempoolRunReason[index]));
     }
@@ -228,7 +246,12 @@ internal static partial class HandoffDiag
         writer.WriteNumber("prep_us", Math.Round(snapshot.PrepareTicks * MsPerTick * 1000, 1));
         writer.WriteNumber("diag_us_blk", Math.Round(diagTicks * MsPerTick * 1000, 1));
         if (snapshot.FaultHooks is not null) writer.WriteString("diag_hooks", snapshot.FaultHooks);
-        if (snapshot.Footprints?.Diag is not { } p) return;
+        Positions? p = snapshot.Footprints?.Diag;
+        writer.WriteStartObject("b1");
+        writer.WriteBoolean("early_start", p?.EarlyStart ?? _earlyStart);
+        writer.WriteBoolean("workers_first", p?.WorkersFirst ?? _workersFirst);
+        writer.WriteEndObject();
+        if (p is null) return;
         try
         {
             if (FindPayload(p.BlockHash) is { } payload)
@@ -278,6 +301,7 @@ internal static partial class HandoffDiag
             writer.WriteNumber("helpers", Volatile.Read(ref p.Helpers));
             WriteTime(writer, "t_helper0", p.HelperStart, start);
             WriteTime(writer, "t_addr0", p.AddressStart, start);
+            WriteTime(writer, "t_fanout", p.FanOutStart, start);
             WriteTime(writer, "t_addr_end", p.AddressEnd, start);
             WriteTime(writer, "t_calldata0", p.CalldataStart, start);
             WriteTime(writer, "t_calldata1", p.CalldataEnd, start);
@@ -334,6 +358,9 @@ internal static partial class HandoffDiag
         public long HelperStart;
         public long AddressStart;
         public long AddressEnd;
+        public long FanOutStart;
+        public bool EarlyStart;
+        public bool WorkersFirst;
         public long CalldataStart;
         public long CalldataEnd;
         public long DiscoveryStart;
@@ -436,6 +463,21 @@ internal static partial class HandoffDiag
         public void AddressesStarted() => AddressStart = Now();
 
         public void AddressesEnded() => AddressEnd = Now();
+
+        /// <summary>The sender and recipient fan-out starts, after its hold under Blocks.PreWarmTransactionWorkersFirst.</summary>
+        public void FanOutStarted() => FanOutStart = Now();
+
+        /// <summary>A late claim passed over <paramref name="position"/>: a mempool run was seeded for it by then.</summary>
+        public void SeedSkipped(int position)
+        {
+            if ((uint)position < (uint)SeedSkip.Length) SeedSkip[position] = true;
+        }
+
+        /// <summary>A worker passed over a job whose every transaction a mempool run was seeded for by then.</summary>
+        public void SeedSkipped(ReadOnlySpan<(int Index, Transaction Tx)> transactions)
+        {
+            foreach ((int index, Transaction _) in transactions) SeedSkipped(index);
+        }
 
         public void CalldataStarted() => CalldataStart = Now();
 

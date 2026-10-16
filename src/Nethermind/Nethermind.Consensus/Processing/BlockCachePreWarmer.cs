@@ -156,6 +156,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _handoff = handoff;
         _earlyStart = earlyStart;
         _transactionWorkersFirst = transactionWorkersFirst;
+        HandoffDiag.Configure(earlyStart, transactionWorkersFirst); // BENCH ONLY
         _concurrencyLevel = concurrency == 0 ? Environment.ProcessorCount - 1 : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -238,7 +239,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (footprints is not null)
             {
                 footprints.Diag.Progress = this; // BENCH ONLY
-                HandoffDiag.Publish(footprints, suggestedBlock.Hash, _diagPrewarmAt); // BENCH ONLY
+                HandoffDiag.Publish(footprints, suggestedBlock.Hash, _diagPrewarmAt, _earlyStart, _transactionWorkersFirst); // BENCH ONLY
                 addressWarmer.Diag = footprints.Diag; // BENCH ONLY
                 blockState.Footprints = footprints;
                 // Seeded alongside the warms, a worker skips what the seeded set skips above as far as it is seeded when
@@ -1962,6 +1963,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     // increment per transaction on the fan-out's shared index, which on a dense block is thousands of
                     // contended writes to one cache line for a few nanoseconds of work each.
                     _fanOutReleased?.Wait(parallelOptions.CancellationToken);
+                    Diag?.FanOutStarted(); // BENCH ONLY
                     int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
                     int rangeSize = Math.Max(16, count / (parallelOptions.MaxDegreeOfParallelism * 4));
                     WarmingState<(Block Block, int RangeSize, int Count)> baseState = new(envPool, (block, rangeSize, count), block.Header);
@@ -2476,7 +2478,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 // Already warmed speculatively — a job for it would do no work.
                 if (tx.Hash is Hash256 hash && _speculativelyWarmed?.Contains(hash) == true) continue;
                 // Seeded by now: the transaction is left to the mempool run, as the seeded set leaves it.
-                if (_seeded?.Get(i) is not null) continue;
+                if (_seeded?.Get(i) is not null)
+                {
+                    diag?.SeedSkipped(i); // BENCH ONLY
+                    continue;
+                }
 
                 sender ??= txSender;
                 run.Add((i, tx));
@@ -2775,7 +2781,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 while (!token.IsCancellationRequested && queue.TryTakeJob(far, out WarmupJob job))
                 {
                     // Seeded by now: the job is left to the mempool runs, as grouping leaves one the seeded set covers.
-                    if (queue.IsSeeded(in job)) continue;
+                    if (queue.IsSeeded(in job))
+                    {
+                        queue.BlockState.Footprints?.Diag.SeedSkipped(job.Transactions.AsSpan()); // BENCH ONLY
+                        continue;
+                    }
+
                     Warm(job.Transactions.AsSpan(), job.LastIndex);
                 }
 

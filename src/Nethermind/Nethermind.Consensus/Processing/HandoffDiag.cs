@@ -566,6 +566,7 @@ internal static partial class HandoffDiag
         2 => "context",
         3 => "coinbase",
         4 => "fee",
+        5 => "warm_first",
         _ => "unknown"
     };
 
@@ -716,6 +717,7 @@ internal static partial class HandoffDiag
         public readonly byte[] MempoolRun = new byte[transactions.Length];
         public readonly byte[] MempoolRunReason = new byte[transactions.Length];
         public readonly long[] WorkerStart = new long[MaxSlots];
+        public readonly bool[] SeedSkip = new bool[transactions.Length];
         public readonly bool FailTest = NextFailTest();
         public IBlockProcessingProgress? Progress;
         public int Queued;
