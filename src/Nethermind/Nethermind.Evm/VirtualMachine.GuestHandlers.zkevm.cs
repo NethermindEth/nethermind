@@ -2033,8 +2033,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ulong r0, r1, r2, r3;
             if (ZiskFlag.IsActive)
             {
-                // The low halves' product whole, as ExecuteMulOfHalfWidthFactors takes it, and the cross products of a low
-                // half with a high one only below 2^128, the part that reaches the low 256 bits of the product.
                 UInt256 low;
                 ZiskArithmetic.MultiplyLow((ulong*)Unsafe.AsPointer(ref top), (ulong*)Unsafe.AsPointer(ref product), (ulong*)&low);
                 r0 = low.u0;
