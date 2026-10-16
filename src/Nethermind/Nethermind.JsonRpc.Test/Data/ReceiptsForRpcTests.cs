@@ -117,7 +117,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             new EthereumJsonSerializer().Serialize(BuildReceiptForRpc(TestItem.KeccakA, 2));
 
-            LogEntryForRpc entry = (LogEntryForRpc)typeof(ReceiptLogsForRpc).GetField("t_writeEntry", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            LogEntryForRpc entry = (LogEntryForRpc)typeof(ReceiptLogsForRpc).GetField("_writeEntry", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(entry.TransactionHash, Is.Null);

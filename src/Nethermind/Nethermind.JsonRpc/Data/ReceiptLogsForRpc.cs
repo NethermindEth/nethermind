@@ -29,7 +29,7 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
     private ulong _blockTimestamp;
 
     // Write is synchronous and never nested, so one entry per thread serves every view.
-    [ThreadStatic] private static LogEntryForRpc? t_writeEntry;
+    [ThreadStatic] private static LogEntryForRpc? _writeEntry;
 
     public ReceiptLogsForRpc(TxReceipt receipt, ulong blockTimestamp, int logIndexStart) => Reset(receipt, blockTimestamp, logIndexStart);
 
@@ -83,7 +83,7 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
     public void Write(Utf8JsonWriter writer, JsonSerializerOptions options)
     {
         JsonTypeInfo<LogEntryForRpc> typeInfo = (JsonTypeInfo<LogEntryForRpc>)options.GetTypeInfo(typeof(LogEntryForRpc));
-        LogEntryForRpc entry = SetReceipt(t_writeEntry ??= new LogEntryForRpc());
+        LogEntryForRpc entry = SetReceipt(_writeEntry ??= new LogEntryForRpc());
         writer.WriteStartArray();
         for (int i = _offset; i < _offset + Count; i++)
         {
