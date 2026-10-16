@@ -386,7 +386,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             };
             receiptStorage.Insert(headBlock, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Enabled), ensureCanonical: false);
             // Read the receipts back from the database rather than the insert-populated cache.
-            (receiptStorage as PersistentReceiptStorage)?.ClearCache();
+            if (receiptSource == ReceiptSource.Database) ((PersistentReceiptStorage)receiptStorage).ClearCache();
             TestSpecProvider specProvider = new(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
             using FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: chain.BlockTree, receiptStorage: receiptStorage, specProvider: specProvider);
 
