@@ -48,7 +48,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly BlockLogIndex? _blockLogIndex;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly ArrayPoolList<ulong> _logIndexAtEntry = new(1024);
-    private readonly CompositeDisposable _disposables = [];
 
     private EvmExceptionType? _error;
     private ulong _remainingGas;
@@ -90,8 +89,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         }
     }
 
-    protected override GethLikeTxTrace CreateTrace() => new(_disposables);
-
     public override bool IsTracingInstructions => false;
 
     public override GethLikeTxTrace BuildResult()
@@ -107,7 +104,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         {
             NativeCallTracerCallFrame firstCallFrame = _callStack[0];
             _callStack.RemoveAt(0);
-            _disposables.Add(firstCallFrame);
+            result.Disposable = firstCallFrame;
 
             result.TxHash = _txHash;
             result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
