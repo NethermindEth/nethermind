@@ -280,7 +280,10 @@ internal static class ForkChoiceStepDriver
                     TryGetChild(checks, key, out YamlNode? viableNode);
                     (Hash256 Root, ulong Weight)[] expected = [.. ((YamlSequenceNode)viableNode!).Children.Cast<YamlMappingNode>()
                         .Select(static node => (new Hash256(GetScalar(node, "root")), ulong.Parse(GetScalar(node, "weight"))))];
-                    (Hash256 Root, ulong Weight)[] actual = [.. runner.GetViableHeadNodes().Select(node => (node.Root, runner.GetWeight(node)))];
+                    IReadOnlyList<ForkChoiceNode> viable = runner.GetViableHeadNodes();
+                    // phase0 get_weight is the attestation score plus the proposer score, which the proto-array node weight holds.
+                    Dictionary<Hash256, ulong> weights = runner.Snapshot().Nodes.ToDictionary(static node => node.Root, static node => node.Weight);
+                    (Hash256 Root, ulong Weight)[] actual = [.. viable.Select(node => (node.Root, weights[node.Root]))];
                     Assert.That(actual, Is.EquivalentTo(expected), $"step {stepIndex}: checks.{key}");
                     break;
                 default:

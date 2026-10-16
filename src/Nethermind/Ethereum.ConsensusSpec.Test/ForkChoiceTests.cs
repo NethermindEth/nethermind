@@ -75,6 +75,49 @@ public class ForkChoiceTests
         Assert.That(() => RunFabricatedCase(true, [$"{{checks: {{{check}}}}}"]), Throws.TypeOf<AssertionException>());
     }
 
+    private const string WeightSource = "get_head/pyspec_tests/shorter_chain_but_heavier_weight";
+
+    /// <summary>phase0 <c>get_weight</c>: once the proposer boost has passed, a leaf weighs the effective balance of the validators voting for it.</summary>
+    [Test]
+    public void Viable_head_weights_are_the_attesting_balance_of_each_leaf()
+    {
+        if (FuluDriverSupport.CompiledPreset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
+            Assert.Ignore("mainnet vectors are opt-in");
+        string source = Path.Combine(ConsensusSpecArchive.SuitePath(FuluDriverSupport.CompiledPreset, "fulu", "fork_choice")!, WeightSource);
+        BeaconStateFulu anchor = FuluDriverSupport.DecodeState(Path.Combine(source, "anchor_state.ssz_snappy"));
+        ulong effectiveBalance = anchor.Validators![0].EffectiveBalance;
+        Attestation.Decode(SszConsensusTestLoader.ReadSszSnappy(Directory.GetFiles(source, "attestation_*.ssz_snappy").Single()), out Attestation attestation);
+        BeaconBlock[] blocks = [.. Directory.GetFiles(source, "block_*.ssz_snappy").Select(static path =>
+        {
+            SignedBeaconBlock.Decode(SszConsensusTestLoader.ReadSszSnappy(path), out SignedBeaconBlock block);
+            return block.Message!;
+        })];
+        Assert.That(anchor.Validators.All(v => v.EffectiveBalance == effectiveBalance) && blocks.All(static b => b.Body!.Attestations!.Length == 0), Is.True,
+            "fixture: equal balances and no block-body votes, so a leaf weighs its attesters' count times one balance");
+        Hash256 voted = attestation.Data!.BeaconBlockRoot!;
+        ulong attesters = (ulong)attestation.AggregationBits!.Cast<bool>().Count(static bit => bit);
+        string expected = string.Join(", ", blocks
+            .Select(static b => SszRoots.HashTreeRoot(b))
+            .Where(root => !blocks.Any(b => b.ParentRoot == root))
+            .Select(root => $"{{root: '{root}', weight: {(root == voted ? attesters * effectiveBalance : 0)}}}"));
+
+        DirectoryInfo casePath = Directory.CreateTempSubdirectory("fork-choice-case");
+        try
+        {
+            foreach (string file in Directory.GetFiles(source))
+                File.Copy(file, Path.Combine(casePath.FullName, Path.GetFileName(file)));
+            File.AppendAllText(Path.Combine(casePath.FullName, "steps.yaml"),
+                $"- {{tick: {4 * Presets.SecondsPerSlot}}}\n- {{checks: {{viable_for_head_roots_and_weights: [{expected}]}}}}\n");
+
+            Assert.That(attesters, Is.Positive, "fixture: the vote carries attesters");
+            Assert.That(() => ForkChoiceStepDriver.Run(casePath.FullName), Throws.Nothing);
+        }
+        finally
+        {
+            casePath.Delete(recursive: true);
+        }
+    }
+
     /// <summary>Pins optimistic-only body replay for an EL-INVALID refused block (pyspec helpers/fork_choice.py).</summary>
     /// <remarks>Both paths exclude the invalidated block and refuse its child (specs/bellatrix/optimistic-sync.md).</remarks>
     [TestCaseSource(nameof(RefusedBlockCases))]
