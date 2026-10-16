@@ -76,7 +76,9 @@ public class TxGossipAllocationTests
     private const int TxsPerBatch = SendersPerBatch * NoncesPerSender;
 
     // Allocation noise only ever adds bytes (pool trims, dictionary resizes), so the minimum over runs is the steady state.
-    private const int MeasuredRuns = 3;
+    // Each run grows the pool by a batch and its collections resize in most of the first four runs, so fewer runs than
+    // this may never see a resize-free window.
+    private const int MeasuredRuns = 6;
 
     private ISpecProvider _specProvider = null!;
     private IEthereumEcdsa _ecdsa = null!;
