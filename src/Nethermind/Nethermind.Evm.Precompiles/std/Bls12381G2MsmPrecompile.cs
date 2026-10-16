@@ -95,7 +95,12 @@ public partial class Bls12381G2MsmPrecompile
             return Eip2537.G2Infinity;
 
         if (npoints == 1)
-            return new G2(new G2Affine(pointBuffer.AsSpan()[..G2Affine.Sz])).Mult(scalarBuffer.AsSpan()[..32]).EncodeRaw();
+        {
+            G2 single = new(stackalloc long[G2.Sz]);
+            single.Zero();
+            single.Add(new G2Affine(pointBuffer.AsSpan()[..G2Affine.Sz]));
+            return single.Mult(scalarBuffer.AsSpan()[..32]).EncodeRaw();
+        }
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
         G2 res = new G2(stackalloc long[G2.Sz]).MultiMultAffine(pointBuffer.AsSpan(), scalarBuffer.AsSpan(), npoints);

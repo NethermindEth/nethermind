@@ -97,7 +97,12 @@ public partial class Bls12381G1MsmPrecompile
             return Eip2537.G1Infinity;
 
         if (npoints == 1)
-            return new G1(new G1Affine(rawPoints.Slice(0, G1Affine.Sz))).Mult(rawScalars.Slice(0, 32)).EncodeRaw();
+        {
+            G1 single = new(stackalloc long[G1.Sz]);
+            single.Zero();
+            single.Add(new G1Affine(rawPoints.Slice(0, G1Affine.Sz)));
+            return single.Mult(rawScalars.Slice(0, 32)).EncodeRaw();
+        }
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
         G1 res = new G1(stackalloc long[G1.Sz]).MultiMultAffine(rawPoints, rawScalars, npoints);
