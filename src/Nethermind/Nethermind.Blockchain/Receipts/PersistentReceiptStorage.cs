@@ -25,6 +25,12 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
     {
+        /// <summary>
+        /// Key of the lowest-inserted-receipt-block pointer kept in <see cref="ReceiptsColumns.Default"/>. That column
+        /// also holds pre-migration receipts keyed by transaction hash, so the legacy lookup must never decode it.
+        /// </summary>
+        public static readonly Hash256 LowestInsertedReceiptBlockKey = Keccak.Zero;
+
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
         private readonly bool _eip7668EverEnabled;
@@ -140,7 +146,7 @@ namespace Nethermind.Blockchain.Receipts
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
-            _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
+            _storageDecoder = storageDecoder ?? (receiptConfig is { StoreTxHashes: false } ? ReceiptArrayStorageDecoder.WithoutTxHashes : ReceiptArrayStorageDecoder.Instance);
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
             _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<PersistentReceiptStorage>();
 
@@ -381,6 +387,9 @@ namespace Nethermind.Blockchain.Receipts
         // Find receipt stored with old - obsolete format.
         private TxReceipt FindReceiptObsolete(Hash256 hash)
         {
+            // The legacy column shares its keyspace with these metadata entries; neither key is a transaction hash.
+            if (hash == LowestInsertedReceiptBlockKey || hash == MigrationBlockNumberKey) return null;
+
             Span<byte> receiptData = _defaultColumn.GetSpan(hash);
             try
             {
@@ -578,7 +587,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
                     new RecoveryBlockSource(this, blockNumber, blockHash));
-                iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context);
+                iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
                 return true;
             }
             iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);

@@ -441,8 +441,8 @@ public class FilterManagerTests
 
         Transaction removed = Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject;
         Transaction kept = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
-        _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(removed));
-        _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(kept));
+        _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(removed));
+        _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(kept));
         _txPool.ContainsTx(kept.Hash!, kept.Type).Returns(true);
 
         Assert.Multiple(() =>
@@ -462,11 +462,11 @@ public class FilterManagerTests
 
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         _txPool.ContainsTx(transaction.Hash!, transaction.Type).Returns(true);
-        _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(transaction));
+        _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(transaction));
         Hash256[] beforeReAdd = pollBeforeReAdd ? Drain(_filterManager.PollPendingTransactionHashes(filter.Id)) : [];
 
         // Removed from the pool and admitted again, e.g. included and then reorged out.
-        _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(transaction));
+        _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(transaction));
 
         Assert.Multiple(() =>
         {
@@ -611,7 +611,7 @@ public class FilterManagerTests
     private WeakReference RaiseNewPendingWithUnreferencedHash()
     {
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-        _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(transaction));
+        _txPool.NewPending += Raise.Event<EventHandler<TxPool.TxEventArgs>>(_txPool, new TxPool.TxEventArgs(transaction));
         return new WeakReference(transaction.Hash);
     }
 

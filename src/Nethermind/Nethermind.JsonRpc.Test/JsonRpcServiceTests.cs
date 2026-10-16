@@ -26,6 +26,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Filters;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Exceptions;
@@ -728,6 +729,44 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Result_wrapper_shared_across_concurrent_responses_keeps_ids_and_disposal_per_response()
+    {
+        const int count = 64;
+        ResultWrapper<ulong> shared = ResultWrapper<ulong>.Success(1ul);
+        int[] disposeCounts = new int[count];
+        JsonRpcResponse[] responses = new JsonRpcResponse[count];
+
+        Parallel.For(0, count, i => responses[i] = shared.WithResponseContext(i, () => Interlocked.Increment(ref disposeCounts[i])));
+        foreach (JsonRpcResponse response in responses) response.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responses.Count(r => ReferenceEquals(r, shared)), Is.EqualTo(1));
+            Assert.That(responses.Distinct().Count(), Is.EqualTo(count));
+            Assert.That(responses.Select(static r => r.Id), Is.EqualTo(Enumerable.Range(0, count).Select(static i => (JsonRpcId)i)));
+            Assert.That(disposeCounts, Is.All.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Result_wrapper_returned_by_several_requests_returns_module_once_per_request()
+    {
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        ResultWrapper<IEnumerable<FilterLog>> shared = ResultWrapper<IEnumerable<FilterLog>>.Success([]);
+        rpcModule.eth_getLogs(Arg.Any<Filter>()).Returns(shared);
+
+        JsonRpcResponse first = TestRequestWithPool(pool, "eth_getLogs", "{}");
+        JsonRpcResponse second = TestRequestWithPool(pool, "eth_getLogs", "{}");
+
+        first.Dispose();
+        pool.Received(1).ReturnModule(rpcModule);
+        second.Dispose();
+        pool.Received(2).ReturnModule(rpcModule);
+    }
+
+    [Test]
     public void GetNewFilterTest()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -1059,7 +1098,7 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public void Cached_result_wrapper_is_not_mutated_with_response_context()
+    public void Cached_result_wrapper_is_taken_by_first_request_and_cloned_for_later_ones()
     {
         INetRpcModule netRpcModule = Substitute.For<INetRpcModule>();
         ResultWrapper<string> cached = ResultWrapper<string>.Success("1");
@@ -1074,9 +1113,8 @@ public class JsonRpcServiceTests
         secondRequest.Id = 2;
         ResultWrapper<string> secondResponse = AssertWrapperResponse<string>(SendRequestWithPool(pool, secondRequest));
 
-        Assert.That(firstResponse, Is.Not.SameAs(cached));
+        Assert.That(firstResponse, Is.SameAs(cached));
         Assert.That(secondResponse, Is.Not.SameAs(cached));
-        Assert.That(cached.Id.IsMissing, Is.True);
         Assert.That(firstResponse.Id, Is.EqualTo(new JsonRpcId(1)));
         Assert.That(secondResponse.Id, Is.EqualTo(new JsonRpcId(2)));
     }

@@ -47,6 +47,7 @@ namespace Nethermind.JsonRpc.Data;
 [JsonSerializable(typeof(RpcReport))]
 [JsonSerializable(typeof(Client.JsonRpcClientRequest))]
 [JsonSerializable(typeof(LogEntryForRpc[]))]
+[JsonSerializable(typeof(Modules.Eth.BadBlock[]))]
 [JsonSerializable(typeof(Modules.DebugModule.GethLikeTxTraceStreamingResult))]
 [JsonSerializable(typeof(Modules.Trace.ParityTxTraceFromReplay[]))]
 [JsonSerializable(typeof(Modules.Trace.ParityTxTraceFromStore[]))]
