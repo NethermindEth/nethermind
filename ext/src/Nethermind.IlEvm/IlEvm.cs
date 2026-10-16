@@ -157,7 +157,7 @@ public static class IlEvmSettings
     public static bool DirectArithmetic { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_DIRECT") != "0";
 
     /// <summary>
-    /// Keep a segment's words in vector registers where they can be, on AVX2 hardware unless <c>NETHERMIND_ILEVM_VECTOR=0</c>:
+    /// Keep a segment's words in vector registers where they can be, on AVX2 hardware with <c>NETHERMIND_ILEVM_VECTOR=1</c> (off by default until the runner measures them again; their 154 runner corpus mismatches were an MSTORE body swapping an aliased slot, fixed):
     /// bitwise operations, comparisons, CALLDATALOAD, NOT, ISZERO, and shifts, small additions and subtractions and
     /// power-of-two multiplications, divisions and remainders by a constant compile to 256-bit vector code whose results
     /// stay in locals; DUP and SWAP move nothing, and words reach their stack slots in one 32-byte store where the
@@ -169,7 +169,7 @@ public static class IlEvmSettings
     /// MLOAD and MSTORE stay helper calls: in place below the initialized limit they measured slower, and 45% more code.
     /// </remarks>
     public static bool VectorForms { get; set; } =
-        System.Runtime.Intrinsics.X86.Avx2.IsSupported && Vector256.IsHardwareAccelerated && Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_VECTOR") != "0";
+        System.Runtime.Intrinsics.X86.Avx2.IsSupported && Vector256.IsHardwareAccelerated && Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_VECTOR") == "1";
 
     /// <summary>Let the JIT inline the bodies compiled code runs directly (CALLDATALOAD and the like) rather than call them out of line.</summary>
     public static bool InlineBodies { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_INLINE_BODIES") != "0";
@@ -5434,6 +5434,9 @@ public static unsafe partial class IlEvm
             {
                 int offset = delta - 1;
                 int word = delta - 2;
+                // The body, on the out-of-line path, turns the word's slot to memory byte order in place: whatever aliases
+                // the slot reads it first. Before the operands are looked at, since a spill while resolving may write them.
+                BeforeWrite(word, offset + 1);
                 VVal? vo = Virtual(offset);
                 VVal? vw = Virtual(word);
                 if (vw is not null && vw.Kind != VKind.Const)

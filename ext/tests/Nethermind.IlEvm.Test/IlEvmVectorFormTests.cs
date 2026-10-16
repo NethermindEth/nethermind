@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
@@ -29,13 +30,53 @@ public partial class IlEvmDifferentialTests
         public byte[] Code => [.. _b];
     }
 
+    /// <summary>Runs <paramref name="code"/> on both machines with the vector forms on, whatever the default.</summary>
     private void CheckVectorProgram(string name, byte[] code, byte[] input, ulong gas = 1_000_000)
     {
-        CodeInfo codeInfo = new(code);
-        Outcome expected = Run(codeInfo, input, gas, compiledCode: false);
-        Outcome actual = Run(codeInfo, input, gas, compiledCode: true);
-        Assert.That(IlEvm.IsCompiled(codeInfo), IlEvm.FailureReason(codeInfo));
-        Assert.That(Same(expected, actual), $"{name}\ncode {code.ToHexString(true)}\ninterpreter {expected}\ncompiled    {actual}");
+        bool saved = IlEvmSettings.VectorForms;
+        IlEvmSettings.VectorForms = true;
+        try
+        {
+            CodeInfo codeInfo = new(code);
+            Outcome expected = Run(codeInfo, input, gas, compiledCode: false);
+            Outcome actual = Run(codeInfo, input, gas, compiledCode: true);
+            Assert.That(IlEvm.IsCompiled(codeInfo), IlEvm.FailureReason(codeInfo));
+            Assert.That(Same(expected, actual), $"{name}\ncode {code.ToHexString(true)}\ninterpreter {expected}\ncompiled    {actual}");
+        }
+        finally
+        {
+            IlEvmSettings.VectorForms = saved;
+        }
+    }
+
+    /// <summary>
+    /// MSTORE whose memory grows runs its body out of line, which turns the word's slot to memory byte order in place; a
+    /// copy of the word left below by DUP and SWAP aliased that slot and was stored byte-reversed (the runner's 154 corpus
+    /// mismatches, through an Ekubo tick-data lens).
+    /// </summary>
+    [Test]
+    public void Vector_mstore_body_keeps_an_alias_of_its_word()
+    {
+        VectorProgram a = new();
+        a.Push(32);                                 // p0, the size returned
+        a.Push(0x80);                               // p1
+        a.Push(0).Op(Instruction.CALLDATALOAD);     // p2 X in its slot
+        a.Op(Instruction.DUP1);                     // p3 alias(p2)
+        a.Op(Instruction.SWAP2);                    // p1 alias(p2), p3 0x80
+        a.Op(Instruction.POP);
+        a.Push(0x400).Op(Instruction.MSTORE);       // memory grows: the body stores X, swapping slot p2
+        a.Push(0).Op(Instruction.MSTORE);           // mem[0] = p1 = X
+        a.Push(0).Op(Instruction.RETURN);
+        CheckVectorProgram("mstore body alias", a.Code, CallDataWords(1));
+    }
+
+    /// <summary>The program the fuzzer found first (seed 4), minimized: the same alias with the word's copy two below it.</summary>
+    [Test]
+    public void Vector_mstore_body_keeps_an_alias_of_its_word_minimized()
+    {
+        byte[] code = Bytes.FromHexString("0x61f06160805f3560a0819250506104005260c0525ff3");
+        byte[] input = Bytes.FromHexString("0x0000000000000200000000000000000000000000000000000000000000000000");
+        CheckVectorProgram("mstore body alias, minimized", code, input);
     }
 
     private static byte[] CallDataWords(int words)
@@ -122,6 +163,20 @@ public partial class IlEvmDifferentialTests
     [TestCase(2, 1000)]
     [TestCase(3, 1000)]
     public void Vector_stack_shuffles_match_the_interpreter(int seed, int programs)
+    {
+        bool saved = IlEvmSettings.VectorForms;
+        IlEvmSettings.VectorForms = true;
+        try
+        {
+            ShufflePrograms(seed, programs);
+        }
+        finally
+        {
+            IlEvmSettings.VectorForms = saved;
+        }
+    }
+
+    private void ShufflePrograms(int seed, int programs)
     {
         Random random = new(seed);
         byte[] input = CallDataWords(4);
