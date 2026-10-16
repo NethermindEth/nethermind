@@ -73,7 +73,7 @@ public class JsonRpcServiceTests
         provider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
             .Returns(ModuleResolution.Unknown);
         JsonRpcService service = new(provider, NullLogManager.Instance, new JsonRpcConfig(), keeper);
-        using JsonRpcContext context = new(endpoint, url: new JsonRpcUrl("http", "localhost", 8551, RpcEndpoint.Http, authenticated, ["engine"]));
+        JsonRpcContext context = new(endpoint, url: new JsonRpcUrl("http", "localhost", 8551, RpcEndpoint.Http, authenticated, ["engine"]));
         using JsonRpcResponse response = await service.SendRequestAsync(new JsonRpcRequest { Method = method! }, context);
         if (cancels) await pending.WaitAsync(TimeSpan.FromSeconds(5));
         else Assert.That(pending.IsCompleted, Is.False);
@@ -93,11 +93,7 @@ public class JsonRpcServiceTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _context?.Dispose();
-        _gcKeeper.Dispose();
-    }
+    public void TearDown() => _gcKeeper.Dispose();
 
     private GCKeeper _gcKeeper = null!;
     private IJsonRpcService _jsonRpcService = null!;
@@ -272,6 +268,26 @@ public class JsonRpcServiceTests
         JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
         Assert.That(response.Id, Is.EqualTo(request.Id));
         return response;
+    }
+
+    [Test]
+    public void Request_context_is_current_only_while_the_method_runs()
+    {
+        JsonRpcContext? seen = null;
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_chainId().Returns(_ =>
+        {
+            seen = JsonRpcContext.Current;
+            return ResultWrapper<ulong>.Success(1);
+        });
+
+        RpcTest.AssertSuccess<ulong>(TestRequest(ethRpcModule, "eth_chainId"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seen, Is.SameAs(_context));
+            Assert.That(JsonRpcContext.Current, Is.Null);
+        }
     }
 
     [TestCase(false, 2UL, TestName = "Number")]
@@ -1258,7 +1274,7 @@ public class JsonRpcServiceTests
 
         JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("debug_traceCall");
-        using JsonRpcContext context = new(endpoint);
+        JsonRpcContext context = new(endpoint);
         using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, context);
 
         using (Assert.EnterMultipleScope())

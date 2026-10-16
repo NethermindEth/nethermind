@@ -3,15 +3,17 @@
 
 using System;
 using System.Net;
-using System.Threading;
 using Microsoft.Extensions.Primitives;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
-    public class JsonRpcContext : IDisposable
+    public class JsonRpcContext
     {
-        public static AsyncLocal<JsonRpcContext?> Current { get; } = new();
+        /// <summary>The context of the request whose RPC method is executing synchronously on this thread, if any.</summary>
+        /// <remarks>Thread-static rather than async-local because publishing an async-local value allocates on every request.</remarks>
+        [field: ThreadStatic]
+        public static JsonRpcContext? Current { get; internal set; }
 
         public static JsonRpcContext Http(JsonRpcUrl url) => new(RpcEndpoint.Http, url: url);
         public static JsonRpcContext WebSocket(JsonRpcUrl url) => new(RpcEndpoint.Ws, url: url);
@@ -22,7 +24,6 @@ namespace Nethermind.JsonRpc
             DuplexClient = duplexClient;
             Url = url;
             IsAuthenticated = Url?.IsAuthenticated == true || RpcEndpoint == RpcEndpoint.IPC;
-            Current.Value = this;
         }
 
         public RpcEndpoint RpcEndpoint { get; }
@@ -39,13 +40,5 @@ namespace Nethermind.JsonRpc
         /// Kept as <see cref="StringValues"/> so capturing it never builds a string; it is joined only when a debug line is formatted.
         /// </remarks>
         public StringValues ForwardedFor { get; init; }
-
-        public void Dispose()
-        {
-            if (Current.Value == this)
-            {
-                Current.Value = null;
-            }
-        }
     }
 }
