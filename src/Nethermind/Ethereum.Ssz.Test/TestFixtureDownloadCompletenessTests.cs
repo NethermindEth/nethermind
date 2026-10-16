@@ -7,6 +7,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using Ethereum.Test.Base;
@@ -173,6 +174,21 @@ public class TestFixtureDownloadCompletenessTests
         Assert.That(ex.Message, Does.Contain("no files"));
         Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.False,
             "an empty extraction marked complete is exactly the cache state every suite then reads as green");
+    }
+
+    [Test]
+    public void An_archive_is_completed_only_when_its_digest_matches([Values] bool matches)
+    {
+        byte[] archive = BuildArchive();
+        string digest = matches ? Convert.ToHexString(SHA256.HashData(archive)) : new string('0', 64);
+        using StubArchiveServer server = new(archive, contentLength: archive.Length);
+        using CacheCleanup cleanup = CreateCache("DigestTest", out string suite, out string target);
+
+        if (matches)
+            Assert.That(TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", expectedSha256: digest), Is.EqualTo(target));
+        else
+            Assert.That(() => TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", expectedSha256: digest), Throws.TypeOf<IOException>());
+        Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.EqualTo(matches));
     }
 
     // Cache roots are shared across processes; fixed suite names let concurrent runs delete each other's directories.
