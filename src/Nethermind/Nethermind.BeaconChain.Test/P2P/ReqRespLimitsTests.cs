@@ -14,7 +14,9 @@ using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
@@ -44,6 +46,32 @@ public class ReqRespLimitsTests
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
         List<ResponseChunk> chunks = await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync, request, timeout.Token);
         Assert.That(chunks.Select(chunk => SignedBeaconBlockCodec.Decode(chunk.Payload, Spec).Slot), Is.EqualTo(new ulong[] { 2_003, 2_001 }));
+    }
+
+    // compute_min_epochs_for_block_requests on mainnet: phase0 p2p-interface.md before Gloas, EIP-8061 from Gloas on.
+    [TestCase(false, 33_024UL, 0UL, new ulong[] { 2_033, 2_001 })]
+    [TestCase(false, 33_024UL, 1UL, new ulong[] { 2_033 })]
+    [TestCase(true, 14_299UL, 0UL, new ulong[] { 2_033, 2_001 })]
+    [TestCase(true, 14_299UL, 1UL, new ulong[] { 2_033 })]
+    public async Task Blocks_by_head_serves_ancestors_back_to_the_floor_of_the_fork_at_the_current_epoch(bool gloas, ulong servedEpochs, ulong epochsPastFloor, ulong[] expectedSlots)
+    {
+        // Gloas from the epoch after the blocks, which keep their Fulu shape.
+        BeaconChainSpec spec = gloas ? Spec with { GloasForkEpoch = Spec.GetEpoch(2_033) + 1 } : Spec;
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(2_000, 2_001, 2_033);
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        TestChain.Persist(store, anchor, anchorRoot, chain);
+        ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime);
+        time.Add(TimeSpan.FromSeconds((spec.GetEpoch(2_001) + servedEpochs + epochsPastFloor) * spec.SlotsPerEpoch * spec.SecondsPerSlot));
+        BeaconBlocksByHeadProtocolV1 protocol = new(spec, store, new SlotClock(spec, time));
+        byte[] request = new byte[40];
+        SszRoots.HashTreeRoot(chain[^1].Message!).Bytes.CopyTo(request.AsSpan());
+        BinaryPrimitives.WriteUInt64LittleEndian(request.AsSpan(32), 2);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+
+        List<ResponseChunk> chunks = await ReqRespTestChannel.ReadResponseAsync(protocol.ListenAsync, request, timeout.Token);
+
+        ulong[] served = [.. chunks.Select(chunk => SignedBeaconBlockCodec.Decode(chunk.Payload, Spec).Slot)];
+        Assert.That(served, Is.EqualTo(expectedSlots), "every block of the epoch range clients must serve is walked, and none older");
     }
 
     [Test]

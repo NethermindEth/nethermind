@@ -16,6 +16,9 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 public sealed class BeaconBlocksByHeadProtocolV1(BeaconChainSpec spec, BeaconChainStore store, SlotClock? clock = null) : BlocksProtocolBase(spec), ISessionProtocol
 {
     private const int RequestLength = Hash256.Size + sizeof(ulong);
+
+    /// <summary>The phase0 <c>compute_min_epochs_for_block_requests</c>, in force until Gloas replaces it (phase0 p2p-interface.md).</summary>
+    private static readonly ulong MinEpochsForBlockRequestsBeforeGloas = Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2;
     public string Id => "/eth2/beacon_chain/req/beacon_blocks_by_head/1/ssz_snappy";
 
     public Task DialAsync(IChannel downChannel, ISessionContext context) => throw new NotSupportedException("Use block range or root requests for outbound sync");
@@ -42,7 +45,8 @@ public sealed class BeaconBlocksByHeadProtocolV1(BeaconChainSpec spec, BeaconCha
             if (count == 0 || count > MaxRequestBlocks) throw new Eth2ReqRespException("Blocks-by-head count must be between 1 and 128");
             ChargeRequest(context, count, MaxRequestBlocks);
             ulong currentEpoch = clock?.CurrentEpoch ?? 0;
-            ulong minimumEpoch = currentEpoch > BeaconChainStore.MinEpochsForBlockRequests ? currentEpoch - BeaconChainStore.MinEpochsForBlockRequests : 0;
+            ulong servedEpochs = currentEpoch >= Spec.GloasForkEpoch ? BeaconChainStore.MinEpochsForBlockRequests : MinEpochsForBlockRequestsBeforeGloas;
+            ulong minimumEpoch = currentEpoch > servedEpochs ? currentEpoch - servedEpochs : 0;
             ulong previousSlot = ulong.MaxValue;
             for (ulong i = 0; i < count && store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block); i++)
             {
