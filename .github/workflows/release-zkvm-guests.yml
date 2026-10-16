@@ -24,6 +24,10 @@ jobs:
     name: Draft release on GitHub
     runs-on: ubuntu-latest
     needs: test
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
     # Concurrent runs would claim the same release number
     concurrency:
       group: ${{ github.workflow }}
@@ -117,6 +121,12 @@ jobs:
           delimiter=$(openssl rand -hex 16)
           printf 'guest-digests<<%s\n%s\n%s\n' "$delimiter" "$digests" "$delimiter" >> $GITHUB_OUTPUT
 
+      # Unlike the key signature, the attestation binds each asset to this workflow and commit
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: ${{ env.PACKAGE_DIR }}/SHA256SUMS
+
       # The release is left as a draft on purpose: publishing it, once the notes
       # are filled in, is a manual step in the UI
       - name: Draft
@@ -141,6 +151,8 @@ jobs:
           #### Build signature
 
           `SHA256SUMS` lists every file and is signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
+
+          Each file also has a build provenance attestation: `gh attestation verify <file> --repo ${{ github.repository }}`
           EOF
           )
 
