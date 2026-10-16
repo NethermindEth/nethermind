@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -32,7 +33,7 @@ public class IncludedBlobLocationsTests
     [TestCase(3, 1, 0)]
     public void Lookup_returns_the_recorded_location(int hashSeed, int expectedPosition, int expectedBlobIndex)
     {
-        _locations.Record(10, [BlobTx(1, 2), BlobTx(3)]);
+        _locations.Record(10, null, [BlobTx(1, 2), BlobTx(3)]);
 
         bool found = _locations.TryGetLocation(Hash(hashSeed), out IncludedBlobLocation location);
 
@@ -49,7 +50,7 @@ public class IncludedBlobLocationsTests
     [TestCase(33)]
     public void Lookup_misses_a_hash_that_was_not_recorded(int hashLength)
     {
-        _locations.Record(10, [BlobTx(1)]);
+        _locations.Record(10, null, [BlobTx(1)]);
         byte[] hash = new byte[hashLength];
         hash.AsSpan().Fill(0xff);
 
@@ -64,10 +65,10 @@ public class IncludedBlobLocationsTests
     {
         for (ulong height = 10; height <= 13; height++)
         {
-            _locations.Record(height, [BlobTx((int)height)]);
+            _locations.Record(height, null, [BlobTx((int)height)]);
         }
 
-        _locations.Record(reRecordedHeight, [BlobTx(100)]);
+        _locations.Record(reRecordedHeight, null, [BlobTx(100)]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -87,9 +88,9 @@ public class IncludedBlobLocationsTests
     [TestCase(1000UL, false)]
     public void Batches_further_than_the_max_block_distance_below_the_recorded_block_are_dropped(ulong nextHeight, bool expectedFound)
     {
-        _locations.Record(10, [BlobTx(1)]);
+        _locations.Record(10, null, [BlobTx(1)]);
 
-        _locations.Record(nextHeight, [BlobTx(2)]);
+        _locations.Record(nextHeight, null, [BlobTx(2)]);
 
         Assert.That(_locations.TryGetLocation(Hash(1), out _), Is.EqualTo(expectedFound));
     }
@@ -102,7 +103,7 @@ public class IncludedBlobLocationsTests
     {
         for (ulong height = 10; height <= 13; height++)
         {
-            _locations.Record(height, [BlobTx((int)height)]);
+            _locations.Record(height, null, [BlobTx((int)height)]);
         }
 
         _locations.PruneFinalized(finalizedBlockNumber);
@@ -119,11 +120,11 @@ public class IncludedBlobLocationsTests
     [Test]
     public void A_block_recorded_after_a_finality_prune_beyond_the_head_is_indexed()
     {
-        _locations.Record(10, [BlobTx(1)]);
+        _locations.Record(10, null, [BlobTx(1)]);
         _locations.PruneFinalized(20);
         int countAfterPrune = _locations.Count;
 
-        _locations.Record(11, [BlobTx(2)]);
+        _locations.Record(11, null, [BlobTx(2)]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -137,8 +138,8 @@ public class IncludedBlobLocationsTests
     [TestCase(Prune.Distance)]
     public void A_hash_recorded_again_by_a_later_block_survives_pruning_of_the_earlier_block(Prune prune)
     {
-        _locations.Record(10, [BlobTx(1)]);
-        _locations.Record(12, [BlobTx(2), BlobTx(1)]);
+        _locations.Record(10, null, [BlobTx(1)]);
+        _locations.Record(12, null, [BlobTx(2), BlobTx(1)]);
 
         PruneBlock10(prune);
 
@@ -153,9 +154,64 @@ public class IncludedBlobLocationsTests
     [TestCase(Prune.Distance)]
     public void A_hash_recorded_twice_by_one_block_is_removed_with_it(Prune prune)
     {
-        _locations.Record(10, [BlobTx(1), BlobTx(1)]);
+        _locations.Record(10, null, [BlobTx(1), BlobTx(1)]);
 
         PruneBlock10(prune);
+
+        Assert.That(_locations.Count, Is.Zero);
+    }
+
+    [TestCase(10UL, true)]
+    [TestCase(11UL, true)]
+    [TestCase(10UL, false)]
+    [TestCase(11UL, false)]
+    public void Recording_nothing_keeps_the_batch_of_the_same_block_and_drops_the_heights_above(ulong height, bool sameBlock)
+    {
+        for (ulong h = 10; h <= 12; h++)
+        {
+            _locations.Record(h, BlockHash((int)h), [BlobTx((int)h)]);
+        }
+
+        _locations.Record(height, BlockHash(sameBlock ? (int)height : 99), []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong h = 10; h <= 12; h++)
+            {
+                bool expectedKept = h < height || (h == height && sameBlock);
+                Assert.That(_locations.TryGetLocation(Hash((int)h), out IncludedBlobLocation location), Is.EqualTo(expectedKept), $"height {h}");
+                if (expectedKept)
+                {
+                    Assert.That(location, Is.EqualTo(new IncludedBlobLocation(h, 0, 0)), $"location at height {h}");
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void Recording_blobs_for_the_same_block_replaces_its_batch()
+    {
+        Hash256 hash = BlockHash(1);
+        _locations.Record(10, hash, [BlobTx(1), BlobTx(2)]);
+
+        _locations.Record(10, hash, [BlobTx(2)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_locations.TryGetLocation(Hash(1), out _), Is.False);
+            Assert.That(_locations.TryGetLocation(Hash(2), out IncludedBlobLocation location), Is.True);
+            Assert.That(location, Is.EqualTo(new IncludedBlobLocation(10, 0, 0)));
+        }
+    }
+
+    [Test]
+    public void A_kept_batch_is_still_dropped_by_pruning()
+    {
+        Hash256 hash = BlockHash(1);
+        _locations.Record(10, hash, [BlobTx(1)]);
+        _locations.Record(10, hash, []);
+
+        _locations.PruneFinalized(10);
 
         Assert.That(_locations.Count, Is.Zero);
     }
@@ -164,9 +220,9 @@ public class IncludedBlobLocationsTests
     [TestCase(11UL, true)]
     public void An_empty_batch_still_supersedes_and_records_nothing(ulong emptyBlockHeight, bool expectedFound)
     {
-        _locations.Record(10, [BlobTx(1)]);
+        _locations.Record(10, null, [BlobTx(1)]);
 
-        _locations.Record(emptyBlockHeight, []);
+        _locations.Record(emptyBlockHeight, null, []);
 
         using (Assert.EnterMultipleScope())
         {
@@ -180,7 +236,7 @@ public class IncludedBlobLocationsTests
     {
         Transaction tx = new() { Type = TxType.Blob, BlobVersionedHashes = [null, new byte[31], Hash(1)] };
 
-        _locations.Record(10, [tx, new Transaction()]);
+        _locations.Record(10, null, [tx, new Transaction()]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -206,7 +262,7 @@ public class IncludedBlobLocationsTests
         {
             // Mostly advance; sometimes reorg a few blocks back; never finalize, so only the distance cap bounds the index.
             head = random.Next(8) == 0 ? head.SaturatingSub((ulong)random.Next(4)) : head + 1;
-            locations.Record(head, CreateBlock(maxEntriesPerBlock, ref hashSeed, random));
+            locations.Record(head, null, CreateBlock(maxEntriesPerBlock, ref hashSeed, random));
             maxCount = Math.Max(maxCount, (ulong)locations.Count);
         }
 
@@ -262,7 +318,7 @@ public class IncludedBlobLocationsTests
             {
                 foreach ((ulong height, Transaction[] txs) in schedule)
                 {
-                    _locations.Record(height, txs);
+                    _locations.Record(height, null, txs);
                     if (height % 7 == 0)
                     {
                         _locations.PruneFinalized(height - 3);
@@ -292,7 +348,7 @@ public class IncludedBlobLocationsTests
         }
         else
         {
-            _locations.Record(11 + MaxBlockDistance, []);
+            _locations.Record(11 + MaxBlockDistance, null, []);
         }
     }
 
@@ -347,6 +403,8 @@ public class IncludedBlobLocationsTests
 
         return new Transaction { Type = TxType.Blob, BlobVersionedHashes = hashes };
     }
+
+    private static Hash256 BlockHash(int seed) => new(Hash(seed));
 
     private static byte[] Hash(int seed)
     {

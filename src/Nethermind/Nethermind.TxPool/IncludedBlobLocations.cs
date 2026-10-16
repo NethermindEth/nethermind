@@ -25,7 +25,8 @@ internal readonly record struct IncludedBlobLocation(ulong BlockNumber, int Posi
 /// <para>
 /// The index holds one batch of locations per block height. Recording a block first drops the batches at its height
 /// and above, as a reorg rewrites the saved rows from that height, then the batches more than the max block distance
-/// below it. <see cref="PruneFinalized"/> drops the batches at and below the finalized block. The distance cap alone
+/// below it, except that a block re-recorded with the same hash and nothing saved keeps its own batch.
+/// <see cref="PruneFinalized"/> drops the batches at and below the finalized block. The distance cap alone
 /// bounds the index at <c>(maxBlockDistance + 1)</c> batches, each no larger than the blob transactions of one block,
 /// so it stays bounded when finality stalls.
 /// </para>
@@ -62,25 +63,40 @@ internal sealed class IncludedBlobLocations(ulong maxBlockDistance)
     /// was indexed at that height or above.
     /// </summary>
     /// <param name="blockNumber">The number of the block the transactions were saved for.</param>
+    /// <param name="blockHash">The hash of that block; <see langword="null"/> never matches a recorded block.</param>
     /// <param name="savedBlobTxs">The saved transactions, in stored position order; may be empty.</param>
     /// <remarks>
     /// Must be called for every processed block, also when nothing was saved for it, so a reorged-out block's
-    /// locations are dropped. Hashes that are missing or not 32 bytes long are skipped.
+    /// locations are dropped. Hashes that are missing or not 32 bytes long are skipped. When the block at that height
+    /// is the same block as the one already indexed and nothing was saved for it this time, its batch is kept and only
+    /// the heights above are dropped: the same block is processed again when the head is rewound to it, by which point
+    /// its transactions have left the pool, yet its saved rows are intact. A non-empty save replaces the batch, as it
+    /// rewrote the rows and their positions.
     /// </remarks>
-    public void Record(ulong blockNumber, ReadOnlySpan<Transaction> savedBlobTxs)
+    public void Record(ulong blockNumber, Hash256? blockHash, ReadOnlySpan<Transaction> savedBlobTxs)
     {
         lock (_writeLock)
         {
+            Batch? batch = CreateBatch(blockNumber, blockHash, savedBlobTxs);
+
             int firstSuperseded = _batches.Count;
             while (firstSuperseded > 0 && _batches[firstSuperseded - 1].BlockNumber >= blockNumber)
             {
                 firstSuperseded--;
             }
 
+            if (batch is null
+                && blockHash is not null
+                && firstSuperseded < _batches.Count
+                && _batches[firstSuperseded].BlockNumber == blockNumber
+                && _batches[firstSuperseded].BlockHash == blockHash)
+            {
+                firstSuperseded++;
+            }
+
             RemoveBatches(firstSuperseded, _batches.Count - firstSuperseded);
             RemoveBatchesBelow(blockNumber.SaturatingSub(maxBlockDistance));
 
-            Batch? batch = CreateBatch(blockNumber, savedBlobTxs);
             if (batch is null)
             {
                 return;
@@ -120,7 +136,7 @@ internal sealed class IncludedBlobLocations(ulong maxBlockDistance)
         return _locations.TryGetValue(new ValueHash256(blobVersionedHash), out location);
     }
 
-    private static Batch? CreateBatch(ulong blockNumber, ReadOnlySpan<Transaction> savedBlobTxs)
+    private static Batch? CreateBatch(ulong blockNumber, Hash256? blockHash, ReadOnlySpan<Transaction> savedBlobTxs)
     {
         List<(ValueHash256, IncludedBlobLocation)>? entries = null;
         for (int position = 0; position < savedBlobTxs.Length; position++)
@@ -140,7 +156,7 @@ internal sealed class IncludedBlobLocations(ulong maxBlockDistance)
             }
         }
 
-        return entries is null ? null : new Batch(blockNumber, entries.ToArray());
+        return entries is null ? null : new Batch(blockNumber, blockHash, entries.ToArray());
     }
 
     private void RemoveBatchesBelow(ulong lowestRetainedBlockNumber)
@@ -168,5 +184,5 @@ internal sealed class IncludedBlobLocations(ulong maxBlockDistance)
         _batches.RemoveRange(index, count);
     }
 
-    private sealed record Batch(ulong BlockNumber, (ValueHash256 Hash, IncludedBlobLocation Location)[] Entries);
+    private sealed record Batch(ulong BlockNumber, Hash256? BlockHash, (ValueHash256 Hash, IncludedBlobLocation Location)[] Entries);
 }

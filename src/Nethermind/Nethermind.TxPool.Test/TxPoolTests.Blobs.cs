@@ -1892,6 +1892,22 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public async Task should_keep_serving_the_blobs_of_a_block_the_head_is_rewound_to([Values] BlobLookup lookup)
+        {
+            BlobTxStorage storage = new();
+            Transaction tx = SubmitBlobTxsToNewPool(BlobsSupportMode.StorageWithReorgs, IncludedBlobSpec(lookup), storage, [TestItem.PrivateKeyA], blobCount: 2)[0];
+            Block inclusionBlock = IncludedBlobBlock(IncludedBlobInclusionBlock, tx);
+            await RaiseBlockAddedToMainAndWaitForNewHead(inclusionBlock);
+            await RaiseBlockAddedToMainAndWaitForNewHead(IncludedBlobBlock(IncludedBlobInclusionBlock + 1));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero, "precondition: the tx left the blob pool");
+
+            // The same block is added to the main chain again with its txs gone from the pool.
+            await RaiseBlockAddedToMainAndWaitForNewHead(inclusionBlock);
+
+            Assert.That(LookUpBlobs(tx, lookup), Is.EqualTo(2));
+        }
+
         [TestCase(BlobsSupportMode.InMemory, 0)]
         [TestCase(BlobsSupportMode.Storage, 0)]
         [TestCase(BlobsSupportMode.StorageWithReorgs, 1)]

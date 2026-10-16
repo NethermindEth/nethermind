@@ -1442,11 +1442,11 @@ namespace Nethermind.TxPool
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error($"Failed to save {blobTxsToSave.Count} processed blob txs of block {block.Number}; they cannot be re-added on a reorg: {e.Message}");
-                _includedBlobLocations?.Record(block.Number, []);
+                _includedBlobLocations?.Record(block.Number, block.Hash, []);
                 return ExceptionDispatchInfo.Capture(e);
             }
 
-            _includedBlobLocations?.Record(block.Number, blobTxsToSave.AsSpan());
+            _includedBlobLocations?.Record(block.Number, block.Hash, blobTxsToSave.AsSpan());
             return null;
         }
 
