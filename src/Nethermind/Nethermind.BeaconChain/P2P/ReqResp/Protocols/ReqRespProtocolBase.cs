@@ -4,6 +4,10 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
+using System.Net;
+using Multiformats.Address;
+using Multiformats.Address.Protocols;
+using Nethermind.BeaconChain.Api;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Metric;
@@ -78,6 +82,7 @@ public abstract class ReqRespProtocolBase
 
     private readonly Lock _quotaLock = new();
     private readonly LruCache<PeerId, RequestQuota> _quotas = new(4096, "beacon reqresp peer quotas");
+    private readonly LruCache<UInt128, RequestQuota> _hostQuotas = new(4096, "beacon reqresp host quotas");
     private RequestQuota? _globalQuota;
     private RequestQuota? _unattributedQuota;
     internal TimeProvider QuotaTime { get; init; } = TimeProvider.System;
@@ -99,7 +104,8 @@ public abstract class ReqRespProtocolBase
     /// <summary>Whether the peer manager admitted a peer; when set, only admitted peers are charged against the global budget, and others are refused.</summary>
     internal Func<PeerId, bool>? IsAdmitted { get; init; }
 
-    /// <summary>Charges decoded work against the per-peer ten-second token bucket and, unless <paramref name="perPeerOnly"/>, a global one.</summary>
+    /// <summary>Charges decoded work against the per-peer ten-second token bucket and, unless <paramref name="perPeerOnly"/>, a global one and one per remote host.</summary>
+    /// <remarks>A host is an IPv4 address or an IPv6 /64, so reconnecting from one host with fresh keys draws on the budget the host already spent.</remarks>
     /// <exception cref="Eth2ReqRespException">Code 139: a budget is spent, or a global charge comes from a peer that is not admitted.</exception>
     protected void ChargeRequest(ISessionContext context, ulong items, ulong capacity, bool perPeerOnly = false)
     {
@@ -112,10 +118,21 @@ public abstract class ReqRespProtocolBase
             DateTimeOffset now = QuotaTime.GetUtcNow();
             ulong globalCapacity = capacity * (ulong)Math.Max(1, MaxPeerCount);
             RequestQuota? global = null;
+            RequestQuota? host = null;
             if (!perPeerOnly)
             {
                 global = _globalQuota ??= new(globalCapacity, now);
                 global.Refill(now, globalCapacity);
+                if (HostKey(context.State.RemoteAddress) is { } hostKey)
+                {
+                    if (!_hostQuotas.TryGet(hostKey, out host!))
+                    {
+                        host = new(capacity, now);
+                        _hostQuotas.Set(hostKey, host);
+                    }
+
+                    host.Refill(now, capacity);
+                }
             }
 
             PeerId? peer = context.State.RemotePeerId;
@@ -131,11 +148,23 @@ public abstract class ReqRespProtocolBase
             }
 
             quota.Refill(now, capacity);
-            if (quota.Tokens < items || global is not null && global.Tokens < items)
+            if (quota.Tokens < items || global is not null && global.Tokens < items || host is not null && host.Tokens < items)
                 throw new Eth2ReqRespException("Request rate limit exceeded", 139);
             quota.Tokens -= items;
             if (global is not null) global.Tokens -= items;
+            if (host is not null) host.Tokens -= items;
         }
+    }
+
+    private static UInt128? HostKey(Multiaddress? address)
+    {
+        if (address is null) return null;
+        foreach (MultiaddressProtocol protocol in address.Protocols)
+        {
+            if (protocol is IP4 or IP6 && protocol.Value is IPAddress ip) return StateRequestLimiter.ClientKey(ip);
+        }
+
+        return null;
     }
 
     /// <summary>Creates a timeout source; re-arm with <see cref="CancellationTokenSource.CancelAfter(TimeSpan)"/> per chunk.</summary>

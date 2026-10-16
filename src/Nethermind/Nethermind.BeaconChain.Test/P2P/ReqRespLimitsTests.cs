@@ -23,6 +23,7 @@ using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Network.Libp2p;
 using NSubstitute;
+using NUnit.Framework.Constraints;
 using Libp2pPublicKey = Nethermind.Libp2p.Core.Dto.PublicKey;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -32,6 +33,7 @@ public class ReqRespLimitsTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private static readonly TimeSpan ShortTtfbTimeout = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan ShortRespTimeout = TimeSpan.FromMilliseconds(200);
+    private static IResolveConstraint RateLimited => Throws.TypeOf<Eth2ReqRespException>().With.Property(nameof(Eth2ReqRespException.ResponseCode)).EqualTo(139);
 
     [Test]
     public async Task Blocks_by_head_serves_the_requested_ancestry_in_reverse_order()
@@ -120,6 +122,23 @@ public class ReqRespLimitsTests
         }
 
         Assert.DoesNotThrow(() => protocol.Charge(admitted, 128), "a hundred identities that were never admitted must not spend the global budget of eighty peers");
+    }
+
+    [TestCase("/ip4/10.0.0.1", "/ip4/10.0.0.1", true)]
+    [TestCase("/ip4/10.0.0.1", "/ip4/10.0.0.2", false)]
+    [TestCase("/ip6/2001:db8::1", "/ip6/2001:db8::2", true, TestName = "Fresh_identities_share_the_budget_of_their_IPv6_64")]
+    [TestCase("/ip6/2001:db8::1", "/ip6/2001:db8:0:1::1", false, TestName = "Fresh_identities_from_another_IPv6_64_keep_their_own_budget")]
+    public void Fresh_identities_from_one_host_do_not_mint_new_budget(string churningHost, string otherHost, bool sameHost)
+    {
+        TestReqRespProtocol protocol = new() { MaxPeerCount = 80, QuotaTime = new FixedTime() };
+        protocol.Charge(NewPeerContext(churningHost), 128);
+        for (int i = 0; i < 100; i++)
+        {
+            Assert.That(() => protocol.Charge(NewPeerContext(churningHost), 128), RateLimited, "a fresh key from the same host draws on the budget that host already spent");
+        }
+
+        if (sameHost) Assert.That(() => protocol.Charge(NewPeerContext(otherHost), 128), RateLimited);
+        else Assert.DoesNotThrow(() => protocol.Charge(NewPeerContext(otherHost), 128), "a hundred fresh keys from one host must not spend the global budget of eighty peers");
     }
 
     [Test]
@@ -824,13 +843,13 @@ public class ReqRespLimitsTests
         public override DateTimeOffset GetUtcNow() => _now;
     }
 
-    private static ISessionContext NewPeerContext()
+    private static ISessionContext NewPeerContext(string host = "")
     {
         byte[] keyBytes = new byte[33];
         Random.Shared.NextBytes(keyBytes);
         PeerId peerId = new(new Libp2pPublicKey { Type = KeyType.Secp256K1, Data = ByteString.CopyFrom(keyBytes) });
         ISessionContext context = ReqRespTestChannel.Context();
-        context.State.RemoteAddress = Multiaddress.Decode($"/p2p/{peerId}");
+        context.State.RemoteAddress = Multiaddress.Decode($"{host}/p2p/{peerId}");
         return context;
     }
 
