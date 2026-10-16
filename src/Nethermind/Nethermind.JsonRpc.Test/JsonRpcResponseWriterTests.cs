@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Nethermind.Serialization.Json;
@@ -52,6 +53,40 @@ public class JsonRpcResponseWriterTests
             Assert.That(outer, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"value\":\"outer\"},\"id\":1}"));
             Assert.That(result.Inner, Is.EqualTo(Expected));
         }
+    }
+
+    [Test]
+    public void Repeated_write_reuses_the_writer()
+    {
+        using JsonRpcSuccessResponse response = Success("ok");
+        ArrayBufferWriter<byte> buffer = new(256);
+        JsonRpcResponseWriter.Write(buffer, response, EthereumJsonSerializer.JsonOptions);
+        buffer.ResetWrittenCount();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        JsonRpcResponseWriter.Write(buffer, response, EthereumJsonSerializer.JsonOptions);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(allocated, Is.Zero);
+    }
+
+    [Test]
+    public void Cached_writer_does_not_keep_the_output_alive()
+    {
+        WeakReference output = WriteToUnreferencedBuffer();
+
+        GC.Collect();
+
+        Assert.That(output.IsAlive, Is.False);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference WriteToUnreferencedBuffer()
+    {
+        using JsonRpcSuccessResponse response = Success("ok");
+        ArrayBufferWriter<byte> buffer = new();
+        JsonRpcResponseWriter.Write(buffer, response, EthereumJsonSerializer.JsonOptions);
+        return new WeakReference(buffer);
     }
 
     private static JsonRpcSuccessResponse Success(object result) => new() { Id = new JsonRpcId(1L), Result = result };
