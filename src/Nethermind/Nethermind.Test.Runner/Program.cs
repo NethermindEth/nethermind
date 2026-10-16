@@ -4,11 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.CommandLine;
+using System.CommandLine.Help;
+using System.CommandLine.Invocation;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Json;
@@ -23,8 +26,11 @@ internal class Program
 
     public class Options
     {
+        public static Argument<string[]> Paths { get; } =
+            new("path") { Description = "Test input files or directories, run together as one batch.", Arity = ArgumentArity.ZeroOrMore };
+
         public static Option<string> Input { get; } =
-            new("--input", "-i") { Description = "Set the test input file or directory." };
+            new("--input", "-i") { Description = "Set the test input file or directory; runs together with any <path> arguments." };
 
         public static Option<string> Filter { get; } =
             new("--run", "--filter", "-f") { Description = "Run only those tests matching the regular expression." };
@@ -87,7 +93,7 @@ internal class Program
             new("--batchRead") { Description = "Force BAL batch-read prewarming on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
 
         public static Option<string[]> ForkAlias { get; } =
-            new("--forkAlias") { Description = "Resolve a fixture's declared fork name as another fork, e.g. 'Bogota=Eip8141Prototype'. Repeatable; needed where separate fixture releases give one fork name incompatible meanings.", AllowMultipleArgumentsPerToken = true };
+            new("--forkAlias") { Description = "Resolve a fixture's declared fork name as another fork, e.g. 'Bogota=Eip8141Prototype'. Repeat the option for more than one alias; needed where separate fixture releases give one fork name incompatible meanings." };
     }
 
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
@@ -119,12 +125,49 @@ internal class Program
             Options.BatchRead,
             Options.ForkAlias,
         ];
-        rootCommand.SetAction(Run);
+        rootCommand.SetAction((parseResult, cancellationToken) => Run(parseResult, null, cancellationToken));
+
+        // The names other clients' runners answer to, each the same as its option: `nethtest blocktest <path>...`.
+        foreach ((string name, Option<bool> testType) in StandardCommands)
+        {
+            Command command = new(name, testType.Description) { Options.Paths };
+            command.SetAction((parseResult, cancellationToken) => Run(parseResult, testType, cancellationToken));
+            rootCommand.Subcommands.Add(command);
+        }
+
+        foreach (Option option in rootCommand.Options)
+        {
+            if (option is VersionOption versionOption) versionOption.Action = new VersionAction();
+            else if (option is not HelpOption) option.Recursive = true;
+        }
 
         return await rootCommand.Parse(args).InvokeAsync();
     }
 
-    private static async Task<int> Run(ParseResult parseResult, CancellationToken cancellationToken)
+    /// <summary>Prints one line naming the client, the tool and the build, so a harness can record which build ran.</summary>
+    private sealed class VersionAction : SynchronousCommandLineAction
+    {
+        public override int Invoke(ParseResult parseResult)
+        {
+            parseResult.InvocationConfiguration.Output.WriteLine($"{ProductInfo.Name} nethtest {ProductInfo.Version}");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// The exit status of a block or engine test run that could not run all of its input: a path that does not exist
+    /// or cannot be read, or a fixture file that cannot be loaded, which still leaves the other files to run.
+    /// </summary>
+    /// <remarks>A fixture that runs and fails still exits 0, which the nethtest workflow relies on.</remarks>
+    private const int IncompleteInputExitCode = 2;
+
+    private static readonly (string Name, Option<bool> TestType)[] StandardCommands =
+    [
+        ("blocktest", Options.BlockTest),
+        ("enginetest", Options.EngineTest),
+    ];
+
+    private static async Task<int> Run(ParseResult parseResult, Option<bool>? command, CancellationToken cancellationToken)
     {
         bool trace = parseResult.GetValue(Options.TraceAlways);
 
@@ -134,15 +177,15 @@ internal class Program
         Console.SetOut(trace ? TextWriter.Null : Console.Error);
 
         bool isStateTest = parseResult.GetValue(Options.StateTest);
-        bool isBlockTest = parseResult.GetValue(Options.BlockTest);
-        bool isEngineTest = parseResult.GetValue(Options.EngineTest);
+        bool isBlockTest = parseResult.GetValue(Options.BlockTest) || command == Options.BlockTest;
+        bool isEngineTest = parseResult.GetValue(Options.EngineTest) || command == Options.EngineTest;
         bool isTxTest = parseResult.GetValue(Options.TxTest);
         bool isZkEvmTest = parseResult.GetValue(Options.ZkEvmTest);
 
         int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0) + (isTxTest ? 1 : 0) + (isZkEvmTest ? 1 : 0);
         if (testTypeCount != 1)
         {
-            Console.Error.WriteLine("Please specify one of: --stateTest, --blockTest, --engineTest, --txTest, or --zkevmTest");
+            Console.Error.WriteLine("Please specify one of: blocktest, enginetest, --stateTest, --blockTest, --engineTest, --txTest, or --zkevmTest");
             return 1;
         }
 
@@ -150,8 +193,11 @@ internal class Program
         if (parseResult.GetValue(Options.TraceNever)) whenTrace = WhenTrace.Never;
         if (trace) whenTrace = WhenTrace.Always;
 
-        string input = parseResult.GetValue(Options.Input);
-        if (parseResult.GetValue(Options.Stdin)) input = Console.ReadLine();
+        List<string> inputs = [];
+        if (parseResult.GetValue(Options.Input) is { } inputOption && !string.IsNullOrWhiteSpace(inputOption)) inputs.Add(inputOption);
+        inputs.AddRange(parseResult.GetValue(Options.Paths) ?? []);
+        bool readStdin = parseResult.GetValue(Options.Stdin);
+        if (readStdin) inputs = NextStdinInput();
 
         ulong chainId = parseResult.GetValue(Options.GnosisTest) ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
         bool jsonOutput = parseResult.GetValue(Options.JsonOutput);
@@ -183,9 +229,11 @@ internal class Program
             ThreadPool.SetMinThreads(desiredMin, desiredMinIO);
         }
 
-        while (!string.IsNullOrWhiteSpace(input))
+        int exitCode = 0;
+        while (inputs.Count > 0)
         {
-            List<string> files = CollectFiles(input, chunk);
+            List<string>? files = CollectFiles(inputs, chunk, failOnUnreadablePath: isBlockTest || isEngineTest);
+            if (files is null) return IncompleteInputExitCode;
 
             if (isEngineTest || isBlockTest)
             {
@@ -201,8 +249,9 @@ internal class Program
                     SuppressOutput: true,
                     ParallelExecution: parallelExecution,
                     ParallelExecutionBatchRead: batchRead);
-                List<EthereumTestResult> results = await RunBlockTestFiles(files, runnerOptions, workers);
+                (List<EthereumTestResult> results, bool allFilesLoaded) = await RunBlockTestFiles(files, runnerOptions, workers);
                 resultsOut.Write(_serializer.Serialize(results, true));
+                if (!allFilesLoaded) exitCode = IncompleteInputExitCode;
             }
             else if (isStateTest)
             {
@@ -220,16 +269,79 @@ internal class Program
                 resultsOut.Write(_serializer.Serialize(results, true));
             }
 
-            if (!parseResult.GetValue(Options.Stdin)) break;
-            input = Console.ReadLine();
+            if (!readStdin) break;
+            inputs = NextStdinInput();
         }
 
         if (parseResult.GetValue(Options.Wait)) Console.ReadLine();
 
-        return 0;
+        return exitCode;
     }
 
-    private static List<string> CollectFiles(string path, string? chunk = null)
+    /// <summary>Reads the next path from stdin; an empty list once stdin ends or yields a blank line.</summary>
+    private static List<string> NextStdinInput() =>
+        Console.ReadLine() is { } line && !string.IsNullOrWhiteSpace(line) ? [line] : [];
+
+    /// <summary>
+    /// Expands the paths to their fixture files. For block and engine tests, null when any path does not exist or
+    /// cannot be read, or any file found under a directory cannot be read, after naming each on stderr; other test
+    /// types skip a missing path.
+    /// </summary>
+    private static List<string>? CollectFiles(List<string> paths, string? chunk, bool failOnUnreadablePath)
+    {
+        List<string> result = [];
+        bool allReadable = true;
+        foreach (string path in paths)
+        {
+            if (!failOnUnreadablePath)
+            {
+                result.AddRange(FixtureFiles(path));
+                continue;
+            }
+
+            if (!File.Exists(path) && !Directory.Exists(path))
+            {
+                Console.Error.WriteLine($"Fixture path does not exist: {path}");
+                allReadable = false;
+                continue;
+            }
+
+            try
+            {
+                // A file found under a directory counts like a named one, so every file is opened before any runs.
+                foreach (string file in FixtureFiles(path))
+                {
+                    if (CanRead(file)) result.Add(file);
+                    else allReadable = false;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"Fixture path cannot be read: {path} - {ex.Message}");
+                allReadable = false;
+            }
+        }
+
+        if (!allReadable) return null;
+        return string.IsNullOrEmpty(chunk) ? result : [.. TestChunkFilter.FilterByChunk(result, chunk)];
+    }
+
+    /// <summary>Whether the fixture file can be opened; when it cannot, names it on stderr.</summary>
+    private static bool CanRead(string file)
+    {
+        try
+        {
+            File.OpenRead(file).Dispose();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Fixture path cannot be read: {file} - {ex.Message}");
+            return false;
+        }
+    }
+
+    private static List<string> FixtureFiles(string path)
     {
         List<string> result = [];
         if (File.Exists(path))
@@ -249,14 +361,17 @@ internal class Program
             result.Sort(StringComparer.Ordinal);
         }
 
-        return string.IsNullOrEmpty(chunk) ? result : [.. TestChunkFilter.FilterByChunk(result, chunk)];
+        return result;
     }
 
-    private static async Task<List<EthereumTestResult>> RunBlockTestFiles(
+    /// <summary>Runs every file's block or engine tests.</summary>
+    /// <returns>The results, and whether every file could be loaded; one that could not is reported on stderr instead.</returns>
+    private static async Task<(List<EthereumTestResult> Results, bool AllFilesLoaded)> RunBlockTestFiles(
         List<string> files, BlockchainTestsRunnerOptions baseOptions, int workers)
     {
         await KzgPolynomialCommitments.InitializeAsync();
         int effectiveWorkers = baseOptions.Trace ? 1 : workers;
+        int unloadedFiles = 0;
         int completedTests = 0;
         long lastProgressReportTicks = DateTime.UtcNow.Ticks;
         string? UpdateProgress(bool forceReport)
@@ -273,13 +388,13 @@ internal class Program
             return null;
         }
 
-        void WriteFileExceptionStatus(string name, Exception ex)
+        void WriteFileExceptionStatus(string file, Exception ex)
         {
-            // A traced run reserves stderr for the JSONL trace; the failure still lands in the results document.
+            // A traced run reserves stderr for the JSONL trace, so there the failure shows only in the exit status.
             if (baseOptions.Trace)
                 return;
 
-            Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {UpdateProgress(true)} {name} - {ex.Message}");
+            Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {UpdateProgress(true)} {file} - {ex.Message}");
             Console.Error.Flush();
         }
 
@@ -296,15 +411,15 @@ internal class Program
                     BlockchainTestsRunner runner = new(source, runnerOptions);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     allResults.AddRange(results);
+                    if (runner.LoadFailed) unloadedFiles++;
                 }
                 catch (Exception ex)
                 {
-                    string name = Path.GetFileNameWithoutExtension(file);
-                    WriteFileExceptionStatus(name, ex);
-                    allResults.Add(new EthereumTestResult(name, ex.ToString()));
+                    unloadedFiles++;
+                    WriteFileExceptionStatus(file, ex);
                 }
             }
-            return allResults;
+            return (allResults, unloadedFiles == 0);
         }
 
         List<(string file, int index)> workItems = [];
@@ -325,12 +440,13 @@ internal class Program
                     BlockchainTestsRunner runner = new(source, runnerOptions);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     resultsByFile[item.index] = results;
+                    if (runner.LoadFailed) Interlocked.Increment(ref unloadedFiles);
                 }
                 catch (Exception ex)
                 {
-                    string name = Path.GetFileNameWithoutExtension(item.file);
-                    WriteFileExceptionStatus(name, ex);
-                    resultsByFile[item.index] = [new EthereumTestResult(name, ex.ToString())];
+                    Interlocked.Increment(ref unloadedFiles);
+                    WriteFileExceptionStatus(item.file, ex);
+                    resultsByFile[item.index] = [];
                 }
             });
 
@@ -340,7 +456,7 @@ internal class Program
             combinedResults.AddRange(results);
         }
 
-        return combinedResults;
+        return (combinedResults, unloadedFiles == 0);
     }
 
     private static async Task<List<EthereumTestResult>> RunStateTestFiles(

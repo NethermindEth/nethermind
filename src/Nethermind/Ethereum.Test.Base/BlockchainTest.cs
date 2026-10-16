@@ -11,6 +11,8 @@ namespace Ethereum.Test.Base
 {
     public class BlockchainTest : EthereumTest
     {
+        /// <summary>The fixture's key in its file, verbatim; <see cref="EthereumTest.Name"/> keeps only the part after <c>.py::</c>.</summary>
+        public string? FixtureId { get; set; }
         public string? ForkName { get; set; }
         public IReleaseSpec? Network { get; set; }
         public IReleaseSpec? NetworkAfterTransition { get; set; }
