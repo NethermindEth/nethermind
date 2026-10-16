@@ -431,6 +431,38 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void TryGetAccount_reports_account_with_storage_root_without_allocating()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        byte[] code = [0x60, 0x01];
+        provider.CreateAccount(_address1, 5, 2);
+        provider.InsertCode(_address1, code, Cancun.Instance);
+        provider.Set(new StorageCell(_address1, 1), 0x11);
+        provider.Commit(Cancun.Instance);
+        provider.CommitTree(0);
+
+        provider.TryGetAccount(_address1, out AccountStruct _);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        bool exists = provider.TryGetAccount(_address1, out AccountStruct account);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exists, Is.True);
+            Assert.That(account.Nonce, Is.EqualTo(2UL));
+            Assert.That(account.Balance, Is.EqualTo((UInt256)5));
+            Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code).ValueHash256));
+            Assert.That(account.StorageRoot, Is.EqualTo(((WorldState)provider).GetStorageRoot(_address1)));
+            Assert.That(account.IsStorageEmpty, Is.False);
+            Assert.That(allocated, Is.Zero);
+            Assert.That(provider.TryGetAccount(TestItem.AddressB, out AccountStruct missing), Is.False);
+            Assert.That(missing, Is.EqualTo(AccountStruct.TotallyEmpty));
+        }
+    }
+
+    [Test]
     public void Returns_empty_byte_code_for_non_existing_accounts()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
