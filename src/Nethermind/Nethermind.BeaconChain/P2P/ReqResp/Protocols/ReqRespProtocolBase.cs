@@ -104,8 +104,14 @@ public abstract class ReqRespProtocolBase
     /// <summary>Whether the peer manager admitted a peer; when set, only admitted peers are charged against the global budget, and others are refused.</summary>
     internal Func<PeerId, bool>? IsAdmitted { get; init; }
 
+    /// <summary>Peers' worth of budget one remote host may spend, so several honest nodes behind one address are still served.</summary>
+    internal const int PeersPerHost = 4;
+
     /// <summary>Charges decoded work against the per-peer ten-second token bucket and, unless <paramref name="perPeerOnly"/>, a global one and one per remote host.</summary>
-    /// <remarks>A host is an IPv4 address or an IPv6 /64, so reconnecting from one host with fresh keys draws on the budget the host already spent.</remarks>
+    /// <remarks>
+    /// A host is an IPv4 address or an IPv6 /64, so reconnecting from one host with fresh keys draws on the budget the host already spent.
+    /// The host bucket holds <see cref="PeersPerHost"/> peer buckets to serve NAT and multi-node hosts, which stays a small share of the global bucket of <see cref="MaxPeerCount"/> peer buckets.
+    /// </remarks>
     /// <exception cref="Eth2ReqRespException">Code 139: a budget is spent, or a global charge comes from a peer that is not admitted.</exception>
     protected void ChargeRequest(ISessionContext context, ulong items, ulong capacity, bool perPeerOnly = false)
     {
@@ -117,6 +123,7 @@ public abstract class ReqRespProtocolBase
         {
             DateTimeOffset now = QuotaTime.GetUtcNow();
             ulong globalCapacity = capacity * (ulong)Math.Max(1, MaxPeerCount);
+            ulong hostCapacity = capacity * PeersPerHost;
             RequestQuota? global = null;
             RequestQuota? host = null;
             if (!perPeerOnly)
@@ -127,11 +134,11 @@ public abstract class ReqRespProtocolBase
                 {
                     if (!_hostQuotas.TryGet(hostKey, out host!))
                     {
-                        host = new(capacity, now);
+                        host = new(hostCapacity, now);
                         _hostQuotas.Set(hostKey, host);
                     }
 
-                    host.Refill(now, capacity);
+                    host.Refill(now, hostCapacity);
                 }
             }
 

@@ -131,7 +131,11 @@ public class ReqRespLimitsTests
     public void Fresh_identities_from_one_host_do_not_mint_new_budget(string churningHost, string otherHost, bool sameHost)
     {
         TestReqRespProtocol protocol = new() { MaxPeerCount = 80, QuotaTime = new FixedTime() };
-        protocol.Charge(NewPeerContext(churningHost), 128);
+        for (int i = 0; i < ReqRespProtocolBase.PeersPerHost; i++)
+        {
+            Assert.DoesNotThrow(() => protocol.Charge(NewPeerContext(churningHost), 128), "honest nodes behind one address each get a peer's budget until the host budget is spent");
+        }
+
         for (int i = 0; i < 100; i++)
         {
             Assert.That(() => protocol.Charge(NewPeerContext(churningHost), 128), RateLimited, "a fresh key from the same host draws on the budget that host already spent");

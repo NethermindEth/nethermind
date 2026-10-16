@@ -272,20 +272,23 @@ public class BeaconP2PLoopbackTests
     public async Task A_second_identity_on_the_same_host_draws_on_the_block_budget_the_first_spent(CancellationToken token)
     {
         Node server = CreateNode();
-        Node first = CreateNode();
-        Node second = CreateNode();
-        await using PeerHostScope hosts = new(server.P2P, first.P2P, second.P2P);
-        await hosts.StartAsync(token, server.P2P, first.P2P, second.P2P);
-        ISession firstSession = await PeerSessionNodes.DialAsync(first.P2P, server.P2P, token);
-        ISession secondSession = await PeerSessionNodes.DialAsync(second.P2P, server.P2P, token);
+        Node[] clients = [.. Enumerable.Range(0, ReqRespProtocolBase.PeersPerHost + 1).Select(_ => CreateNode())];
+        BeaconP2P[] nodes = [server.P2P, .. clients.Select(client => client.P2P)];
+        await using PeerHostScope hosts = new(nodes);
+        await hosts.StartAsync(token, nodes);
+        List<ISession> sessions = [];
+        foreach (Node client in clients) sessions.Add(await PeerSessionNodes.DialAsync(client.P2P, server.P2P, token));
 
         // The empty store answers ResourceUnavailable, but only after the request is charged.
-        Eth2ReqRespException spent = (await Assert.CatchAsync<Eth2ReqRespException>(() => first.P2P.RequestBlocksByRangeAsync(firstSession, AnchorSlot, 128, token)))!;
-        Eth2ReqRespException refused = (await Assert.CatchAsync<Eth2ReqRespException>(() => second.P2P.RequestBlocksByRangeAsync(secondSession, AnchorSlot, 1, token)))!;
+        List<byte> codes = [];
+        for (int i = 0; i < clients.Length; i++)
+        {
+            codes.Add((await Assert.CatchAsync<Eth2ReqRespException>(() => clients[i].P2P.RequestBlocksByRangeAsync(sessions[i], AnchorSlot, 128, token)))!.ResponseCode);
+        }
 
         using IDisposable scope = Assert.EnterMultipleScope();
-        Assert.That(spent.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable));
-        Assert.That(refused.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.RateLimited), "both keys connect from 127.0.0.1, so the second has no budget of its own");
+        Assert.That(codes[..^1], Is.All.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "honest nodes behind one address are served after the first spent a peer's budget");
+        Assert.That(codes[^1], Is.EqualTo(ReqRespFraming.ResponseCode.RateLimited), "every key connects from 127.0.0.1, so one more has no budget of its own");
     }
 
     [Test]
