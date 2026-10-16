@@ -49,6 +49,8 @@ public class DebugRpcModule(
     IBlockForRpcFactory blockForRpcFactory)
     : IDebugRpcModule
 {
+    internal sealed class TransactionTraceNotFoundException() : Exception("transaction not found");
+
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
@@ -96,7 +98,8 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTrace(transactionHash, token, effective, writer, pipeWriter)));
+                    debugBridge.GetTransactionTrace(transactionHash, token, effective, writer, pipeWriter)
+                    ?? throw new TransactionTraceNotFoundException()));
         }
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
