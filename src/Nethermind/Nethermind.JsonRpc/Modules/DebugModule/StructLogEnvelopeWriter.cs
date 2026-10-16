@@ -43,7 +43,7 @@ internal static class StructLogEnvelopeWriter
         {
             trace = runTrace(writer, pipeWriter, cancellationToken);
         }
-        catch (Exception ex) when ((!isSingleResult || ex is not TraceDurationFormatException) && !cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when ((!isSingleResult || ex is not (TraceDurationFormatException or DebugRpcModule.TransactionTraceNotFoundException)) && !cancellationToken.IsCancellationRequested)
         {
             failure = ex;
         }
