@@ -1351,6 +1351,10 @@ jobs:
           [[ "${usable}" == "true" ]] || rm -rf "${BASELINE_DIR}"
           echo "usable=${usable}" >> "${GITHUB_OUTPUT}"
 
+      - name: Verify storage comparison image revisions
+        if: needs.resolve.outputs.image_ref == 'nethermind-rpcbench:perf-decoded-blob-multiget'
+        run: python3 benchmarks/storage-adoption/verify-client-images.py "$OUT_DIR/storage-image-revisions.json" nethermindeth/nethermind:master-ce93457=ce93457f0abde6daa78877ab3756c0002e33208d nethermind-rpcbench:perf-decoded-blob-multiget=02d3ffde15fb6541efaff78899bd6fd667442501
+
       - name: Run RPC sweep
         id: run-sweep
         if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep'

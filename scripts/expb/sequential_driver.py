@@ -148,6 +148,8 @@ def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
     name = f"{client}-{image['id']}-run{run}"
     config["scenarios"] = {name: (scenario := scenarios.pop("nethermind"))}
     scenario.update({"client": client, "image": image["image"], **({"amount": amount} if amount is not None else {})})
+    if image["image"].startswith("nethermind-rpcbench:"):
+        config["pull_images"] = False
     if client != "nethermind":
         # Reference clients reuse the Nethermind scenario's payloads but never its flags, env or
         # volumes; they read their own snapshot through the overlay backend, and opening a large

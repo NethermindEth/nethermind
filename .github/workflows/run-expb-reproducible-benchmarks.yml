@@ -3005,6 +3005,11 @@ jobs:
           chmod +x "${yq}"
           yq_version="$("${yq}" --version)"
           [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
+      - name: Verify storage comparison image revisions
+        env:
+          CAMPAIGN_ROOT: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
+        run: python3 benchmarks/storage-adoption/verify-client-images.py "$CAMPAIGN_ROOT/storage-image-revisions.json" nethermindeth/nethermind:master-ce93457=ce93457f0abde6daa78877ab3756c0002e33208d nethermind-rpcbench:perf-decoded-blob-multiget=02d3ffde15fb6541efaff78899bd6fd667442501
+
       - name: Run sequential EXPB campaign
         id: run-campaign
         continue-on-error: true
