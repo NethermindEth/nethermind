@@ -147,6 +147,20 @@ class ProverDeploymentSeamTests(unittest.TestCase):
         self.assertIn('test "$signed_window_count" -gt 0', (self.package / "run-ci.sh").read_text())
         self.assertIn("proof_signer_image: eez-proof-signer:test", self.args.output.read_text())
 
+    def test_streaming_capture_keeps_complete_frozen_proof_evidence_and_upstream_assertion(self):
+        manifest = json.loads(self.args.manifest.read_text())
+        manifest["streaming"] = {"wire": "prove.v2", "profile": "rollup0-conditional"}
+        self.args.manifest.write_text(json.dumps(manifest))
+        with (self.package / "ci-args.yaml").open("a") as target:
+            target.write("  prover_backend: stateless\n")
+        capture = '    timeout 30s kurtosis service logs "$KURTOSIS_ENCLAVE" "$service" '
+        (self.package / "run-ci.sh").write_text(capture + "\n" + self.driver)
+        self.prepare()
+        commands = (self.package / "run-ci.sh").read_text()
+        self.assertIn('[[ ! -s "$RESULT_DIR/$service.log" ]] || return 0', commands)
+        self.assertIn('kurtosis service logs --all "$KURTOSIS_ENCLAVE" "$service"', commands)
+        self.assertIn('test "$signed_window_count" -gt 0', commands)
+
     def test_missing_skip_switch_rejects_an_otherwise_valid_deployment(self):
         (self.package / "start.sh").write_text("")
         with self.assertRaisesRegex(ValueError, "candidate prover image"):

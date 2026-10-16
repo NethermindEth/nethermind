@@ -82,7 +82,7 @@ frames plus the candidate Finalize frame. Duplicate validated blocks are not
 charged twice. A rejected Finalize preserves the retained prefix and its byte
 charges. Rollup0 keeps separate retained-block and settlement budgets.
 
-At capacity, RollupX may evict the same owner's oldest detached, idle session.
+At capacity, RollupX and conditional Rollup0 may evict the same owner's oldest detached, idle session.
 Active attachments and draining workers keep their reservations. A resumed
 attachment cannot be detached by cleanup from an older stream. Completed proof
 streams retain ownership through terminal delivery and release it on cleanup.

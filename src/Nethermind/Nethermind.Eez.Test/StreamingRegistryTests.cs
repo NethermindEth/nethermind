@@ -430,10 +430,23 @@ public class StreamingRegistryTests
     }
 
     [Test]
-    public void RollupXCapacity_DetachedOldestSessionIsEvictedWithoutTouchingActiveSessions()
+    public void Capacity_AuthenticatedRollup0DetachedSession_RemainsRetained()
+    {
+        using StreamingSessionRegistry registry = NativeRegistry(new ManualTime(), 1, StreamingSettlementProfile.Rollup0Calldata);
+        StreamingConnection first = new(registry, "first", 1);
+        ServerFrame ready = first.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        first.Detach();
+        ServerFrame rejected = new StreamingConnection(registry, "first", 1).Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        Assert.That(rejected.Rejected.Code, Is.EqualTo((int)StatusCode.ResourceExhausted), "authenticated Rollup0 retains its existing capacity policy");
+        Assert.That(registry.Resume("first", ready.SessionId, 1).Session.Id, Is.EqualTo(ready.SessionId), "capacity rejection preserves the original detached session");
+    }
+
+    [TestCase((int)StreamingSettlementProfile.RollupXNative, TestName = "Capacity_RollupX_EvictsOnlyOldestDetachedSession")]
+    [TestCase((int)StreamingSettlementProfile.Rollup0Conditional, TestName = "Capacity_ConditionalRollup0_EvictsOnlyOldestDetachedSession")]
+    public void Capacity_DetachedOldestSessionIsEvictedWithoutTouchingActiveSessions(int profile)
     {
         ManualTime time = new();
-        using StreamingSessionRegistry registry = NativeRegistry(time, 2);
+        using StreamingSessionRegistry registry = NativeRegistry(time, 2, (StreamingSettlementProfile)profile);
         StreamingConnection first = new(registry, "first", 1);
         ServerFrame firstReady = first.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
         first.Detach();
@@ -449,13 +462,10 @@ public class StreamingRegistryTests
         }
     }
 
-    [TestCase("active", TestName = "RollupXCapacity_ActiveSession_IsNotEvicted")]
-    [TestCase("foreign", TestName = "RollupXCapacity_OtherOwnerDetachedSession_IsNotEvicted")]
-    [TestCase("worker", TestName = "RollupXCapacity_DetachedWorker_MustDrainBeforeEviction")]
-    [TestCase("resumed", TestName = "RollupXCapacity_ResumedSession_RejectsStaleDetach")]
-    public void RollupXCapacity_SessionStillOwnedOrOwnedByAnotherComposer_IsNotEvicted(string state)
+    [Test]
+    public void Capacity_SessionStillOwnedOrOwnedByAnotherComposer_IsNotEvicted([Values("active", "foreign", "worker", "resumed")] string state, [Values((int)StreamingSettlementProfile.RollupXNative, (int)StreamingSettlementProfile.Rollup0Conditional)] int profile)
     {
-        using StreamingSessionRegistry registry = NativeRegistry(new ManualTime(), 1);
+        using StreamingSessionRegistry registry = NativeRegistry(new ManualTime(), 1, (StreamingSettlementProfile)profile);
         StreamingConnection first = new(registry, "first", 1);
         ServerFrame ready = first.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
         SessionOperation? pending = null;
@@ -549,9 +559,9 @@ public class StreamingRegistryTests
         Assert.That(registry.Resume("first", firstReady.SessionId, 1).Session.Id, Is.EqualTo(firstReady.SessionId));
     }
 
-    private static StreamingSessionRegistry NativeRegistry(ManualTime time, int count) =>
+    private static StreamingSessionRegistry NativeRegistry(ManualTime time, int count, StreamingSettlementProfile profile = StreamingSettlementProfile.RollupXNative) =>
         new(new StreamingRegistryLimits(count, count, 4000 * count, TimeSpan.FromSeconds(10)),
-            new StreamingSessionLimits(8, 1000, 16), time, StreamingSettlementProfile.RollupXNative);
+            new StreamingSessionLimits(8, 1000, 16), time, profile);
 
     private static void Commit(StreamingConnection connection, ServerFrame ready, ulong requestId)
     {

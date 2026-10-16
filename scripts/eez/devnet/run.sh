@@ -29,7 +29,7 @@ cleanup() {
     trap - EXIT
     for service in nethermind-l2 nethermind-l2-late eez-proof-signer eez-node; do
         if [[ ! -s "$EEZ_CI_RESULT_DIR/$service.log" ]]; then
-            timeout 20s kurtosis service logs "$KURTOSIS_ENCLAVE" "$service" > "$EEZ_CI_RESULT_DIR/$service.log" 2>&1 || true
+            timeout 20s kurtosis service logs --all "$KURTOSIS_ENCLAVE" "$service" > "$EEZ_CI_RESULT_DIR/$service.log" 2>&1 || true
         fi
     done
     docker image inspect "$EEZ_NODE_IMAGE" "$EEZ_PROOF_SIGNER_IMAGE" "$EEZ_DEPLOY_IMAGE" \

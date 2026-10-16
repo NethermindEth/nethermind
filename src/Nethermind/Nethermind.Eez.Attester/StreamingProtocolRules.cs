@@ -9,7 +9,7 @@ internal readonly record struct StreamingProtocolRules(StreamingSettlementProfil
 {
     internal bool ChargesWireFrames => Profile == StreamingSettlementProfile.RollupXNative;
     internal bool ReturnsBoundControlErrors => Profile == StreamingSettlementProfile.RollupXNative;
-    internal bool EvictsDetachedSessions => Profile == StreamingSettlementProfile.RollupXNative;
+    internal bool EvictsDetachedSessions => Profile is StreamingSettlementProfile.RollupXNative or StreamingSettlementProfile.Rollup0Conditional;
     internal StatusCode ZeroRollup => Profile == StreamingSettlementProfile.RollupXNative ? StatusCode.InvalidArgument : StatusCode.Unimplemented;
     internal StatusCode UnboundControl => Profile == StreamingSettlementProfile.RollupXNative ? StatusCode.PermissionDenied : StatusCode.InvalidArgument;
     internal StatusCode InvalidRange => Profile == StreamingSettlementProfile.RollupXNative ? StatusCode.FailedPrecondition : StatusCode.InvalidArgument;

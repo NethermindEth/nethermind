@@ -77,6 +77,13 @@ def prepare(args):
     if commands.count(log_loop) != 1:
         raise ValueError("upstream diagnostic boundary changed")
     commands = commands.replace(log_loop, 'for service in nethermind-l2 nethermind-l2-late eez-node eez-proof-signer "$KURTOSIS_BUILDER_SERVICE" mev-relay-api; do')
+    if "streaming" in manifest:
+        capture = '    timeout 30s kurtosis service logs "$KURTOSIS_ENCLAVE" "$service" '
+        if commands.count(capture) != 1:
+            raise ValueError("upstream log capture boundary changed")
+        commands = commands.replace(capture,
+            '    [[ ! -s "$RESULT_DIR/$service.log" ]] || return 0\n'
+            '    timeout 30s kurtosis service logs --all "$KURTOSIS_ENCLAVE" "$service" ')
     driver.write_text(commands)
     (args.output.parent / "scenario-hooks.json").write_text(json.dumps(names) + "\n")
 

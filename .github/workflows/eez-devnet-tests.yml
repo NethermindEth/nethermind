@@ -124,6 +124,8 @@ jobs:
           echo 'deb [trusted=yes] https://sdk.kurtosis.com/kurtosis-cli-release-artifacts/ /' | sudo tee /etc/apt/sources.list.d/kurtosis.list
           sudo apt-get update
           sudo apt-get install -y bc kurtosis-cli jq openssl
+          export DOCKER_API_VERSION="$(docker version --format '{{.Server.APIVersion}}')"
+          echo "DOCKER_API_VERSION=$DOCKER_API_VERSION" >> "$GITHUB_ENV"
           kurtosis engine start
       - name: Execute current upstream scenarios and verify Nethermind
         run: bash scripts/eez/devnet/run.sh
