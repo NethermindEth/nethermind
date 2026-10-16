@@ -45,6 +45,8 @@ public class NativeCallTracerCallFrame : IDisposable
 
     internal ReadOnlySpan<NativeCallTracerCallFrame> CallsSpan => _calls is null ? [] : _calls.AsSpan();
 
+    internal bool HasCalls => _calls is not null;
+
     public ArrayPoolList<NativeCallTracerLogEntry>? Logs { get; set; }
 
     public UInt256? Value { get; set; }

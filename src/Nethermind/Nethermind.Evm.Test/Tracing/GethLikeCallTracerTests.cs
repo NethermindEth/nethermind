@@ -1014,10 +1014,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         string json = JsonSerializer.Serialize(frame, EthereumJsonSerializer.JsonOptions);
 
         Assert.That(json, Is.EqualTo("""{"type":"CALL","from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","gas":"0x186a0","gasUsed":"0xc350","input":"0x"}"""));
-        Assert.That(
-            typeof(NativeCallTracerCallFrame).GetField("_calls", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(frame),
-            callsTouched ? Is.Not.Null : Is.Null,
-            "serializing a leaf frame must not allocate its calls list");
+        Assert.That(frame.HasCalls, Is.EqualTo(callsTouched), "serializing a leaf frame must not allocate its calls list");
     }
 
     [Test]
