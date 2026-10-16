@@ -74,15 +74,14 @@ jobs:
           )
           mtime=$(git log -1 --format=%ct)
           assets=()
-          digests=$'| zkVM | ELF SHA-256 | VK SHA-256 |\n| --- | --- | --- |'
+          digests=
 
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
           for vm in zisk sp1 openvm; do
             dir=nethermind-$vm
             name=nethermind-guest-${{ steps.version.outputs.version }}-${{ steps.version.outputs.commit }}-$vm
-            elf_digest=$(sha256sum "$dir/nethermind" | cut -d ' ' -f 1)
-            vk_digest=-
+            digests+="- **${names[$vm]}**"$'\n'"  - ELF: \`$(sha256sum "$dir/nethermind" | cut -d ' ' -f 1)\`"$'\n'
 
             # ere-server's OpenVM rejects the guest's entrypoint, so that guest gets no VK. It
             # cannot run without the config it was built against, so the two ship as one archive
@@ -103,10 +102,9 @@ jobs:
                 --elf-path "/output/$name.elf" keygen --program-vk-path "/output/$name.vk"
               files=("$name.elf" "$name.vk")
               # A proof verifies against the VK, which commits to the ELF
-              vk_digest="\`$(sha256sum "$name.vk" | cut -d ' ' -f 1)\`"
+              digests+="  - VK: \`$(sha256sum "$name.vk" | cut -d ' ' -f 1)\`"$'\n'
             fi
 
-            digests+=$'\n'"| ${names[$vm]} | \`$elf_digest\` | $vk_digest |"
             assets+=("${files[@]}")
           done
 
