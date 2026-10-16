@@ -332,7 +332,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         FastPathComplete:
             pc++;
             opCodeCount++;
-            int traceStackHead = 0;
             EvmExceptionType exceptionType;
             if (!TTracingInst.IsActive
                 && (typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OffFlag>) || typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OnFlag>)))
@@ -405,8 +404,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
             else if (carriesExecutionGas && TOpcode.ChargesFixedGas)
             {
-                if (DispatchFlags.ConstTracing && TOpcode.StackInputs > 0)
-                    traceStackHead = (int)stack.Head;
                 LoadFixedGas(out TGasPolicy localGas, gas);
                 if (TOpcode.UsesVm)
                     exceptionType = TOpcode.Execute(ref stack, ref localGas, state.Vm, ref pc);
@@ -416,18 +413,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
             else
             {
-                if (DispatchFlags.ConstTracing && TOpcode.StackInputs > 0)
-                    traceStackHead = (int)stack.Head;
                 if (carriesExecutionGas)
                     SetExecutionGas(ref state.Gas, gas);
                 exceptionType = TOpcode.Execute(ref stack, ref state.Gas, state.Vm, ref pc);
                 if (carriesExecutionGas)
                     gas = GetExecutionGas(ref state.Gas);
             }
-
-            if (DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody && TOpcode.StackInputs > 0 &&
-                exceptionType == EvmExceptionType.StackUnderflow && state.Vm.IsTracingActions)
-                state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
 
             if (!TContinuable.IsActive)
                 goto Exit;
@@ -478,6 +469,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             throw IL.Unreachable();
 
         Exit:
+            if (DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody && TOpcode.StackInputs > 0 &&
+                exceptionType == EvmExceptionType.StackUnderflow && state.Vm.IsTracingActions)
+            {
+                Instruction opcode = (Instruction)Unsafe.Add(ref stack.Code, pc - 1);
+                if (opcode is not (Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL))
+                    state.Vm.TraceActionErrorDetails($"stack underflow ({stack.Head} <=> {TOpcode.StackInputs})");
+            }
             return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
         }
 

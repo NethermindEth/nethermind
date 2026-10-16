@@ -234,7 +234,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (spec.TransientStorageEnabled)
         {
             lookup[(int)Instruction.TLOAD] = OpcodeHandler<TLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
-            lookup[(int)Instruction.TSTORE] = OpcodeHandler<TStoreOpcode, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.TSTORE] = OpcodeHandler<TStoreOpcode<TTracingInst>, TTracingInst, TCancelable>();
         }
         if (spec.MCopyIncluded)
             lookup[(int)Instruction.MCOPY] = OpcodeHandler<MCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
@@ -1623,7 +1623,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static int StackInputs => 2;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             Eip8360.IsActive && vm.VmState.IsTransientCreateContext
-                ? EvmInstructions.InstructionTStore(ref stack, ref gas, vm)
+                ? EvmInstructions.InstructionTStore<TGasPolicy, TTracingInst>(ref stack, ref gas, vm)
                 : EvmInstructions.InstructionSStoreMetered<TGasPolicy, TTracingInst, TStipendFix, TEip8037, Eip8038, Eip2929, Eip8279>(ref stack, ref gas, vm);
     }
 
@@ -1638,7 +1638,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static int StackInputs => 2;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             Eip8360.IsActive && vm.VmState.IsTransientCreateContext
-                ? EvmInstructions.InstructionTStore(ref stack, ref gas, vm)
+                ? EvmInstructions.InstructionTStore<TGasPolicy, TTracingInst>(ref stack, ref gas, vm)
                 : EvmInstructions.InstructionSStoreUnmetered<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm);
     }
 
@@ -1752,13 +1752,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [SkipLocalsInit]
-    private readonly struct TStoreOpcode : IOpcodeBody
+    private readonly struct TStoreOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static ulong? TraceGasCost => GasPolicy.TStoreGasCost.GasCost;
         public static int StackInputs => 2;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionTStore(ref stack, ref gas, vm);
+            EvmInstructions.InstructionTStore<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
