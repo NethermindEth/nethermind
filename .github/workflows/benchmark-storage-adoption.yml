@@ -1,0 +1,137 @@
+name: Measure storage adoption
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Exact master baseline SHA
+        required: true
+        type: string
+      history_ref:
+        description: Exact iterator adoption SHA
+        required: true
+        type: string
+      multiget_ref:
+        description: Exact decoded MultiGet adoption SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref }}
+      HISTORY_REF: ${{ inputs.history_ref }}
+      MULTIGET_REF: ${{ inputs.multiget_ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: proof
+      - name: Validate commit inputs
+        shell: bash
+        run: |
+          for sha in "$BASELINE_REF" "$HISTORY_REF" "$MULTIGET_REF"; do
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          done
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.baseline_ref }}
+          path: baseline
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.history_ref }}
+          path: history
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.multiget_ref }}
+          path: multiget
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: baseline/global.json
+      - name: Record and verify source inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir results
+          for source in baseline history multiget; do
+            git -C "$source" rev-parse HEAD > "results/$source-sha.txt"
+          done
+          dotnet --info > results/dotnet.txt
+          lscpu > results/cpu.txt
+          echo "SOURCE_DATE_EPOCH=$(git -C baseline log -1 --format=%ct)" >> "$GITHUB_ENV"
+          python3 proof/benchmarks/storage-adoption/validate-sources.py
+      - name: Wait for the published package to be indexed
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            if curl -fsS https://api.nuget.org/v3-flatcontainer/nethermind.rocksdbbindings/11.8.1.171/nethermind.rocksdbbindings.nuspec -o results/release171.nuspec; then
+              break
+            fi
+            sleep 20
+          done
+          python3 proof/benchmarks/storage-adoption/validate-release.py results/release171.nuspec
+      - name: Run normal package-based database, history and transaction-pool tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in history:Nethermind.Db.Test history:Nethermind.State.Flat.History.Test multiget:Nethermind.Db.Test multiget:Nethermind.TxPool.Test; do
+            source=${target%%:*}
+            project=${target#*:}
+            dotnet build "$source/src/Nethermind/$project/$project.csproj" -c Release
+            dotnet "$source/src/Nethermind/artifacts/bin/$project/release/$project.dll" | tee "results/$source-$project.log"
+            python3 proof/benchmarks/storage-adoption/validate-tests.py "results/$source-$project.log"
+          done
+          cp "$HOME/.nuget/packages/nethermind.rocksdbbindings/11.8.1.171/nethermind.rocksdbbindings.11.8.1.171.nupkg.sha512" results/package-171.sha512
+      - name: Prepare identical measurement harnesses
+        shell: bash
+        run: |
+          for source in baseline history; do
+            mkdir -p "$source/benchmarks/history-bounds"
+            cp proof/benchmarks/storage-adoption/history-bounds/* "$source/benchmarks/history-bounds/"
+          done
+          for source in baseline multiget; do
+            mkdir -p "$source/benchmarks/blob-batch"
+            cp proof/benchmarks/storage-adoption/blob-batch/* "$source/benchmarks/blob-batch/"
+          done
+          mkdir -p "$RUNNER_TEMP/storage-adoption"
+      - name: Measure both changes against unchanged master in ABBA order
+        shell: bash
+        env:
+          BENCH_DATA: ${{ runner.temp }}/storage-adoption
+        run: |
+          set -euo pipefail
+          for kind in history blob; do
+            round=0
+            if [[ "$kind" == history ]]; then
+              candidate=history
+              project=history-bounds
+            else
+              candidate=multiget
+              project=blob-batch
+            fi
+            for source in baseline "$candidate" "$candidate" baseline; do
+              round=$((round + 1))
+              output="$GITHUB_WORKSPACE/results/$kind/$round-$source"
+              if [[ "$kind" == history && "$source" == history ]]; then
+                export BoundsReuse=true
+              else
+                unset BoundsReuse
+              fi
+              (
+                cd "$source"
+                dotnet run --project "benchmarks/$project" -c Release -- --filter '*' --exporters json markdown --artifacts "$output" --join
+              )
+              python3 proof/benchmarks/storage-adoption/validate-results.py "$output" "$kind"
+            done
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: storage-adoption-${{ matrix.os }}
+          path: results
