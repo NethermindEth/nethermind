@@ -68,7 +68,7 @@ public interface IIlEvmConfig : IConfig
     [ConfigItem(Description = "The read-only queries accelerated in Rpc scope: Call (eth_call, eth_estimateGas, eth_createAccessList), Simulate (eth_simulateV1), Trace (debug_*/trace_* with non-instruction tracers).", DefaultValue = "Call")]
     ReadOnlyQueryKind Surfaces { get; set; }
 
-    [ConfigItem(Description = "Simple: the first ListSize entries of the shipped list, compiled at startup, and what live promotion adds from the read-only queries run compiled, every frame part of them. Adaptive: the shipped list, compiled at every startup, and what live profiling promotes between blocks run compiled, each frame part admitted on its own. Legacy: contracts compile at run time once hot, and block processing runs the shipped contracts on every frame, as before Adaptive. Adaptive and Legacy are kept for A/B runs within one image.", DefaultValue = "Simple", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Simple: the first ListSize entries of the shipped list, compiled at startup, and what live promotion adds from the read-only queries run compiled, every frame part of them. Adaptive: the shipped list, compiled at every startup, and what live profiling promotes between blocks run compiled, each frame part admitted on its own. Legacy: contracts compile at run time once hot, and block processing runs the shipped contracts on every frame, as before Adaptive. Adaptive and Legacy are kept for A/B runs within one image.", DefaultValue = "Legacy", HiddenFromDocs = true)]
     IlEvmSelection Selection { get; set; }
 
     [ConfigItem(Description = "Which frames feed live profiling, which compiles the contracts the node's own load runs most: Rpc, the read-only queries; Blocks, block processing (Adaptive only, sets Scope to All; Simple treats it as None); None, neither, so only the shipped list runs compiled.", DefaultValue = "Rpc")]
@@ -167,7 +167,7 @@ public class IlEvmConfig : IIlEvmConfig
     public bool Enabled { get; set; }
     public IlEvmScope Scope { get; set; } = IlEvmScope.Rpc;
     public ReadOnlyQueryKind Surfaces { get; set; } = ReadOnlyQueryKind.Call;
-    public IlEvmSelection Selection { get; set; } = IlEvmSelection.Simple;
+    public IlEvmSelection Selection { get; set; } = IlEvmSelection.Legacy;
     public IlEvmPrefer Prefer { get; set; } = IlEvmPrefer.Rpc;
     public bool Gate { get; set; } = true;
     public IlEvmBlockThreads BlockThreads { get; set; } = IlEvmBlockThreads.Both;

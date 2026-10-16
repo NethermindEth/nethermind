@@ -169,7 +169,7 @@ public static class IlEvmSettings
     /// MLOAD and MSTORE stay helper calls: in place below the initialized limit they measured slower, and 45% more code.
     /// </remarks>
     public static bool VectorForms { get; set; } =
-        System.Runtime.Intrinsics.X86.Avx2.IsSupported && Vector256.IsHardwareAccelerated && Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_VECTOR") == "1";
+        System.Runtime.Intrinsics.X86.Avx2.IsSupported && Vector256.IsHardwareAccelerated && Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_VECTOR") != "0";
 
     /// <summary>Let the JIT inline the bodies compiled code runs directly (CALLDATALOAD and the like) rather than call them out of line.</summary>
     public static bool InlineBodies { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_INLINE_BODIES") != "0";

@@ -252,12 +252,12 @@ public class IlEvmSimpleTests : IlEvmAdaptiveFixture
     public void Prefer_blocks_counts_as_none_under_the_simple_rules()
     {
         using IlEvmSettingsScope settings = new();
-        IlEvmModule.Configure(new IlEvmConfig { Enabled = true, Prefer = IlEvmPrefer.Blocks, ListSize = 7, PromoteMs = 1234, PromoteOps = 99, CompileThreads = 2, LiveBudgetMiB = 3 });
+        IlEvmModule.Configure(new IlEvmConfig { Enabled = true, Selection = IlEvmSelection.Simple, Prefer = IlEvmPrefer.Blocks, ListSize = 7, PromoteMs = 1234, PromoteOps = 99, CompileThreads = 2, LiveBudgetMiB = 3 });
         Assert.That((IlEvmSettings.Mode, IlSimple.Promote, IlEvmSettings.Scope, IlEvmSettings.ScopeForcedToAll), Is.EqualTo((IlMode.Simple, false, IlEvmScope.Rpc, false)));
         Assert.That((IlSimple.PromoteMs, IlSimple.PromoteOps, IlSimple.CompileThreads, IlSimple.BudgetBytes), Is.EqualTo((1234, 99L, 2, 3L << 20)));
         Assert.That(IlRuntime.QueryCounting, Is.False, "the Adaptive rules' counting stays off");
-        IlEvmModule.Configure(new IlEvmConfig { Enabled = true });
-        Assert.That((IlEvmSettings.Mode, IlSimple.Promote, IlSimple.PromoteMs, IlSimple.PromoteOps), Is.EqualTo((IlMode.Simple, true, 5_000, 1_000_000L)), "the defaults");
+        IlEvmModule.Configure(new IlEvmConfig { Enabled = true, Selection = IlEvmSelection.Simple });
+        Assert.That((IlEvmSettings.Mode, IlSimple.Promote, IlSimple.PromoteMs, IlSimple.PromoteOps), Is.EqualTo((IlMode.Simple, true, 5_000, 1_000_000L)), "the Simple defaults");
     }
 
     [Test]

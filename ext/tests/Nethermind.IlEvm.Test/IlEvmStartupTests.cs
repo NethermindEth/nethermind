@@ -297,7 +297,8 @@ public class IlEvmStartupTests : IlEvmAdaptiveFixture
 
         foreach ((IlEvmConfig config, IlMode mode) in new (IlEvmConfig, IlMode)[]
         {
-            (new() { Enabled = true }, IlMode.Simple),
+            (new() { Enabled = true }, IlMode.Legacy),
+            (new() { Enabled = true, Selection = IlEvmSelection.Simple }, IlMode.Simple),
             (new() { Enabled = true, Selection = IlEvmSelection.Adaptive }, IlMode.Adaptive),
             (new() { Enabled = true, Selection = IlEvmSelection.Legacy }, IlMode.Legacy),
             (new() { Enabled = true, Profile = true, Selection = IlEvmSelection.Legacy }, IlMode.Profile),
