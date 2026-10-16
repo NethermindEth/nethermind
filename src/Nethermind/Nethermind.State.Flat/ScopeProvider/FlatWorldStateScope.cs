@@ -526,6 +526,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
+        ILogger probeLogger = _logManager.GetClassLogger<FlatWorldStateScope>();
+        if (_warmsTries && probeLogger.IsInfo) probeLogger.Info($"WarmerProbe pending={Volatile.Read(ref _outstandingWarmups)}");
         CancelHintBal();
         _earlyApplyClosed = true;
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
