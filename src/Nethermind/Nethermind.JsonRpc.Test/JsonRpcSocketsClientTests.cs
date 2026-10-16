@@ -468,7 +468,7 @@ public class JsonRpcSocketsClientTests
         Exception? beforeDisposal = fixture.SendLock.Failure;
         fixture.Sink.Dispose();
         byte[] partial = fixture.Stream.ToArray();
-        using JsonRpcContext context = new(RpcEndpoint.Ws);
+        JsonRpcContext context = new(RpcEndpoint.Ws);
         using SocketJsonRpcResponseSink<MemoryMessageStream> next = new(fixture.Stream, new NullJsonRpcLocalStats(), null, fixture.SendLock, context);
         using JsonRpcSuccessResponse nextResponse = new() { Result = "next" };
         IOException? rejected = await Assert.ThrowsAsync<IOException>(async () => await next.WriteSingleAsync(nextResponse, default, CancellationToken.None));
@@ -495,7 +495,7 @@ public class JsonRpcSocketsClientTests
         // The processor stops between items, for example when the request is cancelled, and never ends the batch.
         fixture.Sink.Dispose();
 
-        using JsonRpcContext context = new(RpcEndpoint.Ws);
+        JsonRpcContext context = new(RpcEndpoint.Ws);
         using SocketJsonRpcResponseSink<MemoryMessageStream> next = new(fixture.Stream, new NullJsonRpcLocalStats(), null, fixture.SendLock, context);
         using JsonRpcSuccessResponse nextResponse = new() { Result = "next" };
         await Assert.ThrowsAsync<IOException>(async () => await next.WriteSingleAsync(nextResponse, default, CancellationToken.None));

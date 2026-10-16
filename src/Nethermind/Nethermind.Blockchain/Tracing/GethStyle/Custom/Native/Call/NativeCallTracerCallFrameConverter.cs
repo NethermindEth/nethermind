@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -18,18 +18,18 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         {
             ForcedNumberConversion.Value = NumberConversion.Hex;
 
-            Stack<(NativeCallTracerCallFrame Frame, int NextChild)> work = new();
-            work.Push((value, -1));
+            using ArrayPoolListRef<(NativeCallTracerCallFrame Frame, int NextChild)> work = new(16);
+            work.Add((value, -1));
 
             while (work.Count > 0)
             {
-                (NativeCallTracerCallFrame frame, int nextChild) = work.Pop();
+                (NativeCallTracerCallFrame frame, int nextChild) = work.RemoveLast();
 
                 if (nextChild == -1)
                 {
                     WriteFrameHeader(writer, frame, options);
 
-                    if (frame.Calls is { Count: > 0 })
+                    if (frame.CallsSpan.Length > 0)
                     {
                         writer.WritePropertyName("calls"u8);
                         writer.WriteStartArray();
@@ -42,11 +42,11 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
                     }
                 }
 
-                if (nextChild < frame.Calls.Count)
+                ReadOnlySpan<NativeCallTracerCallFrame> calls = frame.CallsSpan;
+                if (nextChild < calls.Length)
                 {
-                    NativeCallTracerCallFrame child = frame.Calls[nextChild];
-                    work.Push((frame, nextChild + 1));
-                    work.Push((child, -1));
+                    work.Add((frame, nextChild + 1));
+                    work.Add((calls[nextChild], -1));
                 }
                 else
                 {
@@ -100,19 +100,19 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         }
 
         writer.WritePropertyName("input"u8);
-        if (value.Input is null || value.Input.Count == 0)
+        if (value.Input.IsEmpty)
         {
             writer.WriteStringValue("0x"u8);
         }
         else
         {
-            TypeInfoJsonSerializer.Serialize(writer, value.Input.AsReadOnlyMemory(), options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Input, options);
         }
 
-        if (value.Output?.Count > 0)
+        if (!value.Output.IsEmpty)
         {
             writer.WritePropertyName("output"u8);
-            TypeInfoJsonSerializer.Serialize(writer, value.Output.AsReadOnlyMemory(), options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Output, options);
         }
 
         if (value.Error is not null)

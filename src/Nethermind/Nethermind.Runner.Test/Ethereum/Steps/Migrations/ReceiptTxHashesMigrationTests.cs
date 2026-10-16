@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -11,10 +12,13 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Init.Steps.Migrations;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -115,14 +119,16 @@ public class ReceiptTxHashesMigrationTests
         }
 
         chain.HistoryPruner.OldestUnreclaimedBlockNumber.Returns(0UL, 0UL, 3UL);
+        TestLogger logger = new();
 
-        await chain.RunMigration();
+        await chain.RunMigration(new ReceiptConfig(), new OneLoggerLogManager(new(logger)));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Read(3), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(3), RlpBehaviors.Storage)));
             Assert.That(chain.Read(2), Is.EqualTo(withoutHashes[2]));
             Assert.That(chain.Read(1), Is.EqualTo(withoutHashes[1]));
+            Assert.That(logger.LogList.Last(static line => line.StartsWith("Receipt hashes")), Does.Match(@"^Receipt hashes\s+1 /\s+1 "));
         }
     }
 
@@ -164,6 +170,52 @@ public class ReceiptTxHashesMigrationTests
         using Chain chain = new(1);
 
         Assert.That(chain.RegisteredMigrations().OfType<ReceiptTxHashesMigration>().Count(), Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Logs_its_progress_while_it_runs()
+    {
+        using Chain chain = new(3);
+        for (ulong number = 1; number <= 3; number++)
+        {
+            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+        }
+
+        TestLogger logger = new();
+        await chain.RunMigration(new ReceiptConfig(), new OneLoggerLogManager(new(logger)));
+
+        Assert.That(logger.LogList, Has.Some.Matches(@"^Receipt hashes\s+1 /\s+3 "));
+    }
+
+    [Test]
+    public async Task Counts_the_blocks_done_before_a_restart_in_its_progress()
+    {
+        using Chain chain = new(3);
+        for (ulong number = 1; number <= 3; number++)
+        {
+            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+        }
+
+        chain.SavePosition(2);
+        TestLogger logger = new();
+        await chain.RunMigration(new ReceiptConfig(), new OneLoggerLogManager(new(logger)));
+
+        Assert.That(logger.LogList, Has.Some.Matches(@"^Receipt hashes\s+2 /\s+3 "));
+    }
+
+    [Test]
+    public async Task Logs_a_final_progress_line_when_it_stops()
+    {
+        using Chain chain = new(3);
+        for (ulong number = 1; number <= 3; number++)
+        {
+            chain.Store(number, CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage));
+        }
+
+        TestLogger logger = new();
+        await chain.RunMigration(new ReceiptConfig(), new OneLoggerLogManager(new(logger)), new ManualTimestamper());
+
+        Assert.That(logger.LogList.Where(static line => line.StartsWith("Receipt hashes")), Has.One.Matches(@"^Receipt hashes\s+3 /\s+3 "));
     }
 
     [Test]
@@ -227,22 +279,39 @@ public class ReceiptTxHashesMigrationTests
 
         public byte[] Read(ulong number) => _receipts.Get(Key(number));
 
+        public void SavePosition(ulong next) =>
+            _container.Resolve<IColumnsDb<ReceiptsColumns>>().GetColumnDb(ReceiptsColumns.Default).PutSpan(ReceiptTxHashesMigration.NextBlockKey.Bytes, next.ToBigEndianSpanWithoutLeadingZeros(out _));
+
         public void DeleteBody(ulong number) => _container.Resolve<IBlockStore>().Delete(number, Blocks[number].Hash!);
 
         public IEnumerable<IDatabaseMigration> RegisteredMigrations() => _container.Resolve<IEnumerable<IDatabaseMigration>>();
 
         public Task RunMigration() => RunMigration(new ReceiptConfig());
 
-        /// <summary>Runs a new instance over the same databases, as a node restart does.</summary>
-        public async Task RunMigration(ReceiptConfig config)
+        public Task RunMigration(ReceiptConfig config) => RunMigration(config, LimboLogs.Instance);
+
+        /// <summary>
+        /// Runs a new instance over the same databases, as a node restart does. Unless a clock is given, each clock read
+        /// is one progress interval later than the previous one, so every block is a point at which progress is due.
+        /// </summary>
+        public async Task RunMigration(ReceiptConfig config, ILogManager logManager, ITimestamper timestamper = null)
         {
             await using ILifetimeScope scope = _container.BeginLifetimeScope(builder => builder
                 .AddSingleton<IReceiptConfig>(config)
+                .AddSingleton<ILogManager>(logManager)
+                .AddSingleton<ITimestamper>(timestamper ?? new SteppingTimestamper())
                 .AddSingleton<ReceiptTxHashesMigration>());
             ReceiptTxHashesMigration migration = scope.Resolve<ReceiptTxHashesMigration>();
 
             await migration.Run(CancellationToken.None);
             await migration.Completion;
+        }
+
+        private sealed class SteppingTimestamper : ITimestamper
+        {
+            private DateTime _now = DateTime.UnixEpoch;
+
+            public DateTime UtcNow => _now += ReceiptTxHashesMigration.ProgressInterval;
         }
 
         private static void AddToMainChain(IBlockTree blockTree, Block block)

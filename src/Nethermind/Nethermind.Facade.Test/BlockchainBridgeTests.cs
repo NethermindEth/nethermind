@@ -135,6 +135,7 @@ public class BlockchainBridgeTests
             .WithBlockHash(TestItem.KeccakB)
             .WithIndex(i)
             .WithTransactionHash(t.Hash)
+            .WithSender(TestItem.Addresses[i])
             .TestObject
         ).ToArray();
         ;
@@ -149,6 +150,7 @@ public class BlockchainBridgeTests
         {
             Assert.That(result!.Value.Transaction.Nonce, Is.EqualTo((ulong)index));
             Assert.That(result.Value.Transaction.Hash, Is.EqualTo(TestItem.Keccaks[index]));
+            Assert.That(result.Value.Transaction.SenderAddress, Is.EqualTo(TestItem.Addresses[index]));
         });
         Assert.That(result.Value.ExtraData, Is.EqualTo(new TransactionForRpcContext(
             chainId: _specProvider.ChainId,
@@ -313,10 +315,10 @@ public class BlockchainBridgeTests
         switch (call)
         {
             case OverrideCall.Call:
-                bridge.Call(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, CancellationToken.None);
+                bridge.Call(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, cancellationToken: CancellationToken.None);
                 break;
             case OverrideCall.EstimateGas:
-                bridge.EstimateGas(header, tx, 1, stateOverride, blobBaseFeeOverride, blockOverride, 0, CancellationToken.None);
+                bridge.EstimateGas(header, tx, 1, stateOverride, blobBaseFeeOverride, blockOverride, 0, cancellationToken: CancellationToken.None);
                 break;
             case OverrideCall.EstimateFrameGas:
                 bridge.EstimateFrameGas(header, tx, [], [], 0, 1, stateOverride, blockOverride, CancellationToken.None, out _);
@@ -520,6 +522,45 @@ public class BlockchainBridgeTests
             Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFeeHash));
     }
 
+    private static Action<IBlockchainBridge, BlockHeader, Transaction, bool>[] NoBaseFeeCallSources() =>
+    [
+        static (bridge, header, tx, noBaseFee) => bridge.Call(header, tx, noBaseFee: noBaseFee),
+        static (bridge, header, tx, noBaseFee) => bridge.EstimateGas(header, tx, 1, noBaseFee: noBaseFee),
+        static (bridge, header, tx, noBaseFee) => bridge.CreateAccessList(header, tx, null, false, noBaseFee: noBaseFee),
+    ];
+
+    [Test, Combinatorial]
+    public void Calls_run_on_a_copy_of_the_header([ValueSource(nameof(NoBaseFeeCallSources))] Action<IBlockchainBridge, BlockHeader, Transaction, bool> bridgeCall, [Values] bool noBaseFee)
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithDifficulty(0)
+            .WithGasUsed(21_000)
+            .WithBaseFee(7)
+            .WithExcessBlobGas(0)
+            .WithBlobGasUsed(Eip4844Constants.GasPerBlob)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        BlockHeader snapshot = header.Clone();
+        Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+        bridgeCall(_blockchainBridge, header, tx, noBaseFee);
+
+        UInt256 expectedBaseFee = noBaseFee ? UInt256.Zero : 7;
+        _transactionProcessor.Received().SetBlockExecutionContext(Arg.Is<BlockExecutionContext>(blkCtx =>
+            blkCtx.Header != header && blkCtx.Header.GasUsed == 0 && blkCtx.Header.BaseFeePerGas == expectedBaseFee
+            && blkCtx.Header.BlobGasUsed == 0 && blkCtx.Header.IsPostMerge));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(header.GasUsed, Is.EqualTo(snapshot.GasUsed));
+            Assert.That(header.BaseFeePerGas, Is.EqualTo(snapshot.BaseFeePerGas));
+            Assert.That(header.BlobGasUsed, Is.EqualTo(snapshot.BlobGasUsed));
+            Assert.That(header.IsPostMerge, Is.EqualTo(snapshot.IsPostMerge));
+        }
+    }
+
     [Test]
     public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys([Values] bool optimize)
     {
@@ -566,7 +607,7 @@ public class BlockchainBridgeTests
                 return TransactionResult.EvmException(EvmExceptionType.Revert);
             });
 
-        CallOutput callOutput = _blockchainBridge.CreateAccessList(header, tx, null, false, null, default);
+        CallOutput callOutput = _blockchainBridge.CreateAccessList(header, tx, null, false, null, cancellationToken: default);
 
         using (Assert.EnterMultipleScope())
         {
@@ -595,7 +636,7 @@ public class BlockchainBridgeTests
                 return TransactionResult.Ok;
             });
 
-        return _blockchainBridge.CreateAccessList(header, tx, null, optimize, null, default);
+        return _blockchainBridge.CreateAccessList(header, tx, null, optimize, null, cancellationToken: default);
     }
 
     [Test]
