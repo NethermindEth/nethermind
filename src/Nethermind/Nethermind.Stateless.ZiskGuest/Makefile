@@ -22,7 +22,6 @@ OPT_FLAGS += \
 	--codegenopt JitExtDefaultPolicyMaxILRoot=800 \
 	--codegenopt JitExtDefaultPolicyMaxBB=40
 
-
 ZISK_IMAGE ?= nethermindeth/zisk:1.3.2-alpha@sha256:31a0c7f9de175765e7e81da719bdc2409060de8d23ec8683672d7ee22b798a3f
 
 run:
