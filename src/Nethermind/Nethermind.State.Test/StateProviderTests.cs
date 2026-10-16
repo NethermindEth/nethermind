@@ -23,6 +23,7 @@ using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -571,6 +572,27 @@ public class StateProviderTests(bool useFlat)
         provider.GetBalance(_address1); // justcache
         provider.AddToBalance(_address1, 0, SpuriousDragon.Instance); // touch
         Assert.DoesNotThrow(() => provider.Commit(SpuriousDragon.Instance, tracer));
+    }
+
+    [Test]
+    public void Cancelled_state_reporting_does_not_leak_changes_into_the_next_commit()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        IWorldStateTracer cancelled = Substitute.For<IWorldStateTracer>();
+        cancelled.IsTracingState.Returns(true);
+        cancelled.When(static t => t.ReportBalanceChange(Arg.Any<Address>(), Arg.Any<UInt256?>(), Arg.Any<UInt256?>()))
+            .Do(static _ => throw new OperationCanceledException());
+        provider.CreateAccount(TestItem.AddressA, 1);
+
+        Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
+        provider.Reset();
+        ParityLikeTxTracer next = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+        provider.CreateAccount(TestItem.AddressB, 2);
+        provider.Commit(Frontier.Instance, next);
+
+        Assert.That(next.BuildResult().StateChanges!.Keys, Is.EqualTo(new[] { TestItem.AddressB }));
     }
 
     [Test]
