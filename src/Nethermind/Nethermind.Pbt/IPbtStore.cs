@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
+using Nethermind.Pbt.NodeLog;
 
 namespace Nethermind.Pbt;
 
@@ -18,11 +19,36 @@ public interface IPbtNodeGroupSink
     /// A null payload can delete an empty physical group while its logical subtree survives compression.
     /// </remarks>
     void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload);
+
+    /// <summary>Reserves a replacement's final payload and hands its reference off with this writer; zero length deletes the group.</summary>
+    /// <remarks>
+    /// The caller fills the borrowed span before publishing its reference to a parent. The store keeps the reservation
+    /// alive through fold completion and publication. Payload-only sinks return Unknown and receive SetNodeGroup instead.
+    /// </remarks>
+    PbtGroupReference ReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out Span<byte> payload)
+    {
+        payload = default;
+        return PbtGroupReference.Unknown;
+    }
 }
 
 /// <summary>Backing store used by <see cref="TrieUpdater"/> for canonical complete-key mutations.</summary>
 public interface IPbtStore
 {
+    /// <summary>The direct group reference for this store's exact input root, or Unknown when unavailable.</summary>
+    PbtGroupReference RootGroupReference => PbtGroupReference.Unknown;
+
+    /// <summary>Borrows a direct record for this path, or returns false to use the exact store lookup.</summary>
+    /// <remarks>The store protects the record's lifetime through worker completion and publication.</remarks>
+    bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record)
+    {
+        record = default;
+        return false;
+    }
+
+    /// <summary>Marks a successful root fold, allowing stores to publish its handed-off writes on disposal.</summary>
+    void CompleteFold() { }
+
     /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
     /// <remarks>
     /// A non-null result transfers exactly one reference to the caller, which must invoke
@@ -48,6 +74,10 @@ public interface IPbtConcurrentWriter : IPbtNodeGroupSink, IDisposable;
 /// <summary>Forwards every write immediately, for stores whose own sink accepts concurrent writes.</summary>
 public sealed class PbtPassThroughWriter(IPbtNodeGroupSink store) : IPbtConcurrentWriter
 {
+    /// <inheritdoc/>
+    public PbtGroupReference ReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out Span<byte> payload) =>
+        store.ReserveNodeGroup(groupKey, length, links, out payload);
+
     public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) =>
         store.SetNodeGroup(groupKey, payload);
 

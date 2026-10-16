@@ -571,6 +571,11 @@ public class ParallelUpdateRootTests
         private PbtNodeGroupStore? _persisted;
         private ValueHash256 _root;
         private long _storeReads;
+        private long _directReads;
+        private long _fallbackReads;
+        private PbtGroupLog.OperationLease _operation = null!;
+        private PbtGroupReference _inputRoot;
+        private readonly List<List<(PbtStorageNodePath Path, PbtGroupReference Reference)>> _writes = [];
 
         public LoggedGroupStore(IRefCountingMemoryProvider memory, PbtGroupLog? log = null)
         {
@@ -590,7 +595,42 @@ public class ParallelUpdateRootTests
         public long LastUsedBytes { get; private set; }
         public int FoldConcurrency { get; set; } = Environment.ProcessorCount;
 
-        public IPbtConcurrentWriter CreateWriter() => throw new AssertionException("Logged folds must publish reference buffers.");
+        public PbtGroupReference RootGroupReference => _inputRoot;
+        public IPbtConcurrentWriter CreateWriter() => new Writer(this);
+        public void CompleteFold() => LastComplete = true;
+
+        public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath path, out PbtGroupRecord record)
+        {
+            if (Log.TryGetRecord(_operation, reference, out record) && PbtNodePathOperations.Equal(record.Path, path.ToPath<PbtStorageNodePath>()))
+            {
+                Interlocked.Increment(ref _directReads);
+                return true;
+            }
+            Interlocked.Increment(ref _fallbackReads);
+            return false;
+        }
+
+        private sealed class Writer(LoggedGroupStore store) : IPbtConcurrentWriter
+        {
+            private readonly List<(PbtStorageNodePath Path, PbtGroupReference Reference)> _buffer = [];
+
+            public PbtGroupReference ReserveNodeGroup(scoped in PbtTraversalPath path, int length, in PbtGroupLinks links, out Span<byte> payload)
+            {
+                PbtStorageNodePath key = path.ToPath<PbtStorageNodePath>();
+                payload = default;
+                PbtGroupReference reference = length == 0 ? PbtGroupReference.None : store.Log.Reserve(store._operation, key, length, links, out payload);
+                _buffer.Add((key, reference));
+                return reference;
+            }
+
+            public void SetNodeGroup(scoped in PbtTraversalPath path, RefCountingMemory? payload) =>
+                throw new AssertionException("Logged folds must publish reserved references.");
+
+            public void Dispose()
+            {
+                lock (store._writes) store._writes.Add(_buffer);
+            }
+        }
 
         public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath path)
         {
@@ -603,24 +643,33 @@ public class ParallelUpdateRootTests
         public ValueHash256 Fold((byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut, PbtGroupReference? rootOverride = null)
         {
             using PbtGroupLog.OperationLease operation = Log.BeginOperation();
-            using PbtTraversalContext traversal = new(Log, operation, rootOverride ?? RootReference, countReads: true);
+            _operation = operation;
+            _inputRoot = rootOverride ?? RootReference;
+            _writes.Clear();
+            _directReads = _fallbackReads = 0;
+            LastComplete = false;
             using PbtPartitionBatches batches = PreparePartitions(writes);
             _storeReads = 0;
             ValueHash256 root;
             try
             {
-                root = TrieUpdater.UpdateRoot(this, _root, batches, new ConcurrencyController(FoldConcurrency), fanOut, null, _memory, traversal);
+                root = TrieUpdater.UpdateRoot(this, _root, batches, new ConcurrencyController(FoldConcurrency), fanOut, null, _memory);
             }
             finally
             {
-                LastComplete = traversal.IsComplete;
                 LastUsedBytes = Log.UsedBytes;
-                LastDirectReads = traversal.DirectReads;
-                LastFallbackReads = traversal.FallbackReads;
-                traversal.Apply(_content.SetNodeGroupReference);
+                LastDirectReads = _directReads;
+                LastFallbackReads = _fallbackReads;
+                if (LastComplete)
+                    foreach (List<(PbtStorageNodePath Path, PbtGroupReference Reference)> buffer in _writes)
+                        foreach ((PbtStorageNodePath path, PbtGroupReference reference) in buffer)
+                        {
+                            _content.SetNodeGroupReference(path, reference);
+                            if (path.BitDepth == 0) RootReference = reference;
+                        }
+                _writes.Clear();
             }
-            Assert.That(traversal.IsComplete, Is.True);
-            RootReference = traversal.RootReference;
+            Assert.That(LastComplete, Is.True);
             return _root = root;
         }
 

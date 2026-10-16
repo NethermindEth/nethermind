@@ -13,6 +13,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeLog;
@@ -144,15 +145,14 @@ public class PbtSnapshotBundleTests
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         using PbtSnapshotStore store = new(bundle);
-        using PbtTraversalContext traversal = new(bundle.NodeGroupLog, store.Operation, bundle.RootGroupReference, countReads: true);
-        ValueHash256 updated = TrieUpdater.UpdateRoot(store, bundle.TreeRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, context.NodeGroupMemory, traversal);
-        traversal.Apply(bundle.SetNodeGroupReference);
+        CountingStore counted = new(store);
+        ValueHash256 updated = TrieUpdater.UpdateRoot(counted, bundle.TreeRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, context.NodeGroupMemory);
         bundle.CompleteLeafChanges();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(updated, Is.Not.EqualTo(bundle.TreeRoot));
-            Assert.That(traversal.DirectReads, Is.GreaterThan(0));
-            Assert.That(traversal.FallbackReads, Is.Zero);
+            Assert.That(counted.DirectReads, Is.GreaterThan(0));
+            Assert.That(counted.SnapshotReads, Is.Zero);
         }
     }
 
@@ -219,7 +219,7 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void SnapshotStore_ConcurrentWritersApplyOnDisposeAndReleasePreviousPayloads([Values] bool tombstones)
+    public void SnapshotStore_ConcurrentWritersApplyOnSuccessfulDisposeAndReleaseWorkerPayloads([Values] bool tombstones, [Values] bool complete)
     {
         TrackingMemoryProvider memoryProvider = new();
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
@@ -242,8 +242,9 @@ public class PbtSnapshotBundleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(pending, Is.Null, "handed-off groups stay invisible until the store is disposed");
-                Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(1000));
+                Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero, "worker payloads are copied directly into the operation log");
             }
+            if (complete) store.CompleteFold();
         }
 
         PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
@@ -251,9 +252,9 @@ public class PbtSnapshotBundleTests
         using (current)
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(found, Is.True);
-            Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(tombstones ? null : encoding));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero, "publication releases the worker payloads after copying them into the log");
+            Assert.That(found, Is.EqualTo(complete));
+            Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(tombstones || !complete ? null : encoding));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         }
 
         snapshot.Dispose();
@@ -531,10 +532,14 @@ public class PbtSnapshotBundleTests
         using RefCountingMemory originalPayload = Memory(originalNode);
         bundle.SetNodeGroup(originalNodePath.ToPath<PbtStorageNodePath>(), originalPayload);
 
-        CountingStore store = new(bundle);
-        Action fold = () => store.Fold(new ValueHash256(Value(5)), [(PbtStoreTestExtensions.ZoneKey("0003"), Value(4))]);
-        if (malformed) Assert.Catch(fold);
-        else Assert.Throws<InvalidDataException>(fold);
+        CountingStore store;
+        using (PbtSnapshotStore snapshotStore = new(bundle))
+        {
+            store = new(snapshotStore);
+            Action fold = () => store.Fold(new ValueHash256(Value(5)), [(PbtStoreTestExtensions.ZoneKey("0003"), Value(4))]);
+            if (malformed) Assert.Catch(fold);
+            else Assert.Throws<InvalidDataException>(fold);
+        }
 
         bundle.CompleteLeafChanges();
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
@@ -887,11 +892,22 @@ public class PbtSnapshotBundleTests
         byte[] otherBytes = Bytes.FromHexString("6002600055");
         Account other = Build.An.Account.WithCode(otherBytes).TestObject;
         SetAccountWithCode(bundle, TestItem.AddressB, other, new CodeInfo(otherBytes), codeFirst: true);
-        CountingStore store = new(bundle) { FailedZone = failedZone };
-        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance));
+        CountingStore store;
+        long initialLogBytes = bundle.NodeGroupLog.UsedBytes;
+        using (PbtSnapshotStore snapshotStore = new(bundle))
+        {
+            store = new(snapshotStore) { FailedZone = failedZone };
+            Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance));
+            if (failedZone == 0xFF)
+            {
+                Assert.That(store.ApplyCount, Is.GreaterThan(0));
+                Assert.That(bundle.NodeGroupLog.UsedBytes, Is.GreaterThan(initialLogBytes), "the failure followed private log writes");
+            }
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(root));
+            Assert.That(bundle.RootGroupReference, Is.EqualTo(original.RootGroupReference), "failed folds publish no references");
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(replacement));
             Assert.Throws<InvalidOperationException>(() => bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root));
             Assert.That(original.TreeRoot, Is.EqualTo(root));
@@ -980,19 +996,42 @@ public class PbtSnapshotBundleTests
         public void Dispose() => DisposeCount++;
     }
 
-    private sealed class CountingStore(PbtSnapshotBundle bundle) : IPbtStore, IPbtNodeGroupSink
+    private sealed class CountingStore(IPbtStore store) : IPbtStore
     {
-        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
-
-        public int ApplyCount { get; private set; }
+        private int _directReads;
+        private int _snapshotReads;
+        private int _applyCount;
+        public int DirectReads => _directReads;
+        public int SnapshotReads => _snapshotReads;
+        public int ApplyCount => _applyCount;
         public int? FailedZone { get; init; }
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey) => bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
+        public PbtGroupReference RootGroupReference => store.RootGroupReference;
+        public IPbtConcurrentWriter CreateWriter() => new Writer(this, store.CreateWriter());
+        public void CompleteFold() => store.CompleteFold();
+        public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath path, out PbtGroupRecord record)
         {
-            if (groupKey.BitDepth >= 9 && groupKey.ToPath<PbtStorageNodePath>().GetByte(0) == FailedZone)
-                throw new InvalidDataException("Configured partition write failure.");
-            ApplyCount++;
-            bundle.SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);
+            bool found = store.TryGetNodeGroupRecord(reference, path, out record);
+            if (found) System.Threading.Interlocked.Increment(ref _directReads);
+            return found;
+        }
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath path)
+        {
+            System.Threading.Interlocked.Increment(ref _snapshotReads);
+            return store.GetNodeGroup(path);
+        }
+
+        private sealed class Writer(CountingStore owner, IPbtConcurrentWriter writer) : IPbtConcurrentWriter
+        {
+            public PbtGroupReference ReserveNodeGroup(scoped in PbtTraversalPath path, int length, in PbtGroupLinks links, out Span<byte> payload)
+            {
+                if (path.BitDepth >= 9 && path.ToPath<PbtStorageNodePath>().GetByte(0) == owner.FailedZone)
+                    throw new InvalidDataException("Configured partition write failure.");
+                PbtGroupReference reference = writer.ReserveNodeGroup(path, length, links, out payload);
+                System.Threading.Interlocked.Increment(ref owner._applyCount);
+                return reference;
+            }
+            public void SetNodeGroup(scoped in PbtTraversalPath path, RefCountingMemory? payload) => writer.SetNodeGroup(path, payload);
+            public void Dispose() => writer.Dispose();
         }
     }
 }

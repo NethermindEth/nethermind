@@ -105,15 +105,15 @@ public static partial class TrieUpdater<TKey, TPath>
     /// </remarks>
     public static long PublishGroup<TFrame>(IPbtNodeGroupSink sink, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
         scoped in PbtTraversalPath path)
-        where TFrame : struct, IGroupFrame<TKey, TPath> => PublishGroup(sink, null, null, ref reader, writer, path).SizeDelta;
+        where TFrame : struct, IGroupFrame<TKey, TPath> => PublishGroupWithReference(sink, ref reader, writer, path).SizeDelta;
 
     internal readonly record struct GroupPublication(long SizeDelta, PbtGroupReference Reference);
 
     internal static GroupPublication PublishGroup<TFrame>(FoldContext context, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
         scoped in PbtTraversalPath path) where TFrame : struct, IGroupFrame<TKey, TPath> =>
-        PublishGroup(context.Writer, context.Traversal, context.LogWriter, ref reader, writer, path);
+        PublishGroupWithReference(context.Writer, ref reader, writer, path);
 
-    private static GroupPublication PublishGroup<TFrame>(IPbtNodeGroupSink? sink, PbtTraversalContext? traversal, PbtTraversalContext.Writer? logWriter,
+    private static GroupPublication PublishGroupWithReference<TFrame>(IPbtNodeGroupSink sink,
         ref TFrame reader, PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
@@ -133,25 +133,19 @@ public static partial class TrieUpdater<TKey, TPath>
             else surviving = links[slot];
         }
         int length = writer.GetPayloadLength(descendantBytes, candidateSlots);
-        PbtGroupReference reference;
-        if (traversal is null)
+        PbtGroupReference reference = PbtGroupReference.None;
+        if (length != 0 || reader.PayloadLength != 0)
         {
-            using RefCountingMemory? payload = writer.Detach(descendantBytes, candidateSlots);
-            if (payload is not null || reader.PayloadLength != 0) sink!.SetNodeGroup(path, payload);
-            reference = length == 0 ? surviving : PbtGroupReference.Unknown;
+            reference = sink.ReserveNodeGroup(path, length, links, out Span<byte> destination);
+            if (reference.IsUnknown)
+            {
+                using RefCountingMemory? payload = writer.Detach(descendantBytes, candidateSlots);
+                sink.SetNodeGroup(path, payload);
+            }
+            else writer.DetachTo(destination, descendantBytes, candidateSlots);
         }
-        else if (length == 0)
-        {
-            writer.DetachTo(Span<byte>.Empty, descendantBytes, candidateSlots);
-            if (reader.PayloadLength != 0) logWriter!.SetNodeGroup(path, PbtGroupReference.None);
-            reference = surviving;
-        }
-        else
-        {
-            reference = traversal.Log.Reserve(traversal.Operation, path.ToPath<PbtStorageNodePath>(), length, links, out Span<byte> payload);
-            writer.DetachTo(payload, descendantBytes, candidateSlots);
-            logWriter!.SetNodeGroup(path, reference);
-        }
+        else writer.DetachTo(Span<byte>.Empty, descendantBytes, candidateSlots);
+        if (length == 0) reference = surviving;
         return new GroupPublication(length - reader.PayloadLength + deltaTotal, reference);
     }
 
@@ -190,31 +184,13 @@ public static partial class TrieUpdater<TKey, TPath>
     /// Log frames borrow records directly; <see cref="Store"/> remains the exact-view fallback. Each concurrent bucket
     /// owns its publication writer, so workers never modify the visible store directly.
     /// </remarks>
-    public sealed class FoldContext
+    public sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)
     {
-        public FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)
-            : this(store, writer, memoryProvider, foldQuota, operations, fanOut, null, null) { }
-
-        internal FoldContext(IPbtStore store, IPbtNodeGroupSink? writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota,
-            PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut, PbtTraversalContext? traversal, PbtTraversalContext.Writer? logWriter)
-        {
-            Store = store;
-            Writer = writer;
-            MemoryProvider = memoryProvider;
-            FoldQuota = foldQuota;
-            Operations = operations;
-            FanOut = fanOut;
-            Traversal = traversal;
-            LogWriter = logWriter;
-        }
-
-        public IPbtStore Store { get; }
-        public IPbtNodeGroupSink? Writer { get; }
-        public IRefCountingMemoryProvider MemoryProvider { get; }
-        public ConcurrencyController FoldQuota { get; }
-        public PbtWriteOperation<TKey>[]? Operations { get; }
-        public FoldFanOut FanOut { get; }
-        internal PbtTraversalContext? Traversal { get; }
-        internal PbtTraversalContext.Writer? LogWriter { get; }
+        public IPbtStore Store { get; } = store;
+        public IPbtNodeGroupSink Writer { get; } = writer;
+        public IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
+        public ConcurrencyController FoldQuota { get; } = foldQuota;
+        public PbtWriteOperation<TKey>[]? Operations { get; } = operations;
+        public FoldFanOut FanOut { get; } = fanOut;
     }
 }

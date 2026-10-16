@@ -6,7 +6,6 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
-using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Pbt.Common;
@@ -15,25 +14,32 @@ namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>Adapts a writable snapshot bundle to the canonical <see cref="TrieUpdater"/> store contract.</summary>
 /// <remarks>
-/// The bundle's node groups are written only from the owner thread: writers hand their buffered groups over on
-/// dispose, and <see cref="Dispose"/> applies them, so they stay invisible until the store is disposed.
+/// One store serves one root fold. Workers reserve log records and hand their references over on disposal.
+/// The owner publishes them on store disposal only after a successful fold, while its operation lease still protects
+/// all borrowed and unpublished records.
 /// </remarks>
 public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDisposable
 {
     private static readonly PbtNodeGroupReadLabel[] _foundLabels = ReadLabels("found");
     private static readonly PbtNodeGroupReadLabel[] _nullLabels = ReadLabels("null");
-    private static readonly PbtPartition[] _partitions = [PbtPartition.Account, PbtPartition.Code, PbtPartition.Storage];
 
     // Detailed observers stay no-ops unless Metrics.EnableDetailedMetric, so the timestamps are skipped with them.
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
     private readonly ArrayPoolList<ArrayPoolList<BufferedNodeGroup>> _handedOff = new(16);
+    private readonly PbtGroupLog.OperationLease _operation = bundle.NodeGroupLog.BeginOperation();
+    private bool _complete;
+    private PbtGroupLog Log => bundle.NodeGroupLog;
 
-    /// <summary>Protects log records for this fold through worker handoff and owner publication.</summary>
-    public PbtGroupLog.OperationLease Operation { get; } = bundle.NodeGroupLog.BeginOperation();
-    private PbtTraversalContext? _traversal;
+    /// <inheritdoc/>
+    public PbtGroupReference RootGroupReference => bundle.RootGroupReference;
 
-    /// <summary>The explicit log context used by production root updates, published only after successful completion.</summary>
-    public PbtTraversalContext Traversal => _traversal ??= new PbtTraversalContext(bundle.NodeGroupLog, Operation, bundle.RootGroupReference);
+    /// <inheritdoc/>
+    public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record) =>
+        bundle.NodeGroupLog.TryGetRecord(_operation, reference, out record)
+        && PbtNodePathOperations.Equal(record.Path, groupKey.ToPath<PbtStorageNodePath>());
+
+    /// <inheritdoc/>
+    public void CompleteFold() => _complete = true;
 
     public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
@@ -60,57 +66,50 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
 
     public IPbtConcurrentWriter CreateWriter() => new ConcurrentWriter(this);
 
-    /// <summary>Applies the groups every disposed concurrent writer handed over; must run on the owner thread after the workers finished.</summary>
-    /// <remarks>Legacy payload writers apply partitions concurrently; log writers publish their completed reference buffers.</remarks>
+    /// <summary>Publishes a successful fold's handed-off groups on the owner thread and releases the operation lease.</summary>
     public void Dispose()
     {
-        using PbtGroupLog.OperationLease operation = Operation;
-        using PbtTraversalContext? traversal = _traversal;
+        using PbtGroupLog.OperationLease operation = _operation;
         try
         {
-            if (_handedOff.Count != 0) ParallelUnbalancedWork.For(0, _partitions.Length, (handedOff: _handedOff, bundle, partitions: _partitions), static (index, state) =>
-            {
-                PbtPartition partition = state.partitions[index];
-                foreach (ArrayPoolList<BufferedNodeGroup> buffer in state.handedOff)
-                    foreach (BufferedNodeGroup group in buffer)
-                        if (PbtPartitions.PartitionOfPath(group.Path) == partition) state.bundle.SetNodeGroup(group.Path, group.Payload);
-                return state;
-            });
-            traversal?.Apply(bundle.SetNodeGroupReference);
+            if (_complete)
+                foreach (ArrayPoolList<BufferedNodeGroup> buffer in _handedOff)
+                    foreach (BufferedNodeGroup group in buffer) bundle.SetNodeGroupReference(group.Path, group.Reference);
         }
         finally
         {
-            foreach (ArrayPoolList<BufferedNodeGroup> buffer in _handedOff) ConcurrentWriter.Release(buffer);
+            foreach (ArrayPoolList<BufferedNodeGroup> buffer in _handedOff) buffer.Dispose();
             _handedOff.Dispose();
         }
     }
 
-    private readonly record struct BufferedNodeGroup(PbtStorageNodePath Path, RefCountingMemory? Payload);
+    private readonly record struct BufferedNodeGroup(PbtStorageNodePath Path, PbtGroupReference Reference);
 
     private sealed class ConcurrentWriter(PbtSnapshotStore store) : IPbtConcurrentWriter
     {
         private readonly ArrayPoolList<BufferedNodeGroup> _buffer = new(16);
 
+        public PbtGroupReference ReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out Span<byte> payload)
+        {
+            PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
+            payload = default;
+            PbtGroupReference reference = length == 0 ? PbtGroupReference.None
+                : store.Log.Reserve(store._operation, path, length, links, out payload);
+            _buffer.Add(new BufferedNodeGroup(path, reference));
+            return reference;
+        }
+
         public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
         {
-            payload?.AcquireLease();
-            _buffer.Add(new BufferedNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload));
+            if (payload is not null) PbtNodeGroupCodec.DebugValidateNodes(groupKey.ToPath<PbtStorageNodePath>(), payload.GetSpan());
+            ReserveNodeGroup(groupKey, payload?.Memory.Length ?? 0, PbtGroupLinks.Unknown, out Span<byte> destination);
+            if (payload is not null) payload.GetSpan().CopyTo(destination);
         }
 
         public void Dispose()
         {
-            if (_buffer.Count == 0)
-            {
-                _buffer.Dispose();
-                return;
-            }
-            lock (store._handedOff) store._handedOff.Add(_buffer);
-        }
-
-        public static void Release(ArrayPoolList<BufferedNodeGroup> buffer)
-        {
-            foreach (BufferedNodeGroup group in buffer) ((IDisposable?)group.Payload)?.Dispose();
-            buffer.Dispose();
+            if (_buffer.Count == 0) _buffer.Dispose();
+            else lock (store._handedOff) store._handedOff.Add(_buffer);
         }
     }
 }

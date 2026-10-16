@@ -125,7 +125,7 @@ public static partial class TrieUpdater<TKey, TPath>
             absent = new(bitDepth, 0, 0);
         else
         {
-            GroupFrameReader<TKey, TPath> reader = context.Traversal is { } traversal && traversal.TryRead(current.GroupReference, path, out PbtGroupRecord record)
+            GroupFrameReader<TKey, TPath> reader = context.Store.TryGetNodeGroupRecord(current.GroupReference, path, out PbtGroupRecord record)
                 ? new GroupFrameReader<TKey, TPath>(record)
                 : new GroupFrameReader<TKey, TPath>(context.Store.GetNodeGroup(path)
                     ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth);
@@ -379,9 +379,8 @@ public static partial class TrieUpdater<TKey, TPath>
 
         public void Fold(FoldContext context, TPath groupPath, int bitDepth, byte[] foldedAhead)
         {
-            using IPbtConcurrentWriter? writer = context.Traversal is null ? context.Store.CreateWriter() : null;
-            using PbtTraversalContext.Writer? logWriter = context.Traversal?.CreateWriter();
-            FoldContext workerContext = new(context.Store, writer, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut, context.Traversal, logWriter);
+            using IPbtConcurrentWriter writer = context.Store.CreateWriter();
+            FoldContext workerContext = new(context.Store, writer, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut);
             Result = FoldDetachedSlot(workerContext, groupPath, bitDepth, Slot, boundary, descendantBytes, context.Operations.AsSpan(offset, count),
                 foldedAhead.AsSpan(Slot * MaxNodeLength, MaxNodeLength));
         }
