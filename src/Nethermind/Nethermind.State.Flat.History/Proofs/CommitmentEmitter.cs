@@ -347,7 +347,7 @@ public sealed class CommitmentEmitter : IDisposable
     /// of every child, empty or not. At the tip only committed nodes arrive, so a child that holds no node of its own
     /// (an empty slot, or the path under a leaf or extension) would keep the row of whatever was there before. Records
     /// those children from the composed node itself; a full branch, which every composed node of a large trie is, adds
-    /// nothing.</summary>
+    /// nothing. The children are never composed themselves, since the policy rejects adjacent composed depths.</summary>
     private void RecordComposedChildViews()
     {
         _composedNodes.Clear();
