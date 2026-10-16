@@ -64,6 +64,41 @@ public class PubkeyCacheTests
             Assert.That(loaded.GetPublicKey(i).Compress(), Is.EqualTo(validators[i].Pubkey.Bytes.ToArray()));
     }
 
+    // Finalization persists the registry prefix each epoch; rewriting all ~34 mainnet chunks every time costs hundreds of MB of writes.
+    [Test]
+    public void Persist_rewrites_only_the_chunks_past_the_persisted_prefix()
+    {
+        const int validatorsPerChunk = 65_536;
+        BlsPublicKey pubkey = new(CompressedPubkey(0));
+        Validator[] validators = [.. Enumerable.Range(0, validatorsPerChunk + 2).Select(_ => new Validator { Pubkey = pubkey })];
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        MemDb metadata = (MemDb)db.GetColumnDb(BeaconChainDbColumns.Metadata);
+        BeaconChainStore store = new(db);
+        PubkeyCache cache = new();
+        cache.Build(validators);
+
+        long WritesOf(PubkeyCache persisting, int count)
+        {
+            long before = metadata.WritesCount;
+            persisting.Persist(store, count);
+            return metadata.WritesCount - before;
+        }
+
+        long firstChunk = WritesOf(cache, validatorsPerChunk);
+        long nextChunk = WritesOf(cache, validatorsPerChunk + 1);
+        long unchanged = WritesOf(cache, validatorsPerChunk + 1);
+        PubkeyCache loaded = new();
+        bool loadResult = loaded.TryLoad(store, validators[..(validatorsPerChunk + 1)]);
+        long unchangedAfterLoad = WritesOf(loaded, validatorsPerChunk + 1);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(firstChunk, Is.EqualTo(2), "chunk 0 and the count");
+        Assert.That(nextChunk, Is.EqualTo(2), "only chunk 1 and the count");
+        Assert.That(unchanged, Is.Zero, "an unchanged count writes nothing");
+        Assert.That(loadResult, Is.True);
+        Assert.That(unchangedAfterLoad, Is.Zero, "a loaded prefix is already persisted");
+    }
+
     [Test]
     public void Spare_capacity_is_not_a_cached_key()
     {

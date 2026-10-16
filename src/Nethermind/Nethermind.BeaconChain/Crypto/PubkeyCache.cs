@@ -36,6 +36,9 @@ public class PubkeyCache
     // Held while Extend copies and replaces the verdicts, so a warm-up that ends then either sees the replacement or had its verdicts copied.
     private readonly Lock _subgroupChecksSwap = new();
 
+    // Validators whose points the store holds from this instance, or -1 when unknown; the persisted prefix only ever grows on one chain.
+    private int _persistedCount = -1;
+
     private int _count;
     public int Count { get => Volatile.Read(ref _count); private set => Volatile.Write(ref _count, value); }
     /// <summary>Called by <see cref="Extend"/> once the new keys are decoded, before it publishes them; lets a test place a warm-up there.</summary>
@@ -211,6 +214,7 @@ public class PubkeyCache
         _points = [];
         _subgroupChecks = [];
         Count = 0;
+        _persistedCount = -1;
         Extend(validators, 0);
     }
 
@@ -221,6 +225,7 @@ public class PubkeyCache
     public void Extend(Validator[] validators, int fromIndex)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(fromIndex, Count);
+        _persistedCount = Math.Min(_persistedCount, fromIndex);
 
         bool reuse = fromIndex == Count && validators.Length <= _subgroupChecks.Length;
         int capacity = Math.Max(validators.Length, Math.Max(4, _subgroupChecks.Length * 2));
@@ -263,13 +268,17 @@ public class PubkeyCache
     }
 
     /// <summary>Persists the point buffer to the store. The count entry is written last so an interrupted persist is not loadable.</summary>
+    /// <remarks>Only the chunks from the last prefix this instance persisted or loaded onward are rewritten, and nothing when the count is unchanged.</remarks>
     public void Persist(BeaconChainStore store, int? validatorCount = null)
     {
         int count = validatorCount ?? Count;
         ArgumentOutOfRangeException.ThrowIfNegative(count);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(count, Count);
+        if (count == _persistedCount)
+            return;
+
         ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(_points.AsSpan(0, count * G1Affine.Sz));
-        for (int chunk = 0; chunk * ValidatorsPerChunk < count; chunk++)
+        for (int chunk = Math.Max(0, Math.Min(_persistedCount, count)) / ValidatorsPerChunk; chunk * ValidatorsPerChunk < count; chunk++)
         {
             int offset = chunk * ValidatorsPerChunk * G1Affine.Sz * sizeof(long);
             store.PutMetadata(ChunkKey(chunk), Snappy.CompressToArray(bytes.Slice(offset, Math.Min(ValidatorsPerChunk * G1Affine.Sz * sizeof(long), bytes.Length - offset))));
@@ -279,12 +288,14 @@ public class PubkeyCache
         countValue[0] = FormatVersion;
         BinaryPrimitives.WriteInt32LittleEndian(countValue.AsSpan(1), count);
         store.PutMetadata(CountKey, countValue);
+        _persistedCount = count;
     }
 
     /// <summary>Loads a persisted cache matching the given registry, verifying a sample of entries.</summary>
     /// <returns><c>false</c> when nothing usable is persisted (missing, format/count mismatch, or corrupt) — rebuild instead.</returns>
     public bool TryLoad(BeaconChainStore store, Validator[] validators)
     {
+        _persistedCount = -1;
         byte[]? countValue = store.GetMetadata(CountKey);
         if (countValue is null || countValue.Length != 1 + sizeof(int) || countValue[0] != FormatVersion)
         {
@@ -324,6 +335,7 @@ public class PubkeyCache
             return false;
         }
 
+        _persistedCount = count;
         if (Count < validators.Length)
             Extend(validators, Count);
         return true;
