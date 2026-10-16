@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
@@ -27,7 +28,7 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
     [OneTimeSetUp]
     public async Task StartHost()
     {
-        _host = await StartAsync(Spec);
+        _host = await StartAsync(Spec, apiConfig: new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0 });
         foreach (string fork in new[] { "electra", "fulu", "gloas" })
         {
             ulong slot = SlotOf(fork);

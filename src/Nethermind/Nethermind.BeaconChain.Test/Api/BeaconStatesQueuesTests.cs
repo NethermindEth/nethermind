@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -27,7 +28,7 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
     [OneTimeSetUp]
     public async Task StartHost()
     {
-        _host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet);
+        _host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, apiConfig: new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0 });
         _host.Store.PutState(StateRoot, BeaconStateFulu.Encode(QueueState()));
         _host.Store.PutBlock(StateRoot, BeaconApiTestHost.MinimalBlock(StateSlot));
         _host.Store.SetCanonicalRoot(StateSlot, StateRoot);
