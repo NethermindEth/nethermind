@@ -50,7 +50,9 @@ class NativePreparationTests(unittest.TestCase):
             'timed_phase waves-and-state-chaining bash "$HERE/scripts/verify-cross-chain-waves.sh"',
             'timed_phase protocol-suite bash "$HERE/scripts/run-protocol-e2e.sh"'):
             self.assertIn(command, commands)
-        self.assertIn('bash "$NETHERMIND_OBSERVE_SCRIPT" recovery\ncapture_service_log eez-proof-signer', commands)
+        recovery = commands.index('bash "$NETHERMIND_OBSERVE_SCRIPT" recovery')
+        self.assertGreater(recovery, commands.index('timed_phase protocol-suite bash "$HERE/scripts/run-protocol-e2e.sh"'))
+        self.assertLess(recovery, commands.index('capture_service_log eez-proof-signer'))
         names = json.loads((self.root / "scenario-hooks.json").read_text())
         self.assertEqual(names, ["verify-eezl2-deployment", "verify-cross-chain-waves", "run-protocol-e2e"])
 
