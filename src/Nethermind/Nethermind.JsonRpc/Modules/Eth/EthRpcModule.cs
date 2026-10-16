@@ -893,6 +893,7 @@ public partial class EthRpcModule(
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
+        transaction.SenderAddress ??= FindStoredTxSender(block, (int)positionIndex);
         RecoverTxSenderIfNeeded(transaction);
 
         TransactionForRpcContext extraData = new(
@@ -1166,6 +1167,28 @@ public partial class EthRpcModule(
     }
 
     protected void RecoverTxSenderIfNeeded(Transaction transaction) => transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
+
+    /// <summary>Returns the sender stored with the receipt of the block's transaction at <paramref name="index"/>, if any.</summary>
+    private Address? FindStoredTxSender(Block block, int index)
+    {
+        if (!_receiptFinder.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator)) return null;
+
+        Address? sender = null;
+        int receiptCount = 0;
+        using (ReceiptsIterator receipts = iterator)
+        {
+            while (receipts.TryGetNext(out TxReceiptStructRef receipt))
+            {
+                // An absent sender decodes to the shared zero address, which a stored one never aliases.
+                if (receiptCount++ == index && receipt.Sender.Bytes != Address.Zero.Bytes)
+                {
+                    sender = receipt.Sender.ToAddress();
+                }
+            }
+        }
+
+        return receiptCount == block.Transactions.Length ? sender : null;
+    }
 
     private ResultWrapper<IEnumerable<FilterLog>> GetLogsResponse(
         IEnumerable<FilterLog> filterLogs,

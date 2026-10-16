@@ -97,7 +97,11 @@ namespace Nethermind.Facade
                     {
                         transaction = block.Transactions[txIndex];
                         receipt = receipts.Length > txIndex && receipts[txIndex].TxHash == txHash ? receipts[txIndex] : null;
-                        return receipt is not null;
+                        if (receipt is null) return false;
+
+                        // A block decoded outside the block cache has no senders even when its receipts come from cache.
+                        transaction.SenderAddress ??= receipt.Sender;
+                        return true;
                     }
                 }
             }
