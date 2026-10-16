@@ -64,15 +64,16 @@ public class Eth73ProtocolHandler(
         {
             // Status is unchanged from eth/72; peers negotiate no verifier.
             bool handled = base.HandleMessageCore(message);
-            _wrapperPeer ??= wrapperTransport.Accept(this);
-            // Disposal may have raced the Status; removal is idempotent.
-            if (Volatile.Read(ref _disposed) != 0 && _wrapperPeer is { } accepted) wrapperTransport.Remove(accepted);
+            if (Volatile.Read(ref _wrapperPeer) is null && wrapperTransport.Accept(this) is { } accepted)
+                // The interlocked publish fences against OnDisposed: either it sees the peer or this sees the disposal.
+                Interlocked.CompareExchange(ref _wrapperPeer, accepted, null);
+            if (Volatile.Read(ref _disposed) != 0 && Volatile.Read(ref _wrapperPeer) is { } registered) wrapperTransport.Remove(registered);
             return handled;
         }
         if (!Eth73MessageCode.IsWrapperMessage(message.PacketType)) return base.HandleMessageCore(message);
         // A wrapper message before Status is a protocol violation, rejected like any other eth message before this is reached.
         // While EIP-8288 is inactive there is no wrapper exchange; such messages establish nothing.
-        if (_wrapperPeer is not { } peer)
+        if (Volatile.Read(ref _wrapperPeer) is not { } peer)
         {
             ReportIn($"eth/73 wrapper message {message.PacketType} ignored without wrapper exchange", size);
             return true;
@@ -119,7 +120,7 @@ public class Eth73ProtocolHandler(
     protected override void OnDisposed()
     {
         Interlocked.Exchange(ref _disposed, 1);
-        if (_wrapperPeer is { } peer) wrapperTransport.Remove(peer);
+        if (Volatile.Read(ref _wrapperPeer) is { } peer) wrapperTransport.Remove(peer);
         base.OnDisposed();
     }
 }

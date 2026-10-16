@@ -116,11 +116,12 @@ public sealed class InclusionListProofRetention(ITimestamper timestamper)
     private void Evict((ValueHash256, ValueHash256, ValueHash256) keep)
     {
         (ValueHash256, ValueHash256, ValueHash256)? victim = null;
-        ulong earliest = ulong.MaxValue;
+        ulong earliest = 0;
         foreach (((ValueHash256, ValueHash256, ValueHash256) key, Entry entry) in _entries)
         {
             if (key == keep && _entries.Count > 1) continue;
-            if (entry.DeadlineMs < earliest) { earliest = entry.DeadlineMs; victim = key; }
+            // Seeded by the first candidate, so a deadline of ulong.MaxValue is still evictable.
+            if (victim is null || entry.DeadlineMs < earliest) { earliest = entry.DeadlineMs; victim = key; }
         }
         if (victim is { } evicted) Remove(evicted);
     }

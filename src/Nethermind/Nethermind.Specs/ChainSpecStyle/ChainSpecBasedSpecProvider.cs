@@ -343,6 +343,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip8282Enabled = (chainSpec.Parameters.Eip8282TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8141Enabled = (chainSpec.Parameters.Eip8141TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8288Enabled = releaseSpec.IsEip8141Enabled && (chainSpec.Parameters.Eip8288TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            if ((chainSpec.Parameters.Eip8288AggregatedVk is null) != (chainSpec.Parameters.Eip8288AggregatedVkTransitionTimestamp is null))
+                throw new InvalidOperationException("'Eip8288AggregatedVk' and 'Eip8288AggregatedVkTransitionTimestamp' must be set together.");
             releaseSpec.Eip8288AggregatedVk = chainSpec.Parameters.Eip8288AggregatedVk is { } upgradedVk
                 && (chainSpec.Parameters.Eip8288AggregatedVkTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp
                 ? upgradedVk.ValueHash256 : Eip8288Verifier.PinnedAggregatedVk;

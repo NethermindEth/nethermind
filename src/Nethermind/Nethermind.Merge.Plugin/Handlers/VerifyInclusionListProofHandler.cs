@@ -26,7 +26,8 @@ public sealed record VerifyInclusionListProofRequest(ulong Timestamp, byte[][]? 
 /// </summary>
 /// <remarks>A commitment to a proof whose bytes this node holds, usually a validated mode-1 wrapper's or a submitted topic
 /// proof's, is a cache lookup with a subset test, and <c>VALID</c> retains the bytes until the attestation deadline. Otherwise
-/// the answer is <c>PROOF_UNKNOWN</c> until the consensus layer supplies the matching <c>il_proof</c>.</remarks>
+/// the answer is <c>PROOF_UNKNOWN</c> until the consensus layer supplies the matching <c>il_proof</c>. An <c>il_proof</c> over
+/// its bounds is no invalid parameter: <c>INVALID</c> if it matches the commitment and ignored otherwise.</remarks>
 public sealed class VerifyInclusionListProofHandler(ISpecProvider specProvider, InclusionListProofService inclusionListProofs)
     : IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>
 {

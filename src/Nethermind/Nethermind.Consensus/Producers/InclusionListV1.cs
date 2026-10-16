@@ -33,23 +33,24 @@ public sealed class InclusionListProofV1
     /// <summary>The proof's sorted, deduplicated dependencies, each in the 96-byte encoding.</summary>
     public byte[][]? ProofDeps { get; set; }
 
-    /// <summary>Decodes the fields within the interface bounds: a proof of at most <c>MAX_AGGREGATE_PROOF_BYTES</c> and at most
-    /// <c>MAX_DEPS_PER_AGGREGATE_WRAPPER</c> 96-byte dependencies. Order and schemes are checked against the target fork.</summary>
-    /// <returns>The violated bound, or <c>null</c>.</returns>
+    /// <summary>Decodes the fields, requiring only that each <c>proofDeps</c> entry is 96 bytes (<c>bytes96</c>).</summary>
+    /// <remarks>Size, order and scheme bounds are not schema constraints (execution-apis#945): the methods answer a proof
+    /// violating them <c>INVALID</c>, and <c>get_deps_hash</c> is taken over the entries exactly as given.</remarks>
+    /// <returns>The schema violation, or <c>null</c>.</returns>
     public string? TryDecode(out InclusionListProof? ilProof)
     {
         ilProof = null;
         if (StarkProof is null || ProofDeps is not { } encoded) return "ilProof must set starkProof and proofDeps";
-        if (StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes) return InclusionListProofValidator.OversizedProof;
-        if (encoded.Length > Eip8288Constants.MaxDepsPerAggregateWrapper) return InclusionListProofValidator.TooManyProofDeps;
-        List<FrameDependency> proofDeps = new(encoded.Length);
-        foreach (byte[]? dependency in encoded)
+        byte[] concatenated = new byte[(long)encoded.Length * Eip8288Constants.DependencyTripleLength];
+        bool wideScheme = false;
+        for (int i = 0; i < encoded.Length; i++)
         {
-            if (dependency is not { Length: Eip8288Constants.DependencyTripleLength } || !dependency.AsSpan(0, 31).IsZero())
+            if (encoded[i] is not { Length: Eip8288Constants.DependencyTripleLength } dependency)
                 return "ilProof proofDeps entries must be 96-byte dependency encodings";
-            proofDeps.AddRange(Eip8288Dependencies.Parse(dependency));
+            wideScheme |= !dependency.AsSpan(0, 31).IsZero();
+            dependency.CopyTo(concatenated, i * Eip8288Constants.DependencyTripleLength);
         }
-        ilProof = new InclusionListProof(StarkProof, proofDeps);
+        ilProof = new InclusionListProof(StarkProof, Eip8288Dependencies.Parse(concatenated), Blake2s.Compute(concatenated), wideScheme);
         return null;
     }
 

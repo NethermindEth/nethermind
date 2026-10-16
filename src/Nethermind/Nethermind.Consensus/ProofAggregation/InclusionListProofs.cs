@@ -11,8 +11,17 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
-/// <summary>EIP-8288 <c>il_proof = [stark_proof, proof_deps]</c>: a committed proof with its sorted, deduplicated dependency list.</summary>
-public sealed record InclusionListProof(byte[] StarkProof, IReadOnlyList<FrameDependency> ProofDeps);
+/// <summary>EIP-8288 <c>il_proof = [stark_proof, proof_deps]</c>: a committed proof with its dependency list, which a valid
+/// proof has sorted and deduplicated.</summary>
+/// <param name="DepsHash"><c>get_deps_hash</c> over <c>proof_deps</c> exactly as given, so a reordered or duplicated list never
+/// matches the commitment of its canonical form.</param>
+/// <param name="HasWideScheme">Whether an entry's 32-byte scheme word exceeds a byte, a scheme outside every
+/// <c>ENABLED_SCHEMES</c>.</param>
+public sealed record InclusionListProof(byte[] StarkProof, IReadOnlyList<FrameDependency> ProofDeps, ValueHash256 DepsHash, bool HasWideScheme = false)
+{
+    public InclusionListProof(byte[] starkProof, IReadOnlyList<FrameDependency> proofDeps)
+        : this(starkProof, proofDeps, Blake2s.Compute(Eip8288Dependencies.Serialize(proofDeps))) { }
+}
 
 /// <summary>The answer of <c>engine_verifyInclusionListProofV1</c> and <c>engine_submitInclusionListProofV1</c>.</summary>
 public enum InclusionListProofStatus
@@ -50,8 +59,10 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
     /// <summary><c>engine_verifyInclusionListProofV1</c>: whether a counted list's non-null <paramref name="commitment"/> is valid
     /// for its <paramref name="transactions"/> under the fork at <paramref name="timestamp"/>.</summary>
     /// <remarks>A commitment to a held proof is a lookup and subset test with no verification. An <paramref name="ilProof"/>
-    /// that does not hash to the commitment is ignored; a matching one is checked against a cached verdict, and verified only
-    /// without one. A held <c>INVALID</c> verdict is final with or without an <paramref name="ilProof"/>.</remarks>
+    /// that does not hash to the commitment is ignored, whatever its size or shape; a matching one is checked against a cached
+    /// verdict, and verified only without one. A matching one failing the submission shape checks is <c>INVALID</c> without
+    /// verification. Either way its verdict is recorded. A held <c>INVALID</c> verdict is final with or without an
+    /// <paramref name="ilProof"/>.</remarks>
     /// <param name="attestationDeadlineMs">The EIP-7805 attestation deadline of the target block's slot, in Unix milliseconds,
     /// until which a proof answered valid keeps its bytes and <c>proof_deps</c>.</param>
     public InclusionListProofStatus Verify(ulong timestamp, IReadOnlyList<Transaction> transactions, in InclusionListCommitment commitment,
@@ -93,11 +104,16 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
             error = InclusionListProofValidator.UnknownProof;
             return InclusionListProofStatus.ProofUnknown;
         }
-        // A cached VALID verdict answers without verifying again; a new verdict is recorded under the target fork's key.
-        string? shapeError = InclusionListProofValidator.CheckShape(matching, spec);
-        if (shapeError is not null || !ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in depsHash, matching.StarkProof, matching.ProofDeps))
+        if (InclusionListProofValidator.CheckShape(matching, spec) is { } shapeError)
         {
-            error = shapeError ?? InclusionListProofValidator.InvalidProof;
+            ProofVerdictCache.RecordInvalidRecursive(verifier, in forkVerifier, in proofHash, in depsHash);
+            error = shapeError;
+            return InclusionListProofStatus.Invalid;
+        }
+        // A cached VALID verdict answers without verifying again; a new verdict is recorded under the target fork's key.
+        if (!ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in depsHash, matching.StarkProof, matching.ProofDeps))
+        {
+            error = InclusionListProofValidator.InvalidProof;
             return InclusionListProofStatus.Invalid;
         }
         Retention.Retain(matching.StarkProof, [.. matching.ProofDeps], commitment, forkVerifier, attestationDeadlineMs);
@@ -106,23 +122,29 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
 
     /// <summary><c>engine_submitInclusionListProofV1</c>: verifies a proof-topic <c>il_proof</c> under the fork at
     /// <paramref name="timestamp"/> and records its verdict, retaining a valid proof's bytes with its <c>proof_deps</c>.</summary>
-    /// <remarks>A proof over the size bounds or with noncanonical <c>proof_deps</c> is <c>INVALID</c> without verification. A
-    /// verdict already held under the same key answers without verifying again.</remarks>
+    /// <remarks>A proof over the size bounds, or with <c>proof_deps</c> that are noncanonical or name a scheme outside
+    /// <c>ENABLED_SCHEMES</c>, is <c>INVALID</c> without verification, and that verdict is recorded too. A verdict already held
+    /// under the same key answers without verifying again.</remarks>
     /// <param name="viewFreezeDeadlineMs">The EIP-7805 view freeze deadline of the proof's slot, in Unix milliseconds, until which
     /// a valid proof is retained.</param>
     public InclusionListProofStatus Submit(ulong timestamp, InclusionListProof ilProof, ulong viewFreezeDeadlineMs, out string? error)
     {
         IReleaseSpec spec = SpecAt(timestamp);
         Eip8288Verifier forkVerifier = Eip8288Verifier.For(spec);
+        ValueHash256 proofHash = ValueKeccak.Compute(ilProof.StarkProof);
+        ValueHash256 depsHash = ilProof.DepsHash;
         error = InclusionListProofValidator.CheckShape(ilProof, spec);
-        if (error is not null) return InclusionListProofStatus.Invalid;
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(ilProof.ProofDeps);
+        if (error is not null)
+        {
+            ProofVerdictCache.RecordInvalidRecursive(verifier, in forkVerifier, in proofHash, in depsHash);
+            return InclusionListProofStatus.Invalid;
+        }
         if (!ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in depsHash, ilProof.StarkProof, ilProof.ProofDeps))
         {
             error = InclusionListProofValidator.InvalidProof;
             return InclusionListProofStatus.Invalid;
         }
-        InclusionListCommitment commitment = new(ValueKeccak.Compute(ilProof.StarkProof), depsHash);
+        InclusionListCommitment commitment = new(proofHash, depsHash);
         Retention.Retain(ilProof.StarkProof, [.. ilProof.ProofDeps], commitment, forkVerifier, viewFreezeDeadlineMs);
         return InclusionListProofStatus.Valid;
     }
@@ -215,13 +237,12 @@ public static class InclusionListProofValidator
     public const string DisabledScheme = "proof_deps name a scheme outside the target fork's ENABLED_SCHEMES";
 
     /// <summary>Whether an <c>il_proof</c> is the proof <paramref name="commitment"/> names: hashing to <c>stark_proof_hash</c>,
-    /// with <c>proof_deps</c> hashing to <c>deps_hash</c>.</summary>
-    /// <remarks>A matching proof that is not well formed fails like any proof failing verification.</remarks>
+    /// with <c>proof_deps</c>, exactly as given, hashing to <c>deps_hash</c>.</summary>
+    /// <remarks>A matching proof that is not well formed is <c>INVALID</c> like any proof failing verification.</remarks>
     public static bool Matches(InclusionListProof ilProof, in InclusionListCommitment commitment)
-        => ValueKeccak.Compute(ilProof.StarkProof) == commitment.StarkProofHash
-            && Eip8288Dependencies.ComputeDepsHash(ilProof.ProofDeps) == commitment.DepsHash;
+        => ilProof.DepsHash == commitment.DepsHash && ValueKeccak.Compute(ilProof.StarkProof) == commitment.StarkProofHash;
 
-    /// <summary>The <c>il_proof</c> bounds, checked before any verification: a nonempty proof within
+    /// <summary>The <c>il_proof</c> shape checks, made before any verification: a nonempty proof within
     /// <c>MAX_AGGREGATE_PROOF_BYTES</c>, and a nonempty, sorted, deduplicated <c>proof_deps</c> of enabled schemes within
     /// <c>MAX_DEPS_PER_AGGREGATE_WRAPPER</c> entries.</summary>
     /// <returns>The violated bound, or <c>null</c>.</returns>
@@ -231,6 +252,7 @@ public static class InclusionListProofValidator
         if (CheckProof(ilProof.StarkProof) is { } proofError) return proofError;
         if (proofDeps.Count == 0) return EmptyProofDeps;
         if (proofDeps.Count > Eip8288Constants.MaxDepsPerAggregateWrapper) return TooManyProofDeps;
+        if (ilProof.HasWideScheme) return DisabledScheme;
         for (int i = 1; i < proofDeps.Count; i++)
             if (Compare(proofDeps[i - 1], proofDeps[i]) >= 0) return NonCanonicalProofDeps;
         return spec.IsEip8288Enabled && Eip8288Dependencies.AreSchemesEnabled(proofDeps) ? null : DisabledScheme;

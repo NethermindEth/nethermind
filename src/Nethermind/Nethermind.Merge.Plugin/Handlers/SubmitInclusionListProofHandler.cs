@@ -20,8 +20,9 @@ public sealed record SubmitInclusionListProofRequest(ulong Timestamp, InclusionL
 /// the proof topic under the fork at <c>timestamp</c> and records its verdict, so a later list committing to it is checked by
 /// cache lookup (EIPs#12475, execution-apis#945).
 /// </summary>
-/// <remarks>A proof over the size bounds, or whose <c>proof_deps</c> are not sorted, deduplicated and within
-/// <c>MAX_DEPS_PER_AGGREGATE_WRAPPER</c>, is <c>INVALID</c> without verification. A valid proof's bytes are retained until
+/// <remarks>A proof over the size bounds, or whose <c>proof_deps</c> are not sorted, deduplicated, within
+/// <c>MAX_DEPS_PER_AGGREGATE_WRAPPER</c> and of enabled schemes, is <c>INVALID</c> without verification; only a
+/// <c>proofDeps</c> entry that is not 96 bytes is an invalid parameter. A valid proof's bytes are retained until
 /// <c>viewFreezeDeadlineMs</c>, and until the attestation deadline once a list's commitment to it is answered valid.</remarks>
 public sealed class SubmitInclusionListProofHandler(ISpecProvider specProvider, InclusionListProofService inclusionListProofs)
     : IHandler<SubmitInclusionListProofRequest, InclusionListProofStatusV1>
@@ -32,7 +33,7 @@ public sealed class SubmitInclusionListProofHandler(ISpecProvider specProvider, 
             return ResultWrapper<InclusionListProofStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
         if (request.IlProof is not { } encoded) return ResultWrapper<InclusionListProofStatusV1>.Fail("ilProof must be set", ErrorCodes.InvalidParams);
         if (encoded.TryDecode(out InclusionListProof? ilProof) is { } error)
-            return ResultWrapper<InclusionListProofStatusV1>.Success(InclusionListProofStatusV1.Invalid(error));
+            return ResultWrapper<InclusionListProofStatusV1>.Fail(error, ErrorCodes.InvalidParams);
         InclusionListProofStatus status = inclusionListProofs.Submit(request.Timestamp, ilProof!, request.ViewFreezeDeadlineMs, out string? reason);
         return ResultWrapper<InclusionListProofStatusV1>.Success(InclusionListProofStatusV1.From(status, reason));
     }

@@ -129,6 +129,30 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // A response is held to the byte_length its own server announced, so the first announcer's false length cannot get an
+    // honest server penalized for the true wrapper.
+    [Test]
+    public void A_false_announced_length_does_not_blame_an_honest_server()
+    {
+        using WrapperTestNode node = new();
+        FakeWrapperLink liar = new("liar"), honest = new("honest");
+        WrapperPeer liarPeer = node.Connect(liar), honestPeer = node.Connect(honest);
+        byte[] wrapper = Wrapper(64, FrameTransaction(1));
+        WrapperDescriptor truth = Describe(wrapper);
+        WrapperDescriptor lie = WrapperDescriptor.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)wrapper.Length + 1),
+            Eth73Rlp.EncodeBytes(truth.ContentHash.Bytes)));
+        node.Transport.OnAnnounce(liarPeer, new([lie]));
+        node.Transport.OnAnnounce(honestPeer, new([truth]));
+        node.Transport.OnProofWrappers(liarPeer, new(liar.Sent<GetProofWrappersMessage>().Single().RequestId, []));
+        node.Transport.OnProofWrappers(honestPeer, new(honest.Sent<GetProofWrappersMessage>().Single().RequestId, [wrapper]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(honest.Penalties, Is.Empty);
+            Assert.That(liar.Penalties, Is.Empty, "an empty response is not misbehavior");
+        }
+    }
+
     [Test]
     public void Requests_stay_within_four_outstanding_and_the_soft_response_limit()
     {

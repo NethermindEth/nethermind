@@ -142,6 +142,7 @@ public class InclusionListProofsTests
     [TestCase("verdict-without-bytes-resupplied", InclusionListProofStatus.Valid, null, 0)]
     [TestCase("mismatched-il-proof", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
     [TestCase("unsorted-matching-il-proof", InclusionListProofStatus.Invalid, InclusionListProofValidator.NonCanonicalProofDeps, 0)]
+    [TestCase("reordered-il-proof", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
     [TestCase("omits-dependency", InclusionListProofStatus.Invalid, InclusionListProofValidator.UncoveredDependency, 0)]
     [TestCase("known-invalid", InclusionListProofStatus.Invalid, InclusionListProofValidator.InvalidProof, 0)]
     [TestCase("known-invalid-with-il-proof", InclusionListProofStatus.Invalid, InclusionListProofValidator.InvalidProof, 0)]
@@ -177,13 +178,13 @@ public class InclusionListProofsTests
             ProofVerdictCache.VerifyRecursive(node.Verifier, Eip8288Verifier.Pinned, in depsHash, proof, proofDeps);
         int before = node.Verifier.VerificationCalls;
         List<FrameDependency> unsorted = [.. proofDeps.AsEnumerable().Reverse()];
-        if (scenario == "unsorted-matching-il-proof") commitment = Commit(proof, unsorted);
+        if (scenario == "unsorted-matching-il-proof") commitment = new(ValueKeccak.Compute(proof), new InclusionListProof(proof, unsorted).DepsHash);
         InclusionListProof? ilProof = scenario switch
         {
             "il-proof" or "il-proof-fails" or "known-invalid-with-il-proof" or "other-fork-il-proof" or "verdict-without-bytes-resupplied"
                 => new(proof, proofDeps),
             "mismatched-il-proof" => new(proof, deps),
-            "unsorted-matching-il-proof" => new(proof, unsorted),
+            "unsorted-matching-il-proof" or "reordered-il-proof" => new(proof, unsorted),
             _ => null
         };
         ulong timestamp = scenario is "other-fork-held" or "other-fork-il-proof" ? UpgradeAt : Target;
@@ -208,6 +209,60 @@ public class InclusionListProofsTests
                 Assert.That(node.Service.Verify(Target, transactions, in commitment, null, AttestationMs, out _), Is.EqualTo(InclusionListProofStatus.Valid),
                     "a verified il_proof is then held");
             }
+        }
+    }
+
+    // execution-apis#945: a matching il_proof failing submit's shape checks (size bounds, order, duplicates, enabled schemes) is
+    // INVALID without verification and its verdict is recorded, so the commitment stays INVALID without an il_proof. One that
+    // does not match, including a reordering of the committed list, is ignored whatever its shape, and records nothing.
+    [TestCase("oversized-proof", true, InclusionListProofValidator.OversizedProof)]
+    [TestCase("too-many-deps", true, InclusionListProofValidator.TooManyProofDeps)]
+    [TestCase("unsorted-deps", true, InclusionListProofValidator.NonCanonicalProofDeps)]
+    [TestCase("duplicate-deps", true, InclusionListProofValidator.NonCanonicalProofDeps)]
+    [TestCase("disabled-scheme", true, InclusionListProofValidator.DisabledScheme)]
+    [TestCase("wide-scheme", true, InclusionListProofValidator.DisabledScheme)]
+    [TestCase("oversized-proof", false, null)]
+    [TestCase("unsorted-deps", false, null)]
+    public void Malformed_il_proof_is_invalid_only_when_it_matches(string shape, bool matches, string? expectedError)
+    {
+        Node node = new();
+        Transaction covered = ValidDependencyFrame(default);
+        List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue);
+        FrameDependency other = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other"), default);
+        List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize([.. deps, other]);
+        byte[] proof = shape == "oversized-proof" ? new byte[Eip8288Constants.MaxAggregateProofBytes + 1] : [6];
+        List<FrameDependency> proofDeps = shape switch
+        {
+            "too-many-deps" => [.. deps, .. Enumerable.Range(0, Eip8288Constants.MaxDepsPerAggregateWrapper).Select(static i =>
+                new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(i)), default))],
+            "unsorted-deps" => [.. canonical.AsEnumerable().Reverse()],
+            "duplicate-deps" => [.. canonical, canonical[^1]],
+            "disabled-scheme" => [.. canonical, new FrameDependency(0x7f, ValueKeccak.Compute("disabled"), default)],
+            _ => canonical
+        };
+        InclusionListProof ilProof = new(proof, proofDeps);
+        if (shape == "wide-scheme")
+        {
+            byte[] encoded = Eip8288Dependencies.Serialize(proofDeps);
+            encoded[30] = 1;
+            ilProof = new(proof, proofDeps, Blake2s.Compute(encoded), HasWideScheme: true);
+        }
+        // Not matching: the committed canonical form of the reordered list, or another proof under the same list.
+        InclusionListCommitment commitment = matches ? new(ValueKeccak.Compute(proof), ilProof.DepsHash)
+            : shape == "unsorted-deps" ? new(ValueKeccak.Compute(proof), Eip8288Dependencies.ComputeDepsHash(proofDeps))
+            : new(ValueKeccak.Compute("another proof"), ilProof.DepsHash);
+
+        InclusionListProofStatus status = node.Service.Verify(Target, [covered], in commitment, ilProof, AttestationMs, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(matches ? InclusionListProofStatus.Invalid : InclusionListProofStatus.ProofUnknown));
+            Assert.That(error, Is.EqualTo(expectedError ?? InclusionListProofValidator.UnknownProof));
+            Assert.That(node.Verifier.VerificationCalls, Is.Zero, "rejected before verification");
+            Assert.That(ProofVerdictCache.For(node.Verifier).TryGetVerdict(commitment.StarkProofHash, commitment.DepsHash, Eip8288Verifier.PinnedAggregatedVk),
+                matches ? Is.False : Is.Null, "a matching rejection is recorded; an ignored il_proof records nothing");
+            Assert.That(node.Service.Verify(Target, [covered], in commitment, null, AttestationMs, out _),
+                Is.EqualTo(matches ? InclusionListProofStatus.Invalid : InclusionListProofStatus.ProofUnknown));
         }
     }
 
@@ -237,8 +292,8 @@ public class InclusionListProofsTests
         }
     }
 
-    // engine_submitInclusionListProofV1 rejects proofs over the size bounds or with noncanonical proof_deps without verifying, and
-    // records the verdict of a verified proof. A valid proof's bytes are kept until the view freeze deadline, so a later list
+    // engine_submitInclusionListProofV1 rejects proofs over the size bounds or with noncanonical or disabled-scheme proof_deps
+    // without verifying, and records every verdict, those rejections included. A valid proof's bytes are kept until the view freeze deadline, so a later list
     // committing to it is VALID by cache lookup; once they are released the commitment is PROOF_UNKNOWN and get returns null,
     // until a resupplied il_proof reuses the verdict without verifying again. A failed proof's INVALID verdict answers a later
     // list committing to it, with or without an il_proof. A deadline already past retains nothing.
@@ -285,6 +340,10 @@ public class InclusionListProofsTests
             Assert.That(error, Is.EqualTo(expectedError));
             Assert.That(node.Verifier.VerificationCalls, Is.EqualTo(verifications));
             Assert.That(node.Service.Get(Target, commitment.StarkProofHash) is not null, Is.EqualTo(scenario == "valid"), "retains only a valid proof");
+            ValueHash256 key = new InclusionListProof(proof, proofDeps).DepsHash;
+            Assert.That(ProofVerdictCache.For(node.Verifier).TryGetVerdict(commitment.StarkProofHash, key, Eip8288Verifier.For(
+                scenario == "other-fork" ? new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = UpgradedVk } : Eip8288Prototype.Instance).AggregatedVk),
+                Is.EqualTo(expected == InclusionListProofStatus.Valid), "every verdict is recorded, shape rejections included");
             if (scenario == "valid")
             {
                 Assert.That(node.Service.Verify(Target, [covered], in commitment, null, AttestationMs, out _), Is.EqualTo(InclusionListProofStatus.Valid));
@@ -354,6 +413,17 @@ public class InclusionListProofsTests
         node.At(now);
 
         Assert.That(node.Service.Get(Target, commitment.StarkProofHash) is not null, Is.EqualTo(retained));
+    }
+
+    // A consensus-layer deadline of ulong.MaxValue must still be evictable at the bound, or retention would spin under its lock.
+    [Test]
+    public void Retention_bound_evicts_proofs_with_maximal_deadlines()
+    {
+        Node node = new();
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("d"), default);
+        for (int i = 0; i <= InclusionListProofRetention.MaxProofs; i++)
+            Assert.That(node.Service.Submit(Target, new(BitConverter.GetBytes(i), [dependency]), ulong.MaxValue, out _), Is.EqualTo(InclusionListProofStatus.Valid));
+        Assert.That(node.Service.Retention.Count, Is.EqualTo(InclusionListProofRetention.MaxProofs));
     }
 
     [Test]

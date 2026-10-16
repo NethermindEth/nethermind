@@ -236,10 +236,19 @@ internal sealed class WrapperFetch(WrapperDescriptor descriptor, long now)
     /// <summary>Cancels validation and envelope recovery at the recovery deadline or shutdown.</summary>
     public CancellationTokenSource? Processing { get; set; }
 
-    public void AddSource(WrapperPeer peer)
+    /// <summary>The <c>byte_length</c> each source announced; a response is held to its own server's length, so one peer's
+    /// false length cannot make an honest server's response look mismatched.</summary>
+    private readonly Dictionary<WrapperPeer, int> _lengths = [];
+
+    public void AddSource(WrapperPeer peer, int byteLength)
     {
-        if (!Sources.Contains(peer) && Sources.Count < WrapperTransportLimits.MaxSourcesPerWrapper) Sources.Add(peer);
+        if (Sources.Contains(peer) || Sources.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return;
+        Sources.Add(peer);
+        _lengths[peer] = byteLength;
     }
+
+    /// <summary>The <c>byte_length</c> <paramref name="peer"/> announced, or the first announcement's.</summary>
+    public int LengthFrom(WrapperPeer peer) => _lengths.TryGetValue(peer, out int length) ? length : Descriptor.ByteLength;
 
     /// <summary>The next peer to ask for the body, or null once every source was tried or the source budget is spent.</summary>
     public WrapperPeer? NextSource()

@@ -52,6 +52,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         Eip8288Verifier Verifier);
     private WrapperSnapshot? _cachedWrapper;
     private readonly Lock _verifierLock = new();
+    private readonly Lock _commitLock = new();
+    private const string VerifierChangedDuringAdmission = "The target fork's verifier changed during validation; retry.";
     private Eip8288Verifier? _verifier;
     private long _verifierChangedAt = -1;
     private TargetForks? _targetForks;
@@ -90,14 +92,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// The verifier of the current target fork, after applying the EIP-8288 upgrade rule if it changed; null while EIP-8288 is
     /// inactive at the target fork.
     /// </summary>
+    /// <remarks>The head is read under the verifier lock, so a caller holding a stale head cannot move the verifier back.</remarks>
     public Eip8288Verifier? RefreshVerifier()
     {
-        if (blockFinder.Head is not { } head) return null;
-        IReleaseSpec spec = TargetForksOf(head.Header).Target;
-        if (!spec.IsEip8288Enabled) return null;
-        Eip8288Verifier current = Eip8288Verifier.For(spec);
+        Eip8288Verifier current;
         lock (_verifierLock)
         {
+            if (blockFinder.Head is not { } head) return null;
+            IReleaseSpec spec = TargetForksOf(head.Header).Target;
+            if (!spec.IsEip8288Enabled) return null;
+            current = Eip8288Verifier.For(spec);
             if (_verifier == current) return current;
             bool changed = _verifier is not null;
             _verifier = current;
@@ -140,16 +144,28 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <paramref name="verifier"/>, and evicts pending transactions no longer covered.</summary>
     private void ApplyUpgradeRule(Eip8288Verifier verifier)
     {
-        Volatile.Write(ref _cachedWrapper, null);
-        int dropped = leanProofStore.RetainDirect((dependency, witness) => ProofVerdictCache.VerifyDirect(leanProofVerifier, in verifier, dependency, witness));
-        int evicted = 0;
-        foreach (Transaction transaction in txPool.GetPendingTransactions())
-            if (Eip8288Dependencies.IsDependencyBearing(transaction) && !leanProofStore.Covers(transaction) && txPool.RemoveTransaction(transaction.Hash))
-                evicted++;
+        (int dropped, int evicted) = Purge(verifier);
         TxPool.Metrics.Eip8288VerifierChanges++;
         TxPool.Metrics.Eip8288UpgradeDroppedProofs += dropped;
         TxPool.Metrics.Eip8288UpgradeEvictedTransactions += evicted;
         VerifierChanged?.Invoke(verifier);
+    }
+
+    /// <summary>Drops what <paramref name="verifier"/> does not validate: every aggregate proof, direct witnesses that do not
+    /// re-validate, and pending transactions left uncovered.</summary>
+    /// <remarks>Runs under the commit lock, so admission and aggregation either commit before it or see the new verifier.</remarks>
+    private (int Dropped, int Evicted) Purge(Eip8288Verifier verifier)
+    {
+        lock (_commitLock)
+        {
+            Volatile.Write(ref _cachedWrapper, null);
+            int dropped = leanProofStore.RetainDirect((dependency, witness) => ProofVerdictCache.VerifyDirect(leanProofVerifier, in verifier, dependency, witness));
+            int evicted = 0;
+            foreach (Transaction transaction in txPool.GetPendingTransactions())
+                if (Eip8288Dependencies.IsDependencyBearing(transaction) && !leanProofStore.Covers(transaction) && txPool.RemoveTransaction(transaction.Hash))
+                    evicted++;
+            return (dropped, evicted);
+        }
     }
 
     /// <summary>Separates invalid proofs from ordinary pool admission failures.</summary>
@@ -250,12 +266,19 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 RememberVerification(wrapperHash, null);
             }
             else if (error is not null) return ProofWrapperAcceptance.Invalid(error);
+            // Nothing validated under a verifier the upgrade rule has since replaced may be published or admitted.
+            if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
             WrapperValidated?.Invoke(wrapper, resolved, verifier);
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> admittedDependencies = [];
             Result<Hash256[]> admission;
-            if (!leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out IDisposable? scope))
-                return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
+            IDisposable? scope;
+            lock (_commitLock)
+            {
+                if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
+                if (!leanProofStore.TryBeginAdmission(decoded.Deps, decoded.Proofs, decoded.RecursiveStark?.StarkProof, out scope))
+                    return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
+            }
             using (scope)
             {
                 try
@@ -267,6 +290,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                     leanProofStore.CommitAdmission(admittedDependencies);
                 }
             }
+            // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
+            if (RefreshVerifier() is { } current && current != verifier) Purge(current);
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
         }
         catch (RlpException)
@@ -542,7 +567,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 Mode = MempoolWrapper.ModeRecursive,
                 RecursiveStark = new RecursiveStark(proof!, new Hash256(hash))
             };
-            leanProofStore.AddCachedRecursive(deps, proof!);
+            lock (_commitLock)
+            {
+                if (RefreshVerifier() != verifier) return Result<byte[]>.Fail(VerifierChangedDuringAdmission);
+                leanProofStore.AddCachedRecursive(deps, proof!);
+            }
             byte[] encoded = MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes;
             if (encoded.Length > LeanProofStore.MaxWrapperBytes)
                 return Result<byte[]>.Fail("Aggregated wrapper exceeds the size limit.");

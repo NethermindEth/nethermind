@@ -228,7 +228,8 @@ insertion and witness-retention rules.
 
 Wrappers are validated under their target fork, the fork active at `head.timestamp + L`, where
 `L = (head.timestamp - parent.timestamp) / (head.slot_number - parent.slot_number)` is the local
-EIP-7843 slot-length estimate (the head's fork when the parent has no slot number). The target fork
+EIP-7843 slot-length estimate in integer seconds (the head's fork without a parent or when slot
+numbers do not increase). The target fork
 fixes the verifier: `AGGREGATED_VK` for mode-1 proofs and each scheme's parameters for
 mode-0 witnesses. Two bounded verdict caches hold direct-witness verdicts keyed by
 `(dep, keccak256(witness), scheme_params)` and aggregate verdicts keyed by
@@ -311,13 +312,15 @@ takes the target block's `timestamp`, whose fork fixes static validity and the k
   retaining the bytes until `attestationDeadlineMs`; `INVALID` when the list has no dependencies,
   the known `proof_deps` omit one, an `INVALID` verdict is held (with or without an `il_proof`), or
   the matching proof fails; `PROOF_UNKNOWN` otherwise, including for a `VALID` verdict whose bytes
-  were released. An `il_proof` that does not hash to the commitment is ignored.
+  were released. After parameter decoding, a matching `il_proof` failing submit's shape checks is
+  `INVALID` without verification, its verdict recorded; one that does not hash to the commitment
+  is ignored, whatever its shape.
 * `engine_getInclusionListProofV1(timestamp, starkProofHash)` returns the held `il_proof`, from
   a validated mode-1 wrapper or a retained `il_proof`, or null once its bytes are released.
 * `engine_submitInclusionListProofV1(timestamp, ilProof, viewFreezeDeadlineMs)` verifies a
   proof-topic `il_proof` and records its verdict, `VALID` or `INVALID`, retaining a valid proof
-  until `viewFreezeDeadlineMs`; size bounds and noncanonical `proof_deps` are `INVALID` without
-  verification.
+  until `viewFreezeDeadlineMs`; size bounds, noncanonical `proof_deps` and schemes outside
+  `ENABLED_SCHEMES` are `INVALID` without verification, and that verdict is recorded too.
 
 Retention follows the deadlines the consensus layer supplies, in Unix milliseconds: a proof stays
 until the latest deadline any call gave it, and a deadline already past adds none. The execution

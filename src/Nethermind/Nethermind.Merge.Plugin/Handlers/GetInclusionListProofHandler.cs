@@ -10,7 +10,7 @@ using Nethermind.JsonRpc;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <summary>Parameters of <c>engine_getInclusionListProofV1(timestamp, stark_proof_hash)</c>.</summary>
-public sealed record GetInclusionListProofRequest(ulong Timestamp, Hash256 StarkProofHash);
+public sealed record GetInclusionListProofRequest(ulong Timestamp, Hash256? StarkProofHash);
 
 /// <summary>
 /// EIP-8288 <c>engine_getInclusionListProofV1</c>: the <c>il_proof = [stark_proof, proof_deps]</c> whose bytes this node holds
@@ -27,7 +27,9 @@ public sealed class GetInclusionListProofHandler(ISpecProvider specProvider, Inc
     {
         if (!specProvider.GetSpec(ForkActivation.TimestampOnly(request.Timestamp)).IsEip8288Enabled)
             return ResultWrapper<InclusionListProofV1?>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
-        InclusionListProof? proof = inclusionListProofs.Get(request.Timestamp, request.StarkProofHash.ValueHash256);
+        if (request.StarkProofHash is not { } starkProofHash)
+            return ResultWrapper<InclusionListProofV1?>.Fail("starkProofHash must be set", ErrorCodes.InvalidParams);
+        InclusionListProof? proof = inclusionListProofs.Get(request.Timestamp, starkProofHash.ValueHash256);
         return ResultWrapper<InclusionListProofV1?>.Success(proof is null ? null : InclusionListProofV1.From(proof));
     }
 }

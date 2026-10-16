@@ -71,6 +71,23 @@ public class ChainParametersTests
         }
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Eip8288_aggregated_vk_and_its_transition_are_set_together(bool keyOnly)
+    {
+        ChainSpecJson test = new()
+        {
+            Params = new ChainSpecParamsJson
+            {
+                Eip8141TransitionTimestamp = 0,
+                Eip8288TransitionTimestamp = 0,
+                Eip8288AggregatedVkTransitionTimestamp = keyOnly ? null : 10,
+                Eip8288AggregatedVk = keyOnly ? Keccak.Compute("next AGGREGATED_VK") : null
+            }
+        };
+        Assert.That(() => TestSpecHelper.LoadChainSpec(test), Throws.InvalidOperationException);
+    }
+
     [Test]
     public void Eip8288_aggregated_vk_switches_at_its_transition()
     {

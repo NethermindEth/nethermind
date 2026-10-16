@@ -43,13 +43,13 @@ public sealed partial class ProofWrapperTransport
                     || _tombstones.Contains(objectId, now)) continue;
                 if (_fetches.TryGetValue(objectId, out WrapperFetch? existing))
                 {
-                    existing.AddSource(peer);
+                    existing.AddSource(peer, descriptor.ByteLength);
                     continue;
                 }
                 // The pending cache is bounded; announcements are not repeated, so excess ones are lost.
                 if (_fetches.Count >= WrapperTransportLimits.MaxPendingDescriptors) continue;
                 WrapperFetch fetch = new(descriptor, now);
-                fetch.AddSource(peer);
+                fetch.AddSource(peer, descriptor.ByteLength);
                 _fetches.Add(objectId, fetch);
             }
             Schedule(outbox);
@@ -83,9 +83,10 @@ public sealed partial class ProofWrapperTransport
         foreach (WrapperFetch fetch in _fetches.Values)
         {
             if (fetch.Requested || fetch.Wrapper is not null || fetch.NextSource() != peer) continue;
-            if (batch.Count > 0 && bytes + fetch.Descriptor.ByteLength > Eth73Protocol.SoftResponseLimit) continue;
+            int length = fetch.LengthFrom(peer);
+            if (batch.Count > 0 && bytes + length > Eth73Protocol.SoftResponseLimit) continue;
             batch.Add(fetch);
-            bytes += fetch.Descriptor.ByteLength;
+            bytes += length;
             if (batch.Count == Eth73Protocol.MaxWrappersPerRequest) break;
         }
         // A response stops before the soft limit after its first wrapper, so the local response cap bounds the reservation.
@@ -131,7 +132,7 @@ public sealed partial class ProofWrapperTransport
             int cursor = 0;
             for (int i = 0; i < identities.Length; i++)
             {
-                while (cursor < fetches.Length && (fetches[cursor].Descriptor.ByteLength != identities[i].Length
+                while (cursor < fetches.Length && (fetches[cursor].LengthFrom(peer) != identities[i].Length
                     || fetches[cursor].Descriptor.ContentHash != identities[i].Hash)) cursor++;
                 if (cursor == fetches.Length)
                 {
@@ -157,7 +158,7 @@ public sealed partial class ProofWrapperTransport
                     fetch.Wrapper = wrapper;
                     fetch.ChargedBytes = wrapper.Length;
                     fetch.Server = peer;
-                    fetch.AddSource(peer);
+                    fetch.AddSource(peer, wrapper.Length);
                     Enqueue(fetch);
                 }
                 // A wrapper after the last returned one was cut by the soft limit: ask the same peer again.

@@ -1012,13 +1012,17 @@ public class ProofWrapperServiceTests
 
     // EIP-8288 target fork: the fork active at head.timestamp + L, with L = (head.timestamp - parent.timestamp) /
     // (head.slot_number - parent.slot_number) from the EIP-7843 slot numbers, so a missed slot or another slot length changes the
-    // estimate and no configured slot length is used. Without a parent slot number the target fork is the head's fork.
+    // estimate and no configured slot length is used. When slot numbers do not increase the target fork is the head's fork, as
+    // it is, defensively, without a parent slot number; L is floor division.
     [TestCase(9UL, 980UL, 990UL, 10UL, true, TestName = "Ten-second slots reach the fork")]
     [TestCase(9UL, 984UL, 990UL, 6UL, false, TestName = "Six-second slots stop short of the fork")]
     [TestCase(8UL, 970UL, 990UL, 10UL, true, TestName = "A missed slot does not stretch the estimate")]
     [TestCase(9UL, 978UL, 990UL, 12UL, true, TestName = "Twelve-second slots pass the fork")]
-    [TestCase(null, 980UL, 990UL, null, false, TestName = "Without a parent slot number the head's fork is the target")]
-    [TestCase(null, 990UL, 1_000UL, null, true, TestName = "Without a parent slot number a head on the fork keeps it")]
+    [TestCase(null, 980UL, 990UL, null, false, TestName = "Without a parent slot number the head's fork is kept defensively")]
+    [TestCase(10UL, 980UL, 990UL, null, false, TestName = "A slot number that does not increase gives the head's fork")]
+    [TestCase(11UL, 980UL, 990UL, null, false, TestName = "A decreasing slot number gives the head's fork")]
+    [TestCase(8UL, 971UL, 990UL, 9UL, false, TestName = "The estimate rounds down")]
+    [TestCase(null, 990UL, 1_000UL, null, true, TestName = "Without a parent slot number a head on the fork keeps it defensively")]
     public void Target_fork_is_predicted_from_the_local_slot_length(ulong? parentSlot, ulong parentTimestamp, ulong headTimestamp,
         ulong? slotLength, bool upgraded)
     {

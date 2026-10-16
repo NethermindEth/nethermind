@@ -123,7 +123,7 @@ public static class MempoolWrapperValidator
     /// <summary>Whether a mode-1 wrapper within EIP-8288's limits exceeds what the native verifier can check.</summary>
     /// <remarks>EIP-8288 makes this a local refusal, not invalidity. Wrappers beyond EIP-8288's own limits are not counted
     /// here: validation rejects them.</remarks>
-    public static bool ExceedsLocalVerifier(MempoolWrapper wrapper)
+    internal static bool ExceedsLocalVerifier(MempoolWrapper wrapper)
         => wrapper.Mode == MempoolWrapper.ModeRecursive && CheckModeLimits(wrapper, out _)
             && LeanProofCapacity.CapacityError(new HashSet<FrameDependency>(wrapper.Deps)) is not null;
 

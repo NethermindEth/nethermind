@@ -74,6 +74,16 @@ public sealed class ProofVerdictCache
         return valid;
     }
 
+    /// <summary>Records an <c>INVALID</c> aggregate verdict for a proof rejected by its shape, without verification.</summary>
+    /// <remarks>EIP-8288 inclusion-list proofs: the key fixes the proof bytes and exact dependency list, so the rejection is final
+    /// under <paramref name="forkVerifier"/>. A verdict already held under the key is kept.</remarks>
+    public static void RecordInvalidRecursive(ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, in ValueHash256 proofHash,
+        in ValueHash256 depsHash)
+    {
+        ProofVerdictCache cache = For(verifier);
+        lock (cache._gate) cache._aggregate.Add(new AggregateKey(proofHash, depsHash, forkVerifier.AggregatedVk), false);
+    }
+
     /// <summary>Verifies a mode-0 direct witness for its single dependency under <paramref name="forkVerifier"/>'s parameters for the
     /// dependency's scheme.</summary>
     public static bool VerifyDirect(ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, FrameDependency dependency, byte[] witness)

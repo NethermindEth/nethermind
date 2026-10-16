@@ -250,7 +250,8 @@ public partial class EngineModuleTests
 
     // EIPs#12475 Test Case 9: attesters check a commitment through the EL before counting the list. A commitment to a proof
     // whose deps strictly contain the list's is VALID once held, PROOF_UNKNOWN until the il_proof is supplied, and an il_proof that
-    // does not match the commitment is ignored.
+    // does not match the commitment is ignored. execution-apis#945: an il_proof over its bounds is INVALID when it matches and
+    // ignored otherwise, never a JSON-RPC error; only a malformed parameter, such as a proofDeps entry that is not 96 bytes, is.
     [TestCase("il-proof", PayloadStatus.Valid, null)]
     [TestCase("held-after-il-proof", PayloadStatus.Valid, null)]
     [TestCase("not-held", InclusionListProofStatusV1.ProofUnknownStatus, null)]
@@ -260,6 +261,8 @@ public partial class EngineModuleTests
     [TestCase("null-commitment", null, ErrorCodes.InvalidParams)]
     [TestCase("incomplete-commitment", null, ErrorCodes.InvalidParams)]
     [TestCase("malformed-il-proof", null, ErrorCodes.InvalidParams)]
+    [TestCase("oversized-matching-il-proof", PayloadStatus.Invalid, null)]
+    [TestCase("oversized-mismatched-il-proof", InclusionListProofStatusV1.ProofUnknownStatus, null)]
     [TestCase("oversized-list", null, ErrorCodes.InvalidParams)]
     public async Task VerifyInclusionListProofV1_checks_the_commitment_against_the_list(string scenario, string? expectedStatus, int? expectedError)
     {
@@ -269,11 +272,17 @@ public partial class EngineModuleTests
         byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
         List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize([.. Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue),
             new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("surplus"), default)]);
-        byte[] proof = scenario == "invalid-proof" ? [2] : [1];
+        byte[] proof = scenario switch
+        {
+            "invalid-proof" => [2],
+            "oversized-matching-il-proof" or "oversized-mismatched-il-proof" => new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
+            _ => [1]
+        };
         RecursiveStarkV1? commitment = scenario switch
         {
             "null-commitment" => null,
             "incomplete-commitment" => new RecursiveStarkV1 { StarkProofHash = Keccak.Compute(proof) },
+            "oversized-mismatched-il-proof" => Commitment([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(proofDeps))),
             _ => Commitment(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(proofDeps)))
         };
         InclusionListProofV1 ilProof = new()
@@ -330,6 +339,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<InclusionListProofV1?> held = chain.EngineRpcModule.engine_getInclusionListProofV1(ProofTimestamp, Keccak.Compute([1]));
         ResultWrapper<InclusionListProofV1?> unknown = chain.EngineRpcModule.engine_getInclusionListProofV1(ProofTimestamp, Keccak.Compute([9]));
+        ResultWrapper<InclusionListProofV1?> missing = chain.EngineRpcModule.engine_getInclusionListProofV1(ProofTimestamp, null!);
 
         using (Assert.EnterMultipleScope())
         {
@@ -337,6 +347,7 @@ public partial class EngineModuleTests
             Assert.That(held.Data.ProofDeps, Is.EqualTo(wrapperDeps.Select(static d => Eip8288Dependencies.Serialize([d]))));
             Assert.That(unknown.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(unknown.Data, Is.Null);
+            Assert.That(missing.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams), "a null starkProofHash is an invalid parameter");
         }
     }
 
@@ -346,7 +357,10 @@ public partial class EngineModuleTests
     [TestCase("invalid-proof", PayloadStatus.Invalid)]
     [TestCase("unsorted-deps", PayloadStatus.Invalid)]
     [TestCase("oversized-proof", PayloadStatus.Invalid)]
-    public async Task SubmitInclusionListProofV1_records_topic_proofs(string scenario, string expectedStatus)
+    [TestCase("too-many-deps", PayloadStatus.Invalid)]
+    [TestCase("disabled-scheme", PayloadStatus.Invalid)]
+    [TestCase("short-dependency-entry", null)]
+    public async Task SubmitInclusionListProofV1_records_topic_proofs(string scenario, string? expectedStatus)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(InclusionProofEngineSpec(), new MergeConfig { TerminalTotalDifficulty = "0" },
             configurer: builder => builder.AddSingleton<ILeanProofVerifier>(new EngineListProofVerifier()));
@@ -359,13 +373,26 @@ public partial class EngineModuleTests
             "oversized-proof" => new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
             _ => [1]
         };
-        IEnumerable<FrameDependency> ordered = scenario == "unsorted-deps" ? proofDeps.AsEnumerable().Reverse() : proofDeps;
+        IEnumerable<FrameDependency> ordered = scenario switch
+        {
+            "unsorted-deps" => proofDeps.AsEnumerable().Reverse(),
+            "too-many-deps" => Eip8288Dependencies.Canonicalize(Enumerable.Range(0, Eip8288Constants.MaxDepsPerAggregateWrapper + 1).Select(static i =>
+                new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(i)), default))),
+            "disabled-scheme" => [.. proofDeps, new FrameDependency(0x7f, ValueKeccak.Compute("disabled"), default)],
+            _ => proofDeps
+        };
         InclusionListProofV1 ilProof = new() { StarkProof = proof, ProofDeps = [.. ordered.Select(static d => Eip8288Dependencies.Serialize([d]))] };
+        if (scenario == "short-dependency-entry") ilProof.ProofDeps![0] = ilProof.ProofDeps[0][..95];
 
         ResultWrapper<InclusionListProofStatusV1> result = chain.EngineRpcModule.engine_submitInclusionListProofV1(ProofTimestamp, ilProof, ViewFreezeDeadlineMs);
 
         using (Assert.EnterMultipleScope())
         {
+            if (expectedStatus is null)
+            {
+                Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams), "a proofDeps entry is bytes96");
+                return;
+            }
             Assert.That(result.Data.Status, Is.EqualTo(expectedStatus), result.Data.ValidationError);
             if (scenario == "valid")
             {
