@@ -195,7 +195,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             action.From = frame.Mode == FrameMode.Sender ? tx.SenderAddress : Eip8141Constants.EntryPointAddress;
             action.To = frame.Target ?? tx.SenderAddress;
             action.Value = frame.Value;
-            action.Input = tracer.CopyInput(frame.Data);
+            action.Input = tracer.CopyActionInput(frame.Data);
             action.Error = receipt.Status switch
             {
                 TxFrameReceipt.StatusSuccess => null,

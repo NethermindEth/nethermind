@@ -173,6 +173,10 @@ public partial class ParityLikeTxTracer : TxTracer
 
     protected virtual void ReturnInputBytes(in CappedArray<byte> input) { }
 
+    // Only the action tree reads the input, and BuildResult drops it unless Trace was requested.
+    private CappedArray<byte> CopyActionInput(ReadOnlyMemory<byte> input) =>
+        (_parityTraceTypes & ParityTraceTypes.Trace) != 0 ? CopyInput(input) : CappedArray<byte>.Empty;
+
     protected void ResetTracerState(Block block, Transaction? tx)
     {
         _tx = tx;
@@ -333,7 +337,7 @@ public partial class ParityLikeTxTracer : TxTracer
         action.From = _tx!.SenderAddress;
         action.To = _tx.To;
         action.Value = _tx.Value;
-        action.Input = CopyInput(_tx.Data);
+        action.Input = CopyActionInput(_tx.Data);
         action.Gas = _tx.GasLimit;
         action.CallType = _tx.IsMessageCall ? "call" : "init";
         return action;
@@ -535,7 +539,7 @@ public partial class ParityLikeTxTracer : TxTracer
         action.From = from;
         action.To = to;
         action.Value = value;
-        action.Input = CopyInput(input);
+        action.Input = CopyActionInput(input);
         action.Gas = gas;
         action.CallType = GetCallType(callType);
         action.Type = GetActionType(callType);
