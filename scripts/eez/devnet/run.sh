@@ -51,7 +51,6 @@ if [[ "$profile" == rollup0 ]]; then
     prover_image_id="$(docker image inspect --format '{{.Id}}' "$EEZ_PROOF_SIGNER_IMAGE")"
 else
     docker build -f "$HERE/Dockerfile.upstream" -t "$EEZ_NODE_IMAGE" -t "$EEZ_PROOF_SIGNER_IMAGE" "$EEZ_RUNTIME_DIR"
-    docker run --rm "$EEZ_NODE_IMAGE" --version
     docker run --rm --entrypoint eez-proof-signer "$EEZ_PROOF_SIGNER_IMAGE" --help >/dev/null
     export EEZ_SKIP_NODE_BUILD=1
     export EEZ_CAUSAL_VERIFIER_BIN="$EEZ_RUNTIME_DIR/e2e-causal-verify"
