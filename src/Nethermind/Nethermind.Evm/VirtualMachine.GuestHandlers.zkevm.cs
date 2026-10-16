@@ -2033,8 +2033,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ulong r0, r1, r2, r3;
             if (ZiskFlag.IsActive)
             {
-                // The low halves' product whole, as ExecuteMulOfHalfWidthFactors takes it, and the cross products of a low
-                // half with a high one only below 2^128, the part that reaches the low 256 bits of the product.
                 UInt256 low;
                 ZiskArithmetic.MultiplyLow((ulong*)Unsafe.AsPointer(ref top), (ulong*)Unsafe.AsPointer(ref product), (ulong*)&low);
                 r0 = low.u0;
@@ -2093,9 +2091,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // Reloaded rather than held across the call, where each would take a callee-saved register.
             handlers = state.OpcodeHandlers;
             code = ref stack.Code;
-            sp = ref SlotAt(ref stack.Bottom, head);
             head--;
-            sp = ref Moved(ref sp, -1);
+            sp = ref SlotAt(ref stack.Bottom, head);
             ip = ref Unsafe.Add(ref ip, 1);
             nint next = handlers[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
