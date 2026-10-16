@@ -386,6 +386,7 @@ public class GasEstimatorTests
         {
             Assert.That(estimation.Gas, Is.EqualTo(200_973ul));
             Assert.That(processor.Transactions, Has.None.SameAs(tx));
+            Assert.That(processor.Transactions, Has.Count.GreaterThan(1).And.All.SameAs(processor.Transactions[0]));
             Assert.That(processor.MaxFeesPerBlobGas, Has.Count.EqualTo(processor.GasLimits.Count).And.All.EqualTo((UInt256?)7));
             Assert.That(tx.GasLimit, Is.EqualTo(RequestedGas));
             Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo((UInt256?)7));
