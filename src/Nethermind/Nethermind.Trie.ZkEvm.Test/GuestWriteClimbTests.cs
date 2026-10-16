@@ -30,6 +30,10 @@ public class GuestWriteClimbTests
         Dictionary<string, byte[]> expected = [];
         PatriciaTree tree = new();
         for (int i = 0; i < 24; i++) Put(tree, expected, Key(i), [(byte)(i + 1)]);
+        // Every key differs in its first byte, so each deleted key and its sibling share a branch under an extension,
+        // which the delete collapses.
+        Put(tree, expected, Sharing(Key(7), 61, 3), [0xCC]);
+        Put(tree, expected, Sharing(Key(9), 62, 3), [0xDD]);
         SealAll(tree.RootRef!);
 
         List<byte[]> written = [];
