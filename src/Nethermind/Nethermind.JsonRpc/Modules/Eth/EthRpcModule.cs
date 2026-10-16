@@ -73,7 +73,8 @@ public partial class EthRpcModule(
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
     IBlockForRpcFactory blockForRpcFactory,
-    HashesOnlyBlockReader? hashesOnlyBlockReader = null) : IEthRpcModule
+    HashesOnlyBlockReader? hashesOnlyBlockReader = null,
+    IReceiptFinder? storedReceiptFinder = null) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -91,6 +92,8 @@ public partial class EthRpcModule(
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly IBlockForRpcFactory _blockForRpcFactory = blockForRpcFactory ?? throw new ArgumentNullException(nameof(blockForRpcFactory));
     private readonly HashesOnlyBlockReader? _hashesOnlyBlockReader = hashesOnlyBlockReader;
+    // Stored receipts only: a sender lookup must not drive receipt regeneration, which costs a block execution.
+    private readonly IReceiptFinder? _storedReceiptFinder = storedReceiptFinder;
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
@@ -554,7 +557,7 @@ public partial class EthRpcModule(
 
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
-            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            using RentedTimeout timeout = _rpcConfig.RentTimeout();
             Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode, checksFork: false);
             if (!frameGasResult)
                 return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
@@ -893,6 +896,7 @@ public partial class EthRpcModule(
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
+        transaction.SenderAddress ??= FindStoredTxSender(block, (int)positionIndex);
         RecoverTxSenderIfNeeded(transaction);
 
         TransactionForRpcContext extraData = new(
@@ -1018,7 +1022,7 @@ public partial class EthRpcModule(
         {
             if (!timeoutTransferred)
             {
-                timeout.Dispose();
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
             }
         }
     }
@@ -1092,7 +1096,7 @@ public partial class EthRpcModule(
         {
             if (!timeoutTransferred)
             {
-                timeout.Dispose();
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
             }
         }
     }
@@ -1120,7 +1124,7 @@ public partial class EthRpcModule(
             return GetStateFailureResult<AccountProof>(header);
         }
 
-        using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
+        using RentedTimeout timeout = _rpcConfig.RentTimeout();
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
         return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
@@ -1167,13 +1171,28 @@ public partial class EthRpcModule(
 
     protected void RecoverTxSenderIfNeeded(Transaction transaction) => transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
 
+    /// <summary>Returns the sender stored with the receipt of the block's transaction at <paramref name="index"/>, if any.</summary>
+    private Address? FindStoredTxSender(Block block, int index)
+    {
+        if (_storedReceiptFinder?.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator) is not true) return null;
+
+        using ReceiptsIterator receipts = iterator;
+        if (receipts.CountRemaining() != block.Transactions.Length) return null;
+
+        receipts.Skip(index);
+        // An absent sender decodes to the shared zero address, which a stored one never aliases.
+        return receipts.TryGetNext(out TxReceiptStructRef receipt) && receipt.Sender.Bytes != Address.Zero.Bytes
+            ? receipt.Sender.ToAddress()
+            : null;
+    }
+
     private ResultWrapper<IEnumerable<FilterLog>> GetLogsResponse(
         IEnumerable<FilterLog> filterLogs,
         CancellationTokenSource timeout,
         out bool timeoutTransferred)
     {
         timeoutTransferred = false;
-        bool enforceLogsLimits = JsonRpcContext.Current.Value?.IsAuthenticated != true;
+        bool enforceLogsLimits = JsonRpcContext.Current?.IsAuthenticated != true;
         bool enforceMaxLogs = enforceLogsLimits && _rpcConfig.MaxLogsPerResponse != 0;
 
         if (_rpcConfig.EnableLogsStreamMode)

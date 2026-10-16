@@ -135,6 +135,7 @@ public class BlockchainBridgeTests
             .WithBlockHash(TestItem.KeccakB)
             .WithIndex(i)
             .WithTransactionHash(t.Hash)
+            .WithSender(TestItem.Addresses[i])
             .TestObject
         ).ToArray();
         ;
@@ -149,6 +150,7 @@ public class BlockchainBridgeTests
         {
             Assert.That(result!.Value.Transaction.Nonce, Is.EqualTo((ulong)index));
             Assert.That(result.Value.Transaction.Hash, Is.EqualTo(TestItem.Keccaks[index]));
+            Assert.That(result.Value.Transaction.SenderAddress, Is.EqualTo(TestItem.Addresses[index]));
         });
         Assert.That(result.Value.ExtraData, Is.EqualTo(new TransactionForRpcContext(
             chainId: _specProvider.ChainId,

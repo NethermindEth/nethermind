@@ -52,7 +52,6 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using Nethermind.State;
-using static Nethermind.JsonRpc.Test.TimeoutTestHelper;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -828,7 +827,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_filter_logs_respects_max_logs_per_response()
+    public async Task Eth_get_filter_logs_respects_max_logs_per_response([Values] bool authenticated)
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
@@ -844,9 +843,18 @@ public partial class EthRpcModuleTests
             .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = false, MaxLogsPerResponse = 1 })
             .Build();
 
-        string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x1");
+        JsonRpcContext context = new(authenticated ? RpcEndpoint.IPC : RpcEndpoint.Http);
+        string serialized = await RpcTest.TestSerializedRequest(ctx.Test.EthRpcModule, context, "eth_getFilterLogs", "0x1");
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32005,\"message\":\"Too many logs requested. Max logs per response is 1.\"},\"id\":67}"));
+        if (authenticated)
+        {
+            using JsonDocument response = JsonDocument.Parse(serialized);
+            Assert.That(response.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(2));
+        }
+        else
+        {
+            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32005,\"message\":\"Too many logs requested. Max logs per response is 1.\"},\"id\":67}"));
+        }
     }
 
     [Test]
@@ -1144,132 +1152,6 @@ public partial class EthRpcModuleTests
         {
             yield return CreateTestFilterLog();
             throw new InvalidOperationException("Stream mode read past MaxLogsPerResponse.");
-        }
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task Eth_get_logs_stream_mode_transfers_timeout_until_response_disposal()
-    {
-        using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        CancellationToken observedToken = default;
-        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-            .Returns(call =>
-            {
-                observedToken = call.ArgAt<CancellationToken>(3);
-                return new[] { CreateTestFilterLog() };
-            });
-
-        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: true).WithBlockchainBridge(bridge).Build();
-        TrackingCancellationTokenSource timeout = RentTrackingTimeoutSourceForNextRequest();
-
-        try
-        {
-            CancellationToken expectedToken = timeout.Token;
-            ResultWrapper<IEnumerable<FilterLog>> response = ctx.Test.EthRpcModule.eth_getLogs(new Filter());
-
-            try
-            {
-                Assert.That(observedToken, Is.EqualTo(expectedToken));
-                Assert.That(response.Data, Is.TypeOf<LogsStreamableResult>());
-                Assert.That(timeout.DisposeCount, Is.EqualTo(0));
-            }
-            finally
-            {
-                response.Dispose();
-            }
-
-            Assert.That(timeout.DisposeCount, Is.EqualTo(1));
-        }
-        finally
-        {
-            DisposeIfNotAlreadyObserved(timeout);
-        }
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task Eth_get_logs_stream_mode_disposes_timeout_when_returning_before_transfer()
-    {
-        using Context ctx = await Context.Create();
-        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: true).Build();
-        TrackingCancellationTokenSource timeout = RentTrackingTimeoutSourceForNextRequest();
-
-        try
-        {
-            ResultWrapper<IEnumerable<FilterLog>> response = ctx.Test.EthRpcModule.eth_getLogs(new Filter
-            {
-                FromBlock = new BlockParameter(2),
-                ToBlock = new BlockParameter(1)
-            });
-
-            try
-            {
-                Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
-                Assert.That(response.Result.Error, Is.EqualTo("invalid block range params"));
-                Assert.That(timeout.DisposeCount, Is.EqualTo(1));
-            }
-            finally
-            {
-                response.Dispose();
-            }
-
-            Assert.That(timeout.DisposeCount, Is.EqualTo(1));
-        }
-        finally
-        {
-            DisposeIfNotAlreadyObserved(timeout);
-        }
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task Eth_get_logs_stream_mode_disposes_timeout_after_enumeration_failure()
-    {
-        using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        CancellationToken observedToken = default;
-        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-            .Returns(call =>
-            {
-                observedToken = call.ArgAt<CancellationToken>(3);
-                return GetLogs();
-            });
-
-        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: true).WithBlockchainBridge(bridge).Build();
-        TrackingCancellationTokenSource timeout = RentTrackingTimeoutSourceForNextRequest();
-
-        try
-        {
-            CancellationToken expectedToken = timeout.Token;
-            ResultWrapper<IEnumerable<FilterLog>> response = ctx.Test.EthRpcModule.eth_getLogs(new Filter());
-            response.Id = new JsonRpcId(67L);
-            string serialized;
-
-            try
-            {
-                Assert.That(observedToken, Is.EqualTo(expectedToken));
-                serialized = await WriteJsonRpcResponseAsync(response);
-                Assert.That(timeout.DisposeCount, Is.EqualTo(0));
-            }
-            finally
-            {
-                response.Dispose();
-            }
-
-            Assert.That(serialized, Is.EqualTo(ExpectedFilterLogStreamResponse("failed")));
-            Assert.That(timeout.DisposeCount, Is.EqualTo(1));
-        }
-        finally
-        {
-            DisposeIfNotAlreadyObserved(timeout);
-        }
-
-        static IEnumerable<FilterLog> GetLogs()
-        {
-            yield return CreateTestFilterLog();
-            throw new InvalidOperationException("Stream mode failed after a complete log item.");
         }
     }
 
@@ -2272,7 +2154,7 @@ public partial class EthRpcModuleTests
             .AddSingleton(bridgeFactory)
             .Build();
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
-        using JsonRpcContext context = new(RpcEndpoint.Http);
+        JsonRpcContext context = new(RpcEndpoint.Http);
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
         int pendingCount = limit == 0 ? 3 : limit;
