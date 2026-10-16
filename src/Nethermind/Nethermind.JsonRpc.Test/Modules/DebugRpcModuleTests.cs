@@ -317,6 +317,65 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_traceCall_txIndex_checks_parent_state_before_bounds([Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        Block parent = chain.BlockTree.Head!;
+        Block empty = await chain.AddBlock();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parent.IsGenesis, Is.False);
+            Assert.That(empty.Transactions, Is.Empty);
+            Assert.That(empty.ParentHash, Is.EqualTo(parent.Hash));
+            Assert.That(chain.Bridge.HasStateForBlock(parent.Header), Is.True);
+            Assert.That(chain.Bridge.HasStateForBlock(empty.Header), Is.True);
+        }
+
+        Task<string> TraceAtIndex(string index) => RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, empty.Hash!.ToString(), new { txIndex = index });
+
+        TestContext.Out.WriteLine("available-parent/index-1");
+        string availableResponse = await TraceAtIndex("0x1");
+        JToken available = JToken.Parse(availableResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)available["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), availableResponse);
+            Assert.That((string?)available["error"]?["message"], Is.EqualTo($"transaction index 1 out of range for block {empty.Hash}"), availableResponse);
+        }
+
+        parent.Header.StateRoot = TestItem.KeccakA;
+        TestContext.Out.WriteLine($"parent={parent.Hash} root={parent.StateRoot}; target={empty.Hash} root={empty.StateRoot}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parent.StateRoot, Is.Not.EqualTo(empty.StateRoot));
+            Assert.That(chain.Bridge.HasStateForBlock(parent.Header), Is.False);
+            Assert.That(chain.Bridge.HasStateForBlock(empty.Header), Is.True);
+        }
+
+        TestContext.Out.WriteLine("unavailable-parent/index-0");
+        string parentResponse = await TraceAtIndex("0x0");
+        JToken parentError = JToken.Parse(parentResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)parentError["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceUnavailable), parentResponse);
+            Assert.That((string?)parentError["error"]?["message"], Is.EqualTo($"No state available for block {parent.Header.ToString(BlockHeader.Format.FullHashAndNumber)}"), parentResponse);
+        }
+
+        TestContext.Out.WriteLine("unavailable-parent/index-1");
+        string response = await TraceAtIndex("0x1");
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo((int?)parentError["error"]?["code"]), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo((string?)parentError["error"]?["message"]), response);
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That(json["error"]?["data"], Is.Null, response);
+            Assert.That((int?)json["id"], Is.EqualTo(67), response);
+        }
+    }
+
     [TestCase(true, "0x0", -32000, false)]
     [TestCase(true, "0x0", -32000, true)]
     [TestCase(false, "0x0", null, false)]
