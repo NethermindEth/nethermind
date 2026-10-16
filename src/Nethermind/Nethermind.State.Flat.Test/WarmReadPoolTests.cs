@@ -72,7 +72,7 @@ public class WarmReadPoolTests
             if (count > 16) cts.Cancel();
         }, cts.Token));
 
-        Assert.That(processed, Is.LessThan(10_000));
+        Assert.That(processed, Is.InRange(17, 18), "the cancelling job plus at most one the other worker already claimed");
     }
 
     [Test]
