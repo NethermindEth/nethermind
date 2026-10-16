@@ -534,8 +534,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>A stack step fused with an MSTORE after it, which stores the word below the step's result at it.</summary>
         /// <remarks>
-        /// With too little gas or stack for the step, it runs alone through its own handler. Once it has run, an MSTORE
-        /// that needs new backing or more gas than is left runs through the MSTORE handler, as it would unfused.
+        /// With too little stack or gas for both the step and the MSTORE, the step runs alone through its own handler. Once
+        /// it has run, an MSTORE that needs new backing or more gas than is left runs through the MSTORE handler, as it would
+        /// unfused.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -589,8 +590,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>A stack step fused with an MLOAD after it, which replaces the step's result with the word at it.</summary>
         /// <remarks>
-        /// With too little gas or stack for the step, it runs alone through its own handler. Once it has run, an MLOAD
-        /// outside the active, initialized memory or with too little gas left runs through the MLOAD handler.
+        /// With too little stack or gas for both the step and the MLOAD, the step runs alone through its own handler. Once it
+        /// has run, an MLOAD outside the active, initialized memory runs through the MLOAD handler.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
