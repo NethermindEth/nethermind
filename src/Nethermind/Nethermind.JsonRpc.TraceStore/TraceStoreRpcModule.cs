@@ -351,8 +351,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             return BuildStoreStreamingResult<ParityTxTraceFromStore>(
                 runStreaming: (writer, pipeWriter, ct) =>
                 {
-                    ct.ThrowIfCancellationRequested();
-                    ParityTxTraceFromStore.Write(writer, storedTrace, null, EthereumJsonSerializer.JsonOptions);
+                    ParityTxTraceFromStore.Write(writer, storedTrace, null, EthereumJsonSerializer.JsonOptions, ct);
                     FlushPipe(writer, pipeWriter, ct);
                 },
                 runBuffered: () => ParityTxTraceFromStore.FromTxTrace(storedTrace))!;

@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -60,6 +62,32 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             string expected = WriteJson(writer => TypeInfoJsonSerializer.Serialize(writer, expectedItems, EthereumJsonSerializer.JsonOptions));
 
             Assert.That(actual, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Write_stops_at_the_next_action_once_cancelled()
+        {
+            using CancellationTokenSource cts = new();
+            CancellingBufferWriter buffer = new(cts);
+            using Utf8JsonWriter writer = new(buffer, new JsonWriterOptions { SkipValidation = true });
+
+            Assert.Throws<OperationCanceledException>(() => ParityTxTraceFromStore.Write(writer, BuildNestedTrace(), null, EthereumJsonSerializer.JsonOptions, cts.Token));
+        }
+
+        /// <summary>Cancels the token as soon as the first action starts writing.</summary>
+        private sealed class CancellingBufferWriter(CancellationTokenSource cts) : IBufferWriter<byte>
+        {
+            private readonly ArrayBufferWriter<byte> _inner = new();
+
+            public void Advance(int count) => _inner.Advance(count);
+
+            public Memory<byte> GetMemory(int sizeHint = 0)
+            {
+                cts.Cancel();
+                return _inner.GetMemory(sizeHint);
+            }
+
+            public Span<byte> GetSpan(int sizeHint = 0) => GetMemory(sizeHint).Span;
         }
 
         private static IEnumerable<TestCaseData> WriteCases()

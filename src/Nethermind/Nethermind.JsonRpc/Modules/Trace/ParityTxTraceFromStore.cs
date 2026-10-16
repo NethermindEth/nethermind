@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -60,14 +61,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// Serializes the items <see cref="FromTxTrace(ParityLikeTxTrace)"/> would return, reusing one instance for all of them.
         /// </summary>
         /// <param name="filter">When set, only the actions it accepts are written.</param>
-        public static void Write(Utf8JsonWriter writer, ParityLikeTxTrace txTrace, TxTraceFilter? filter, JsonSerializerOptions options)
+        /// <param name="cancellationToken">Checked before each action is written.</param>
+        public static void Write(Utf8JsonWriter writer, ParityLikeTxTrace txTrace, TxTraceFilter? filter, JsonSerializerOptions options, CancellationToken cancellationToken = default)
         {
             if (txTrace.Action is null) return;
 
             ParityTxTraceFromStore item = _writeItem ??= new ParityTxTraceFromStore();
             try
             {
-                WriteActionRecursively(writer, txTrace, txTrace.Action, filter, options, item);
+                WriteActionRecursively(writer, txTrace, txTrace.Action, filter, options, item, cancellationToken);
             }
             finally
             {
@@ -77,9 +79,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
         }
 
-        private static void WriteActionRecursively(Utf8JsonWriter writer, ParityLikeTxTrace txTrace, ParityTraceAction action, TxTraceFilter? filter, JsonSerializerOptions options, ParityTxTraceFromStore item)
+        private static void WriteActionRecursively(Utf8JsonWriter writer, ParityLikeTxTrace txTrace, ParityTraceAction action, TxTraceFilter? filter, JsonSerializerOptions options, ParityTxTraceFromStore item, CancellationToken cancellationToken)
         {
             if (!action.IncludeInTrace || filter is { IsExhausted: true }) return;
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (filter is null || filter.ShouldUseTxTrace(action))
             {
@@ -90,7 +94,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             List<ParityTraceAction> subtraces = action.Subtraces;
             for (int index = 0; index < subtraces.Count; index++)
             {
-                WriteActionRecursively(writer, txTrace, subtraces[index], filter, options, item);
+                WriteActionRecursively(writer, txTrace, subtraces[index], filter, options, item, cancellationToken);
             }
         }
 
