@@ -152,7 +152,7 @@ namespace Nethermind.TxPool
 
         public void AnnounceOnce(ITxPoolPeer peer, Transaction[] txs)
         {
-            if (txs.Length > 0)
+            if (txs.Length > 0 && CanGossipTransactions)
             {
                 using ArrayPoolListRef<Transaction> gossipable = GetGossipable(txs);
                 Notify(peer, gossipable.AsSpan(), false);
@@ -256,11 +256,7 @@ namespace Nethermind.TxPool
                 {
                     if (_logger.IsTrace) _logger.Trace($"Broadcasting {transactionsToSend.Count} persistent transactions to all peers.");
 
-                    using ArrayPoolListRef<Transaction> gossipable = GetGossipable(transactionsToSend);
-                    foreach ((_, ITxPoolPeer peer) in _peers)
-                    {
-                        Notify(peer, gossipable.AsSpan(), true);
-                    }
+                    NotifyAllPeers(transactionsToSend, true);
                 }
                 else
                 {
@@ -271,11 +267,7 @@ namespace Nethermind.TxPool
                 {
                     if (_logger.IsTrace) _logger.Trace($"Announcing {hashesToSend.Count} hashes of persistent transactions to all peers.");
 
-                    using ArrayPoolListRef<Transaction> gossipable = GetGossipable(hashesToSend);
-                    foreach ((_, ITxPoolPeer peer) in _peers)
-                    {
-                        Notify(peer, gossipable.AsSpan(), false);
-                    }
+                    NotifyAllPeers(hashesToSend, false);
                 }
             }
             else
@@ -380,11 +372,7 @@ namespace Nethermind.TxPool
 
                 if (_logger.IsTrace) _logger.Trace($"Broadcasting transactions to all peers");
 
-                using ArrayPoolListRef<Transaction> gossipable = GetGossipable(_txsToSend);
-                foreach ((_, ITxPoolPeer peer) in _peers)
-                {
-                    Notify(peer, gossipable.AsSpan(), false);
-                }
+                NotifyAllPeers(_txsToSend, false);
 
                 _txsToSend.Reset();
             }
@@ -400,6 +388,17 @@ namespace Nethermind.TxPool
         }
 
         private bool CanGossipTransactions => _txGossipPolicy.CanGossipTransactions;
+
+        private void NotifyAllPeers(IList<Transaction> txs, bool sendFullTx)
+        {
+            if (!CanGossipTransactions || _peers.IsEmpty) return;
+
+            using ArrayPoolListRef<Transaction> gossipable = GetGossipable(txs);
+            foreach ((_, ITxPoolPeer peer) in _peers)
+            {
+                Notify(peer, gossipable.AsSpan(), sendFullTx);
+            }
+        }
 
         /// <summary>Filters with the gossip policy once, so every peer is handed the same span.</summary>
         /// <remarks>A throwing policy yields an empty batch, so it cannot stop the broadcast timer.</remarks>

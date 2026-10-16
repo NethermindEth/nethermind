@@ -918,6 +918,21 @@ public class TxBroadcasterTests
     }
 
     [Test]
+    public void Timer_skips_the_gossip_policy_when_nothing_can_be_sent([Values] bool canGossipTransactions)
+    {
+        ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
+        gossipPolicy.CanGossipTransactions.Returns(canGossipTransactions);
+        gossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
+        ITimer timer = CreateManuallyTimedBroadcaster(gossipPolicy);
+        if (!canGossipTransactions) _broadcaster.AddPeer(new RecordingTxPoolPeer(TestItem.PublicKeyA));
+        _broadcaster.Broadcast(Build.A.Transaction.TestObject, isPersistent: false);
+
+        timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+
+        gossipPolicy.DidNotReceive().ShouldGossipTransaction(Arg.Any<Transaction>());
+    }
+
+    [Test]
     public void Timer_keeps_running_when_the_gossip_policy_throws()
     {
         ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
