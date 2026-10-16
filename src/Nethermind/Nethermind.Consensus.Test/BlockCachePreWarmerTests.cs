@@ -3309,9 +3309,15 @@ public class BlockCachePreWarmerTests
         Block block = BuildOneTxPerSenderBlock(senders, 1.Wei);
         int warmups = 0;
         ConcurrentDictionary<IReadOnlyTxProcessingScope, bool> warmingScopes = new();
+        int jobsSeeingEarlierJobs = 0;
         using ManualResetEventSlim openGate = new(initialState: true);
         WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate,
-            () => Interlocked.Increment(ref warmups), scope => warmingScopes.TryAdd(scope, true));
+            () => Interlocked.Increment(ref warmups), scope =>
+            {
+                warmingScopes.TryAdd(scope, true);
+                // Each sender's job pays AddressC; a job that starts with a non-zero balance sees an earlier job's state.
+                if (!scope.WorldState.GetBalance(TestItem.AddressC).IsZero) Interlocked.Increment(ref jobsSeeingEarlierJobs);
+            });
         using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: workers,
             parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
 
@@ -3321,6 +3327,7 @@ public class BlockCachePreWarmerTests
         {
             Assert.That(warmups, Is.GreaterThanOrEqualTo(senders), "every sender's job must be warmed");
             Assert.That(warmingScopes, Has.Count.LessThanOrEqualTo(workers), "a worker must reuse its scope for every job of the block");
+            Assert.That(jobsSeeingEarlierJobs, Is.Zero, "a reused scope must not carry an earlier job's speculative state");
         }
     }
 

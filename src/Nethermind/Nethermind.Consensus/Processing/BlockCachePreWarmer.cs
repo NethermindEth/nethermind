@@ -2666,7 +2666,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             BlockState blockState = _queue.BlockState;
             // Indices are ascending, so if the main thread has started the job's last tx it has started them all;
-            // the per-tx guard would discard each one, so skip before building a scope.
+            // the per-tx guard would discard each one, so skip before opening or resetting the scope.
             if (blockState.PreWarmer.MainThreadTxIndex >= lastIndex) return;
 
             CancellationToken token = _queue.Token;
