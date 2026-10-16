@@ -135,15 +135,12 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             private readonly UInt256 _value = value;
             private readonly Address _address = address;
             private readonly ReadOnlyMemory<byte>? _input = input;
-            private ITypedArray<byte>? _callerConverted;
-            private ITypedArray<byte>? _addressConverted;
-            private ITypedArray<byte>? _inputConverted;
             private IJavaScriptObject? _valueConverted;
             public Address Caller { get; } = caller;
 
-            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToArray().ToTypedScriptArray();
-            public ITypedArray<byte> getCaller() => _callerConverted ??= Caller.Bytes.ToArray().ToTypedScriptArray();
-            public object getInput() => (_inputConverted ??= _input?.ToArray().ToTypedScriptArray()) ?? (object)Undefined.Value;
+            public ITypedArray<byte> getAddress() => _address.Bytes.ToArray().ToTypedScriptArray();
+            public ITypedArray<byte> getCaller() => Caller.Bytes.ToArray().ToTypedScriptArray();
+            public object getInput() => _input?.ToArray().ToTypedScriptArray() ?? (object)Undefined.Value;
 
             public IJavaScriptObject getValue() => _valueConverted ??= _value.ToBigInteger();
         }

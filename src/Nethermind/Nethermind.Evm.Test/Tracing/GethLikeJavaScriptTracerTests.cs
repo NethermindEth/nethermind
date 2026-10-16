@@ -276,6 +276,34 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void log_contract_byte_arrays_are_fresh_on_each_call()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        var address = log.contract.getAddress();
+                        var caller = log.contract.getCaller();
+                        this.retVal.push(toHex(address) + ':' + toHex(caller));
+                        address[0] = 0;
+                        caller[0] = 0;
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .Op(Instruction.STOP)
+            .Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        const string expected = "942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099";
+        AssertResult(traces, new[] { expected, expected });
+    }
+
+    [Test]
     public void post_step_fires_once_per_step()
     {
         string userTracer = @"{
