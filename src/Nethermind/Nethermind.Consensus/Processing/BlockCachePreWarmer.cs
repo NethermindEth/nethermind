@@ -288,6 +288,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 }
                 finally
                 {
+                    // A fan-out held for the transaction workers is let go before the address warmer is joined, however the
+                    // pass left the try.
+                    addressWarmer.ReleaseFanOut();
                     try
                     {
                         // Every warm has returned, so nothing queues behind this: the session must not end with discovery still writing.

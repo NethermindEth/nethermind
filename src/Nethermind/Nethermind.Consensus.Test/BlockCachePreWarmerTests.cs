@@ -626,6 +626,40 @@ public class BlockCachePreWarmerTests(bool earlyStart)
     }
 
     /// <summary>
+    /// A pass that fails before its transaction workers are queued still lets a held sender and recipient fan-out go, so
+    /// its session ends without waiting for the session's token to be cancelled.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_APassThatFailsBeforeItsWorkers_LetsTheHeldFanOutGo(CancellationToken testToken)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        Block block = BuildReactiveWarmBlock();
+        block.Header.Beneficiary = TestItem.AddressF;
+        BlockHeader parent = BuildParentHeader();
+        // Thrown once the address warmer has warmed the coinbase, so it is running when the pass unwinds and joins it.
+        preWarmer.BeforeTransactionWorkers = () =>
+        {
+            SpinWait.SpinUntil(() => testToken.IsCancellationRequested || preBlockCaches.StateCache.TryGetValue(TestItem.AddressF, out _),
+                TimeSpan.FromSeconds(10));
+            throw new InvalidOperationException("the pass fails before its transaction workers are queued");
+        };
+
+        bool ended;
+        using (preWarmer)
+        using (_processingScope.Resolve<IWorldState>().BeginScope(parent))
+        {
+            // Disposing the session cancels its token, which lets a fan-out still held go in any case.
+            using IDisposable? session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            Task completion = Task.Run(() => ((PrewarmingSession?)session)?.WaitForCompletion());
+            ended = completion.Wait(TimeSpan.FromSeconds(10));
+        }
+
+        Assert.That(ended, Is.True, "the session waited for its token to be cancelled");
+    }
+
+    /// <summary>
     /// With the early start, the fan-out over the senders and recipients is queued behind the transaction workers, so
     /// they take the worker budget first; otherwise it starts while the block's transactions are still being grouped.
     /// The recipient is read by nothing else before the workers start.
