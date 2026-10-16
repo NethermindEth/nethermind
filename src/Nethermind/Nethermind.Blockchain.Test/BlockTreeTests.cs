@@ -2777,11 +2777,12 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Delete_slice_during_lookup_does_not_leave_deleted_block_cached([Values] bool headerLookup)
+    public void Delete_during_lookup_does_not_leave_deleted_block_cached([Values] bool headerLookup, [Values] bool invalidBlockDeletion)
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
         BlockTree blockTree = builder.TestObject;
         BlockHeader deleted = blockTree.FindHeader(4, BlockTreeLookupOptions.None)!;
+        Block invalidBlock = blockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
         ((IClearableCache)builder.BlockStore).ClearCache();
         ((IClearableCache)builder.HeaderStore).ClearCache();
         TestMemDb db = (TestMemDb)(headerLookup ? builder.HeadersDb : builder.BlocksDb);
@@ -2790,7 +2791,8 @@ public class BlockTreeTests
         {
             db.ReadFunc = null;
             byte[]? value = db.Get(key);
-            Assert.That(blockTree.DeleteChainSlice(3), Is.EqualTo(2));
+            if (invalidBlockDeletion) blockTree.DeleteInvalidBlock(invalidBlock);
+            else Assert.That(blockTree.DeleteChainSlice(3), Is.EqualTo(2));
             return value!;
         };
 
