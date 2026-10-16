@@ -40,11 +40,25 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
     // newPayload call would count as an external client; the flag follows the async flow of the forwarded call.
     private static readonly AsyncLocal<bool> s_forwardingWitnessCall = new();
 
-    private async Task<ResultWrapper<T>> DetectAfter<T>(Task<ResultWrapper<T>> call)
+    private async Task<ResultWrapper<T>> Detect<T>(Func<Task<ResultWrapper<T>>> call)
     {
-        ResultWrapper<T> result = await call;
-        if (!s_forwardingWitnessCall.Value && result.Result.ResultType == ResultType.Success && result.Data is not null) _detector.OnExternalEngineCall();
-        return result;
+        if (s_forwardingWitnessCall.Value)
+        {
+            return await call();
+        }
+
+        _detector.OnExternalEngineCallStarted();
+        bool accepted = false;
+        try
+        {
+            ResultWrapper<T> result = await call();
+            accepted = result.Result.ResultType == ResultType.Success && result.Data is not null;
+            return result;
+        }
+        finally
+        {
+            _detector.OnExternalEngineCallEnded(accepted);
+        }
     }
 
     private static async Task<ResultWrapper<T>> ForwardWitnessCall<T>(Func<Task<ResultWrapper<T>>> call)
@@ -61,37 +75,37 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
     }
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
-        => DetectAfter(_engine.engine_newPayloadV1(executionPayload));
+        => Detect(() => _engine.engine_newPayloadV1(executionPayload));
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload)
-        => DetectAfter(_engine.engine_newPayloadV2(executionPayload));
+        => Detect(() => _engine.engine_newPayloadV2(executionPayload));
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)
-        => DetectAfter(_engine.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot));
+        => Detect(() => _engine.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot));
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
-        => DetectAfter(_engine.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
+        => Detect(() => _engine.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
-        => DetectAfter(_engine.engine_newPayloadV5(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
+        => Detect(() => _engine.engine_newPayloadV5(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));
 
     public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
-        => DetectAfter(_engine.engine_newPayloadV6(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions));
+        => Detect(() => _engine.engine_newPayloadV6(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => DetectAfter(_engine.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes));
+        => Detect(() => _engine.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => DetectAfter(_engine.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes));
+        => Detect(() => _engine.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => DetectAfter(_engine.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes));
+        => Detect(() => _engine.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
-        => DetectAfter(_engine.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes, custodyColumns));
+        => Detect(() => _engine.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes, custodyColumns));
 
     public Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV5(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
-        => DetectAfter(_engine.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes, custodyColumns));
+        => Detect(() => _engine.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes, custodyColumns));
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV4(ExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
         => ForwardWitnessCall(() => _engine.engine_newPayloadWithWitnessV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests));

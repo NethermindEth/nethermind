@@ -23,6 +23,7 @@ public sealed class ExternalClDetector(
     private readonly ILogger _logger = logManager.GetClassLogger<ExternalClDetector>();
     private IEngineRpcModule? _inner;
     private int _detected;
+    private int _externalCallsInFlight;
 
     /// <summary>Raised on the first external engine call when <see cref="IBeaconChainConfig.DisableOnExternalCl"/> is set; the driver lifecycle stops itself in response.</summary>
     public event Action? ExternalClDetected;
@@ -53,15 +54,32 @@ public sealed class ExternalClDetector(
     /// <summary>Whether an external consensus client took over and the embedded driver must send no more engine calls.</summary>
     internal bool HasStoodDown => config.DisableOnExternalCl && IsExternalClDetected;
 
-    internal void ThrowIfStoodDown()
+    /// <exception cref="OperationCanceledException">An external consensus client took over the engine API.</exception>
+    /// <exception cref="EngineUnavailableException">An external call that may take over is still in flight, so <paramref name="method"/> is retried later.</exception>
+    internal void ThrowIfStoodDown(string method)
     {
         if (HasStoodDown)
             throw new OperationCanceledException("External consensus client took over the engine API");
+        // Forwarded meanwhile, the driver's call would race the external client's for the execution head.
+        if (config.DisableOnExternalCl && Volatile.Read(ref _externalCallsInFlight) != 0)
+            throw new EngineUnavailableException(method, "an external consensus client call is in flight");
     }
 
     public void SetInner(IEngineRpcModule inner) => Volatile.Write(ref _inner, inner);
 
-    /// <summary>Called by the decorator on every externally visible <c>newPayload</c>/<c>forkchoiceUpdated</c>.</summary>
+    /// <summary>Called by the decorator before it forwards an external <c>newPayload</c>/<c>forkchoiceUpdated</c>.</summary>
+    internal void OnExternalEngineCallStarted() => Interlocked.Increment(ref _externalCallsInFlight);
+
+    /// <summary>Called by the decorator when a call reported by <see cref="OnExternalEngineCallStarted"/> ends.</summary>
+    /// <remarks>Only an accepted call detects the external client, so a rejected one leaves the driver running.</remarks>
+    internal void OnExternalEngineCallEnded(bool accepted)
+    {
+        // Detection is visible before the count drops, so no driver check falls between the two.
+        if (accepted) OnExternalEngineCall();
+        Interlocked.Decrement(ref _externalCallsInFlight);
+    }
+
+    /// <summary>Records an accepted external <c>newPayload</c>/<c>forkchoiceUpdated</c>.</summary>
     public void OnExternalEngineCall()
     {
         if (Interlocked.Exchange(ref _detected, 1) != 0)

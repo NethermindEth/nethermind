@@ -67,7 +67,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         byte[][] requests = PayloadConverter.ToExecutionRequestsList(body.ExecutionRequests);
         return await CallEngineAsync("newPayloadV4", _logger.IsInfo ? $"{payload.BlockNumber} ({payload.BlockHash?.ToShortString()})" : null, async () =>
         {
-            detector.ThrowIfStoodDown();
+            detector.ThrowIfStoodDown("newPayloadV4");
             long started = Stopwatch.GetTimestamp();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(payload, versionedHashes, message.ParentRoot, requests);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
@@ -136,7 +136,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         // V3 stays valid after Amsterdam only without payload attributes: execution-apis amsterdam.md "Osaka API" bounds only the payload timestamp.
         if (clock.CurrentEpoch < spec.GloasForkEpoch)
         {
-            detector.ThrowIfStoodDown();
+            detector.ThrowIfStoodDown("forkchoiceUpdatedV3");
             long startedV3 = Stopwatch.GetTimestamp();
             ResultWrapper<ForkchoiceUpdatedV1Result> v3 = await detector.InnerEngine.engine_forkchoiceUpdatedV3(state);
             TimeSpan elapsedV3 = Stopwatch.GetElapsedTime(startedV3);
@@ -145,7 +145,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
 
         // specs/gloas/fork-choice.md notify_forkchoice_updated: custody_columns is the node's custody set.
         BitArray? columns = ToCustodyColumnBits(custody.Current);
-        detector.ThrowIfStoodDown();
+        detector.ThrowIfStoodDown("forkchoiceUpdatedV4");
         long startedV4 = Stopwatch.GetTimestamp();
         ResultWrapper<ForkchoiceUpdatedV1Result> v4 = await detector.InnerEngine.engine_forkchoiceUpdatedV4(state, null, columns);
         TimeSpan elapsedV4 = Stopwatch.GetElapsedTime(startedV4);
@@ -200,7 +200,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         byte[][] requests = PayloadConverter.ToExecutionRequestsList(executionRequests);
         return await CallEngineAsync("newPayloadV5", _logger.IsInfo ? $"{converted.BlockNumber} ({converted.BlockHash?.ToShortString()})" : null, async () =>
         {
-            detector.ThrowIfStoodDown();
+            detector.ThrowIfStoodDown("newPayloadV5");
             long started = Stopwatch.GetTimestamp();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(converted, versionedHashes, parentBeaconBlockRoot, requests);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(started);

@@ -90,7 +90,7 @@ public class BeaconChainServiceStartupTests
         ExternalClDetector detector = new(new BeaconChainConfig { DisableOnExternalCl = true },
             new Lazy<Nethermind.Merge.Plugin.IEngineRpcModule>(() => throw new InvalidOperationException()), detectorLogs);
         // Inject the engine cancellation after detection becomes visible but before the stop event can cancel the run token.
-        logger.When(log => log.Warn(Arg.Any<string>())).Do(_ => detector.ThrowIfStoodDown());
+        logger.When(log => log.Warn(Arg.Any<string>())).Do(_ => detector.ThrowIfStoodDown("forkchoiceUpdatedV3"));
         logger.When(log => log.Info(Arg.Is<string>(text => text.StartsWith("Starting embedded beacon chain driver."))))
             .Do(_ => detector.OnExternalEngineCall());
         using IContainer container = KickContainer(engine, pubkeys).AddSingleton(detector).AddSingleton(detectorLogs).Build();

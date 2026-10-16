@@ -202,18 +202,27 @@ public class EngineTests
         Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
     }
 
+    // An external call holds the driver off while in flight, so both clients never race for the head; only an accepted one stands it down.
     [Test]
-    public async Task A_failed_external_engine_call_does_not_stand_down_the_driver()
+    public async Task An_external_engine_call_holds_off_the_driver_until_its_result([Values] bool accepted)
     {
         IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
         TaskCompletionSource<ResultWrapper<ForkchoiceUpdatedV1Result>> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         inner.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(completion.Task);
         ExternalClDetector detector = CreateDetector(inner, out ExternalClInterceptingEngineRpcModule decorator);
+        EngineDriver driver = TestEngineDriver.Create(detector);
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> call = decorator.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(TestHash, TestHash, TestHash));
-        Assert.That(detector.IsExternalClDetected, Is.False);
-        completion.SetResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("unsupported fork"));
+        inner.ClearReceivedCalls();
+
+        Assert.That(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash), Throws.InstanceOf<EngineUnavailableException>(), "the driver's call is deferred, not dropped for good");
+        int forwardedWhileInFlight = inner.ReceivedCalls().Count();
+        completion.SetResult(accepted ? ForkchoiceUpdatedV1Result.Valid(null, TestHash) : ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("unsupported fork"));
         await call;
-        Assert.That(detector.IsExternalClDetected, Is.False);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forwardedWhileInFlight, Is.Zero);
+        Assert.That(detector.HasStoodDown, Is.EqualTo(accepted));
+        Assert.That(() => detector.ThrowIfStoodDown("forkchoiceUpdatedV3"), accepted ? Throws.InstanceOf<OperationCanceledException>() : Throws.Nothing);
     }
 
     [Test]
