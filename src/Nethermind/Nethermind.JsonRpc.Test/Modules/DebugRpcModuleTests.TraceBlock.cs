@@ -725,6 +725,32 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceBlock_native_tracer_streams_the_buffered_json(
+        [Values("debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values(NativeCallTracer.CallTracer, NativePrestateTracer.PrestateTracer)] string tracer)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object blockParameter = method switch
+        {
+            "debug_traceBlock" => Rlp.Encode(block).ToString(),
+            "debug_traceBlockByNumber" => block.Number,
+            _ => block.Hash!
+        };
+
+        using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = true });
+        string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = true });
+        string buffered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = false });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.TryGetStreamableResult(out IStreamableResult? result) ? result : null, Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>(), "precondition: the block is streamed");
+            Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length), streamed);
+            Assert.That(streamed, Is.EqualTo(buffered));
+        }
+    }
+
+    [Test]
     public async Task Debug_traceBlock_with_invalid_rlp()
     {
         using Context context = await Context.Create();

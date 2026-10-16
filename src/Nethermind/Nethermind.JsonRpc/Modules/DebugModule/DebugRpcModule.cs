@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -208,6 +209,11 @@ public class DebugRpcModule(
         if (!string.IsNullOrEmpty(options?.Tracer)) return false;
         return options?.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode;
     }
+
+    private bool CanStreamBlockTrace(GethTraceOptions? options) =>
+        CanStreamStructLogs(options)
+        || (options is { TxHash: null } && GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer)
+            && (options.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode));
 
     /// <summary>
     /// Lowers the opcode log byte budget of a trace held in memory to <see cref="IJsonRpcConfig.MaxBufferedTraceLogSize"/>.
@@ -422,7 +428,7 @@ public class DebugRpcModule(
             return blockError;
         }
 
-        if (CanStreamStructLogs(options))
+        if (CanStreamBlockTrace(options))
         {
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
@@ -468,7 +474,7 @@ public class DebugRpcModule(
 
         if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
-        if (CanStreamStructLogs(options))
+        if (CanStreamBlockTrace(options))
         {
             Block? resolvedBlock = blockFinder.FindBlock(blockNumber);
             if (resolvedBlock is null)
@@ -479,7 +485,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
+                    debugBridge.GetBlockTrace(new BlockParameter(resolvedBlock.Hash!), token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
@@ -515,7 +521,7 @@ public class DebugRpcModule(
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
-        if (CanStreamStructLogs(options))
+        if (CanStreamBlockTrace(options))
         {
             Block? resolvedBlock = blockFinder.FindBlock(blockHash);
             if (resolvedBlock is null)
@@ -526,7 +532,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
+                    debugBridge.GetBlockTrace(new BlockParameter(resolvedBlock.Hash!), token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();

@@ -287,7 +287,7 @@ public partial class DebugRpcModuleTests
 
     // Without usable receipts both paths number the logs from the body they replay, as the receipts would.
     [Test]
-    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce([Values] ReceiptAvailability availability)
+    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce([Values] ReceiptAvailability availability, [Values] bool streamMode)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -312,7 +312,7 @@ public partial class DebugRpcModuleTests
         CountingReceiptFinder receipts = (CountingReceiptFinder)chain.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey);
 
         int before = receipts.BlockGets;
-        GethTraceOptions options = new() { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}""") };
+        GethTraceOptions options = new() { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}"""), StreamMode = streamMode };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, options);
         int blockTraceGets = receipts.BlockGets - before;
         string single = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactions[^1].Hash, options);
