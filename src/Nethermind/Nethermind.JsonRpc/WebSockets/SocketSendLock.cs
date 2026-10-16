@@ -58,5 +58,16 @@ internal sealed class SocketSendLock : IDisposable
     }
 
     /// <inheritdoc/>
-    public void Dispose() => _semaphore.Dispose();
+    /// <remarks>Completes the response writer without writing its unflushed data, unless a send still holds the lock.</remarks>
+    public void Dispose()
+    {
+        if (_semaphore.Wait(0))
+        {
+            _writer?.Complete(new ObjectDisposedException(nameof(SocketSendLock)));
+            _writer = null;
+            _semaphore.Release();
+        }
+
+        _semaphore.Dispose();
+    }
 }

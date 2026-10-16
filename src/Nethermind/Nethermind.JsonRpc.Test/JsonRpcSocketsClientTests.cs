@@ -529,6 +529,25 @@ public class JsonRpcSocketsClientTests
     }
 
     [Test]
+    public async Task Disposing_send_lock_completes_the_writer_unless_a_send_holds_it([Values] bool sendInFlight)
+    {
+        using MemoryMessageStream stream = new();
+        SocketSendLock sendLock = new();
+        CountingStreamPipeWriter writer = sendLock.GetWriter(stream, new StreamPipeWriterOptions(leaveOpen: true), 0);
+        await writer.WriteAsync(new byte[] { 1 });
+        writer.Write(new byte[] { 2 });
+        if (sendInFlight) await sendLock.WaitAsync(CancellationToken.None);
+
+        sendLock.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.IsCompleted, Is.EqualTo(!sendInFlight));
+            Assert.That(stream.ToArray(), Is.EqualTo(new byte[] { 1 }), "unflushed data must not be written on dispose");
+        }
+    }
+
+    [Test]
     public async Task Abandoned_socket_batch_faults_the_connection()
     {
         using SocketSinkFixture fixture = CreateSocketSink();
