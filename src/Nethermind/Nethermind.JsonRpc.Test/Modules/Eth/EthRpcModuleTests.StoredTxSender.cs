@@ -27,7 +27,8 @@ public partial class EthRpcModuleTests
     {
         Address?[]? storedSenders = null;
         using Context ctx = await Context.Create(configurer: builder =>
-            builder.AddDecorator<IReceiptFinder>((_, inner) => new StoredSendersReceiptFinder(inner, () => storedSenders)));
+            builder.AddDecorator<IReceiptFinder>((_, inner) => new IteratorOverrideReceiptFinder(inner,
+                () => storedSenders?.Select(static sender => Build.A.Receipt.WithSender(sender!).TestObject).ToArray())));
         TestRpcBlockchain test = ctx.Test;
         ulong blockNumber = await AddBlockWithTwoTransactionsFromB(test);
 
@@ -52,7 +53,9 @@ public partial class EthRpcModuleTests
         bool regenerationForbidden = false;
         using Context ctx = await Context.Create(configurer: builder =>
             builder.AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, c =>
-                new ForbiddenIteratorReceiptFinder(c.Resolve<IReceiptFinder>(), () => regenerationForbidden)));
+                new IteratorOverrideReceiptFinder(c.Resolve<IReceiptFinder>(), () => regenerationForbidden
+                    ? throw new InvalidOperationException("The sender lookup must not read regenerable receipts.")
+                    : null)));
         TestRpcBlockchain test = ctx.Test;
         ulong blockNumber = await AddBlockWithTwoTransactionsFromB(test);
         regenerationForbidden = true;
@@ -76,8 +79,8 @@ public partial class EthRpcModuleTests
         return blockNumber;
     }
 
-    /// <summary>Serves receipts carrying the given senders from the iterator once they are set.</summary>
-    private sealed class StoredSendersReceiptFinder(IReceiptFinder inner, Func<Address?[]?> storedSenders) : IReceiptFinder
+    /// <summary>Serves the receipts from <paramref name="iteratorReceipts"/> through the iterator, or the inner finder's when it returns null.</summary>
+    private sealed class IteratorOverrideReceiptFinder(IReceiptFinder inner, Func<TxReceipt[]?> iteratorReceipts) : IReceiptFinder
     {
         public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => inner.Get(block, recover, recoverSender);
@@ -86,24 +89,10 @@ public partial class EthRpcModuleTests
 
         public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
-            if (storedSenders() is not { } senders) return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+            if (iteratorReceipts() is not { } receipts) return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
-            iterator = new ReceiptsIterator(senders.Select(static sender => Build.A.Receipt.WithSender(sender!).TestObject).ToArray());
+            iterator = new ReceiptsIterator(receipts);
             return true;
         }
-    }
-
-    /// <summary>Stands in for a regenerating finder: once forbidden, reading a receipts iterator fails the test.</summary>
-    private sealed class ForbiddenIteratorReceiptFinder(IReceiptFinder inner, Func<bool> forbidden) : IReceiptFinder
-    {
-        public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
-        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => inner.Get(block, recover, recoverSender);
-        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => inner.Get(blockHash, recover);
-        public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
-
-        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) =>
-            forbidden()
-                ? throw new InvalidOperationException("The sender lookup must not read regenerable receipts.")
-                : inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
     }
 }
