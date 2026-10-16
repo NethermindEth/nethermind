@@ -638,7 +638,7 @@ internal static partial class SszCodecHelpers
 
         string lowerCased = name.Substring(0, 1).ToLower() + name.Substring(1);
 
-        return lowerCased == "data" || lowerCased == "container" || lowerCased.Contains("offset") ? $"_{lowerCased}" : lowerCased;
+        return lowerCased == "data" || lowerCased == "container" || lowerCased == "decoded" || lowerCased.Contains("offset") ? $"_{lowerCased}" : lowerCased;
     }
 
     /// <summary>
