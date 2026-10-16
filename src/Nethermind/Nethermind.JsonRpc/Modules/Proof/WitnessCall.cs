@@ -92,7 +92,7 @@ internal sealed class WitnessCall(
         // EVM then throws OperationCanceledException, which JsonRpcService maps to a Timeout error. A
         // MissingTrieNodeException from a reorg/prune between header lookup and witness execution is
         // likewise mapped (to ResourceNotFound) by JsonRpcService, so no local catch is needed here.
-        using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         SingleCallWitnessResult result = blockchainBridge.GenerateExecutionWitness(callHeader, tx, timeout.Token);
         return CallResultWithProof.FromWitnessResult(result, tx.GasLimit);
     }

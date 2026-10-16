@@ -554,7 +554,7 @@ public partial class EthRpcModule(
 
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
-            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            using RentedTimeout timeout = _rpcConfig.RentTimeout();
             Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode, checksFork: false);
             if (!frameGasResult)
                 return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
@@ -1018,7 +1018,7 @@ public partial class EthRpcModule(
         {
             if (!timeoutTransferred)
             {
-                timeout.Dispose();
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
             }
         }
     }
@@ -1092,7 +1092,7 @@ public partial class EthRpcModule(
         {
             if (!timeoutTransferred)
             {
-                timeout.Dispose();
+                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
             }
         }
     }
@@ -1120,7 +1120,7 @@ public partial class EthRpcModule(
             return GetStateFailureResult<AccountProof>(header);
         }
 
-        using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
+        using RentedTimeout timeout = _rpcConfig.RentTimeout();
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
         return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());

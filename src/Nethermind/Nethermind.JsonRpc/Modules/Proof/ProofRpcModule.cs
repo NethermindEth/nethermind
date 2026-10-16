@@ -165,7 +165,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     ErrorCodes.ResourceUnavailable);
             }
 
-            using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
+            using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
             AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);

@@ -1190,10 +1190,10 @@ public partial class EthRpcModuleTests
 
     [Test]
     [NonParallelizable]
-    public async Task Eth_get_logs_stream_mode_disposes_timeout_when_returning_before_transfer()
+    public async Task Eth_get_logs_returns_timeout_to_pool_when_returning_before_transfer([Values] bool enableLogsStreamMode)
     {
         using Context ctx = await Context.Create();
-        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: true).Build();
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build();
         TrackingCancellationTokenSource timeout = RentTrackingTimeoutSourceForNextRequest();
 
         try
@@ -1208,14 +1208,18 @@ public partial class EthRpcModuleTests
             {
                 Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
                 Assert.That(response.Result.Error, Is.EqualTo("invalid block range params"));
-                Assert.That(timeout.DisposeCount, Is.EqualTo(1));
             }
             finally
             {
                 response.Dispose();
             }
 
-            Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+            using CancellationTokenSource next = new JsonRpcConfig().BuildTimeoutCancellationToken();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(next, Is.SameAs(timeout));
+                Assert.That(timeout.DisposeCount, Is.Zero);
+            }
         }
         finally
         {
