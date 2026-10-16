@@ -142,6 +142,10 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// </remarks>
     internal const long UnseenBlockEnvelopeBytes = 64 * 1024 * 1024;
 
+    /// <summary>The most envelopes for unseen blocks raised to the import pipeline and not yet taken from its queue or refused by it.</summary>
+    /// <remarks>Each one holds a slot of the import queue that gossip blocks share, so a flood of small envelopes must not take the room of a block.</remarks>
+    internal const int UnseenBlockEnvelopeCount = 128;
+
     private readonly ILogger _logger = logManager.GetClassLogger<GossipRouter>();
     private readonly LruKeyCache<ValueHash256> _seenMessages = new(SeenCacheSize, "beacon gossip seen messages");
 
@@ -181,7 +185,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private readonly PerSlotBudget _votedBlockSlotReads = new(VotedBlockSlotReadsPerSlot);
     private readonly PerSlotBudget _envelopeBlockDecodes = new(StoreDecodesPerSlot);
     private readonly PerSlotBudget _ptcBlockSlotReads = new(PtcBlockSlotReadsPerSlot);
-    private readonly ByteBudget _unseenBlockEnvelopes = new(UnseenBlockEnvelopeBytes);
+    private readonly ByteBudget _unseenBlockEnvelopes = new(UnseenBlockEnvelopeBytes, UnseenBlockEnvelopeCount);
 
     // A held block never changes, so its bid is decoded once, not once per envelope; a root not held is never cached, as it may arrive a moment later.
     private readonly LruCache<Hash256, EnvelopeBlock> _envelopeBlocks = new(EnvelopeBlockCacheSize, "beacon gossip envelope blocks");

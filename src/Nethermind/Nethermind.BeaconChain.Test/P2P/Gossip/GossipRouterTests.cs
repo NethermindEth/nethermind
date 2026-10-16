@@ -586,7 +586,7 @@ public partial class GossipRouterTests
     [Test]
     public void Byte_budget_charge_released_twice_gives_its_bytes_back_once()
     {
-        ByteBudget budget = new(maxBytes: 10);
+        ByteBudget budget = new(maxBytes: 10, maxCharges: 1);
         ByteBudget.Charge charge = budget.TryCharge(10)!;
         bool overBudget = budget.TryCharge(1) is not null;
         charge.Release();

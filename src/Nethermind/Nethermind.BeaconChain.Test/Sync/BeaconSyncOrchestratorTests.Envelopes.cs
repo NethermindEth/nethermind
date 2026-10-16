@@ -193,6 +193,34 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(afterDrain, Is.EqualTo(MessageValidity.Ignored), "the worker frees the bytes once it takes the envelopes");
     }
 
+    // gloas/p2p-interface.md execution_payload: an envelope for an unseen block MAY be queued, but not in the import queue room a gossip block needs.
+    [Test]
+    public async Task Gossip_envelopes_for_unseen_blocks_cannot_fill_the_import_queue_ahead_of_a_gossip_block()
+    {
+        ulong wallSlot = FirstGloasSlot + 1;
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + wallSlot * Sepolia.SecondsPerSlot).AddSeconds(6));
+        GossipRouter router = new(Sepolia, new SlotClock(Sepolia, timestamper), LimboLogs.Instance);
+        Harness harness = CreateHarness(router: router);
+        harness.Orchestrator.RouteGossipEvents();
+
+        MessageValidity SendUnseen(int index) =>
+            router.HandleExecutionPayloadEnvelope(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(EnvelopeFor(Keccak.Compute($"unseen block {index}"), wallSlot))));
+
+        MessageValidity[] flood = [.. Enumerable.Range(0, BeaconSyncOrchestrator.WorkQueueCapacity).Select(SendUnseen)];
+        int queuedEnvelopes = harness.Orchestrator.QueuedWorkCount;
+        bool blockQueued = harness.Orchestrator.WorkWriter.TryWrite(
+            new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(wallSlot, TestItem.KeccakA))));
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        MessageValidity afterDrain = SendUnseen(BeaconSyncOrchestrator.WorkQueueCapacity);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(flood.Count(static validity => validity == MessageValidity.Throttled), Is.EqualTo(BeaconSyncOrchestrator.WorkQueueCapacity - GossipRouter.UnseenBlockEnvelopeCount),
+            "past the count bound a small envelope is throttled, however few bytes the queued ones hold");
+        Assert.That(queuedEnvelopes, Is.EqualTo(GossipRouter.UnseenBlockEnvelopeCount));
+        Assert.That(blockQueued, Is.True, "the gossip block finds room in the import queue");
+        Assert.That((afterDrain, harness.Orchestrator.QueuedWorkCount), Is.EqualTo((MessageValidity.Ignored, 1)), "the worker gives the count back once it takes the envelopes");
+    }
+
     [Test]
     public async Task Envelope_before_its_block_imports_once_the_block_imports_and_is_not_redelivered()
     {
