@@ -1,7 +1,5 @@
 name: Measure storage adoption
 on:
-  push:
-    branches: [perf/storage-adoption-proof]
   workflow_dispatch:
     inputs:
       baseline_ref:

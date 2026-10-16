@@ -38,7 +38,7 @@ public class HistoryBoundsBenchmarks
     private int[] _groups = null!;
     private string _root = null!;
 
-    [Params("active", "deleted95", "compacted95")]
+    [Params("active", "deleted95", "compacted95", "deleted-gap")]
     public string State { get; set; } = "active";
 
     [Params(1, 24, 256)]
@@ -53,9 +53,10 @@ public class HistoryBoundsBenchmarks
         RocksDbConfigFactory factory = new(config, new PruningConfig(), new BenchmarkHardwareInfo(), LimboLogs.Instance, validateConfig: false);
         _db = new DbOnTheRocks(_root, new DbSettings("Blocks", "history"), config, factory, LimboLogs.Instance);
         _store = new HistoryStoreV3(_db);
+        int groups = State == "deleted-gap" ? 512 : Groups;
         using (IWriteBatch batch = _db.StartWriteBatch())
         {
-            for (int group = 0; group < Groups; group++)
+            for (int group = 0; group < groups; group++)
                 for (ulong version = 0; version < Versions; version++)
                     _store.RecordPreValue(version, Key(group), Value(group, version), batch);
         }
@@ -64,8 +65,8 @@ public class HistoryBoundsBenchmarks
         {
             using (IWriteBatch batch = _db.StartWriteBatch())
             {
-                for (int group = 0; group < Groups; group++)
-                    if (group % 20 != 0)
+                for (int group = 0; group < groups; group++)
+                    if (State == "deleted-gap" ? group != groups - 1 : group % 20 != 0)
                         for (ulong version = 0; version < Versions; version++)
                         {
                             byte[] key = new byte[40];
@@ -82,7 +83,7 @@ public class HistoryBoundsBenchmarks
         Random random = new(1701);
         for (int i = 0; i < Queries; i++)
         {
-            _groups[i] = random.Next(Groups);
+            _groups[i] = random.Next(State == "deleted-gap" ? groups - 1 : groups);
             _keys[i] = Key(_groups[i]);
         }
         Verify();
@@ -106,7 +107,7 @@ public class HistoryBoundsBenchmarks
 #else
                 int written = _store.TryGetValueBeforeNextChange(3, _keys[i], output, out ulong next);
 #endif
-                bool present = State == "active" || _groups[i] % 20 == 0;
+                bool present = State == "active" || (State != "deleted-gap" && _groups[i] % 20 == 0);
                 if (written != (present ? 64 : -1) || (present && (next != 4 || !output.SequenceEqual(Value(_groups[i], 4)))))
                     throw new InvalidOperationException($"Incorrect history lookup {i}, state={State}, scope={ScopeSize}");
             }
