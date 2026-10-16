@@ -504,9 +504,9 @@ public class HistoryPruner : IHistoryPruner
 
     /// <summary>Prunes block access lists outside the retention window on a node that keeps its blocks and receipts.</summary>
     /// <remarks>
-    /// EIP-7928 requires BALs only for a bounded window (the chain's minBalRetentionEpochs, <c>HISTORY_PRUNE_EPOCHS</c>
-    /// per ethereum/EIPs#12347), so they are pruned even with history pruning disabled. Kept apart from the full pass,
-    /// which would also move the block boundary and sweep the transaction index.
+    /// BALs are required only for a bounded window (the chain's minBalRetentionEpochs, EIP-4444 <c>HISTORY_PRUNE_EPOCHS</c>;
+    /// the matching EIP-7928 change, ethereum/EIPs#12347, is pending), so they are pruned even with history pruning
+    /// disabled. Kept apart from the full pass, which would also move the block boundary and sweep the transaction index.
     /// </remarks>
     private void TryPruneBlockAccessListsOnly(CancellationToken cancellationToken)
     {

@@ -13,6 +13,7 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.History;
@@ -42,16 +43,17 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                    (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotNumber, pivotHash));
         };
 
-    /// <summary>How many different peers must report an access list unavailable before the height is left as a gap.</summary>
+    /// <summary>How many different nodes must report an access list unavailable before the height is left as a gap.</summary>
     /// <remarks>
     /// Peers keep access lists only for their own retention window, which can be shorter than this node's, so an old
     /// height may be unavailable everywhere. Leaving it out keeps the feed from stalling; the store then reports it
-    /// missing, as it would a pruned one.
+    /// missing, as it would a pruned one. Heights inside the chain's minimum BAL retention window are never left out,
+    /// since every peer must serve them.
     /// </remarks>
     internal const int MaxUnavailableResponses = 8;
 
     private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.BlockAccessLists, 0, true);
-    private readonly ConcurrentDictionary<ulong, HashSet<ISyncPeer>> _unavailable = new();
+    private readonly ConcurrentDictionary<ulong, HashSet<PublicKey>> _unavailable = new();
 
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
@@ -69,6 +71,9 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private bool ShouldFinish => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded;
     private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? ulong.MaxValue) <= _barrier;
     private bool PivotHasNoBlockAccessLists => FindPivotHeader(out _, out _) is { BlockAccessListHash: null };
+    private ulong SkippedBelow => ulong.Min(_historyPruner.BalCutoffBlockNumber ?? 0, _blockTree.SyncPivot.BlockNumber);
+
+    internal int UnavailableHeightsCount => _unavailable.Count;
 
     public override bool IsFinished => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded || PivotHasNoBlockAccessLists;
     public override string FeedName => nameof(BlockAccessListsSyncFeed);
@@ -307,6 +312,10 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     {
         bool hasBreachedProtocol = false;
         int validResponsesCount = 0;
+        int gaps = 0;
+        ulong lowestGap = ulong.MaxValue;
+        ulong highestGap = 0;
+        RemoveSkippedUnavailable();
 
         BlockInfo?[] blockInfos = batch.Infos;
         for (int i = 0; i < blockInfos.Length; i++)
@@ -358,7 +367,9 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 if (hasAccessListResponse && IsUnavailableEverywhere(blockInfo.BlockNumber, batch.ResponseSourcePeer?.SyncPeer))
                 {
                     _syncStatusList.MarkInserted(blockInfo.BlockNumber);
-                    if (_logger.IsDebug) _logger.Debug($"Block access list of {blockInfo.BlockNumber} is unavailable from {MaxUnavailableResponses} peers, leaving it out.");
+                    gaps++;
+                    lowestGap = ulong.Min(lowestGap, blockInfo.BlockNumber);
+                    highestGap = ulong.Max(highestGap, blockInfo.BlockNumber);
                 }
                 else
                 {
@@ -367,25 +378,50 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             }
         }
 
+        if (gaps > 0 && _logger.IsWarn)
+            _logger.Warn($"Leaving out {gaps} block access lists between {lowestGap} and {highestGap}: unavailable from {MaxUnavailableResponses} peers.");
+
         UpdateSyncReport();
         LogPostProcessingBatchInfo(batch, validResponsesCount);
         return validResponsesCount;
     }
 
-    /// <summary>Records which peer reported the height unavailable and reports when enough different peers have.</summary>
+    /// <summary>Records which node reported the height unavailable and reports when enough different nodes have.</summary>
+    /// <remarks>Keyed on the node ID, not the session, so a node that reconnects counts once.</remarks>
     private bool IsUnavailableEverywhere(ulong blockNumber, ISyncPeer? peer)
     {
-        if (peer is null) return false;
+        if (peer?.Node?.Id is not { } nodeId || IsInsideServingWindow(blockNumber)) return false;
 
-        HashSet<ISyncPeer> peers = _unavailable.GetOrAdd(blockNumber, static _ => []);
+        HashSet<PublicKey> peers = _unavailable.GetOrAdd(blockNumber, static _ => []);
         lock (peers)
         {
-            peers.Add(peer);
+            peers.Add(nodeId);
             if (peers.Count < MaxUnavailableResponses) return false;
         }
 
         _unavailable.TryRemove(blockNumber, out _);
         return true;
+    }
+
+    /// <summary>Whether peers must still serve the height: within the chain's minimum BAL retention of the head.</summary>
+    /// <remarks>The pivot stands in for the head during fast sync, when the head is still near genesis.</remarks>
+    private bool IsInsideServingWindow(ulong blockNumber)
+    {
+        ulong head = ulong.Max(_blockTree.Head?.Number ?? 0, _blockTree.SyncPivot.BlockNumber);
+        ulong windowBlocks = _historyPruner.GetRetentionBlocks(_specProvider.GenesisSpec.MinBalRetentionEpochs);
+        return blockNumber >= head.SaturatingSub(windowBlocks);
+    }
+
+    /// <summary>Drops tracking for heights the feed no longer requests because the pruning cutoff has passed them.</summary>
+    private void RemoveSkippedUnavailable()
+    {
+        if (_unavailable.IsEmpty) return;
+
+        ulong skippedBelow = SkippedBelow;
+        foreach (KeyValuePair<ulong, HashSet<PublicKey>> entry in _unavailable)
+        {
+            if (entry.Key < skippedBelow) _unavailable.TryRemove(entry.Key, out _);
+        }
     }
 
     private void LogPostProcessingBatchInfo(BlockAccessListsSyncBatch batch, int validResponsesCount)

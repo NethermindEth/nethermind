@@ -347,37 +347,81 @@ public class BlockAccessListsSyncFeedTests
         Assert.That(requested, Is.EquivalentTo(Enumerable.Range((int)cutoff, (int)(pivot - cutoff + 1)).Select(static n => (ulong)n)));
     }
 
-    [Test]
-    public async Task Leaves_out_block_access_lists_no_peer_has([Values(1, 2, BlockAccessListsSyncFeed.MaxUnavailableResponses)] int peerCount)
+    [TestCase(1, false, ExpectedResult = false)]
+    [TestCase(2, false, ExpectedResult = false)]
+    [TestCase(BlockAccessListsSyncFeed.MaxUnavailableResponses, false, ExpectedResult = true)]
+    [TestCase(BlockAccessListsSyncFeed.MaxUnavailableResponses, true, ExpectedResult = false)]
+    public async Task<bool> Leaves_out_block_access_lists_no_peer_has(int nodeCount, bool insideServingWindow)
     {
         ISpecProvider specProvider = SetUpChainWithActivation(pivot: 2, activation: 1, timestampActivation: false, headersAvailable: true, []);
         _syncPeerPool
             .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<int?>(3));
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        _historyPruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(insideServingWindow ? 100UL : 10UL);
         _feed.Dispose();
         _feed = CreateFeed(specProvider);
         _feed.InitializeFeed();
         _feed.Activate();
-        PeerInfo[] peers = Enumerable.Range(0, peerCount).Select(static _ => new PeerInfo(Substitute.For<ISyncPeer>())).ToArray();
-        bool givesUp = peerCount == BlockAccessListsSyncFeed.MaxUnavailableResponses;
 
         for (int i = 0; i < BlockAccessListsSyncFeed.MaxUnavailableResponses; i++)
         {
             using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
             Assert.That(batch, Is.Not.Null);
             batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(static _ => (byte[]?)null).ToArray());
-            batch.ResponseSourcePeer = peers[i % peerCount];
+            batch.ResponseSourcePeer = CreateSession(TestItem.PublicKeys[i % nodeCount]);
             Assert.That(_feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.NoProgress));
         }
 
         using BlockAccessListsSyncBatch? next = await _feed.PrepareRequest();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(next, givesUp ? Is.Null : Is.Not.Null, "only different peers count towards giving up");
-            Assert.That(_feed.IsFinished, Is.EqualTo(givesUp));
+            Assert.That(_feed.IsFinished, Is.EqualTo(next is null));
             _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
             _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
+
+        return _feed.IsFinished;
+    }
+
+    [Test]
+    public async Task Stops_tracking_unavailable_heights_once_the_pruning_cutoff_passes_them()
+    {
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot: 3, activation: 1, timestampActivation: false, headersAvailable: true, []);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider);
+        _feed.InitializeFeed();
+        _feed.Activate();
+
+        await ReportUnavailable();
+        int trackedBeforeCutoff = _feed.UnavailableHeightsCount;
+        _historyPruner.BalCutoffBlockNumber.Returns(3UL);
+        await ReportUnavailable();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trackedBeforeCutoff, Is.EqualTo(3));
+            Assert.That(_feed.UnavailableHeightsCount, Is.EqualTo(1), "heights 1 and 2 are below the cutoff, only height 3 is tracked");
+        }
+
+        async Task ReportUnavailable()
+        {
+            using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+            batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(static _ => (byte[]?)null).ToArray());
+            batch.ResponseSourcePeer = CreateSession(TestItem.PublicKeyA);
+            _feed.HandleResponse(batch);
+        }
+    }
+
+    private static PeerInfo CreateSession(PublicKey nodeId)
+    {
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.Node.Returns(new Node(nodeId, "127.0.0.1", 30303));
+        return new PeerInfo(syncPeer);
     }
 
     [Test]
