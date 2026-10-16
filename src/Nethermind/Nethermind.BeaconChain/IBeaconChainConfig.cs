@@ -58,7 +58,7 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "How long, in minutes, a banned peer id is refused before it may connect again.", DefaultValue = "30")]
     int PeerBanMinutes { get; set; }
 
-    [ConfigItem(Description = "Overrides the Gloas fork epoch of the network selected via the execution layer's chain id, for following a network whose Gloas schedule changed since this release. Must not be below the network's Fulu fork epoch. When unset, the built-in schedule is used. For a network with no built-in Gloas epoch, GloasForkVersion must be set too.", DefaultValue = "null")]
+    [ConfigItem(Description = "Overrides the Gloas fork epoch of the network selected via the execution layer's chain id, for following a network whose Gloas schedule changed since this release. The execution-layer chainspec must move Amsterdam to the same timestamp (see Init.ChainSpecPath), or startup fails. Must not be below the network's Fulu fork epoch. When unset, the built-in schedule is used. For a network with no built-in Gloas epoch, GloasForkVersion must be set too.", DefaultValue = "null")]
     ulong? GloasForkEpoch { get; set; }
 
     [ConfigItem(Description = "Overrides the Gloas fork version of the network selected via the execution layer's chain id, as 4 bytes of hex (for example 0x90000076). Must differ from every earlier fork version of that network. When unset, the built-in version is used.", DefaultValue = "null")]

@@ -16,7 +16,9 @@ using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Init.Modules;
 using Nethermind.Merge.Plugin;
@@ -44,13 +46,13 @@ public class BeaconChainModule : Module
         if (spec.GloasForkEpoch == ulong.MaxValue)
         {
             if (execution.GetFinalSpec().IsAmsterdamEnabled)
-                throw new ArgumentException("The execution layer schedules Amsterdam but the beacon chain does not schedule Gloas.");
+                throw new InvalidConfigurationException("The execution layer schedules Amsterdam but the beacon chain does not schedule Gloas.", ExitCodes.ConflictingConfigurations);
             return;
         }
         ulong timestamp = checked(spec.GenesisTime + spec.GloasForkEpoch * spec.SlotsPerEpoch * spec.SecondsPerSlot);
         if (!execution.GetSpec(long.MaxValue - 1, timestamp).IsAmsterdamEnabled
             || (timestamp > 0 && execution.GetSpec(long.MaxValue - 1, timestamp - 1).IsAmsterdamEnabled))
-            throw new ArgumentException($"Gloas must activate with execution-layer Amsterdam at timestamp {timestamp}; align both fork schedules.");
+            throw new InvalidConfigurationException($"Gloas must activate with execution-layer Amsterdam at timestamp {timestamp}; align both fork schedules.", ExitCodes.ConflictingConfigurations);
     }
 
     protected override void Load(ContainerBuilder builder)

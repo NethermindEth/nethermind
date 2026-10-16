@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.Spec;
+using Nethermind.Config;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using NSubstitute;
@@ -42,7 +44,7 @@ public class GloasScheduleTests
         if (offset == 0)
             Assert.That(() => BeaconChainModule.ValidateGloasSchedule(spec, execution), Throws.Nothing);
         else
-            Assert.That(() => BeaconChainModule.ValidateGloasSchedule(spec, execution), Throws.ArgumentException);
+            AssertConflictingConfiguration(() => BeaconChainModule.ValidateGloasSchedule(spec, execution));
     }
 
     [Test]
@@ -54,8 +56,13 @@ public class GloasScheduleTests
         execution.GetSpec(Arg.Any<ForkActivation>()).Returns(final);
 
         if (scheduled)
-            Assert.That(() => BeaconChainModule.ValidateGloasSchedule(BeaconChainSpec.Mainnet, execution), Throws.ArgumentException);
+            AssertConflictingConfiguration(() => BeaconChainModule.ValidateGloasSchedule(BeaconChainSpec.Mainnet, execution));
         else
             Assert.That(() => BeaconChainModule.ValidateGloasSchedule(BeaconChainSpec.Mainnet, execution), Throws.Nothing);
     }
+
+    // Startup surfaces only InvalidConfigurationException as the operator's message and the configuration exit code.
+    private static void AssertConflictingConfiguration(Action validate) =>
+        Assert.That(validate, Throws.TypeOf<InvalidConfigurationException>()
+            .With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ConflictingConfigurations));
 }
