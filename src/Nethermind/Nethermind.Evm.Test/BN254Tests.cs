@@ -1,9 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Runtime.CompilerServices;
+using System.Text;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
+using Nethermind.MclBindings;
 using NUnit.Framework;
+using static Nethermind.MclBindings.Mcl;
 
 namespace Nethermind.Evm.Test;
 
@@ -46,4 +51,47 @@ public class BN254Tests
     [Test]
     public void Mul_accepts_exact_or_oversized_output([Values(64, 128)] int outputLength) =>
         Assert.That(BN254.Mul(new byte[outputLength], Bytes.FromHexString(ValidMulInput)), Is.Null);
+
+    [Test]
+    public unsafe void IsInG2_agrees_with_the_generic_order_check(
+        [Range(0, 15)] int seed,
+        [Values(BN254PairingCheckPrecompileTests.G2NotInSubgroup, BN254PairingCheckPrecompileTests.G2OfOrder10069)] string offset)
+    {
+        RuntimeHelpers.RunClassConstructor(typeof(BN254).TypeHandle);
+
+        // hashAndMapTo clears the cofactor and leaves the point in Jacobian coordinates
+        mclBnG2 point = default;
+        mclBnG2_hashAndMapTo(ref point, (byte*)&seed, sizeof(int));
+        mclBnG2 shifted = default;
+        mclBnG2_add(ref shifted, point, ParseG2(offset));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mclBnG2_isValidOrder(point), Is.EqualTo(1));
+            Assert.That(BN254.IsInG2(point), Is.True);
+            Assert.That(mclBnG2_isValidOrder(shifted), Is.Zero);
+            Assert.That(BN254.IsInG2(shifted), Is.False);
+        }
+    }
+
+    /// <summary>Parses the EIP-197 encoding x.im, x.re, y.im, y.re (each 32 bytes, big-endian) into an affine point.</summary>
+    private static unsafe mclBnG2 ParseG2(string hex)
+    {
+        const int fieldHexLength = 64;
+
+        mclBnG2 point = default;
+        SetFp(ref point.x.d1, hex.AsSpan(0, fieldHexLength));
+        SetFp(ref point.x.d0, hex.AsSpan(fieldHexLength, fieldHexLength));
+        SetFp(ref point.y.d1, hex.AsSpan(2 * fieldHexLength, fieldHexLength));
+        SetFp(ref point.y.d0, hex.AsSpan(3 * fieldHexLength, fieldHexLength));
+        mclBnFp_setInt32(ref point.z.d0, 1);
+        return point;
+
+        static void SetFp(ref mclBnFp fp, ReadOnlySpan<char> value)
+        {
+            byte[] ascii = Encoding.ASCII.GetBytes(value.ToArray());
+            fixed (byte* ptr = ascii)
+                Assert.That(mclBnFp_setStr(ref fp, ptr, (nuint)ascii.Length, 16), Is.Zero);
+        }
+    }
 }
