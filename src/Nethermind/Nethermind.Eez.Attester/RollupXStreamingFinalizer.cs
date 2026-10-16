@@ -11,12 +11,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
-using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Eez.Prove.V2;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Eez.Attester;
 
@@ -27,8 +25,7 @@ internal sealed class RollupXStreamingFinalizer
     private readonly EezSettlementContext _context;
     private readonly EezAttestationSigner _signer;
     private readonly RollupXParentAuthorizer _authorizer;
-    private readonly EezStatelessExecutor _executor;
-    private readonly RollupXObservationReplay _observations;
+    private readonly RollupXSettlementExecution _execution;
 
     internal RollupXStreamingFinalizer(ISpecProvider l1Specs, ISpecProvider l2Specs, EezChainRules rules,
         EezSettlementContext context, EezAttestationSigner signer, RollupXParentAuthorizer authorizer, ILogManager logs)
@@ -40,8 +37,7 @@ internal sealed class RollupXStreamingFinalizer
         _context = context;
         _signer = signer;
         _authorizer = authorizer;
-        _executor = new EezStatelessExecutor(l2Specs, rules, logs);
-        _observations = new RollupXObservationReplay(l2Specs, rules, logs);
+        _execution = new RollupXSettlementExecution(l2Specs, rules, context, logs);
     }
 
     internal async Task<Proof> Finalize(SessionOperation operation, CancellationToken cancellation)
@@ -77,23 +73,7 @@ internal sealed class RollupXStreamingFinalizer
             BlockHeader parent = Rlp.Decode<BlockHeader>(authorization.ParentHeader.ToByteArray())
                 ?? throw new EezSettlementException("Authorized predecessor header is missing.");
             ValidateRange(window, input, authorization, parent);
-            Block terminal = Rlp.Decode<Block>(window.Blocks[^1].Rlp) ?? throw new EezSettlementException("Terminal block is missing.");
-            RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(terminal);
-            EezStatelessBlockResult[] executed = _executor.Execute(window.Blocks, plan.Positions);
-            for (int i = 0; i < executed.Length; i++)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                EezStatelessBlockResult block = executed[i];
-                if (block.Block.Number != window.FromBlock + (ulong)i || block.Hash != window.Claims[i].Hash ||
-                    block.Block.ParentHash != window.Claims[i].ParentHash || block.Block.Header.MixHash != authorization.DescendantSeed)
-                    throw new EezSettlementException("Executed window differs from its selected blocks or authorized randomness seed.");
-            }
-            if (executed[0].Block.ParentHash != parent.Hash || executed[0].PreStateRoot != parent.StateRoot)
-                throw new EezSettlementException("Execution does not start from the authorized predecessor state.");
-            RollupXObservationClaim[] claims = RollupXSettlementVerifier.Verify(input.Batch, input.Stream, executed, _context.RollupId, cancellation);
-            _observations.Verify(window.Blocks[^1], executed[^1], claims, cancellation);
-            cancellation.ThrowIfCancellationRequested();
-            return RollupXPostBatchProfile.PublicInputsHash(input.Batch, _context.RollupId, _context.VerificationKey, input.BlobHashes, input.Target);
+            return _execution.Validate(window, input, parent, authorization.DescendantSeed, cancellation);
         }
         catch (Exception exception) when (exception is EezSettlementException or EezStatelessException or WitnessValidationException or RlpException)
         {

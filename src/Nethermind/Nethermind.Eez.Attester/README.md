@@ -92,7 +92,14 @@ inconsistent configured settlement claims returns `FailedPrecondition`.
 RollupX uses `OutOfRange` only for the known gRPC receive-size error; other
 capacity errors remain `ResourceExhausted`.
 
-Original recorded proof expectations do not replace required settlement
-authority. RollupX retains complete Sync interval checks and independent L1
-acceptance evidence for non-genesis parents. Fixture cases missing that evidence
-remain unresolved interoperability gates, even when execution succeeds.
+The 29 upstream RollupX recordings explicitly use synthetic L1 authority.
+Their replay uses a finalizer in the test assembly that selects predecessors
+from the immutable baseline fixture. It calls the same unsigned native execution,
+DA, settlement and observation verifier as the production finalizer, then signs
+through the session fence. Original requests, expected frames and proof oracles
+remain unchanged. No production option selects this fixture authority.
+
+Separate production endpoint tests retain full-window positive proofs and reject
+incomplete Sync intervals, missing non-genesis parent acceptance, changed
+settlement claims and canonical reorgs. Synthetic transcript conformance does not
+establish canonical L1 proof acceptance or live RollupX interoperability.

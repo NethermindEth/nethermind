@@ -14,11 +14,14 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
+using Grpc.Core;
 using Grpc.Net.Client;
+using Nethermind.Consensus.Stateless;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,6 +33,7 @@ using Nethermind.Crypto;
 using Nethermind.Eez.Attester;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Eez.Prove.V2;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -51,14 +55,21 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
     private Uri _plainAddress = null!;
     internal BackendAdmission Admission { get; private set; } = null!;
 
-    internal static async Task<RollupXStreamingServer> Start(string directory, JsonElement scenario, bool reorgBeforeSigning = false)
+    internal static async Task<RollupXStreamingServer> StartProduction(string directory, JsonElement scenario, bool reorgBeforeSigning = false)
     {
         RollupXStreamingServer server = new();
-        try { await server.StartCore(directory, scenario, reorgBeforeSigning); return server; }
+        try { await server.StartCore(directory, scenario, reorgBeforeSigning, false); return server; }
         catch { await server.DisposeAsync(); throw; }
     }
 
-    private async Task StartCore(string directory, JsonElement scenario, bool reorgBeforeSigning)
+    internal static async Task<RollupXStreamingServer> StartFixture(string directory, JsonElement scenario)
+    {
+        RollupXStreamingServer server = new();
+        try { await server.StartCore(directory, scenario, false, true); return server; }
+        catch { await server.DisposeAsync(); throw; }
+    }
+
+    private async Task StartCore(string directory, JsonElement scenario, bool reorgBeforeSigning, bool syntheticAuthority)
     {
         await KzgPolynomialCommitments.InitializeAsync();
         string fixture = scenario.GetProperty("fixture").GetString()!;
@@ -120,10 +131,18 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
             TimeSpan.FromSeconds(profile.GetProperty("request_timeout_secs").GetInt32()), config);
         EezAttestationSigner signer = new(key);
         AttestationPipeline pipeline = new(specs, context, signer, LimboLogs.Instance);
-        _runtime = StreamingRuntime.Load(options, specs, pipeline, signer, LimboLogs.Instance, rules);
+        StreamingRuntime runtime = StreamingRuntime.Load(options, specs, pipeline, signer, LimboLogs.Instance, rules);
+        _runtime = runtime;
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
-        _app = Program.Build(builder, options, pipeline, _runtime);
+        if (syntheticAuthority)
+        {
+            FixtureFinalizer finalizer = new(ChainConfigLoader.LoadL1(Path.Combine(_directory.Path, "l1.json")), specs, rules, context, signer, authority);
+            builder.Host.ConfigureContainer<IServiceCollection>((_, services) => services.Replace(ServiceDescriptor.Singleton<StreamingTransport>(provider =>
+                new(runtime.Registry, provider.GetRequiredService<BackendAdmission>(), new StreamingBlockExecutor(specs, rules, LimboLogs.Instance),
+                    runtime.Options.TransportLimits, context.RollupId, provider.GetRequiredService<ILogger<StreamingTransport>>(), finalize: finalizer.Finalize))));
+        }
+        _app = Program.Build(builder, options, pipeline, runtime);
         Admission = _app.Services.GetRequiredService<BackendAdmission>();
         await _app.StartAsync();
         _address = StreamingEndpointTests.EndpointServer.AddressOf(_app, "https");
@@ -140,6 +159,15 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
     }
 
     internal GrpcChannel PlainChannel() => GrpcChannel.ForAddress(_plainAddress);
+
+    internal static BlockHeader SelectFixtureParent(IReadOnlyDictionary<Hash256, BlockHeader> headers, ulong rollupId, Begin predecessor)
+    {
+        if (predecessor.RollupId != rollupId || predecessor.AnchorHash.Length != Hash256.Size ||
+            !headers.TryGetValue(new Hash256(predecessor.AnchorHash.Span), out BlockHeader? parent) ||
+            predecessor.AnchorNumber != parent.Number || !predecessor.AnchorStateRoot.Span.SequenceEqual(parent.StateRoot!.Bytes))
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, "fixture predecessor differs from the immutable baseline"));
+        return parent;
+    }
 
     private static async Task Reply(HttpContext http, FixtureAuthority authority, bool l2)
     {
@@ -159,6 +187,32 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
             _client.Dispose();
             _key.Dispose();
             _directory.Dispose();
+        }
+    }
+
+    private sealed class FixtureFinalizer(ISpecProvider l1Specs, ISpecProvider l2Specs, EezChainRules rules,
+        EezSettlementContext context, EezAttestationSigner signer, FixtureAuthority authority)
+    {
+        private readonly RollupXSettlementExecution _execution = new(l2Specs, rules, context, LimboLogs.Instance);
+
+        internal async Task<Proof> Finalize(SessionOperation operation, CancellationToken cancellation)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            Finalize selection = operation.Finalize ?? throw new InvalidOperationException("not a finalization operation");
+            RollupXStreamingFinalizer.ValidateSupportedSettlement(selection.Settlement);
+            RollupXSettlementInput input = RollupXSettlementInput.Decode(selection.Settlement, context, l1Specs, cancellation);
+            BlockHeader parent = authority.Parent(operation.Predecessor!);
+            using AdmittedWindow window = StreamingFinalizer.ToWindow(operation, selection);
+            ValueHash256 digest;
+            try
+            {
+                digest = await Task.Run(() => _execution.Validate(window, input, parent, parent.MixHash!, cancellation), CancellationToken.None);
+            }
+            catch (Exception exception) when (exception is EezSettlementException or EezStatelessException or WitnessValidationException or RlpException)
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "fixture native settlement validation rejected"));
+            }
+            return operation.SignCurrent(signer, digest, cancellation);
         }
     }
 
@@ -195,6 +249,8 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
                 }
             }
         }
+
+        internal BlockHeader Parent(Begin predecessor) => SelectFixtureParent(_headers, _context.RollupId, predecessor);
 
         internal object Read(string method, JsonElement parameters, bool l2) => method switch
         {
