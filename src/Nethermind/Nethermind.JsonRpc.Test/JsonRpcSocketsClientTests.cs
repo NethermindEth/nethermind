@@ -513,6 +513,22 @@ public class JsonRpcSocketsClientTests
     }
 
     [Test]
+    public async Task Socket_sends_after_response_writer_is_completed()
+    {
+        using SocketSinkFixture fixture = CreateSocketSink();
+        using JsonRpcSuccessResponse first = new() { Id = 1, Result = "0x1" };
+        await fixture.Sink.WriteSingleAsync(first, default, CancellationToken.None);
+        await fixture.SendLock.GetWriter(fixture.Stream, new StreamPipeWriterOptions(leaveOpen: true), 0).CompleteAsync();
+
+        using JsonRpcSuccessResponse second = new() { Id = 2, Result = "0x2" };
+        await fixture.Sink.WriteSingleAsync(second, default, CancellationToken.None);
+
+        Assert.That(Encoding.UTF8.GetString(fixture.Stream.ToArray()), Is.EqualTo(
+            "{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":1}\n" +
+            "{\"jsonrpc\":\"2.0\",\"result\":\"0x2\",\"id\":2}\n"));
+    }
+
+    [Test]
     public async Task Abandoned_socket_batch_faults_the_connection()
     {
         using SocketSinkFixture fixture = CreateSocketSink();
