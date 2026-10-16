@@ -11,8 +11,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -347,6 +350,64 @@ public class BlobTxStorageTests
         };
         tx.Hash = tx.CalculateHash();
         return tx;
+    }
+
+    [Test]
+    public void TryGetMany_AfterDatabaseCloses_PreservesOwnedTransactions(
+        [Values(1, 2, 4)] int count, [Values("present", "deleted", "flushed-delete")] string state)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Transaction[] stored = CreateBlobTransactions(2);
+        for (int i = 0; i < stored.Length; i++)
+        {
+            stored[i].Timestamp = (ulong)(i + 17);
+        }
+        Transaction[] results = Enumerable.Repeat<Transaction>(stored[0], count + 1).ToArray();
+        Transaction[] expected = new Transaction[count + 1];
+        expected[^1] = stored[0];
+        DbConfig config = new();
+        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB),
+            LimboLogs.Instance, validateConfig: false);
+        using (ColumnsDb<BlobTxsColumns> db = new(directory.Path, new DbSettings(DbNames.BlobTransactions, "blobs"),
+            config, factory, LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>()))
+        {
+            BlobTxStorage storage = new(db);
+            foreach (Transaction tx in stored) storage.Add(tx);
+            db.Flush();
+            TxLookupKey[] keys = new TxLookupKey[count];
+            for (int i = 0; i < count; i++)
+            {
+                if (i == 1)
+                {
+                    keys[i] = new TxLookupKey(TestItem.KeccakC, TestItem.AddressC, 99);
+                    continue;
+                }
+                Transaction tx = stored[i == 2 ? 1 : 0];
+                expected[i] = tx;
+                keys[i] = new TxLookupKey(tx.Hash!, tx.SenderAddress!, tx.Timestamp);
+            }
+
+            int expectedCount = expected.Take(count).Count(static tx => tx is not null);
+            Assert.That(storage.TryGetMany(keys, count, results), Is.EqualTo(expectedCount));
+            if (state != "present")
+            {
+                storage.Delete(stored[0].Hash!.ValueHash256, stored[0].Timestamp);
+                if (state == "flushed-delete") db.Flush();
+                for (int i = 0; i < count; i++)
+                {
+                    if (ReferenceEquals(expected[i], stored[0])) expected[i] = null;
+                }
+
+                expectedCount = expected.Take(count).Count(static tx => tx is not null);
+                Assert.That(storage.TryGetMany(keys, count, results), Is.EqualTo(expectedCount));
+            }
+        }
+
+        for (int i = 0; i < results.Length; i++)
+        {
+            Assert.That(results[i], Is.EqualTo(expected[i])
+                .UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+        }
     }
 
     [Test]
