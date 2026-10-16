@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
@@ -449,6 +450,28 @@ public class JsonRpcProcessorTests
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateRequest("1", "eth_blockNumber"), context);
 
         Assert.That(seenAuthenticated, Is.EqualTo(expectedAuthenticated));
+    }
+
+    [Test]
+    public async Task ProcessAsync_makes_the_context_current_for_every_batch_item_without_leaking_it([Values] RequestTransport transport)
+    {
+        ConcurrentQueue<JsonRpcContext?> seen = new();
+        IJsonRpcService service = CreateService(request =>
+        {
+            seen.Enqueue(JsonRpcContext.Current.Value);
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+        using JsonRpcContext context = CreateContext(transport);
+        byte[] request = Encoding.UTF8.GetBytes(CreateBatchRequest(CreateRequest("1", "eth_blockNumber"), CreateRequest("2", "eth_blockNumber")));
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, transport, context: context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seen, Has.Count.EqualTo(2).And.All.SameAs(context));
+            Assert.That(JsonRpcContext.Current.Value, Is.Null);
+        }
     }
 
     [Test]

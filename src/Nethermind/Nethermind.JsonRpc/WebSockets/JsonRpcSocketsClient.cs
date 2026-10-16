@@ -105,6 +105,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public override async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
+        // The workers inherit it, so per-message processing finds it already current and skips the write.
+        JsonRpcContext.Current.Value = _jsonRpcContext;
         using AutoCancelTokenSource cts = new(CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _sendFailure.Token));
 
         using ArrayPoolList<Task> allTasks = new(_workerTaskCount + 1);
