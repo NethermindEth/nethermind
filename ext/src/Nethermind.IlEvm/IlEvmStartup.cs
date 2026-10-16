@@ -39,6 +39,10 @@ public static class IlEvmProfile
         public long Frames;
         public long Ops;
         public readonly int Size = size;
+
+        /// <summary>The first and last block a frame of the code was entered in, and how many blocks in between had one.</summary>
+        /// <remarks>Blocks run in order while profiling (pre-warming off), so a change of block number counts a new block.</remarks>
+        public long First = -1, Last = -1, Blocks;
     }
 
     /// <summary>The counts by code hash; each code info's slot points at its entry, so no code info is kept alive.</summary>
@@ -57,11 +61,18 @@ public static class IlEvmProfile
         return entry;
     }
 
-    internal static void Frame(CodeInfo codeInfo, bool entry)
+    internal static void Frame(CodeInfo codeInfo, bool entry, long block = -1)
     {
         Entry counts = For(codeInfo);
-        if (entry)
-            Interlocked.Increment(ref counts.Frames);
+        if (!entry)
+            return;
+        Interlocked.Increment(ref counts.Frames);
+        long last = Interlocked.Read(ref counts.Last);
+        if (block >= 0 && block != last && Interlocked.CompareExchange(ref counts.Last, block, last) == last)
+        {
+            Interlocked.Increment(ref counts.Blocks);
+            Interlocked.CompareExchange(ref counts.First, block, -1);
+        }
     }
 
     internal static void Ops(CodeInfo codeInfo, int opCodes)
@@ -99,8 +110,10 @@ public static class IlEvmProfile
         {
             (ValueHash256 hash, long ops, long frames, int size) = entries[i];
             cumulative += ops;
+            // The block fields come last, so readers of the older line format still parse it.
+            Entry blocks = _entries[hash];
             Write(string.Create(CultureInfo.InvariantCulture,
-                $"IL-EVM profile {i + 1} {hash} ops={ops} frames={frames} size={size} cum={(totalOps == 0 ? 0 : (double)cumulative / totalOps):F4}"));
+                $"IL-EVM profile {i + 1} {hash} ops={ops} frames={frames} size={size} cum={(totalOps == 0 ? 0 : (double)cumulative / totalOps):F4} blocks={Interlocked.Read(ref blocks.Blocks)} first={Interlocked.Read(ref blocks.First)} last={Interlocked.Read(ref blocks.Last)}"));
         }
 
         Write("IL-EVM profile end");

@@ -349,7 +349,7 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
             // resume after a nested call; it is counted on entry, its opcodes on every part.
             if (vm.VmState.ExecutionType.IsAnyCreate())
                 return Declined;
-            IlEvmProfile.Frame(codeInfo, entry: programCounter == 0);
+            IlEvmProfile.Frame(codeInfo, entry: programCounter == 0, (long)vm.BlockExecutionContext.Number);
             return DeclinedReportingOpcodes;
         }
 
