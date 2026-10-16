@@ -451,7 +451,11 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         _currentFrameTxTracer = null;
         int txCount = parallel ? 1 : block.Transactions.Length;
         _txReceipts.Clear();
-        _txReceipts.EnsureCapacity(txCount);
+        if (BuildsReceipts)
+        {
+            _txReceipts.EnsureCapacity(txCount);
+        }
+
         _cumulativeBlockGasPerTx.Clear();
         _cumulativeBlockGasPerTx.EnsureCapacity(txCount);
         _cumulativeReceiptGas = 0;
