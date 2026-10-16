@@ -662,7 +662,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     continue;
                 }
 
-
                 // EIP-8141 § Validation Prefix: the shortest prefix that sets a payer, so a non-VERIFY frame
                 // ends it. An opening deploy frame is the sole non-VERIFY frame the prefix admits.
                 if (!isDeployFrame && frame.Mode != FrameMode.Verify)

@@ -274,12 +274,12 @@ public class GetPayloadDirectResponseTests
     [TestCase(3, true)]
     [TestCase(PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1, false)]
     [TestCase(PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1, true)]
-    public async Task Direct_response_json_matches_dto_json_with_recursive_stark(int proofLength, bool inclusionProof)
+    public async Task Direct_response_json_matches_dto_json_with_recursive_stark(int proofLength, bool inclusionCommitment)
     {
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
         block.StarkProof = new byte[proofLength];
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
-        if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], new InclusionListCommitment(default, default))];
+        if (inclusionCommitment) block.InclusionLists = [new CommitteeInclusionList(0, [], new InclusionListCommitment(default, default))];
 
         object plain = CreatePlainResult(6, block, blobsBundle, executionRequests);
         IStreamableResult direct = CreateDirectResult(6, block, blobsBundle, executionRequests);

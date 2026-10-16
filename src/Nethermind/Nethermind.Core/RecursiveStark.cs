@@ -5,8 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core;
 
-/// <summary>A recursive proof and the dependency digest it verifies against, as carried by mode-1 mempool wrappers and
-/// locally submitted inclusion-list packages.</summary>
+/// <summary>A recursive proof and the dependency digest it verifies against, as carried by mode-1 mempool wrappers.</summary>
 public sealed class RecursiveStark(byte[] starkProof, Hash256 blockDepsHash)
 {
     /// <summary>The serialized recursive STARK proof (opaque; produced by Lean Ethereum tooling).</summary>

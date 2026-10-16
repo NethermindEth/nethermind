@@ -55,7 +55,6 @@ namespace Nethermind.Synchronization
         private readonly IHistoryPruner _historyPruner;
         private readonly ISyncPointers? _syncPointers;
         private readonly ISyncConfig _syncConfig;
-        private readonly IHeaderDecoder _headerDecoder;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -85,13 +84,11 @@ namespace Nethermind.Synchronization
             IHistoryPruner historyPruner,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IHeaderDecoder headerDecoder,
             ISyncPointers? syncPointers = null)
         {
             _syncPointers = syncPointers;
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncConfig = config;
-            _headerDecoder = headerDecoder;
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -421,32 +418,7 @@ namespace Nethermind.Synchronization
                 : _blockAccessListStore.GetRlp(header.Number, blockHash);
         }
 
-        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
-        {
-            ArgumentOutOfRangeException.ThrowIfNegative(numberOfBlocks);
-            if (numberOfBlocks == 0 || skip < 0) return ArrayPoolList<BlockHeader>.Empty();
-            numberOfBlocks = Math.Min(numberOfBlocks, 1024);
-            return BoundHeaders(_blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse));
-        }
-
-        private IOwnedReadOnlyList<BlockHeader> BoundHeaders(IOwnedReadOnlyList<BlockHeader> headers)
-        {
-            int contentLength = 0;
-            for (int i = 0; i < headers.Count; i++)
-            {
-                int length = headers[i] is { } header ? _headerDecoder.GetLength(header, RlpBehaviors.None) : 1;
-                if (length > Eip8288Constants.MaxHeaderResponseBytes - 64 - contentLength
-                    || Rlp.LengthOfSequence(contentLength + length) > Eip8288Constants.MaxHeaderResponseBytes - 64)
-                {
-                    ArrayPoolList<BlockHeader> bounded = new(i);
-                    for (int j = 0; j < i; j++) bounded.Add(headers[j]);
-                    headers.Dispose();
-                    return bounded;
-                }
-                contentLength += length;
-            }
-            return headers;
-        }
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
 
         public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {

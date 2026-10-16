@@ -61,26 +61,6 @@ public class HeaderStoreTests
     }
 
     [Test]
-    public void Proof_commitment_headers_use_the_regular_cache([Values] bool explicitCache)
-    {
-        using MemDb headerDb = new();
-        using MemDb numberDb = new();
-        HeaderStore store = new(headerDb, numberDb);
-        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        header.RecursiveStark = new(Keccak.Compute(new byte[128 * 1024]), TestItem.KeccakA);
-        header.Hash = Keccak.Compute(Rlp.Encode(header).Bytes);
-        store.Insert(header);
-        if (explicitCache) store.Cache(header);
-        BlockHeader decoded = store.Get(header.Hash!, shouldCache: true)!;
-        long reads = headerDb.ReadsCount;
-        BlockHeader again = store.Get(header.Hash!)!;
-        Assert.That(again, Is.SameAs(decoded));
-        Assert.That(again.RecursiveStark!.StarkProofHash, Is.EqualTo(header.RecursiveStark.StarkProofHash));
-        Assert.That(headerDb.ReadsCount, Is.EqualTo(reads));
-        Assert.That(Rlp.Encode(again).Length, Is.LessThan(1024));
-    }
-
-    [Test]
     public void TestCanDeleteHeader([Values] bool cacheBeforeDelete)
     {
         using HeaderStoreFixture context = new(persisted: true, cached: cacheBeforeDelete);

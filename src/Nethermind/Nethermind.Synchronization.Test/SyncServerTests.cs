@@ -29,7 +29,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -52,59 +51,6 @@ namespace Nethermind.Synchronization.Test;
 [Parallelizable(ParallelScope.All)]
 public class SyncServerTests
 {
-    private const BlockTreeLookupOptions HeaderLookup = BlockTreeLookupOptions.TotalDifficultyNotNeeded;
-
-    [Test]
-    public void Proof_commitments_preserve_compact_header_batches()
-    {
-        Context ctx = new();
-        BlockHeader[] batch = Enumerable.Range(0, 1024).Select(i => ProofHeader((ulong)i)).ToArray();
-        ctx.BlockTree.FindHeaders(batch[0].Hash!, 1024, 0, false).Returns(new ArrayPoolList<BlockHeader>(batch));
-        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree);
-        using IOwnedReadOnlyList<BlockHeader> headers = server.FindHeaders(batch[0].Hash!, 2048, 0, false);
-        Assert.That(headers, Has.Count.EqualTo(1024));
-        Assert.That(headers.Select(h => h.Hash), Is.EqualTo(batch.Select(h => h.Hash)));
-        Assert.That(headers.Sum(h => new HeaderDecoder().GetLength(h, RlpBehaviors.None)), Is.LessThan(1024 * 1024));
-    }
-
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Header_batches_preserve_block_tree_skip_and_direction(bool reverse)
-    {
-        Context ctx = new();
-        BlockTree tree = Build.A.BlockTree().OfChainLength(4).TestObject;
-        Hash256 start = reverse ? tree.Head!.Hash! : tree.Genesis!.Hash!;
-        SyncServer server = ctx.CreateSyncServer(tree);
-        using IOwnedReadOnlyList<BlockHeader> expected = tree.FindHeaders(start, 10, 1, reverse);
-        using IOwnedReadOnlyList<BlockHeader> actual = server.FindHeaders(start, 10, 1, reverse);
-        Assert.That(actual.Select(h => h?.Hash), Is.EqualTo(expected.Select(h => h?.Hash)));
-    }
-
-    [Test]
-    public void Legacy_header_batches_cannot_exceed_the_wire_byte_budget()
-    {
-        Context ctx = new();
-        BlockHeader ordinary = Build.A.BlockHeader.WithNumber(1).TestObject;
-        BlockHeader oversized = Build.A.BlockHeader.WithNumber(2).TestObject;
-        oversized.ExtraData = new byte[Eip8288Constants.MaxHeaderResponseBytes];
-        ctx.BlockTree.FindHeader(ordinary.Hash!, HeaderLookup).Returns(ordinary);
-        ctx.BlockTree.FindHeaders(ordinary.Hash!, 2, 0, true).Returns(new ArrayPoolList<BlockHeader>([ordinary, oversized]));
-        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree);
-
-        using IOwnedReadOnlyList<BlockHeader> headers = server.FindHeaders(ordinary.Hash!, 2, 0, true);
-
-        Assert.That(headers, Has.Count.EqualTo(1));
-        Assert.That(headers[0], Is.SameAs(ordinary));
-    }
-
-    private static BlockHeader ProofHeader(ulong number)
-    {
-        BlockHeader header = Build.A.BlockHeader.WithNumber(number).TestObject;
-        header.Hash = Keccak.Compute($"header-{number}");
-        header.RecursiveStark = new(TestItem.KeccakA, Keccak.Zero);
-        return header;
-    }
-
     [Test]
     public void When_finding_hash_it_does_not_load_headers()
     {
@@ -263,7 +209,7 @@ public class SyncServerTests
             Policy.FullGossip,
             ctx.HistoryPruner,
             testSpecProvider,
-            LimboLogs.Instance, new HeaderDecoder());
+            LimboLogs.Instance);
 
         Block? remoteBestBlock = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
 
@@ -474,7 +420,7 @@ public class SyncServerTests
             Policy.FullGossip,
             ctx.HistoryPruner,
             testSpecProvider,
-            LimboLogs.Instance, new HeaderDecoder());
+            LimboLogs.Instance);
         ctx.SpecProvider = testSpecProvider;
         ctx.LocalBlockTree = localBlockTree;
 
@@ -755,7 +701,6 @@ public class SyncServerTests
             Substitute.For<IHistoryPruner>(),
             MainnetSpecProvider.Instance,
             LimboLogs.Instance,
-            new HeaderDecoder(),
             Substitute.For<ISyncPointers>());
 
         Assert.That(syncServer.LowestBlock, Is.EqualTo(expected),
@@ -884,7 +829,7 @@ public class SyncServerTests
             Policy.FullGossip,
             ctx.HistoryPruner,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance, new HeaderDecoder());
+            LimboLogs.Instance);
 
         Hash256 nodeKey = TestItem.KeccakA;
         TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
@@ -1033,7 +978,7 @@ public class SyncServerTests
             Policy.FullGossip,
             historyPruner,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance, new HeaderDecoder()))
+            LimboLogs.Instance))
         {
             BlockHeader oldest = blockTree.Genesis!;
             // The window between publishing a new source and reading its token is a few instructions wide, so the
@@ -1137,7 +1082,7 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 MainnetSpecProvider.Instance,
-                LimboLogs.Instance, new HeaderDecoder(),
+                LimboLogs.Instance,
                 SyncPointers);
         }
 
@@ -1172,7 +1117,7 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 specProvider ?? MainnetSpecProvider.Instance,
-                LimboLogs.Instance, new HeaderDecoder());
+                LimboLogs.Instance);
 
         public SyncServer CreateSyncServer(IBlockAccessListStore blockAccessListStore) =>
             new(
@@ -1189,6 +1134,6 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 MainnetSpecProvider.Instance,
-                LimboLogs.Instance, new HeaderDecoder());
+                LimboLogs.Instance);
     }
 }

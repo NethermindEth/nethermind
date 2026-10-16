@@ -187,7 +187,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public virtual byte[][]? InclusionListTransactions { get; set; }
 
-    /// <summary>The counted inclusion lists with their EIP-8288 dependency proofs, from <c>engine_newPayloadV7</c>.</summary>
+    /// <summary>The counted inclusion lists with their EIP-8288 commitments, from <c>engine_newPayloadV7</c>.</summary>
     [JsonIgnore]
     public InclusionListV1[]? InclusionLists { get; set; }
 

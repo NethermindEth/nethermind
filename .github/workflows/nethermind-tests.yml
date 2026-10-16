@@ -77,7 +77,7 @@ jobs:
           ^src/Nethermind/Nethermind\.Evm/(TransactionProcessing/|VirtualMachine[^/]*\.cs$|VmState[^/]*\.cs$)
           ^src/Nethermind/Nethermind\.TxPool/(Filters/|Collections/|TxPool[^/]*\.cs$|TxFilteringState\.cs$|PendingTransactionsView\.cs$|.*PrefixSimulator.*\.cs$)
           ^src/Nethermind/Nethermind\.Blockchain/(BlockTree[^/]*|BlockStore|HeaderStore)\.cs$
-          ^src/Nethermind/Nethermind\.Network/(Rlpx/|P2P/(PacketSender|Session|ILeanBulkSession|ProtocolManager)\.cs$|P2P/ProtocolHandlers/|P2P/Subprotocols/(ProtocolValidator|Capability)\.cs$|ProtocolsManager\.cs$)
+          ^src/Nethermind/Nethermind\.Network/(Rlpx/|P2P/(PacketSender|Session|ProtocolManager)\.cs$|P2P/ProtocolHandlers/|P2P/Subprotocols/Eth/V73/|P2P/Subprotocols/(ProtocolValidator|Capability)\.cs$|ProtocolsManager\.cs$)
           ^src/Nethermind/Nethermind\.Serialization\.Rlp/(Block[^/]*Decoder|HeaderDecoder|Tx[^/]*Decoder|Rlp[^/]*|ValueDecoderContext|RlpStream)\.cs$
           ^src/Nethermind/Nethermind\.Serialization\.Rlp/TxDecoders/
           ^src/Nethermind/Nethermind\.Specs/(ReleaseSpec\.cs$|SpecProvider\.cs$|ChainSpecStyle/)

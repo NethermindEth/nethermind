@@ -231,7 +231,7 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public void Cache(Block block)
     {
-        // Large proofs are served through the byte-bounded header cache, not this count-bounded body cache.
+        // Blocks with large proofs stay out of this count-bounded cache, keeping its memory bounded.
         if ((block.StarkProof?.Length ?? 0) > MaxCachedProofBytes) return;
 
         ValueHash256 cacheKey = block.Hash.ValueHash256;

@@ -1549,11 +1549,11 @@ public class SszMiddlewareTests
     }
 
     [TestCase(false, TestName = "GetPayload_block_proof_extension_returns_unsupported_fork")]
-    [TestCase(true, TestName = "GetPayload_does_not_echo_the_CL_inclusion_proof_in_SSZ")]
-    public async Task GetPayload_proof_extensions_preserve_the_SSZ_response_contract(bool inclusionProof)
+    [TestCase(true, TestName = "GetPayload_does_not_echo_the_CL_inclusion_list_commitment_in_SSZ")]
+    public async Task GetPayload_proof_extensions_preserve_the_SSZ_response_contract(bool inclusionCommitment)
     {
         Block block = MakeMinimalBlock();
-        if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], new InclusionListCommitment(default, default))];
+        if (inclusionCommitment) block.InclusionLists = [new CommitteeInclusionList(0, [], new InclusionListCommitment(default, default))];
         else
         {
             block.StarkProof = [1];
@@ -1565,7 +1565,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        if (inclusionProof)
+        if (inclusionCommitment)
         {
             Block baseline = MakeMinimalBlock();
             _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(ResultWrapper<GetPayloadV6Result?>.Success(
@@ -1576,7 +1576,7 @@ public class SszMiddlewareTests
             {
                 Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
                 Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
-                Assert.That(ResponseBytes(ctx), Is.EqualTo(ResponseBytes(ordinary)), "the CL retains its own inclusion-list proof");
+                Assert.That(ResponseBytes(ctx), Is.EqualTo(ResponseBytes(ordinary)), "the CL retains its own inclusion-list commitments");
             }
         }
         else

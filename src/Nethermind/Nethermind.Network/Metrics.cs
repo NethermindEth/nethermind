@@ -130,7 +130,7 @@ namespace Nethermind.Network
         public static NonBlocking.ConcurrentDictionary<string, long> ProofWrapperEvents { get; } = new();
 
         [GaugeMetric]
-        [Description("Number of eth/73 peers sharing a proof profile.")]
+        [Description("Number of eth/73 peers exchanging proof wrappers.")]
         public static long ProofWrapperPeers { get; set; }
 
         [GaugeMetric]

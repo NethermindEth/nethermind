@@ -24,10 +24,12 @@ public class HeaderStore(
 {
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
+
     private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
 
     private readonly IHeaderDecoder _headerDecoder = decoder ?? new HeaderDecoder();
     private readonly AssociativeCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
+
     public void Insert(BlockHeader header)
     {
         using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
@@ -60,11 +62,9 @@ public class HeaderStore(
         BlockHeader? header = null;
         if (blockNumber is not null)
         {
-            header = headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: false);
+            header = headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
         }
-        header ??= headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false);
-        if (shouldCache && header is not null) Cache(header);
-        return header;
+        return header ?? headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
     }
 
     public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);
