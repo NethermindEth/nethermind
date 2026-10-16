@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         [ThreadStatic]
-        private static ParityTxTraceFromStore? t_writeItem;
+        private static ParityTxTraceFromStore? _writeItem;
 
         /// <summary>
         /// Serializes the items <see cref="FromTxTrace(ParityLikeTxTrace)"/> would return, reusing one instance for all of them.
@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             if (txTrace.Action is null) return;
 
-            ParityTxTraceFromStore item = t_writeItem ??= new ParityTxTraceFromStore();
+            ParityTxTraceFromStore item = _writeItem ??= new ParityTxTraceFromStore();
             try
             {
                 WriteActionRecursively(writer, txTrace, txTrace.Action, filter, options, item);
