@@ -360,10 +360,14 @@ public class PrewarmerScopeProvider(
                     bool cached = preBlockCache.TryGetValue(in key, out Account? preBlockAccount);
                     if (cached) baseScope.HintGet(accountChanges.Address, preBlockAccount);
 
-                    // Only an account change can remove an account; whether it took storage along is known only when cached.
-                    bool changesAccount = accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0;
-                    bool mayRemoveStorage = changesAccount && (!cached || preBlockAccount is { HasStorage: true } || !baseScope.StorageRootsAreAuthoritative);
-                    accounts.Add(new AppliedAccount(accountChanges, mayRemoveStorage));
+                    // Whether a removal took storage along is known only when cached.
+                    bool mayRemoveStorage = !cached || preBlockAccount is { HasStorage: true } || !baseScope.StorageRootsAreAuthoritative;
+                    // A revived account keeps only the slots written after its removal; the scope's own read keeps this exact.
+                    BalAccountDelta? revival = BalAccountDelta.CanEmpty(accountChanges)
+                        && BalAccountDelta.Compute(baseScope.Get(accountChanges.Address), accountChanges) is { WipesStorage: true, Account: not null } delta
+                        ? delta
+                        : null;
+                    accounts.Add(new AppliedAccount(accountChanges, mayRemoveStorage, revival));
                 }
 
                 baseScope.ApplyBal(bal);
@@ -424,10 +428,12 @@ public class PrewarmerScopeProvider(
     }
 
     /// <summary>An account a BAL changed, with its final value once applied.</summary>
-    private struct AppliedAccount(ReadOnlyAccountChanges changes, bool mayRemoveStorage)
+    private struct AppliedAccount(ReadOnlyAccountChanges changes, bool mayRemoveStorage, BalAccountDelta? revival)
     {
         public readonly ReadOnlyAccountChanges Changes = changes;
         public readonly bool MayRemoveStorage = mayRemoveStorage;
+        /// <summary>Set when the BAL removed the account and then recreated it, wiping its earlier storage.</summary>
+        public readonly BalAccountDelta? Revival = revival;
         public Account? Account;
     }
 
@@ -451,6 +457,17 @@ public class PrewarmerScopeProvider(
 
                     using IWorldStateScopeProvider.IStorageWriteBatch clearBatch = writeBatch.CreateStorageWriteBatch(changes.Address, 0);
                     clearBatch.Clear();
+                    continue;
+                }
+
+                if (appliedAccount.Revival is { } revival)
+                {
+                    using IWorldStateScopeProvider.IStorageWriteBatch revivedBatch = writeBatch.CreateStorageWriteBatch(changes.Address, changes.StorageChanges.Length);
+                    revivedBatch.Clear();
+                    foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges)
+                    {
+                        if (revival.TryGetFinalValue(slotChanges, out UInt256 value)) revivedBatch.Set(slotChanges.Key, value);
+                    }
                     continue;
                 }
 
