@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -15,6 +16,13 @@ namespace Nethermind.JsonRpc
         private static readonly ConcurrentQueue<CancellationTokenSource> _ctsPool = new();
         private const int MaxPoolSize = 64;
         private static int _ctsPoolSize;
+
+        /// <summary>
+        /// The number of gated EVM-executing requests (<see cref="Modules.JsonRpcMethodAttribute.IsEvmExecution"/>) that run at
+        /// once: <see cref="IJsonRpcConfig.EthModuleConcurrentInstances"/>, and at least one.
+        /// </summary>
+        public static int GetEvmExecutionSlots(this IJsonRpcConfig config) =>
+            Math.Max(1, config.EthModuleConcurrentInstances ?? Environment.ProcessorCount);
 
         public static void EnableModules(this IJsonRpcConfig config, params string[] modules)
         {

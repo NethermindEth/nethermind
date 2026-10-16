@@ -38,6 +38,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
+    // Tests set a gate on a manual clock, which the batch charge then follows too.
+    internal EvmAdmissionGate EvmGate { get; init; } = new(jsonRpcConfig);
+
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
         if (context.IsAuthenticated && rpcRequest?.Method?.StartsWith("engine_newPayload", StringComparison.Ordinal) == true)
@@ -58,7 +61,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = IsGated(rpcRequest, method!)
+                ? ExecuteGatedAsync(rpcRequest, methodName, method, context)
+                : ExecuteAsync(rpcRequest, methodName, method, context);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
                 : AwaitRequestAsync(responseTask, rpcRequest);
@@ -73,6 +78,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             try
             {
                 return await responseTask;
+            }
+            catch (OperationCanceledException) when (rpcRequest.CancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -108,6 +117,86 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ex is OutOfMemoryException or { InnerException: OutOfMemoryException }
             ? $"Id:{request.Id}, {request.Method}(params omitted)"
             : request.ToString();
+
+    // Gates the calls that run in an environment pool of their own: those without override parameters, such as
+    // eth_simulateV1, always; eth_call and the like only with an override, as BlockchainBridge.HasOverrides decides.
+    private static bool IsGated(JsonRpcRequest request, ResolvedMethodInfo method) =>
+        method.IsEvmExecution
+        && (method is { StateOverrideIndex: < 0, BlockOverrideIndex: < 0 }
+            || CarriesOverride(request.RawParamsUtf8, method.StateOverrideIndex, method.BlockOverrideIndex));
+
+    /// <summary>
+    /// Whether the <c>params</c> array carries a state or block override at the given positions: any value there but a missing
+    /// one and, for the state override, an empty object. Reads forward only, up to the last of them, without binding anything.
+    /// </summary>
+    /// <remarks>
+    /// Binding parses a string as JSON too, so a string other than a missing value counts. Params that are not an array
+    /// carry none; binding rejects them.
+    /// </remarks>
+    private static bool CarriesOverride(ReadOnlySpan<byte> paramsUtf8, int stateOverrideIndex, int blockOverrideIndex)
+    {
+        if (paramsUtf8.IsEmpty)
+        {
+            return false;
+        }
+
+        Utf8JsonReader reader = new(paramsUtf8);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
+        {
+            return false;
+        }
+
+        int last = Math.Max(stateOverrideIndex, blockOverrideIndex);
+        for (int i = 0; i <= last && reader.Read() && reader.TokenType != JsonTokenType.EndArray; i++)
+        {
+            if ((i == stateOverrideIndex || i == blockOverrideIndex)
+                && !IsMissingParameterMarker(in reader)
+                && !(i == stateOverrideIndex && reader.TokenType == JsonTokenType.StartObject && reader.Read() && reader.TokenType == JsonTokenType.EndObject))
+            {
+                return true;
+            }
+
+            reader.Skip();
+        }
+
+        return false;
+    }
+
+    private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
+    {
+        // Admitted before binding, so a rejected request never pays for deserializing its parameters.
+        using EvmAdmissionGate.Lease lease = await AdmitAsync(request);
+        request.CancellationToken.ThrowIfCancellationRequested();
+        return await ExecuteAsync(request, methodName, method, context);
+    }
+
+    private ValueTask<EvmAdmissionGate.Lease> AdmitAsync(JsonRpcRequest request) =>
+        request.BatchQueueWait is null
+            ? EvmGate.AdmitAsync(EvmGate.Budget, request.CancellationToken)
+            : AdmitBatchItemAsync(request, request.BatchQueueWait);
+
+    // Items of one batch run one after another, so they share one budget: each may wait only what the earlier ones did not.
+    private async ValueTask<EvmAdmissionGate.Lease> AdmitBatchItemAsync(JsonRpcRequest request, StrongBox<TimeSpan> batchQueueWait)
+    {
+        // The wait is charged on the clock that times it out, so what an item may wait and what it is charged agree.
+        TimeProvider clock = EvmGate.TimeProvider;
+        long queuedAt = clock.GetTimestamp();
+        bool timedOut = false;
+        try
+        {
+            return await EvmGate.AdmitAsync(EvmGate.Budget - batchQueueWait.Value, request.CancellationToken);
+        }
+        catch (EvmAdmissionGate.WaitTimeoutException)
+        {
+            timedOut = true;
+            throw;
+        }
+        finally
+        {
+            // A wait timer may fire a little early, but an item whose wait timed out has spent what was left all the same.
+            batchQueueWait.Value = timedOut ? EvmGate.Budget : batchQueueWait.Value + clock.GetElapsedTime(queuedAt);
+        }
+    }
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {

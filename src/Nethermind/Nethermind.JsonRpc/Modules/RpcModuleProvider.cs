@@ -14,6 +14,8 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using System.Threading;
@@ -127,9 +129,9 @@ namespace Nethermind.JsonRpc.Modules
 
         private IEnumerable<KeyValuePair<string, ResolvedMethodInfo>> GetMethods<T>(string moduleType) where T : IRpcModule
         {
-            foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
+            foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability, bool isEvmExecution)) in GetMethodDict(typeof(T)))
             {
-                ResolvedMethodInfo resolvedMethodInfo = new(moduleType, info, readOnly, availability);
+                ResolvedMethodInfo resolvedMethodInfo = new(moduleType, info, readOnly, availability, isEvmExecution);
                 if (_filter.AcceptMethod(resolvedMethodInfo.ToString()))
                 {
                     yield return new(name, resolvedMethodInfo);
@@ -271,7 +273,7 @@ namespace Nethermind.JsonRpc.Modules
             public ResolvedMethodInfo?[] HotMethods { get; } = hotMethods;
         }
 
-        private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
+        private static IDictionary<string, (MethodInfo, bool, RpcEndpoint, bool)> GetMethodDict(Type type)
         {
             BindingFlags methodFlags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
@@ -284,7 +286,7 @@ namespace Nethermind.JsonRpc.Modules
                 x =>
                 {
                     JsonRpcMethodAttribute? jsonRpcMethodAttribute = x.GetCustomAttribute<JsonRpcMethodAttribute>();
-                    return (x, jsonRpcMethodAttribute?.IsSharable ?? true, jsonRpcMethodAttribute?.Availability ?? RpcEndpoint.All);
+                    return (x, jsonRpcMethodAttribute?.IsSharable ?? true, jsonRpcMethodAttribute?.Availability ?? RpcEndpoint.All, jsonRpcMethodAttribute?.IsEvmExecution ?? false);
                 });
         }
 
@@ -383,7 +385,8 @@ namespace Nethermind.JsonRpc.Modules
                 string moduleType,
                 MethodInfo methodInfo,
                 bool readOnly,
-                RpcEndpoint availability)
+                RpcEndpoint availability,
+                bool isEvmExecution = false)
             {
                 ModuleType = moduleType;
                 MethodInfo = methodInfo;
@@ -405,6 +408,15 @@ namespace Nethermind.JsonRpc.Modules
                     JsonTypeInfo? typeInfo = null;
                     Type? converterType = null;
                     ParameterKind kind = ParameterKind.Typed;
+
+                    if (paramType == typeof(Dictionary<Address, AccountOverride>))
+                    {
+                        StateOverrideIndex = i;
+                    }
+                    else if (paramType == typeof(BlockOverride))
+                    {
+                        BlockOverrideIndex = i;
+                    }
 
                     if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
                     {
@@ -451,6 +463,7 @@ namespace Nethermind.JsonRpc.Modules
                 ExpectedParameters = expectedParameters;
                 ReadOnly = readOnly;
                 Availability = availability;
+                IsEvmExecution = isEvmExecution;
                 IsTaskWrapped = TryGetTaskResultType(methodInfo.ReturnType, out Type? taskResultType);
                 ResultWrapperType = IsTaskWrapped ? taskResultType : methodInfo.ReturnType;
                 if (!ResultWrapperType.IsAssignableTo(typeof(IResultWrapper)))
@@ -462,6 +475,12 @@ namespace Nethermind.JsonRpc.Modules
                 {
                     SuccessPayloadType = GetResultWrapperPayloadType(ResultWrapperType);
                     ErrorDataPayloadType = GetResultWrapperErrorDataType(ResultWrapperType);
+                    if (IsEvmExecution && SuccessPayloadType is not null && typeof(IStreamableResult).IsAssignableFrom(SuccessPayloadType))
+                    {
+                        throw new InvalidOperationException(
+                            $"RPC method {methodInfo.Name} is marked {nameof(JsonRpcMethodAttribute.IsEvmExecution)} but returns {nameof(IStreamableResult)}.");
+                    }
+
                     SuccessPayloadTypeInfo = GetJsonTypeInfo(SuccessPayloadType);
                     ErrorDataPayloadTypeInfo = GetJsonTypeInfo(ErrorDataPayloadType);
                     SuccessPayloadCanHaveDerivedRuntimeType = RpcPayloadTypeShape.CanHaveDerivedRuntimeType(SuccessPayloadType);
@@ -486,6 +505,14 @@ namespace Nethermind.JsonRpc.Modules
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
+            internal bool IsEvmExecution { get; }
+
+            /// <summary>Position of the state override parameter, or -1 when the method has none.</summary>
+            internal int StateOverrideIndex { get; } = -1;
+
+            /// <summary>Position of the block override parameter, or -1 when the method has none.</summary>
+            internal int BlockOverrideIndex { get; } = -1;
+
             internal Type? ResultWrapperType { get; }
             internal Type? SuccessPayloadType { get; }
             internal Type? ErrorDataPayloadType { get; }
