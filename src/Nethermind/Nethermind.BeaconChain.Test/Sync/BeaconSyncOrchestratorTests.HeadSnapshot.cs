@@ -59,7 +59,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public async Task A_head_step_publishes_the_held_head_state_and_reads_it_once_per_head()
+    public async Task A_head_step_publishes_the_held_head_and_justified_states_and_reads_each_once_per_root()
     {
         HeadSnapshotHolder snapshots = new() { CaptureState = true };
         Harness harness = CreateHarness(headSnapshots: snapshots);
@@ -80,10 +80,11 @@ public partial class BeaconSyncOrchestratorTests
         }
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(reads.Select(r => r.Root), Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakB }), "a step that keeps the head keeps its state");
+        Assert.That(reads.Select(r => r.Root), Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakC, TestItem.KeccakB }), "a step that keeps a root keeps its state");
         Assert.That(published[0], Is.Not.Null.And.SameAs(reads[0].State), "the state is published with the head, never taken later on the import thread");
         Assert.That(published[1], Is.SameAs(published[0]));
-        Assert.That(published[2], Is.SameAs(reads[1].State));
+        Assert.That(published[2], Is.SameAs(reads[2].State));
+        Assert.That(snapshots.Current!.JustifiedState, Is.SameAs(reads[1].State), "the justified checkpoint block's state is published next to the head's");
     }
 
     [Test]
@@ -92,7 +93,7 @@ public partial class BeaconSyncOrchestratorTests
         HeadSnapshotHolder snapshots = new() { CaptureState = true };
         Harness harness = CreateHarness(headSnapshots: snapshots);
         int reads = 0;
-        harness.Orchestrator.ApiStateReader = _ => ++reads == 1 ? null : new ForkedBeaconState.OfFulu(new BeaconStateFulu());
+        harness.Orchestrator.ApiStateReader = root => root != TestItem.KeccakA ? null : ++reads == 1 ? null : new ForkedBeaconState.OfFulu(new BeaconStateFulu());
         harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot + 1, finalizedEpoch: 3);
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
         ForkedBeaconState? missed = snapshots.Current!.State;

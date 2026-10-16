@@ -16,6 +16,13 @@ public sealed record HeadSnapshot(StatusMessageV2 Status, Hash256? FullHeadRoot,
 {
     /// <summary>The head's post-state for the Beacon API, or <c>null</c> when it was not captured.</summary>
     internal ForkedBeaconState? State { get; init; }
+
+    /// <summary>The post-state of the justified checkpoint block for the Beacon API, or <c>null</c> when it was not captured.</summary>
+    internal ForkedBeaconState? JustifiedState { get; init; }
+
+    /// <summary>The captured post-state of <paramref name="blockRoot"/> when it is the head or the justified checkpoint block, otherwise <c>null</c>.</summary>
+    internal ForkedBeaconState? GetState(Hash256 blockRoot) =>
+        (blockRoot == Status.HeadRoot ? State : null) ?? (blockRoot == JustifiedRoot ? JustifiedState : null);
 }
 
 /// <summary>Publishes one completed get_head view to other threads (fork-choice.md).</summary>

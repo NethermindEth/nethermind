@@ -195,7 +195,7 @@ internal static class BeaconStatesEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
-        if (!StateIdResolver.TryResolveHead(ctx, stateId, out ResolvedState resolved))
+        if (!StateIdResolver.TryResolveHeld(ctx, stateId, out ResolvedState resolved))
         {
             // A persisted state is state-sized, so head lists never load one.
             if (stateId == "head")

@@ -120,7 +120,7 @@ public class BeaconApiHeadSnapshotTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task Head_state_routes_serve_the_state_the_block_importer_holds_once_the_head_step_publishes_it(CancellationToken token)
+    public async Task Head_and_justified_state_routes_serve_the_states_the_block_importer_holds_once_the_head_step_publishes_them(CancellationToken token)
     {
         await using DeferredBlockColumnFetchTests.Fixture fixture = DeferredBlockColumnFetchTests.Fixture.Create();
         HeadSnapshotHolder snapshots = new() { CaptureState = true };
@@ -138,6 +138,10 @@ public class BeaconApiHeadSnapshotTests
         await orchestrator.RunHeadStepAsync(token);
         using JsonDocument checkpoints = await GetAsync(host, "/eth/v1/beacon/states/head/finality_checkpoints");
         using JsonDocument validators = await GetAsync(host, "/eth/v1/beacon/states/head/validators");
+        using JsonDocument justifiedCheckpoints = await GetAsync(host, "/eth/v1/beacon/states/justified/finality_checkpoints");
+        using JsonDocument justifiedValidators = await GetAsync(host, "/eth/v1/beacon/states/justified/validators");
+        using HttpResponseMessage justifiedState = await host.GetAsync("/eth/v2/debug/beacon/states/justified", "application/octet-stream");
+        byte[] justifiedSsz = await justifiedState.Content.ReadAsByteArrayAsync(token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(anchorFork.StatusCode, Is.EqualTo(HttpStatusCode.OK), "the fork of a head at the finalized checkpoint");
@@ -146,6 +150,12 @@ public class BeaconApiHeadSnapshotTests
         Assert.That(host.Store.TryGetState(fixture.Chain.BlockRoot, out _), Is.False, "the head state is not persisted");
         Assert.That(checkpoints.RootElement.GetProperty("data").GetProperty("finalized").GetProperty("root").GetString(), Is.EqualTo(fixture.Chain.AnchorState.FinalizedCheckpoint!.Root!.ToString()));
         Assert.That(validators.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(fixture.Chain.AnchorState.Validators!.Length));
+        Assert.That(snapshots.Current.JustifiedRoot, Is.EqualTo(fixture.Chain.AnchorRoot), "fixture: the anchor is the justified checkpoint block");
+        Assert.That(host.Store.TryGetState(fixture.Chain.AnchorRoot, out _), Is.False, "the justified state is not persisted");
+        Assert.That(justifiedCheckpoints.RootElement.GetProperty("data").GetProperty("current_justified").GetProperty("epoch").GetString(), Is.EqualTo("0"));
+        Assert.That(justifiedValidators.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(fixture.Chain.AnchorState.Validators!.Length));
+        Assert.That(justifiedState.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(justifiedSsz, Is.EqualTo(BeaconStateFulu.Encode(fixture.Chain.AnchorState)), "the justified checkpoint block's own post-state");
     }
 
     [Test]

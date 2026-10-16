@@ -200,7 +200,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Answers the PTC of a head root and slot for the gossip router; tests script it, otherwise the <see cref="BlockImporter"/> reads its head state.</summary>
     internal Func<Hash256, ulong, ulong[]?>? PtcReader { get; set; }
 
-    /// <summary>Reads the post-state of a head root for the Beacon API; tests script it, otherwise the <see cref="BlockImporter"/> reads its held state.</summary>
+    /// <summary>Reads the post-state of a head or justified root for the Beacon API; tests script it, otherwise the <see cref="BlockImporter"/> reads its held state.</summary>
     internal Func<Hash256, ForkedBeaconState?>? ApiStateReader { get; set; }
 
     private volatile Tip _syncTip = new(Hash256.Zero, 0);
@@ -2742,10 +2742,12 @@ public sealed class BeaconSyncOrchestrator(
         if (headSnapshots is not null)
         {
             HeadSnapshot? previousSnapshot = headSnapshots.Current;
-            ForkedBeaconState? apiState = !headSnapshots.CaptureState ? null
-                : previousSnapshot?.Status.HeadRoot == head.HeadRoot && previousSnapshot.State is { } previousState ? previousState
-                : ApiStateReader is { } reader ? reader(head.HeadRoot) : (importer as BlockImporter)?.GetStateForApi(head.HeadRoot);
-            headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync) { State = apiState };
+            bool capture = headSnapshots.CaptureState;
+            headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync)
+            {
+                State = capture ? ReadApiState(importer, head.HeadRoot, previousSnapshot) : null,
+                JustifiedState = capture ? ReadApiState(importer, head.Justified.Root, previousSnapshot) : null,
+            };
         }
 
         // A payload attestation is accepted for the wall slot and, within the clock disparity, its neighbours.
@@ -2761,6 +2763,10 @@ public sealed class BeaconSyncOrchestrator(
             StartGossip();
         }
     }
+
+    /// <summary>The post-state of <paramref name="root"/> for the Beacon API: the one <paramref name="previous"/> captured for it, otherwise the one the importer holds.</summary>
+    private ForkedBeaconState? ReadApiState(IBlockImporter importer, Hash256 root, HeadSnapshot? previous) =>
+        previous?.GetState(root) ?? (ApiStateReader is { } reader ? reader(root) : (importer as BlockImporter)?.GetStateForApi(root));
 
     /// <summary>Applies the execution layer's forkchoice verdict for <paramref name="headRoot"/> to fork choice, dropping one that contradicts an earlier verdict.</summary>
     private void ApplyForkchoiceVerdict(IBlockImporter importer, Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)

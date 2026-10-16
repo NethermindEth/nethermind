@@ -122,7 +122,7 @@ internal static class DebugEndpoints
 
     private static Task StateJson(HttpContext c, string stateId, BeaconApiContext ctx)
     {
-        if (!StateIdResolver.TryResolveHead(ctx, stateId, out ResolvedState resolved))
+        if (!StateIdResolver.TryResolveHeld(ctx, stateId, out ResolvedState resolved))
         {
             if (!StateIdResolver.TryResolveRaw(ctx, stateId, out ResolvedRawState raw, out int errorStatus, out string? errorMessage))
             {

@@ -48,12 +48,12 @@ internal static class StateIdResolver
             return false;
         }
 
-        byte[]? ssz = root == ctx.StatusSource.CurrentStatus.HeadRoot ? ctx.HeadState switch
+        byte[]? ssz = ctx.GetHeldState(root!) switch
         {
             ForkedBeaconState.OfFulu fulu => BeaconStateFulu.Encode(fulu.State),
             ForkedBeaconState.OfGloas gloas => BeaconStateGloas.Encode(gloas.State),
             _ => null,
-        } : null;
+        };
         if (ssz is null && !ctx.Store.TryGetState(root!, out ssz))
         {
             errorStatus = StatusCodes.Status404NotFound;
@@ -65,13 +65,12 @@ internal static class StateIdResolver
         return true;
     }
 
-    /// <summary>Resolves <paramref name="stateId"/> to the already-materialized head state, without encoding or decoding it; <c>false</c> when it names any other state or does not resolve.</summary>
-    public static bool TryResolveHead(BeaconApiContext ctx, string stateId, out ResolvedState resolved)
+    /// <summary>Resolves <paramref name="stateId"/> to the already-materialized head or justified state, without encoding or decoding it; <c>false</c> when it names any other state or does not resolve.</summary>
+    public static bool TryResolveHeld(BeaconApiContext ctx, string stateId, out ResolvedState resolved)
     {
         resolved = default;
         return TryResolveRoot(ctx, stateId, out Hash256? root, out _, out _)
-            && root == ctx.StatusSource.CurrentStatus.HeadRoot
-            && ctx.HeadState is not null
+            && ctx.GetHeldState(root!) is not null
             && TryResolve(ctx, stateId, out resolved, out _, out _);
     }
 
@@ -79,7 +78,7 @@ internal static class StateIdResolver
     {
         resolved = default;
         if (!TryResolveRoot(ctx, stateId, out Hash256? root, out errorStatus, out errorMessage)) return false;
-        if (root == ctx.StatusSource.CurrentStatus.HeadRoot && ctx.HeadState is not null)
+        if (ctx.GetHeldState(root!) is not null)
             return TryResolve(ctx, stateId, out resolved, out errorStatus, out errorMessage);
 
         const int forkOffset = 48;
@@ -126,9 +125,9 @@ internal static class StateIdResolver
     {
         resolved = default;
         if (!TryResolveRoot(ctx, stateId, out Hash256? root, out errorStatus, out errorMessage)) return false;
-        if (root == ctx.StatusSource.CurrentStatus.HeadRoot && ctx.HeadState is { } head)
+        if (ctx.GetHeldState(root!) is { } held)
         {
-            ApiState current = head switch
+            ApiState current = held switch
             {
                 ForkedBeaconState.OfFulu fulu => ApiState.Of(BeaconFork.Fulu, fulu.State),
                 ForkedBeaconState.OfGloas gloas => ApiState.Of(gloas.State),

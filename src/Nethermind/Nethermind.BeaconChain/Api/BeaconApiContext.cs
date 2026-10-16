@@ -43,8 +43,8 @@ internal sealed record BeaconApiContext(
 {
     /// <summary>Captures one get_head view for all reads in a request (fork-choice.md).</summary>
     public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead(), ForkChoiceSnapshot = ForkChoiceSnapshots?.Current };
-    /// <summary>The head's post-state published with the head, otherwise <c>null</c>.</summary>
-    internal ForkedBeaconState? HeadState => (StatusSource as FrozenHead)?.State;
+    /// <summary>The post-state of <paramref name="blockRoot"/> published with the head when it is the head or the justified checkpoint block, otherwise <c>null</c>.</summary>
+    internal ForkedBeaconState? GetHeldState(Hash256 blockRoot) => (StatusSource as FrozenHead)?.GetState(blockRoot);
     public ForkChoiceSnapshot? ForkChoiceSnapshot { get; private init; }
     /// <summary>Bounds the blob rebuilds of this host's getBlobs requests that run at once; a request past it is refused, never queued.</summary>
     public EventsEndpoint.EventCache Events { get; } = new();
@@ -64,7 +64,7 @@ internal sealed record BeaconApiContext(
 
     private sealed class FrozenHead(HeadSnapshot snapshot) : IBeaconChainStatusSource
     {
-        internal ForkedBeaconState? State => snapshot.State;
+        internal ForkedBeaconState? GetState(Hash256 blockRoot) => snapshot.GetState(blockRoot);
         public StatusMessageV2 CurrentStatus => snapshot.Status;
         public Hash256 JustifiedRoot => snapshot.JustifiedRoot;
         public bool ExecutionInSync => snapshot.ExecutionInSync;
