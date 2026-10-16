@@ -820,7 +820,13 @@ public sealed class BeaconSyncOrchestrator(
                 Settle(gloasSlashingItem.Verdict, gloasSlashingAccepted);
                 break;
             case GossipPayloadAttestationItem payloadAttestation:
-                bool? voteAccepted = gossipRouter.IsPayloadAttestationSettled(payloadAttestation.Message) ? null : _importer!.OnGossipPayloadAttestation(payloadAttestation.Message);
+                if (gossipRouter.GetSettledPayloadAttestationValidity(payloadAttestation.Message) is { } settledVote)
+                {
+                    payloadAttestation.Verdict?.Complete(settledVote);
+                    break;
+                }
+
+                bool? voteAccepted = _importer!.OnGossipPayloadAttestation(payloadAttestation.Message);
                 if (voteAccepted == true)
                 {
                     gossipRouter.MarkPayloadAttestationVerified(payloadAttestation.Message);

@@ -169,14 +169,13 @@ public partial class GossipRouterTests
         router.PayloadAttestationMessageReceived += (_, _) => received++;
         const int repeats = 10;
 
-        for (byte seed = 0; seed <= repeats; seed++)
-        {
-            router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true,
-                Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: seed))));
-        }
+        MessageValidity[] validities = [.. Enumerable.Range(0, repeats + 1).Select(static seed => (byte)seed).Select(seed => router.Handle(GossipTopics.PayloadAttestationMessage, gloasTopic: true,
+            Snappy.CompressToArray(PayloadAttestationMessage.Encode(PtcVote(PtcBlockRoot, PtcSlot, signatureSeed: seed)))))];
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(received, Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts));
+        Assert.That(validities.Skip(GossipRouter.PayloadAttestationVerifyAttempts), Is.All.EqualTo(MessageValidity.Throttled),
+            "the limit depends only on the delivering peer, so a repeat past it leaves no id in pubsub to hide another peer's copy");
         Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(repeats + 1 - GossipRouter.PayloadAttestationVerifyAttempts));
     }
 

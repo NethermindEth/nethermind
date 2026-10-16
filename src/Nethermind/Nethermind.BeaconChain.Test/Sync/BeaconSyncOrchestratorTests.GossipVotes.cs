@@ -67,7 +67,10 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(repeats.Append(first).Append(otherValidator), Is.All.EqualTo(MessageValidity.Ignored), "consumed by the router, never forwarded");
+        Assert.That(repeats.Prepend(first).Append(otherValidator).Count(static validity => validity == MessageValidity.Ignored), Is.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts + 1),
+            "consumed by the router, never forwarded");
+        Assert.That(repeats.Skip(GossipRouter.PayloadAttestationVerifyAttempts - 1), Is.All.EqualTo(MessageValidity.Throttled),
+            "a repeat past the peer's limit is throttled, so another peer's copy is still checked");
         Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(forgeries + 1 - GossipRouter.PayloadAttestationVerifyAttempts), "each repeat past the limit is dropped before it is queued");
         Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(GossipRouter.PayloadAttestationVerifyAttempts + 1), "the limit for the pair and one for the other validator");
         Assert.That(harness.Importer.GossipOperations, Is.All.TypeOf<PayloadAttestationMessage>());
@@ -106,13 +109,37 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(router.GetDropCount(GossipDropReason.PayloadAttestationPeerRejected), Is.EqualTo((long)forgers.Length * ptcSize * (GossipRouter.PayloadAttestationVerifyAttempts - 1)),
             "a forger's votes after the rejection are not raised");
 
-        static PeerId NewPeer() => new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
-
         static async Task DrainVotes(Harness harness)
         {
             for (int pass = 0; pass <= BeaconSyncOrchestrator.VoteQueueCapacity / BeaconSyncOrchestrator.VotesPerPass; pass++)
                 await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         }
+    }
+
+    /// <summary>gloas/p2p-interface.md has no per-peer IGNORE: a rejected peer relaying a genuine vote first must not hide another peer's copy of it.</summary>
+    [Test]
+    public async Task Genuine_payload_attestation_relayed_first_by_a_rejected_peer_still_reaches_fork_choice_from_another_peer([Values] bool queuedBeforeRejection)
+    {
+        const byte honestSeed = 100;
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
+        harness.Importer.GossipOperationVerdict = static operation => ((PayloadAttestationMessage)operation).Signature!.Bytes[0] == honestSeed;
+        harness.Orchestrator.RouteGossipEvents();
+        PeerId forger = NewPeer();
+
+        PtcVote(router, slot, validatorIndex: 1, signatureSeed: 1, source: forger);
+        if (!queuedBeforeRejection)
+            await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        MessageValidity relayedByForger = PtcVote(router, slot, validatorIndex: 2, signatureSeed: honestSeed, source: forger);
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        PtcVote(router, slot, validatorIndex: 2, signatureSeed: honestSeed, source: NewPeer());
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(relayedByForger, Is.EqualTo(queuedBeforeRejection ? MessageValidity.Ignored : MessageValidity.Throttled),
+            "a vote dropped only for its peer's history is throttled, so pubsub caches no id for it");
+        Assert.That(harness.Importer.GossipOperations.Cast<PayloadAttestationMessage>().Count(static vote => vote.ValidatorIndex == 2), Is.EqualTo(1),
+            "the other peer's identical copy is verified");
+        Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.Zero);
     }
 
     [Test]
@@ -552,6 +579,8 @@ public partial class BeaconSyncOrchestratorTests
 
         Assert.That((vote, harness.Importer.GossipOperations.Count), Is.EqualTo((MessageValidity.Ignored, 0)));
     }
+
+    private static PeerId NewPeer() => new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
 
     private static (ulong Slot, GossipRouter Router, Harness Harness) CreatePayloadVoteHarness()
     {

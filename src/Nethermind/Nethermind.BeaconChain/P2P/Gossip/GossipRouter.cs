@@ -360,14 +360,22 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         }
     }
 
-    /// <summary>Whether fork choice need not verify a raised payload attestation: one for its (slot, validator) pair verified, or its peer sent a vote for the slot that was rejected.</summary>
-    internal bool IsPayloadAttestationSettled(PayloadAttestationMessage vote)
+    /// <summary>The verdict of a raised payload attestation fork choice need not verify, or <c>null</c> when it must verify it.</summary>
+    /// <returns>
+    /// <see cref="MessageValidity.Ignored"/> when a vote for its (slot, validator) pair verified; <see cref="MessageValidity.Throttled"/> when its peer
+    /// sent a vote for the slot that was rejected, as that depends only on the peer, so another peer's copy is still checked.
+    /// </returns>
+    internal MessageValidity? GetSettledPayloadAttestationValidity(PayloadAttestationMessage vote)
     {
         PeerId? source = _payloadAttestationSources.TryGetValue(vote, out PeerId? peer) ? peer : null;
         lock (_payloadAttestationLock)
         {
-            return GetSlotPayloadAttestations(vote.Data!.Slot, create: false) is { } slot
-                && (slot.Verified.Contains(vote.ValidatorIndex) || source is not null && slot.RejectedPeers.Contains(source));
+            return GetSlotPayloadAttestations(vote.Data!.Slot, create: false) switch
+            {
+                { } slot when slot.Verified.Contains(vote.ValidatorIndex) => MessageValidity.Ignored,
+                { } slot when source is not null && slot.RejectedPeers.Contains(source) => MessageValidity.Throttled,
+                _ => null,
+            };
         }
     }
 
@@ -1089,9 +1097,10 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 }
             }
 
+            // Drops that depend only on the delivering peer are throttled, so pubsub caches no id and another peer's copy is still checked.
             if (source is not null && slot.RejectedPeers.Contains(source))
             {
-                return Verdict.Ignore(GossipDropReason.PayloadAttestationPeerRejected);
+                return Verdict.Throttle(GossipDropReason.PayloadAttestationPeerRejected);
             }
 
             if (!slot.Pairs.TryGet((source, vote.ValidatorIndex), out PayloadAttestationPair? pair))
@@ -1102,7 +1111,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
             if (pair.Attempts >= PayloadAttestationVerifyAttempts)
             {
-                return Verdict.Ignore(GossipDropReason.Duplicate);
+                return Verdict.Throttle(GossipDropReason.Duplicate);
             }
 
             pair.Attempts++;
@@ -1347,6 +1356,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         public static Verdict Settle(MessageValidity validity, Action? release = null) => new(default, validity, Settled: true, Release: release);
         public static Verdict Reject(GossipDropReason reason) => new(reason, MessageValidity.Rejected);
         public static Verdict Ignore(GossipDropReason reason) => new(reason, MessageValidity.Ignored);
+        public static Verdict Throttle(GossipDropReason reason) => new(reason, MessageValidity.Throttled);
         public static Verdict DeferTo(ulong slot) => new(GossipDropReason.FutureSlot, MessageValidity.Ignored, slot);
     }
 }
