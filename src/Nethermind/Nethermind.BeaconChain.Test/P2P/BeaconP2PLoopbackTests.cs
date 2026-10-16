@@ -268,6 +268,27 @@ public class BeaconP2PLoopbackTests
     }
 
     [Test]
+    [CancelAfter(60_000)]
+    public async Task A_second_identity_on_the_same_host_draws_on_the_block_budget_the_first_spent(CancellationToken token)
+    {
+        Node server = CreateNode();
+        Node first = CreateNode();
+        Node second = CreateNode();
+        await using PeerHostScope hosts = new(server.P2P, first.P2P, second.P2P);
+        await hosts.StartAsync(token, server.P2P, first.P2P, second.P2P);
+        ISession firstSession = await PeerSessionNodes.DialAsync(first.P2P, server.P2P, token);
+        ISession secondSession = await PeerSessionNodes.DialAsync(second.P2P, server.P2P, token);
+
+        // The empty store answers ResourceUnavailable, but only after the request is charged.
+        Eth2ReqRespException spent = (await Assert.CatchAsync<Eth2ReqRespException>(() => first.P2P.RequestBlocksByRangeAsync(firstSession, AnchorSlot, 128, token)))!;
+        Eth2ReqRespException refused = (await Assert.CatchAsync<Eth2ReqRespException>(() => second.P2P.RequestBlocksByRangeAsync(secondSession, AnchorSlot, 1, token)))!;
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(spent.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable));
+        Assert.That(refused.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.RateLimited), "both keys connect from 127.0.0.1, so the second has no budget of its own");
+    }
+
+    [Test]
     [CancelAfter(120_000)]
     public async Task Two_hosts_exchange_status_blocks_ping_metadata_and_goodbye(CancellationToken token)
     {
