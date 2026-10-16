@@ -295,7 +295,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         while (true)
         {
             Task shortfall = Volatile.Read(ref _custodyShortfall).Task;
-            if (_peers.Count + _dialing.Count < _config.TargetPeerCount || OutboundCount < OutboundFloor || UncustodiedSampledColumns().Count > 0)
+            if (_peers.Count + InFlightCount < _config.TargetPeerCount || OutboundCount < OutboundFloor || UncustodiedSampledColumns().Count > 0)
             {
                 return;
             }
@@ -684,7 +684,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return false;
         }
 
-        bool replacing = covering is not null && _peers.Count + _dialing.Count >= _config.MaxPeerCount;
+        bool replacing = covering is not null && _peers.Count + InFlightCount >= _config.MaxPeerCount;
         if (replacing && WorstReplaceablePeer(covering!) is null)
         {
             if (_logger.IsDebug) _logger.Debug($"Not dialing {address}: at the peer band ceiling and every peer is the last custodian of a sampled column");
@@ -748,7 +748,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private bool IsWantedAtCurrentCount(string? enr, out PeerColumnCustody? covering)
     {
         covering = null;
-        if (_peers.Count + _dialing.Count < _config.TargetPeerCount || OutboundCount < OutboundFloor || _localCustody.Current is null)
+        if (_peers.Count + InFlightCount < _config.TargetPeerCount || OutboundCount < OutboundFloor || _localCustody.Current is null)
         {
             return true;
         }
@@ -772,7 +772,20 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
                 if (peer.Value.Direction == PeerDirection.Outbound) count++;
             foreach (KeyValuePair<string, Reservation> reservation in _dialing)
-                if (reservation.Value.Direction == PeerDirection.Outbound) count++;
+                if (reservation.Value.Direction == PeerDirection.Outbound && !_peers.ContainsKey(reservation.Key)) count++;
+            return count;
+        }
+    }
+
+    /// <summary>Reservations whose peer is not yet in the pool.</summary>
+    /// <remarks>An admission adds its peer to the pool before its reservation is released, so counting both would count that peer twice.</remarks>
+    private int InFlightCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (KeyValuePair<string, Reservation> reservation in _dialing)
+                if (!_peers.ContainsKey(reservation.Key)) count++;
             return count;
         }
     }
@@ -800,7 +813,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             bool trusted = IsStaticPeer(peerId);
             int ceiling = _config.MaxPeerCount + (overCeiling || trusted ? 1 : 0);
             if (direction == PeerDirection.Inbound && !trusted) ceiling -= OutboundFloor;
-            atCeiling = _peers.Count + _dialing.Count >= ceiling;
+            atCeiling = _peers.Count + InFlightCount >= ceiling;
             if (atCeiling)
             {
                 return false;
