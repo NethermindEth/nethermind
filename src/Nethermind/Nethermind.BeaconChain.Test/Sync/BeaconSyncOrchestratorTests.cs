@@ -1146,10 +1146,16 @@ public partial class BeaconSyncOrchestratorTests
         (_, _, SignedBeaconBlock[] canonical) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102);
         Hash256 replayedTip = SszRoots.HashTreeRoot(old[0].Message!);
         Harness harness = null!;
+        bool missed = false;
         // The lone peer's miss persists for an epoch of wall slots while the round retries it.
         RangeSyncTests.StubPeer peer = new("canonical", 102, (start, count) =>
         {
-            harness.Timestamper.Add(TimeSpan.FromSeconds(Spec.SlotsPerEpoch * Spec.SecondsPerSlot));
+            if (!missed)
+            {
+                missed = true;
+                harness.Timestamper.Add(TimeSpan.FromSeconds(Spec.SlotsPerEpoch * Spec.SecondsPerSlot));
+            }
+
             return [.. canonical.Where(b => b.Message!.Slot >= start && b.Message.Slot < start + count).Select(b => new ForkedSignedBeaconBlock.OfFulu(b))];
         });
         harness = CreateHarness(store: store, wallSlot: 102, peers: [peer]);
@@ -1172,6 +1178,7 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessQueuedAsync(token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(bound.IsCancellationRequested, Is.False, "the round ended on its own");
         Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(SszRoots.HashTreeRoot(canonical[^1].Message!)), "the only peer's persisting miss replaces the orphaned head tip");
         Assert.That(peer.Reports, Is.Empty);
     }
