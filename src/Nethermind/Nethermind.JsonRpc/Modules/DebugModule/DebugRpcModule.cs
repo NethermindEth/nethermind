@@ -435,6 +435,8 @@ public class DebugRpcModule(
 
         if (CanStreamBlockTrace(options))
         {
+            if (CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(block!.Header) is { } baseStateError) return baseStateError;
+
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
@@ -481,6 +483,8 @@ public class DebugRpcModule(
 
         if (CanStreamBlockTrace(options))
         {
+            if (CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header) is { } baseStateError) return baseStateError;
+
             Block? resolvedBlock = blockFinder.FindBlock(blockNumber);
             if (resolvedBlock is null)
             {
@@ -528,6 +532,8 @@ public class DebugRpcModule(
 
         if (CanStreamBlockTrace(options))
         {
+            if (CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header) is { } baseStateError) return baseStateError;
+
             Block? resolvedBlock = blockFinder.FindBlock(blockHash);
             if (resolvedBlock is null)
             {
