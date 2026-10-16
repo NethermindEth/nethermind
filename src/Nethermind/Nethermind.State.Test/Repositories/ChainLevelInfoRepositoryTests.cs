@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -106,6 +107,26 @@ public class ChainLevelInfoRepositoryTests
             ulong number = requested[i];
             ChainLevelInfo expected = number is 256 or 65_535 ? null : CreateBatchLevel(number);
             AssertBatchLevel(levels[i], expected);
+        }
+    }
+
+    [Test]
+    public void MultiLoadLevel_WithFixedOrMixedKeyLengths_UsesExpectedBatchPath([Values(false, true)] bool mixedLengths)
+    {
+        BatchTrackingDb db = new(mixedLengths);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ulong[] requested = mixedLengths ? [255, 256, 255] : [1, 2, 1];
+        foreach (ulong number in requested) repository.PersistLevel(number, CreateBatchLevel(number));
+
+        using ArrayPoolListRef<ulong> numbers = new(requested);
+        using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
+        Assert.That(levels.Count, Is.EqualTo(requested.Length));
+        for (int i = 0; i < requested.Length; i++) AssertChainLevelInfo(levels[i], CreateBatchLevel(requested[i]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.DecodedBatchReads, Is.EqualTo(mixedLengths ? 0 : 1));
+            Assert.That(db.LegacyBatchReads, Is.EqualTo(mixedLengths ? 1 : 0));
         }
     }
 
@@ -341,6 +362,33 @@ public class ChainLevelInfoRepositoryTests
             Assert.That(actual.HasBlockOnMainChain, Is.EqualTo(expected.HasBlockOnMainChain));
             Assert.That(actual.BlockInfos, Is.EqualTo(expected.BlockInfos));
         });
+    }
+
+    private sealed class BatchTrackingDb(bool mixedLengths) : MemDb, IDb, IBatchReadOnlyDb
+    {
+        public int DecodedBatchReads { get; private set; }
+        public int LegacyBatchReads { get; private set; }
+
+        KeyValuePair<byte[], byte[]>[] IDb.this[byte[][] keys]
+        {
+            get
+            {
+                if (!mixedLengths) throw new InvalidOperationException("Fixed-width keys must use decoded batch reads.");
+                LegacyBatchReads++;
+                return base[keys];
+            }
+        }
+
+        void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
+        {
+            if (mixedLengths) throw new InvalidOperationException("Mixed-width keys must use one legacy batch.");
+            DecodedBatchReads++;
+            for (int i = 0; i < values.Length; i++)
+            {
+                byte[] value = Get(keys.Slice(i * keyLength, keyLength));
+                values[i] = value is null ? default! : decoder.Decode(value);
+            }
+        }
     }
 
     private sealed class RemoveHookDb : TestMemDb
