@@ -31,6 +31,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
@@ -46,6 +47,8 @@ public class SszMiddlewareTests
     private IEngineRpcModule _engineModule = null!;
     private ISpecProvider _specProvider = null!;
     private Nethermind.Blockchain.Find.IBlockFinder _blockFinder = null!;
+    private IStateReader _stateReader = null!;
+    private IWitnessGeneratingBlockProcessingEnvFactory _witnessEnvFactory = null!;
 
     private IJsonRpcUrlCollection _urlCollection = null!;
     private IRpcAuthentication _auth = null!;
@@ -65,6 +68,8 @@ public class SszMiddlewareTests
         _engineModule = Substitute.For<IEngineRpcModule>();
         _specProvider = Substitute.For<ISpecProvider>();
         _blockFinder = Substitute.For<Nethermind.Blockchain.Find.IBlockFinder>();
+        _stateReader = Substitute.For<IStateReader>();
+        _witnessEnvFactory = Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
 
         _urlCollection = Substitute.For<IJsonRpcUrlCollection>();
         _auth = Substitute.For<IRpcAuthentication>();
@@ -132,6 +137,8 @@ public class SszMiddlewareTests
 
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>(_engineModule),
+            new GetPayloadWithWitnessSszHandler(_engineModule, new BlockWitnessGenerator(
+                _blockFinder, _stateReader, [], new Lazy<IWitnessGeneratingBlockProcessingEnvFactory>(() => _witnessEnvFactory))),
         ];
 
     private static ChainSpecBasedSpecProvider CreateChainSpecProvider() => new(new ChainSpec
@@ -727,7 +734,7 @@ public class SszMiddlewareTests
         using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
         string[] endpoints = response.RootElement.GetProperty("fork_scoped_endpoints").EnumerateArray()
             .Select(static endpoint => endpoint.GetString()!).ToArray();
-        Assert.That(endpoints, Is.EquivalentTo(new[] { "payloads", "forkchoice", "bodies", "payloads/witness", "inclusion_list" }));
+        Assert.That(endpoints, Is.EquivalentTo(new[] { "payloads", "forkchoice", "bodies", "payloads/witness", "payloads/{payloadId}/witness", "inclusion_list" }));
     }
 
     [Test]
@@ -1627,6 +1634,77 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
         string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         Assert.That(responseBody, Does.Contain(expectedTypeUri));
+    }
+
+    private const string BuiltPayloadWitnessPath = "/engine/v1/payloads/0x0102030405060708/witness";
+
+    private void SetUpBuiltPayload(bool payloadKnown, bool hasParentState, Witness witness)
+    {
+        Block block = (Block)SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 42UL).TryGetBlock();
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+
+        _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(payloadKnown
+            ? ResultWrapper<GetPayloadV6Result?>.Success(new GetPayloadV6Result(block, UInt256.One, new BlobsBundleV2(block), [], shouldOverrideBuilder: false))
+            : ResultWrapper<GetPayloadV6Result?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload));
+        _blockFinder.FindHeader(block.ParentHash!).Returns(parent);
+        _stateReader.HasStateForBlock(parent).Returns(hasParentState);
+        _witnessEnvFactory.CreateScope().Env.CreateExistingBlockWitnessCollector()
+            .GetWitnessForExistingBlock(parent, block).Returns(witness);
+    }
+
+    [Test]
+    public async Task GetPayloadWithWitness_returns_the_built_payload_and_its_witness()
+    {
+        byte[] stateNode = [0xde, 0xad];
+        byte[] header = [0xbe, 0xef];
+        SetUpBuiltPayload(payloadKnown: true, hasParentState: true, new Witness
+        {
+            State = new ArrayPoolList<byte[]>(1) { stateNode },
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(1) { header },
+        });
+
+        DefaultHttpContext ctx = MakeGetContext(BuiltPayloadWitnessPath, fork: "amsterdam");
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        BuiltPayloadWithWitnessV6Wire.Decode(ResponseBytes(ctx), out BuiltPayloadWithWitnessV6Wire wire);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.Headers.CacheControl.ToString(), Is.EqualTo("no-store"));
+            Assert.That(wire.BuiltPayload.BlockValue, Is.EqualTo(UInt256.One));
+            Assert.That(wire.Witness.State!.Select(static n => n.Bytes), Is.EqualTo(new[] { stateNode }));
+            Assert.That(wire.Witness.Codes, Is.Empty);
+            Assert.That(wire.Witness.Headers!.Select(static h => h.Bytes), Is.EqualTo(new[] { header }));
+        }
+        await _engineModule.Received(1).engine_getPayloadV6(
+            Arg.Is<byte[]>(static id => Convert.ToHexString(id) == "0102030405060708"));
+    }
+
+    private static readonly TestCaseData[] GetPayloadWithWitnessErrorCases =
+    [
+        new TestCaseData("osaka", BuiltPayloadWitnessPath, true, true, StatusCodes.Status400BadRequest, "/engine-api/errors/unsupported-fork")
+            .SetName("GetPayloadWithWitness_before_Amsterdam_is_unsupported_fork"),
+        new TestCaseData("amsterdam", "/engine/v1/payloads/0xZZZZZZZZZZZZZZZZ/witness", true, true, StatusCodes.Status400BadRequest, "/engine-api/errors/invalid-request")
+            .SetName("GetPayloadWithWitness_malformed_payload_id_is_invalid_request"),
+        new TestCaseData("amsterdam", BuiltPayloadWitnessPath, false, true, StatusCodes.Status404NotFound, "/engine-api/errors/unknown-payload")
+            .SetName("GetPayloadWithWitness_unknown_payload_is_not_found"),
+        new TestCaseData("amsterdam", BuiltPayloadWitnessPath, true, false, StatusCodes.Status500InternalServerError, "/engine-api/errors/internal")
+            .SetName("GetPayloadWithWitness_without_a_witness_is_internal_error"),
+    ];
+
+    [TestCaseSource(nameof(GetPayloadWithWitnessErrorCases))]
+    public async Task GetPayloadWithWitness_error_maps_to_http_status(
+        string fork, string path, bool payloadKnown, bool hasParentState, int expectedStatus, string expectedTypeUri)
+    {
+        SetUpBuiltPayload(payloadKnown, hasParentState, null!);
+
+        DefaultHttpContext ctx = MakeGetContext(path, fork: fork);
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
+        Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain(expectedTypeUri));
     }
 
     private static byte[] BuildMinimalWitnessRequestBody() =>
