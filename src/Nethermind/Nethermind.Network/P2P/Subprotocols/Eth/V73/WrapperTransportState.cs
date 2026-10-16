@@ -168,6 +168,9 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock)
 
     public long LastIssued { get; set; }
 
+    /// <summary>Pending fetches this peer's announcements created, held to its share of the pending cache.</summary>
+    public int PendingFetches { get; set; }
+
     /// <summary>Outstanding GetProofWrappers and envelope-recovery GetPooledTransactions requests to this peer.</summary>
     public Dictionary<long, WrapperRequest> Requests { get; } = [];
 
@@ -213,8 +216,8 @@ internal sealed class EnvelopesRequest(long id, long created, long reserved, Val
     /// <summary>The distinct requested hashes, in request order.</summary>
     public ValueHash256[] Hashes { get; } = hashes;
 
-    /// <summary>The returned envelopes, or null when the request ended without a response.</summary>
-    public TaskCompletionSource<byte[][]?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    /// <summary>The matched returned transactions, or null when the request ended without a usable response.</summary>
+    public TaskCompletionSource<Transaction[]?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 }
 
 /// <summary>A wanted wrapper from its first announcement until it is validated or abandoned.</summary>
@@ -222,6 +225,9 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
 {
     public WrapperAnnouncement Announcement { get; } = announcement;
     public long Announced { get; } = now;
+
+    /// <summary>The peer whose announcement created the fetch, charged with its share of the pending cache.</summary>
+    public WrapperPeer? Announcer { get; init; }
 
     /// <summary>When the first request was sent; the recovery deadline runs from here.</summary>
     public long? Started { get; set; }

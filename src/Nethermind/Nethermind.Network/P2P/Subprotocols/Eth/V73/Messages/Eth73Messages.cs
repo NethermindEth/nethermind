@@ -154,13 +154,13 @@ public sealed class ProofWrappersMessageSerializer() : Eth73MessageSerializer<Pr
     }
 }
 
-/// <summary>Reads a PooledTransactions (<c>0x0a</c>) response to an envelope-recovery request as the exact envelopes it carries.</summary>
-/// <remarks>A typed transaction is an RLP string holding its EIP-2718 envelope and a legacy one an RLP list, so each envelope's
-/// Keccak-256 is the transaction hash it is matched against. At most <see cref="Eth73Protocol.MaxEnvelopesPerRequest"/> entries
-/// are read, since no more are ever requested.</remarks>
+/// <summary>Splits a PooledTransactions (<c>0x0a</c>) response to an envelope-recovery request into its transaction items.</summary>
+/// <remarks>Each item is a transaction in its PooledTransactions form, which for a blob-carrying transaction includes the network
+/// wrapper; the requester decodes it and matches its transaction hash. At most <see cref="Eth73Protocol.MaxEnvelopesPerRequest"/>
+/// items are read, since no more are ever requested.</remarks>
 public static class PooledEnvelopes
 {
-    public static (long RequestId, byte[][] Envelopes) Decode(ReadOnlySpan<byte> data)
+    public static (long RequestId, byte[][] Items) Decode(ReadOnlySpan<byte> data)
     {
         Eth73RlpReader outer = new(data);
         Eth73RlpReader fields = outer.ReadList();
@@ -169,15 +169,10 @@ public static class PooledEnvelopes
         if (requestId > long.MaxValue) throw new RlpException("Request ID exceeds 63 bits");
         Eth73RlpReader list = fields.ReadList();
         int count = list.CountRemaining(Eth73Protocol.MaxEnvelopesPerRequest);
-        byte[][] envelopes = new byte[count][];
-        for (int i = 0; i < count; i++)
-        {
-            ReadOnlySpan<byte> envelope = list.IsListNext ? list.ReadItem() : list.ReadBytes();
-            if (envelope.IsEmpty) throw new RlpException("Empty transaction envelope");
-            envelopes[i] = envelope.ToArray();
-        }
+        byte[][] items = new byte[count][];
+        for (int i = 0; i < count; i++) items[i] = list.ReadItem().ToArray();
         list.End();
         fields.End();
-        return ((long)requestId, envelopes);
+        return ((long)requestId, items);
     }
 }

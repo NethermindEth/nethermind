@@ -149,6 +149,9 @@ internal static class WrapperTestObjects
 
     public static byte[] Envelope(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
 
+    /// <summary>The transaction as a PooledTransactions item: a typed envelope wrapped as an RLP string.</summary>
+    public static byte[] PooledItem(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes;
+
     /// <summary>A hash-only mode-1 wrapper over <paramref name="transactions"/> with an opaque proof.</summary>
     public static byte[] Wrapper(int proofBytes, params Transaction[] transactions)
     {

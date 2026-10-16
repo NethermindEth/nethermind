@@ -112,7 +112,7 @@ public class Eth73MessagesTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(new NewProofWrapperHashesMessageSerializer().Encode(new(announced)), Has.Length.EqualTo(2435));
-            // The vector uses request ID 2**64 - 1; the largest 63-bit ID this client issues encodes in the same 9 bytes.
+            // EIP-8437 check_vectors.py also asserts request ID 2**63 - 1, the largest this client issues, at 2,127 bytes.
             Assert.That(new GetProofWrappersMessageSerializer().Encode(new(long.MaxValue, requested)), Has.Length.EqualTo(2127));
             Assert.That(new GetProofWrappersMessageSerializer().Encode(new(7, [default])).ToHexString(), Is.EqualTo("e307e1a0" + new string('0', 64)));
         }
@@ -146,15 +146,15 @@ public class Eth73MessagesTests
 
     // assets/eip-8437/check_vectors.py: the existing PooledTransactions (0x0a) encoding for typed transaction envelopes.
     [Test]
-    public void Pooled_envelopes_are_read_as_the_exact_envelope_bytes()
+    public void Pooled_items_are_read_whole()
     {
         byte[] legacy = Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(1));
-        (long requestId, byte[][] envelopes) = PooledEnvelopes.Decode(Bytes.FromHexString("c507c38202c0"));
+        (long requestId, byte[][] items) = PooledEnvelopes.Decode(Bytes.FromHexString("c507c38202c0"));
         (_, byte[][] mixed) = PooledEnvelopes.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(7), Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([2, 0xc0]), legacy)));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(requestId, Is.EqualTo(7));
-            Assert.That(envelopes, Is.EqualTo(new byte[][] { [0x02, 0xc0] }), "a typed envelope is the string content");
+            Assert.That(items, Is.EqualTo(new byte[][] { [0x82, 0x02, 0xc0] }), "a typed transaction keeps its string wrapping");
             Assert.That(mixed[1], Is.EqualTo(legacy), "a legacy transaction is its whole list item");
         }
     }
@@ -164,7 +164,7 @@ public class Eth73MessagesTests
     [TestCase("duplicate request")]
     [TestCase("too many requested")]
     [TestCase("string wrapper")]
-    [TestCase("empty envelope")]
+    [TestCase("truncated item")]
     [TestCase("too many envelopes")]
     [TestCase("trailing bytes")]
     public void Malformed_messages_are_rejected_before_allocation(string scenario)
@@ -180,7 +180,7 @@ public class Eth73MessagesTests
             "too many requested" => () => new GetProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1),
                 Eth73Rlp.EncodeList([.. Enumerable.Range(0, Eth73Protocol.MaxWrappersPerRequest + 1).Select(i => Eth73Rlp.EncodeBytes(Keccak.Compute(i.ToString()).Bytes))]))),
             "string wrapper" => () => new ProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([1, 2])))),
-            "empty envelope" => () => PooledEnvelopes.Decode(Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([])))),
+            "truncated item" => () => PooledEnvelopes.Decode([.. Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([2, 0xc0])))[..^1]]),
             "too many envelopes" => () => PooledEnvelopes.Decode(Eth73Rlp.EncodeList(Id(1),
                 Eth73Rlp.EncodeList([.. Enumerable.Range(0, Eth73Protocol.MaxEnvelopesPerRequest + 1).Select(_ => Eth73Rlp.EncodeBytes([2, 0xc0]))]))),
             _ => () => new ProofWrappersMessageSerializer().Decode([.. Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList()), 0x80])

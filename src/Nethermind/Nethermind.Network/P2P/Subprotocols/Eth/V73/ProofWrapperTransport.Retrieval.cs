@@ -9,8 +9,10 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
 using GetPooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
@@ -48,9 +50,12 @@ public sealed partial class ProofWrapperTransport
                     existing.AddSource(peer, announcement.Length);
                     continue;
                 }
-                // The pending cache is bounded; announcements are not repeated, so excess ones are lost.
-                if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements) continue;
-                WrapperFetch fetch = new(announcement, now);
+                // The pending cache is bounded, and each peer holds at most a share of it, so one peer announcing wrappers it
+                // never serves cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
+                if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements
+                    || peer.PendingFetches >= WrapperTransportLimits.MaxPendingAnnouncementsPerPeer) continue;
+                WrapperFetch fetch = new(announcement, now) { Announcer = peer };
+                peer.PendingFetches++;
                 fetch.AddSource(peer, announcement.Length);
                 _fetches.Add(wrapperHash, fetch);
             }
@@ -60,36 +65,50 @@ public sealed partial class ProofWrapperTransport
     }
 
     /// <summary>Requests queued wrappers from their next untried source, up to four outstanding requests per peer.</summary>
+    /// <remarks>One pass over the pending fetches groups them by next source, so the cost does not grow with the peer count.</remarks>
     private void Schedule(Outbox outbox)
     {
         if (_disposed || _peers.Count == 0) return;
         long now = _clock.GetTimestamp();
         List<WrapperFetch>? exhausted = null;
+        Dictionary<WrapperPeer, List<WrapperFetch>>? bySource = null;
         foreach (WrapperFetch fetch in _fetches.Values)
-            if (!fetch.Requested && fetch.Wrapper is null && fetch.NextSource() is null) (exhausted ??= []).Add(fetch);
+        {
+            if (fetch.Requested || fetch.Wrapper is not null) continue;
+            if (fetch.NextSource() is not { } source) (exhausted ??= []).Add(fetch);
+            else if (source.CanRequest)
+            {
+                bySource ??= [];
+                if (!bySource.TryGetValue(source, out List<WrapperFetch>? queued)) bySource[source] = queued = [];
+                queued.Add(fetch);
+            }
+        }
         foreach (WrapperFetch fetch in exhausted ?? []) Remove(fetch, "every source tried");
+        if (bySource is null) return;
         int count = _peers.Count;
         int first = _nextPeer % count;
         for (int p = 0; p < count; p++)
         {
             WrapperPeer peer = _peers[(first + p) % count];
-            while (peer.CanRequest && RequestFrom(peer, now, outbox)) _nextPeer = (first + p + 1) % count;
+            if (!bySource.TryGetValue(peer, out List<WrapperFetch>? queued)) continue;
+            int next = 0;
+            while (next < queued.Count && peer.CanRequest && RequestFrom(peer, queued, ref next, now, outbox)) _nextPeer = (first + p + 1) % count;
         }
     }
 
-    /// <summary>Sends one GetProofWrappers for wrappers whose next source is <paramref name="peer"/>, within the soft limit.</summary>
-    private bool RequestFrom(WrapperPeer peer, long now, Outbox outbox)
+    /// <summary>Sends one GetProofWrappers for the next queued wrappers of <paramref name="peer"/>, within the soft limit.</summary>
+    private bool RequestFrom(WrapperPeer peer, List<WrapperFetch> queued, ref int next, long now, Outbox outbox)
     {
         List<WrapperFetch> batch = [];
         long bytes = 0;
-        foreach (WrapperFetch fetch in _fetches.Values)
+        for (; next < queued.Count && batch.Count < Eth73Protocol.MaxWrappersPerRequest; next++)
         {
-            if (fetch.Requested || fetch.Wrapper is not null || fetch.NextSource() != peer) continue;
+            WrapperFetch fetch = queued[next];
+            if (fetch.Requested || fetch.Wrapper is not null) continue;
             int length = fetch.LengthFrom(peer);
-            if (batch.Count > 0 && bytes + length > Eth73Protocol.SoftResponseLimit) continue;
+            if (batch.Count > 0 && bytes + length > Eth73Protocol.SoftResponseLimit) break;
             batch.Add(fetch);
             bytes += length;
-            if (batch.Count == Eth73Protocol.MaxWrappersPerRequest) break;
         }
         // A response stops before the soft limit after its first wrapper, so the local response cap bounds the reservation.
         long reserved = Math.Min(bytes, Eth73Protocol.LocalMaxResponseBytes);
@@ -195,7 +214,10 @@ public sealed partial class ProofWrapperTransport
     private void Remove(WrapperFetch fetch, string reason)
     {
         if (_fetches.TryGetValue(fetch.Announcement.Hash, out WrapperFetch? current) && current == fetch)
+        {
             _fetches.Remove(fetch.Announcement.Hash);
+            if (fetch.Announcer is { } announcer) announcer.PendingFetches--;
+        }
         Drop(fetch);
         if (_logger.IsTrace) _logger.Trace($"eth/73 stopped fetching {fetch.Announcement}: {reason}");
     }
@@ -306,16 +328,22 @@ public sealed partial class ProofWrapperTransport
         }
         if (missing.Count > 0)
         {
-            // Verify the claimed proofs before fetching anything, so an invalid proof costs no recovery. This does not validate
-            // the wrapper: its transaction list is checked once every hash resolves.
+            // EIP-8437 lets the claimed-proof check run alongside envelope recovery. It does not validate the wrapper: its
+            // transaction list is checked once every hash resolves. A failed check stops the recovery.
+            using CancellationTokenSource recovery = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            Task<bool> recovering = RecoverEnvelopesAsync(fetch, hashes, missing, recovered, recovery.Token);
             (Verdict claims, string? claimsError) = await VerifyAsync(token => _wrappers.VerifyClaimedProofsOwnedAsync(wrapper, token), cancellation)
                 .ConfigureAwait(false);
+            if (claims != Verdict.Valid) await recovery.CancelAsync().ConfigureAwait(false);
+            bool resolved;
+            try { resolved = await recovering.ConfigureAwait(false); }
+            catch (OperationCanceledException) when (recovery.IsCancellationRequested && !cancellation.IsCancellationRequested) { resolved = false; }
             if (claims != Verdict.Valid)
             {
                 Conclude(fetch, claims, claimsError);
                 return;
             }
-            if (!await RecoverEnvelopesAsync(fetch, hashes, missing, recovered, cancellation).ConfigureAwait(false))
+            if (!resolved)
             {
                 Conclude(fetch, Verdict.Unresolved, $"{missing.Count} envelopes unresolved");
                 return;
@@ -431,7 +459,7 @@ public sealed partial class ProofWrapperTransport
                 EnvelopesRequest? request = await SendEnvelopeRequestAsync(source, requested, cancellation).ConfigureAwait(false);
                 if (request is null) break;
                 requests++;
-                byte[][]? envelopes;
+                Transaction[]? envelopes;
                 using (CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
                 {
                     timeout.CancelAfter(WrapperTransportLimits.RequestTimeout);
@@ -439,7 +467,7 @@ public sealed partial class ProofWrapperTransport
                     catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { envelopes = null; }
                 }
                 // No response, or an empty one, means unavailable from this source: no penalty, try another.
-                if (envelopes is not { Length: > 0 } || !AcceptEnvelopes(fetch, source, envelopes, recovered)) break;
+                if (envelopes is not { Length: > 0 } || !AcceptEnvelopes(fetch, envelopes, recovered)) break;
                 int last = Array.FindLastIndex(requested, recovered.ContainsKey);
                 toAsk.RemoveRange(0, last + 1);
             }
@@ -479,35 +507,21 @@ public sealed partial class ProofWrapperTransport
         }
     }
 
-    /// <summary>Decodes recovered envelopes, already matched to their request, and charges the retained bytes.</summary>
-    /// <returns>False when an envelope is not a canonical transaction, which penalizes its source, or the budget is spent.</returns>
-    private bool AcceptEnvelopes(WrapperFetch fetch, WrapperPeer source, byte[][] envelopes, Dictionary<ValueHash256, Transaction> recovered)
+    /// <summary>Charges the retained bytes of recovered transactions, already matched to their request.</summary>
+    /// <returns>False when the fetch was dropped or the byte budget is spent.</returns>
+    private bool AcceptEnvelopes(WrapperFetch fetch, Transaction[] transactions, Dictionary<ValueHash256, Transaction> recovered)
     {
-        string? error = null;
-        List<Transaction> transactions = new(envelopes.Length);
         long bytes = 0;
-        foreach (byte[] envelope in envelopes)
-        {
-            if (TryDecode(envelope, ValueKeccak.Compute(envelope)) is not { } transaction)
-            {
-                error = "a recovered envelope is not a canonical transaction";
-                break;
-            }
-            transactions.Add(transaction);
-            bytes += envelope.Length;
-        }
-        Outbox outbox = new();
+        foreach (Transaction transaction in transactions) bytes += transaction.GetLength();
         bool accepted;
         lock (_gate)
         {
-            accepted = error is null && !fetch.Removed && fetch.Server is { } server && TryCharge(server, bytes);
+            accepted = !fetch.Removed && fetch.Server is { } server && TryCharge(server, bytes);
             if (accepted) fetch.ChargedBytes += bytes;
-            if (error is not null && !source.Closed) Violation(source, error, outbox);
         }
-        outbox.Flush();
         if (!accepted) return false;
         foreach (Transaction transaction in transactions) recovered[transaction.Hash!.ValueHash256] = transaction;
-        WrapperMetrics.Record(WrapperEvent.EnvelopeRecovered, transactions.Count);
+        WrapperMetrics.Record(WrapperEvent.EnvelopeRecovered, transactions.Length);
         return true;
     }
 
@@ -519,13 +533,25 @@ public sealed partial class ProofWrapperTransport
     }
 
     /// <summary>Handles a PooledTransactions response to an envelope-recovery request.</summary>
-    /// <remarks>Envelopes must come in request order without repeats, each hashing to a distinct requested hash; omissions and
-    /// truncation are allowed. A violation is discarded and penalizes the peer.</remarks>
-    internal void OnPooledEnvelopes(WrapperPeer peer, long requestId, byte[][] envelopes)
+    /// <remarks>
+    /// Each returned transaction is matched by its transaction hash, Keccak-256 of its EIP-2718 envelope without any network
+    /// wrapper, to distinct requested hashes in request order; omissions and truncation are allowed. Malformed, repeated,
+    /// reordered or unrequested entries are discarded as unmatched data, and this client disconnects the peer for them.
+    /// </remarks>
+    internal void OnPooledEnvelopes(WrapperPeer peer, long requestId, byte[][] items)
     {
-        // Hash outside the lock: a response carries up to 2 MiB.
-        ValueHash256[] envelopeHashes = new ValueHash256[envelopes.Length];
-        for (int i = 0; i < envelopes.Length; i++) envelopeHashes[i] = ValueKeccak.Compute(envelopes[i]);
+        // Decode and hash outside the lock: a response carries up to 2 MiB.
+        Transaction[]? transactions = new Transaction[items.Length];
+        ValueHash256[] hashes = new ValueHash256[items.Length];
+        for (int i = 0; i < items.Length && transactions is not null; i++)
+        {
+            if (DecodePooled(items[i]) is { } transaction)
+            {
+                transactions[i] = transaction;
+                hashes[i] = transaction.Hash!.ValueHash256;
+            }
+            else transactions = null;
+        }
         Outbox outbox = new();
         EnvelopesRequest? request;
         bool matches = false;
@@ -537,13 +563,30 @@ public sealed partial class ProofWrapperTransport
             if (request is not null)
             {
                 Release(peer, request.Reserved);
-                matches = MatchesInOrder(envelopeHashes, request.Hashes);
-                if (!matches) Violation(peer, "PooledTransactions repeats, reorders or adds envelopes", outbox);
+                matches = transactions is not null && MatchesInOrder(hashes, request.Hashes);
+                if (!matches)
+                    Violation(peer, transactions is null ? "PooledTransactions carries a malformed transaction"
+                        : "PooledTransactions repeats, reorders or adds envelopes", outbox);
             }
             Schedule(outbox);
         }
         outbox.Flush();
-        request?.Completion.TrySetResult(matches ? envelopes : null);
+        request?.Completion.TrySetResult(matches ? transactions : null);
+    }
+
+    /// <summary>Decodes one PooledTransactions item, network wrapper included, with its transaction hash.</summary>
+    internal static Transaction? DecodePooled(byte[] item)
+    {
+        try
+        {
+            Transaction transaction = TxDecoder.Instance.DecodeCompleteNotNull(item, RlpBehaviors.InMempoolForm);
+            transaction.Hash ??= transaction.CalculateHash();
+            return transaction;
+        }
+        catch (Exception exception) when (exception is RlpException or ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Whether each of <paramref name="returned"/> matches a distinct entry of <paramref name="requested"/>, in order.</summary>

@@ -42,7 +42,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private readonly Queue<WrapperFetch> _validation = [];
     private readonly SemaphoreSlim _verification = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
-    private readonly ITimer _timer;
+    private readonly ITimer? _timer;
     private long _chargedBytes;
     private int _validationWorkers;
     private int _nextPeer;
@@ -61,7 +61,10 @@ public sealed partial class ProofWrapperTransport : IDisposable
         _verifier = _wrappers.RefreshVerifier();
         _wrappers.WrapperValidated += OnWrapperValidated;
         _wrappers.VerifierChanged += OnVerifierChanged;
-        _timer = _clock.CreateTimer(static state => ((ProofWrapperTransport)state!).Tick(), this, WrapperTransportLimits.Tick, WrapperTransportLimits.Tick);
+        // A chain without a scheduled EIP-8288 fork runs no wrapper timer.
+        _timer = _wrappers.IsScheduled
+            ? _clock.CreateTimer(static state => ((ProofWrapperTransport)state!).Tick(), this, WrapperTransportLimits.Tick, WrapperTransportLimits.Tick)
+            : null;
     }
 
     /// <summary>Whether the head activates EIP-8288; the transport is inert otherwise.</summary>
@@ -184,12 +187,16 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private void Tick()
     {
         // Applies the EIP-8288 upgrade rule, through VerifierChanged, once the head reaches a fork with another verifier.
-        Eip8288Verifier? verifier = _wrappers.RefreshVerifier();
+        // Idle while EIP-8288 is inactive: no peer registers then.
+        if (!IsEnabled && PeerCount == 0) return;
+        Eip8288Verifier? refreshed = _wrappers.RefreshVerifier();
         Outbox outbox = new();
         lock (_gate)
         {
             if (_disposed) return;
-            _verifier = verifier;
+            // Read again under the lock: a concurrent refresh may have applied a newer verifier, and OnVerifierChanged must not
+            // be overwritten with the older value this thread read.
+            _verifier = refreshed is null ? null : _wrappers.CurrentVerifier;
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers.ToArray())
             {
@@ -225,7 +232,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         outbox.Flush();
         _wrappers.WrapperValidated -= OnWrapperValidated;
         _wrappers.VerifierChanged -= OnVerifierChanged;
-        _timer.Dispose();
+        _timer?.Dispose();
         _stop.Cancel();
         _stop.Dispose();
     }
@@ -235,7 +242,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     {
         private List<WrapperPeer>? _recipients;
         private List<(WrapperPeer Peer, string Reason)>? _penalties;
-        private List<TaskCompletionSource<byte[][]?>>? _completions;
+        private List<TaskCompletionSource<Transaction[]?>>? _completions;
         private List<CancellationTokenSource>? _cancellations;
 
         public void Send(WrapperPeer peer, P2PMessage message)
@@ -247,14 +254,14 @@ public sealed partial class ProofWrapperTransport : IDisposable
         public void Penalize(WrapperPeer peer, string reason) => (_penalties ??= []).Add((peer, reason));
 
         /// <summary>Ends an envelope request without a response, after the lock is released.</summary>
-        public void Complete(TaskCompletionSource<byte[][]?> completion) => (_completions ??= []).Add(completion);
+        public void Complete(TaskCompletionSource<Transaction[]?> completion) => (_completions ??= []).Add(completion);
 
         /// <summary>Cancels work after the lock is released, since cancellation callbacks may resume awaiting code inline.</summary>
         public void Cancel(CancellationTokenSource source) => (_cancellations ??= []).Add(source);
 
         public void Flush()
         {
-            foreach (TaskCompletionSource<byte[][]?> completion in _completions ?? []) completion.TrySetResult(null);
+            foreach (TaskCompletionSource<Transaction[]?> completion in _completions ?? []) completion.TrySetResult(null);
             foreach (CancellationTokenSource source in _cancellations ?? [])
             {
                 try { source.Cancel(); }

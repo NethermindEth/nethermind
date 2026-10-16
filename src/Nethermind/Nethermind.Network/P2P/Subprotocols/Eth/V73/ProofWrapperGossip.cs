@@ -31,6 +31,8 @@ public sealed class ProofWrapperGossip(ProofWrapperService wrappers, ProofWrappe
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            // A chain without a scheduled EIP-8288 fork never aggregates.
+            if (!wrappers.IsScheduled) return;
             _loop ??= Task.Run(RunAsync);
         }
     }
@@ -86,9 +88,9 @@ public sealed class ProofWrapperGossip(ProofWrapperService wrappers, ProofWrappe
             if (_disposed) return;
             Result<byte[]> latest = wrappers.GetLatestWrapper(_published, out ValueHash256 hash);
             if (!latest.IsSuccess || latest.Data!.Length == 0) return;
-            // Already stored counts as published too, so an unchanged wrapper is not hashed again every cycle.
-            transport.PublishWrapper(latest.Data);
-            _published = hash;
+            // Already stored counts as published too, so an unchanged wrapper is not hashed again every cycle; one that failed
+            // to publish, for example during a verifier change, is offered again on the next cycle.
+            if (transport.PublishWrapper(latest.Data) || transport.IsStored(hash)) _published = hash;
         }
     }
 

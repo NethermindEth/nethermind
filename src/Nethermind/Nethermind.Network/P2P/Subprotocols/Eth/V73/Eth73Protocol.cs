@@ -82,6 +82,9 @@ public static class WrapperTransportLimits
 
     /// <summary>Wanted announced wrappers kept while no request slot is free, across all peers.</summary>
     public const int MaxPendingAnnouncements = 1024;
+
+    /// <summary>Wanted announced wrappers one peer's announcements may hold in the pending cache.</summary>
+    public const int MaxPendingAnnouncementsPerPeer = MaxPendingAnnouncements / 4;
     public static readonly TimeSpan PendingLifetime = TimeSpan.FromSeconds(60);
 
     /// <summary>Bytes charged to one peer's outstanding responses, received wrappers and recovered envelopes.</summary>
@@ -90,7 +93,6 @@ public static class WrapperTransportLimits
     /// <summary>Bytes charged across all peers.</summary>
     public const long MaxGlobalBytes = 64L * 1024 * 1024;
 
-    public const int MaxPendingValidations = 16;
     public const int MaxValidationWorkers = MaxRequestsPerPeer;
     public const long MaxStoreBytes = 128L * 1024 * 1024;
     public const int MaxStoreObjects = 256;
