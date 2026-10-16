@@ -1432,6 +1432,24 @@ public class TxValidatorTests
         Assert.That(FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedWellFormed));
     }
 
+    [TestCase(new ulong[] { 1 }, true)]
+    [TestCase(new ulong[] { }, false)]
+    public void IsWellFormed_FullValidator_FrameTxAtMaxSeq_AcceptsOnlyKeyedSets(ulong[] nonceKeys, bool expectedWellFormed)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [SelfVerify(PrefixFrameGas)],
+            FrameSignatures = [],
+            NonceKeys = Array.ConvertAll(nonceKeys, static key => (UInt256)key),
+            Nonce = Eip8250Constants.MaxNonceSeq,
+        };
+
+        Assert.That(new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, Eip8250Prototype.Instance).AsBool(), Is.EqualTo(expectedWellFormed));
+    }
+
     private static IEnumerable<TestCaseData> HeadRevalidationNonceEnvelopeCases()
     {
         yield return new TestCaseData(new Transaction { Type = TxType.FrameTx })

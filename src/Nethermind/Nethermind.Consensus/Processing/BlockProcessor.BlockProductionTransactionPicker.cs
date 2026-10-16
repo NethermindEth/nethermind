@@ -156,7 +156,7 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
 
-                return $"Invalid nonce sequence - exhausted at {currentTx.Nonce}";
+                return "Invalid nonce sequence";
             }
 
             private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
