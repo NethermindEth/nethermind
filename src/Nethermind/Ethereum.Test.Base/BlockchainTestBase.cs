@@ -78,6 +78,12 @@ public abstract class BlockchainTestBase
     protected virtual bool WithholdBlockAccessLists => false;
 
     /// <summary>
+    /// Override to run the block prewarmer, and the caches it brings, which nodes run by default.
+    /// Null keeps it off.
+    /// </summary>
+    protected virtual PreWarmMode? PreWarmingOverride => null;
+
+    /// <summary>
     /// Override to be told which executor runs each block, and of each sequential retry. Null means nothing is told.
     /// </summary>
     protected virtual IBlockAccessListExecutionReport? BlockAccessListExecutionObserver => null;
@@ -170,8 +176,7 @@ public abstract class BlockchainTestBase
         // irrelevant at EF-test chain lengths, so keep the on-disk tier off.
         flatDbConfig.EnableLongFinality = false;
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
-        blocksConfig.PreWarmStateConcurrency = 0;
-        blocksConfig.PreWarming = PreWarmMode.None;
+        ApplyPreWarming(blocksConfig, PreWarmingOverride);
         if (ParallelExecutionOverride.HasValue)
         {
             blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
@@ -983,6 +988,13 @@ public abstract class BlockchainTestBase
         }
 
         return correctRlp;
+    }
+
+    internal static void ApplyPreWarming(IBlocksConfig blocksConfig, PreWarmMode? preWarming)
+    {
+        blocksConfig.PreWarming = preWarming ?? PreWarmMode.None;
+        // Capped like TestEnvironmentModule, so prewarming doesn't take every core from the parallel test workers.
+        blocksConfig.PreWarmStateConcurrency = blocksConfig.PreWarming == PreWarmMode.None ? 0 : Math.Min(4, Environment.ProcessorCount);
     }
 
     private static void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)

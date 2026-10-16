@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -23,6 +24,7 @@ public readonly record struct BlockchainTestsRunnerOptions(
     bool? ParallelExecution = null,
     bool? ParallelExecutionBatchRead = null,
     bool WithholdBlockAccessLists = false,
+    PreWarmMode? PreWarming = null,
     IBlockAccessListExecutionReport? BlockAccessListExecutionObserver = null,
     Func<bool, string?>? ProgressUpdateFactory = null);
 
@@ -34,6 +36,7 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     protected override bool? ParallelExecutionOverride => _parallelExecution;
     protected override bool? ParallelExecutionBatchReadOverride => _parallelExecutionBatchRead;
     protected override bool WithholdBlockAccessLists => _withholdBlockAccessLists;
+    protected override PreWarmMode? PreWarmingOverride => _preWarming;
     protected override IBlockAccessListExecutionReport? BlockAccessListExecutionObserver => _blockAccessListExecutionObserver;
     // A rejection's reason is the consumer's to judge, from the client error each result reports.
     protected override bool MatchExpectedExceptions => false;
@@ -51,6 +54,7 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     private readonly bool? _parallelExecution = options.ParallelExecution;
     private readonly bool? _parallelExecutionBatchRead = options.ParallelExecutionBatchRead;
     private readonly bool _withholdBlockAccessLists = options.WithholdBlockAccessLists;
+    private readonly PreWarmMode? _preWarming = options.PreWarming;
     private readonly IBlockAccessListExecutionReport? _blockAccessListExecutionObserver = options.BlockAccessListExecutionObserver;
     private readonly Func<bool, string?>? _progressUpdateFactory = options.ProgressUpdateFactory;
 
