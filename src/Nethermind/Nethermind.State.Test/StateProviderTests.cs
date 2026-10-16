@@ -574,6 +574,7 @@ public class StateProviderTests(bool useFlat)
         provider.IncrementNonce(_address1);
         provider.SubtractFromBalance(_address1, 2, Frontier.Instance);
 
+        Assert.That(provider.TakeSnapshot().StateSnapshot, Is.EqualTo(afterFirstUpdates.StateSnapshot + 1), "updates after the first overwrite it in place");
         Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)11));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(2UL));
         provider.Restore(afterFirstUpdates);
