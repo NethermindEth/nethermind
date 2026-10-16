@@ -26,6 +26,10 @@ OPT_FLAGS += \
 	--codegenopt JitExtDefaultPolicyMaxILRoot=800 \
 	--codegenopt JitExtDefaultPolicyMaxBB=40
 
+# The precompile P/Invokes the JIT emits as the CSR write itself, with no call (hex CSR numbers): bflat's
+# own list plus the 256-bit modular arithmetic the guest's handlers reach directly (ZiskArithmetic).
+OPT_FLAGS += --codegenopt JitZkCsrPInvokes=syscall_keccak_f:800,syscall_sha256_f:805,memmove:813,memcpy:813,syscall_arith256_mod:802
+
 ZISK_IMAGE ?= nethermindeth/zisk:1.3.2-alpha@sha256:31a0c7f9de175765e7e81da719bdc2409060de8d23ec8683672d7ee22b798a3f
 
 run:

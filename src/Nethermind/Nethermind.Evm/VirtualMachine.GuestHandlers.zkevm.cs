@@ -811,9 +811,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         ulong* m = (ulong*)Unsafe.AsPointer(ref modulus);
                         UInt256 result;
                         if (typeof(TOperation) == typeof(EvmInstructions.OpAddMod))
-                            Accelerators.AddMod256(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
+                            ZiskArithmetic.AddMod(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
                         else
-                            Accelerators.MulMod256(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
+                            ZiskArithmetic.MulMod(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
                         *(UInt256*)m = result;
                     }
                     else
@@ -824,11 +824,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                // Reloaded rather than held across the call, where each would take a callee-saved register.
-                handlers = state.OpcodeHandlers;
-                code = ref stack.Code;
                 head -= 2;
-                sp = ref SlotAt(ref stack.Bottom, head);
+                if (ZiskFlag.IsActive)
+                {
+                    // The precompile is a CSR write, not a call, so the carried state is still in its registers.
+                    sp = ref Moved(ref sp, -2);
+                }
+                else
+                {
+                    // Reloaded rather than held across the call, where each would take a callee-saved register.
+                    handlers = state.OpcodeHandlers;
+                    code = ref stack.Code;
+                    sp = ref SlotAt(ref stack.Bottom, head);
+                }
+
                 ip = ref Unsafe.Add(ref ip, 1);
                 nint next = handlers[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
@@ -1966,13 +1975,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 UInt256 result;
                 ulong* right = (ulong*)Unsafe.AsPointer(ref product);
                 fixed (UInt256* modulus = &Unsafe.AsRef(in UInt256.MaxValue))
-                    Accelerators.MulMod256((ulong*)Unsafe.AsPointer(ref top), right, (ulong*)modulus, (ulong*)&result);
+                    ZiskArithmetic.MulMod((ulong*)Unsafe.AsPointer(ref top), right, (ulong*)modulus, (ulong*)&result);
                 *(UInt256*)right = result;
-
-                // Reloaded rather than held across the call, where each would take a callee-saved register.
-                handlers = state.OpcodeHandlers;
-                code = ref stack.Code;
-                sp = ref SlotAt(ref stack.Bottom, head);
             }
             else
             {
@@ -2037,7 +2041,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 UInt256 right = new(b0, b1, 0, 0);
                 UInt256 low;
                 fixed (UInt256* modulus = &Unsafe.AsRef(in UInt256.MaxValue))
-                    Accelerators.MulMod256((ulong*)&left, (ulong*)&right, (ulong*)modulus, (ulong*)&low);
+                    ZiskArithmetic.MulMod((ulong*)&left, (ulong*)&right, (ulong*)modulus, (ulong*)&low);
 
                 ulong cross02 = a0 * b2;
                 ulong cross20 = a2 * b0;
@@ -2048,11 +2052,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 r1 = low.u1;
                 r2 = low.u2 + crossLow;
                 r3 = low.u3 + crossHigh + (r2 < crossLow ? 1UL : 0UL);
-                // Reloaded rather than held across the call, where each would take a callee-saved register.
-                handlers = state.OpcodeHandlers;
-                code = ref stack.Code;
-                sp = ref SlotAt(ref stack.Bottom, head);
-                product = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
             }
             else
             {
