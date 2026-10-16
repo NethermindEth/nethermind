@@ -558,6 +558,74 @@ public class BlockCachePreWarmerTests(bool earlyStart)
     }
 
     /// <summary>
+    /// The sender and recipient fan-out, queued behind the transaction workers or not, runs while those workers are still
+    /// in flight; it is never left until the transaction pass is over.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_WarmsSendersAndRecipients_WhileTransactionWarmingIsStillInFlight([Values] bool transactionWorkersFirst,
+        CancellationToken testToken)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        using ManualResetEventSlim gate = new(initialState: false);
+        using CountdownEvent txScopesInFlight = new(2);
+        TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
+            onTxScope: static () => { },
+            onWarmup: static () => { });
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            minPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance,
+            earlyStart: _earlyStart,
+            transactionWorkersFirst: transactionWorkersFirst);
+
+        // Four senders so both warm workers claim a job and park; the recipient is read by nothing but the fan-out
+        // while they are parked.
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithNonce(0).WithGasLimit(100_000).WithTo(TestItem.AddressF).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithGasLimit(100_000).WithTo(TestItem.AddressF).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithNonce(0).WithGasLimit(100_000).WithTo(TestItem.AddressF).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
+            Build.A.Transaction.WithNonce(0).WithGasLimit(100_000).WithTo(TestItem.AddressF).SignedAndResolved(TestItem.PrivateKeyD).TestObject,
+        ];
+        Block block = Build.A.Block.WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+
+        bool warmedWhileTxsParked;
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = StartPrewarming(preWarmer, block, parent, Osaka.Instance);
+            try
+            {
+                Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: both warm workers must be parked inside their first job's scope setup");
+
+                warmedWhileTxsParked = SpinWait.SpinUntil(
+                    () => preBlockCaches.StateCache.TryGetValue(TestItem.AddressF, out _),
+                    TimeSpan.FromSeconds(10));
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        Assert.That(warmedWhileTxsParked, Is.True,
+            "the recipients are warmed by the fan-out while the transaction workers are in flight, not after the transaction pass");
+    }
+
+    /// <summary>
     /// With the early start, the fan-out over the senders and recipients is queued behind the transaction workers, so
     /// they take the worker budget first; otherwise it starts while the block's transactions are still being grouped.
     /// The recipient is read by nothing else before the workers start.
@@ -573,9 +641,14 @@ public class BlockCachePreWarmerTests(bool earlyStart)
         block.Header.Beneficiary = TestItem.AddressF;
         bool held = _earlyStart && transactionWorkersFirst;
         bool fannedOutFirst = false;
-        preWarmer.BeforeTransactionWorkers = () => fannedOutFirst = SpinWait.SpinUntil(
-            () => testToken.IsCancellationRequested || preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _),
-            held ? PendingProbe : DiscoveryTimeout);
+        // Judged by the cache once the wait is over, and the wait ends well before the test is cancelled.
+        preWarmer.BeforeTransactionWorkers = () =>
+        {
+            SpinWait.SpinUntil(
+                () => testToken.IsCancellationRequested || preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _),
+                held ? PendingProbe : TimeSpan.FromSeconds(10));
+            fannedOutFirst = preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _);
+        };
 
         using (preWarmer)
         {
