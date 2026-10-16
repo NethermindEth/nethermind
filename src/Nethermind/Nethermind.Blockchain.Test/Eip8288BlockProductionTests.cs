@@ -327,13 +327,13 @@ public class Eip8288BlockProductionTests
         {
             using CancellationTokenSource canceled = new();
             verifier.OnProof = canceled.Cancel;
-            Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, cache, hash, canceled.Token));
+            Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, cache, Eip8288Verifier.Pinned, hash, canceled.Token));
             Assert.That(verifier.ProofCalls, Is.EqualTo(i + 1));
         }
         verifier.OnProof = null;
-        byte[] result = RecursiveStarkAggregator.Prove(input, cache, hash);
+        byte[] result = RecursiveStarkAggregator.Prove(input, cache, Eip8288Verifier.Pinned, hash);
         result[0] ^= 0xff;
-        byte[] reused = RecursiveStarkAggregator.Prove(input, cache, hash);
+        byte[] reused = RecursiveStarkAggregator.Prove(input, cache, Eip8288Verifier.Pinned, hash);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reused, Is.EqualTo(hash.ToByteArray()));
@@ -445,7 +445,7 @@ public class Eip8288BlockProductionTests
         Task<byte[]> background = Task.Run(() =>
         {
             using (ProductionProofCache.Background(default))
-                return RecursiveStarkAggregator.Prove(new() { Deps = dependencies, Witnesses = witnesses }, cache, backgroundHash);
+                return RecursiveStarkAggregator.Prove(new() { Deps = dependencies, Witnesses = witnesses }, cache, Eip8288Verifier.Pinned, backgroundHash);
         });
         try
         {
@@ -479,7 +479,9 @@ public class Eip8288BlockProductionTests
         AggregationInput initial = new() { Deps = [first], Witnesses = [new byte[] { 1 }] };
         ValueHash256 initialHash = Eip8288Dependencies.ComputeDepsHash([first]);
         cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial);
-        for (int i = 1; i <= 4; i++)
+        // Enough maximum-sized proofs to pass the cache's 32 MiB byte bound well before its entry bound.
+        const int laterProofs = 26;
+        for (int i = 1; i <= laterProofs; i++)
         {
             FrameDependency next = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"large-{i}"), default);
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([next]);
@@ -487,7 +489,7 @@ public class Eip8288BlockProductionTests
                 new() { Deps = [next], Witnesses = [new byte[] { 1 }] });
         }
         Assert.That(cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial), Has.Length.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(6));
+        Assert.That(verifier.ProofCalls, Is.EqualTo(laterProofs + 2), "the evicted first proof is proven again");
     }
 
     [Test]

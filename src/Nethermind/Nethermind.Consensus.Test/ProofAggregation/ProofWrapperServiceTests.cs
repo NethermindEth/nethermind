@@ -75,7 +75,7 @@ public class ProofWrapperServiceTests
         (ProofWrapperService receiver, FakeLeanProofVerifier verifier) = Create(0, 0);
         IReadOnlyDictionary<ValueHash256, Transaction> recovered = transactions.ToDictionary(static tx => tx.CalculateHash().ValueHash256);
         byte[]? published = null;
-        receiver.WrapperValidated += (body, _) => published = body;
+        receiver.WrapperValidated += (body, _, _) => published = body;
 
         ProofWrapperAcceptance precheck = owned
             ? await receiver.VerifyClaimedProofsOwnedAsync(encoded)
@@ -147,7 +147,7 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public async Task Oversized_dependency_frames_are_rejected_before_proof_verification([Values] bool inclusionList)
+    public async Task Oversized_dependency_frames_are_rejected_before_proof_verification()
     {
         (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(0, 0);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
@@ -162,19 +162,13 @@ public class ProofWrapperServiceTests
                 (ulong)(Eip8288Constants.MaxDependenciesPerFrame + 1) * Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)]
         };
         RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
-        Result<Hash256[]> accepted = inclusionList
-            ? await service.AcceptInclusionListAsync(InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
-            {
-                Transactions = [transaction],
-                RecursiveStark = recursive
-            }).Bytes)
-            : await AcceptResolvedAsync(service, MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-            {
-                Transactions = [new WrapperTransaction(transaction)],
-                Deps = [dependency],
-                Mode = MempoolWrapper.ModeRecursive,
-                RecursiveStark = recursive
-            }).Bytes, transaction);
+        Result<Hash256[]> accepted = await AcceptResolvedAsync(service, MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = recursive
+        }).Bytes, transaction);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accepted.IsSuccess, Is.False);
@@ -184,7 +178,7 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public async Task Scalar_nonce_is_rejected_before_proof_verification([Values] bool inclusionList)
+    public async Task Scalar_nonce_is_rejected_before_proof_verification()
     {
         (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(0, 0);
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
@@ -197,19 +191,13 @@ public class ProofWrapperServiceTests
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
-        Result<Hash256[]> accepted = inclusionList
-            ? await service.AcceptInclusionListAsync(InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
-            {
-                Transactions = [transaction],
-                RecursiveStark = recursive
-            }).Bytes)
-            : await AcceptResolvedAsync(service, MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-            {
-                Transactions = [new WrapperTransaction(transaction)],
-                Deps = [dependency],
-                Mode = MempoolWrapper.ModeRecursive,
-                RecursiveStark = recursive
-            }).Bytes, transaction);
+        Result<Hash256[]> accepted = await AcceptResolvedAsync(service, MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = recursive
+        }).Bytes, transaction);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accepted.Error, Is.EqualTo(FrameTxValidation.LegacyNonceNotAllowed));
@@ -218,7 +206,7 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public async Task Recent_root_envelopes_before_their_fork_are_rejected_before_proof_verification([Values] bool inclusionList)
+    public async Task Recent_root_envelopes_before_their_fork_are_rejected_before_proof_verification()
     {
         FakeLeanProofVerifier verifier = new(true);
         IReleaseSpec spec = new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEip8272Enabled = false };
@@ -235,19 +223,13 @@ public class ProofWrapperServiceTests
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         RecursiveStark recursive = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
-        Result<Hash256[]> accepted = inclusionList
-            ? await service.AcceptInclusionListAsync(InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
-            {
-                Transactions = [transaction],
-                RecursiveStark = recursive
-            }).Bytes)
-            : await AcceptResolvedAsync(service, MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-            {
-                Transactions = [new WrapperTransaction(transaction)],
-                Deps = [dependency],
-                Mode = MempoolWrapper.ModeRecursive,
-                RecursiveStark = recursive
-            }).Bytes, transaction);
+        Result<Hash256[]> accepted = await AcceptResolvedAsync(service, MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = recursive
+        }).Bytes, transaction);
         Assert.That(accepted.Error, Is.EqualTo(FrameTxValidation.RecentRootReferencesNotEnabled));
         Assert.That(verifier.VerificationCalls, Is.Zero);
     }
@@ -422,7 +404,7 @@ public class ProofWrapperServiceTests
         FakeLeanProofVerifier backend = new(false);
         ProductionProofCache verifier = new(backend);
         AggregationInput input = new() { RecursiveProofs = [new([dependency], [1])] };
-        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash));
+        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash));
         Assert.That(backend.VerificationCalls, Is.EqualTo(1));
         Assert.That(backend.ProofCalls, Is.Zero);
     }
@@ -520,7 +502,7 @@ public class ProofWrapperServiceTests
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             Inputs.Add(input);
-            if (!RecursiveStarkAggregator.TryAggregate(input, this, out _, out ValueHash256 actual) || actual != depsHash)
+            if (!RecursiveStarkAggregator.TryAggregate(input, this, Eip8288Verifier.Pinned, out _, out ValueHash256 actual) || actual != depsHash)
                 throw new InvalidOperationException("Invalid proving input.");
             return [1];
         }
@@ -822,7 +804,7 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public void Cancellation_preserves_only_successfully_admitted_coverage([Values] bool inclusionList, [Values] bool firstAccepted)
+    public void Cancellation_preserves_only_successfully_admitted_coverage([Values] bool firstAccepted)
     {
         using CancellationTokenSource cancellation = new();
         FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
@@ -849,26 +831,14 @@ public class ProofWrapperServiceTests
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
-        if (inclusionList)
+        byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            byte[] encoded = InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
-            {
-                Transactions = transactions,
-                RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)))
-            }).Bytes;
-            Assert.ThrowsAsync<OperationCanceledException>(async () => { await service.AcceptInclusionListAsync(encoded, cancellation.Token); });
-        }
-        else
-        {
-            byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-            {
-                Transactions = transactions.Select(transaction => new WrapperTransaction(transaction)).ToArray(),
-                Deps = dependencies,
-                Mode = MempoolWrapper.ModeDirect,
-                Proofs = [[1], [1]]
-            }).Bytes;
-            Assert.ThrowsAsync<OperationCanceledException>(async () => { await AcceptResolvedAsync(service, encoded, transactions, cancellation.Token); });
-        }
+            Transactions = transactions.Select(transaction => new WrapperTransaction(transaction)).ToArray(),
+            Deps = dependencies,
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [[1], [1]]
+        }).Bytes;
+        Assert.ThrowsAsync<OperationCanceledException>(async () => { await AcceptResolvedAsync(service, encoded, transactions, cancellation.Token); });
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Covers(transactions[0]), Is.EqualTo(firstAccepted));
@@ -896,7 +866,7 @@ public class ProofWrapperServiceTests
         }).Bytes;
         List<byte[]> validated = [];
         List<Transaction> resolved = [];
-        service.WrapperValidated += (encoded, transactions) =>
+        service.WrapperValidated += (encoded, transactions, _) =>
         {
             validated.Add(encoded);
             resolved.AddRange(transactions.Values);
@@ -954,38 +924,6 @@ public class ProofWrapperServiceTests
         }
     }
 
-    [Test]
-    public async Task Inclusion_list_beyond_the_local_proof_capacity_is_refused_without_verification()
-    {
-        FrameDependency[] deps = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1)
-            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, Keccak.Compute(i.ToString()).ValueHash256, default))];
-        static TxFrame Frame(FrameDependency[] frameDeps) => new(FrameMode.DepVerify, FrameFlags.None, null,
-            (ulong)frameDeps.Length * Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize(frameDeps));
-        Transaction transaction = new()
-        {
-            Type = TxType.FrameTx,
-            NonceKeys = [UInt256.Zero],
-            ChainId = 1,
-            SenderAddress = Address.Zero,
-            Frames = [Frame(deps[..Eip8288Constants.MaxDependenciesPerFrame]), Frame(deps[Eip8288Constants.MaxDependenciesPerFrame..])]
-        };
-        transaction.Hash = transaction.CalculateHash();
-        byte[] package = InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
-        {
-            Transactions = [transaction],
-            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
-        }).Bytes;
-        FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
-
-        ProofWrapperAcceptance result = await service.AcceptInclusionListDetailedAsync(package);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Refused), result.Result.Error);
-            Assert.That(verifier.VerificationCalls, Is.Zero);
-        }
-    }
-
     [TestCase(true)]
     [TestCase(false)]
     public async Task Preliminary_proof_check_precedes_recovery_and_is_not_repeated(bool proofValid)
@@ -1017,61 +955,57 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // EIPs#12475: a list without dependencies carries a null commitment, so no proof, empty or not, makes a valid package.
+    // EIP-8288 Test Case 12: once the local head reaches a target fork with another AGGREGATED_VK, every held aggregate proof
+    // is dropped, a direct witness whose scheme parameters are unchanged is kept by reusing its verdict, and pending
+    // transactions left without proof coverage leave the pool. Peer proof failures are local refusals within the window.
     [Test]
-    public async Task Empty_inclusion_list_dependencies_admit_no_proof_without_the_verifier([Values] bool emptyProof)
+    public void Verifier_change_applies_the_upgrade_rule()
     {
-        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-        byte[] package = InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
-        {
-            Transactions = [transaction],
-            RecursiveStark = new RecursiveStark(emptyProof ? [] : [1], new Hash256(Eip8288Dependencies.ComputeDepsHash([])))
-        }).Bytes;
-        ITxPool pool = Substitute.For<ITxPool>();
-        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        FrameDependency direct = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("direct"), default);
+        FrameDependency aggregated = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("aggregated"), default);
+        Transaction directTx = CreateTransaction(direct, TestItem.KeccakA);
+        Transaction aggregatedTx = CreateTransaction(aggregated, TestItem.KeccakB);
+        directTx.Hash = directTx.CalculateHash();
+        aggregatedTx.Hash = aggregatedTx.CalculateHash();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified([direct], [[1]], null);
+        store.AddVerified([aggregated], null, [2]);
         FakeLeanProofVerifier verifier = new(true);
-        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier, pool: pool);
-        List<byte[]> published = [];
-        service.InclusionListValidated += published.Add;
-
-        ProofWrapperAcceptance result = await service.AcceptInclusionListDetailedAsync(package);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Invalid));
-            Assert.That(result.Result.Error, Is.EqualTo(InclusionListProofValidator.EmptyDependencies));
-            Assert.That(published, Is.Empty);
-            Assert.That(verifier.VerificationCalls, Is.Zero);
-        }
-    }
-
-    [TestCase("valid", ProofWrapperAcceptanceStatus.Accepted)]
-    [TestCase("pool rejection", ProofWrapperAcceptanceStatus.PoolRejected)]
-    [TestCase("invalid proof", ProofWrapperAcceptanceStatus.Invalid)]
-    [TestCase("invalid rlp", ProofWrapperAcceptanceStatus.Invalid)]
-    public async Task Inclusion_list_acceptance_separates_invalid_packages_from_admission_outcomes(string scenario, ProofWrapperAcceptanceStatus expected)
-    {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
-        transaction.Hash = transaction.CalculateHash();
+        ProofVerdictCache.VerifyDirect(verifier, Eip8288Verifier.Pinned, direct, [1]);
         ITxPool pool = Substitute.For<ITxPool>();
-        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(scenario == "pool rejection" ? AcceptTxResult.Invalid : AcceptTxResult.Accepted);
-        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(scenario != "invalid proof"), pool: pool);
-        byte[] package = scenario == "invalid rlp" ? [0xc0] : InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
-        {
-            Transactions = [transaction],
-            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])))
-        }).Bytes;
-        int validated = 0;
-        service.InclusionListValidated += _ => validated++;
+        pool.GetPendingTransactions().Returns([directTx, aggregatedTx]);
+        ValueHash256 upgradedVk = ValueKeccak.Compute("next AGGREGATED_VK");
+        CustomSpecProvider specs = new(((ForkActivation)0, Eip8288Prototype.Instance),
+            (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = upgradedVk }));
+        Block head = Build.A.Block.WithNumber(9).WithTimestamp(980).TestObject;
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder.Head.Returns(_ => head);
+        ProofWrapperService service = new(pool, specs, finder, store, verifier);
+        List<Eip8288Verifier> changes = [];
+        service.VerifierChanged += changes.Add;
 
-        ProofWrapperAcceptance result = await service.AcceptInclusionListDetailedAsync(package);
+        Eip8288Verifier? before = service.RefreshVerifier();
+        bool transitionBefore = service.IsInVerifierTransition(64);
+        head = Build.A.Block.WithNumber(10).WithTimestamp(990).TestObject;
+        Eip8288Verifier? after = service.RefreshVerifier();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
-            Assert.That(validated, Is.EqualTo(result.HasValidProof ? 1 : 0));
-            Assert.That((await service.AcceptInclusionListAsync(package)).IsSuccess, Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted));
+            Assert.That(before, Is.EqualTo(Eip8288Verifier.Pinned));
+            Assert.That(transitionBefore, Is.True, "the fork after the target fork changes the verifier");
+            Assert.That(after, Is.EqualTo(new Eip8288Verifier(upgradedVk)));
+            Assert.That(changes, Is.EqualTo(new[] { new Eip8288Verifier(upgradedVk) }));
+            Assert.That(store.Covers(directTx), Is.True, "a re-validated direct witness is kept");
+            Assert.That(store.Covers(aggregatedTx), Is.False, "every aggregate proof is dropped");
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the direct verdict is reused under unchanged scheme parameters");
+            pool.Received(1).RemoveTransaction(aggregatedTx.Hash);
+            pool.DidNotReceive().RemoveTransaction(directTx.Hash);
+            head = Build.A.Block.WithNumber(74).WithTimestamp(1_800).TestObject;
+            Assert.That(service.IsInVerifierTransition(64), Is.True);
+            head = Build.A.Block.WithNumber(75).WithTimestamp(1_812).TestObject;
+            Assert.That(service.IsInVerifierTransition(64), Is.False, "64 blocks past the fork");
+            Assert.That(service.RefreshVerifier(), Is.EqualTo(after));
+            Assert.That(changes, Has.Count.EqualTo(1));
         }
     }
 

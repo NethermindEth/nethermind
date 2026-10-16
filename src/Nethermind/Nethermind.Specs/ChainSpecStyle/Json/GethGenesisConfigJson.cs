@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
@@ -73,6 +74,12 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>EIP-8288 prototype activation in Unix timestamp seconds; null leaves it unscheduled.</summary>
     public ulong? Eip8288PrototypeTime { get => GetTime(); set => SetTime(value); }
+
+    /// <summary>Activation time of <see cref="Eip8288AggregatedVk"/>, a fork that changes the EIP-8288 aggregate verifier.</summary>
+    public ulong? Eip8288AggregatedVkTimestamp { get; set; }
+
+    /// <summary>The EIP-8288 <c>AGGREGATED_VK</c> from <see cref="Eip8288AggregatedVkTimestamp"/>.</summary>
+    public Hash256? Eip8288AggregatedVk { get; set; }
 
     // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
     public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }

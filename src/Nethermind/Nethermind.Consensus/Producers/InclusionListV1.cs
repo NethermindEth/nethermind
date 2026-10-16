@@ -4,8 +4,10 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Producers;
@@ -30,6 +32,33 @@ public sealed class InclusionListProofV1
 
     /// <summary>The proof's sorted, deduplicated dependencies, each in the 96-byte encoding.</summary>
     public byte[][]? ProofDeps { get; set; }
+
+    /// <summary>Decodes the fields within the interface bounds: a proof of at most <c>MAX_AGGREGATE_PROOF_BYTES</c> and at most
+    /// <c>MAX_DEPS_PER_AGGREGATE_WRAPPER</c> 96-byte dependencies. Order and schemes are checked against the target fork.</summary>
+    /// <returns>The violated bound, or <c>null</c>.</returns>
+    public string? TryDecode(out InclusionListProof? ilProof)
+    {
+        ilProof = null;
+        if (StarkProof is null || ProofDeps is not { } encoded) return "ilProof must set starkProof and proofDeps";
+        if (StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes) return InclusionListProofValidator.OversizedProof;
+        if (encoded.Length > Eip8288Constants.MaxDepsPerAggregateWrapper) return InclusionListProofValidator.TooManyProofDeps;
+        List<FrameDependency> proofDeps = new(encoded.Length);
+        foreach (byte[]? dependency in encoded)
+        {
+            if (dependency is not { Length: Eip8288Constants.DependencyTripleLength } || !dependency.AsSpan(0, 31).IsZero())
+                return "ilProof proofDeps entries must be 96-byte dependency encodings";
+            proofDeps.AddRange(Eip8288Dependencies.Parse(dependency));
+        }
+        ilProof = new InclusionListProof(StarkProof, proofDeps);
+        return null;
+    }
+
+    public static InclusionListProofV1 From(InclusionListProof ilProof)
+    {
+        byte[][] proofDeps = new byte[ilProof.ProofDeps.Count][];
+        for (int i = 0; i < proofDeps.Length; i++) proofDeps[i] = Eip8288Dependencies.Serialize([ilProof.ProofDeps[i]]);
+        return new InclusionListProofV1 { StarkProof = ilProof.StarkProof, ProofDeps = proofDeps };
+    }
 }
 
 /// <summary>
@@ -39,8 +68,8 @@ public sealed class InclusionListProofV1
 /// <remarks>
 /// Carried by <c>engine_newPayloadV7</c> and <c>PayloadAttributesV6</c> once EIP-8288 and EIP-7805 are both active, in place of
 /// the flattened <c>inclusionListTransactions</c>, so the execution layer derives each list's obligations separately
-/// (EIPs#12475). The consensus layer counts a list with a non-null <c>recursive_stark</c> only once
-/// <c>engine_verifyInclusionListProofV1</c> answered valid, so the execution layer holds the committed proof.
+/// (EIPs#12475). The consensus layer passes a list's <c>recursive_stark</c> only once <c>engine_verifyInclusionListProofV1</c>
+/// answered valid on this node, and null otherwise.
 /// </remarks>
 public sealed class InclusionListV1
 {
@@ -51,16 +80,15 @@ public sealed class InclusionListV1
     public byte[][]? Transactions { get; set; }
 
     /// <summary>The list's signed <c>recursive_stark</c>, or <c>null</c> for a null commitment.</summary>
-    /// <remarks>A non-null value obligates the list's dependency-bearing transactions; with <c>null</c> only its dependency-free
-    /// transactions bind.</remarks>
+    /// <remarks>A non-null value obligates the list's dependency-bearing transactions when this node holds a valid proof for it;
+    /// otherwise, as with <c>null</c>, only its dependency-free transactions bind.</remarks>
     public RecursiveStarkV1? RecursiveStark { get; set; }
 
     /// <summary>Checks the per-list Engine API bounds: at most one list per committee position, each within
     /// <c>MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST</c>, and a commitment with both hashes when set.</summary>
     /// <remarks>
     /// An undecodable entry or a commitment to a proof this node does not hold is left to per-list processing: the entry
-    /// contributes nothing and the proof is not aggregated, while the list's obligations still follow from its commitment
-    /// (EIPs#12475), so one committee member cannot fail the request.
+    /// contributes nothing and the commitment is treated as null (EIPs#12475), so one committee member cannot fail the request.
     /// </remarks>
     /// <returns>The violated bound, or <c>null</c>.</returns>
     public static string? Validate(InclusionListV1[]? lists)
@@ -154,7 +182,7 @@ public sealed class InclusionListV1
         return copy;
     }
 
-    /// <summary>Whether two inputs carry the same lists, positions and proofs.</summary>
+    /// <summary>Whether two inputs carry the same lists, positions and commitments.</summary>
     /// <param name="compareTransactions">Whether to compare transaction bytes too, not just how many each list holds.</param>
     public static bool AreEqual(IReadOnlyList<InclusionListV1>? left, IReadOnlyList<InclusionListV1>? right, bool compareTransactions = true)
     {
@@ -173,7 +201,7 @@ public sealed class InclusionListV1
         return true;
     }
 
-    /// <summary>A digest binding every list's position, transactions and proof, for payload IDs and verdict caches.</summary>
+    /// <summary>A digest binding every list's position, transactions and commitment, for payload IDs and verdict caches.</summary>
     public static ValueHash256 ComputeDigest(IReadOnlyList<InclusionListV1> lists)
     {
         KeccakHash hash = KeccakHash.Create();

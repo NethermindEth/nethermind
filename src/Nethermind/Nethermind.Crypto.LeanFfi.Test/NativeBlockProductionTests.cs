@@ -68,7 +68,7 @@ public class NativeBlockProductionTests
             Mode = mode,
             Proofs = mode == MempoolWrapper.ModeDirect ? [witness] : null,
             RecursiveStark = mode == MempoolWrapper.ModeRecursive
-                ? new(RecursiveStarkAggregator.Prove(new AggregationInput { Deps = [resolved], Witnesses = [witness] }, verifier, in depsHash), new Hash256(depsHash))
+                ? new(RecursiveStarkAggregator.Prove(new AggregationInput { Deps = [resolved], Witnesses = [witness] }, verifier, Eip8288Verifier.Pinned, in depsHash), new Hash256(depsHash))
                 : null
         };
         ProofWrapperAcceptance acceptance = await chain.Container.Resolve<ProofWrapperService>().AcceptDetailedAsync(
@@ -104,7 +104,7 @@ public class NativeBlockProductionTests
             Proofs = wrapper.Proofs,
             RecursiveStark = wrapper.RecursiveStark
         };
-        Assert.That(MempoolWrapperValidator.Validate(changedWrapper, verifier, out string error), Is.False);
+        Assert.That(MempoolWrapperValidator.Validate(changedWrapper, verifier, Eip8288Verifier.Pinned, out string error), Is.False);
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsMismatch));
     }
 

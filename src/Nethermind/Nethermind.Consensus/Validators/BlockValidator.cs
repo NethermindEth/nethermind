@@ -106,7 +106,7 @@ public class BlockValidator(
     /// <summary>
     /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present, its
     /// <c>block_deps_hash</c> must commit to the block's transaction dependencies, and the recursive
-    /// STARK must verify against the aggregated verification key, or be empty when there are none.
+    /// STARK must verify against the block fork's <c>AGGREGATED_VK</c>, or be empty when there are none.
     /// </summary>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
     {
@@ -141,7 +141,8 @@ public class BlockValidator(
             return false;
         }
 
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, dependencies.Count, in computed.ValueHash256, block.StarkProof))
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
+                block.StarkProof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");

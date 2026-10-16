@@ -9,6 +9,7 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
@@ -21,7 +22,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 /// </summary>
 /// <remarks>
 /// All peer, request and fetch state is guarded by one lock; messages and penalties are sent after it is released. No
-/// wrapper is announced, served, admitted or reaggregated before it is fully validated under EIP-8288.
+/// wrapper is announced, served, admitted or reaggregated before it is fully validated under EIP-8288, and none is announced
+/// or served once the target fork's verifier differs from the one it was validated under: on a verifier change every
+/// mode-1 wrapper is dropped and a mode-0 wrapper is kept only if it re-validates.
 /// </remarks>
 public sealed partial class ProofWrapperTransport : IDisposable
 {
@@ -42,14 +45,20 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private int _validationWorkers;
     private int _nextPeer;
     private bool _disposed;
+    private readonly long _forkGraceBlocks;
+    private Eip8288Verifier? _verifier;
 
-    public ProofWrapperTransport(ITxPool txPool, ProofWrapperService wrappers, ILogManager logManager, TimeProvider? timeProvider = null)
+    public ProofWrapperTransport(ITxPool txPool, ProofWrapperService wrappers, ILogManager logManager, TimeProvider? timeProvider = null,
+        INetworkConfig? networkConfig = null)
     {
         _txPool = txPool;
         _wrappers = wrappers;
         _clock = timeProvider ?? TimeProvider.System;
         _logger = logManager.GetClassLogger<ProofWrapperTransport>();
+        _forkGraceBlocks = networkConfig?.ProofWrapperForkGraceBlocks ?? 64;
+        _verifier = _wrappers.RefreshVerifier();
         _wrappers.WrapperValidated += OnWrapperValidated;
+        _wrappers.VerifierChanged += OnVerifierChanged;
         _timer = _clock.CreateTimer(static state => ((ProofWrapperTransport)state!).Tick(), this, WrapperTransportLimits.Tick, WrapperTransportLimits.Tick);
     }
 
@@ -61,11 +70,16 @@ public sealed partial class ProofWrapperTransport : IDisposable
     internal int StoredObjects { get { lock (_gate) return _store.Count; } }
     internal long ChargedBytes { get { lock (_gate) return _chargedBytes; } }
     internal bool IsStored(in ValueHash256 objectId) { lock (_gate) return _store.Contains(objectId); }
+    internal bool IsOffered(in ValueHash256 objectId) { lock (_gate) return TryGetOffered(objectId, out _); }
+
+    /// <summary>A held wrapper validated under the current target fork's verifier, which alone may be announced or served.</summary>
+    private bool TryGetOffered(in ValueHash256 objectId, out WrapperStore.Entry entry)
+        => _store.TryGet(objectId, out entry) && entry.Verifier == _verifier;
     internal bool IsTombstoned(in ValueHash256 objectId) { lock (_gate) return _tombstones.Contains(objectId, _clock.GetTimestamp()); }
 
     /// <summary>Registers an <c>eth/73</c> peer once its Status is accepted.</summary>
-    /// <remarks>The handshake's <c>forkid</c> fixes <c>AGGREGATED_VK</c>, so a peer on <c>eth/73</c> shares this node's verifier.
-    /// Null while EIP-8288 is inactive, which keeps the wrapper messages off the connection.</remarks>
+    /// <remarks>Peers negotiate no verifier: each validates under its own target fork. Null while EIP-8288 is inactive, which
+    /// keeps the wrapper messages off the connection.</remarks>
     internal WrapperPeer? Accept(IWrapperLink link)
     {
         if (!IsEnabled) return null;
@@ -81,6 +95,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             foreach (WrapperStore.Entry entry in _store.Recent())
             {
                 if (peer.ToAnnounce.Count == Eth73Protocol.MaxAnnouncements) break;
+                if (entry.Verifier != _verifier) continue;
                 if (!peer.Known.Contains(entry.Descriptor.ObjectId, now)) peer.ToAnnounce.Add(entry.Descriptor);
             }
             FlushAnnouncements(peer, outbox);
@@ -166,10 +181,13 @@ public sealed partial class ProofWrapperTransport : IDisposable
 
     private void Tick()
     {
+        // Applies the EIP-8288 upgrade rule, through VerifierChanged, once the head reaches a fork with another verifier.
+        Eip8288Verifier? verifier = _wrappers.RefreshVerifier();
         Outbox outbox = new();
         lock (_gate)
         {
             if (_disposed) return;
+            _verifier = verifier;
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers.ToArray())
             {
@@ -204,6 +222,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         }
         outbox.Flush();
         _wrappers.WrapperValidated -= OnWrapperValidated;
+        _wrappers.VerifierChanged -= OnVerifierChanged;
         _timer.Dispose();
         _stop.Cancel();
         _stop.Dispose();
@@ -260,22 +279,53 @@ public sealed partial class ProofWrapperTransport : IDisposable
 
     // ---- Publication -------------------------------------------------------------------------------------------------
 
-    private void OnWrapperValidated(byte[] wrapper, IReadOnlyDictionary<ValueHash256, Transaction> resolved) =>
+    private void OnWrapperValidated(byte[] wrapper, IReadOnlyDictionary<ValueHash256, Transaction> resolved, Eip8288Verifier verifier) =>
         _ = Task.Run(() =>
         {
-            try { Publish(wrapper, resolved); }
+            try { Publish(wrapper, verifier, resolved); }
             catch (Exception exception) when (exception is ArgumentException or RlpException or InvalidOperationException)
             {
                 if (_logger.IsDebug) _logger.Debug($"eth/73 could not offer a wrapper: {exception.Message}");
             }
         });
 
-    /// <summary>Stores and announces a locally aggregated wrapper.</summary>
-    public bool PublishWrapper(byte[] wrapper) => Publish(wrapper);
+    /// <summary>Stores and announces a locally aggregated wrapper, produced under the current target fork's verifier.</summary>
+    public bool PublishWrapper(byte[] wrapper) => _wrappers.RefreshVerifier() is { } verifier && Publish(wrapper, verifier);
+
+    /// <summary>EIP-8288 upgrade rule for offered wrappers: drops every mode-1 wrapper and keeps a mode-0 wrapper only if its
+    /// direct witnesses re-validate under <paramref name="verifier"/>.</summary>
+    private void OnVerifierChanged(Eip8288Verifier verifier)
+    {
+        List<WrapperStore.Entry> held;
+        lock (_gate)
+        {
+            _verifier = verifier;
+            held = [.. _store.All];
+        }
+        List<WrapperStore.Entry> revalidated = [];
+        foreach (WrapperStore.Entry entry in held)
+            if (entry.Verifier == verifier || _wrappers.Revalidates(entry.Wrapper, in verifier)) revalidated.Add(entry);
+        int dropped = 0;
+        lock (_gate)
+        {
+            if (_disposed || _verifier != verifier) return;
+            foreach (WrapperStore.Entry entry in held)
+            {
+                if (revalidated.Contains(entry)) entry.Verifier = verifier;
+                else if (_store.TryGet(entry.Descriptor.ObjectId, out WrapperStore.Entry current) && current == entry)
+                {
+                    _store.Remove(entry.Descriptor.ObjectId);
+                    dropped++;
+                }
+            }
+        }
+        WrapperMetrics.Record(WrapperEvent.UpgradeDropped, dropped);
+        if (_logger.IsInfo) _logger.Info($"eth/73 target fork verifier is now {verifier}: dropped {dropped} wrappers, kept {revalidated.Count}");
+    }
 
     /// <summary>Offers a fully validated wrapper with the envelopes it lists, and announces it to peers that may lack it.</summary>
     /// <remarks>A wrapper listing an envelope above the soft response limit is never announced: it could not be served.</remarks>
-    private bool Publish(byte[] wrapper, IReadOnlyDictionary<ValueHash256, Transaction>? resolved = null)
+    private bool Publish(byte[] wrapper, Eip8288Verifier verifier, IReadOnlyDictionary<ValueHash256, Transaction>? resolved = null)
     {
         if (!IsEnabled || wrapper.Length is 0 or > Eth73Protocol.MaxWrapperBytes) return false;
         ValueHash256[] hashes;
@@ -298,7 +348,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
         Outbox outbox = new();
         lock (_gate)
         {
-            if (_disposed || !_store.TryAdd(new(descriptor, (byte[])wrapper.Clone(), hashes, envelopes))) return false;
+            // A wrapper validated under a verifier the target fork no longer uses is never offered.
+            if (_disposed || verifier != _verifier || !_store.TryAdd(new(descriptor, (byte[])wrapper.Clone(), hashes, envelopes, verifier))) return false;
             _tombstones.Remove(descriptor.ObjectId);
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)
@@ -323,7 +374,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             int count = Math.Min(peer.ToAnnounce.Count, Eth73Protocol.MaxAnnouncements);
             List<WrapperDescriptor> batch = [];
             foreach (WrapperDescriptor descriptor in peer.ToAnnounce.GetRange(0, count))
-                if (!peer.Known.Contains(descriptor.ObjectId, now) && _store.Contains(descriptor.ObjectId) && batch.TrueForAll(d => d.ObjectId != descriptor.ObjectId))
+                if (!peer.Known.Contains(descriptor.ObjectId, now) && TryGetOffered(descriptor.ObjectId, out _) && batch.TrueForAll(d => d.ObjectId != descriptor.ObjectId))
                     batch.Add(descriptor);
             peer.ToAnnounce.RemoveRange(0, count);
             if (batch.Count == 0) continue;
@@ -347,7 +398,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             int content = 0;
             foreach (ValueHash256 objectId in request.ObjectIds)
             {
-                if (!_store.TryGet(objectId, out WrapperStore.Entry entry)) continue;
+                if (!TryGetOffered(objectId, out WrapperStore.Entry entry)) continue;
                 if (served.Count > 0 && ResponseLength(request.RequestId, content + entry.Wrapper.Length) > Eth73Protocol.SoftResponseLimit) break;
                 served.Add(entry);
                 content += entry.Wrapper.Length;
@@ -374,7 +425,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         {
             if (peer.Closed) return;
             List<byte[]> envelopes = [];
-            if (_store.TryGet(request.ObjectId, out WrapperStore.Entry entry))
+            if (TryGetOffered(request.ObjectId, out WrapperStore.Entry entry))
             {
                 if (request.Indices[^1] >= entry.Hashes.Length)
                 {

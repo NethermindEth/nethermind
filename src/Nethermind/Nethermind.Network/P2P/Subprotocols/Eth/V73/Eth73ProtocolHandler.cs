@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
 /// <summary>
 /// EIP-8437 <c>eth/73</c>: <c>eth/72</c> plus announcement and whole-object retrieval of EIP-8288 proof wrappers and of the
-/// envelopes they list, between peers whose Status messages share a profile.
+/// envelopes they list.
 /// </summary>
 /// <remarks>The version and the message IDs <c>0x16</c> to <c>0x1a</c> are placeholders assigned with the activating fork.</remarks>
 public class Eth73ProtocolHandler(
@@ -63,7 +63,7 @@ public class Eth73ProtocolHandler(
         int size = message.Content.ReadableBytes;
         if (message.PacketType == Eth69MessageCode.Status)
         {
-            // Status is unchanged from eth/72: its forkid already fixes AGGREGATED_VK, so the peers share a verifier.
+            // Status is unchanged from eth/72; peers negotiate no verifier.
             bool handled = base.HandleMessageCore(message);
             _wrapperPeer ??= wrapperTransport.Accept(this);
             // Disposal may have raced the Status; removal is idempotent.

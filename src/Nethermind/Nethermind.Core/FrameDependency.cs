@@ -177,8 +177,7 @@ public static class Eip8288Dependencies
         => Blake2s.Compute(Serialize(Canonicalize(dependencies)));
 
     /// <summary>Whether a dependency scheme is in the EIP-8288 <c>ENABLED_SCHEMES</c>.</summary>
-    /// <remarks>The per-fork constant the <see cref="Eip8288Constants.AggregatedVk"/> circuit accepts exactly, so it is also the
-    /// EIP-8437 profile's scheme set.</remarks>
+    /// <remarks>The per-fork constant the <c>AGGREGATED_VK</c> circuit accepts exactly; the pinned circuit fixes it.</remarks>
     public static bool IsAcceptedScheme(byte scheme) =>
         scheme == Eip8288Constants.LeanSphincsScheme
         || (Eip8288Constants.LeanStarkSchemeEnabled && scheme == Eip8288Constants.LeanStarkScheme);

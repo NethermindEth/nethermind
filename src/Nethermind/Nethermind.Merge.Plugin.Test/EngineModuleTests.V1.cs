@@ -2980,7 +2980,8 @@ public partial class EngineModuleTests
             .Select(static m => m.Name)
             .Where(static m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal)
                             && !m.Equals(nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1), StringComparison.Ordinal)
-                            && !PerListInclusionListMethods.Contains(m))
+                            && !PerListInclusionListMethods.Contains(m)
+                            && !InclusionListProofMethods.Contains(m))
             .Order();
 
         ResultWrapper<IReadOnlyList<string>> result = rpcModule.engine_exchangeCapabilities(expected);
@@ -2998,6 +2999,13 @@ public partial class EngineModuleTests
         nameof(IEngineRpcModule.engine_newPayloadWithWitnessV7)
     ];
 
+    private static readonly string[] InclusionListProofMethods =
+    [
+        nameof(IEngineRpcModule.engine_verifyInclusionListProofV1),
+        nameof(IEngineRpcModule.engine_getInclusionListProofV1),
+        nameof(IEngineRpcModule.engine_submitInclusionListProofV1)
+    ];
+
     // EIP-8288's per-list inclusion-list versions exist only once it is active alongside EIP-7805.
     [TestCase(false)]
     [TestCase(true)]
@@ -3006,8 +3014,13 @@ public partial class EngineModuleTests
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = eip8288, IsEip8288Enabled = eip8288 };
         EngineRpcCapabilitiesProvider provider = new(new TestSpecProvider(spec));
         string[] enabled = [.. provider.GetJsonRpcCapabilities().Where(static kv => kv.Value.IsEnabled()).Select(static kv => kv.Key)];
-        Assert.That(PerListInclusionListMethods.All(enabled.Contains), Is.EqualTo(eip8288));
-        Assert.That(PerListInclusionListMethods.Any(enabled.Contains), Is.EqualTo(eip8288));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PerListInclusionListMethods.All(enabled.Contains), Is.EqualTo(eip8288));
+            Assert.That(PerListInclusionListMethods.Any(enabled.Contains), Is.EqualTo(eip8288));
+            Assert.That(InclusionListProofMethods.All(enabled.Contains), Is.EqualTo(eip8288));
+            Assert.That(InclusionListProofMethods.Any(enabled.Contains), Is.EqualTo(eip8288));
+        }
     }
 
     [Test]

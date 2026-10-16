@@ -59,6 +59,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
+    private readonly InclusionListProofService? _inclusionListProofs;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
@@ -88,8 +89,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        ILogManager logManager)
+        ILogManager logManager,
+        InclusionListProofService? inclusionListProofs = null)
     {
+        _inclusionListProofs = inclusionListProofs;
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
@@ -145,6 +148,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
+        // A commitment this node holds no valid proof for is treated as null (EIPs#12475).
+        _inclusionListProofs?.ResolveObligations(block.InclusionLists, _specProvider.GetSpec(block.Header));
         ValueHash256 inclusionListDigest = ComputeInclusionListDigest(block);
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
 
@@ -421,14 +426,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         fields[^1] = block.InclusionLists is null ? (byte)0 : (byte)1;
         hash.Update(fields);
         foreach (Transaction tx in block.InclusionListTransactions ?? []) hash.Update((tx.Hash ?? Keccak.Zero).Bytes);
-        // The verdict depends on how the transactions split into lists and on whether each list's commitment is null.
+        // The verdict depends on how the transactions split into lists and on whether each list's commitment obligates.
         foreach (CommitteeInclusionList list in block.InclusionLists ?? [])
         {
             // The committee index is below IL_COMMITTEE_SIZE, so one byte holds it.
             BinaryPrimitives.WriteInt32BigEndian(fields, list.Transactions.Length);
             fields[^1] = (byte)list.CommitteeIndex;
             hash.Update(fields);
-            fields[^1] = list.IsCommitted ? (byte)1 : (byte)0;
+            fields[^1] = list.HoldsValidProof ? (byte)1 : (byte)0;
             hash.Update(fields[^1..]);
         }
         return hash.GenerateValueHash();
@@ -481,6 +486,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
         }
         CommitteeInclusionList[] decoded = InclusionListV1.Decode(lists);
+        _inclusionListProofs?.ResolveObligations(decoded, _specProvider.GetSpec(block.Header));
         block.InclusionLists = decoded;
         return IsInclusionListSatisfied(block, CommitteeInclusionList.Flatten(decoded));
     }

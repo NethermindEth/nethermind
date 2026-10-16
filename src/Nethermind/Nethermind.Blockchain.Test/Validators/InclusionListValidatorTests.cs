@@ -34,6 +34,10 @@ public class InclusionListValidatorTests
     private static readonly Transaction _validTx = BuildTx();
     private static readonly InclusionListCommitment Committed = new(TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
 
+    /// <summary>A counted list as newPayload resolves it for an attester holding the committed proof, if any.</summary>
+    private static CommitteeInclusionList Counted(ulong index, Transaction[] transactions, InclusionListCommitment? commitment)
+        => new(index, transactions, commitment) { HoldsValidProof = commitment is not null };
+
     [TestCase(false, false)]
     [TestCase(true, false)]
     [TestCase(false, true)]
@@ -48,7 +52,7 @@ public class InclusionListValidatorTests
         Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(full ? 30_000_000UL : 0)
             .WithInclusionListTransactions(dependencies ? [transaction] : []).TestObject;
         // A null commitment obligates only dependency-free entries; an empty list binds nothing whatever it commits to.
-        block.InclusionLists = [new CommitteeInclusionList(0, block.InclusionListTransactions!, dependencies ? null : Committed)];
+        block.InclusionLists = [Counted(0, block.InclusionListTransactions!, dependencies ? null : Committed)];
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
         Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
@@ -211,8 +215,8 @@ public class InclusionListValidatorTests
     // EIP-8288: omission is permitted only when EIP-7805 excuses it. No block dependency count or weighted budget, local proof
     // envelope or wrapper limit is an omission ground, however large the block's dependency union already is.
     [TestCase(Eip8288Constants.MaxProofDependencies, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Full proof envelope is no omission ground")]
-    [TestCase(Eip8288Constants.MaxDepsPerAggregate, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Aggregate wrapper ceiling is no omission ground")]
-    [TestCase(Eip8288Constants.MaxDepsPerAggregate, 0, Eip8288Constants.LeanSphincsScheme, true, TestName = "Dependency already in a large block")]
+    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Aggregate wrapper ceiling is no omission ground")]
+    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, 0, Eip8288Constants.LeanSphincsScheme, true, TestName = "Dependency already in a large block")]
     [TestCase(256, 256, Eip8288Constants.LeanStarkScheme, false, TestName = "Many leanSTARKs are no omission ground for another")]
     [TestCase(256, 256, Eip8288Constants.LeanSphincsScheme, false, TestName = "Many leanSTARKs are no omission ground for a leanSPHINCS")]
     public void No_dependency_capacity_excuses_an_omission(int blockDependencies, int blockLeanStark, byte scheme, bool present)
@@ -242,7 +246,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([entry]).TestObject;
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
-        CommitteeInclusionList[] lists = [new(0, [entry], Committed)];
+        CommitteeInclusionList[] lists = [Counted(0, [entry], Committed)];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(InclusionListProofValidator.SelectEligible([entry], lists, spec), Has.Length.EqualTo(1));
@@ -265,8 +269,8 @@ public class InclusionListValidatorTests
         entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
             UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
         entry.Hash = entry.CalculateHash();
-        List<CommitteeInclusionList> lists = [new(0, [entry], firstCommitted ? Committed : null)];
-        if (secondList) lists.Add(new(9, [entry], Committed));
+        List<CommitteeInclusionList> lists = [Counted(0, [entry], firstCommitted ? Committed : null)];
+        if (secondList) lists.Add(Counted(9, [entry], Committed));
         Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).TestObject;
         block.InclusionLists = lists;
         block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);

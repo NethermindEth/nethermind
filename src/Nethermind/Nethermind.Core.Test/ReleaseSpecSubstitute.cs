@@ -16,6 +16,8 @@ public static class ReleaseSpecSubstitute
     public static T Configure<T>(T sub) where T : class, IReleaseSpec
     {
         sub.GasCosts.Returns(_ => new SpecGasCosts(sub));
+        // A substitute intercepts this default-implemented member too; answer with the pinned key a real spec defaults to.
+        sub.Eip8288AggregatedVk.Returns(Eip8288Verifier.PinnedAggregatedVk);
         // A substitute intercepts IsPrecompile rather than running the interface's default body, so route
         // it back through Precompiles: a test that arranges the set still gets the membership it arranged.
         // The read goes through the substitute, so a Received() assertion on Precompiles counts it too.

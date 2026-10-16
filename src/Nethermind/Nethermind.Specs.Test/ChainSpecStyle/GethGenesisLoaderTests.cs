@@ -332,10 +332,14 @@ public class GethGenesisLoaderTests
     [Test]
     public void Eip8288_prototype_genesis_schedules_frames_and_dependency_proofs()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"eip8288PrototypeTime\": 15");
+        Hash256 upgradedVk = Keccak.Compute("next AGGREGATED_VK");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra:
+            $"\"eip8288PrototypeTime\": 15, \"eip8288AggregatedVkTimestamp\": 30, \"eip8288AggregatedVk\": \"{upgradedVk}\"");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(29)).Eip8288AggregatedVk, Is.EqualTo(Eip8288Verifier.PinnedAggregatedVk));
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(30)).Eip8288AggregatedVk, Is.EqualTo(upgradedVk.ValueHash256));
             Assert.That(chainSpec.Parameters.Eip8288TransitionTimestamp, Is.EqualTo(15UL));
             Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(15UL));
             Assert.That(chainSpec.Parameters.Eip8250TransitionTimestamp, Is.EqualTo(15UL));

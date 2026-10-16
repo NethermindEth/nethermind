@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -30,8 +31,9 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 [NonParallelizable]
 public class NativeInclusionListTests
 {
-    // EIPs#12475: a committed list obligates every statically valid entry, whether or not its proof verifies. A malformed
-    // entry contributes no dependencies and is not offered; an uncovered entry or a bad proof removes no obligation.
+    // EIPs#12475: a committed list obligates its dependency-bearing entries only when this node holds a valid proof covering
+    // them. A malformed entry contributes no dependencies and is not offered; with an entry the proof does not cover, or a
+    // proof that fails, the commitment is treated as null and only the dependency-free entry binds.
     [TestCase("uncovered")]
     [TestCase("malformed")]
     [TestCase("bad-proof")]
@@ -62,6 +64,7 @@ public class NativeInclusionListTests
         // The builder holds the committed proof, as from a validated mode-1 wrapper.
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddCachedRecursive(dependencies, proofBytes);
+        ProofVerdictCache.VerifyRecursive(NativeLeanProofVerifier.Instance, Eip8288Verifier.Pinned, commitment, proofBytes, dependencies);
         PayloadAttributes attributes = new()
         {
             InclusionLists = [new InclusionListV1
@@ -71,13 +74,13 @@ public class NativeInclusionListTests
             }]
         };
         InclusionListTxSource source = new(new EthereumEcdsa(chain.SpecProvider.ChainId), chain.SpecProvider,
-            LimboLogs.Instance, NativeLeanProofVerifier.Instance, store);
+            LimboLogs.Instance, new InclusionListProofService(chain.SpecProvider, NativeLeanProofVerifier.Instance, store, Timestamper.Default));
         source.Set(attributes.CombinedInclusionListTransactions!, spec, attributes.InclusionLists);
         BlockToProduce block = new(Build.A.BlockHeader.WithNumber(1).WithGasLimit(30_000_000).TestObject);
         source.ApplyInclusionList(block, attributes);
         Transaction[] offered = [.. source.GetTransactions(chain.BlockTree.Head!.Header, block.Header, block.GasLimit, attributes)];
         Assert.That(offered.Select(tx => tx.Hash), scenario == "malformed"
-            ? Is.EquivalentTo(new[] { ordinary.Hash, covered.Hash }) : Is.EquivalentTo(new[] { ordinary.Hash, covered.Hash, bad.Hash }));
+            ? Is.EquivalentTo(new[] { ordinary.Hash, covered.Hash }) : Is.EquivalentTo(new[] { ordinary.Hash }));
         Assert.That(block.InclusionListTransactions, Has.Length.EqualTo(3));
         using (chain.MainWorldState.BeginScope(chain.BlockTree.Head!.Header))
         {

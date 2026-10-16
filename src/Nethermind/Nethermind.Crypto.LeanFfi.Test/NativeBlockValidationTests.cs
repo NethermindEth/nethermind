@@ -94,6 +94,7 @@ public class NativeBlockValidationTests
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8288Enabled.Returns(true);
+        spec.Eip8288AggregatedVk.Returns(Eip8288Verifier.PinnedAggregatedVk);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 

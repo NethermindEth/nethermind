@@ -6,12 +6,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
-/// <summary>The connection side of an <c>eth/73</c> peer sharing a profile with this node.</summary>
+/// <summary>The connection side of an <c>eth/73</c> peer.</summary>
 internal interface IWrapperLink
 {
     string Description { get; }
@@ -80,9 +81,13 @@ internal sealed class WrapperRateLimit(double perSecond, TimeProvider clock)
 /// <remarks>Only wrappers that passed full EIP-8288 validation, or were produced locally, are added.</remarks>
 internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxStoreBytes, int maxObjects = WrapperTransportLimits.MaxStoreObjects)
 {
-    internal sealed class Entry(WrapperDescriptor descriptor, byte[] wrapper, ValueHash256[] hashes, Dictionary<ValueHash256, byte[]> envelopes)
+    internal sealed class Entry(WrapperDescriptor descriptor, byte[] wrapper, ValueHash256[] hashes, Dictionary<ValueHash256, byte[]> envelopes,
+        Eip8288Verifier verifier)
     {
         public WrapperDescriptor Descriptor { get; } = descriptor;
+
+        /// <summary>The verifier the wrapper was validated under; it is offered only while that is the target fork's.</summary>
+        public Eip8288Verifier Verifier { get; set; } = verifier;
         public byte[] Wrapper { get; } = wrapper;
 
         /// <summary>The wrapper's <c>transactions</c>, in order.</summary>
@@ -132,6 +137,9 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         return true;
     }
 
+    /// <summary>Every held wrapper.</summary>
+    public IReadOnlyCollection<Entry> All => _objects.Values;
+
     /// <summary>Most recently added wrappers first.</summary>
     public IEnumerable<Entry> Recent()
     {
@@ -139,7 +147,7 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
             yield return _objects[node.Value];
     }
 
-    private void Remove(ValueHash256 objectId)
+    public void Remove(ValueHash256 objectId)
     {
         if (!_objects.Remove(objectId, out Entry? entry)) return;
         _order.Remove(entry.Node!);

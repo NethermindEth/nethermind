@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus.ProofAggregation;
+
 namespace Nethermind.Merge.Plugin.Data;
 
-/// <summary>Result of <c>engine_verifyInclusionListProofV1</c>: whether a signed inclusion list's commitment is valid.</summary>
+/// <summary>Result of <c>engine_verifyInclusionListProofV1</c> and <c>engine_submitInclusionListProofV1</c>.</summary>
 public sealed class InclusionListProofStatusV1
 {
     /// <summary><see cref="PayloadStatus.Valid"/>, <see cref="PayloadStatus.Invalid"/>, or <see cref="ProofUnknownStatus"/> when the
@@ -20,4 +22,11 @@ public sealed class InclusionListProofStatusV1
     public const string ProofUnknownStatus = "PROOF_UNKNOWN";
 
     public static InclusionListProofStatusV1 ProofUnknown(string? reason) => new() { Status = ProofUnknownStatus, ValidationError = reason };
+
+    public static InclusionListProofStatusV1 From(InclusionListProofStatus status, string? reason) => status switch
+    {
+        InclusionListProofStatus.Valid => Valid,
+        InclusionListProofStatus.Invalid => Invalid(reason ?? "invalid inclusion-list proof"),
+        _ => ProofUnknown(reason)
+    };
 }

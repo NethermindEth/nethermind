@@ -160,7 +160,7 @@ public class MempoolWrapperTests
     [Test]
     public void Wrapper_rejects_too_many_sig_deps()
     {
-        List<FrameDependency> deps = Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerWrapper + 1).Select(i => Sphincs(i.ToString())).ToList();
+        List<FrameDependency> deps = Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerDirectWrapper + 1).Select(i => Sphincs(i.ToString())).ToList();
         MempoolWrapper wrapper = new()
         {
             Transactions = [new WrapperTransaction(Keccak.Compute("tx1"))],
@@ -214,7 +214,7 @@ public class MempoolWrapperTests
     public void Unknown_transaction_hash_is_rejected()
     {
         MempoolWrapper wrapper = new() { Transactions = [new WrapperTransaction(Keccak.Compute("missing"))], Mode = MempoolWrapper.ModeDirect, Deps = [Sphincs("unknown")], Proofs = [[1]] };
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error), Is.False);
+        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.UnknownTransaction));
     }
 
@@ -308,7 +308,7 @@ public class MempoolWrapperTests
     }
 
     private static bool ValidateResolved(MempoolWrapper wrapper, ILeanProofVerifier verifier, out string? error) =>
-        MempoolWrapperValidator.Validate(wrapper, verifier, out error, _ => new Transaction
+        MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out error, _ => new Transaction
         {
             Type = TxType.FrameTx,
             Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(wrapper.Deps))]
@@ -334,7 +334,7 @@ public class MempoolWrapperTests
         {
             Transactions = [new WrapperTransaction(Keccak.Compute("tx"))],
             Deps = [],
-            Proofs = Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper + 1)
+            Proofs = Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerDirectWrapper + Eip8288Constants.MaxLeanStarkDepsPerDirectWrapper + 1)
                 .Select(_ => (byte[])[]).ToArray(),
             Mode = MempoolWrapper.ModeDirect
         };
@@ -375,7 +375,7 @@ public class MempoolWrapperTests
     {
         (MempoolWrapper wrapper, Func<Hash256, Transaction?> resolve) = Batch(mode,
             [Sphincses("a", Eip8288Constants.MaxSigsPerTx), Sphincses("b", Eip8288Constants.MaxSigsPerTx)]);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error, resolve);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error, resolve);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(wrapper.Deps, Has.Count.EqualTo(2 * Eip8288Constants.MaxSigsPerTx));
@@ -388,18 +388,18 @@ public class MempoolWrapperTests
     public void Aggregation_does_not_admit_a_transaction_over_its_own_limits([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
     {
         (MempoolWrapper wrapper, Func<Hash256, Transaction?> resolve) = Batch(mode, [Sphincses("a", Eip8288Constants.MaxSigsPerTx + 1)]);
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error, resolve), Is.False);
+        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error, resolve), Is.False);
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.TransactionLimits));
     }
 
-    [TestCase(Eip8288Constants.MaxDepsPerAggregate, null)]
-    [TestCase(Eip8288Constants.MaxDepsPerAggregate + 1, MempoolWrapperValidator.TooManyAggregateDeps)]
+    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, null)]
+    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper + 1, MempoolWrapperValidator.TooManyAggregateDeps)]
     public void Aggregate_dependency_ceiling_is_checked_before_verification(int count, string? expected)
     {
         IReadOnlyList<FrameDependency>[] transactions = [.. Sphincses("d", count).Chunk(Eip8288Constants.MaxSigsPerTx)];
         (MempoolWrapper wrapper, Func<Hash256, Transaction?> resolve) = Batch(MempoolWrapper.ModeRecursive, transactions);
         FakeLeanProofVerifier verifier = new(true);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, resolve);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error, resolve);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.EqualTo(expected is null), error);
@@ -415,7 +415,7 @@ public class MempoolWrapperTests
         FrameDependency[] shared = [Sphincs("shared")];
         (MempoolWrapper wrapper, Func<Hash256, Transaction?> resolve) = Batch(MempoolWrapper.ModeRecursive,
             [.. Enumerable.Repeat<IReadOnlyList<FrameDependency>>(shared, count)]);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error, resolve);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error, resolve);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(wrapper.Deps, Has.Count.EqualTo(1), "repeated declarations count once");
@@ -434,7 +434,7 @@ public class MempoolWrapperTests
         (MempoolWrapper wrapper, Func<Hash256, Transaction?> resolve) = Batch(MempoolWrapper.ModeRecursive,
             [.. Enumerable.Range(0, count).Select(i => (IReadOnlyList<FrameDependency>)[Stark($"s{i}"), Sphincs($"p{i}")])]);
         FakeLeanProofVerifier verifier = new(true);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, resolve);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error, resolve);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.True, error);
@@ -463,7 +463,7 @@ public class MempoolWrapperTests
                 : null
         };
         FakeLeanProofVerifier verifier = new(true);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, h => h == hash ? transaction : null);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error, h => h == hash ? transaction : null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.EqualTo(expected is null), error);
@@ -488,7 +488,7 @@ public class MempoolWrapperTests
             RecursiveStark = mode == MempoolWrapper.ModeRecursive ? new RecursiveStark([], new Hash256(Eip8288Dependencies.ComputeDepsHash([]))) : null
         };
         FakeLeanProofVerifier verifier = new(true);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, resolve);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error, resolve);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.False);
@@ -511,7 +511,7 @@ public class MempoolWrapperTests
             RecursiveStark = new RecursiveStark(new byte[length], batch.RecursiveStark!.BlockDepsHash)
         };
         FakeLeanProofVerifier verifier = new(true);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, resolve);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error, resolve);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.EqualTo(expected is null), error);
@@ -530,7 +530,7 @@ public class MempoolWrapperTests
             Deps = [],
             Proofs = []
         };
-        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, out string? error, _ => Build.A.Transaction.TestObject), Is.False);
+        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error, _ => Build.A.Transaction.TestObject), Is.False);
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.NotFrameTransaction));
     }
 
@@ -539,8 +539,8 @@ public class MempoolWrapperTests
     {
         (MempoolWrapper wrapper, _) = Batch(MempoolWrapper.ModeRecursive, [[Sphincs("claimed")]]);
         FakeLeanProofVerifier verifier = new(true);
-        Assert.That(MempoolWrapperValidator.VerifyClaimedProofs(wrapper, verifier, out string? claimError), Is.True, claimError);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, _ => DepTx([Sphincs("recovered")]), proofsVerified: true);
+        Assert.That(MempoolWrapperValidator.VerifyClaimedProofs(wrapper, verifier, Eip8288Verifier.Pinned, out string? claimError), Is.True, claimError);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error, _ => DepTx([Sphincs("recovered")]), proofsVerified: true);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.False);
@@ -565,7 +565,7 @@ public class MempoolWrapperTests
             RecursiveStark = batch.RecursiveStark
         };
         FakeLeanProofVerifier verifier = new(true);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error,
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error,
             hash => hash == dependencyFree ? new Transaction { Type = TxType.FrameTx, Frames = [] } : resolve(hash));
         using (Assert.EnterMultipleScope())
         {
@@ -584,9 +584,9 @@ public class MempoolWrapperTests
         (MempoolWrapper first, _) = Batch(mode, [[Sphincs("a"), Sphincs("b")]]);
         (MempoolWrapper second, _) = Batch(mode, [[Sphincs("a")], [Sphincs("b")]]);
         FakeLeanProofVerifier verifier = new(valid);
-        bool firstValid = MempoolWrapperValidator.VerifyClaimedProofs(first, verifier, out _);
+        bool firstValid = MempoolWrapperValidator.VerifyClaimedProofs(first, verifier, Eip8288Verifier.Pinned, out _);
         int calls = verifier.VerificationCalls;
-        bool secondValid = MempoolWrapperValidator.VerifyClaimedProofs(second, verifier, out _);
+        bool secondValid = MempoolWrapperValidator.VerifyClaimedProofs(second, verifier, Eip8288Verifier.Pinned, out _);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(firstValid, Is.EqualTo(valid));
@@ -613,7 +613,7 @@ public class MempoolWrapperTests
         };
         ValueHash256? checkedHash = null;
         DataHashVerifier verifier = new(dataHash => checkedHash = dataHash);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, h => h == hash ? transaction : null);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error, h => h == hash ? transaction : null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.True, error);

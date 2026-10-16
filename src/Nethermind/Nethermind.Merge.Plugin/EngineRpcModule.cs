@@ -53,7 +53,8 @@ public partial class EngineRpcModule(
     ILogManager logManager,
     IBlockTree blockTree,
     IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>? verifyInclusionListProofHandler = null,
-    IHandler<Hash256, InclusionListProofV1?>? getInclusionListProofHandler = null) : IEngineRpcModule
+    IHandler<GetInclusionListProofRequest, InclusionListProofV1?>? getInclusionListProofHandler = null,
+    IHandler<SubmitInclusionListProofRequest, InclusionListProofStatusV1>? submitInclusionListProofHandler = null) : IEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
@@ -86,7 +87,10 @@ public partial class EngineRpcModule(
         GCKeeper gcKeeper,
         IBlockProcessingQueue processingQueue,
         ILogManager logManager,
-        IBlockTree blockTree)
+        IBlockTree blockTree,
+        IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>? verifyInclusionListProofHandler = null,
+        IHandler<GetInclusionListProofRequest, InclusionListProofV1?>? getInclusionListProofHandler = null,
+        IHandler<SubmitInclusionListProofRequest, InclusionListProofStatusV1>? submitInclusionListProofHandler = null)
         : this(
             getPayloadHandlerV1,
             getPayloadHandlerV2,
@@ -117,7 +121,10 @@ public partial class EngineRpcModule(
             gcKeeper,
             processingQueue,
             logManager,
-            blockTree)
+            blockTree,
+            verifyInclusionListProofHandler,
+            getInclusionListProofHandler,
+            submitInclusionListProofHandler)
     {
     }
 

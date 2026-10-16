@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,7 +28,7 @@ public class NativeLeanProofVerifierTests
             Witnesses = [Witness("sphincs"), Witness("stark")]
         };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        byte[] proof = RecursiveStarkAggregator.Prove(input, Native, in hash);
+        byte[] proof = RecursiveStarkAggregator.Prove(input, Native, Eip8288Verifier.Pinned, in hash);
         Assert.That(Native.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
         AssertBareStarkProof(proof, dependencies);
         return proof;
@@ -115,7 +116,8 @@ public class NativeLeanProofVerifierTests
             Assert.That(encoded.Length, Is.GreaterThan(2 * Eip8288Constants.MaxAggregateProofBytes));
             Assert.That(encoded.Length, Is.LessThanOrEqualTo(Eip8288Constants.MaxAggregationInputBytes));
         }
-        Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [child, child, child] }));
+        // Fifteen maximum-sized children, still below the native child count, pass the input byte budget.
+        Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [.. Enumerable.Repeat(child, 15)] }));
     }
 
     [Test]
@@ -168,8 +170,8 @@ public class NativeLeanProofVerifierTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(empty, Is.Empty);
-            Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, 0, emptyHash, empty), Is.True);
-            Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, 0, emptyHash, oldEnvelope), Is.False);
+            Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, Eip8288Verifier.Pinned, 0, emptyHash, empty), Is.True);
+            Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, Eip8288Verifier.Pinned, 0, emptyHash, oldEnvelope), Is.False);
             Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, oldEnvelope), Is.False);
             Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk,
                 [(byte)'N', (byte)'L', (byte)'R', (byte)'2', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), Is.False);

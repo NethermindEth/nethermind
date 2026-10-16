@@ -6,9 +6,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
@@ -250,6 +253,79 @@ public class ProofWrapperTransportTests
         {
             Assert.That(link.Penalties, Has.Length.EqualTo(1));
             Assert.That(link.Sent<GetWrapperEnvelopesMessage>(), Is.Empty);
+            Assert.That(node.Transport.IsTombstoned(Describe(wrapper).ObjectId), Is.True);
+        }
+    }
+
+    private static readonly ValueHash256 UpgradedVk = ValueKeccak.Compute("next AGGREGATED_VK");
+
+    /// <summary>A chain whose fork at timestamp 1,000 changes <c>AGGREGATED_VK</c>.</summary>
+    private static ISpecProvider UpgradingChain() => new CustomSpecProvider(((ForkActivation)0, Eip8288Prototype.Instance),
+        (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = UpgradedVk }));
+
+    /// <summary>Moves the local head so the next block's fork changes the verifier, and lets the transport apply it.</summary>
+    private static void CrossVerifierFork(WrapperTestNode node, ulong number = 10)
+    {
+        node.Tree.Head.Returns(Build.A.Block.WithNumber(number).WithTimestamp(990).TestObject);
+        node.Tick(WrapperTransportLimits.Tick);
+    }
+
+    // EIP-8437 / EIP-8288 upgrade rule: once the target fork's verifier changes, every mode-1 wrapper is dropped and never
+    // announced or served again, while a mode-0 wrapper whose direct witnesses re-validate stays offered.
+    [Test]
+    public async Task Verifier_change_drops_aggregate_wrappers_and_keeps_revalidated_direct_ones()
+    {
+        Transaction aggregated = FrameTransaction(1);
+        Transaction direct = FrameTransaction(2);
+        byte[] mode1 = Wrapper(64, aggregated);
+        byte[] mode0 = DirectWrapper(direct);
+        using WrapperTestNode node = new(UpgradingChain());
+        node.Tree.Head.Returns(Build.A.Block.WithNumber(10).WithTimestamp(100).TestObject);
+        node.Pending.AddRange([aggregated, direct]);
+        Assert.That(node.Transport.PublishWrapper(mode1), Is.True);
+        Assert.That(node.Transport.PublishWrapper(mode0), Is.True);
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+
+        CrossVerifierFork(node);
+        await WrapperTestNode.Until(() => !node.Transport.IsStored(Describe(mode1).ObjectId));
+        node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, [Describe(mode1).ObjectId, Describe(mode0).ObjectId]));
+        FakeWrapperLink late = new("late");
+        node.Connect(late);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.IsOffered(Describe(mode0).ObjectId), Is.True);
+            Assert.That(link.Sent<ProofWrappersMessage>().Single().Wrappers, Is.EqualTo(new[] { mode0 }), "the dropped wrapper is not served");
+            Assert.That(late.Sent<AnnounceProofWrappersMessage>().Single().Descriptors.Select(d => d.ObjectId),
+                Is.EqualTo(new[] { Describe(mode0).ObjectId }), "nor announced");
+            Assert.That(node.Transport.PublishWrapper(mode1), Is.True, "re-validated under the new verifier, it is offered again");
+        }
+    }
+
+    // EIP-8437 Errors: around a fork that changes the verifier, a peer's proof failure is a local refusal within the configured
+    // grace window (default until the head is 64 blocks past the fork), and invalid peer data after it.
+    [TestCase(74UL, false)]
+    [TestCase(75UL, true)]
+    public async Task Proof_failures_within_the_fork_grace_window_are_local_refusals(ulong headNumber, bool penalized)
+    {
+        using WrapperTestNode node = new(UpgradingChain());
+        node.Tree.Head.Returns(Build.A.Block.WithNumber(10).WithTimestamp(100).TestObject);
+        node.Wrappers.RefreshVerifier();
+        CrossVerifierFork(node);
+        node.Tree.Head.Returns(Build.A.Block.WithNumber(headNumber).WithTimestamp(1_800).TestObject);
+        node.Verifier.Valid = false;
+        byte[] wrapper = Wrapper(64, FrameTransaction(1));
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        Answer(node, peer, link, wrapper);
+        await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Has.Length.EqualTo(penalized ? 1 : 0));
             Assert.That(node.Transport.IsTombstoned(Describe(wrapper).ObjectId), Is.True);
         }
     }

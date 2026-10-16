@@ -12,8 +12,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
 /// <summary>EIP-8437 <c>descriptor = [byte_length, content_hash]</c>, committing to a whole wrapper; its object ID is the
 /// <c>content_hash</c>.</summary>
-/// <remarks>Descriptors carry no verifier identifier: the <c>eth/73</c> handshake's <c>forkid</c> already fixes
-/// <c>AGGREGATED_VK</c>.</remarks>
+/// <remarks>Descriptors carry no verifier identifier: a receiver verifies under its own target fork regardless, so one would
+/// authenticate nothing.</remarks>
 public sealed class WrapperDescriptor
 {
     /// <summary>The longest canonical descriptor: a three-byte length and a 32-byte hash.</summary>
@@ -85,8 +85,8 @@ public static class WrapperBodies
         fields.End();
         Eth73RlpReader dependencies = content.ReadList();
         int dependencyLimit = mode == 0
-            ? Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper
-            : Eip8288Constants.MaxDepsPerAggregate;
+            ? Eip8288Constants.MaxLeanSigDepsPerDirectWrapper + Eip8288Constants.MaxLeanStarkDepsPerDirectWrapper
+            : Eip8288Constants.MaxDepsPerAggregateWrapper;
         int dependencyCount = dependencies.CountRemaining(dependencyLimit);
         if (dependencyCount == 0) throw new RlpException("Wrapper dependencies are empty");
         ReadOnlySpan<byte> previous = default;

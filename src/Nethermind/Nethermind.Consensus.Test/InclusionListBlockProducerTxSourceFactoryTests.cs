@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Test.ProofAggregation;
 using Nethermind.Consensus.Transactions;
@@ -59,8 +60,10 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(frame, FrameTxSigHash.ComputeValue);
         store.AddVerified(dependencies, null, [1]);
         FakeLeanProofVerifier verifier = new(true);
+        ProofVerdictCache.VerifyRecursive(verifier, Eip8288Verifier.Pinned, Eip8288Dependencies.ComputeDepsHash(dependencies), [1], dependencies);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
-            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, store);
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance,
+            new InclusionListProofService(new TestSingleReleaseSpecProvider(spec), verifier, store, Timestamper.Default));
         PayloadAttributes attributes = new()
         {
             InclusionLists = [new InclusionListV1
@@ -113,8 +116,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         InclusionListTxSource il = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
-            LimboLogs.Instance,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            LimboLogs.Instance);
         byte[][] ilBytes = [TxDecoder.Instance.Encode(ilTx, RlpBehaviors.SkipTypedWrapping).Bytes];
         il.Set(ilBytes, Bogota.Instance);
         // IL is keyed by the build's PayloadAttributes array.
@@ -152,8 +154,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         InclusionListTxSource il = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
-            LimboLogs.Instance,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            LimboLogs.Instance);
         // IL is empty
 
         ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();

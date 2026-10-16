@@ -52,17 +52,6 @@ public partial class EthRpcModule
             : ResultWrapper<Hash256[]>.Fail(result.Error!, ErrorCodes.TransactionRejected);
     }
 
-    public async Task<ResultWrapper<Hash256[]>> eth_sendProofInclusionList(byte[] inclusionList)
-    {
-        if (proofWrapperService?.IsEnabled != true)
-            return ResultWrapper<Hash256[]>.Fail("EIP-8288 proof inclusion lists are unavailable.", ErrorCodes.MethodNotFound);
-        if (inclusionList.Length > LeanProofStore.MaxWrapperBytes)
-            return ResultWrapper<Hash256[]>.Fail("Proof inclusion list exceeds the size limit.", ErrorCodes.InvalidInput);
-        Result<Hash256[]> result = await proofWrapperService.AcceptInclusionListAsync(inclusionList);
-        return result.IsSuccess ? ResultWrapper<Hash256[]>.Success(result.Data!)
-            : ResultWrapper<Hash256[]>.Fail(result.Error!, ErrorCodes.TransactionRejected);
-    }
-
     public ResultWrapper<byte[]> eth_getProofWrapper()
     {
         if (proofWrapperService?.IsEnabled != true)

@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 public partial class EthRpcModuleTests
 {
     [Test]
-    public async Task Proof_wrapper_methods_are_registered_and_fork_gated([Values("eth_sendProofWrapper", "eth_sendProofInclusionList", "eth_getProofWrapper")] string method)
+    public async Task Proof_wrapper_methods_are_registered_and_fork_gated([Values("eth_sendProofWrapper", "eth_getProofWrapper")] string method)
     {
         using Context context = await Context.Create();
         string response = method == "eth_getProofWrapper"
@@ -32,10 +32,10 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Proof_wrapper_methods_reject_malformed_encoding([Values("eth_sendProofWrapper", "eth_sendProofInclusionList")] string method)
+    public async Task Proof_wrapper_ingress_rejects_malformed_encoding()
     {
         using Context context = await ProofContext(new RecordingProofVerifier());
-        string response = await context.Test.TestEthRpc(method, "0x00");
+        string response = await context.Test.TestEthRpc("eth_sendProofWrapper", "0x00");
         Assert.That(response, Does.Contain("Invalid proof"));
         Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.TransactionRejected}"));
     }

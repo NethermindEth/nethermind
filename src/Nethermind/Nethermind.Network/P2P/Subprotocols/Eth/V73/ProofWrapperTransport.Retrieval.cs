@@ -331,6 +331,14 @@ public sealed partial class ProofWrapperTransport
                 WrapperMetrics.Record(WrapperEvent.Validated);
                 if (_logger.IsDebug) _logger.Debug($"eth/73 validated {fetch.Descriptor}");
                 break;
+            // Around a fork that changes the verifier, peers can disagree about the fork of the next block: a proof failure is a
+            // local refusal for the configured grace window (EIP-8437).
+            case Verdict.Invalid when _wrappers.IsInVerifierTransition(_forkGraceBlocks):
+                WrapperMetrics.Record(WrapperEvent.GraceRefused);
+                lock (_gate) _tombstones.Add(fetch.Descriptor.ObjectId, _clock.GetTimestamp()
+                    + (long)(WrapperTransportLimits.SoftTombstone.TotalSeconds * _clock.TimestampFrequency));
+                if (_logger.IsDebug) _logger.Debug($"eth/73 refused {fetch.Descriptor} within the fork grace window: {error}");
+                break;
             case Verdict.Invalid:
                 Reject(fetch, error ?? "invalid wrapper");
                 break;

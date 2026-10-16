@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Int256;
@@ -70,10 +71,10 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 /// <summary>A transport over substitute chain components, with valid-by-default proofs and a manual clock.</summary>
 internal sealed class WrapperTestNode : IDisposable
 {
-    public WrapperTestNode()
+    public WrapperTestNode(ISpecProvider? specProvider = null)
     {
         Time = new ManualTimeProvider();
-        TestSingleReleaseSpecProvider specs = new(Eip8288Prototype.Instance);
+        ISpecProvider specs = specProvider ?? new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance);
         Tree.ChainId.Returns(1UL);
         Tree.Head.Returns(Build.A.Block.WithNumber(10).TestObject);
         Pool.GetPendingTransactions().Returns(_ => { lock (Pending) return [.. Pending]; });
@@ -151,6 +152,20 @@ internal static class WrapperTestObjects
             Deps = deps,
             Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = new RecursiveStark(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
+        }).Bytes;
+    }
+
+    /// <summary>A hash-only mode-0 wrapper over <paramref name="transactions"/> with one opaque witness per dependency.</summary>
+    public static byte[] DirectWrapper(params Transaction[] transactions)
+    {
+        Transaction[] sorted = [.. transactions.OrderBy(t => t.Hash!.ToString())];
+        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(sorted.SelectMany(tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
+        return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [.. sorted.Select(t => new WrapperTransaction(t.Hash!))],
+            Deps = deps,
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [.. deps.Select(static _ => new byte[] { 1 })]
         }).Bytes;
     }
 

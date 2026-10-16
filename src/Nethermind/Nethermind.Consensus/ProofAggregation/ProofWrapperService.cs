@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -17,14 +18,21 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
-/// <summary>Shared proof-wrapper validation, admission and aggregation for RPC and negotiated peers.</summary>
+/// <summary>Shared proof-wrapper validation, admission and aggregation for RPC and eth/73 peers.</summary>
+/// <remarks>
+/// Wrappers are validated under their target fork, the fork of the next block on the local head, which fixes the verifier.
+/// When the local head advances to a target fork whose verifier differs, the EIP-8288 upgrade rule applies: every held
+/// aggregate proof is dropped, direct witnesses are kept only if they re-validate, and pending transactions left without
+/// proof coverage leave the pool.
+/// </remarks>
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
-    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier, IChainHeadInfoProvider? headInfo = null)
+    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier, IChainHeadInfoProvider? headInfo = null,
+    IBlocksConfig? blocksConfig = null)
 {
     internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxTxsPerWrapper * (Hash256.Size + 1);
 
     /// <summary>Local scheduling target for leanSPHINCS dependencies in one produced mode-1 batch.</summary>
-    /// <remarks>Not a validity limit: received aggregates may carry up to <see cref="Eip8288Constants.MaxDepsPerAggregate"/>.</remarks>
+    /// <remarks>Not a validity limit: received aggregates may carry up to <see cref="Eip8288Constants.MaxDepsPerAggregateWrapper"/>.</remarks>
     private const int MaxBatchSigDependencies = 16;
 
     /// <summary>Local scheduling target for leanSTARK dependencies in one produced mode-1 batch.</summary>
@@ -35,12 +43,18 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private readonly object _aggregationLock = new();
     private int _rotation;
     private int _admissionActive;
-    private readonly Dictionary<ValueHash256, string?> _verifiedWrappers = [];
-    private readonly Queue<ValueHash256> _verifiedWrapperOrder = [];
-    private readonly HashSet<ValueHash256> _verifiedClaims = [];
-    private readonly Queue<ValueHash256> _verifiedClaimOrder = [];
-    private sealed record WrapperSnapshot(ValueHash256 Selection, Hash256[] Transactions, byte[] Encoded, ValueHash256 Hash, RecursiveProofInput Parent);
+    private readonly ulong _secondsPerSlot = blocksConfig?.SecondsPerSlot ?? 12;
+    // Remembered verifications are keyed by AGGREGATED_VK too, so none answers under another verifier.
+    private readonly Dictionary<(ValueHash256 Wrapper, ValueHash256 Verifier), string?> _verifiedWrappers = [];
+    private readonly Queue<(ValueHash256 Wrapper, ValueHash256 Verifier)> _verifiedWrapperOrder = [];
+    private readonly HashSet<(ValueHash256 Wrapper, ValueHash256 Verifier)> _verifiedClaims = [];
+    private readonly Queue<(ValueHash256 Wrapper, ValueHash256 Verifier)> _verifiedClaimOrder = [];
+    private sealed record WrapperSnapshot(ValueHash256 Selection, Hash256[] Transactions, byte[] Encoded, ValueHash256 Hash, RecursiveProofInput Parent,
+        Eip8288Verifier Verifier);
     private WrapperSnapshot? _cachedWrapper;
+    private readonly Lock _verifierLock = new();
+    private Eip8288Verifier? _verifier;
+    private long _verifierChangedAt = -1;
 
     /// <summary>Verifies a wrapper and admits its proof-backed transactions.</summary>
     public async Task<Result<Hash256[]>> AcceptAsync(byte[] wrapper, CancellationToken cancellationToken = default)
@@ -48,11 +62,82 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Raised with the encoded wrapper once it is fully validated, whether or not the pool admitted its transactions.</summary>
     /// <remarks>The second argument maps each of the wrapper's hash entries to the transaction that resolved it, so a relay
-    /// can keep serving the envelopes it offers by hash. Subscribers must not mutate either argument.</remarks>
-    public event Action<byte[], IReadOnlyDictionary<ValueHash256, Transaction>>? WrapperValidated;
+    /// can keep serving the envelopes it offers by hash, and the third is the verifier it was validated under. Subscribers must
+    /// not mutate the arguments.</remarks>
+    public event Action<byte[], IReadOnlyDictionary<ValueHash256, Transaction>, Eip8288Verifier>? WrapperValidated;
 
-    /// <summary>Raised with the encoded inclusion-list package once its proof validated.</summary>
-    public event Action<byte[]>? InclusionListValidated;
+    /// <summary>Raised with the new verifier after the upgrade rule dropped what the previous one validated.</summary>
+    public event Action<Eip8288Verifier>? VerifierChanged;
+
+    /// <summary>The fork of the next block on the local head: the target fork of every wrapper this node validates.</summary>
+    public IReleaseSpec? TargetSpec => blockFinder.Head is { } head ? TargetSpecOf(head.Header) : null;
+
+    private IReleaseSpec TargetSpecOf(BlockHeader head) => specProvider.GetSpec(head.Number + 1, head.Timestamp + _secondsPerSlot);
+
+    /// <summary>
+    /// The verifier of the current target fork, after applying the EIP-8288 upgrade rule if it changed; null while EIP-8288 is
+    /// inactive for the next block.
+    /// </summary>
+    public Eip8288Verifier? RefreshVerifier()
+    {
+        if (blockFinder.Head is not { } head) return null;
+        IReleaseSpec spec = TargetSpecOf(head.Header);
+        if (!spec.IsEip8288Enabled) return null;
+        Eip8288Verifier current = Eip8288Verifier.For(spec);
+        lock (_verifierLock)
+        {
+            if (_verifier == current) return current;
+            bool changed = _verifier is not null;
+            _verifier = current;
+            if (!changed) return current;
+            _verifierChangedAt = (long)head.Number;
+        }
+        ApplyUpgradeRule(current);
+        return current;
+    }
+
+    /// <summary>
+    /// Whether proof failures from peers should be local refusals: within <paramref name="windowBlocks"/> of the local head
+    /// passing a fork that changed the verifier, or when the fork after the target fork changes it.
+    /// </summary>
+    /// <remarks>EIP-8437 leaves this window to local policy, since peers negotiate no verifier and can disagree about the fork of
+    /// the next block.</remarks>
+    public bool IsInVerifierTransition(long windowBlocks)
+    {
+        if (blockFinder.Head is not { } head) return false;
+        long changedAt = Volatile.Read(ref _verifierChangedAt);
+        // The fork's first block is the one after the head at which the change was seen.
+        if (changedAt >= 0 && (long)head.Number < changedAt + 1 + windowBlocks) return true;
+        IReleaseSpec target = TargetSpecOf(head.Header);
+        IReleaseSpec following = specProvider.GetSpec(head.Number + 2, head.Header.Timestamp + 2 * _secondsPerSlot);
+        return target.IsEip8288Enabled && following.IsEip8288Enabled && target.Eip8288AggregatedVk != following.Eip8288AggregatedVk;
+    }
+
+    /// <summary>Whether a held wrapper re-validates under <paramref name="verifier"/>: a mode-0 wrapper whose direct witnesses
+    /// verify under its schemes' parameters. A mode-1 proof never verifies under another <c>AGGREGATED_VK</c>, so it never does.</summary>
+    public bool Revalidates(byte[] wrapper, in Eip8288Verifier verifier)
+    {
+        MempoolWrapper decoded;
+        try { decoded = DecodeProofWrapper(wrapper); }
+        catch (Exception exception) when (exception is RlpException or ArgumentException) { return false; }
+        return decoded.Mode == MempoolWrapper.ModeDirect && MempoolWrapperValidator.VerifyClaimedProofs(decoded, leanProofVerifier, in verifier, out _);
+    }
+
+    /// <summary>EIP-8288 upgrade rule: drops every aggregate proof, keeps direct witnesses only if they re-validate under
+    /// <paramref name="verifier"/>, and evicts pending transactions no longer covered.</summary>
+    private void ApplyUpgradeRule(Eip8288Verifier verifier)
+    {
+        Volatile.Write(ref _cachedWrapper, null);
+        int dropped = leanProofStore.RetainDirect((dependency, witness) => ProofVerdictCache.VerifyDirect(leanProofVerifier, in verifier, dependency, witness));
+        int evicted = 0;
+        foreach (Transaction transaction in txPool.GetPendingTransactions())
+            if (Eip8288Dependencies.IsDependencyBearing(transaction) && !leanProofStore.Covers(transaction) && txPool.RemoveTransaction(transaction.Hash))
+                evicted++;
+        TxPool.Metrics.Eip8288VerifierChanges++;
+        TxPool.Metrics.Eip8288UpgradeDroppedProofs += dropped;
+        TxPool.Metrics.Eip8288UpgradeEvictedTransactions += evicted;
+        VerifierChanged?.Invoke(verifier);
+    }
 
     /// <summary>Separates invalid proofs from ordinary pool admission failures.</summary>
     public Task<ProofWrapperAcceptance> AcceptDetailedAsync(byte[] wrapper, CancellationToken cancellationToken = default)
@@ -76,9 +161,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private async Task<ProofWrapperAcceptance> AcceptDetailedCoreAsync(byte[] wrapper,
         IReadOnlyDictionary<ValueHash256, Transaction>? recovered, bool copyInput, CancellationToken cancellationToken)
     {
-        Block? head = blockFinder.Head;
-        IReleaseSpec? admissionSpec = head is null ? null : specProvider.GetSpec(head.Header);
-        if (admissionSpec?.IsEip8288Enabled != true)
+        IReleaseSpec? admissionSpec = TargetSpec;
+        if (admissionSpec?.IsEip8288Enabled != true || RefreshVerifier() is not { } verifier)
             return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
         // A wrapper within MAX_WRAPPER_BYTES but above the local limit is refused, not invalid.
         if (wrapper.Length > LeanProofStore.MaxWrapperBytes)
@@ -132,13 +216,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             // Admission is per transaction; a wrapper none of whose transactions could be admitted now is refused before
             // verification, without judging its proof.
             if (admissible == 0 && currentStateError is not null) return ProofWrapperAcceptance.LocalFailure(currentStateError);
-            ValueHash256 wrapperHash = ValueKeccak.Compute(wrapper);
+            (ValueHash256, ValueHash256) wrapperHash = (ValueKeccak.Compute(wrapper), verifier.AggregatedVk);
             if (!_verifiedWrappers.TryGetValue(wrapperHash, out string? error))
             {
                 bool claimsVerified = _verifiedClaims.Contains(wrapperHash);
                 (bool valid, string? validationError) = await Task.Run(() =>
                 {
-                    bool proofValid = MempoolWrapperValidator.Validate(decoded, leanProofVerifier, out string? proofError,
+                    bool proofValid = MempoolWrapperValidator.Validate(decoded, leanProofVerifier, in verifier, out string? proofError,
                         hash => resolved.GetValueOrDefault(hash.ValueHash256), claimsVerified);
                     return (proofValid, proofError);
                 }, cancellationToken);
@@ -153,7 +237,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 RememberVerification(wrapperHash, null);
             }
             else if (error is not null) return ProofWrapperAcceptance.Invalid(error);
-            WrapperValidated?.Invoke(wrapper, resolved);
+            WrapperValidated?.Invoke(wrapper, resolved, verifier);
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> admittedDependencies = [];
             Result<Hash256[]> admission;
@@ -207,7 +291,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     private async Task<ProofWrapperAcceptance> VerifyClaimedProofsCoreAsync(byte[] wrapper, bool copyInput, CancellationToken cancellationToken)
     {
-        if (!IsEnabled) return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
+        if (RefreshVerifier() is not { } verifier) return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
         if (wrapper.Length > LeanProofStore.MaxWrapperBytes) return ProofWrapperAcceptance.LocalFailure("Proof wrapper exceeds the local size limit.");
         if (Interlocked.CompareExchange(ref _admissionActive, 1, 0) != 0)
             return new(ProofWrapperAcceptanceStatus.Busy, Result<Hash256[]>.Fail("Proof admission is busy; retry later."));
@@ -222,14 +306,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 return ProofWrapperAcceptance.Invalid("Invalid proof wrapper RLP.");
             }
             if (MempoolWrapperValidator.ExceedsLocalVerifier(decoded)) return ProofWrapperAcceptance.Refused(LocalAggregateCapacity);
-            ValueHash256 wrapperHash = ValueKeccak.Compute(wrapper);
+            (ValueHash256, ValueHash256) wrapperHash = (ValueKeccak.Compute(wrapper), verifier.AggregatedVk);
             if (_verifiedWrappers.TryGetValue(wrapperHash, out string? known))
                 return known is null ? new(ProofWrapperAcceptanceStatus.Accepted, Result<Hash256[]>.Success([])) : ProofWrapperAcceptance.Invalid(known);
             if (!_verifiedClaims.Contains(wrapperHash))
             {
                 (bool valid, string? error) = await Task.Run(() =>
                 {
-                    bool proofValid = MempoolWrapperValidator.VerifyClaimedProofs(decoded, leanProofVerifier, out string? proofError);
+                    bool proofValid = MempoolWrapperValidator.VerifyClaimedProofs(decoded, leanProofVerifier, in verifier, out string? proofError);
                     return (proofValid, proofError);
                 }, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
@@ -243,77 +327,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 _verifiedClaims.Add(wrapperHash);
             }
             return new(ProofWrapperAcceptanceStatus.Accepted, Result<Hash256[]>.Success([]));
-        }
-        finally { Volatile.Write(ref _admissionActive, 0); }
-    }
-
-    /// <summary>Verifies a self-contained proof-bearing inclusion-list package and admits its transactions to the local pool.</summary>
-    /// <remarks>A local submission path only: it creates no inclusion obligation and is not the signed EIP-8288 FOCIL.</remarks>
-    public async Task<Result<Hash256[]>> AcceptInclusionListAsync(byte[] inclusionList, CancellationToken cancellationToken = default)
-        => (await AcceptInclusionListDetailedAsync(inclusionList, cancellationToken)).Result;
-
-    /// <summary>Separates an invalid inclusion-list package from local and pool admission failures.</summary>
-    /// <remarks>A package needs a nonempty dependency set and a nonempty proof: a list without dependencies carries a null
-    /// commitment, and an empty proof is never a valid inclusion-list proof (EIPs#12475).</remarks>
-    public async Task<ProofWrapperAcceptance> AcceptInclusionListDetailedAsync(byte[] inclusionList, CancellationToken cancellationToken = default)
-    {
-        if (!IsEnabled)
-            return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof inclusion lists are unavailable.");
-        if (inclusionList.Length > LeanProofStore.MaxWrapperBytes)
-            return ProofWrapperAcceptance.LocalFailure("Proof inclusion list exceeds the local size limit.");
-        if (Interlocked.CompareExchange(ref _admissionActive, 1, 0) != 0)
-            return new(ProofWrapperAcceptanceStatus.Busy, Result<Hash256[]>.Fail("Proof admission is busy; retry later."));
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            inclusionList = (byte[])inclusionList.Clone();
-            InclusionListProofPackage decoded;
-            try { decoded = DecodeProofInclusionList(inclusionList); }
-            catch (RlpException) { return ProofWrapperAcceptance.Invalid("Invalid proof inclusion list RLP."); }
-            foreach (Transaction transaction in decoded.Transactions)
-                if (!Preflight(transaction, out string? frameError)) return ProofWrapperAcceptance.Invalid(frameError!);
-            // A dependency set the native verifier cannot check is refused locally, not judged invalid.
-            if (LeanProofCapacity.CapacityError(new HashSet<FrameDependency>(InclusionListProofValidator.DependenciesOf(decoded.Transactions))) is { } capacityError)
-                return ProofWrapperAcceptance.Refused(capacityError);
-            (bool valid, List<FrameDependency> canonical, string? error) = await Task.Run(() =>
-            {
-                bool proofValid = InclusionListProofValidator.Validate(decoded, leanProofVerifier, out List<FrameDependency> proven, out string? proofError);
-                return (proofValid, proven, proofError);
-            }, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!valid) return ProofWrapperAcceptance.Invalid(error!);
-            InclusionListValidated?.Invoke(inclusionList);
-            List<WrapperTransaction> transactions = [];
-            foreach (Transaction transaction in decoded.Transactions)
-                transactions.Add(new WrapperTransaction(transaction));
-            List<FrameDependency> admittedDependencies = [];
-            Result<Hash256[]> admission;
-            if (!leanProofStore.TryBeginAdmission(canonical, null, decoded.RecursiveStark.StarkProof, out IDisposable? scope))
-                return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
-            using (scope)
-            {
-                try
-                {
-                    admission = await SubmitProofTransactions(transactions, cancellationToken, admittedDependencies);
-                }
-                finally
-                {
-                    leanProofStore.CommitAdmission(admittedDependencies);
-                }
-            }
-            return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
-        }
-        catch (RlpException)
-        {
-            return ProofWrapperAcceptance.Invalid("Invalid proof inclusion list RLP.");
-        }
-        catch (ArgumentException exception)
-        {
-            return ProofWrapperAcceptance.LocalFailure(exception.Message);
-        }
-        catch (InvalidOperationException exception)
-        {
-            return ProofWrapperAcceptance.LocalFailure(exception.Message);
         }
         finally { Volatile.Write(ref _admissionActive, 0); }
     }
@@ -342,7 +355,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         : AreAdmissionRootsValid(transaction) ? null
         : TxPoolErrorMessages.FrameTxRecentRootUnmet;
 
-    private void RememberVerification(ValueHash256 hash, string? error)
+    private void RememberVerification((ValueHash256, ValueHash256) hash, string? error)
     {
         if (_verifiedWrappers.ContainsKey(hash)) return;
         if (_verifiedWrapperOrder.Count == MaxRememberedVerifications) _verifiedWrappers.Remove(_verifiedWrapperOrder.Dequeue());
@@ -419,7 +432,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         hash = default;
         if (!IsEnabled) return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
         WrapperSnapshot? wrapper = Volatile.Read(ref _cachedWrapper);
-        if (wrapper is null || !ArePending(wrapper.Transactions))
+        if (wrapper is null || wrapper.Verifier != RefreshVerifier() || !ArePending(wrapper.Transactions))
             return Result<byte[]>.Fail("Proof wrapper is not ready; retry after the next background cycle.");
         hash = wrapper.Hash;
         return Result<byte[]>.Success(knownHash == hash ? [] : (byte[])wrapper.Encoded.Clone());
@@ -427,7 +440,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     private Result<byte[]> BuildWrapperCore(bool returnEncoded, CancellationToken cancellationToken)
     {
-        if (!IsEnabled)
+        if (RefreshVerifier() is not { } verifier)
             return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
         List<WrapperTransaction> transactions = [];
         List<FrameDependency> deps = [];
@@ -489,23 +502,23 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         Hash256[] hashes = new Hash256[transactions.Count];
         for (int i = 0; i < hashes.Length; i++) hashes[i] = transactions[i].Full!.Hash!;
         WrapperSnapshot? cached = Volatile.Read(ref _cachedWrapper);
-        if (cached?.Selection == selectionHash && ArePending(hashes))
+        if (cached?.Selection == selectionHash && cached.Verifier == verifier && ArePending(hashes))
             return Result<byte[]>.Success(returnEncoded ? (byte[])cached.Encoded.Clone() : []);
         try
         {
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
             if (!leanProofStore.TryGetRecursiveProof(deps, out byte[]? proof))
             {
-                if (cached is not null && HasOverlap(cached.Parent.InnerDeps, covered))
+                if (cached is not null && cached.Verifier == verifier && HasOverlap(cached.Parent.InnerDeps, covered))
                 {
                     AggregationInput incremental = RecursiveStarkAggregator.Combine(
                         [new() { RecursiveProofs = [cached.Parent] }, selectedInput], deps);
                     if (deps.Count + incremental.Discards.Count <= Eip8288Constants.MaxProofDependencies)
                         selectedInput = incremental;
                 }
-                proof = RecursiveStarkAggregator.Prove(selectedInput, leanProofVerifier, in hash, cancellationToken);
+                proof = RecursiveStarkAggregator.Prove(selectedInput, leanProofVerifier, verifier, in hash, cancellationToken);
                 if (leanProofVerifier is not ProductionProofCache
-                    && !leanProofVerifier.VerifyRecursiveStark(in hash, Eip8288Constants.AggregatedVk, proof))
+                    && !leanProofVerifier.VerifyRecursiveStark(in hash, verifier.AggregatedVk.Bytes, proof))
                     return Result<byte[]>.Fail("Produced dependency proof failed verification.");
             }
             cancellationToken.ThrowIfCancellationRequested();
@@ -523,7 +536,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (!ArePending(hashes))
                 return Result<byte[]>.Fail("Proof wrapper selection changed while aggregating; retry with the current pool.");
             RecursiveProofInput parent = new(deps, proof!);
-            Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent));
+            Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent, verifier));
             return Result<byte[]>.Success(returnEncoded ? encoded : []);
         }
         catch (InvalidOperationException exception)
@@ -550,8 +563,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return true;
     }
 
-    /// <summary>Whether the current head enables dependency-proof wrappers.</summary>
-    public bool IsEnabled => blockFinder.Head is { } head && specProvider.GetSpec(head.Header).IsEip8288Enabled;
+    /// <summary>Whether the target fork enables dependency-proof wrappers.</summary>
+    public bool IsEnabled => TargetSpec?.IsEip8288Enabled == true;
 
     private Transaction? ResolvePending(Hash256 hash) => txPool.TryGetPendingTransaction(hash.ValueHash256, out Transaction? transaction) ? transaction : null;
 
@@ -563,7 +576,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     {
         error = null;
         if (!transaction.SupportsFrames) return true;
-        admissionSpec ??= blockFinder.Head is { } head ? specProvider.GetSpec(head.Header) : null;
+        admissionSpec ??= TargetSpec;
         if (admissionSpec is null)
         {
             error = "EIP-8288 proof wrappers are unavailable.";
@@ -580,14 +593,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         ValidationResult envelope = FrameTxEnvelopeTxValidator.Instance.IsWellFormed(transaction, spec);
         error = envelope.Error;
         return envelope;
-    }
-
-    private static InclusionListProofPackage DecodeProofInclusionList(byte[] encoded)
-    {
-        RlpReader reader = new(encoded);
-        InclusionListProofPackage inclusionList = InclusionListProofPackageDecoder.Instance.Decode(ref reader);
-        reader.Check(encoded.Length);
-        return inclusionList;
     }
 
     private static MempoolWrapper DecodeProofWrapper(byte[] encoded)

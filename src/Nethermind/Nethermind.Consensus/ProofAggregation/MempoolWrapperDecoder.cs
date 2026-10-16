@@ -20,7 +20,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
 {
     public static readonly MempoolWrapperDecoder Instance = new();
     /// <summary>Mode-0 dependency and witness count bound: the direct per-scheme limits together.</summary>
-    private const int MaxDirectDependencies = Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper;
+    private const int MaxDirectDependencies = Eip8288Constants.MaxLeanSigDepsPerDirectWrapper + Eip8288Constants.MaxLeanStarkDepsPerDirectWrapper;
 
     protected override MempoolWrapper DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -49,8 +49,8 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         byte mode = decoderContext.DecodeByte();
         if (mode is not (MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive))
             throw new RlpException(MempoolWrapperValidator.UnknownMode);
-        // Counts are bounded per mode before allocation: direct witnesses by the mode-0 limits, aggregates by MAX_DEPS_PER_AGGREGATE.
-        int maxDependencies = mode == MempoolWrapper.ModeDirect ? MaxDirectDependencies : Eip8288Constants.MaxDepsPerAggregate;
+        // Counts are bounded per mode before allocation: direct witnesses by the mode-0 limits, aggregates by MAX_DEPS_PER_AGGREGATE_WRAPPER.
+        int maxDependencies = mode == MempoolWrapper.ModeDirect ? MaxDirectDependencies : Eip8288Constants.MaxDepsPerAggregateWrapper;
 
         int contentCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         int depsCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
@@ -177,7 +177,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
     {
         if (item.Mode is not (MempoolWrapper.ModeDirect or MempoolWrapper.ModeRecursive))
             throw new RlpException(MempoolWrapperValidator.UnknownMode);
-        int maximumDependencies = item.Mode == MempoolWrapper.ModeDirect ? MaxDirectDependencies : Eip8288Constants.MaxDepsPerAggregate;
+        int maximumDependencies = item.Mode == MempoolWrapper.ModeDirect ? MaxDirectDependencies : Eip8288Constants.MaxDepsPerAggregateWrapper;
         if (item.Deps.Count > maximumDependencies) throw new RlpException("Proof wrapper exceeds the dependency count limit.");
         int depsLength = Rlp.LengthOfSequence(item.Deps.Count * Rlp.LengthOfByteString(Eip8288Constants.DependencyTripleLength, 0));
         if (item.Mode == MempoolWrapper.ModeDirect)

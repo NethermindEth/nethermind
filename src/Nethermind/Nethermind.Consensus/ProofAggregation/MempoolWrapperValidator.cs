@@ -26,9 +26,9 @@ public static class MempoolWrapperValidator
     public const string TransactionLimits = "transaction exceeds EIP-8288 dependency limits";
     public const string MalformedDependencyFrame = "wrapper transaction has a malformed dependency verification frame";
     public const string UnknownTransaction = "wrapper transaction hash is unknown";
-    public const string TooManySigDeps = "mode 0 wrapper exceeds MAX_LEANSIG_DEPS_PER_WRAPPER";
-    public const string TooManyStarkDeps = "mode 0 wrapper exceeds MAX_LEANSTARK_DEPS_PER_WRAPPER";
-    public const string TooManyAggregateDeps = "mode 1 wrapper exceeds MAX_DEPS_PER_AGGREGATE";
+    public const string TooManySigDeps = "mode 0 wrapper exceeds MAX_LEANSIG_DEPS_PER_DIRECT_WRAPPER";
+    public const string TooManyStarkDeps = "mode 0 wrapper exceeds MAX_LEANSTARK_DEPS_PER_DIRECT_WRAPPER";
+    public const string TooManyAggregateDeps = "mode 1 wrapper exceeds MAX_DEPS_PER_AGGREGATE_WRAPPER";
     public const string EmptyAggregate = "proof wrapper dependencies must not be empty";
     public const string TooManyTransactions = "wrapper exceeds MAX_TXS_PER_WRAPPER";
     public const string ProofCountMismatch = "mode 0 wrapper must carry exactly one proof per dependency";
@@ -40,8 +40,9 @@ public static class MempoolWrapperValidator
     /// <summary>Fully validates a wrapper whose hash entries resolve through <paramref name="resolveTransaction"/>.</summary>
     /// <param name="proofsVerified">The witnesses or aggregate proof already passed <see cref="VerifyClaimedProofs"/> for these
     /// exact claimed dependencies, so only the transaction checks and dependency union remain.</param>
-    public static bool Validate(MempoolWrapper wrapper, ILeanProofVerifier verifier, out string? error, Func<Hash256, Transaction?>? resolveTransaction = null,
-        bool proofsVerified = false)
+    /// <param name="forkVerifier">The verifier of the wrapper's target fork.</param>
+    public static bool Validate(MempoolWrapper wrapper, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, out string? error,
+        Func<Hash256, Transaction?>? resolveTransaction = null, bool proofsVerified = false)
     {
         error = null;
 
@@ -99,7 +100,7 @@ public static class MempoolWrapperValidator
             return false;
         }
 
-        return proofsVerified || VerifyClaimedProofs(wrapper, verifier, out error);
+        return proofsVerified || VerifyClaimedProofs(wrapper, verifier, in forkVerifier, out error);
     }
 
     /// <summary>
@@ -110,13 +111,13 @@ public static class MempoolWrapperValidator
     /// proof does not authenticate the transaction list, so <see cref="Validate"/> must still resolve every entry and check
     /// the exact dependency union before admission, reaggregation or relay.
     /// </remarks>
-    public static bool VerifyClaimedProofs(MempoolWrapper wrapper, ILeanProofVerifier verifier, out string? error)
+    public static bool VerifyClaimedProofs(MempoolWrapper wrapper, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, out string? error)
     {
         error = null;
         if (!CheckModeLimits(wrapper, out error)) return false;
         return wrapper.Mode == MempoolWrapper.ModeDirect
-            ? ValidateDirect(wrapper, verifier, ref error)
-            : ValidateRecursive(wrapper, verifier, ref error);
+            ? ValidateDirect(wrapper, verifier, in forkVerifier, ref error)
+            : ValidateRecursive(wrapper, verifier, in forkVerifier, ref error);
     }
 
     /// <summary>Whether a mode-1 wrapper within EIP-8288's limits exceeds what the native verifier can check.</summary>
@@ -139,12 +140,12 @@ public static class MempoolWrapperValidator
         {
             case MempoolWrapper.ModeDirect:
                 (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(wrapper.Deps);
-                if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper) error = TooManySigDeps;
-                else if (stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper) error = TooManyStarkDeps;
+                if (sphincs > Eip8288Constants.MaxLeanSigDepsPerDirectWrapper) error = TooManySigDeps;
+                else if (stark > Eip8288Constants.MaxLeanStarkDepsPerDirectWrapper) error = TooManyStarkDeps;
                 break;
             case MempoolWrapper.ModeRecursive:
                 if (wrapper.Deps.Count == 0) error = EmptyAggregate;
-                else if (wrapper.Deps.Count > Eip8288Constants.MaxDepsPerAggregate) error = TooManyAggregateDeps;
+                else if (wrapper.Deps.Count > Eip8288Constants.MaxDepsPerAggregateWrapper) error = TooManyAggregateDeps;
                 break;
             default:
                 error = UnknownMode;
@@ -153,7 +154,7 @@ public static class MempoolWrapperValidator
         return error is null;
     }
 
-    private static bool ValidateDirect(MempoolWrapper wrapper, ILeanProofVerifier verifier, ref string? error)
+    private static bool ValidateDirect(MempoolWrapper wrapper, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, ref string? error)
     {
         IReadOnlyList<byte[]>? proofs = wrapper.Proofs;
         if (proofs is null || proofs.Count != wrapper.Deps.Count)
@@ -164,7 +165,7 @@ public static class MempoolWrapperValidator
 
         for (int i = 0; i < wrapper.Deps.Count; i++)
         {
-            if (proofs[i] is null || !ProofVerdictCache.VerifyDirect(verifier, wrapper.Deps[i], proofs[i]))
+            if (proofs[i] is null || !ProofVerdictCache.VerifyDirect(verifier, in forkVerifier, wrapper.Deps[i], proofs[i]))
             {
                 error = InvalidProof;
                 return false;
@@ -174,7 +175,7 @@ public static class MempoolWrapperValidator
         return true;
     }
 
-    private static bool ValidateRecursive(MempoolWrapper wrapper, ILeanProofVerifier verifier, ref string? error)
+    private static bool ValidateRecursive(MempoolWrapper wrapper, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, ref string? error)
     {
         RecursiveStark? recursiveStark = wrapper.RecursiveStark;
         if (recursiveStark is null)
@@ -191,7 +192,7 @@ public static class MempoolWrapperValidator
         }
 
         if (recursiveStark.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxAggregateProofBytes }
-            || !ProofVerdictCache.VerifyRecursive(verifier, in depsHash, recursiveStark.StarkProof, wrapper.Deps))
+            || !ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in depsHash, recursiveStark.StarkProof, wrapper.Deps))
         {
             error = InvalidProof;
             return false;

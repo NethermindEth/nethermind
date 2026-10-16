@@ -10,10 +10,10 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Tracing;
@@ -43,7 +43,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
         builder.AddSingleton<ILeanProofVerifier, Nethermind.Crypto.NativeLeanProofVerifier>()
             .AddDecorator<ILeanProofVerifier, ProductionProofCache>()
             .AddSingleton<LeanProofStore>(static _ => new LeanProofStore(FrameTxSigHash.ComputeValue))
-            .AddSingleton<ProofWrapperService>();
+            .AddSingleton<ProofWrapperService>()
+            .AddSingleton<InclusionListProofService>();
 
         builder
             // Validators

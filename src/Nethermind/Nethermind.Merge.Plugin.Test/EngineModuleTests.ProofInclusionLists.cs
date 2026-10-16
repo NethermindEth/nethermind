@@ -236,6 +236,9 @@ public partial class EngineModuleTests
         RecursiveStark = commitment
     };
 
+    /// <summary>The next slot's target block timestamp, so retention deadlines lie ahead; these chains run one fork throughout.</summary>
+    private static ulong ProofTimestamp => (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 12;
+
     private static RecursiveStarkV1 Commitment(byte[] proof, Hash256? depsHash = null) =>
         new() { StarkProofHash = Keccak.Compute(proof), DepsHash = depsHash ?? TestItem.KeccakB };
 
@@ -284,9 +287,9 @@ public partial class EngineModuleTests
             _ => [encoded]
         };
         if (scenario == "held-after-il-proof")
-            Assert.That(chain.EngineRpcModule.engine_verifyInclusionListProofV1(transactions, commitment!, ilProof).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.EngineRpcModule.engine_verifyInclusionListProofV1(ProofTimestamp, transactions, commitment!, ilProof).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        ResultWrapper<InclusionListProofStatusV1> result = chain.EngineRpcModule.engine_verifyInclusionListProofV1(transactions, commitment!,
+        ResultWrapper<InclusionListProofStatusV1> result = chain.EngineRpcModule.engine_verifyInclusionListProofV1(ProofTimestamp, transactions, commitment!,
             scenario is "not-held" or "held-after-il-proof" ? null : ilProof);
 
         using (Assert.EnterMultipleScope())
@@ -318,8 +321,8 @@ public partial class EngineModuleTests
             new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("b"), default)]);
         store.AddVerified(wrapperDeps, null, [1]);
 
-        ResultWrapper<InclusionListProofV1?> held = chain.EngineRpcModule.engine_getInclusionListProofV1(Keccak.Compute([1]));
-        ResultWrapper<InclusionListProofV1?> unknown = chain.EngineRpcModule.engine_getInclusionListProofV1(Keccak.Compute([9]));
+        ResultWrapper<InclusionListProofV1?> held = chain.EngineRpcModule.engine_getInclusionListProofV1(ProofTimestamp, Keccak.Compute([1]));
+        ResultWrapper<InclusionListProofV1?> unknown = chain.EngineRpcModule.engine_getInclusionListProofV1(ProofTimestamp, Keccak.Compute([9]));
 
         using (Assert.EnterMultipleScope())
         {
@@ -330,13 +333,53 @@ public partial class EngineModuleTests
         }
     }
 
+    // engine_submitInclusionListProofV1 verifies a proof-topic il_proof and records its verdict, so a later list committing to it
+    // is VALID by lookup; proofs over the bounds or with noncanonical proof_deps are INVALID before verification.
+    [TestCase("valid", PayloadStatus.Valid)]
+    [TestCase("invalid-proof", PayloadStatus.Invalid)]
+    [TestCase("unsorted-deps", PayloadStatus.Invalid)]
+    [TestCase("oversized-proof", PayloadStatus.Invalid)]
+    public async Task SubmitInclusionListProofV1_records_topic_proofs(string scenario, string expectedStatus)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(InclusionProofEngineSpec(), new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddSingleton<ILeanProofVerifier>(new EngineListProofVerifier()));
+        Transaction transaction = InclusionDependencyTransaction(chain.SpecProvider.ChainId);
+        List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize([.. Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue),
+            new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("surplus"), default)]);
+        byte[] proof = scenario switch
+        {
+            "invalid-proof" => [2],
+            "oversized-proof" => new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
+            _ => [1]
+        };
+        IEnumerable<FrameDependency> ordered = scenario == "unsorted-deps" ? proofDeps.AsEnumerable().Reverse() : proofDeps;
+        InclusionListProofV1 ilProof = new() { StarkProof = proof, ProofDeps = [.. ordered.Select(static d => Eip8288Dependencies.Serialize([d]))] };
+
+        ResultWrapper<InclusionListProofStatusV1> result = chain.EngineRpcModule.engine_submitInclusionListProofV1(ProofTimestamp, ilProof);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(expectedStatus), result.Data.ValidationError);
+            if (scenario == "valid")
+            {
+                byte[][] list = [TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes];
+                Assert.That(chain.EngineRpcModule.engine_verifyInclusionListProofV1(ProofTimestamp, list,
+                    Commitment(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(proofDeps)))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+                Assert.That(chain.EngineRpcModule.engine_getInclusionListProofV1(ProofTimestamp, Keccak.Compute(proof)).Data!.StarkProof,
+                    Is.EqualTo(proof));
+            }
+        }
+    }
+
     [Test]
     public async Task VerifyInclusionListProofV1_is_refused_without_eip8288()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
-        ResultWrapper<InclusionListProofStatusV1> result = chain.EngineRpcModule.engine_verifyInclusionListProofV1([], Commitment([1]));
+        ResultWrapper<InclusionListProofStatusV1> result = chain.EngineRpcModule.engine_verifyInclusionListProofV1(ProofTimestamp, [], Commitment([1]));
         Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
-        Assert.That(chain.EngineRpcModule.engine_getInclusionListProofV1(Keccak.Compute([1])).ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        Assert.That(chain.EngineRpcModule.engine_getInclusionListProofV1(ProofTimestamp, Keccak.Compute([1])).ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        Assert.That(chain.EngineRpcModule.engine_submitInclusionListProofV1(ProofTimestamp, new InclusionListProofV1()).ErrorCode,
+            Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
     private PayloadAttributes BuildPerListPayloadAttributes(InclusionListV1[] lists, ulong? timestamp = null, ulong slotNumber = 1)

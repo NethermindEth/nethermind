@@ -23,6 +23,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
@@ -136,16 +137,16 @@ public class NativeProofWrapperTransportTests
         return encoded!;
     }
 
-    // EIP-8437: wrapper messages before the eth/73 Status establish nothing and do not disconnect the peer.
+    // Wrapper messages are eth messages: before Status they break the eth handshake like any other, and register no peer.
     [Test]
-    public async Task Wrapper_messages_before_status_are_ignored()
+    public async Task Wrapper_messages_before_status_break_the_handshake()
     {
         using Context context = await Create();
         Init(context);
-        Receive(context, Encode(context, new GetProofWrappersMessage(1, [TestItem.KeccakA.ValueHash256])));
+        WireMessage request = Encode(context, new GetProofWrappersMessage(1, [TestItem.KeccakA.ValueHash256]));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(context.Disconnects, Is.Empty);
+            Assert.Throws<SubprotocolException>(() => Receive(context, request));
             Assert.That(context.Transport.PeerCount, Is.Zero);
         }
     }
@@ -194,7 +195,7 @@ public class NativeProofWrapperTransportTests
     }
 
     [Test]
-    public async Task Common_profile_registers_the_peer_and_disposal_removes_it()
+    public async Task Eth73_status_registers_the_peer_and_disposal_removes_it()
     {
         using Context context = await Create();
         Receive(context, Init(context));

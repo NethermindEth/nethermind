@@ -35,7 +35,7 @@ public class RecursiveStarkAggregatorTests
             Witnesses = [new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }],
         };
 
-        bool ok = RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 depsHash);
+        bool ok = RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 depsHash);
 
         Assert.That(ok, Is.True);
         Assert.That(filtered, Is.EqualTo(Eip8288Dependencies.Canonicalize([a, b])));
@@ -54,7 +54,7 @@ public class RecursiveStarkAggregatorTests
             Discards = [a],
         };
 
-        RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out _);
+        RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> filtered, out _);
 
         Assert.That(filtered, Is.EqualTo(new[] { b }));
     }
@@ -71,7 +71,7 @@ public class RecursiveStarkAggregatorTests
             RecursiveProofs = [new RecursiveProofInput([b], [9])],
         };
 
-        RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out _);
+        RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> filtered, out _);
 
         Assert.That(filtered, Is.EqualTo(Eip8288Dependencies.Canonicalize([a, b])));
     }
@@ -81,7 +81,7 @@ public class RecursiveStarkAggregatorTests
     {
         AggregationInput input = new() { Deps = [Sphincs("a")], Witnesses = [] };
 
-        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out _, out _), Is.False);
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out _, out _), Is.False);
     }
 
     [Test]
@@ -89,7 +89,7 @@ public class RecursiveStarkAggregatorTests
     {
         AggregationInput input = new() { Deps = [Sphincs("a")], Witnesses = [new byte[] { 1 }] };
 
-        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Rejecting, out _, out _), Is.False);
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Rejecting, Eip8288Verifier.Pinned, out _, out _), Is.False);
     }
 
     [TestCase("direct")]
@@ -106,7 +106,7 @@ public class RecursiveStarkAggregatorTests
             _ => new() { Deps = [a], Witnesses = [new byte[] { 1 }], Discards = [unknown] },
         };
 
-        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out _, out _), Is.False);
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out _, out _), Is.False);
     }
 
     [Test]
@@ -116,7 +116,7 @@ public class RecursiveStarkAggregatorTests
         FrameDependency stark = new(Eip8288Constants.LeanStarkScheme, sphincs.DataHash, sphincs.VerificationKey);
         AggregationInput input = new() { RecursiveProofs = [new RecursiveProofInput([sphincs, stark], [9])], Discards = [stark] };
 
-        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 hash), Is.True);
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 hash), Is.True);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(filtered, Is.EqualTo(new[] { sphincs }));
@@ -135,7 +135,7 @@ public class RecursiveStarkAggregatorTests
         first[0] = 9;
 
         Assert.That(store.TryGetInput([b], out AggregationInput input), Is.True);
-        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
         Assert.That(deps, Is.EqualTo(new[] { b }));
         if (recursive)
         {
@@ -177,7 +177,7 @@ public class RecursiveStarkAggregatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(input.Discards, Is.EqualTo(new[] { a }));
-            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
             Assert.That(deps, Is.EqualTo(Eip8288Dependencies.Canonicalize([b, c])));
             Assert.That(combined.Deps, Is.EqualTo(new[] { c }), "a retained dependency covered only by a direct witness is an input");
             Assert.That(combined.Discards, Is.EqualTo(new[] { a }));
@@ -196,7 +196,7 @@ public class RecursiveStarkAggregatorTests
         {
             Assert.That(input.Discards, Is.EqualTo(new[] { a }));
             Assert.That(combined.Discards, Is.EqualTo(new[] { a }));
-            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
             Assert.That(deps, Is.EqualTo(Eip8288Dependencies.Canonicalize([b, c])));
         }
     }
@@ -223,7 +223,7 @@ public class RecursiveStarkAggregatorTests
         }
         AggregationInput input = new() { Deps = dependencies, Witnesses = witnesses };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash, cancellation.Token));
+        Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash, cancellation.Token));
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
@@ -236,7 +236,7 @@ public class RecursiveStarkAggregatorTests
         FakeLeanProofVerifier verifier = new(true);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([a, b]);
 
-        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, hash);
+        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash);
 
         using (Assert.EnterMultipleScope())
         {
@@ -265,7 +265,7 @@ public class RecursiveStarkAggregatorTests
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(change == StatementChange.TargetHash ? [b] : [a]);
         FakeLeanProofVerifier verifier = new(true);
 
-        RecursiveStarkAggregator.Prove(input, verifier, hash);
+        RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash);
 
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
@@ -278,7 +278,7 @@ public class RecursiveStarkAggregatorTests
         FakeLeanProofVerifier verifier = new(false);
         AggregationInput input = new() { RecursiveProofs = [new([dependency], [2])] };
 
-        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash));
+        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
@@ -296,7 +296,7 @@ public class RecursiveStarkAggregatorTests
         AggregationInput input = new() { RecursiveProofs = [new([dependency], [2])] };
         if (beforeVerification) cancellation.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash, cancellation.Token));
+        Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash, cancellation.Token));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.VerificationCalls, Is.EqualTo(beforeVerification ? 0 : 1));
@@ -317,7 +317,7 @@ public class RecursiveStarkAggregatorTests
         }
         FakeLeanProofVerifier verifier = new(true);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
-        byte[] proof = RecursiveStarkAggregator.Prove(new() { RecursiveProofs = recursive }, verifier, in hash);
+        byte[] proof = RecursiveStarkAggregator.Prove(new() { RecursiveProofs = recursive }, verifier, Eip8288Verifier.Pinned, in hash);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(proof, Is.EqualTo(new byte[] { 1 }));
@@ -342,7 +342,7 @@ public class RecursiveStarkAggregatorTests
         // The last list is discarded entirely, as a builder may exclude any inclusion-list transaction.
         FakeLeanProofVerifier verifier = new(true);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps.GetRange(0, deps.Count - 1));
-        byte[] proof = RecursiveStarkAggregator.Prove(new() { RecursiveProofs = recursive, Discards = [deps[^1]] }, verifier, in hash);
+        byte[] proof = RecursiveStarkAggregator.Prove(new() { RecursiveProofs = recursive, Discards = [deps[^1]] }, verifier, Eip8288Verifier.Pinned, in hash);
         Assert.That(proof, Is.EqualTo(new byte[] { 1 }));
     }
 
@@ -362,7 +362,7 @@ public class RecursiveStarkAggregatorTests
         {
             RecursiveProofs = children,
             Discards = dependencies[1..]
-        }, verifier, hash);
+        }, verifier, Eip8288Verifier.Pinned, hash);
         Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
         // Children whose every claim is discarded are dropped rather than reproven to an empty set.
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
@@ -383,7 +383,7 @@ public class RecursiveStarkAggregatorTests
         EnvelopeBoundedVerifier verifier = new();
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
 
-        byte[] result = RecursiveStarkAggregator.Prove(input, verifier, hash);
+        byte[] result = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash);
 
         Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, result), Is.True);
         int directProves = 0;
@@ -412,7 +412,7 @@ public class RecursiveStarkAggregatorTests
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([a, b]);
         EnvelopeBoundedVerifier verifier = new();
 
-        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, hash);
+        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash);
 
         Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
         int directLeaves = 0;
@@ -449,7 +449,7 @@ public class RecursiveStarkAggregatorTests
                 : []
         };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(input.Deps);
-        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, new EnvelopeBoundedVerifier(), hash));
+        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, new EnvelopeBoundedVerifier(), Eip8288Verifier.Pinned, hash));
     }
 
     private sealed class EnvelopeBoundedVerifier : ILeanProofVerifier
@@ -476,7 +476,7 @@ public class RecursiveStarkAggregatorTests
         public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
         {
             ProvingInputs.Add(input);
-            if (!RecursiveStarkAggregator.TryAggregate(input, this, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual))
+            if (!RecursiveStarkAggregator.TryAggregate(input, this, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual))
                 throw new InvalidOperationException("Invalid dependency input");
             Assert.That(actual, Is.EqualTo(hash));
             HashSet<FrameDependency> required = [.. dependencies];
@@ -494,7 +494,7 @@ public class RecursiveStarkAggregatorTests
         public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof) => true;
         public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
         {
-            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
             Assert.That(actual, Is.EqualTo(hash));
             Assert.That(dependencies.Count, Is.LessThanOrEqualTo(Eip8288Constants.MaxGenericStarkProofs));
             ProofCalls++;
@@ -569,8 +569,8 @@ public class RecursiveStarkAggregatorTests
     public void Uninitialized_recursive_inputs_report_an_argument_error()
     {
         AggregationInput input = new() { RecursiveProofs = [default] };
-        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.Prove(input, Accepting, default));
-        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.TryAggregate(input, Accepting, out _, out _));
+        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.Prove(input, Accepting, Eip8288Verifier.Pinned, default));
+        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out _, out _));
         Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.Combine([input], []));
         Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.InputSize(input));
     }
@@ -784,7 +784,7 @@ public class RecursiveStarkAggregatorTests
             Assert.That(combined.Discards, Is.EqualTo(new[] { b }));
             Assert.That(combined.Deps, Is.Empty);
             Assert.That(combined.RecursiveProofs, Has.Count.EqualTo(1));
-            Assert.That(RecursiveStarkAggregator.TryAggregate(combined, Accepting, out IReadOnlyList<FrameDependency> proven, out _), Is.True);
+            Assert.That(RecursiveStarkAggregator.TryAggregate(combined, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> proven, out _), Is.True);
             Assert.That(proven, Is.EqualTo(new[] { a }));
         }
     }
@@ -798,7 +798,7 @@ public class RecursiveStarkAggregatorTests
     {
         FakeLeanProofVerifier verifier = new(verdict);
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash([Sphincs("a")]);
-        bool valid = RecursiveStarkAggregator.VerifyStarkCheck(verifier, 1, in depsHash, new byte[length]);
+        bool valid = RecursiveStarkAggregator.VerifyStarkCheck(verifier, Eip8288Verifier.Pinned, 1, in depsHash, new byte[length]);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.EqualTo(verdict && expectedCalls == 1));
@@ -812,7 +812,7 @@ public class RecursiveStarkAggregatorTests
     {
         FakeLeanProofVerifier verifier = new(true);
         AggregationInput input = new() { RecursiveProofs = [new RecursiveProofInput([Sphincs("a")], new byte[length])] };
-        bool valid = RecursiveStarkAggregator.TryAggregate(input, verifier, out _, out _);
+        bool valid = RecursiveStarkAggregator.TryAggregate(input, verifier, Eip8288Verifier.Pinned, out _, out _);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.EqualTo(expected));

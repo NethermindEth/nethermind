@@ -214,7 +214,8 @@ public partial class BlockProcessor(
             token.ThrowIfCancellationRequested();
             List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
-            (ValueHash256, ValueHash256) key = (depsHash, new ValueHash256(Eip8288Constants.AggregatedVk));
+            Eip8288Verifier verifier = Eip8288Verifier.For(spec);
+            (ValueHash256, ValueHash256) key = (depsHash, verifier.AggregatedVk);
             byte[] proof;
             if (deps.Count == 0)
                 proof = [];
@@ -224,7 +225,7 @@ public partial class BlockProcessor(
             {
                 byte[]? prepared = null;
                 if (leanProofStore?.TryGetRecursiveProof(deps, out prepared) == true
-                    && !leanProofVerifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, prepared!))
+                    && !leanProofVerifier.VerifyRecursiveStark(in depsHash, verifier.AggregatedVk.Bytes, prepared!))
                 {
                     leanProofStore.RemoveCachedRecursive(deps, prepared!);
                     prepared = null;
@@ -235,7 +236,7 @@ public partial class BlockProcessor(
                     AggregationInput input = new();
                     if (block is BlockToProduce producing)
                         input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
-                    proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, in depsHash, token);
+                    proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, verifier, in depsHash, token);
                     leanProofStore?.AddCachedRecursive(deps, proof);
                 }
                 token.ThrowIfCancellationRequested();

@@ -172,9 +172,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Submit an EIP-8288 RLP proof wrapper and its transactions", IsSharable = true)]
         Task<ResultWrapper<Hash256[]>> eth_sendProofWrapper(byte[] wrapper, byte[][]? transactionEnvelopes = null);
 
-        [JsonRpcMethod(IsImplemented = true, Description = "Submit an EIP-8288 proof-bearing inclusion list and its transactions", IsSharable = true)]
-        Task<ResultWrapper<Hash256[]>> eth_sendProofInclusionList(byte[] inclusionList);
-
         [JsonRpcMethod(IsImplemented = true, Description = "Return an EIP-8288 recursive proof wrapper for pending dependency transactions", IsSharable = true)]
         ResultWrapper<byte[]> eth_getProofWrapper();
 

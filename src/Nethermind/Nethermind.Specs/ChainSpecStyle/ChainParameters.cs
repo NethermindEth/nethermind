@@ -192,6 +192,10 @@ public class ChainParameters
     public ulong? Eip8282TransitionTimestamp { get; set; }
     public ulong? Eip8141TransitionTimestamp { get; set; }
     public ulong? Eip8288TransitionTimestamp { get; set; }
+
+    /// <summary>Activation of <see cref="Eip8288AggregatedVk"/>, a fork that changes the EIP-8288 aggregate verifier.</summary>
+    public ulong? Eip8288AggregatedVkTransitionTimestamp { get; set; }
+    public Hash256? Eip8288AggregatedVk { get; set; }
     public ulong? Eip8250TransitionTimestamp { get; set; }
 
     public ulong? Eip8272TransitionTimestamp { get; set; }

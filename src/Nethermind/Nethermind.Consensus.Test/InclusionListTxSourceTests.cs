@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Test.ProofAggregation;
 using Nethermind.Consensus.Transactions;
@@ -30,8 +31,7 @@ public class InclusionListTxSourceTests
     private static InclusionListTxSource CreateSource() => new(
         new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
         new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
-        LimboLogs.Instance,
-        Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+        LimboLogs.Instance);
 
     private static PayloadAttributes Attributes(byte[][] inclusionList) => new() { InclusionListTransactions = inclusionList };
 
@@ -127,19 +127,21 @@ public class InclusionListTxSourceTests
         FakeLeanProofVerifier verifier = new(true);
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
-            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, store);
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance,
+            new InclusionListProofService(new TestSingleReleaseSpecProvider(spec), verifier, store, Timestamper.Default));
         Transaction transaction = FrameTx(0, null!);
         byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
         data[31] = Eip8288Constants.LeanSphincsScheme;
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
         transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
         List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
-        RecursiveStarkV1 commitment = Hold(store, [1], deps);
+        RecursiveStarkV1 commitment = Hold(store, verifier, [1], deps);
         PayloadAttributes attributes = new() { InclusionLists = [new InclusionListV1 { Transactions = [Encode(transaction)], RecursiveStark = commitment }] };
         byte[][] list = attributes.CombinedInclusionListTransactions!;
         source.Set(list, spec, attributes.InclusionLists);
         source.Set(list, spec, attributes.InclusionLists);
-        Assert.That(verifier.VerificationCalls, Is.Zero);
+        // Holding the wrapper verified its proof once; the build checks the commitment by lookup.
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
         Assert.That(GetTransactions(source, attributes).Single().Nonce, Is.Zero);
         BlockToProduce firstBuild = new(Build.A.BlockHeader.WithNumber(1).TestObject);
         source.ApplyInclusionList(firstBuild, attributes);
@@ -158,8 +160,8 @@ public class InclusionListTxSourceTests
         Assert.That(GetTransactions(source, attributes), Is.Empty, "a changed commitment is another build input");
     }
 
-    // EIPs#12475: the build folds in each committed proof it holds, which may cover a superset of its list, while obligations
-    // follow from the commitments: a proof the builder does not hold leaves its list's dependency-bearing entries obligated.
+    // EIPs#12475: the build folds in each committed proof it holds, which may cover a superset of its list; a commitment to a
+    // proof the builder does not hold is treated as null, obligating only that list's dependency-free entries.
     [Test]
     public void Each_list_proof_is_checked_and_aggregated_separately()
     {
@@ -167,7 +169,8 @@ public class InclusionListTxSourceTests
         FakeLeanProofVerifier verifier = new(true);
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
-            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, store);
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance,
+            new InclusionListProofService(new TestSingleReleaseSpecProvider(spec), verifier, store, Timestamper.Default));
         static Transaction DependencyTx(ulong nonce, string message)
         {
             Transaction transaction = FrameTx(nonce, null!);
@@ -187,14 +190,14 @@ public class InclusionListTxSourceTests
         {
             InclusionLists =
             [
-                // A committed proof this builder does not hold is not aggregated, but its list still obligates the entry.
+                // A committed proof this builder does not hold is neither aggregated nor obligating.
                 new InclusionListV1
                 {
                     CommitteeIndex = 4,
                     Transactions = [Encode(unproven)],
                     RecursiveStark = new RecursiveStarkV1 { StarkProofHash = Keccak.Compute([1]), DepsHash = TestItem.KeccakA }
                 },
-                new InclusionListV1 { CommitteeIndex = 11, Transactions = [Encode(proven)], RecursiveStark = Hold(store, [2], wrapperDeps) }
+                new InclusionListV1 { CommitteeIndex = 11, Transactions = [Encode(proven)], RecursiveStark = Hold(store, verifier, [2], wrapperDeps) }
             ]
         };
         source.Set(attributes.CombinedInclusionListTransactions!, spec, attributes.InclusionLists);
@@ -203,7 +206,7 @@ public class InclusionListTxSourceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(GetTransactions(source, attributes).Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 0, 1 }));
+            Assert.That(GetTransactions(source, attributes).Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 1 }));
             Assert.That(block.InclusionListTransactions, Has.Length.EqualTo(2));
             Assert.That(block.InclusionLists!.Select(static list => list.CommitteeIndex), Is.EqualTo(new ulong[] { 4, 11 }));
             Assert.That(block.InclusionListProofInput!.RecursiveProofs, Has.Count.EqualTo(1));
@@ -218,7 +221,8 @@ public class InclusionListTxSourceTests
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
         FakeLeanProofVerifier verifier = new(true);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
-            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, new LeanProofStore(FrameTxSigHash.ComputeValue));
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance,
+            new InclusionListProofService(new TestSingleReleaseSpecProvider(spec), verifier, new LeanProofStore(FrameTxSigHash.ComputeValue), Timestamper.Default));
         Transaction transaction = FrameTx(0, null!);
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[96])];
         PayloadAttributes attributes = new()
@@ -296,7 +300,7 @@ public class InclusionListTxSourceTests
     public void Set_defers_sender_recovery_to_the_first_request()
     {
         CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
-        InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+        InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance);
         Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         byte[][] il = [Encode(tx)];
 
@@ -437,9 +441,10 @@ public class InclusionListTxSourceTests
     }
 
     /// <summary>Retains a verified proof as a mempool wrapper would and returns the commitment naming it.</summary>
-    private static RecursiveStarkV1 Hold(LeanProofStore store, byte[] proof, IReadOnlyList<FrameDependency> deps)
+    private static RecursiveStarkV1 Hold(LeanProofStore store, ILeanProofVerifier verifier, byte[] proof, IReadOnlyList<FrameDependency> deps)
     {
         store.AddVerified(deps, null, proof);
+        ProofVerdictCache.VerifyRecursive(verifier, Eip8288Verifier.Pinned, Eip8288Dependencies.ComputeDepsHash(deps), proof, deps);
         return new RecursiveStarkV1 { StarkProofHash = Keccak.Compute(proof), DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)) };
     }
 }

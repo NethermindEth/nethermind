@@ -47,13 +47,17 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null)
         => getInclusionListTransactionsHandler.Handle(parentBlockHash);
 
-    public ResultWrapper<InclusionListProofV1?> engine_getInclusionListProofV1(Hash256 starkProofHash)
-        => getInclusionListProofHandler?.Handle(starkProofHash)
+    public ResultWrapper<InclusionListProofV1?> engine_getInclusionListProofV1(ulong timestamp, Hash256 starkProofHash)
+        => getInclusionListProofHandler?.Handle(new GetInclusionListProofRequest(timestamp, starkProofHash))
             ?? ResultWrapper<InclusionListProofV1?>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
 
-    public ResultWrapper<InclusionListProofStatusV1> engine_verifyInclusionListProofV1(byte[][] transactions, RecursiveStarkV1 recursiveStark,
-        InclusionListProofV1? ilProof = null)
-        => verifyInclusionListProofHandler?.Handle(new VerifyInclusionListProofRequest(transactions, recursiveStark, ilProof))
+    public ResultWrapper<InclusionListProofStatusV1> engine_verifyInclusionListProofV1(ulong timestamp, byte[][] transactions,
+        RecursiveStarkV1 recursiveStark, InclusionListProofV1? ilProof = null)
+        => verifyInclusionListProofHandler?.Handle(new VerifyInclusionListProofRequest(timestamp, transactions, recursiveStark, ilProof))
+            ?? ResultWrapper<InclusionListProofStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
+
+    public ResultWrapper<InclusionListProofStatusV1> engine_submitInclusionListProofV1(ulong timestamp, InclusionListProofV1 ilProof)
+        => submitInclusionListProofHandler?.Handle(new SubmitInclusionListProofRequest(timestamp, ilProof))
             ?? ResultWrapper<InclusionListProofStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
 
     public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
@@ -135,7 +139,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(error, ErrorCodes.InvalidParams))
             : ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
 
-    /// <summary>Bogota with EIP-8288: <c>PayloadAttributesV6</c> carries each counted inclusion list with its dependency proof.</summary>
+    /// <summary>Bogota with EIP-8288: <c>PayloadAttributesV6</c> carries each counted inclusion list with its EIP-8288 commitment.</summary>
     public Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV6(
         ForkchoiceStateV1 forkchoiceState,
         PayloadAttributes? payloadAttributes = null,

@@ -83,6 +83,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip8282Enabled => spec.IsEip8282Enabled;
     public virtual bool IsEip8141Enabled => spec.IsEip8141Enabled;
     public virtual bool IsEip8288Enabled => spec.IsEip8288Enabled;
+    public virtual Crypto.ValueHash256 Eip8288AggregatedVk => spec.Eip8288AggregatedVk;
     public virtual bool IsEip8250Enabled => spec.IsEip8250Enabled;
     public virtual bool IsEip8272Enabled => spec.IsEip8272Enabled;
     public virtual bool IsEip7906Enabled => spec.IsEip7906Enabled;

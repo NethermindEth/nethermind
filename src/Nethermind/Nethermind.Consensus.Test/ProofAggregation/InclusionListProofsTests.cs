@@ -1,0 +1,388 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+#nullable enable
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Consensus.ProofAggregation;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using NUnit.Framework;
+
+namespace Nethermind.Consensus.Test.ProofAggregation;
+
+public class InclusionListProofsTests
+{
+    /// <summary>Timestamp of the target block of slot N + 1; the list slot N starts 12 seconds earlier.</summary>
+    private const ulong Target = 1_000_000;
+
+    /// <summary>A later fork that changes <c>AGGREGATED_VK</c>.</summary>
+    private const ulong UpgradeAt = 2_000_000;
+
+    private static readonly ValueHash256 UpgradedVk = ValueKeccak.Compute("next AGGREGATED_VK");
+
+    private sealed class Node
+    {
+        public Node(bool valid = true)
+        {
+            Clock = new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)Target - 6).UtcDateTime);
+            Verifier = new FakeLeanProofVerifier(valid);
+            Store = new LeanProofStore(FrameTxSigHash.ComputeValue);
+            OverridableReleaseSpec upgraded = new(Eip8288Prototype.Instance) { Eip8288AggregatedVk = UpgradedVk };
+            CustomSpecProvider specs = new(((ForkActivation)0, Eip8288Prototype.Instance), (new ForkActivation(0, UpgradeAt), upgraded));
+            Service = new InclusionListProofService(specs, Verifier, Store, Clock);
+        }
+
+        public ManualTimestamper Clock { get; }
+        public FakeLeanProofVerifier Verifier { get; }
+        public LeanProofStore Store { get; }
+        public InclusionListProofService Service { get; }
+
+        public void At(ulong timestamp) => Clock.Set(DateTimeOffset.FromUnixTimeSeconds((long)timestamp).UtcDateTime);
+
+        /// <summary>Holds a proof as a node that fully validated a mode-1 wrapper with these deps.</summary>
+        public void HoldWrapper(byte[] proof, List<FrameDependency> proofDeps)
+        {
+            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(proofDeps);
+            ProofVerdictCache.VerifyRecursive(Verifier, Eip8288Verifier.Pinned, in depsHash, proof, proofDeps);
+            Store.AddVerified(proofDeps, null, proof);
+        }
+    }
+
+    [Test]
+    public void Verdict_cache_keys_on_proof_hash_and_deps_hash([Values] bool valid)
+    {
+        FakeLeanProofVerifier backend = new(valid);
+        ValueHash256 deps = ValueKeccak.Compute([1]);
+        byte[] proof = [1];
+        using (Assert.EnterMultipleScope())
+        {
+            for (int check = 0; check < 4; check++)
+                Assert.That(ProofVerdictCache.VerifyRecursive(backend, Eip8288Verifier.Pinned, in deps, proof), Is.EqualTo(valid));
+            Assert.That(backend.VerificationCalls, Is.EqualTo(1));
+            proof[0] = 2;
+            Assert.That(ProofVerdictCache.VerifyRecursive(backend, Eip8288Verifier.Pinned, in deps, proof), Is.EqualTo(valid));
+            Assert.That(backend.VerificationCalls, Is.EqualTo(2));
+            deps = ValueKeccak.Compute([2]);
+            Assert.That(ProofVerdictCache.VerifyRecursive(backend, Eip8288Verifier.Pinned, in deps, proof), Is.EqualTo(valid));
+            Assert.That(backend.VerificationCalls, Is.EqualTo(3));
+        }
+    }
+
+    // EIP-8288 Test Case 12: verdict caches are separate per verification kind and verifier. A valid direct witness w for d
+    // misses the aggregate cache in a one-dependency mode-1 wrapper, a cached aggregate verdict does not satisfy a direct
+    // lookup, an aggregate verdict never answers under another AGGREGATED_VK, and a direct verdict survives a key change that
+    // leaves its scheme parameters unchanged.
+    [Test]
+    public void Verdict_caches_are_scoped_to_kind_and_verifier()
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("single"), default);
+        ValueHash256 covered = Eip8288Dependencies.ComputeDepsHash([dependency]);
+        Eip8288Verifier upgraded = new(UpgradedVk);
+        byte[] bytes = [7];
+        ValueHash256 hash = ValueKeccak.Compute(bytes);
+        ProofVerdictCache cache = ProofVerdictCache.For(verifier);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ProofVerdictCache.VerifyDirect(verifier, Eip8288Verifier.Pinned, dependency, bytes), Is.True);
+            Assert.That(cache.TryGetVerdict(hash, covered, Eip8288Verifier.PinnedAggregatedVk), Is.Null, "no aggregate verdict from a direct witness");
+            Assert.That(ProofVerdictCache.VerifyRecursive(verifier, Eip8288Verifier.Pinned, in covered, bytes), Is.True);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(2));
+            Assert.That(cache.TryGetVerdict(hash, covered, UpgradedVk), Is.Null);
+            Assert.That(ProofVerdictCache.VerifyRecursive(verifier, upgraded, in covered, bytes), Is.False, "an old proof never verifies under a new key");
+            Assert.That(ProofVerdictCache.VerifyDirect(verifier, upgraded, dependency, bytes), Is.True);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(3), "the direct verdict is reused under unchanged scheme parameters");
+            Assert.That(cache.TryGetDirectVerdict(dependency, hash, upgraded), Is.True);
+        }
+    }
+
+    [Test]
+    public void Verdict_cache_is_bounded()
+    {
+        FakeLeanProofVerifier backend = new(true);
+        ValueHash256 deps = ValueKeccak.Compute([1]);
+        for (int i = 0; i <= ProofVerdictCache.Capacity; i++)
+            ProofVerdictCache.VerifyRecursive(backend, Eip8288Verifier.Pinned, in deps, BitConverter.GetBytes(i));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ProofVerdictCache.For(backend).Count, Is.EqualTo(ProofVerdictCache.Capacity));
+            // The oldest verdict was evicted, so its proof is verified again.
+            ProofVerdictCache.VerifyRecursive(backend, Eip8288Verifier.Pinned, in deps, BitConverter.GetBytes(0));
+            Assert.That(backend.VerificationCalls, Is.EqualTo(ProofVerdictCache.Capacity + 2));
+        }
+    }
+
+    // EIP-8288 Test Case 9 for engine_verifyInclusionListProofV1: a commitment to a held wrapper proof whose deps strictly
+    // contain the list's is VALID by lookup alone; PROOF_UNKNOWN for a node holding neither the wrapper nor an il_proof, until a
+    // matching il_proof is supplied; an il_proof whose proof_deps do not hash to deps_hash is ignored; known proof_deps omitting
+    // a list dependency, a failing proof or a list without dependencies are INVALID. Under a timestamp whose fork has another
+    // AGGREGATED_VK, a held proof does not count. A zero data_hash resolves to the signature hash for every scheme.
+    [TestCase("held-wrapper", InclusionListProofStatus.Valid, null, 0)]
+    [TestCase("il-proof", InclusionListProofStatus.Valid, null, 1)]
+    [TestCase("il-proof-fails", InclusionListProofStatus.Invalid, InclusionListProofValidator.InvalidProof, 1)]
+    [TestCase("not-held", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
+    [TestCase("verdict-without-bytes", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
+    [TestCase("mismatched-il-proof", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
+    [TestCase("omits-dependency", InclusionListProofStatus.Invalid, InclusionListProofValidator.UncoveredDependency, 0)]
+    [TestCase("known-invalid", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
+    [TestCase("known-invalid-with-il-proof", InclusionListProofStatus.Invalid, InclusionListProofValidator.InvalidProof, 0)]
+    [TestCase("no-dependencies", InclusionListProofStatus.Invalid, InclusionListProofValidator.EmptyDependencies, 0)]
+    [TestCase("only-dependency-bearing-entry-invalid", InclusionListProofStatus.Invalid, InclusionListProofValidator.EmptyDependencies, 0)]
+    [TestCase("malformed-entry-ignored", InclusionListProofStatus.Valid, null, 0)]
+    [TestCase("other-fork-held", InclusionListProofStatus.ProofUnknown, InclusionListProofValidator.UnknownProof, 0)]
+    [TestCase("other-fork-il-proof", InclusionListProofStatus.Invalid, InclusionListProofValidator.InvalidProof, 1)]
+    public void Commitment_verification(string scenario, InclusionListProofStatus expected, string? expectedError, int verifications)
+    {
+        Node node = new(scenario is not ("il-proof-fails" or "known-invalid" or "known-invalid-with-il-proof"));
+        Transaction covered = ValidDependencyFrame(default, Eip8288Constants.LeanStarkScheme);
+        Transaction malformed = Malformed();
+        Transaction[] transactions = scenario switch
+        {
+            "no-dependencies" => [new Transaction()],
+            "only-dependency-bearing-entry-invalid" => [malformed, new Transaction()],
+            "malformed-entry-ignored" => [covered, malformed],
+            _ => [covered]
+        };
+        List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue);
+        FrameDependency surplus = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("surplus"), default);
+        List<FrameDependency> proofDeps = scenario == "omits-dependency" ? [surplus] : Eip8288Dependencies.Canonicalize([.. deps, surplus]);
+        byte[] proof = [1];
+        InclusionListCommitment commitment = Commit(proof, proofDeps);
+        ValueHash256 depsHash = commitment.DepsHash;
+        if (scenario is "held-wrapper" or "malformed-entry-ignored" or "known-invalid" or "known-invalid-with-il-proof" or "other-fork-held"
+            or "omits-dependency" or "no-dependencies")
+            node.HoldWrapper(proof, proofDeps);
+        if (scenario == "verdict-without-bytes") ProofVerdictCache.VerifyRecursive(node.Verifier, Eip8288Verifier.Pinned, in depsHash, proof, proofDeps);
+        int before = node.Verifier.VerificationCalls;
+        InclusionListProof? ilProof = scenario switch
+        {
+            "il-proof" or "il-proof-fails" or "known-invalid-with-il-proof" or "other-fork-il-proof" => new(proof, proofDeps),
+            "mismatched-il-proof" => new(proof, deps),
+            _ => null
+        };
+        ulong timestamp = scenario is "other-fork-held" or "other-fork-il-proof" ? UpgradeAt : Target;
+
+        InclusionListProofStatus status = node.Service.Verify(timestamp, transactions, in commitment, ilProof, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(expected));
+            Assert.That(error, Is.EqualTo(expectedError));
+            Assert.That(node.Verifier.VerificationCalls - before, Is.EqualTo(verifications));
+            Assert.That(deps.Single().DataHash, Is.EqualTo(FrameTxSigHash.ComputeValue(covered)));
+            if (scenario == "il-proof")
+            {
+                InclusionListProof? served = node.Service.Get(Target, commitment.StarkProofHash);
+                Assert.That(served?.StarkProof, Is.EqualTo(proof), "retained and servable after VALID");
+                Assert.That(served?.ProofDeps, Is.EqualTo(proofDeps));
+                Assert.That(node.Service.Verify(Target, transactions, in commitment, null, out _), Is.EqualTo(InclusionListProofStatus.Valid),
+                    "a verified il_proof is then held");
+            }
+        }
+    }
+
+    // engine_getInclusionListProofV1 returns [stark_proof, deps] for a held wrapper's proof hash and null for an unknown hash or
+    // under a fork whose AGGREGATED_VK the proof was not verified under; a proof answered VALID stays servable after the
+    // mempool drops the wrapper it came from.
+    [Test]
+    public void Get_serves_held_proofs_under_the_target_fork_only()
+    {
+        Node node = new();
+        Transaction covered = ValidDependencyFrame(default);
+        List<FrameDependency> proofDeps = Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue);
+        byte[] proof = [3];
+        node.HoldWrapper(proof, proofDeps);
+        InclusionListCommitment commitment = Commit(proof, proofDeps);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Service.Get(Target, commitment.StarkProofHash)?.ProofDeps, Is.EqualTo(proofDeps));
+            Assert.That(node.Service.Get(Target, ValueKeccak.Compute("unknown")), Is.Null);
+            Assert.That(node.Service.Get(UpgradeAt, commitment.StarkProofHash), Is.Null);
+            Assert.That(node.Service.Verify(Target, [covered], in commitment, null, out _), Is.EqualTo(InclusionListProofStatus.Valid));
+            node.Store.RetainDirect(static (_, _) => true);
+            Assert.That(node.Service.Get(Target, commitment.StarkProofHash)?.StarkProof, Is.EqualTo(proof), "served through the retrieval window");
+        }
+    }
+
+    // engine_submitInclusionListProofV1 rejects proofs over the size bounds or with noncanonical proof_deps before verifying, and
+    // records a valid proof's verdict with its proof_deps, so a later list committing to it is VALID by cache lookup.
+    [TestCase("valid", InclusionListProofStatus.Valid, null, 1)]
+    [TestCase("fails", InclusionListProofStatus.Invalid, InclusionListProofValidator.InvalidProof, 1)]
+    [TestCase("empty-proof", InclusionListProofStatus.Invalid, InclusionListProofValidator.EmptyProof, 0)]
+    [TestCase("oversized-proof", InclusionListProofStatus.Invalid, InclusionListProofValidator.OversizedProof, 0)]
+    [TestCase("empty-deps", InclusionListProofStatus.Invalid, InclusionListProofValidator.EmptyProofDeps, 0)]
+    [TestCase("unsorted-deps", InclusionListProofStatus.Invalid, InclusionListProofValidator.NonCanonicalProofDeps, 0)]
+    [TestCase("duplicate-deps", InclusionListProofStatus.Invalid, InclusionListProofValidator.NonCanonicalProofDeps, 0)]
+    [TestCase("disabled-scheme", InclusionListProofStatus.Invalid, InclusionListProofValidator.DisabledScheme, 0)]
+    [TestCase("other-fork", InclusionListProofStatus.Invalid, InclusionListProofValidator.InvalidProof, 1)]
+    public void Submit(string scenario, InclusionListProofStatus expected, string? expectedError, int verifications)
+    {
+        Node node = new(scenario != "fails");
+        Transaction covered = ValidDependencyFrame(default);
+        List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue);
+        FrameDependency other = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other"), default);
+        List<FrameDependency> proofDeps = scenario switch
+        {
+            "empty-deps" => [],
+            "unsorted-deps" => [.. Eip8288Dependencies.Canonicalize([.. deps, other]).AsEnumerable().Reverse()],
+            "duplicate-deps" => [.. deps, .. deps],
+            "disabled-scheme" => [new FrameDependency(0x7f, default, default)],
+            _ => Eip8288Dependencies.Canonicalize([.. deps, other])
+        };
+        byte[] proof = scenario switch
+        {
+            "empty-proof" => [],
+            "oversized-proof" => new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
+            _ => [4]
+        };
+
+        InclusionListProofStatus status = node.Service.Submit(scenario == "other-fork" ? UpgradeAt : Target, new(proof, proofDeps), out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(expected));
+            Assert.That(error, Is.EqualTo(expectedError));
+            Assert.That(node.Verifier.VerificationCalls, Is.EqualTo(verifications));
+            if (scenario == "valid")
+            {
+                InclusionListCommitment commitment = Commit(proof, proofDeps);
+                Assert.That(node.Service.Verify(Target, [covered], in commitment, null, out _), Is.EqualTo(InclusionListProofStatus.Valid));
+                Assert.That(node.Verifier.VerificationCalls, Is.EqualTo(1), "a later list check is a cache lookup");
+            }
+        }
+    }
+
+    // Proof Availability retention: a topic proof's slot-N requirement is released at the view freeze deadline of slot N
+    // unless a list's commitment to it was answered VALID, which keeps it through the attestation deadline of slot N + 1; a
+    // later slot's requirement keeps the proof after the earlier one is released.
+    [TestCase("topic-only", Target - 3, false)]
+    [TestCase("topic-only", Target - 4, true)]
+    [TestCase("valid-for-list", Target + 3, true)]
+    [TestCase("valid-for-list", Target + 4, false)]
+    [TestCase("later-slot", Target + 4, true)]
+    [TestCase("later-slot", Target + 12 + 4, false)]
+    public void Retention_follows_each_slot_requirement(string scenario, ulong now, bool retained)
+    {
+        Node node = new();
+        Transaction covered = ValidDependencyFrame(default);
+        List<FrameDependency> proofDeps = Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue);
+        byte[] proof = [5];
+        InclusionListCommitment commitment = Commit(proof, proofDeps);
+        Assert.That(node.Service.Submit(Target, new(proof, proofDeps), out _), Is.EqualTo(InclusionListProofStatus.Valid));
+        if (scenario is "valid-for-list" or "later-slot")
+            Assert.That(node.Service.Verify(Target, [covered], in commitment, null, out _), Is.EqualTo(InclusionListProofStatus.Valid));
+        if (scenario == "later-slot")
+            Assert.That(node.Service.Verify(Target + 12, [covered], in commitment, null, out _), Is.EqualTo(InclusionListProofStatus.Valid));
+
+        node.At(now);
+
+        Assert.That(node.Service.Get(Target, commitment.StarkProofHash) is not null, Is.EqualTo(retained));
+    }
+
+    [Test]
+    public void Retention_is_bounded_by_the_peak_of_three_committees()
+    {
+        Node node = new();
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("d"), default);
+        for (int i = 0; i <= InclusionListProofRetention.MaxProofs; i++)
+            node.Service.Submit(Target + (ulong)(i % 3) * 12, new(BitConverter.GetBytes(i), [dependency]), out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Service.Retention.Count, Is.EqualTo(InclusionListProofRetention.MaxProofs));
+            Assert.That(InclusionListProofRetention.MaxBytes, Is.EqualTo(130L * 1024 * 1024), "80 il_proofs of 1.625 MiB");
+        }
+    }
+
+    // EIP-8288 Inclusion Enforcement and Test Case 9: a signed list always obligates its dependency-free transactions, and its
+    // dependency-bearing ones only when this node holds a valid proof covering them, superset included. An unknown or
+    // non-covering proof, a null commitment and a commitment on a list without dependencies are treated as null; an entry whose
+    // dependency frame fails static validity is not dependency-free, so it is never obligated. The builder folds a held
+    // committed proof in whole and discards the surplus.
+    [TestCase("superset")]
+    [TestCase("not-held")]
+    [TestCase("uncovering")]
+    [TestCase("null-commitment")]
+    [TestCase("empty-dependencies")]
+    [TestCase("malformed")]
+    [TestCase("other-fork")]
+    public void Obligations_follow_held_proofs(string scenario)
+    {
+        Node node = new();
+        Transaction ordinary = new();
+        Transaction covered = ValidDependencyFrame(default);
+        Transaction other = scenario == "malformed" ? Malformed() : ValidDependencyFrame(ValueKeccak.Compute("other"));
+        Transaction[] transactions = scenario == "empty-dependencies" ? [Malformed(), ordinary] : [covered, other, ordinary];
+        List<FrameDependency> coveredDeps = Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue);
+        FrameDependency surplus = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("surplus"), default);
+        List<FrameDependency> proofDeps = scenario switch
+        {
+            "uncovering" => coveredDeps,
+            "malformed" or "empty-dependencies" => Eip8288Dependencies.Canonicalize([.. coveredDeps, surplus]),
+            _ => Eip8288Dependencies.Canonicalize([.. coveredDeps, .. Eip8288Dependencies.ForTransaction(other, FrameTxSigHash.ComputeValue), surplus])
+        };
+        byte[] proof = [1];
+        if (scenario != "not-held") node.HoldWrapper(proof, proofDeps);
+        CommitteeInclusionList[] lists = [new(0, transactions, scenario == "null-commitment" ? null : Commit(proof, proofDeps))];
+        IReleaseSpec target = scenario == "other-fork" ? new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = UpgradedVk }
+            : Eip8288Prototype.Instance;
+
+        node.Service.ResolveObligations(lists, target);
+        Transaction[] eligible = InclusionListProofValidator.SelectEligible([], lists, target);
+        List<RecursiveProofInput> proven = node.Service.ProvenInputs(lists, target);
+
+        bool obligates = scenario is "superset" or "malformed";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lists[0].HoldsValidProof, Is.EqualTo(obligates));
+            Assert.That(eligible, obligates
+                ? Is.EqualTo(scenario == "malformed" ? new[] { covered, ordinary } : new[] { covered, other, ordinary })
+                : Is.EqualTo(new[] { ordinary }));
+            Assert.That(proven.Select(p => p.InnerDeps), obligates ? Is.EqualTo(new[] { proofDeps }) : Is.Empty,
+                "a held proof is folded in whole; the block discards the surplus");
+        }
+    }
+
+    [Test]
+    public void Without_per_list_input_only_dependency_free_entries_bind()
+    {
+        Transaction ordinary = new();
+        Transaction covered = ValidDependencyFrame(default);
+        Assert.That(InclusionListProofValidator.SelectEligible([covered, ordinary], null, Eip8288Prototype.Instance),
+            Is.EqualTo(new[] { ordinary }));
+    }
+
+    private static InclusionListCommitment Commit(byte[] proof, IReadOnlyList<FrameDependency> proofDeps) =>
+        new(ValueKeccak.Compute(proof), Eip8288Dependencies.ComputeDepsHash(proofDeps));
+
+    private static Transaction Malformed()
+    {
+        Transaction transaction = ValidDependencyFrame(ValueKeccak.Compute("malformed"));
+        transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[1])];
+        return transaction;
+    }
+
+    private static Transaction ValidDependencyFrame(ValueHash256 message, byte scheme = Eip8288Constants.LeanSphincsScheme)
+    {
+        FrameDependency dep = new(scheme, message, default);
+        TxFrame[] frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dep.VerificationGas,
+            UInt256.Zero, Eip8288Dependencies.Serialize([dep]))];
+        return new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [0],
+            SenderAddress = Address.Zero,
+            Frames = frames,
+            GasLimit = FrameTxValidation.TotalGasLimit(frames)
+        };
+    }
+}

@@ -22,14 +22,13 @@ public static class Eip8288Constants
     public const int MaxDependenciesPerFrame = 256;
 
     /// <summary>Maximum distinct dependencies covered by the prototype native proof envelope.</summary>
-    /// <remarks>Below <see cref="MaxDepsPerAggregate"/>: a local proving and verification bound, not a consensus or FOCIL omission
-    /// bound. EIP-8288 has no block dependency quota; wrappers and inclusion-list packages within its limits but above this
-    /// envelope are refused locally, never treated as invalid.</remarks>
+    /// <remarks>Below <see cref="MaxDepsPerAggregateWrapper"/>: a local proving and verification bound, not a consensus or FOCIL omission
+    /// bound. EIP-8288 has no block dependency quota; wrappers within its limits but above this envelope are refused locally,
+    /// never treated as invalid.</remarks>
     public const int MaxProofDependencies = 256;
 
     public const int MaxGenericStarkProofs = 16;
     public const int MaxLeanStarkInstructions = 2048;
-    public const int MaxInclusionListDependencyBytes = MaxProofDependencies * DependencyTripleLength;
 
     /// <summary>Maximum encoded native direct witness, such as a mode-0 leanSTARK proof.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
@@ -37,8 +36,8 @@ public static class Eip8288Constants
     /// <summary>EIP-8288 <c>MAX_AGGREGATE_PROOF_BYTES</c> (1.25 MiB): the bound on every serialized recursive aggregate proof,
     /// including a private recursive input, in blocks, wrappers and inclusion lists alike, checked before proof decoding or
     /// verification.</summary>
-    /// <remarks>Provisional: the activating fork fixes it with its <see cref="AggregatedVk"/> profile, and it must let a mode-1
-    /// wrapper at the list ceilings fit <see cref="MaxWrapperBytes"/>.</remarks>
+    /// <remarks>Provisional: the activating fork fixes it with its <c>AGGREGATED_VK</c>, and it must let a mode-1 wrapper at the
+    /// list ceilings fit <see cref="MaxWrapperBytes"/>.</remarks>
     public const int MaxAggregateProofBytes = 1_310_720;
 
     /// <summary>Native acceptance bound for the serialized mixed guest proof, which the pinned backend reports back.</summary>
@@ -47,9 +46,6 @@ public static class Eip8288Constants
 
     /// <summary>Maximum native aggregation input, including two maximum-sized child proofs and metadata.</summary>
     public const int MaxAggregationInputBytes = 18 * 1024 * 1024;
-
-    /// <summary>Maximum encoded ETH header response, including room around a maximum-sized aggregate proof.</summary>
-    public const int MaxHeaderResponseBytes = MaxAggregateProofBytes + 1024 * 1024;
 
     /// <summary>Encoded public key and signature size of the pinned NiceTry/Daisugi Keccak SPHINCS scheme.</summary>
     public const int LeanSphincsWitnessBytes = 32 + 6176;
@@ -71,16 +67,16 @@ public static class Eip8288Constants
     /// <summary>Mempool aggregation cadence in milliseconds.</summary>
     public const int AggregationInterval = 1_000;
 
-    /// <summary>Mode-0 (direct witness) leanSPHINCS dependencies per wrapper (<c>MAX_LEANSIG_DEPS_PER_WRAPPER</c>).</summary>
-    public const int MaxLeanSigDepsPerWrapper = 16;
+    /// <summary>Mode-0 (direct witness) leanSPHINCS dependencies per wrapper (<c>MAX_LEANSIG_DEPS_PER_DIRECT_WRAPPER</c>).</summary>
+    public const int MaxLeanSigDepsPerDirectWrapper = 16;
 
-    /// <summary>Mode-0 (direct witness) leanSTARK dependencies per wrapper (<c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c>).</summary>
-    public const int MaxLeanStarkDepsPerWrapper = 1;
+    /// <summary>Mode-0 (direct witness) leanSTARK dependencies per wrapper (<c>MAX_LEANSTARK_DEPS_PER_DIRECT_WRAPPER</c>).</summary>
+    public const int MaxLeanStarkDepsPerDirectWrapper = 1;
 
     /// <summary>Mode-1 (aggregate) dependencies per wrapper (<c>MAX_DEPS_PER_AGGREGATE_WRAPPER</c>), independent of scheme; mode-0
     /// witness limits do not apply.</summary>
     /// <remarks>A provisional mempool bound: it does not limit blocks or inclusion lists and never excuses an omission.</remarks>
-    public const int MaxDepsPerAggregate = 4096;
+    public const int MaxDepsPerAggregateWrapper = 4096;
 
     /// <summary>Transactions per wrapper, in either mode (<c>MAX_TXS_PER_WRAPPER</c>).</summary>
     public const int MaxTxsPerWrapper = 4096;

@@ -286,7 +286,8 @@ namespace Nethermind.Network.P2P
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this}");
         }
 
-        /// <remarks>EIP-8437 bounds the <c>eth/73</c> wrapper messages by <c>MAX_RESPONSE_BYTES</c> or <c>MAX_REQUEST_BYTES</c>.</remarks>
+        /// <remarks>EIP-8437 bounds the <c>eth/73</c> wrapper requests by <c>MAX_REQUEST_BYTES</c>; responses are bounded by this
+        /// client's own cap, a whole wrapper of <c>MAX_WRAPPER_BYTES</c> under the soft response limit.</remarks>
         bool IMessageLimitSession.ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength)
         {
             if (uncompressedLength <= Subprotocols.Eth.V73.Eth73Protocol.MaxRequestBytes || _resolver is null) return false;

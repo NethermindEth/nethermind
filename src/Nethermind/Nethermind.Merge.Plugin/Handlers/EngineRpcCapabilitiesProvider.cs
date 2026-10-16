@@ -141,8 +141,10 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         jsonLocal[nameof(IEngineRpcModule.engine_newPayloadV7)] = Gate(perListInclusionLists);
         jsonLocal[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV6)] = Gate(perListInclusionLists);
         jsonLocal[nameof(IEngineRpcModule.engine_newPayloadWithWitnessV7)] = Gate(perListInclusionLists);
-        jsonLocal[nameof(IEngineRpcModule.engine_verifyInclusionListProofV1)] = Gate(perListInclusionLists);
-        jsonLocal[nameof(IEngineRpcModule.engine_getInclusionListProofV1)] = Gate(perListInclusionLists);
+        // The inclusion-list proof methods apply EIP-8288 rules only, under the fork at their timestamp.
+        jsonLocal[nameof(IEngineRpcModule.engine_verifyInclusionListProofV1)] = Gate(spec.IsEip8288Enabled);
+        jsonLocal[nameof(IEngineRpcModule.engine_getInclusionListProofV1)] = Gate(spec.IsEip8288Enabled);
+        jsonLocal[nameof(IEngineRpcModule.engine_submitInclusionListProofV1)] = Gate(spec.IsEip8288Enabled);
 
         json = jsonLocal;
         ssz = sszLocal;

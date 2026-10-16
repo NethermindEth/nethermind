@@ -4,12 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Consensus.Decoders;
-using Nethermind.Consensus.ProofAggregation;
-using Nethermind.Core.Crypto;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -21,7 +20,7 @@ public class InclusionListTxSource(
     IEthereumEcdsa ecdsa,
     ISpecProvider specProvider,
     ILogManager logManager,
-    ILeanProofVerifier proofVerifier, LeanProofStore? proofStore = null) : IInclusionListTxSource
+    InclusionListProofService? inclusionListProofs = null) : IInclusionListTxSource
 {
     // Lazy<T> defaults to ExecutionAndPublication: constructed once even under racing FCUs.
     private readonly Lazy<InclusionListDecoder> _decoder = new(() => new InclusionListDecoder(ecdsa, specProvider, logManager));
@@ -118,16 +117,17 @@ public class InclusionListTxSource(
         AggregationInput? proofInput = null;
         if (spec.IsEip8288Enabled)
         {
-            // Obligations follow from each list's signed commitment alone (EIPs#12475).
+            // A commitment this node holds no valid proof for is treated as null: the list then obligates only its
+            // dependency-free transactions (EIPs#12475).
+            inclusionListProofs?.ResolveObligations(decodedLists, spec);
             eligible = InclusionListProofValidator.SelectEligible(transactions, decodedLists, spec);
             // Committed proofs are usually mempool wrapper proofs covering a superset of the list; the block aggregation discards
-            // whatever the block does not need, so the block proof stays exact. This build snapshot owns the proof copies.
-            List<RecursiveProofInput> proven = InclusionListProofValidator.ProvenInputs(decodedLists ?? [], proofVerifier, spec, proofStore,
-                out List<ulong> unusable);
-            // A committed list still obligates its dependency-bearing entries; without its proof they need other coverage,
-            // and a block that cannot cover them fails the list: a liveness failure, not an omission ground.
-            if (unusable.Count > 0 && _logger.IsWarn)
-                _logger.Warn($"Inclusion lists {string.Join(", ", unusable)} commit to proofs this node does not hold; their dependency-bearing transactions stay obligated.");
+            // whatever the block does not need, so the block proof stays exact.
+            List<RecursiveProofInput> proven = inclusionListProofs?.ProvenInputs(decodedLists ?? [], spec) ?? [];
+            if (_logger.IsDebug)
+                foreach (CommitteeInclusionList list in decodedLists ?? [])
+                    if (list.IsCommitted && !list.HoldsValidProof)
+                        _logger.Debug($"Inclusion list {list.CommitteeIndex} commits to a proof this node does not hold; treating its commitment as null.");
             if (proven.Count > 0) proofInput = new AggregationInput { RecursiveProofs = proven };
         }
         Transaction[] ordered = OrderForProduction(FilterBlobs((Transaction[])eligible.Clone()));
@@ -153,7 +153,7 @@ public class InclusionListTxSource(
             return true;
         }
 
-        /// <summary>Whether a build's lists still have the registered positions and proofs; the transactions are identified
+        /// <summary>Whether a build's lists still have the registered positions and commitments; the transactions are identified
         /// by the flattened array instance the build is keyed by, and this snapshot owns their bytes.</summary>
         public bool MatchesLists(IReadOnlyList<InclusionListV1>? lists) => InclusionListV1.AreEqual(Lists, lists, compareTransactions: false);
     }

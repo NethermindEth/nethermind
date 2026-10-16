@@ -24,13 +24,14 @@ public static class RecursiveStarkAggregator
     /// <summary>Runs the STARK check of a block proof against its dependency list.</summary>
     /// <remarks>An empty dependency list carries an empty <c>stark_proof</c> and invokes no verifier; any other list needs
     /// a proof within <see cref="Eip8288Constants.MaxAggregateProofBytes"/>, checked before the verifier runs, that verifies
-    /// against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>. Wrappers and inclusion lists never
-    /// use the empty form: their dependency sets are nonempty.</remarks>
-    public static bool VerifyStarkCheck(ILeanProofVerifier verifier, int dependencyCount, in ValueHash256 depsHash, ReadOnlySpan<byte> proof)
+    /// against <paramref name="depsHash"/> and the block fork's <c>AGGREGATED_VK</c>. Wrappers and inclusion lists never use the
+    /// empty form: their dependency sets are nonempty.</remarks>
+    public static bool VerifyStarkCheck(ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, int dependencyCount, in ValueHash256 depsHash,
+        ReadOnlySpan<byte> proof)
         => dependencyCount == 0
             ? proof.IsEmpty
             : proof.Length is > 0 and <= Eip8288Constants.MaxAggregateProofBytes
-                && verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof);
+                && verifier.VerifyRecursiveStark(in depsHash, forkVerifier.AggregatedVk.Bytes, proof);
 
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
     public static long InputSize(AggregationInput input)
@@ -94,8 +95,11 @@ public static class RecursiveStarkAggregator
     }
 
     /// <summary>Folds inputs in bounded batches before generating the final recursive proof.</summary>
-    public static byte[] Prove(AggregationInput input, ILeanProofVerifier verifier, in ValueHash256 depsHash, CancellationToken cancellationToken = default)
+    /// <remarks>Every step proves and verifies under <paramref name="forkVerifier"/>'s <c>AGGREGATED_VK</c>.</remarks>
+    public static byte[] Prove(AggregationInput input, ILeanProofVerifier verifier, Eip8288Verifier forkVerifier, in ValueHash256 depsHash,
+        CancellationToken cancellationToken = default)
     {
+        byte[] aggregatedVk = forkVerifier.AggregatedVk.ToByteArray();
         cancellationToken.ThrowIfCancellationRequested();
         if (input.Deps.Count != input.Witnesses.Count) throw new ArgumentException("Witness count mismatch", nameof(input));
         foreach (RecursiveProofInput child in input.RecursiveProofs)
@@ -109,7 +113,7 @@ public static class RecursiveStarkAggregator
                 // The same verified statement needs no new recursive guest execution.
                 cancellationToken.ThrowIfCancellationRequested();
                 if (parent.Proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes
-                    || !verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, parent.Proof.Span))
+                    || !verifier.VerifyRecursiveStark(in depsHash, aggregatedVk, parent.Proof.Span))
                     throw new InvalidOperationException("Invalid recursive dependency proof.");
                 cancellationToken.ThrowIfCancellationRequested();
                 return parent.Proof.ToArray();
@@ -120,7 +124,7 @@ public static class RecursiveStarkAggregator
             && (input.Deps.Count <= 1 || DirectInputSize(input.Witnesses) <= MaxProductionWitnessBytes)
             && InputSize(input) <= Eip8288Constants.MaxAggregationInputBytes)
         {
-            byte[] result = ProductionProofCache.Prove(verifier, in depsHash, Eip8288Constants.AggregatedVk, input, cancellationToken);
+            byte[] result = ProductionProofCache.Prove(verifier, in depsHash, aggregatedVk, input, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             return result;
         }
@@ -197,7 +201,7 @@ public static class RecursiveStarkAggregator
             children = next;
         }
         cancellationToken.ThrowIfCancellationRequested();
-        byte[] proof = ProductionProofCache.Prove(verifier, in depsHash, Eip8288Constants.AggregatedVk,
+        byte[] proof = ProductionProofCache.Prove(verifier, in depsHash, aggregatedVk,
             new AggregationInput { RecursiveProofs = children }, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return proof;
@@ -220,7 +224,7 @@ public static class RecursiveStarkAggregator
                 Discards = [.. removed]
             };
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(canonical);
-            byte[] childProof = ProductionProofCache.Prove(verifier, in hash, Eip8288Constants.AggregatedVk, childInput, cancellationToken);
+            byte[] childProof = ProductionProofCache.Prove(verifier, in hash, aggregatedVk, childInput, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             return new(canonical, childProof);
         }
@@ -231,7 +235,8 @@ public static class RecursiveStarkAggregator
     /// and each nested proof against its claimed deps, then union and remove discards/duplicates,
     /// returning the filtered set and its commitment.
     /// </summary>
-    public static bool TryAggregate(AggregationInput input, ILeanProofVerifier verifier, out IReadOnlyList<FrameDependency> filteredDeps, out ValueHash256 depsHash)
+    public static bool TryAggregate(AggregationInput input, ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier,
+        out IReadOnlyList<FrameDependency> filteredDeps, out ValueHash256 depsHash)
     {
         filteredDeps = [];
         depsHash = default;
@@ -265,7 +270,7 @@ public static class RecursiveStarkAggregator
             // A recursive input above MAX_AGGREGATE_PROOF_BYTES is rejected before its verifier runs.
             if (recursiveProof.Proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes) return false;
             ValueHash256 innerHash = Eip8288Dependencies.ComputeDepsHash(recursiveProof.InnerDeps);
-            if (!verifier.VerifyRecursiveStark(in innerHash, Eip8288Constants.AggregatedVk, recursiveProof.Proof.Span)) return false;
+            if (!verifier.VerifyRecursiveStark(in innerHash, forkVerifier.AggregatedVk.Bytes, recursiveProof.Proof.Span)) return false;
             allDeps.AddRange(recursiveProof.InnerDeps);
         }
 

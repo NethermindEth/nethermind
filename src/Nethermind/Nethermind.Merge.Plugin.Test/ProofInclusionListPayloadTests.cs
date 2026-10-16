@@ -157,6 +157,8 @@ public class ProofInclusionListPayloadTests
         InclusionListCommitment proof = new(TestItem.KeccakC.ValueHash256, TestItem.KeccakD.ValueHash256);
         static ValueHash256 Digest(params CommitteeInclusionList[] lists)
         {
+            // As newPayload resolves them for a node holding every committed proof.
+            foreach (CommitteeInclusionList list in lists) list.HoldsValidProof = list.IsCommitted;
             Block block = Build.A.Block.TestObject;
             block.InclusionLists = lists;
             block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);
@@ -171,7 +173,7 @@ public class ProofInclusionListPayloadTests
             Assert.That(Digest(new CommitteeInclusionList(0, [a, b], proof)), Is.Not.EqualTo(original), "list split");
             Assert.That(Digest(new(5, [a], proof), new(1, [b], null)), Is.Not.EqualTo(original), "committee position");
             Assert.That(Digest(new(0, [a], null), new(1, [b], proof)), Is.Not.EqualTo(original), "which list is committed");
-            // EIPs#12475: obligations follow from whether a list is committed, not from which proof it names.
+            // EIPs#12475: obligations follow from whether a list's commitment is backed by a held proof, not from which proof it names.
             Assert.That(Digest(new(0, [a], new InclusionListCommitment(TestItem.KeccakE.ValueHash256, default)), new(1, [b], null)),
                 Is.EqualTo(original), "committed proof");
         }
