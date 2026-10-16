@@ -64,10 +64,11 @@ public sealed class GetPayloadWithWitnessSszHandler(IEngineRpcModule engine, Blo
         {
             witness = GetOrGenerateWitness(builtPayload.Block, ctx.RequestAborted);
         }
-        catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)
+        catch (Exception e)
         {
             payload.Dispose();
-            return;
+            if (e is OperationCanceledException && ctx.RequestAborted.IsCancellationRequested) return;
+            throw;
         }
 
         using (witness)
