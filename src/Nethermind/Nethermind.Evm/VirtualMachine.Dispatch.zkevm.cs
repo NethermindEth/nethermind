@@ -229,7 +229,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // Reloaded, not held: live across an out-of-line call they would each take a callee-saved register.
                 handlers = state.OpcodeHandlers;
                 code = ref stack.Code;
-                sp = ref Unsafe.Add(ref stack.Bottom, head * EvmStack.WordSize);
+                sp = ref SlotAt(ref stack.Bottom, head);
             }
             else if (!TOpcode.HasCheckedBody)
             {
@@ -331,7 +331,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             pc = result.ProgramCounter;
             handlers = state.OpcodeHandlers;
             code = ref stack.Code;
-            sp = ref Unsafe.Add(ref stack.Bottom, head * EvmStack.WordSize);
+            sp = ref SlotAt(ref stack.Bottom, head);
 
             if (result.Exception != EvmExceptionType.None)
                 return ExitChain(ref state, gas, pc, head, result.Exception);
