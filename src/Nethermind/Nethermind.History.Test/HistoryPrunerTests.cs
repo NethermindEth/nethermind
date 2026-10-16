@@ -98,11 +98,11 @@ public class HistoryPrunerTests
 
     private static IEnumerable<TestCaseData> BalPruningCases()
     {
-        // head=100, SlotsPerEpoch=32 → cutoff = 100 - retentionEpochs*32 (clamped at 0)
+        // head=100, SlotsPerEpoch=32 → block cutoff = 100 - retentionEpochs*32, BAL cutoff = 100 - (balRetentionEpochs + 1)*32 (clamped at 0)
         yield return new TestCaseData(
-            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2, BalRetentionEpochs = 1, PruningInterval = 0 },
-            /*expectedBlocksPointer:*/ 36UL,
-            /*expectedBalsPointer:*/ 68UL
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 3, BalRetentionEpochs = 1, PruningInterval = 0 },
+            /*expectedBlocksPointer:*/ 4UL,
+            /*expectedBalsPointer:*/ 36UL
         ).SetName("Bals_pruned_past_block_cutoff_when_bal_retention_is_shorter");
 
         yield return new TestCaseData(
@@ -118,7 +118,7 @@ public class HistoryPrunerTests
         ).SetName("Bals_forced_forward_when_block_retention_is_shorter");
 
         yield return new TestCaseData(
-            new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, BalRetentionEpochs = 1, PruningInterval = 0 },
+            new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, BalRetentionEpochs = 0, PruningInterval = 0 },
             /*expectedBlocksPointer:*/ BeaconGenesisBlockNumber,
             /*expectedBalsPointer:*/ 68UL
         ).SetName("Bals_use_separate_rolling_cutoff_in_ancient_barriers_mode");
@@ -147,12 +147,12 @@ public class HistoryPrunerTests
 
     private const ulong BalOnlyHead = 500_000;
 
-    // Head 500_000: the 14299-epoch chain floor keeps 457_568 blocks, a one-epoch retention keeps 32.
-    [TestCase(null, PruningMode.Hybrid, true, 42_432UL)]
-    [TestCase(1u, PruningMode.Hybrid, true, 499_968UL)]
+    // Head 500_000, plus one epoch of slack: the 14299-epoch chain floor keeps 457_600 blocks, a one-epoch retention keeps 64.
+    [TestCase(null, PruningMode.Hybrid, true, 42_400UL)]
+    [TestCase(1u, PruningMode.Hybrid, true, 499_936UL)]
     [TestCase(uint.MaxValue, PruningMode.Hybrid, true, 0UL)] // keeps them all
     [TestCase(null, PruningMode.None, true, null)] // archive keeps them by default
-    [TestCase(1u, PruningMode.None, true, 499_968UL)]
+    [TestCase(1u, PruningMode.None, true, 499_936UL)]
     [TestCase(null, PruningMode.Hybrid, false, null)]
     public void Bals_are_pruned_when_history_pruning_is_disabled(uint? balRetentionEpochs, PruningMode stateMode, bool chainHasAccessLists, ulong? expectedCutoff)
     {
@@ -195,7 +195,7 @@ public class HistoryPrunerTests
 
         pruner.TryPruneHistory(CancellationToken.None);
 
-        balStore.Received(1).DeleteRange(30_000, 42_432);
+        balStore.Received(1).DeleteRange(30_000, 42_400);
         balStore.DidNotReceive().DeleteRange(Arg.Is<ulong>(static from => from < 30_000), Arg.Any<ulong>());
     }
 
@@ -228,11 +228,11 @@ public class HistoryPrunerTests
         pruner.SchedulePruneHistory();
 
         await deleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        balStore.Received(1).DeleteRange(1, 42_432);
+        balStore.Received(1).DeleteRange(1, 42_400);
     }
 
-    [TestCase(HistoryRetentionConstants.HistoryPruneEpochs, 42_432UL)]
-    [TestCase(15_000UL, 20_000UL)]
+    [TestCase(HistoryRetentionConstants.HistoryPruneEpochs, 42_400UL)]
+    [TestCase(15_000UL, 19_968UL)]
     public void Default_bal_retention_is_the_chain_floor(ulong minBalRetentionEpochs, ulong expectedCutoff)
     {
         HistoryPruner pruner = CreateBalOnlyPruner(new TestMemDb(), Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), Substitute.For<IBlockAccessListStore>(), minBalRetentionEpochs: minBalRetentionEpochs);
@@ -279,9 +279,9 @@ public class HistoryPrunerTests
             LimboLogs.Instance);
     }
 
-    [TestCase(100UL, 1u, 68UL)]
+    [TestCase(100UL, 1u, 36UL)]
     [TestCase(100UL, 4u, 0UL)] // negative pre-clamp
-    [TestCase(100UL, 0u, 100UL)]
+    [TestCase(100UL, 0u, 68UL)] // the extra epoch of slack
     public async Task Bal_cutoff_block_number_uses_separate_retention(ulong head, uint balRetentionEpochs, ulong expectedCutoff)
     {
         IHistoryConfig historyConfig = new HistoryConfig

@@ -189,7 +189,8 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    public ulong? BalCutoffBlockNumber => _enabled || _balPruningOnly ? CalculateRollingCutoff(_balRetentionEpochs) : null;
+    // One extra epoch: the CL serves from the start of the epoch N back, up to 31 slots below head - N*32.
+    public ulong? BalCutoffBlockNumber => _enabled || _balPruningOnly ? CalculateRollingCutoff(_balRetentionEpochs + 1) : null;
 
     internal ulong BalsDeletePointer => _balsDeletePointer;
 
