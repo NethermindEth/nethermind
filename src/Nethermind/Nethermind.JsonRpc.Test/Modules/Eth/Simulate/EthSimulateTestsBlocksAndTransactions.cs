@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -36,6 +37,60 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
+    private const string Calls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\"}]";
+
+    [TestCase("{\"blockOverrides\":{\"bogusField\":\"0x1\"}," + Calls + "}", TestName = "Simulate rejects an unknown block override key")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\",\"bogusField\":\"0x1\"}}," + Calls + "}", TestName = "Simulate rejects an unknown account override key")]
+    [TestCase("{\"blockOverrides\":{\"difficulty\":\"0x1\"}," + Calls + "}", TestName = "Simulate rejects a difficulty override")]
+    [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"Number\":\"0x81\"}," + Calls + "}", TestName = "Simulate rejects two block override keys for one field")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x00\",\"Code\":\"0x01\"}}," + Calls + "}", TestName = "Simulate rejects two account override keys for one field")]
+    public async Task Simulate_rejects_override_keys_it_does_not_support(string blockStateCall)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
+
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [TestCase("{\"blockOverrides\":{\"Number\":\"0x80\"}," + Calls + "}", TestName = "Simulate takes a block override key in another case")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"Code\":\"0x00\"}}," + Calls + "}", TestName = "Simulate takes an account override key in another case")]
+    [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"time\":\"0xffffffff\",\"gasLimit\":\"0x1c9c380\",\"feeRecipient\":\"0xc200000000000000000000000000000000000000\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"baseFeePerGas\":\"0x0\",\"blobBaseFee\":\"0x1\"},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"nonce\":\"0x1\",\"balance\":\"0x1\",\"code\":\"0x00\",\"stateDiff\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}}," + Calls + "}", TestName = "Simulate takes every supported override key")]
+    public async Task Simulate_takes_override_keys_it_supports(string blockStateCall)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
+
+        Assert.That(ErrorCode(response), Is.Null, response);
+    }
+
+    [Test]
+    public async Task Eth_call_still_ignores_an_unknown_account_override_key()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement call = ParseJson("{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\"}");
+        JsonElement stateOverride = ParseJson("{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\",\"bogusField\":\"0x1\"}}");
+
+        string response = await chain.TestEthRpc("eth_call", call, "latest", stateOverride);
+
+        Assert.That(ErrorCode(response), Is.Null, response);
+    }
+
+    private static JsonElement SimulatePayloadJson(string blockStateCall) => ParseJson($"{{\"blockStateCalls\":[{blockStateCall}]}}");
+
+    private static JsonElement ParseJson(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
+    private static int? ErrorCode(string response)
+    {
+        using JsonDocument document = JsonDocument.Parse(response);
+        return document.RootElement.TryGetProperty("error", out JsonElement error) ? error.GetProperty("code").GetInt32() : null;
+    }
+
     private const ulong StateGasBlockLimit = 200_000;
     private const ulong RemainingStateGasAfterSstore = StateGasBlockLimit - (ulong)GasCostOf.SSetState;
     private const ulong TwoSstoreRequestGasCap = 200_000;
