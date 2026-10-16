@@ -140,10 +140,9 @@ public sealed class BeaconDiscovery(
             _allowNonRoutable = advertised?.IsLoopbackOrPrivateOrLinkLocal == true;
             if (advertised is null && _logger.IsWarn) _logger.Warn("No external IPv4 address is known, so the beacon chain ENR advertises no endpoint and peers cannot dial this node.");
             DiscoveryV5Transport transport = CreateDiscv5Services(advertised);
-            IDatagramSocket socket = _connections!.Bind(
-                static address => new UdpDatagramSocket(new Socket(address.AddressFamily, SocketType.Dgram, ProtocolType.Udp)),
-                config.Discv5Port, transport.Receive);
-            transport.BindSocket(socket);
+            _connections!.Bind(
+                static address => new Socket(address.AddressFamily, SocketType.Dgram, ProtocolType.Udp),
+                config.Discv5Port, transport);
             _runTask = RunDiscovery(_runCts.Token);
             if (_logger.IsInfo) _logger.Info($"Beacon chain discv5 listening on UDP port {config.Discv5Port}, local ENR: {LocalNodeRecord}");
         }

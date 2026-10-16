@@ -22,8 +22,6 @@ using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using Discv5KademliaModule = Nethermind.Network.Discovery.Discv5.Kademlia.KademliaModule;
 
-[assembly: InternalsVisibleTo("Nethermind.BeaconChain")]
-[assembly: InternalsVisibleTo("Nethermind.BeaconChain.Minimal")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Discovery.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]
 
