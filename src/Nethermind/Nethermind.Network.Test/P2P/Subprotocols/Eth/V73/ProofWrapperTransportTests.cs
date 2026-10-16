@@ -15,6 +15,7 @@ using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
+using GetPooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
 
@@ -23,6 +24,13 @@ public class ProofWrapperTransportTests
     /// <summary>Serves the last GetProofWrappers sent to <paramref name="link"/> with <paramref name="wrappers"/>.</summary>
     private static void Answer(WrapperTestNode node, WrapperPeer peer, FakeWrapperLink link, params byte[][] wrappers) =>
         node.Transport.OnProofWrappers(peer, new ProofWrappersMessage(link.Sent<GetProofWrappersMessage>()[^1].RequestId, wrappers));
+
+    /// <summary>The hashes of the <paramref name="index"/>-th envelope-recovery GetPooledTransactions sent to <paramref name="link"/>.</summary>
+    private static (long RequestId, ValueHash256[] Hashes) EnvelopeRequest(FakeWrapperLink link, int index = 0)
+    {
+        GetPooledTransactionsMessage66 request = link.Sent<GetPooledTransactionsMessage66>()[index];
+        return (request.RequestId, [.. request.EthMessage.Hashes]);
+    }
 
     /// <summary>Publishes a wrapper from a node whose pool holds its transactions, and returns that node.</summary>
     private static WrapperTestNode Holder(byte[] wrapper, params Transaction[] transactions)
@@ -34,7 +42,7 @@ public class ProofWrapperTransportTests
     }
 
     [Test]
-    public async Task Announced_wrapper_is_fetched_whole_recovers_envelopes_and_is_offered_after_validation()
+    public async Task Announced_wrapper_is_fetched_whole_recovers_envelopes_through_pooled_transactions_and_is_offered()
     {
         Transaction transaction = FrameTransaction(1);
         byte[] wrapper = Wrapper(1024, transaction);
@@ -52,13 +60,13 @@ public class ProofWrapperTransportTests
         holder.Transport.OnGetProofWrappers(requester, request);
         node.Transport.OnProofWrappers(peer, holderLink.Sent<ProofWrappersMessage>().Single());
 
-        await WrapperTestNode.Until(() => link.Sent<GetWrapperEnvelopesMessage>().Length == 1);
-        GetWrapperEnvelopesMessage envelopes = link.Sent<GetWrapperEnvelopesMessage>().Single();
-        Assert.That(envelopes.Indices, Is.EqualTo(new[] { 0 }));
-        // The holder serves the envelope even after its pool evicted the transaction.
+        await WrapperTestNode.Until(() => link.Sent<GetPooledTransactionsMessage66>().Length == 1);
+        (long requestId, ValueHash256[] requested) = EnvelopeRequest(link);
+        Assert.That(requested, Is.EqualTo(new[] { transaction.Hash!.ValueHash256 }));
+        // The holder serves the envelope from its wrapper-envelope cache even after its pool evicted the transaction.
         holder.Pending.Clear();
-        holder.Transport.OnGetWrapperEnvelopes(requester, envelopes);
-        node.Transport.OnWrapperEnvelopes(peer, holderLink.Sent<WrapperEnvelopesMessage>().Single());
+        Assert.That(holder.Transport.TryGetEnvelope(requested[0], out Transaction? served), Is.True);
+        node.Transport.OnPooledEnvelopes(peer, requestId, [Envelope(served!)]);
 
         await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash));
         await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
@@ -165,7 +173,7 @@ public class ProofWrapperTransportTests
         GetProofWrappersMessage[] requests = link.Sent<GetProofWrappersMessage>();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(requests, Has.Length.EqualTo(Eth73Protocol.MaxRequestsPerPeer));
+            Assert.That(requests, Has.Length.EqualTo(WrapperTransportLimits.MaxRequestsPerPeer));
             Assert.That(requests.All(r => r.Hashes.Length == 2), Is.True, "two wrappers of a third of the soft limit fit, a third does not");
             Assert.That(node.Transport.ChargedBytes, Is.LessThanOrEqualTo(WrapperTransportLimits.MaxPeerBytes));
         }
@@ -194,46 +202,97 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // EIP-8437: while offering a wrapper a peer keeps every listed envelope available, including ones its pool rejected or
+    // evicted, looking only in the pool and a bounded wrapper-envelope cache.
     [Test]
-    public void Envelope_requests_are_empty_for_unknown_wrappers_and_violations_past_the_transaction_count()
+    public void Wrapper_envelope_cache_serves_listed_envelopes_after_eviction_and_nothing_else()
     {
         Transaction transaction = FrameTransaction(1);
         byte[] wrapper = Wrapper(64, transaction);
         using WrapperTestNode node = Holder(wrapper, transaction);
-        FakeWrapperLink link = new();
-        WrapperPeer peer = node.Connect(link);
-        node.Transport.OnGetWrapperEnvelopes(peer, new(1, TestItem.KeccakA.ValueHash256, [5]));
-        node.Transport.OnGetWrapperEnvelopes(peer, new(2, Describe(wrapper).Hash, [0]));
+        node.Pending.Clear();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(link.Sent<WrapperEnvelopesMessage>()[0].Envelopes, Is.Empty);
-            Assert.That(link.Sent<WrapperEnvelopesMessage>()[1].Envelopes, Is.EqualTo(new[] { Envelope(transaction) }));
-            Assert.That(link.Penalties, Is.Empty);
+            Assert.That(node.Transport.TryGetEnvelope(transaction.Hash!.ValueHash256, out Transaction? served), Is.True);
+            Assert.That(Envelope(served!), Is.EqualTo(Envelope(transaction)));
+            Assert.That(node.Transport.TryGetEnvelope(FrameTransaction(2).Hash!.ValueHash256, out _), Is.False);
         }
-        node.Transport.OnGetWrapperEnvelopes(peer, new(3, Describe(wrapper).Hash, [1]));
-        Assert.That(link.Penalties, Has.Length.EqualTo(1));
     }
 
-    [TestCase("hash mismatch")]
-    [TestCase("too many")]
-    public async Task Envelope_hash_mismatch_or_excess_is_invalid_peer_data(string scenario)
+    // assets/eip-8437/check_vectors.py check_envelopes: omissions and truncation are allowed; repeats, reordering and
+    // unrequested entries are not.
+    [TestCase(new[] { 0, 1, 2 }, true)]
+    [TestCase(new[] { 0, 2 }, true)]
+    [TestCase(new[] { 2 }, true)]
+    [TestCase(new[] { 0 }, true)]
+    [TestCase(new int[0], true)]
+    [TestCase(new[] { 0, 0 }, false)]
+    [TestCase(new[] { 2, 0 }, false)]
+    [TestCase(new[] { 3 }, false)]
+    [TestCase(new[] { 0, 1, 2, 0 }, false)]
+    public void Pooled_envelopes_match_distinct_requested_hashes_in_order(int[] returned, bool matches)
     {
-        Transaction transaction = FrameTransaction(1), other = FrameTransaction(2);
-        byte[] wrapper = Wrapper(64, transaction);
+        ValueHash256[] requested = [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, TestItem.KeccakC.ValueHash256];
+        ValueHash256 unrequested = TestItem.KeccakD.ValueHash256;
+        ValueHash256[] hashes = [.. returned.Select(i => i < requested.Length ? requested[i] : unrequested)];
+        Assert.That(ProofWrapperTransport.MatchesInOrder(hashes, requested), Is.EqualTo(matches));
+    }
+
+    [TestCase("unrequested")]
+    [TestCase("repeated")]
+    [TestCase("reordered")]
+    public async Task Repeated_reordered_or_unrequested_envelopes_are_invalid_peer_data(string scenario)
+    {
+        Transaction first = FrameTransaction(1), second = FrameTransaction(2);
+        byte[] wrapper = Wrapper(64, first, second);
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
         node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
         Answer(node, peer, link, wrapper);
-        await WrapperTestNode.Until(() => link.Sent<GetWrapperEnvelopesMessage>().Length == 1);
-        byte[][] envelopes = scenario == "hash mismatch" ? [Envelope(other)] : [Envelope(transaction), Envelope(other)];
-        node.Transport.OnWrapperEnvelopes(peer, new(link.Sent<GetWrapperEnvelopesMessage>()[0].RequestId, envelopes));
+        await WrapperTestNode.Until(() => link.Sent<GetPooledTransactionsMessage66>().Length == 1);
+        (long requestId, ValueHash256[] requested) = EnvelopeRequest(link);
+        byte[] Of(ValueHash256 hash) => Envelope(hash == first.Hash!.ValueHash256 ? first : second);
+        byte[][] envelopes = scenario switch
+        {
+            "unrequested" => [Envelope(FrameTransaction(3))],
+            "repeated" => [Of(requested[0]), Of(requested[0])],
+            _ => [Of(requested[1]), Of(requested[0])]
+        };
+        node.Transport.OnPooledEnvelopes(peer, requestId, envelopes);
         await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(link.Penalties, Is.Not.Empty);
             Assert.That(node.Pending, Is.Empty);
             Assert.That(node.Transport.IsStored(Describe(wrapper).Hash), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Omitted_envelopes_are_requested_again_from_the_same_source_while_it_makes_progress()
+    {
+        Transaction first = FrameTransaction(1), second = FrameTransaction(2);
+        byte[] wrapper = Wrapper(64, first, second);
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        Answer(node, peer, link, wrapper);
+        await WrapperTestNode.Until(() => link.Sent<GetPooledTransactionsMessage66>().Length == 1);
+        (long requestId, ValueHash256[] requested) = EnvelopeRequest(link);
+        Transaction Of(ValueHash256 hash) => hash == first.Hash!.ValueHash256 ? first : second;
+        // The source omits the first requested envelope, which PooledTransactions allows.
+        node.Transport.OnPooledEnvelopes(peer, requestId, [Envelope(Of(requested[1]))]);
+        await WrapperTestNode.Until(() => link.Sent<GetPooledTransactionsMessage66>().Length == 2);
+        (long retryId, ValueHash256[] retried) = EnvelopeRequest(link, 1);
+        Assert.That(retried, Is.EqualTo(new[] { requested[0] }));
+        node.Transport.OnPooledEnvelopes(peer, retryId, [Envelope(Of(requested[0]))]);
+        await WrapperTestNode.Until(() => node.Transport.IsStored(Describe(wrapper).Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Is.Empty);
+            Assert.That(node.Pending.Select(t => t.Hash), Is.EquivalentTo(new[] { first.Hash, second.Hash }));
         }
     }
 
@@ -249,16 +308,39 @@ public class ProofWrapperTransportTests
         node.Transport.OnAnnounce(peerA, new([announcement]));
         node.Transport.OnAnnounce(peerB, new([announcement]));
         Answer(node, peerA, a, wrapper);
-        await WrapperTestNode.Until(() => a.Sent<GetWrapperEnvelopesMessage>().Length == 1);
-        node.Transport.OnWrapperEnvelopes(peerA, new(a.Sent<GetWrapperEnvelopesMessage>()[0].RequestId, []));
-        await WrapperTestNode.Until(() => b.Sent<GetWrapperEnvelopesMessage>().Length == 1);
-        node.Transport.OnWrapperEnvelopes(peerB, new(b.Sent<GetWrapperEnvelopesMessage>()[0].RequestId, [Envelope(transaction)]));
+        await WrapperTestNode.Until(() => a.Sent<GetPooledTransactionsMessage66>().Length == 1);
+        node.Transport.OnPooledEnvelopes(peerA, EnvelopeRequest(a).RequestId, []);
+        await WrapperTestNode.Until(() => b.Sent<GetPooledTransactionsMessage66>().Length == 1);
+        node.Transport.OnPooledEnvelopes(peerB, EnvelopeRequest(b).RequestId, [Envelope(transaction)]);
         await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(a.Penalties, Is.Empty);
             Assert.That(b.Penalties, Is.Empty);
         }
+    }
+
+    [Test]
+    public async Task Only_outstanding_envelope_requests_are_claimed_by_the_transport()
+    {
+        Transaction transaction = FrameTransaction(1);
+        byte[] wrapper = Wrapper(64, transaction);
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        long wrapperRequest = link.Sent<GetProofWrappersMessage>().Single().RequestId;
+        Assert.That(node.Transport.IsEnvelopeRequest(peer, wrapperRequest), Is.False, "a GetProofWrappers ID is not an envelope request");
+        Answer(node, peer, link, wrapper);
+        await WrapperTestNode.Until(() => link.Sent<GetPooledTransactionsMessage66>().Length == 1);
+        long requestId = EnvelopeRequest(link).RequestId;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.IsEnvelopeRequest(peer, requestId), Is.True);
+            Assert.That(node.Transport.IsEnvelopeRequest(peer, requestId + 1000), Is.False, "other PooledTransactions stay with the eth/72 handling");
+        }
+        node.Tick(WrapperTransportLimits.RequestTimeout + TimeSpan.FromSeconds(1));
+        Assert.That(node.Transport.IsEnvelopeRequest(peer, requestId), Is.False, "an expired request is no longer claimed");
     }
 
     [Test]
@@ -276,7 +358,7 @@ public class ProofWrapperTransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(link.Penalties, Has.Length.EqualTo(1));
-            Assert.That(link.Sent<GetWrapperEnvelopesMessage>(), Is.Empty);
+            Assert.That(link.Sent<GetPooledTransactionsMessage66>(), Is.Empty);
             Assert.That(node.Transport.IsTombstoned(Describe(wrapper).Hash), Is.True);
         }
     }

@@ -80,8 +80,8 @@ public class NativeProofWrapperTransportTests
         Route<NewProofWrapperHashesMessage>(context);
         Route<GetProofWrappersMessage>(context);
         Route<ProofWrappersMessage>(context);
-        Route<GetWrapperEnvelopesMessage>(context);
-        Route<WrapperEnvelopesMessage>(context);
+        Route<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(context);
+        Route<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>(context);
         return context;
     }
 

@@ -112,10 +112,9 @@ public class Eth73MessagesTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(new NewProofWrapperHashesMessageSerializer().Encode(new(announced)), Has.Length.EqualTo(2435));
-            Assert.That(new GetProofWrappersMessageSerializer().Encode(new(long.MaxValue, requested)), Has.Length.EqualTo(2127 - 1),
-                "the vector uses 2**64 - 1, one byte longer than the largest 63-bit request ID");
+            // The vector uses request ID 2**64 - 1; the largest 63-bit ID this client issues encodes in the same 9 bytes.
+            Assert.That(new GetProofWrappersMessageSerializer().Encode(new(long.MaxValue, requested)), Has.Length.EqualTo(2127));
             Assert.That(new GetProofWrappersMessageSerializer().Encode(new(7, [default])).ToHexString(), Is.EqualTo("e307e1a0" + new string('0', 64)));
-            Assert.That(2435, Is.LessThanOrEqualTo(Eth73Protocol.LocalMaxRequestBytes));
         }
 
         static byte[] Word(int value)
