@@ -249,26 +249,42 @@ internal sealed class StateRequestLimiter : IDisposable
     /// <summary>Which limiter pool a route under <c>/eth/v1/beacon/states</c> belongs to.</summary>
     /// <remarks>
     /// <c>root</c> reads the block's <c>state_root</c> and <c>fork</c> a 176-byte prefix, so they hold no state-sized memory and are exempt.
-    /// The <c>head</c> lists (<c>pending_deposits</c>, <c>pending_partial_withdrawals</c>, <c>pending_consolidations</c>, <c>proposer_lookahead</c>) allocate the whole selected list per SSZ response, so they stay in the query pool.
     /// <c>finality_checkpoints</c> and <c>randao</c> read a persisted prefix of about 2.7 MB on mainnet, so they stay in the query pool.
+    /// The <c>head</c> lists (<c>pending_deposits</c>, <c>pending_partial_withdrawals</c>, <c>pending_consolidations</c>, <c>proposer_lookahead</c>)
+    /// and <c>validators/{validator_id}</c> read the in-memory head state, so they stay in the query pool; for any other state id they decode a whole persisted state, so they are downloads.
     /// The registry-sized routes materialize every validator, so they share the download pool and its per-minute cap, and a slow reader of one never holds a query permit.
     /// </remarks>
     private static StateRouteKind Classify(PathString stateRoute)
     {
         ReadOnlySpan<char> route = stateRoute.Value.AsSpan().TrimEnd('/');
-        int leaf = route.LastIndexOf('/');
-        if (leaf <= 0 || route[..leaf].LastIndexOf('/') != 0) return StateRouteKind.Query;
+        int idEnd = route.Length > 0 && route[0] == '/' ? route[1..].IndexOf('/') + 1 : 0;
+        if (idEnd <= 1) return StateRouteKind.Query;
 
-        ReadOnlySpan<char> name = route[(leaf + 1)..];
+        bool head = route[1..idEnd].SequenceEqual("head");
+        ReadOnlySpan<char> name = route[(idEnd + 1)..];
+        int subroute = name.IndexOf('/');
+        if (subroute >= 0)
+        {
+            return !head && name[..subroute].Equals("validators", StringComparison.OrdinalIgnoreCase) && name[(subroute + 1)..].IndexOf('/') < 0
+                ? StateRouteKind.Download
+                : StateRouteKind.Query;
+        }
+
         if (name.Equals("root", StringComparison.OrdinalIgnoreCase)
             || name.Equals("fork", StringComparison.OrdinalIgnoreCase))
             return StateRouteKind.Exempt;
 
-        return name.Equals("validators", StringComparison.OrdinalIgnoreCase)
+        if (name.Equals("validators", StringComparison.OrdinalIgnoreCase)
             || name.Equals("validator_balances", StringComparison.OrdinalIgnoreCase)
             || name.Equals("validator_identities", StringComparison.OrdinalIgnoreCase)
             || name.Equals("committees", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("sync_committees", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("sync_committees", StringComparison.OrdinalIgnoreCase))
+            return StateRouteKind.Download;
+
+        return !head && (name.Equals("pending_deposits", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("pending_partial_withdrawals", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("pending_consolidations", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("proposer_lookahead", StringComparison.OrdinalIgnoreCase))
             ? StateRouteKind.Download
             : StateRouteKind.Query;
     }

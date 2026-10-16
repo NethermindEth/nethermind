@@ -58,7 +58,7 @@ public class StateRequestLimiterTests
         bool reached = false;
         try
         {
-            await limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/0x01/pending_consolidations", "192.0.2.7"), _ =>
+            await limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/head/pending_consolidations", "192.0.2.7"), _ =>
             {
                 reached = true;
                 return Task.CompletedTask;
@@ -429,7 +429,7 @@ public class StateRequestLimiterTests
         using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0 });
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task held = limiter.InvokeAsync(StateRequest(Download, "192.0.2.7"), _ => release.Task);
-        Task query = limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/0x01/pending_consolidations", "192.0.2.7"), _ => release.Task);
+        Task query = limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/head/pending_consolidations", "192.0.2.7"), _ => release.Task);
 
         bool reached = false;
         DefaultHttpContext probe = StateRequest(path, "192.0.2.8");
@@ -461,7 +461,7 @@ public class StateRequestLimiterTests
         await limiter.InvokeAsync(fork, _ => Task.CompletedTask);
         DefaultHttpContext finality = StateRequest("/eth/v1/beacon/states/head/finality_checkpoints", "192.0.2.9");
         await limiter.InvokeAsync(finality, _ => Task.CompletedTask);
-        DefaultHttpContext query = StateRequest("/eth/v1/beacon/states/0x01/pending_consolidations", "192.0.2.9");
+        DefaultHttpContext query = StateRequest("/eth/v1/beacon/states/head/pending_consolidations", "192.0.2.9");
         await limiter.InvokeAsync(query, _ => Task.CompletedTask);
         release.SetResult();
         await Task.WhenAll(first, second);
@@ -494,18 +494,29 @@ public class StateRequestLimiterTests
         Assert.That(other.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
     }
 
-    [Test]
-    public async Task Registry_sized_routes_spend_the_download_budget_not_the_query_budget()
+    [TestCase("/eth/v1/beacon/states/finalized/validator_balances", true)]
+    [TestCase("/eth/v1/beacon/states/finalized/validators/0", true)]
+    [TestCase("/eth/v1/beacon/states/justified/pending_deposits", true)]
+    [TestCase("/eth/v1/beacon/states/0x01/pending_partial_withdrawals", true)]
+    [TestCase("/eth/v1/beacon/states/finalized/pending_consolidations/", true)]
+    [TestCase("/eth/v1/beacon/states/123/proposer_lookahead", true)]
+    [TestCase("/eth/v1/beacon/states/head/validators/0", false)]
+    [TestCase("/eth/v1/beacon/states/head/pending_deposits", false)]
+    [TestCase("/eth/v1/beacon/states/head/proposer_lookahead", false)]
+    [TestCase("/eth/v1/beacon/states/finalized/finality_checkpoints", false)]
+    [TestCase("/eth/v1/beacon/states/finalized/randao", false)]
+    public async Task Routes_that_decode_a_whole_state_spend_the_download_budget_not_the_query_budget(string path, bool download)
     {
         using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 1, StateQueriesPerMinutePerClient = 0 });
         DefaultHttpContext first = StateRequest("/eth/v1/beacon/states/head/validators", "192.0.2.7");
         await limiter.InvokeAsync(first, _ => Task.CompletedTask);
-        DefaultHttpContext second = StateRequest("/eth/v1/beacon/states/finalized/validator_balances", "192.0.2.7");
+        DefaultHttpContext second = StateRequest(path, "192.0.2.7");
         await limiter.InvokeAsync(second, _ => Task.CompletedTask);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(first.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(second.Response.StatusCode, Is.EqualTo(StatusCodes.Status429TooManyRequests));
+        Assert.That(second.Response.StatusCode, Is.EqualTo(download ? StatusCodes.Status429TooManyRequests : StatusCodes.Status200OK),
+            "a read that decodes a persisted state must not starve the prefix and head queries of their pool");
     }
 
     [Test]
