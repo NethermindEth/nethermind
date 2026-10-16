@@ -304,7 +304,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return rewardInfos;
         }
 
-        /// <summary>Reads each receipt's gas used without decoding its logs or bloom.</summary>
+        /// <summary>Reads each receipt's gas used, through the receipts iterator when the storage offers one, so its logs and bloom are not decoded.</summary>
         /// <returns>Whether there is exactly one receipt per transaction.</returns>
         private bool TryGetReceiptsGasUsed(Block block, bool isEip8116Enabled, Span<ulong> gasUsed)
         {
