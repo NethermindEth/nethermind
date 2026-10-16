@@ -243,9 +243,9 @@ public class OptimismEthRpcModule(
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
-        RecoverTxSenderIfNeeded(transaction);
-
         TxReceipt? receipt = TryGetMatchingReceipt(_receiptFinder.Get(block), transaction, (int)positionIndex);
+        transaction.SenderAddress ??= receipt?.Sender;
+        RecoverTxSenderIfNeeded(transaction);
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction,
