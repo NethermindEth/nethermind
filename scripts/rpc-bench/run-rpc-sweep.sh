@@ -312,9 +312,20 @@ parity_compare() {
 }
 
 # $1 clabel $2 label $3 corpus $4 ctype $5 container
+warmup_complete() {
+  awk -v requested="$WARMUP_SECONDS" -v elapsed="$WARMED_SECONDS" \
+    -v delivered="$WARMED_RPS" -v target="$WARMUP_TARGET_RPS" \
+    'BEGIN { exit !(requested == 0 || (elapsed >= requested && delivered >= target * 0.8)) }'
+}
+
 run_corpus() {
   local clabel="$1" label="$2" corpus="$3" ctype="$4" cname="$5" rps slot cell dur report_dir
   warm_node "$clabel" "$label" "$corpus" "$ctype"
+  if ! warmup_complete; then
+    echo "::error::${label}: corpus warmup was not completed"
+    arm_fail=$((arm_fail + 1))
+    return 1
+  fi
   declare -A rps_seen=()
   for rps in $RPS_LIST; do
     rps_seen[$rps]=$(( ${rps_seen[$rps]:-0} + 1 ))
@@ -524,7 +535,7 @@ for entry in "${schedule[@]}"; do
   else
     if [[ -n "$RPS_LIST" ]] && (( WARMUP_SECONDS > 0 )); then
       warm_node synthetic "$label" "" "$ctype"
-      if (( WARMED_SECONDS != WARMUP_SECONDS || WARMED_RPS * 10 < WARMUP_TARGET_RPS * 8 )); then
+      if ! warmup_complete; then
         echo "::error::${label}: synthetic warmup was not completed"
         arm_fail=$((arm_fail + 1))
       fi
