@@ -17,7 +17,6 @@ using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
