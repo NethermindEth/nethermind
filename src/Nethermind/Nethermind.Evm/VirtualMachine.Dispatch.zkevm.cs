@@ -74,6 +74,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void SetExecutionGas(ref TGasPolicy gas, ulong value) => TGasPolicy.SetRemainingGas(ref gas, value);
 
+    /// <summary>Runs the current frame on the dispatch chain.</summary>
+    /// <remarks>The guest never consults a frame code runner, so a frame always runs on the dispatch chain.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private EvmExceptionType RunFrameCode<TTracingInst, TCancelable>(
+        scoped ref EvmStack stack,
+        scoped ref TGasPolicy gas,
+        ref nint programCounter)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag =>
+        RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
     /// <returns>
