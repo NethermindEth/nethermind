@@ -8,6 +8,7 @@ using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Optimism.CL;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Core;
 using Nethermind.Network.Libp2p;
@@ -33,13 +34,22 @@ public class OptimismGossipSettingsTests
     public void Static_peers_are_checked_at_startup(string node, bool dialable)
     {
         TestLogger logger = new();
-        using OptimismCLP2P p2p = new(Substitute.For<IExecutionEngineManager>(), 10, ["/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", node], new OptimismConfig(), Address.Zero,
+        OptimismCLP2P Create() => new(Substitute.For<IExecutionEngineManager>(), 10, ["/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", node], new OptimismConfig(), Address.Zero,
             Substitute.For<ITimestamper>(), Substitute.For<IIPResolver>(), new OneLoggerLogManager(new ILogger(logger)));
 
+        // An entry no dial reaches can be the sequencer, so startup fails instead of running without its unsafe blocks.
+        if (!dialable)
+        {
+            Assert.That(Create, Throws.InstanceOf<InvalidConfigurationException>());
+            Assert.That(logger.LogList.Where(line => line.Contains(node)), Has.Exactly(1).Contains("is skipped"));
+            return;
+        }
+
+        using OptimismCLP2P p2p = Create();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(p2p.StaticPeersForTest.Select(static peer => peer.ToString()), Is.EqualTo(dialable ? new[] { "/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", node } : ["/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW"]));
-            Assert.That(logger.LogList.Where(line => line.Contains(node)), dialable ? Is.Empty : Has.Exactly(1).Contains("is skipped"));
+            Assert.That(p2p.StaticPeersForTest.Select(static peer => peer.ToString()), Is.EqualTo(new[] { "/ip4/10.0.0.2/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", node }));
+            Assert.That(logger.LogList.Where(line => line.Contains(node)), Is.Empty);
         }
     }
 

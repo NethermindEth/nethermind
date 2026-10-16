@@ -67,6 +67,11 @@ public class OptimismCLP2P : IDisposable
         _config = config;
         _executionEngineManager = executionEngineManager;
         _staticPeerList = StaticPeerKeeper.ParseStaticPeers(staticPeerList, "Optimism CL static peers", _logger);
+        // A dropped entry can be the sequencer, without which no unsafe block arrives by gossip.
+        if (_staticPeerList.Length != staticPeerList.Length)
+        {
+            throw new InvalidConfigurationException("Optimism CL static peers contain an entry no dial can reach.", ExitCodes.GeneralError);
+        }
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
         _ipResolver = ipResolver;
 
