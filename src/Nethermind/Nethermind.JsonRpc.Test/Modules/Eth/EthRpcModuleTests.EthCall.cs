@@ -2062,4 +2062,34 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["error"], Is.Null);
     }
 
+    [Test]
+    public async Task Calls_with_overrides_leave_the_head_header_unchanged(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [Values] bool priced)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        BlockHeader head = ctx.Test.BlockTree.Head!.Header;
+        BlockHeader snapshot = head.Clone();
+        string fees = priced ? $",\"gasPrice\":\"0x{head.BaseFeePerGas * 2:x}\"" : "";
+        object transaction = JsonSerializer.Deserialize<object>($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\"{fees}}}")!;
+        object stateOverride = JsonSerializer.Deserialize<object>($"{{\"{TestItem.AddressB}\":{{\"balance\":\"0x1\"}}}}")!;
+        object blockOverride = JsonSerializer.Deserialize<object>($"{{\"gasLimit\":\"0x1000000\",\"time\":\"0x{head.Timestamp + 1:x}\"}}")!;
+
+        string serialized = method == "eth_createAccessList"
+            ? await ctx.Test.TestEthRpc(method, transaction, "latest", stateOverride)
+            : await ctx.Test.TestEthRpc(method, transaction, "latest", stateOverride, blockOverride);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
+            Assert.That(head.GasUsed, Is.EqualTo(snapshot.GasUsed));
+            Assert.That(head.GasLimit, Is.EqualTo(snapshot.GasLimit));
+            Assert.That(head.BaseFeePerGas, Is.EqualTo(snapshot.BaseFeePerGas));
+            Assert.That(head.Timestamp, Is.EqualTo(snapshot.Timestamp));
+            Assert.That(head.BlobGasUsed, Is.EqualTo(snapshot.BlobGasUsed));
+            Assert.That(head.StateRoot, Is.EqualTo(snapshot.StateRoot));
+            Assert.That(head.IsPostMerge, Is.EqualTo(snapshot.IsPostMerge));
+        }
+    }
+
 }
