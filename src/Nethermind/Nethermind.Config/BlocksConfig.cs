@@ -78,7 +78,7 @@ namespace Nethermind.Config
 
         public bool PreWarmEarlyStart { get; set; } = true;
 
-        public bool PreWarmTransactionWorkersFirst { get; set; } = true;
+        public bool PreWarmTransactionWorkersFirst { get; set; } = false;
 
         public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
 
