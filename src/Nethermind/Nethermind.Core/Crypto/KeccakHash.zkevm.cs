@@ -251,6 +251,7 @@ public sealed partial class KeccakHash
 
                 fixed (byte* data = node)
                 {
+                    Debug.Assert(((nuint)data & 7) == 0);
                     // An array's data is 8-byte aligned; the rounding lets the JIT prove it.
                     Sponge(ref lane, StrictAlignmentFlag.IsActive ? AlignedDown(data) : data, (nuint)node.Length);
                 }
