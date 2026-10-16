@@ -58,6 +58,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
+                if (BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) is { } error)
+                    return Result<Transaction>.Fail(error);
                 if (AcceptsZeroBlobFeeCap)
                     call = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call);
 

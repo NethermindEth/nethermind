@@ -158,6 +158,7 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, CancellationToken cancellationToken)
         {
+            if (GetUnsupportedBlockOverrideError(blockOverride) is { } error) return new() { Error = error };
             blobBaseFeeOverride = GetBlobBaseFeeOverride(tx, blobBaseFeeOverride);
             return HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
                 ? CallExclusive(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, cancellationToken)
@@ -215,6 +216,13 @@ namespace Nethermind.Facade
             stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null ||
             blockOverride is not null && HasBlockOverrides(blockOverride);
 
+        internal static string? GetUnsupportedBlockOverrideError(BlockOverride? blockOverride)
+        {
+            string? field = blockOverride?.BeaconRoot is not null ? "beaconRoot"
+                : blockOverride?.Withdrawals is not null ? "withdrawals" : null;
+            return field is null ? null : $"block override \"{field}\" is not supported for this RPC method";
+        }
+
         private static bool HasBlockOverrides(BlockOverride blockOverride) =>
             blockOverride.Number is not null ||
             blockOverride.PrevRandao is not null ||
@@ -256,6 +264,7 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, CancellationToken cancellationToken)
         {
+            if (GetUnsupportedBlockOverrideError(blockOverride) is { } error) return new() { Error = error };
             BlobFeeCapFill blobFeeCapFill = new(tx.SupportsBlobs && tx.MaxFeePerBlobGas is null, blobBaseFeeOverride);
             blobBaseFeeOverride = GetBlobBaseFeeOverride(tx, blobBaseFeeOverride);
 
@@ -268,6 +277,7 @@ namespace Nethermind.Facade
             Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted)
         {
             executionReverted = false;
+            if (GetUnsupportedBlockOverrideError(blockOverride) is { } error) return Result<TxFrame[]>.Fail(error);
             BlockHeader executionHeader = header.Clone();
             // The requested block's context, as the gas estimate that follows uses.
             if (HasOverrides(stateOverride, null, blockOverride))
