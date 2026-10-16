@@ -44,9 +44,6 @@ public class ReceiptFinderKeyingTests
         "Nethermind.Shutter.ShutterApi",
         "Nethermind.Shutter.ShutterBlockHandler",
         "Nethermind.Merge.Plugin.FrameTxWidthFinalizer",
-        // Its query finder is keyed; the unkeyed one only feeds the tx-by-index sender shortcut, which must not
-        // cost a block execution.
-        "Nethermind.JsonRpc.Modules.Eth.EthModuleFactory",
     ];
 
     /// <summary>

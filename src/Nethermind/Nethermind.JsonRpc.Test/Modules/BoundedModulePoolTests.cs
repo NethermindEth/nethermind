@@ -74,7 +74,7 @@ public class BoundedModulePoolTests
                 Substitute.For<IHistoryPruner>()),
             new BlockForRpcFactory(),
             new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Substitute.For<IHeaderStore>(), blockTree, Substitute.For<ISpecProvider>()),
-            Substitute.For<IReceiptFinder>()),
+            Substitute.For<IReceiptStorage>()),
              1, 1000);
 
         return Task.CompletedTask;

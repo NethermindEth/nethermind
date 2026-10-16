@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<IHistoryPruner>()),
                 new BlockForRpcFactory(),
                 new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Substitute.For<IHeaderStore>(), blockTree, Substitute.For<ISpecProvider>()),
-                Substitute.For<IReceiptFinder>());
+                Substitute.For<IReceiptStorage>());
             return Task.CompletedTask;
         }
 
