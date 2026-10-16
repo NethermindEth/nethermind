@@ -89,9 +89,8 @@ public class InvalidChainTracker(
                 foreach (Hash256 nodeChild in current.Children)
                 {
                     Node childNode = GetNode(nodeChild);
-                    // Written under the parent's lock only: nesting the child's lock could deadlock on the cycles
-                    // SetChildParent tolerates, and a reader that sees the mark before the hash answers INVALID
-                    // with a last valid hash the next query corrects.
+                    // Keep only the parent's lock: nested child locks can deadlock on tolerated cycles.
+                    // A reader can observe a new invalid mark before its first hash assignment and conservatively return null.
                     if (!childNode.IsInvalid || childNode.LastValidHash != current.LastValidHash)
                     {
                         childNode.IsInvalid = true;
