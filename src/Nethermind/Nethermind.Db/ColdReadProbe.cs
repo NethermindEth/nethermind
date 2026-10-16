@@ -28,7 +28,7 @@ public static class ColdReadProbe
     [ThreadStatic] private static int _armedGets;
     [ThreadStatic] private static IntPtr _perfContext;
     [ThreadStatic] private static bool _perfInitTried;
-    private static volatile bool _perfAvailable = true;
+    private static volatile bool _perfAvailable = false;
 
     private static readonly Lock _lock = new();
     private static Stats _window = new();
