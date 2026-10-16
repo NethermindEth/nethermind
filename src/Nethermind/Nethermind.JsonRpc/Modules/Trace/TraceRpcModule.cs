@@ -580,7 +580,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         // Bodies are loaded one at a time so a long range never holds all of them.
         private Block LoadBlock(BlockHeader header) =>
             blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.None, header.Number)
-            ?? throw new InvalidOperationException($"Body of block {header.ToString(BlockHeader.Format.FullHashAndNumber)} is no longer available");
+            ?? throw new ResourceNotFoundException($"{ErrorMessages.PrunedHistoryUnavailable} for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
         {

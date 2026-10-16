@@ -358,6 +358,37 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_filter_reports_a_body_pruned_after_the_range_check_as_pruned_history()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = false;
+        ulong headNumber = blockchain.BlockTree.Head!.Number;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true,
+            new BodyPrunedAfterCheckBlockTree(blockchain.BlockTree, blockchain.BlockTree.FindHeader(headNumber - 1)!.Hash!));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_filter",
+            new { fromBlock = $"0x{headNumber - 2:x}", toBlock = "latest" });
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error), Is.True, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable), response);
+            Assert.That(error.GetProperty("message").GetString(), Does.StartWith(ErrorMessages.PrunedHistoryUnavailable), response);
+        }
+    }
+
+    /// <summary>Reports the body as stored, then fails to load it, as when the pruner deletes it mid-request.</summary>
+    private sealed class BodyPrunedAfterCheckBlockTree(IBlockTree inner, Hash256 prunedHash) : BlockTreeTestDouble(inner)
+    {
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == prunedHash ? null : base.FindBlock(blockHash, options, blockNumber);
+    }
+
+    [Test]
     public async Task Trace_filter_loads_block_bodies_only_while_streaming()
     {
         Context context = new();
