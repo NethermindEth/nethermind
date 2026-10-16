@@ -1533,7 +1533,9 @@ namespace Nethermind.Db.Test
             [Values] bool snapshot, [Values(0, 1, 2, 4)] int bufferSize, [Values(0, 4)] int initialLength)
         {
             byte[] initial = Enumerable.Repeat((byte)0x11, initialLength).ToArray();
+            _db[[1, 1]] = [0x77];
             _db[[1, 3]] = initial;
+            _db[[1, 4]] = [0x88];
             using IKeyValueStoreSnapshot? captured = snapshot ? ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot() : null;
             ISnapshotSortedKeyValueStore store = captured is null ? (ISnapshotSortedKeyValueStore)_db : (ISnapshotSortedKeyValueStore)captured;
             byte[] changed = [0x22, 0x33, 0x44, 0x55];

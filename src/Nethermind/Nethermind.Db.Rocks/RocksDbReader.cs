@@ -122,7 +122,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         if (_mainDb.CrossesPrefixBucket(lowerBoundInclusive, upperBoundExclusive)) readOptions.SetTotalOrderSeek(true);
         readOptions.SetIterateBounds(lowerBoundInclusive, upperBoundExclusive);
         using Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        iterator.Seek(lowerBoundInclusive);
+        iterator.SeekToFirst();
         if (!iterator.Valid())
         {
             iterator.ThrowIfError();
@@ -130,7 +130,6 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
 
         ReadOnlySpan<byte> key = iterator.GetKeySpan();
-        if (key.SequenceCompareTo(upperBoundExclusive) >= 0) return false;
         ReadOnlySpan<byte> value = iterator.GetValueSpan();
         keyLength = key.Length;
         valueLength = value.Length;
