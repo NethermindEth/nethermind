@@ -17,8 +17,7 @@
 
   <ItemGroup>
     <PackageReference Include="ConcurrentHashSet" />
-    <PackageReference Include="Nethermind.RocksDbBindings" Condition="'$(RocksDbBindingsProject)' == ''" />
-    <ProjectReference Include="$(RocksDbBindingsProject)" Condition="'$(RocksDbBindingsProject)' != ''" />
+    <PackageReference Include="Nethermind.RocksDbBindings" />
     <PackageReference Include="NonBlocking" />
   </ItemGroup>
 </Project>
