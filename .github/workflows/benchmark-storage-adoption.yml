@@ -215,12 +215,12 @@ jobs:
         with:
           ref: ${{ inputs.control_ref }}
           path: control
-          fetch-depth: 2
+          fetch-depth: 16
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.chain_ref }}
           path: candidate
-          fetch-depth: 3
+          fetch-depth: 16
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: baseline/global.json
