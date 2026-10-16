@@ -34,6 +34,11 @@ public sealed class RegeneratingReceiptFinder(
 
     public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
 
+    /// <inheritdoc/>
+    /// <remarks>Serves stored receipts only; a block that needs regenerating reports <c>false</c> and goes through <see cref="Get(Block, bool, bool)"/>.</remarks>
+    public bool TryGetReceipt(Block block, int txIndex, [NotNullWhen(true)] out TxReceipt? receipt, out int logIndexStart) =>
+        inner.TryGetReceipt(block, txIndex, out receipt, out logIndexStart);
+
     public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
     {
         TxReceipt[] stored = inner.Get(block, recover, recoverSender);

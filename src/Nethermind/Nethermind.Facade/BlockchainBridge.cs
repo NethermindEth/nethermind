@@ -83,7 +83,7 @@ namespace Nethermind.Facade
             [NotNullWhen(true)] out Transaction? transaction,
             [NotNullWhen(true)] out TxReceipt? receipt,
             [NotNullWhen(true)] out Block? block,
-            [NotNullWhen(true)] out TxReceipt[]? receipts)
+            out int logIndexStart)
         {
             Hash256 blockHash = receiptStorage.FindBlockHash(txHash);
             if (blockHash is not null)
@@ -91,31 +91,36 @@ namespace Nethermind.Facade
                 block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
                 if (block is not null)
                 {
-                    receipts = receiptStorage.Get(block);
                     int txIndex = block.GetTransactionIndex(txHash.ValueHash256);
                     if (txIndex != -1)
                     {
                         transaction = block.Transactions[txIndex];
-                        receipt = receipts.Length > txIndex && receipts[txIndex].TxHash == txHash ? receipts[txIndex] : null;
-                        return receipt is not null;
+                        if (!receiptStorage.TryGetReceipt(block, txIndex, out receipt, out logIndexStart))
+                        {
+                            TxReceipt[] receipts = receiptStorage.Get(block);
+                            receipt = receipts.Length > txIndex ? receipts[txIndex] : null;
+                            logIndexStart = receipts.GetBlockLogFirstIndex(txIndex);
+                        }
+
+                        if (receipt is not null && receipt.TxHash == txHash) return true;
                     }
                 }
             }
 
             transaction = null;
             receipt = null;
-            receipts = null;
             block = null;
+            logIndexStart = 0;
             return false;
         }
 
         public (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash)
         {
-            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? txReceipts))
+            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out int blockLogIndexStart))
             {
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
                 // EIP-8116: logIndex counts within the receipt.
-                int logIndexStart = spec.IsEip8116Enabled ? 0 : txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
+                int logIndexStart = spec.IsEip8116Enabled ? 0 : blockLogIndexStart;
                 return (txReceipt, block.Timestamp, tx.GetGasInfo(spec, block.Header), logIndexStart);
             }
 
@@ -124,7 +129,7 @@ namespace Nethermind.Facade
 
         public bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true)
         {
-            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? _))
+            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out int _))
             {
                 TransactionForRpcContext extraData = new(
                     chainId: specProvider.ChainId,

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Linq;
@@ -455,6 +456,77 @@ namespace Nethermind.Blockchain.Receipts
 
                     return receipts;
                 }
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Serves compact receipts read from the database and leaves the receipts cache untouched. Cached and pending
+        /// receipts are already decoded, so <see cref="Get(Block, bool, bool)"/> serves them without a decode.
+        /// </remarks>
+        public bool TryGetReceipt(Block block, int txIndex, [NotNullWhen(true)] out TxReceipt? receipt, out int logIndexStart)
+        {
+            receipt = null;
+            logIndexStart = 0;
+            Hash256 blockHash = block.Hash!;
+            if (_defaultReceiptsRecovery is null
+                || (uint)txIndex >= (uint)block.Transactions.Length
+                || block.ReceiptsRoot == Keccak.EmptyTreeHash
+                || _receiptsCache.Contains(blockHash)
+                || (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out _)))
+            {
+                return false;
+            }
+
+            Span<byte> receiptsData = GetReceiptData(block.Number, blockHash);
+            try
+            {
+                if (!ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData)) return false;
+
+                RlpReader reader = new(receiptsData);
+                ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out _);
+                int end = reader.ReadSequenceLength() + reader.Position;
+                RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes
+                    | (_eip7668EverEnabled && _specProvider.GetSpec(block.Header).IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
+                CompactReceiptStorageDecoder decoder = CompactReceiptStorageDecoder.Instance;
+                TxReceipt? found = null;
+                ulong gasUsedBefore = 0;
+                int logsBefore = 0;
+                int count = 0;
+                for (; reader.Position < end; count++)
+                {
+                    // Get keeps only the receipts before an empty item, which then cannot be recovered.
+                    if (reader.IsNextItemEmptyList()) return false;
+
+                    if (count < txIndex)
+                    {
+                        decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef previous);
+                        gasUsedBefore = previous.GasUsedTotal;
+                        RlpReader logs = new(previous.LogsRlp);
+                        logs.SkipLength();
+                        logsBefore += logs.PeekNumberOfItemsRemaining();
+                    }
+                    else if (count == txIndex)
+                    {
+                        found = decoder.Decode(ref reader, behaviors);
+                    }
+                    else
+                    {
+                        reader.SkipItem();
+                    }
+                }
+
+                // Get recovers receipts only when there is one for every transaction.
+                if (found is null || count != block.Transactions.Length) return false;
+
+                _defaultReceiptsRecovery.RecoverReceiptData(block, txIndex, gasUsedBefore, found);
+                receipt = found;
+                logIndexStart = logsBefore;
+                return true;
             }
             finally
             {

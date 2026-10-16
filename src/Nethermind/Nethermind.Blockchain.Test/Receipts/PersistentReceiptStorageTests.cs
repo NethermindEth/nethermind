@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -489,6 +490,53 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _storage.ClearCache();
 
         Assert.That(_storage.Get(block).Select(static r => r.Bloom.IsZeroLength), Is.All.EqualTo(eip7668));
+    }
+
+    [Test]
+    public void TryGetReceipt_matches_the_receipt_Get_recovers([Values] bool eip7668, [Values] bool eip8116)
+    {
+        _specProvider.NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = eip7668, IsEip8116Enabled = eip8116 };
+        CreateStorage();
+        LogEntry log = new(TestItem.AddressA, [1, 2], [TestItem.KeccakA]);
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).WithTo(null).WithCode([0x00]).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(3).SignedAndResolved().TestObject).TestObject;
+        PrepareBlock(block);
+        TxReceipt[] receipts =
+        [
+            Build.A.Receipt.WithLogs(log, log).WithGasUsedTotal(30_000).TestObject,
+            Build.A.Receipt.WithStatusCode(StatusCode.Failure).WithGasUsedTotal(80_000).TestObject,
+            Build.A.Receipt.WithLogs(log).WithGasUsedTotal(110_000).TestObject,
+            Build.A.Receipt.WithGasUsedTotal(131_000).TestObject,
+        ];
+        _storage.Insert(block, receipts);
+
+        ClearSendersAndCache();
+        TxReceipt[] expected = _storage.Get(block);
+        Address?[] senders = block.Transactions.Select(static tx => tx.SenderAddress).ToArray();
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            ClearSendersAndCache();
+            bool served = _storage.TryGetReceipt(block, i, out TxReceipt? receipt, out int logIndexStart);
+
+            Assert.That(served, Is.EqualTo(useCompactReceipts));
+            if (!served) continue;
+            receipt.AssertEquivalentTo(expected[i]);
+            Assert.That(logIndexStart, Is.EqualTo(expected.GetBlockLogFirstIndex(i)));
+            Assert.That(block.Transactions[i].SenderAddress, Is.EqualTo(senders[i]));
+        }
+
+        Assert.That(_storage.TryGetReceipt(block, receipts.Length, out _, out _), Is.False);
+        _storage.Get(block);
+        Assert.That(_storage.TryGetReceipt(block, 0, out _, out _), Is.False, "cached receipts are served by Get");
+
+        void ClearSendersAndCache()
+        {
+            foreach (Transaction tx in block.Transactions) tx.SenderAddress = null;
+            _storage.ClearCache();
+        }
     }
 
     [Test]

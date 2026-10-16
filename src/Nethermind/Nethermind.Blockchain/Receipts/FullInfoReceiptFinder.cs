@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -45,5 +46,6 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => _receiptStorage.CanGetReceiptsByHash(blockNumber);
         public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        public bool TryGetReceipt(Block block, int txIndex, [NotNullWhen(true)] out TxReceipt? receipt, out int logIndexStart) => _receiptStorage.TryGetReceipt(block, txIndex, out receipt, out logIndexStart);
     }
 }

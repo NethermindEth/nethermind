@@ -161,6 +161,31 @@ public class BlockchainBridgeTests
     }
 
     [Test]
+    public void GetTxReceiptInfo_takes_a_single_receipt_without_reading_the_block_receipts()
+    {
+        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithHash(TestItem.KeccakC).TestObject, tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithIndex(1).WithTransactionHash(TestItem.KeccakA).TestObject;
+        _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
+        _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
+        _receiptStorage.TryGetReceipt(block, 1, out Arg.Any<TxReceipt?>(), out Arg.Any<int>()).Returns(call =>
+        {
+            call[2] = receipt;
+            call[3] = 3;
+            return true;
+        });
+
+        (TxReceipt? found, _, _, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.SameAs(receipt));
+            Assert.That(logIndexStart, Is.EqualTo(3));
+        }
+        _receiptStorage.DidNotReceive().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>());
+    }
+
+    [Test]
     public void Call_uses_valid_post_merge_and_random_value()
     {
         BlockHeader header = Build.A.BlockHeader
