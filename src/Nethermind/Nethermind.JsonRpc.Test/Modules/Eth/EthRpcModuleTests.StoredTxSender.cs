@@ -29,14 +29,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create(configurer: builder =>
             builder.AddDecorator<IReceiptFinder>((_, inner) => new StoredSendersReceiptFinder(inner, () => storedSenders)));
         TestRpcBlockchain test = ctx.Test;
-
-        ulong nonce = test.StateReader.GetNonce(test.BlockTree.Head!.Header, TestItem.AddressB);
-        Transaction[] transactions = Enumerable.Range(0, 2)
-            .Select(i => Build.A.Transaction.WithNonce(nonce + (ulong)i).WithTo(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyB).TestObject)
-            .ToArray();
-        await test.AddBlock(transactions);
-        ulong blockNumber = test.BlockTree.Head!.Number;
-        await test.AddBlock();
+        ulong blockNumber = await AddBlockWithTwoTransactionsFromB(test);
 
         storedSenders = storedReceipts switch
         {
@@ -51,6 +44,36 @@ public partial class EthRpcModuleTests
 
         Assert.That(((LegacyTransactionForRpc)result.Data).From,
             Is.EqualTo(storedReceipts == StoredReceipts.ForeignSender ? TestItem.AddressD : TestItem.AddressB));
+    }
+
+    [Test]
+    public async Task Eth_get_transaction_by_block_number_and_index_does_not_regenerate_receipts_for_the_sender()
+    {
+        bool regenerationForbidden = false;
+        using Context ctx = await Context.Create(configurer: builder =>
+            builder.AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, c =>
+                new ForbiddenIteratorReceiptFinder(c.Resolve<IReceiptFinder>(), () => regenerationForbidden)));
+        TestRpcBlockchain test = ctx.Test;
+        ulong blockNumber = await AddBlockWithTwoTransactionsFromB(test);
+        regenerationForbidden = true;
+        ((IClearableCache)test.Container.Resolve<IBlockStore>()).ClearCache();
+
+        ResultWrapper<TransactionForRpc> result = test.EthRpcModule.eth_getTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 1);
+
+        Assert.That(((LegacyTransactionForRpc)result.Data).From, Is.EqualTo(TestItem.AddressB));
+    }
+
+    /// <summary>Adds a block with two transactions sent by <see cref="TestItem.AddressB"/>, then one more on top of it.</summary>
+    private static async Task<ulong> AddBlockWithTwoTransactionsFromB(TestRpcBlockchain test)
+    {
+        ulong nonce = test.StateReader.GetNonce(test.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction[] transactions = Enumerable.Range(0, 2)
+            .Select(i => Build.A.Transaction.WithNonce(nonce + (ulong)i).WithTo(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyB).TestObject)
+            .ToArray();
+        await test.AddBlock(transactions);
+        ulong blockNumber = test.BlockTree.Head!.Number;
+        await test.AddBlock();
+        return blockNumber;
     }
 
     /// <summary>Serves receipts carrying the given senders from the iterator once they are set.</summary>
@@ -68,5 +91,19 @@ public partial class EthRpcModuleTests
             iterator = new ReceiptsIterator(senders.Select(static sender => Build.A.Receipt.WithSender(sender!).TestObject).ToArray());
             return true;
         }
+    }
+
+    /// <summary>Stands in for a regenerating finder: once forbidden, reading a receipts iterator fails the test.</summary>
+    private sealed class ForbiddenIteratorReceiptFinder(IReceiptFinder inner, Func<bool> forbidden) : IReceiptFinder
+    {
+        public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => inner.Get(block, recover, recoverSender);
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => inner.Get(blockHash, recover);
+        public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
+
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) =>
+            forbidden()
+                ? throw new InvalidOperationException("The sender lookup must not read regenerable receipts.")
+                : inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
     }
 }
