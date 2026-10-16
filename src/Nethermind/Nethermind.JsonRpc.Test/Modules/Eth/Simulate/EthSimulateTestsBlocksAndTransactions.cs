@@ -2620,20 +2620,29 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// A zero-value call to a fresh account leaves no account behind: the block's state root is the one a call to an
-    /// existing account gives, and a later block still charges that address as a fresh EIP-7702 authority.
+    /// A call to a fresh account leaves no account behind: the block's state root is the one a zero-value call to an
+    /// existing account gives, and a later block still charges that address as a fresh EIP-7702 authority. A zero-value
+    /// call touches the account, so EIP-158 would delete an empty one; a value transfer one gas short of EIP-8037
+    /// NEW_ACCOUNT runs out of gas without touching it, so an empty account created before the block would stay.
     /// </summary>
-    [Test]
-    public async Task eth_simulateV1_zero_value_call_to_a_fresh_account_leaves_no_account(
-        [Values("Osaka", "Amsterdam")] string fork,
-        [Values] bool validation)
+    [TestCase("Osaka", false, false)]
+    [TestCase("Osaka", false, true)]
+    [TestCase("Amsterdam", false, false)]
+    [TestCase("Amsterdam", false, true)]
+    [TestCase("Amsterdam", true, false)]
+    [TestCase("Amsterdam", true, true)]
+    public async Task eth_simulateV1_call_to_a_fresh_account_leaves_no_account(string fork, bool transferRunsOutOfGas, bool validation)
     {
         using TestRpcBlockchain chain = await BuildFreshAccountChain(fork);
         Address authority = FreshAuthorityKey.Address;
         CallOutput expected = CallLikeEthCall(chain, CreateAuthorizationCall(chain, TestItem.AddressB, 400_000));
 
+        LegacyTransactionForRpc CreateTransfer(ulong gas) =>
+            new() { From = FreshAccountSender, To = authority, Value = transferRunsOutOfGas ? UInt256.One : UInt256.Zero, Gas = gas, GasPrice = UInt256.Zero };
+        ulong gas = transferRunsOutOfGas ? CallLikeEthCall(chain, CreateTransfer(100_000)).GasSpent - 1 : 100_000;
+
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> toFresh = SimulateFreshAccountBlocks(chain, validation,
-            [new LegacyTransactionForRpc { From = FreshAccountSender, To = authority, Gas = 100_000, GasPrice = UInt256.Zero }],
+            [CreateTransfer(gas)],
             [CreateAuthorizationCall(chain, TestItem.AddressB, 400_000)]);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> toExisting = SimulateFreshAccountBlocks(chain, validation,
             [new LegacyTransactionForRpc { From = FreshAccountSender, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero }]);
@@ -2641,7 +2650,8 @@ public class EthSimulateTestsBlocksAndTransactions
         using (Assert.EnterMultipleScope())
         {
             Assert.That(expected.Error, Is.Null);
-            Assert.That(toFresh.SelectMany(static b => b.Calls).Select(static c => c.Error), Is.All.Null);
+            Assert.That(toFresh[0].Calls.Single().Status, Is.EqualTo(transferRunsOutOfGas ? 0UL : 1UL));
+            Assert.That(toFresh[1].Calls.Single().Error, Is.Null);
             Assert.That(toFresh[0].StateRoot, Is.EqualTo(toExisting[0].StateRoot));
             Assert.That(toFresh[1].Calls.Single().GasUsed, Is.EqualTo(expected.GasSpent));
         }
