@@ -82,9 +82,8 @@ public partial class DebugRpcModuleTests
         AssertBlobPayment(zeroCap, balance, 0);
     }
 
-    [TestCase(0)]
-    [TestCase(9)]
-    public async Task Debug_traceCall_blob_fee_override_does_not_affect_indexed_prefix(int fee)
+    [Test]
+    public async Task Debug_traceCall_blob_fee_override_does_not_affect_indexed_prefix([Values(0, 9)] int fee)
     {
         List<UInt256?> observedFees = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)

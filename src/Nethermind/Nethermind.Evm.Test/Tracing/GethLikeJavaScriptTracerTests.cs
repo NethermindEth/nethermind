@@ -1406,7 +1406,7 @@ public class GethLikeJavaScriptSStoreTracerTests : VirtualMachineTestsBase
 
     [Test]
     public void Static_SStore_checks_stack_before_write_protection_and_sentry(
-        [Values(2UL, 3UL, 4UL, 5UL, 6UL)] ulong blockNumber,
+        [Range(2UL, 6UL)] ulong blockNumber,
         [Values("55", "600055", "6001600055")] string childCode,
         [Values(2306, 50000)] int childGas)
     {
@@ -1427,9 +1427,8 @@ public class GethLikeJavaScriptSStoreTracerTests : VirtualMachineTestsBase
             Is.EqualTo(JsonSerializer.Serialize(new[] { expected }, new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })));
     }
 
-    [TestCase(0UL)]
-    [TestCase(2UL)]
-    public void Legacy_SStore_initial_oog_native_trace_is_unchanged_when_composed(ulong blockNumber)
+    [Test]
+    public void Legacy_SStore_initial_oog_native_trace_is_unchanged_when_composed([Values(0UL, 2UL)] ulong blockNumber)
     {
         TestState.CreateAccount(Recipient, 1.Ether);
         StorageCell cell = new(Recipient, 0);
@@ -1586,11 +1585,11 @@ public class GethLikeJavaScriptStaticCallTracerTests : VirtualMachineTestsBase
 
     [Test]
     public void StaticCall_cost_is_ready_before_child_entry(
-        [Values(0UL, 1UL, 2UL, 3UL)] ulong fork,
-        [Values(false, true)] bool warm,
-        [Values(false, true)] bool precompile,
+        [Range(0UL, 3UL)] ulong fork,
+        [Values] bool warm,
+        [Values] bool precompile,
         [Values(0, 32, 64)] int memoryLength,
-        [Values(false, true)] bool maximumForwarding)
+        [Values] bool maximumForwarding)
     {
         IReleaseSpec spec = SpecProvider.GetSpec((ForkActivation)fork);
         Address target = precompile ? Address.FromNumber(4) : TestItem.AddressC;
@@ -1767,7 +1766,7 @@ public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
     [Test]
     public void Call_stack_underflow_precedes_gas_checks(
         [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL)] Instruction opcode,
-        [Values(0UL, 2UL, 3UL)] ulong fork, [Values(false, true)] bool oneMissing)
+        [Values(0UL, 2UL, 3UL)] ulong fork, [Values] bool oneMissing)
     {
         int required = opcode == Instruction.DELEGATECALL ? 6 : 7;
         int present = oneMissing ? required - 1 : 0;

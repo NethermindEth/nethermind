@@ -130,6 +130,32 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Prestate_filters_initially_empty_creation_with_storage([Values] bool includeEmpty, [Values] bool disableStorage)
+    {
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, 500000, value: 0);
+        transaction.To = null;
+        transaction.Data = Bytes.FromHexString("600160005500");
+        Address created = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        Assert.That(TestState.AccountExists(created), Is.False);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GetGethTraceOptions(JsonSerializer.Serialize(new { includeEmpty, disableStorage })), block, transaction, TestState, spec);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            TestState.Get(new StorageCell(created, 0), out UInt256 stored);
+            Assert.That(stored, Is.EqualTo(UInt256.One), "initcode must execute SSTORE");
+            Assert.That(accounts.ContainsKey(created), Is.EqualTo(includeEmpty));
+        }
+        if (includeEmpty)
+            Assert.That(accounts[created].Storage?.Count ?? 0, Is.EqualTo(disableStorage ? 0 : 1));
+    }
+
+    [Test]
     public void DiffMode_OmitsInitiallyEmptySenderFromPrestate()
     {
         using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero,
@@ -225,10 +251,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase("00")]
-    [TestCase("fe")]
-    [TestCase("60006000fd")]
-    public void Prestate_captures_parent_accesses_after_child_exit(string childCode)
+    [Test]
+    public void Prestate_captures_parent_accesses_after_child_exit([Values("00", "fe", "60006000fd")] string childCode)
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), Spec);
