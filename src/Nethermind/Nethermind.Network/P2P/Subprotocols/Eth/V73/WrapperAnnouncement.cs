@@ -10,51 +10,48 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
-/// <summary>EIP-8437 <c>descriptor = [byte_length, content_hash]</c>, committing to a whole wrapper; its object ID is the
-/// <c>content_hash</c>.</summary>
-/// <remarks>Descriptors carry no verifier identifier: a receiver verifies under its own target fork regardless, so one would
-/// authenticate nothing.</remarks>
-public sealed class WrapperDescriptor
+/// <summary>An EIP-8437 NewProofWrapperHashes entry <c>[length, hash]</c>: a wrapper's encoded size and the Keccak-256 of
+/// those exact bytes.</summary>
+/// <remarks>Announcements carry no hints such as a verifier identifier: a receiver verifies under its own target fork
+/// regardless, so one would authenticate nothing.</remarks>
+public sealed class WrapperAnnouncement
 {
-    /// <summary>The longest canonical descriptor: a three-byte length and a 32-byte hash.</summary>
+    /// <summary>The longest canonical entry: a three-byte length and a 32-byte hash.</summary>
     public const int MaxEncodedBytes = 38;
 
-    private WrapperDescriptor(int byteLength, ValueHash256 contentHash, byte[] encoded)
+    private WrapperAnnouncement(int length, ValueHash256 hash, byte[] encoded)
     {
-        ByteLength = byteLength;
-        ContentHash = contentHash;
+        Length = length;
+        Hash = hash;
         Encoded = encoded;
     }
 
-    public int ByteLength { get; }
-    public ValueHash256 ContentHash { get; }
+    public int Length { get; }
+    public ValueHash256 Hash { get; }
 
     /// <summary>The canonical RLP encoding, at most <see cref="MaxEncodedBytes"/>.</summary>
     public byte[] Encoded { get; }
 
-    /// <summary>The wrapper's object ID, its <c>content_hash</c>.</summary>
-    public ValueHash256 ObjectId => ContentHash;
-
-    public static WrapperDescriptor Create(ReadOnlySpan<byte> wrapper)
+    public static WrapperAnnouncement Create(ReadOnlySpan<byte> wrapper)
     {
         if (wrapper.Length is 0 or > Eth73Protocol.MaxWrapperBytes) throw new ArgumentException("Wrapper length is out of bounds", nameof(wrapper));
-        ValueHash256 contentHash = ValueKeccak.Compute(wrapper);
-        return new(wrapper.Length, contentHash, Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)wrapper.Length), Eth73Rlp.EncodeBytes(contentHash.Bytes)));
+        ValueHash256 hash = ValueKeccak.Compute(wrapper);
+        return new(wrapper.Length, hash, Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)wrapper.Length), Eth73Rlp.EncodeBytes(hash.Bytes)));
     }
 
-    public static WrapperDescriptor Decode(ReadOnlySpan<byte> encoded)
+    public static WrapperAnnouncement Decode(ReadOnlySpan<byte> encoded)
     {
         Eth73RlpReader outer = new(encoded);
         Eth73RlpReader fields = outer.ReadList();
         outer.End();
         ulong length = fields.ReadUInt64();
         if (length is 0 or > Eth73Protocol.MaxWrapperBytes) throw new RlpException("Wrapper length is out of bounds");
-        ValueHash256 contentHash = fields.ReadHash();
+        ValueHash256 hash = fields.ReadHash();
         fields.End();
-        return new((int)length, contentHash, encoded.ToArray());
+        return new((int)length, hash, encoded.ToArray());
     }
 
-    public override string ToString() => $"wrapper {ContentHash.ToShortString()} ({ByteLength} bytes)";
+    public override string ToString() => $"wrapper {Hash.ToShortString()} ({Length} bytes)";
 }
 
 /// <summary>The canonical hash-only EIP-8288 wrapper encoding, checked before envelope recovery and validation.</summary>
@@ -117,13 +114,4 @@ public static class WrapperBodies
 
     /// <inheritdoc cref="ParseWrapper(ReadOnlySpan{byte}, out int)"/>
     public static ValueHash256[] ParseWrapper(ReadOnlySpan<byte> wrapper) => ParseWrapper(wrapper, out _);
-
-    /// <summary>Indices of <paramref name="hashes"/> missing from <paramref name="resolved"/>, ascending.</summary>
-    internal static List<int> MissingIndices(ValueHash256[] hashes, IReadOnlyDictionary<ValueHash256, Transaction> resolved)
-    {
-        List<int> missing = [];
-        for (int i = 0; i < hashes.Length; i++)
-            if (!resolved.ContainsKey(hashes[i])) missing.Add(i);
-        return missing;
-    }
 }

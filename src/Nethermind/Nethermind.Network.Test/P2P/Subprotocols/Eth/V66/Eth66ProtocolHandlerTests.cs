@@ -263,8 +263,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleZeroMessage(msg66, Eth66MessageCode.PooledTransactions);
         }
 
-        // EIP-8437: on every eth version, dependency-bearing transactions are answered as unavailable and never admitted from
-        // PooledTransactions; they propagate only inside proof wrappers.
+        // EIP-8437: below eth/73 dependency-bearing transactions are answered as unavailable, and none is admitted from
+        // PooledTransactions without a validated covering wrapper.
         [Test]
         public void Dependency_bearing_transactions_are_neither_served_nor_admitted()
         {

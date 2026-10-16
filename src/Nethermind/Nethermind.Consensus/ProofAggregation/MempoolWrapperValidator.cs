@@ -107,7 +107,7 @@ public static class MempoolWrapperValidator
     /// Checks the mode's dependency limits and verifies the witnesses or aggregate proof against the claimed dependencies.
     /// </summary>
     /// <remarks>
-    /// The EIP-8437 preliminary check, run before missing transactions are fetched. It does not validate the wrapper: the
+    /// A preliminary check, run before missing envelopes are recovered. It does not validate the wrapper: the
     /// proof does not authenticate the transaction list, so <see cref="Validate"/> must still resolve every entry and check
     /// the exact dependency union before admission, reaggregation or relay.
     /// </remarks>

@@ -872,7 +872,7 @@ public class TxBroadcasterTests
     }
 
     // EIP-8437: dependency-bearing transactions, those with a dependency frame even if it carries no triples, are never
-    // announced or broadcast; they propagate only in proof wrappers.
+    // announced or broadcast; peers discover them through proof wrappers.
     [Test]
     public void Withholds_dependency_bearing_transactions([Values] bool dependencyFrame, [Values] bool withoutTriples)
     {

@@ -17,13 +17,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
 
 public class Eth73MessagesTests
 {
-    public sealed record DescriptorVector(int Size, string ContentHash, string DescriptorRlp)
+    public sealed record AnnouncementVector(int Size, string Hash, string EntryRlp)
     {
         public override string ToString() => $"{Size} bytes";
     }
 
-    // ethereum/EIPs#12423 at c3dde52825, assets/eip-8437/descriptor-vectors.json: wrapper[i] = i % 251.
-    private static IEnumerable<DescriptorVector> DescriptorVectors() =>
+    // ethereum/EIPs#12423 at 12aee2c9, assets/eip-8437/announcement-vectors.json: wrapper[i] = i % 251.
+    private static IEnumerable<AnnouncementVector> AnnouncementVectors() =>
     [
         new(1, "bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a",
             "e201a0bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a"),
@@ -37,17 +37,17 @@ public class Eth73MessagesTests
 
     private static byte[] Pattern(int size) => [.. Enumerable.Range(0, size).Select(i => (byte)(i % 251))];
 
-    [TestCaseSource(nameof(DescriptorVectors))]
-    public void Descriptor_matches_eip8437_descriptor_vectors(DescriptorVector vector)
+    [TestCaseSource(nameof(AnnouncementVectors))]
+    public void Announcement_matches_eip8437_announcement_vectors(AnnouncementVector vector)
     {
-        WrapperDescriptor descriptor = WrapperDescriptor.Create(Pattern(vector.Size));
+        WrapperAnnouncement announcement = WrapperAnnouncement.Create(Pattern(vector.Size));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(descriptor.ContentHash.ToString(false), Is.EqualTo(vector.ContentHash));
-            Assert.That(descriptor.ObjectId, Is.EqualTo(descriptor.ContentHash), "the object ID is the content hash");
-            Assert.That(descriptor.Encoded.ToHexString(), Is.EqualTo(vector.DescriptorRlp));
-            Assert.That(descriptor.Encoded.Length, Is.LessThanOrEqualTo(WrapperDescriptor.MaxEncodedBytes));
-            Assert.That(WrapperDescriptor.Decode(descriptor.Encoded).ObjectId, Is.EqualTo(descriptor.ObjectId));
+            Assert.That(announcement.Hash.ToString(false), Is.EqualTo(vector.Hash));
+            Assert.That(announcement.Length, Is.EqualTo(vector.Size));
+            Assert.That(announcement.Encoded.ToHexString(), Is.EqualTo(vector.EntryRlp));
+            Assert.That(announcement.Encoded.Length, Is.LessThanOrEqualTo(WrapperAnnouncement.MaxEncodedBytes));
+            Assert.That(WrapperAnnouncement.Decode(announcement.Encoded).Hash, Is.EqualTo(announcement.Hash));
         }
     }
 
@@ -56,14 +56,14 @@ public class Eth73MessagesTests
         "f3b5c47a3e9d249451930191612f9572f941e98bc6abc76d62b3e10e4d64ebac", "e4820125a0f3b5c47a3e9d249451930191612f9572f941e98bc6abc76d62b3e10e4d64ebac")]
     [TestCase("f9011df842a0bbc4e20edfbc5a1b8431412172663b69b8292373920851b291ae94c3d04709c9a0e5ba95c82acef87b2d7fed961c6ef271d97882fad161a5d825539c756ba69dcf01f8d6f8c4b860000000000000000000000000000000000000000000000000000000000000001006eaaa302366a2b8e60080fe649cb019814b843b9bd681df41d60bde4badd3790000000000000000000000000000000000000000000000000000000000000001b8600000000000000000000000000000000000000000000000000000000000000010f3bc792f5a550e9e8271695b0d0c1ee9b8d42b9071976b6447658021b3d8099f00000000000000000000000000000000000000000000000000000000000000028f6167677265676174652070726f6f66",
         "5381ac954eb51bc87be2de451c6b1c0f90b506fb70a52fb6df3ad585ef7e7749", "e4820120a05381ac954eb51bc87be2de451c6b1c0f90b506fb70a52fb6df3ad585ef7e7749")]
-    public void Wrapper_vectors_are_canonical_and_match_their_descriptor(string body, string contentHash, string descriptorRlp)
+    public void Wrapper_vectors_are_canonical_and_match_their_announcement(string body, string hash, string entryRlp)
     {
         byte[] wrapper = Bytes.FromHexString(body);
-        WrapperDescriptor descriptor = WrapperDescriptor.Create(wrapper);
+        WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(descriptor.ContentHash.ToString(false), Is.EqualTo(contentHash));
-            Assert.That(descriptor.Encoded.ToHexString(), Is.EqualTo(descriptorRlp));
+            Assert.That(announcement.Hash.ToString(false), Is.EqualTo(hash));
+            Assert.That(announcement.Encoded.ToHexString(), Is.EqualTo(entryRlp));
             Assert.That(WrapperBodies.ParseWrapper(wrapper).Select(h => h.ToString(false)), Is.EqualTo(new[]
             {
                 "bbc4e20edfbc5a1b8431412172663b69b8292373920851b291ae94c3d04709c9",
@@ -76,9 +76,9 @@ public class Eth73MessagesTests
     [TestCase(Eth73Protocol.MaxWrapperBytes + 1)]
     public void Wrapper_length_outside_one_to_max_wrapper_bytes_is_rejected(int length)
     {
-        Assert.That(() => WrapperDescriptor.Create(new byte[length]), Throws.ArgumentException);
+        Assert.That(() => WrapperAnnouncement.Create(new byte[length]), Throws.ArgumentException);
         byte[] encoded = Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)length), Eth73Rlp.EncodeBytes(new byte[32]));
-        Assert.That(() => WrapperDescriptor.Decode(encoded), Throws.InstanceOf<RlpException>());
+        Assert.That(() => WrapperAnnouncement.Decode(encoded), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -86,42 +86,77 @@ public class Eth73MessagesTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new[] { Eth73MessageCode.AnnounceProofWrappers, Eth73MessageCode.GetProofWrappers, Eth73MessageCode.ProofWrappers,
-                Eth73MessageCode.GetWrapperEnvelopes, Eth73MessageCode.WrapperEnvelopes }, Is.EqualTo(new[] { 0x16, 0x17, 0x18, 0x19, 0x1a }));
-            Assert.That(Eth73Protocol.MessageIdSpaceSize, Is.EqualTo(0x1b));
+            Assert.That(new[] { Eth73MessageCode.NewProofWrapperHashes, Eth73MessageCode.GetProofWrappers, Eth73MessageCode.ProofWrappers },
+                Is.EqualTo(new[] { 0x16, 0x17, 0x18 }));
+            Assert.That(Eth73Protocol.MessageIdSpaceSize, Is.EqualTo(0x19));
+            Assert.That(Eth73MessageCode.IsWrapperMessage(0x19), Is.False, "envelopes travel in GetPooledTransactions");
             Assert.That(Eth73Protocol.MaxWrapperBytes, Is.LessThanOrEqualTo(Eth73Protocol.SoftResponseLimit));
             // Responses have no normative ceiling; the local cap admits one maximum wrapper with its framing.
             Assert.That(ProofWrapperTransport.ResponseLength(long.MaxValue, Eth73Protocol.MaxWrapperBytes), Is.LessThanOrEqualTo(Eth73Protocol.LocalMaxResponseBytes));
             Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.ProofWrappers, Eth73Protocol.LocalMaxResponseBytes), Is.False);
             Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.ProofWrappers, Eth73Protocol.LocalMaxResponseBytes + 1), Is.True);
-            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.WrapperEnvelopes, Eth73Protocol.LocalMaxResponseBytes + 1), Is.True);
-            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.GetProofWrappers, Eth73Protocol.MaxRequestBytes + 1), Is.True);
-            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.AnnounceProofWrappers, Eth73Protocol.MaxRequestBytes), Is.False);
+            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.GetProofWrappers, Eth73Protocol.LocalMaxRequestBytes + 1), Is.True);
+            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.NewProofWrapperHashes, Eth73Protocol.LocalMaxRequestBytes), Is.False);
+            Assert.That(Eth73Protocol.ExceedsMessageLimit(0x0a, int.MaxValue), Is.False, "PooledTransactions keeps its eth limits");
             Assert.That(Eth73Protocol.ExceedsMessageLimit(0x15, int.MaxValue), Is.False, "eth/72 messages keep their own limits");
+        }
+    }
+
+    // assets/eip-8437/check_vectors.py: GetProofWrappers and NewProofWrapperHashes at their 64-entry limits.
+    [Test]
+    public void Messages_at_their_64_entry_limits_match_eip8437_lengths()
+    {
+        WrapperAnnouncement[] announced = [.. Enumerable.Range(1, Eth73Protocol.MaxAnnouncements).Select(i => WrapperAnnouncement.Decode(
+            Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(Eth73Protocol.MaxWrapperBytes), Eth73Rlp.EncodeBytes(Word(i)))))];
+        ValueHash256[] requested = [.. Enumerable.Range(1, Eth73Protocol.MaxWrappersPerRequest).Select(i => new ValueHash256(Word(i)))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new NewProofWrapperHashesMessageSerializer().Encode(new(announced)), Has.Length.EqualTo(2435));
+            Assert.That(new GetProofWrappersMessageSerializer().Encode(new(long.MaxValue, requested)), Has.Length.EqualTo(2127 - 1),
+                "the vector uses 2**64 - 1, one byte longer than the largest 63-bit request ID");
+            Assert.That(new GetProofWrappersMessageSerializer().Encode(new(7, [default])).ToHexString(), Is.EqualTo("e307e1a0" + new string('0', 64)));
+            Assert.That(2435, Is.LessThanOrEqualTo(Eth73Protocol.LocalMaxRequestBytes));
+        }
+
+        static byte[] Word(int value)
+        {
+            byte[] word = new byte[32];
+            word[^1] = (byte)value;
+            return word;
         }
     }
 
     [Test]
     public void Messages_round_trip_canonically()
     {
-        WrapperDescriptor[] descriptors = [.. Enumerable.Range(1, 3).Select(i => WrapperDescriptor.Create(new byte[i])).OrderBy(d => d.ObjectId)];
+        WrapperAnnouncement[] announcements = [.. Enumerable.Range(1, 3).Select(i => WrapperAnnouncement.Create(new byte[i])).OrderBy(d => d.Hash)];
         byte[] wrapper = Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(5));
         using (Assert.EnterMultipleScope())
         {
-            AnnounceProofWrappersMessageSerializer announce = new();
-            Assert.That(announce.Decode(announce.Encode(new(descriptors))).Descriptors.Select(d => d.ObjectId), Is.EqualTo(descriptors.Select(d => d.ObjectId)));
+            NewProofWrapperHashesMessageSerializer announce = new();
+            Assert.That(announce.Decode(announce.Encode(new(announcements))).Announcements.Select(d => d.Hash), Is.EqualTo(announcements.Select(d => d.Hash)));
             GetProofWrappersMessageSerializer get = new();
             GetProofWrappersMessage request = get.Decode(get.Encode(new(42, [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256])));
-            Assert.That((request.RequestId, request.ObjectIds.Length), Is.EqualTo((42L, 2)));
+            Assert.That((request.RequestId, request.Hashes.Length), Is.EqualTo((42L, 2)));
             ProofWrappersMessageSerializer wrappers = new();
             byte[] encoded = wrappers.Encode(new(42, [wrapper, wrapper]));
             Assert.That(encoded.Length, Is.EqualTo(ProofWrapperTransport.ResponseLength(42, 2 * wrapper.Length)));
             Assert.That(wrappers.Decode(encoded).Wrappers, Is.EqualTo(new[] { wrapper, wrapper }), "wrappers are embedded RLP items");
-            GetWrapperEnvelopesMessageSerializer getEnvelopes = new();
-            GetWrapperEnvelopesMessage envelopesRequest = getEnvelopes.Decode(getEnvelopes.Encode(new(7, TestItem.KeccakC.ValueHash256, [0, 3, 4095])));
-            Assert.That(envelopesRequest.Indices, Is.EqualTo(new[] { 0, 3, 4095 }));
-            WrapperEnvelopesMessageSerializer envelopes = new();
-            Assert.That(envelopes.Decode(envelopes.Encode(new(7, [[1], [2, 3]]))).Envelopes, Is.EqualTo(new byte[][] { [1], [2, 3] }));
+        }
+    }
+
+    // assets/eip-8437/check_vectors.py: the existing PooledTransactions (0x0a) encoding for typed transaction envelopes.
+    [Test]
+    public void Pooled_envelopes_are_read_as_the_exact_envelope_bytes()
+    {
+        byte[] legacy = Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(1));
+        (long requestId, byte[][] envelopes) = PooledEnvelopes.Decode(Bytes.FromHexString("c507c38202c0"));
+        (_, byte[][] mixed) = PooledEnvelopes.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(7), Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([2, 0xc0]), legacy)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requestId, Is.EqualTo(7));
+            Assert.That(envelopes, Is.EqualTo(new byte[][] { [0x02, 0xc0] }), "a typed envelope is the string content");
+            Assert.That(mixed[1], Is.EqualTo(legacy), "a legacy transaction is its whole list item");
         }
     }
 
@@ -130,31 +165,26 @@ public class Eth73MessagesTests
     [TestCase("duplicate request")]
     [TestCase("too many requested")]
     [TestCase("string wrapper")]
-    [TestCase("unordered indices")]
-    [TestCase("index past MAX_TXS_PER_WRAPPER")]
-    [TestCase("too many indices")]
     [TestCase("empty envelope")]
+    [TestCase("too many envelopes")]
     [TestCase("trailing bytes")]
     public void Malformed_messages_are_rejected_before_allocation(string scenario)
     {
-        WrapperDescriptor[] descriptors = [.. Enumerable.Range(1, 2).Select(i => WrapperDescriptor.Create(new byte[i])).OrderByDescending(d => d.ObjectId)];
+        WrapperAnnouncement[] announcements = [.. Enumerable.Range(1, 2).Select(i => WrapperAnnouncement.Create(new byte[i])).OrderByDescending(d => d.Hash)];
         byte[] Id(ulong value) => Eth73Rlp.EncodeUInt(value);
         byte[] Hash(Hash256 hash) => Eth73Rlp.EncodeBytes(hash.Bytes);
         Action decode = scenario switch
         {
-            "unordered announcement" => () => new AnnounceProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(descriptors[0].Encoded, descriptors[1].Encoded)),
-            "empty announcement" => () => new AnnounceProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList()),
+            "unordered announcement" => () => new NewProofWrapperHashesMessageSerializer().Decode(Eth73Rlp.EncodeList(announcements[0].Encoded, announcements[1].Encoded)),
+            "empty announcement" => () => new NewProofWrapperHashesMessageSerializer().Decode(Eth73Rlp.EncodeList()),
             "duplicate request" => () => new GetProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(Hash(TestItem.KeccakA), Hash(TestItem.KeccakA)))),
             "too many requested" => () => new GetProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1),
                 Eth73Rlp.EncodeList([.. Enumerable.Range(0, Eth73Protocol.MaxWrappersPerRequest + 1).Select(i => Eth73Rlp.EncodeBytes(Keccak.Compute(i.ToString()).Bytes))]))),
             "string wrapper" => () => new ProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([1, 2])))),
-            "unordered indices" => () => new GetWrapperEnvelopesMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Hash(TestItem.KeccakA), Eth73Rlp.EncodeList(Id(3), Id(2)))),
-            "index past MAX_TXS_PER_WRAPPER" => () => new GetWrapperEnvelopesMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Hash(TestItem.KeccakA),
-                Eth73Rlp.EncodeList(Id(Eip8288Constants.MaxTxsPerWrapper)))),
-            "too many indices" => () => new GetWrapperEnvelopesMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Hash(TestItem.KeccakA),
-                Eth73Rlp.EncodeList([.. Enumerable.Range(0, Eth73Protocol.MaxEnvelopesPerRequest + 1).Select(i => Id((ulong)i))]))),
-            "empty envelope" => () => new WrapperEnvelopesMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([])))),
-            _ => () => new WrapperEnvelopesMessageSerializer().Decode([.. Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList()), 0x80])
+            "empty envelope" => () => PooledEnvelopes.Decode(Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([])))),
+            "too many envelopes" => () => PooledEnvelopes.Decode(Eth73Rlp.EncodeList(Id(1),
+                Eth73Rlp.EncodeList([.. Enumerable.Range(0, Eth73Protocol.MaxEnvelopesPerRequest + 1).Select(_ => Eth73Rlp.EncodeBytes([2, 0xc0]))]))),
+            _ => () => new ProofWrappersMessageSerializer().Decode([.. Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList()), 0x80])
         };
         Assert.That(decode, Throws.InstanceOf<RlpException>());
     }

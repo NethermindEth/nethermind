@@ -82,7 +82,7 @@ public static class Eip8288Constants
     public const int MaxTxsPerWrapper = 4096;
 
     /// <summary>Serialized wrapper ceiling, in either mode, in the EIP-8288 wrapper encoding (<c>MAX_WRAPPER_BYTES</c>): the
-    /// <c>eth</c> soft response limit, so EIP-8437 moves each wrapper as one whole object.</summary>
+    /// <c>eth</c> soft response limit, so EIP-8437 retrieves each wrapper whole.</summary>
     /// <remarks>A policy ceiling: clients may refuse smaller wrappers under local limits.</remarks>
     public const int MaxWrapperBytes = 2 * 1024 * 1024;
 

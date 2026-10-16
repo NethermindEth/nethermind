@@ -15,8 +15,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -47,15 +47,15 @@ internal sealed class WrapperTestVerifier : ILeanProofVerifier
 /// <summary>Records what the transport sends to one peer and the penalties it applies.</summary>
 internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 {
-    private readonly List<Eth73Message> _sent = [];
+    private readonly List<P2PMessage> _sent = [];
     private readonly List<string> _penalties = [];
 
     public string Description => name;
 
     /// <summary>Runs on the sending thread before a message is recorded.</summary>
-    public Action<Eth73Message>? OnSend { get; set; }
+    public Action<P2PMessage>? OnSend { get; set; }
 
-    public void Send(Eth73Message message)
+    public void Send(P2PMessage message)
     {
         OnSend?.Invoke(message);
         lock (_sent) _sent.Add(message);
@@ -63,7 +63,7 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 
     public void Penalize(string reason) { lock (_penalties) _penalties.Add(reason); }
 
-    public T[] Sent<T>() where T : Eth73Message { lock (_sent) return [.. _sent.OfType<T>()]; }
+    public T[] Sent<T>() where T : P2PMessage { lock (_sent) return [.. _sent.OfType<T>()]; }
     public string[] Penalties { get { lock (_penalties) return [.. _penalties]; } }
     public void Clear() { lock (_sent) _sent.Clear(); }
 }
@@ -179,5 +179,5 @@ internal static class WrapperTestObjects
         }).Bytes;
     }
 
-    public static WrapperDescriptor Describe(byte[] wrapper) => WrapperDescriptor.Create(wrapper);
+    public static WrapperAnnouncement Describe(byte[] wrapper) => WrapperAnnouncement.Create(wrapper);
 }

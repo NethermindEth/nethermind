@@ -8,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
+using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
@@ -17,8 +17,8 @@ internal interface IWrapperLink
 {
     string Description { get; }
 
-    /// <summary>Queues a wrapper message.</summary>
-    void Send(Eth73Message message);
+    /// <summary>Sends a wrapper message or an envelope-recovery GetPooledTransactions.</summary>
+    void Send(P2PMessage message);
 
     /// <summary>Disconnects the peer for invalid peer data or a protocol violation.</summary>
     void Penalize(string reason);
@@ -81,10 +81,10 @@ internal sealed class WrapperRateLimit(double perSecond, TimeProvider clock)
 /// <remarks>Only wrappers that passed full EIP-8288 validation, or were produced locally, are added.</remarks>
 internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxStoreBytes, int maxObjects = WrapperTransportLimits.MaxStoreObjects)
 {
-    internal sealed class Entry(WrapperDescriptor descriptor, byte[] wrapper, ValueHash256[] hashes, Dictionary<ValueHash256, byte[]> envelopes,
+    internal sealed class Entry(WrapperAnnouncement announcement, byte[] wrapper, ValueHash256[] hashes, Dictionary<ValueHash256, byte[]> envelopes,
         Eip8288Verifier verifier)
     {
-        public WrapperDescriptor Descriptor { get; } = descriptor;
+        public WrapperAnnouncement Announcement { get; } = announcement;
 
         /// <summary>The verifier the wrapper was validated under; it is offered only while that is the target fork's.</summary>
         public Eip8288Verifier Verifier { get; set; } = verifier;
@@ -113,27 +113,27 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
     public long Bytes { get; private set; }
     public int Count => _objects.Count;
 
-    public bool TryGet(in ValueHash256 objectId, out Entry entry) => _objects.TryGetValue(objectId, out entry!);
+    public bool TryGet(in ValueHash256 wrapperHash, out Entry entry) => _objects.TryGetValue(wrapperHash, out entry!);
 
-    public bool Contains(in ValueHash256 objectId) => _objects.ContainsKey(objectId);
+    public bool Contains(in ValueHash256 wrapperHash) => _objects.ContainsKey(wrapperHash);
 
     /// <summary>Finds an envelope retained for a hash entry of a stored wrapper.</summary>
     public bool TryGetEnvelope(in ValueHash256 transaction, out byte[] envelope)
     {
         envelope = null!;
-        return _byEnvelope.TryGetValue(transaction, out ValueHash256 objectId) && _objects.TryGetValue(objectId, out Entry? entry)
+        return _byEnvelope.TryGetValue(transaction, out ValueHash256 wrapperHash) && _objects.TryGetValue(wrapperHash, out Entry? entry)
             && entry.Envelopes.TryGetValue(transaction, out envelope!);
     }
 
     public bool TryAdd(Entry entry)
     {
-        ValueHash256 objectId = entry.Descriptor.ObjectId;
-        if (_objects.ContainsKey(objectId) || entry.Bytes > maxBytes) return false;
+        ValueHash256 wrapperHash = entry.Announcement.Hash;
+        if (_objects.ContainsKey(wrapperHash) || entry.Bytes > maxBytes) return false;
         while (_objects.Count >= maxObjects || entry.Bytes > maxBytes - Bytes) Remove(_order.First!.Value);
-        entry.Node = _order.AddLast(objectId);
-        _objects[objectId] = entry;
+        entry.Node = _order.AddLast(wrapperHash);
+        _objects[wrapperHash] = entry;
         Bytes += entry.Bytes;
-        foreach (ValueHash256 transaction in entry.Envelopes.Keys) _byEnvelope[transaction] = objectId;
+        foreach (ValueHash256 transaction in entry.Envelopes.Keys) _byEnvelope[transaction] = wrapperHash;
         return true;
     }
 
@@ -147,13 +147,13 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
             yield return _objects[node.Value];
     }
 
-    public void Remove(ValueHash256 objectId)
+    public void Remove(ValueHash256 wrapperHash)
     {
-        if (!_objects.Remove(objectId, out Entry? entry)) return;
+        if (!_objects.Remove(wrapperHash, out Entry? entry)) return;
         _order.Remove(entry.Node!);
         Bytes -= entry.Bytes;
         foreach (ValueHash256 transaction in entry.Envelopes.Keys)
-            if (_byEnvelope.TryGetValue(transaction, out ValueHash256 current) && current == objectId) _byEnvelope.Remove(transaction);
+            if (_byEnvelope.TryGetValue(transaction, out ValueHash256 current) && current == wrapperHash) _byEnvelope.Remove(transaction);
     }
 }
 
@@ -168,7 +168,7 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock)
 
     public long LastIssued { get; set; }
 
-    /// <summary>Outstanding GetProofWrappers and GetWrapperEnvelopes requests to this peer.</summary>
+    /// <summary>Outstanding GetProofWrappers and envelope-recovery GetPooledTransactions requests to this peer.</summary>
     public Dictionary<long, WrapperRequest> Requests { get; } = [];
 
     /// <summary>Bytes charged to this peer: reserved responses, received wrappers and recovered envelopes.</summary>
@@ -178,16 +178,16 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock)
     public WrapperRateLimit AnnouncementsIn { get; } = new(WrapperTransportLimits.AnnouncementsPerSecond, clock);
     public WrapperRateLimit AnnouncementsOut { get; } = new(WrapperTransportLimits.AnnouncementsPerSecond, clock);
 
-    /// <summary>Descriptors awaiting announcement under the rate limit.</summary>
-    public List<WrapperDescriptor> ToAnnounce { get; } = [];
+    /// <summary>Announcements awaiting announcement under the rate limit.</summary>
+    public List<WrapperAnnouncement> ToAnnounce { get; } = [];
 
     /// <summary>Messages queued under the transport lock, so request IDs leave in order.</summary>
-    public ConcurrentQueue<Eth73Message> Outgoing { get; } = new();
+    public ConcurrentQueue<P2PMessage> Outgoing { get; } = new();
 
     /// <summary>1 while one thread sends <see cref="Outgoing"/>.</summary>
     public int Sending;
 
-    public bool CanRequest => !Closed && Requests.Count < Eth73Protocol.MaxRequestsPerPeer;
+    public bool CanRequest => !Closed && Requests.Count < WrapperTransportLimits.MaxRequestsPerPeer;
 
     public override string ToString() => Link.Description;
 }
@@ -207,16 +207,20 @@ internal sealed class WrappersRequest(long id, long created, long reserved, Wrap
     public WrapperFetch[] Fetches { get; } = fetches;
 }
 
-/// <summary>An outstanding GetWrapperEnvelopes request, awaited by the wrapper's validation.</summary>
-internal sealed class EnvelopesRequest(long id, long created, long reserved) : WrapperRequest(id, created, reserved)
+/// <summary>An outstanding envelope-recovery GetPooledTransactions request, awaited by the wrapper's validation.</summary>
+internal sealed class EnvelopesRequest(long id, long created, long reserved, ValueHash256[] hashes) : WrapperRequest(id, created, reserved)
 {
-    public TaskCompletionSource<WrapperEnvelopesMessage?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    /// <summary>The distinct requested hashes, in request order.</summary>
+    public ValueHash256[] Hashes { get; } = hashes;
+
+    /// <summary>The returned envelopes, or null when the request ended without a response.</summary>
+    public TaskCompletionSource<byte[][]?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 }
 
 /// <summary>A wanted wrapper from its first announcement until it is validated or abandoned.</summary>
-internal sealed class WrapperFetch(WrapperDescriptor descriptor, long now)
+internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
 {
-    public WrapperDescriptor Descriptor { get; } = descriptor;
+    public WrapperAnnouncement Announcement { get; } = announcement;
     public long Announced { get; } = now;
 
     /// <summary>When the first request was sent; the recovery deadline runs from here.</summary>
@@ -236,19 +240,19 @@ internal sealed class WrapperFetch(WrapperDescriptor descriptor, long now)
     /// <summary>Cancels validation and envelope recovery at the recovery deadline or shutdown.</summary>
     public CancellationTokenSource? Processing { get; set; }
 
-    /// <summary>The <c>byte_length</c> each source announced; a response is held to its own server's length, so one peer's
+    /// <summary>The length each source announced; a response is held to its own server's length, so one peer's
     /// false length cannot make an honest server's response look mismatched.</summary>
     private readonly Dictionary<WrapperPeer, int> _lengths = [];
 
-    public void AddSource(WrapperPeer peer, int byteLength)
+    public void AddSource(WrapperPeer peer, int length)
     {
         if (Sources.Contains(peer) || Sources.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return;
         Sources.Add(peer);
-        _lengths[peer] = byteLength;
+        _lengths[peer] = length;
     }
 
-    /// <summary>The <c>byte_length</c> <paramref name="peer"/> announced, or the first announcement's.</summary>
-    public int LengthFrom(WrapperPeer peer) => _lengths.TryGetValue(peer, out int length) ? length : Descriptor.ByteLength;
+    /// <summary>The length <paramref name="peer"/> announced, or the first announcement's.</summary>
+    public int LengthFrom(WrapperPeer peer) => _lengths.TryGetValue(peer, out int length) ? length : Announcement.Length;
 
     /// <summary>The next peer to ask for the body, or null once every source was tried or the source budget is spent.</summary>
     public WrapperPeer? NextSource()

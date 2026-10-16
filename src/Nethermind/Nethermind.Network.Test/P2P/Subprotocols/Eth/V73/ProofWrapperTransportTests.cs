@@ -38,7 +38,7 @@ public class ProofWrapperTransportTests
     {
         Transaction transaction = FrameTransaction(1);
         byte[] wrapper = Wrapper(1024, transaction);
-        WrapperDescriptor descriptor = Describe(wrapper);
+        WrapperAnnouncement announcement = Describe(wrapper);
         using WrapperTestNode holder = Holder(wrapper, transaction);
         using WrapperTestNode node = new();
         FakeWrapperLink link = new("source");
@@ -46,9 +46,9 @@ public class ProofWrapperTransportTests
         FakeWrapperLink holderLink = new("requester");
         WrapperPeer requester = holder.Connect(holderLink);
 
-        node.Transport.OnAnnounce(peer, new([descriptor]));
+        node.Transport.OnAnnounce(peer, new([announcement]));
         GetProofWrappersMessage request = link.Sent<GetProofWrappersMessage>().Single();
-        Assert.That(request.ObjectIds, Is.EqualTo(new[] { descriptor.ObjectId }));
+        Assert.That(request.Hashes, Is.EqualTo(new[] { announcement.Hash }));
         holder.Transport.OnGetProofWrappers(requester, request);
         node.Transport.OnProofWrappers(peer, holderLink.Sent<ProofWrappersMessage>().Single());
 
@@ -60,7 +60,7 @@ public class ProofWrapperTransportTests
         holder.Transport.OnGetWrapperEnvelopes(requester, envelopes);
         node.Transport.OnWrapperEnvelopes(peer, holderLink.Sent<WrapperEnvelopesMessage>().Single());
 
-        await WrapperTestNode.Until(() => node.Transport.IsStored(descriptor.ObjectId));
+        await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash));
         await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
         using (Assert.EnterMultipleScope())
         {
@@ -68,12 +68,12 @@ public class ProofWrapperTransportTests
             Assert.That(link.Penalties, Is.Empty);
             Assert.That(holderLink.Penalties, Is.Empty);
             Assert.That(node.Transport.ChargedBytes, Is.Zero, "every reservation is released once validation finishes");
-            Assert.That(link.Sent<AnnounceProofWrappersMessage>(), Is.Empty, "the source already holds the wrapper");
+            Assert.That(link.Sent<NewProofWrapperHashesMessage>(), Is.Empty, "the source already holds the wrapper");
         }
     }
 
     [Test]
-    public void Wrapper_matching_no_requested_descriptor_is_invalid_peer_data()
+    public void Wrapper_matching_no_requested_announcement_is_invalid_peer_data()
     {
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
@@ -111,25 +111,25 @@ public class ProofWrapperTransportTests
         FakeWrapperLink a = new("a"), b = new("b");
         WrapperPeer peerA = node.Connect(a), peerB = node.Connect(b);
         byte[] first = Wrapper(64, FrameTransaction(1)), second = Wrapper(64, FrameTransaction(2)), third = Wrapper(64, FrameTransaction(3));
-        WrapperDescriptor[] descriptors = [.. new[] { first, second, third }.Select(Describe).OrderBy(d => d.ObjectId)];
-        node.Transport.OnAnnounce(peerA, new(descriptors));
-        node.Transport.OnAnnounce(peerB, new(descriptors));
+        WrapperAnnouncement[] announcements = [.. new[] { first, second, third }.Select(Describe).OrderBy(d => d.Hash)];
+        node.Transport.OnAnnounce(peerA, new(announcements));
+        node.Transport.OnAnnounce(peerB, new(announcements));
         GetProofWrappersMessage request = a.Sent<GetProofWrappersMessage>().Single();
-        Assert.That(request.ObjectIds, Has.Length.EqualTo(3));
-        byte[] Body(ValueHash256 id) => new[] { first, second, third }.Single(w => Describe(w).ObjectId == id);
+        Assert.That(request.Hashes, Has.Length.EqualTo(3));
+        byte[] Body(ValueHash256 id) => new[] { first, second, third }.Single(w => Describe(w).Hash == id);
         // The responder skipped the first wrapper and stopped after the second, as if at its soft limit.
-        node.Transport.OnProofWrappers(peerA, new(request.RequestId, [Body(request.ObjectIds[1])]));
+        node.Transport.OnProofWrappers(peerA, new(request.RequestId, [Body(request.Hashes[1])]));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(a.Penalties, Is.Empty);
-            Assert.That(b.Sent<GetProofWrappersMessage>().Single().ObjectIds, Is.EqualTo(new[] { request.ObjectIds[0] }),
+            Assert.That(b.Sent<GetProofWrappersMessage>().Single().Hashes, Is.EqualTo(new[] { request.Hashes[0] }),
                 "the skipped wrapper is unavailable from a, so b is asked");
-            Assert.That(a.Sent<GetProofWrappersMessage>()[^1].ObjectIds, Is.EqualTo(new[] { request.ObjectIds[2] }),
+            Assert.That(a.Sent<GetProofWrappersMessage>()[^1].Hashes, Is.EqualTo(new[] { request.Hashes[2] }),
                 "the wrapper after the last one returned is requested again from a");
         }
     }
 
-    // A response is held to the byte_length its own server announced, so the first announcer's false length cannot get an
+    // A response is held to the length its own server announced, so the first announcer's false length cannot get an
     // honest server penalized for the true wrapper.
     [Test]
     public void A_false_announced_length_does_not_blame_an_honest_server()
@@ -138,9 +138,9 @@ public class ProofWrapperTransportTests
         FakeWrapperLink liar = new("liar"), honest = new("honest");
         WrapperPeer liarPeer = node.Connect(liar), honestPeer = node.Connect(honest);
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
-        WrapperDescriptor truth = Describe(wrapper);
-        WrapperDescriptor lie = WrapperDescriptor.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)wrapper.Length + 1),
-            Eth73Rlp.EncodeBytes(truth.ContentHash.Bytes)));
+        WrapperAnnouncement truth = Describe(wrapper);
+        WrapperAnnouncement lie = WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)wrapper.Length + 1),
+            Eth73Rlp.EncodeBytes(truth.Hash.Bytes)));
         node.Transport.OnAnnounce(liarPeer, new([lie]));
         node.Transport.OnAnnounce(honestPeer, new([truth]));
         node.Transport.OnProofWrappers(liarPeer, new(liar.Sent<GetProofWrappersMessage>().Single().RequestId, []));
@@ -159,14 +159,14 @@ public class ProofWrapperTransportTests
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
-        WrapperDescriptor[] descriptors = [.. Enumerable.Range(0, 10)
-            .Select(i => Describe(Wrapper(Eth73Protocol.SoftResponseLimit / 3, FrameTransaction(i)))).OrderBy(d => d.ObjectId)];
-        node.Transport.OnAnnounce(peer, new(descriptors));
+        WrapperAnnouncement[] announcements = [.. Enumerable.Range(0, 10)
+            .Select(i => Describe(Wrapper(Eth73Protocol.SoftResponseLimit / 3, FrameTransaction(i)))).OrderBy(d => d.Hash)];
+        node.Transport.OnAnnounce(peer, new(announcements));
         GetProofWrappersMessage[] requests = link.Sent<GetProofWrappersMessage>();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(requests, Has.Length.EqualTo(Eth73Protocol.MaxRequestsPerPeer));
-            Assert.That(requests.All(r => r.ObjectIds.Length == 2), Is.True, "two wrappers of a third of the soft limit fit, a third does not");
+            Assert.That(requests.All(r => r.Hashes.Length == 2), Is.True, "two wrappers of a third of the soft limit fit, a third does not");
             Assert.That(node.Transport.ChargedBytes, Is.LessThanOrEqualTo(WrapperTransportLimits.MaxPeerBytes));
         }
     }
@@ -182,7 +182,7 @@ public class ProofWrapperTransportTests
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
         ValueHash256 unknown = TestItem.KeccakA.ValueHash256;
-        node.Transport.OnGetProofWrappers(peer, new(7, [unknown, Describe(second).ObjectId, Describe(first).ObjectId]));
+        node.Transport.OnGetProofWrappers(peer, new(7, [unknown, Describe(second).Hash, Describe(first).Hash]));
         node.Transport.OnGetProofWrappers(peer, new(8, [unknown]));
         ProofWrappersMessage[] responses = link.Sent<ProofWrappersMessage>();
         using (Assert.EnterMultipleScope())
@@ -203,14 +203,14 @@ public class ProofWrapperTransportTests
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
         node.Transport.OnGetWrapperEnvelopes(peer, new(1, TestItem.KeccakA.ValueHash256, [5]));
-        node.Transport.OnGetWrapperEnvelopes(peer, new(2, Describe(wrapper).ObjectId, [0]));
+        node.Transport.OnGetWrapperEnvelopes(peer, new(2, Describe(wrapper).Hash, [0]));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(link.Sent<WrapperEnvelopesMessage>()[0].Envelopes, Is.Empty);
             Assert.That(link.Sent<WrapperEnvelopesMessage>()[1].Envelopes, Is.EqualTo(new[] { Envelope(transaction) }));
             Assert.That(link.Penalties, Is.Empty);
         }
-        node.Transport.OnGetWrapperEnvelopes(peer, new(3, Describe(wrapper).ObjectId, [1]));
+        node.Transport.OnGetWrapperEnvelopes(peer, new(3, Describe(wrapper).Hash, [1]));
         Assert.That(link.Penalties, Has.Length.EqualTo(1));
     }
 
@@ -233,7 +233,7 @@ public class ProofWrapperTransportTests
         {
             Assert.That(link.Penalties, Is.Not.Empty);
             Assert.That(node.Pending, Is.Empty);
-            Assert.That(node.Transport.IsStored(Describe(wrapper).ObjectId), Is.False);
+            Assert.That(node.Transport.IsStored(Describe(wrapper).Hash), Is.False);
         }
     }
 
@@ -242,18 +242,18 @@ public class ProofWrapperTransportTests
     {
         Transaction transaction = FrameTransaction(1);
         byte[] wrapper = Wrapper(64, transaction);
-        WrapperDescriptor descriptor = Describe(wrapper);
+        WrapperAnnouncement announcement = Describe(wrapper);
         using WrapperTestNode node = new();
         FakeWrapperLink a = new("a"), b = new("b");
         WrapperPeer peerA = node.Connect(a), peerB = node.Connect(b);
-        node.Transport.OnAnnounce(peerA, new([descriptor]));
-        node.Transport.OnAnnounce(peerB, new([descriptor]));
+        node.Transport.OnAnnounce(peerA, new([announcement]));
+        node.Transport.OnAnnounce(peerB, new([announcement]));
         Answer(node, peerA, a, wrapper);
         await WrapperTestNode.Until(() => a.Sent<GetWrapperEnvelopesMessage>().Length == 1);
         node.Transport.OnWrapperEnvelopes(peerA, new(a.Sent<GetWrapperEnvelopesMessage>()[0].RequestId, []));
         await WrapperTestNode.Until(() => b.Sent<GetWrapperEnvelopesMessage>().Length == 1);
         node.Transport.OnWrapperEnvelopes(peerB, new(b.Sent<GetWrapperEnvelopesMessage>()[0].RequestId, [Envelope(transaction)]));
-        await WrapperTestNode.Until(() => node.Transport.IsStored(descriptor.ObjectId));
+        await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(a.Penalties, Is.Empty);
@@ -277,7 +277,7 @@ public class ProofWrapperTransportTests
         {
             Assert.That(link.Penalties, Has.Length.EqualTo(1));
             Assert.That(link.Sent<GetWrapperEnvelopesMessage>(), Is.Empty);
-            Assert.That(node.Transport.IsTombstoned(Describe(wrapper).ObjectId), Is.True);
+            Assert.That(node.Transport.IsTombstoned(Describe(wrapper).Hash), Is.True);
         }
     }
 
@@ -312,17 +312,17 @@ public class ProofWrapperTransportTests
         WrapperPeer peer = node.Connect(link);
 
         CrossVerifierFork(node);
-        await WrapperTestNode.Until(() => !node.Transport.IsStored(Describe(mode1).ObjectId));
-        node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, [Describe(mode1).ObjectId, Describe(mode0).ObjectId]));
+        await WrapperTestNode.Until(() => !node.Transport.IsStored(Describe(mode1).Hash));
+        node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, [Describe(mode1).Hash, Describe(mode0).Hash]));
         FakeWrapperLink late = new("late");
         node.Connect(late);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node.Transport.IsOffered(Describe(mode0).ObjectId), Is.True);
+            Assert.That(node.Transport.IsOffered(Describe(mode0).Hash), Is.True);
             Assert.That(link.Sent<ProofWrappersMessage>().Single().Wrappers, Is.EqualTo(new[] { mode0 }), "the dropped wrapper is not served");
-            Assert.That(late.Sent<AnnounceProofWrappersMessage>().Single().Descriptors.Select(d => d.ObjectId),
-                Is.EqualTo(new[] { Describe(mode0).ObjectId }), "nor announced");
+            Assert.That(late.Sent<NewProofWrapperHashesMessage>().Single().Announcements.Select(d => d.Hash),
+                Is.EqualTo(new[] { Describe(mode0).Hash }), "nor announced");
             Assert.That(node.Transport.PublishWrapper(mode1), Is.True, "re-validated under the new verifier, it is offered again");
         }
     }
@@ -350,7 +350,7 @@ public class ProofWrapperTransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(link.Penalties, Has.Length.EqualTo(penalized ? 1 : 0));
-            Assert.That(node.Transport.IsTombstoned(Describe(wrapper).ObjectId), Is.True);
+            Assert.That(node.Transport.IsTombstoned(Describe(wrapper).Hash), Is.True);
         }
     }
 
@@ -375,19 +375,19 @@ public class ProofWrapperTransportTests
         Transaction[] transactions = [.. Enumerable.Range(0, 6).Select(FrameTransaction)];
         node.Pending.AddRange(transactions);
         foreach (Transaction transaction in transactions) Assert.That(node.Transport.PublishWrapper(Wrapper(64, transaction)), Is.True);
-        Assert.That(early.Sent<AnnounceProofWrappersMessage>(), Has.Length.EqualTo(WrapperTransportLimits.AnnouncementsPerSecond));
+        Assert.That(early.Sent<NewProofWrapperHashesMessage>(), Has.Length.EqualTo(WrapperTransportLimits.AnnouncementsPerSecond));
         node.Tick(TimeSpan.FromSeconds(1));
-        AnnounceProofWrappersMessage[] announcements = early.Sent<AnnounceProofWrappersMessage>();
+        NewProofWrapperHashesMessage[] announcements = early.Sent<NewProofWrapperHashesMessage>();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(announcements.Sum(a => a.Descriptors.Length), Is.EqualTo(6));
-            Assert.That(announcements.SelectMany(a => a.Descriptors).Select(d => d.ObjectId).Distinct().Count(), Is.EqualTo(6));
+            Assert.That(announcements.Sum(a => a.Announcements.Length), Is.EqualTo(6));
+            Assert.That(announcements.SelectMany(a => a.Announcements).Select(d => d.Hash).Distinct().Count(), Is.EqualTo(6));
         }
         FakeWrapperLink late = new("late");
         node.Connect(late);
-        AnnounceProofWrappersMessage initial = late.Sent<AnnounceProofWrappersMessage>().Single();
-        Assert.That(initial.Descriptors, Has.Length.EqualTo(6));
-        Assert.That(initial.Descriptors.Select(d => d.ObjectId), Is.Ordered);
+        NewProofWrapperHashesMessage initial = late.Sent<NewProofWrapperHashesMessage>().Single();
+        Assert.That(initial.Announcements, Has.Length.EqualTo(6));
+        Assert.That(initial.Announcements.Select(d => d.Hash), Is.Ordered);
     }
 
     [Test]

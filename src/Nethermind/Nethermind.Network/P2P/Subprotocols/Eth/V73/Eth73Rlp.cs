@@ -33,6 +33,9 @@ public ref struct Eth73RlpReader
 
     public readonly bool HasMore => _position < _data.Length;
 
+    /// <summary>Whether the next item is a list.</summary>
+    public readonly bool IsListNext => HasMore && _data[_position] >= 0xc0;
+
     /// <summary>Reads a list and returns a reader over its content; the caller must call <see cref="End"/> on it.</summary>
     public Eth73RlpReader ReadList()
     {

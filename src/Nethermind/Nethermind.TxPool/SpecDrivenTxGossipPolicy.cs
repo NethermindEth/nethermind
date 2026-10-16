@@ -9,8 +9,8 @@ public class SpecDrivenTxGossipPolicy(IChainHeadInfoProvider chainHeadInfoProvid
 {
     private IChainHeadInfoProvider ChainHeadInfoProvider { get; } = chainHeadInfoProvider;
 
-    /// <remarks>EIP-8437: dependency-bearing transactions, those with a dependency verification frame, are never exchanged in
-    /// the <c>eth</c> wire protocol's transaction messages; they propagate only inside EIP-8288 proof wrappers.</remarks>
+    /// <remarks>EIP-8437: dependency-bearing transactions, those with a dependency verification frame, are never broadcast or
+    /// announced through Transactions or NewPooledTransactionHashes; peers discover them through EIP-8288 proof wrappers.</remarks>
     public bool ShouldGossipTransaction(Transaction tx) =>
         !Eip8288Dependencies.IsDependencyBearing(tx)
         && ((!tx.SupportsBlobs && !tx.CarriesBlobs) || tx.GetProofVersion() == ChainHeadInfoProvider.CurrentProofVersion);

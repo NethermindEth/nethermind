@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
@@ -10,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
@@ -17,8 +19,8 @@ using Nethermind.TxPool;
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
 /// <summary>
-/// EIP-8437 wrapper propagation shared by every <c>eth/73</c> connection: announcements, whole-object retrieval, envelope
-/// recovery, validation hand-off and serving of validated wrappers.
+/// EIP-8437 wrapper propagation shared by every <c>eth/73</c> connection: announcements, whole-wrapper retrieval, envelope
+/// recovery through GetPooledTransactions, validation hand-off, and serving of validated wrappers and of the envelopes they list.
 /// </summary>
 /// <remarks>
 /// All peer, request and fetch state is guarded by one lock; messages and penalties are sent after it is released. No
@@ -69,13 +71,13 @@ public sealed partial class ProofWrapperTransport : IDisposable
     internal int FetchCount { get { lock (_gate) return _fetches.Count; } }
     internal int StoredObjects { get { lock (_gate) return _store.Count; } }
     internal long ChargedBytes { get { lock (_gate) return _chargedBytes; } }
-    internal bool IsStored(in ValueHash256 objectId) { lock (_gate) return _store.Contains(objectId); }
-    internal bool IsOffered(in ValueHash256 objectId) { lock (_gate) return TryGetOffered(objectId, out _); }
+    internal bool IsStored(in ValueHash256 wrapperHash) { lock (_gate) return _store.Contains(wrapperHash); }
+    internal bool IsOffered(in ValueHash256 wrapperHash) { lock (_gate) return TryGetOffered(wrapperHash, out _); }
 
     /// <summary>A held wrapper validated under the current target fork's verifier, which alone may be announced or served.</summary>
-    private bool TryGetOffered(in ValueHash256 objectId, out WrapperStore.Entry entry)
-        => _store.TryGet(objectId, out entry) && entry.Verifier == _verifier;
-    internal bool IsTombstoned(in ValueHash256 objectId) { lock (_gate) return _tombstones.Contains(objectId, _clock.GetTimestamp()); }
+    private bool TryGetOffered(in ValueHash256 wrapperHash, out WrapperStore.Entry entry)
+        => _store.TryGet(wrapperHash, out entry) && entry.Verifier == _verifier;
+    internal bool IsTombstoned(in ValueHash256 wrapperHash) { lock (_gate) return _tombstones.Contains(wrapperHash, _clock.GetTimestamp()); }
 
     /// <summary>Registers an <c>eth/73</c> peer once its Status is accepted.</summary>
     /// <remarks>Peers negotiate no verifier: each validates under its own target fork. Null while EIP-8288 is inactive, which
@@ -96,7 +98,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             {
                 if (peer.ToAnnounce.Count == Eth73Protocol.MaxAnnouncements) break;
                 if (entry.Verifier != _verifier) continue;
-                if (!peer.Known.Contains(entry.Descriptor.ObjectId, now)) peer.ToAnnounce.Add(entry.Descriptor);
+                if (!peer.Known.Contains(entry.Announcement.Hash, now)) peer.ToAnnounce.Add(entry.Announcement);
             }
             FlushAnnouncements(peer, outbox);
         }
@@ -233,10 +235,10 @@ public sealed partial class ProofWrapperTransport : IDisposable
     {
         private List<WrapperPeer>? _recipients;
         private List<(WrapperPeer Peer, string Reason)>? _penalties;
-        private List<TaskCompletionSource<WrapperEnvelopesMessage?>>? _completions;
+        private List<TaskCompletionSource<byte[][]?>>? _completions;
         private List<CancellationTokenSource>? _cancellations;
 
-        public void Send(WrapperPeer peer, Eth73Message message)
+        public void Send(WrapperPeer peer, P2PMessage message)
         {
             peer.Outgoing.Enqueue(message);
             if (!(_recipients ??= []).Contains(peer)) _recipients.Add(peer);
@@ -245,14 +247,14 @@ public sealed partial class ProofWrapperTransport : IDisposable
         public void Penalize(WrapperPeer peer, string reason) => (_penalties ??= []).Add((peer, reason));
 
         /// <summary>Ends an envelope request without a response, after the lock is released.</summary>
-        public void Complete(TaskCompletionSource<WrapperEnvelopesMessage?> completion) => (_completions ??= []).Add(completion);
+        public void Complete(TaskCompletionSource<byte[][]?> completion) => (_completions ??= []).Add(completion);
 
         /// <summary>Cancels work after the lock is released, since cancellation callbacks may resume awaiting code inline.</summary>
         public void Cancel(CancellationTokenSource source) => (_cancellations ??= []).Add(source);
 
         public void Flush()
         {
-            foreach (TaskCompletionSource<WrapperEnvelopesMessage?> completion in _completions ?? []) completion.TrySetResult(null);
+            foreach (TaskCompletionSource<byte[][]?> completion in _completions ?? []) completion.TrySetResult(null);
             foreach (CancellationTokenSource source in _cancellations ?? [])
             {
                 try { source.Cancel(); }
@@ -269,8 +271,11 @@ public sealed partial class ProofWrapperTransport : IDisposable
             {
                 try
                 {
-                    while (peer.Outgoing.TryDequeue(out Eth73Message? message))
+                    while (peer.Outgoing.TryDequeue(out P2PMessage? message))
+                    {
                         if (!peer.Closed) peer.Link.Send(message);
+                        else message.Dispose();
+                    }
                 }
                 finally { Volatile.Write(ref peer.Sending, 0); }
             }
@@ -312,9 +317,9 @@ public sealed partial class ProofWrapperTransport : IDisposable
             foreach (WrapperStore.Entry entry in held)
             {
                 if (revalidated.Contains(entry)) entry.Verifier = verifier;
-                else if (_store.TryGet(entry.Descriptor.ObjectId, out WrapperStore.Entry current) && current == entry)
+                else if (_store.TryGet(entry.Announcement.Hash, out WrapperStore.Entry current) && current == entry)
                 {
-                    _store.Remove(entry.Descriptor.ObjectId);
+                    _store.Remove(entry.Announcement.Hash);
                     dropped++;
                 }
             }
@@ -324,7 +329,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
     }
 
     /// <summary>Offers a fully validated wrapper with the envelopes it lists, and announces it to peers that may lack it.</summary>
-    /// <remarks>A wrapper listing an envelope above the soft response limit is never announced: it could not be served.</remarks>
+    /// <remarks>The listed envelopes are retained in the bounded wrapper-envelope cache while the wrapper is offered, so they stay
+    /// available to GetPooledTransactions after the pool rejects or evicts them.</remarks>
     private bool Publish(byte[] wrapper, Eip8288Verifier verifier, IReadOnlyDictionary<ValueHash256, Transaction>? resolved = null)
     {
         if (!IsEnabled || wrapper.Length is 0 or > Eth73Protocol.MaxWrapperBytes) return false;
@@ -339,48 +345,48 @@ public sealed partial class ProofWrapperTransport : IDisposable
             if (resolved?.TryGetValue(hash, out Transaction? transaction) == true || _txPool.TryGetPendingTransaction(hash, out transaction))
                 envelope = TxDecoder.Instance.Encode(transaction!, RlpBehaviors.SkipTypedWrapping).Bytes;
             else lock (_gate) if (_store.TryGetEnvelope(hash, out byte[] retained)) envelope = retained;
-            if (envelope is null || envelope.Length > Eth73Protocol.SoftResponseLimit || ValueKeccak.Compute(envelope) != hash) return false;
+            if (envelope is null || ValueKeccak.Compute(envelope) != hash) return false;
             bytes += envelope.Length;
             if (bytes > WrapperTransportLimits.MaxStoreBytes) return false;
             envelopes[hash] = envelope;
         }
-        WrapperDescriptor descriptor = WrapperDescriptor.Create(wrapper);
+        WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper);
         Outbox outbox = new();
         lock (_gate)
         {
             // A wrapper validated under a verifier the target fork no longer uses is never offered.
-            if (_disposed || verifier != _verifier || !_store.TryAdd(new(descriptor, (byte[])wrapper.Clone(), hashes, envelopes, verifier))) return false;
-            _tombstones.Remove(descriptor.ObjectId);
+            if (_disposed || verifier != _verifier || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, envelopes, verifier))) return false;
+            _tombstones.Remove(announcement.Hash);
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)
             {
-                if (peer.Known.Contains(descriptor.ObjectId, now)) continue;
-                peer.ToAnnounce.Add(descriptor);
+                if (peer.Known.Contains(announcement.Hash, now)) continue;
+                peer.ToAnnounce.Add(announcement);
                 FlushAnnouncements(peer, outbox);
             }
         }
         outbox.Flush();
         WrapperMetrics.Record(WrapperEvent.Published);
-        if (_logger.IsDebug) _logger.Debug($"eth/73 offering {descriptor}");
+        if (_logger.IsDebug) _logger.Debug($"eth/73 offering {announcement}");
         return true;
     }
 
-    /// <summary>Sends queued announcements within the per-peer rate limit, at most 64 descriptors per message.</summary>
+    /// <summary>Sends queued announcements within the per-peer rate limit, at most 64 entries per message.</summary>
     private void FlushAnnouncements(WrapperPeer peer, Outbox outbox)
     {
         long now = _clock.GetTimestamp();
         while (peer.ToAnnounce.Count > 0 && peer.AnnouncementsOut.TryTake(1))
         {
             int count = Math.Min(peer.ToAnnounce.Count, Eth73Protocol.MaxAnnouncements);
-            List<WrapperDescriptor> batch = [];
-            foreach (WrapperDescriptor descriptor in peer.ToAnnounce.GetRange(0, count))
-                if (!peer.Known.Contains(descriptor.ObjectId, now) && TryGetOffered(descriptor.ObjectId, out _) && batch.TrueForAll(d => d.ObjectId != descriptor.ObjectId))
-                    batch.Add(descriptor);
+            List<WrapperAnnouncement> batch = [];
+            foreach (WrapperAnnouncement announcement in peer.ToAnnounce.GetRange(0, count))
+                if (!peer.Known.Contains(announcement.Hash, now) && TryGetOffered(announcement.Hash, out _) && batch.TrueForAll(d => d.Hash != announcement.Hash))
+                    batch.Add(announcement);
             peer.ToAnnounce.RemoveRange(0, count);
             if (batch.Count == 0) continue;
-            batch.Sort(static (a, b) => a.ObjectId.CompareTo(b.ObjectId));
-            foreach (WrapperDescriptor descriptor in batch) peer.Known.Add(descriptor.ObjectId);
-            outbox.Send(peer, new AnnounceProofWrappersMessage([.. batch]));
+            batch.Sort(static (a, b) => a.Hash.CompareTo(b.Hash));
+            foreach (WrapperAnnouncement announcement in batch) peer.Known.Add(announcement.Hash);
+            outbox.Send(peer, new NewProofWrapperHashesMessage([.. batch]));
             WrapperMetrics.Record(WrapperEvent.Announced, batch.Count);
         }
     }
@@ -396,9 +402,9 @@ public sealed partial class ProofWrapperTransport : IDisposable
             if (peer.Closed) return;
             List<WrapperStore.Entry> served = [];
             int content = 0;
-            foreach (ValueHash256 objectId in request.ObjectIds)
+            foreach (ValueHash256 wrapperHash in request.Hashes)
             {
-                if (!TryGetOffered(objectId, out WrapperStore.Entry entry)) continue;
+                if (!TryGetOffered(wrapperHash, out WrapperStore.Entry entry)) continue;
                 if (served.Count > 0 && ResponseLength(request.RequestId, content + entry.Wrapper.Length) > Eth73Protocol.SoftResponseLimit) break;
                 served.Add(entry);
                 content += entry.Wrapper.Length;
@@ -409,7 +415,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             for (int i = 0; i < wrappers.Length; i++)
             {
                 wrappers[i] = served[i].Wrapper;
-                peer.Known.Add(served[i].Descriptor.ObjectId);
+                peer.Known.Add(served[i].Announcement.Hash);
             }
             if (wrappers.Length > 0) WrapperMetrics.Record(WrapperEvent.Served, wrappers.Length);
             outbox.Send(peer, new ProofWrappersMessage(request.RequestId, wrappers));
@@ -417,36 +423,19 @@ public sealed partial class ProofWrapperTransport : IDisposable
         outbox.Flush();
     }
 
-    /// <summary>Serves a held wrapper's listed envelopes, including ones evicted from the pool; empty for an unknown wrapper.</summary>
-    internal void OnGetWrapperEnvelopes(WrapperPeer peer, GetWrapperEnvelopesMessage request)
+    /// <summary>Finds an envelope listed in a held wrapper in the wrapper-envelope cache, for a GetPooledTransactions
+    /// response; pool lookups are the caller's.</summary>
+    /// <remarks>EIP-8437 limits these lookups to the pool and this bounded cache: no historical search or recursive fetch.</remarks>
+    internal bool TryGetEnvelope(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction)
     {
-        Outbox outbox = new();
+        transaction = null;
+        byte[]? envelope;
         lock (_gate)
         {
-            if (peer.Closed) return;
-            List<byte[]> envelopes = [];
-            if (TryGetOffered(request.ObjectId, out WrapperStore.Entry entry))
-            {
-                if (request.Indices[^1] >= entry.Hashes.Length)
-                {
-                    Violation(peer, $"envelope index {request.Indices[^1]} is not below {entry.Hashes.Length}", outbox);
-                    outbox.Flush();
-                    return;
-                }
-                int content = 0;
-                foreach (int index in request.Indices)
-                {
-                    byte[] envelope = entry.Envelopes[entry.Hashes[index]];
-                    int length = Eth73Rlp.LengthOfBytes(envelope);
-                    if (envelopes.Count > 0 && ResponseLength(request.RequestId, content + length) > Eth73Protocol.SoftResponseLimit) break;
-                    envelopes.Add(envelope);
-                    content += length;
-                }
-                if (!peer.Serving.TryTake(content)) envelopes.Clear();
-            }
-            outbox.Send(peer, new WrapperEnvelopesMessage(request.RequestId, [.. envelopes]));
+            if (_disposed || !_store.TryGetEnvelope(hash, out envelope)) return false;
         }
-        outbox.Flush();
+        transaction = TryDecode(envelope, hash);
+        return transaction is not null;
     }
 
     /// <summary>The message-data length of <c>[request_id, [items]]</c> whose items encode in <paramref name="itemsLength"/> bytes.</summary>

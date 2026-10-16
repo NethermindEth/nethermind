@@ -162,9 +162,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         continue;
                     }
 
-                    // EIP-8437: a dependency-bearing transaction is answered as unavailable on every eth version.
+                    // EIP-8437: below eth/73 a dependency-bearing transaction is answered as unavailable.
                     if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx)
-                        && !Eip8288Dependencies.IsDependencyBearing(tx))
+                        && (ServesDependencyBearingTransactions || !Eip8288Dependencies.IsDependencyBearing(tx)))
                     {
                         Transaction responseTx = PreparePooledTransactionForResponse(tx);
                         int txSize = responseTx.GetLength();
@@ -194,6 +194,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         }
 
         protected virtual bool CanServePooledTransaction(Transaction tx) => true;
+
+        /// <summary>Whether GetPooledTransactions serves EIP-8288 dependency-bearing envelopes, which EIP-8437 allows from
+        /// <c>eth/73</c> for wrapper envelope recovery.</summary>
+        protected virtual bool ServesDependencyBearingTransactions => false;
 
         /// <summary>
         /// Gets the representation of a pooled transaction that this protocol version can serve.

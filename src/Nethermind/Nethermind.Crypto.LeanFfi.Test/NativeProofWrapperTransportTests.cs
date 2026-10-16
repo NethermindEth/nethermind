@@ -77,7 +77,7 @@ public class NativeProofWrapperTransportTests
         session.When(s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
             .Do(call => context.Disconnects.Enqueue(call.Arg<string>()));
         Route<StatusMessage69>(context);
-        Route<AnnounceProofWrappersMessage>(context);
+        Route<NewProofWrapperHashesMessage>(context);
         Route<GetProofWrappersMessage>(context);
         Route<ProofWrappersMessage>(context);
         Route<GetWrapperEnvelopesMessage>(context);

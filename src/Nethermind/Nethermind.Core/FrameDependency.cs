@@ -52,8 +52,8 @@ public static class Eip8288Dependencies
 
     /// <summary>Whether <paramref name="transaction"/> has at least one dependency verification frame, even one carrying no
     /// triples, so <c>dependencies(tx) == []</c> alone does not make it dependency-free.</summary>
-    /// <remarks>EIP-8288 and EIP-8437: such transactions travel only inside proof wrappers, never in the <c>eth</c> wire
-    /// protocol's transaction messages, and an inclusion list obligates them only under a held proof.</remarks>
+    /// <remarks>EIP-8288 and EIP-8437: such transactions are never independently announced or broadcast, are admitted only with
+    /// a fully validated covering wrapper, and an inclusion list obligates them only under a held proof.</remarks>
     public static bool IsDependencyBearing(Transaction transaction)
     {
         TxFrame[]? frames = transaction.Frames;

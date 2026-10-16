@@ -12,8 +12,8 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
-/// RLP codec for the EIP-8288 mempool wrapper <c>[transactions, mode, [deps, proof_content]]</c>, the EIP-8437
-/// object body. Transaction entries are 32-byte hashes in strictly ascending order; <c>deps</c> lists 96-byte triples; <c>proof_content</c> is one proof
+/// RLP codec for the EIP-8288 mempool wrapper <c>[transactions, mode, [deps, proof_content]]</c>, the hash-only
+/// wrapper EIP-8437 announces and retrieves. Transaction entries are 32-byte hashes in strictly ascending order; <c>deps</c> lists 96-byte triples; <c>proof_content</c> is one proof
 /// per dependency for mode 0 and the <c>stark_proof</c> for mode 1, whose public input is derived from <c>deps</c>.
 /// </summary>
 public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>

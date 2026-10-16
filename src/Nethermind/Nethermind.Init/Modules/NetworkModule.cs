@@ -173,11 +173,9 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V72.CellsMessage72, V72.CellsMessageSerializer72>()
 
             // V73
-            .AddMessageSerializer<V73.Messages.AnnounceProofWrappersMessage, V73.Messages.AnnounceProofWrappersMessageSerializer>()
+            .AddMessageSerializer<V73.Messages.NewProofWrapperHashesMessage, V73.Messages.NewProofWrapperHashesMessageSerializer>()
             .AddMessageSerializer<V73.Messages.GetProofWrappersMessage, V73.Messages.GetProofWrappersMessageSerializer>()
             .AddMessageSerializer<V73.Messages.ProofWrappersMessage, V73.Messages.ProofWrappersMessageSerializer>()
-            .AddMessageSerializer<V73.Messages.GetWrapperEnvelopesMessage, V73.Messages.GetWrapperEnvelopesMessageSerializer>()
-            .AddMessageSerializer<V73.Messages.WrapperEnvelopesMessage, V73.Messages.WrapperEnvelopesMessageSerializer>()
 
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
             .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)

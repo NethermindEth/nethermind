@@ -310,8 +310,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     }
 
     /// <summary>
-    /// The EIP-8437 preliminary check of a wrapper whose hash entries are still missing: verifies its witnesses or aggregate
-    /// proof against the claimed dependencies, so an invalid proof is rejected before any transaction is fetched.
+    /// A preliminary check of a wrapper whose envelopes are still missing: verifies its witnesses or aggregate proof against
+    /// the claimed dependencies, so an invalid proof is rejected before any envelope is recovered.
     /// </summary>
     /// <remarks>
     /// A pass does not validate the wrapper, since the proof does not authenticate the transaction list; it only lets
