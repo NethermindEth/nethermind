@@ -751,6 +751,26 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceBlock_native_tracer_with_malformed_config_fails_before_streaming(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values(NativeCallTracer.CallTracer, NativePrestateTracer.PrestateTracer)] string tracer)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object blockParameter = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+        // Each tracer rejects the mistyped field of its own config and ignores the other one.
+        var tracerConfig = new { withLog = "yes", diffMode = "yes" };
+
+        JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, tracerConfig, streamMode = true }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"], Is.Not.Null, response.ToString());
+            Assert.That(response["result"], Is.Null, response.ToString());
+        }
+    }
+
+    [Test]
     public async Task Debug_traceBlock_with_invalid_rlp()
     {
         using Context context = await Context.Create();

@@ -210,10 +210,15 @@ public class DebugRpcModule(
         return options?.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode;
     }
 
-    private bool CanStreamBlockTrace(GethTraceOptions? options) =>
-        CanStreamStructLogs(options)
-        || (options is { TxHash: null } && GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer)
-            && (options.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode));
+    private bool CanStreamBlockTrace(GethTraceOptions? options)
+    {
+        if (CanStreamStructLogs(options)) return true;
+        if (options is not { TxHash: null } || !GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer)
+            || !(options.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode)) return false;
+
+        GethLikeNativeTracerFactory.ValidateTracerConfig(options);
+        return true;
+    }
 
     /// <summary>
     /// Lowers the opcode log byte budget of a trace held in memory to <see cref="IJsonRpcConfig.MaxBufferedTraceLogSize"/>.
