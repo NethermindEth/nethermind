@@ -82,11 +82,14 @@ public class GloasCustodySamplingAvailabilityTests
         Assert.That(isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid()), Is.False, "a served entry is re-proved at every check");
     }
 
+    // A sidecar verified against one bid must not pass for another commitment list of the same length.
     [Test]
-    public void Held_columns_do_not_count_against_a_bid_committing_other_commitments()
+    public void Held_columns_do_not_count_against_a_bid_committing_other_commitments([Values] bool verifiedFirst)
     {
         SszKzgCommitment[] commitments = DataColumnSidecarGloasTestFixture.Commitments();
         Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, PoolHolding(Custody.SampledColumns), ClockAtEpoch(0));
+        if (verifiedFirst)
+            Assert.That(isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid()), Is.True);
 
         Assert.That(isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid([commitments[1], commitments[0]])), Is.False);
     }

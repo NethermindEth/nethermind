@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
@@ -78,7 +79,7 @@ public sealed class GloasCustodySamplingAvailability(INodeColumnCustodySource cu
     private bool Verify(DataColumnSidecarGloas sidecar, SszKzgCommitment[] commitments)
     {
         if (_verified.TryGetValue(sidecar, out SszKzgCommitment[]? verified)
-            && verified.AsSpan().SequenceEqual(commitments)) return true;
+            && MemoryMarshal.AsBytes(verified.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(commitments.AsSpan()))) return true;
         if (!DataColumnSidecarVerifier.VerifyKzgProofs(sidecar, commitments)) return false;
         _verified.AddOrUpdate(sidecar, (SszKzgCommitment[])commitments.Clone());
         return true;
