@@ -4,11 +4,11 @@
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
@@ -54,13 +54,15 @@ public class PbtSnapshotCompactor(
                 foreach ((HashedKey<PbtPath> runKey, PackedSlotRun run) in content.HeaderStorages) merged.SetRun(runKey, run.Clone());
                 foreach ((HashedKey<PbtStoragePath> runKey, PackedSlotRun run) in content.Storages) merged.SetRun(runKey, run.Clone());
                 foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) merged.Codes[codeHash] = code;
-                foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.AccountNodeGroups) merged.SetNodeGroup(groupKey, payload);
-                foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.CodeNodeGroups) merged.SetNodeGroup(groupKey, payload);
-                foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.StorageNodeGroups) merged.SetNodeGroup(groupKey, payload);
+                merged.CopyNodeGroupsFrom(content);
             }
 
+            merged.RepackNodeGroups();
             PbtSnapshot newest = chainOldestFirst[^1];
-            return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage);
+            PbtGroupReference rootReference = ReferenceEquals(merged.NodeGroupLog, newest.Content.NodeGroupLog)
+                ? newest.RootGroupReference : newest.TreeRoot == default ? PbtGroupReference.None : PbtGroupReference.Unknown;
+            if (merged.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference writtenRoot)) rootReference = writtenRoot;
+            return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage) { RootGroupReference = rootReference };
         }
         catch
         {

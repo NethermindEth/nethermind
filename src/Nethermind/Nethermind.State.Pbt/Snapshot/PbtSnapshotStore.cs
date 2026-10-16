@@ -8,6 +8,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Pbt.Common;
 
 namespace Nethermind.State.Pbt.Snapshot;
@@ -26,6 +27,13 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     // Detailed observers stay no-ops unless Metrics.EnableDetailedMetric, so the timestamps are skipped with them.
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
     private readonly ArrayPoolList<ArrayPoolList<BufferedNodeGroup>> _handedOff = new(16);
+
+    /// <summary>Protects log records for this fold through worker handoff and owner publication.</summary>
+    public PbtGroupLog.OperationLease Operation { get; } = bundle.NodeGroupLog.BeginOperation();
+    private PbtTraversalContext? _traversal;
+
+    /// <summary>The explicit log context used by production root updates, published only after successful completion.</summary>
+    public PbtTraversalContext Traversal => _traversal ??= new PbtTraversalContext(bundle.NodeGroupLog, Operation, bundle.RootGroupReference);
 
     public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
@@ -53,12 +61,14 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     public IPbtConcurrentWriter CreateWriter() => new ConcurrentWriter(this);
 
     /// <summary>Applies the groups every disposed concurrent writer handed over; must run on the owner thread after the workers finished.</summary>
-    /// <remarks>The write buffer keeps each partition's groups in a table of its own, so the partitions are applied concurrently.</remarks>
+    /// <remarks>Legacy payload writers apply partitions concurrently; log writers publish their completed reference buffers.</remarks>
     public void Dispose()
     {
+        using PbtGroupLog.OperationLease operation = Operation;
+        using PbtTraversalContext? traversal = _traversal;
         try
         {
-            ParallelUnbalancedWork.For(0, _partitions.Length, (handedOff: _handedOff, bundle, partitions: _partitions), static (index, state) =>
+            if (_handedOff.Count != 0) ParallelUnbalancedWork.For(0, _partitions.Length, (handedOff: _handedOff, bundle, partitions: _partitions), static (index, state) =>
             {
                 PbtPartition partition = state.partitions[index];
                 foreach (ArrayPoolList<BufferedNodeGroup> buffer in state.handedOff)
@@ -66,6 +76,7 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
                         if (PbtPartitions.PartitionOfPath(group.Path) == partition) state.bundle.SetNodeGroup(group.Path, group.Payload);
                 return state;
             });
+            traversal?.Apply(bundle.SetNodeGroupReference);
         }
         finally
         {

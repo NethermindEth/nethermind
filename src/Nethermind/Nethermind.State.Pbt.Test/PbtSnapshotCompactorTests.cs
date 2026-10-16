@@ -29,6 +29,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Pbt.Snapshot;
 using NSubstitute;
 using NUnit.Framework;
@@ -71,7 +72,7 @@ public class PbtSnapshotCompactorTests
                 Assert.That(compacted.Content.NodeGroupCount(), Is.EqualTo(1));
                 Assert.That(found, Is.True);
                 Assert.That(alternateFound, Is.True);
-                Assert.That(alternatePayload, Is.SameAs(payload));
+                Assert.That(alternatePayload?.GetSpan().ToArray(), Is.EqualTo(payload?.GetSpan().ToArray()));
                 Assert.That(payload?.Memory.ToArray(), Is.EqualTo(tombstone ? null : expected));
             }
         }
@@ -83,6 +84,57 @@ public class PbtSnapshotCompactorTests
             using PbtNodeGroupWriter<PbtNodePath> writer = PbtNodeGroupWriter<PbtNodePath>.Rent(groupKey.BitDepth, memoryProvider);
             writer.Write(path, PbtThreeLevelGroupGeometry.RootPosition, PbtTreeHarness.EncodeLeaf(key));
             return writer.Detach(default, 0)!;
+        }
+    }
+
+    [Test]
+    public void Compact_repacks_authoritative_records_and_relinks_surviving_descendants([Values] bool native)
+    {
+        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
+        IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
+        using PbtGroupLog log = new(memory, generationBytes: 256, retainedGenerations: 0);
+        PbtResourcePool pool = new(new PbtConfig(), log, memory);
+        using PbtTreeHarness tree = new();
+        tree.ApplyBatch(Enumerable.Range(0, 16).Select(index =>
+        {
+            byte[] key = new byte[PbtPath.KeyLength];
+            key[1] = (byte)(index << 4);
+            byte[] value = new byte[ValueHash256.MemorySize];
+            value[0] = (byte)(index + 1);
+            return (key, (byte[]?)value);
+        }));
+        PbtPhysicalPayload[] payloads = tree.PhysicalPayloads.OrderByDescending(static group => group.Key.BitDepth).ToArray();
+        PbtStorageNodePath childPath = payloads.Last(static group => group.Key.BitDepth != 0).Key;
+        PbtSnapshotContent older = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshotContent newer = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        Dictionary<PbtStorageNodePath, PbtGroupReference> original = [];
+        using (PbtGroupLog.OperationLease operation = log.BeginOperation())
+        {
+            foreach (PbtPhysicalPayload group in payloads)
+            {
+                PbtGroupLinks links = PbtGroupLinks.Unknown;
+                if (group.Key.BitDepth == 0) links[0] = original[childPath];
+                PbtGroupReference reference = log.Append(operation, group.Key, group.Payload.Span, links);
+                older.SetNodeGroupReference(group.Key, reference);
+                original[group.Key] = reference;
+            }
+        }
+        using PbtSnapshot compacted = Compact(pool, older, newer);
+        using PbtGroupLog.OperationLease read = log.BeginOperation();
+        Assert.That(log.TryGetRecord(read, compacted.RootGroupReference, out PbtGroupRecord root), Is.True);
+        PbtGroupReference relocatedChild = root.GetLink(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.RootGroupReference, Is.Not.EqualTo(original[default]));
+            Assert.That(log.TryGetRecord(read, original[default], out _), Is.False, "source-only generations are reclaimed");
+            Assert.That(relocatedChild, Is.Not.EqualTo(original[childPath]));
+            Assert.That(log.TryGetRecord(read, relocatedChild, out PbtGroupRecord child), Is.True);
+            Assert.That(child.Path, Is.EqualTo(childPath));
+        }
+        foreach (PbtPhysicalPayload expected in payloads)
+        {
+            Assert.That(compacted.Content.TryGetNodeGroup(expected.Key, out RefCountingMemory? actual), Is.True);
+            using (actual) Assert.That(actual!.GetSpan().ToArray(), Is.EqualTo(expected.Payload.ToArray()));
         }
     }
 
@@ -899,15 +951,17 @@ public class PbtSnapshotCompactorTests
         public void Exit(int exitCode) { }
     }
 
-    private PbtSnapshot Compact(params PbtSnapshotContent[] layersOldestFirst)
+    private PbtSnapshot Compact(params PbtSnapshotContent[] layersOldestFirst) => Compact(_pool, layersOldestFirst);
+
+    private static PbtSnapshot Compact(IPbtResourcePool pool, params PbtSnapshotContent[] layersOldestFirst)
     {
         StateId head = new((ulong)layersOldestFirst.Length, default);
         ICompactionSchedule schedule = Substitute.For<ICompactionSchedule>();
         schedule.GetCompactSize(head.BlockNumber).Returns(head.BlockNumber);
         using PbtSnapshotRepository repository = new(new Nethermind.Monitoring.Config.MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         for (int i = 0; i < layersOldestFirst.Length; i++)
-            repository.TryAdd(new PbtSnapshot(new StateId((ulong)i, default), new StateId((ulong)i + 1, default), default, layersOldestFirst[i], _pool, PbtResourcePool.Usage.MainBlockProcessing));
-        Assert.That(new PbtSnapshotCompactor(_pool, schedule, repository, Config, LimboLogs.Instance).DoCompactSnapshot(head), Is.True);
+            repository.TryAdd(new PbtSnapshot(new StateId((ulong)i, default), new StateId((ulong)i + 1, default), default, layersOldestFirst[i], pool, PbtResourcePool.Usage.MainBlockProcessing));
+        Assert.That(new PbtSnapshotCompactor(pool, schedule, repository, Config, LimboLogs.Instance).DoCompactSnapshot(head), Is.True);
         Assert.That(repository.TryLeaseMemoryState(head, SnapshotTier.InMemoryCompacted, out PbtSnapshot? compacted), Is.True);
         return compacted!;
     }

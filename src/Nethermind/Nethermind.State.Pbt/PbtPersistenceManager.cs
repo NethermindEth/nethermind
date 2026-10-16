@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
@@ -226,9 +227,19 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
                 foreach ((HashedKey<PbtPath> runKey, PackedSlotRun run) in content.HeaderStorages) batch.SetSlotRun(runKey.Key, run);
                 foreach ((HashedKey<PbtStoragePath> runKey, PackedSlotRun run) in content.Storages) batch.SetSlotRun(runKey.Key, run);
                 foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) batch.SetCode(codeHash, code);
-                foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.AccountNodeGroups) batch.SetNodeGroup(groupKey, payload);
-                foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.CodeNodeGroups) batch.SetNodeGroup(groupKey, payload);
-                foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.StorageNodeGroups) batch.SetNodeGroup(groupKey, payload);
+                using PbtGroupLog.OperationLease operation = content.NodeGroupLog.BeginOperation();
+                PersistGroups(content.AccountNodeGroups);
+                PersistGroups(content.CodeNodeGroups);
+                PersistGroups(content.StorageNodeGroups);
+
+                void PersistGroups<TPath>(Dictionary<TPath, PbtGroupReference> groups) where TPath : struct, IPbtNodePath<TPath>
+                {
+                    foreach ((TPath path, _) in groups)
+                    {
+                        content.TryGetNodeGroup(path, out RefCountingMemory? payload);
+                        using (payload) batch.SetNodeGroup(path, payload);
+                    }
+                }
             }
             else candidate.Persisted!.ApplyTo(batch, cancellationToken);
             batch.Commit();

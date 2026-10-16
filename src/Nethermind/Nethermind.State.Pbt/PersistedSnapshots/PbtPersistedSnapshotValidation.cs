@@ -5,6 +5,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Snapshot;
 
@@ -31,9 +32,10 @@ public static class PbtPersistedSnapshotValidation
             if (!persisted.TryGetCode(hash, out Evm.CodeAnalysis.CodeInfo? actual) || !actual!.CodeSpan.SequenceEqual(code.CodeSpan)) throw Mismatch();
         foreach ((HashedKey<PbtPath> key, PackedSlotRun run) in content.HeaderStorages) ValidateRun(persisted, key.Key, run);
         foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun run) in content.Storages) ValidateRun(persisted, key.Key, run);
-        foreach ((PbtNodePath key, RefCountingMemory? group) in content.AccountNodeGroups) ValidateGroup(persisted, key, group);
-        foreach ((PbtNodePath key, RefCountingMemory? group) in content.CodeNodeGroups) ValidateGroup(persisted, key, group);
-        foreach ((PbtStorageNodePath key, RefCountingMemory? group) in content.StorageNodeGroups) ValidateGroup(persisted, key, group);
+        using PbtGroupLog.OperationLease operation = content.NodeGroupLog.BeginOperation();
+        foreach ((PbtNodePath key, PbtGroupReference group) in content.AccountNodeGroups) ValidateGroup(persisted, key, content.GetNodeGroupPayload(operation, group));
+        foreach ((PbtNodePath key, PbtGroupReference group) in content.CodeNodeGroups) ValidateGroup(persisted, key, content.GetNodeGroupPayload(operation, group));
+        foreach ((PbtStorageNodePath key, PbtGroupReference group) in content.StorageNodeGroups) ValidateGroup(persisted, key, content.GetNodeGroupPayload(operation, group));
     }
 
     private static void ValidateRun<TKey>(PbtPersistedSnapshot persisted, TKey key, PackedSlotRun expected) where TKey : struct, IPbtKey<TKey>
@@ -47,11 +49,11 @@ public static class PbtPersistedSnapshotValidation
         finally { SlotRun.Return(actual!); }
     }
 
-    private static void ValidateGroup<TPath>(PbtPersistedSnapshot persisted, TPath key, RefCountingMemory? expected) where TPath : struct, IPbtNodePath<TPath>
+    private static void ValidateGroup<TPath>(PbtPersistedSnapshot persisted, TPath key, ReadOnlyMemory<byte>? expected) where TPath : struct, IPbtNodePath<TPath>
     {
         if (!persisted.TryGetNodeGroup(key, out RefCountingMemory? actual)) throw Mismatch();
         using (actual)
-            if (expected is null ? actual is not null : actual is null || !expected.GetSpan().SequenceEqual(actual.GetSpan())) throw Mismatch();
+            if (expected is null ? actual is not null : actual is null || !expected.Value.Span.SequenceEqual(actual.GetSpan())) throw Mismatch();
     }
 
     private static InvalidDataException Mismatch() => new("Converted persisted PBT snapshot differs from its source.");

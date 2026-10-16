@@ -3,6 +3,8 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
+using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt.Snapshot;
@@ -21,6 +23,9 @@ public class PbtSnapshot(
     public StateId From { get; } = from;
     public StateId To { get; } = to;
     public ValueHash256 TreeRoot { get; } = treeRoot;
+    /// <summary>The snapshot's in-memory root hint; only the root hash is persisted.</summary>
+    public PbtGroupReference RootGroupReference { get; internal init; } = content.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference reference)
+        ? reference : treeRoot == default ? PbtGroupReference.None : PbtGroupReference.Unknown;
     public PbtSnapshotContent Content { get; } = content;
 
     public PbtSnapshotPayloadSize PayloadSize => _payloadSize ??= Content.GetPayloadSize();

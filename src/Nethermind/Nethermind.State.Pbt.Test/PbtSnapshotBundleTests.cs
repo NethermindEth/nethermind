@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -14,7 +15,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
@@ -22,6 +25,9 @@ using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Snapshot;
+using Nethermind.State.Pbt.ScopeProvider;
+using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 
@@ -103,6 +109,116 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
+    public async Task No_op_commits_and_compaction_preserve_the_exact_warm_root_hint([Values(1, 3, 128)] int noOpBlocks)
+    {
+        await using PbtTestContext context = new(config: new PbtConfig { CompactSize = 1, CompactionOffset = 0, EnableLongFinality = false });
+        Hash256 rootHash;
+        using (PbtWorldStateScope initial = context.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = initial.StartWriteBatch(3))
+            {
+                batch.Set(TestItem.AddressA, new Account(1, 100));
+                batch.Set(TestItem.AddressB, new Account(1, 200));
+                batch.Set(TestItem.AddressC, new Account(1, 300));
+            }
+            initial.Commit(1);
+            rootHash = initial.RootHash;
+        }
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(rootHash).TestObject;
+        for (ulong number = 2; number <= (ulong)noOpBlocks + 1; number++)
+        {
+            using PbtWorldStateScope unchanged = context.BeginScope(parent);
+            unchanged.Commit(number);
+            Assert.That(unchanged.RootHash, Is.EqualTo(rootHash));
+            parent = Build.A.BlockHeader.WithNumber(number).WithStateRoot(rootHash).TestObject;
+        }
+        if (noOpBlocks > 1)
+        {
+            ICompactionSchedule schedule = Substitute.For<ICompactionSchedule>();
+            schedule.GetCompactSize((ulong)parent.Number).Returns(2UL);
+            PbtSnapshotCompactor compactor = new(context.ResourcePool, schedule, context.Repository, context.Config, LimboLogs.Instance);
+            Assert.That(compactor.DoCompactSnapshot(new StateId(parent)), Is.True);
+        }
+        using PbtWorldStateScope next = context.BeginScope(parent, out PbtSnapshotBundle bundle);
+        Assert.That(bundle.RootGroupReference.IsDirect, Is.True);
+        bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
+        using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
+        using PbtSnapshotStore store = new(bundle);
+        using PbtTraversalContext traversal = new(bundle.NodeGroupLog, store.Operation, bundle.RootGroupReference, countReads: true);
+        ValueHash256 updated = TrieUpdater.UpdateRoot(store, bundle.TreeRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, context.NodeGroupMemory, traversal);
+        traversal.Apply(bundle.SetNodeGroupReference);
+        bundle.CompleteLeafChanges();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated, Is.Not.EqualTo(bundle.TreeRoot));
+            Assert.That(traversal.DirectReads, Is.GreaterThan(0));
+            Assert.That(traversal.FallbackReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Root_hints_are_not_inherited_for_changed_roots_or_foreign_logs([Values] bool foreignLog)
+    {
+        using PbtGroupLog sourceLog = new(PooledRefCountingMemoryProvider.Instance, retainedGenerations: 0);
+        using PbtGroupLog otherLog = new(PooledRefCountingMemoryProvider.Instance, retainedGenerations: 0);
+        PbtResourcePool sourcePool = new(new PbtConfig(), sourceLog);
+        PbtResourcePool targetPool = foreignLog ? new PbtResourcePool(new PbtConfig(), otherLog) : sourcePool;
+        PbtSnapshotContent content = sourcePool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        PbtStorageNodePath path = default;
+        byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
+        using (RefCountingMemory payload = Memory(encoding)) content.SetNodeGroup(path, payload);
+        PbtSnapshot source = new(StateId.PreGenesis, new StateId(1, default), TestItem.KeccakA.ValueHash256, content, sourcePool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshotPooledList chain = new(1) { source };
+        PbtReadOnlySnapshotBundle readOnly = new(chain, new Reader(default, null), false, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0);
+        using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, targetPool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
+        ValueHash256 root = foreignLog ? TestItem.KeccakA.ValueHash256 : TestItem.KeccakB.ValueHash256;
+        using PbtSnapshot snapshot = branch.CollectSnapshot(source.To, new StateId(2, default), root);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.RootGroupReference.IsUnknown, Is.True);
+            Assert.That(branch.RootGroupReference.IsUnknown, Is.True);
+        }
+    }
+
+    [Test]
+    public void Log_backed_snapshot_readers_survive_pruning_and_payloads_survive_pool_return([Values] bool native)
+    {
+        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
+        TrackingMemoryProvider memory = new(native ? nativePool : PooledRefCountingMemoryProvider.Instance);
+        using PbtGroupLog log = new(memory, generationBytes: 256, retainedGenerations: 0);
+        PbtResourcePool pool = new(new PbtConfig(), log, memory);
+        using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
+        PbtStorageNodePath path = default;
+        byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
+        PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        using (RefCountingMemory payload = Memory(encoding, memory)) content.SetNodeGroup(path, payload);
+        PbtSnapshot source = new(StateId.PreGenesis, new StateId(1, default), TestItem.KeccakA.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtGroupReference rootReference = source.RootGroupReference;
+        Assert.That(repository.TryAdd(source), Is.True);
+        PbtReadOnlySnapshotBundle readOnly = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(source.To, StateId.PreGenesis), new Reader(default, null), slotFilterBitsPerKey: 0);
+        using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
+        repository.RemoveMemoryState(source.To);
+        using RefCountingMemory? independentlyOwned = branch.GetNodeGroup(path);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rootReference.IsDirect, Is.True);
+            Assert.That(branch.RootGroupReference, Is.EqualTo(rootReference));
+            Assert.That(independentlyOwned!.GetSpan().ToArray(), Is.EqualTo(encoding));
+            Assert.That(repository.HasState(source.To), Is.False);
+        }
+        using (PbtGroupLog.OperationLease operation = log.BeginOperation())
+            Assert.That(log.TryGetRecord(operation, rootReference, out _), Is.True);
+        branch.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.ResidentBytes, Is.Zero);
+            Assert.That(source.RootGroupReference, Is.EqualTo(rootReference), "the snapshot root hint is not read back from recycled content");
+            Assert.That(independentlyOwned!.GetSpan().ToArray(), Is.EqualTo(encoding));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(1), "only the independent caller payload remains");
+        }
+    }
+
+    [Test]
     public void SnapshotStore_ConcurrentWritersApplyOnDisposeAndReleasePreviousPayloads([Values] bool tombstones)
     {
         TrackingMemoryProvider memoryProvider = new();
@@ -137,7 +253,7 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(found, Is.True);
             Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(tombstones ? null : encoding));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(tombstones ? 0 : 1));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero, "publication releases the worker payloads after copying them into the log");
         }
 
         snapshot.Dispose();
@@ -146,8 +262,8 @@ public class PbtSnapshotBundleTests
     [Test]
     public void SnapshotContent_DisjointGroupReplacementAndResetPreserveReadLeases([Values(1, 8)] int groupCount, [Values] bool tombstone, [Values] bool replaceViaStoragePath)
     {
-        using PbtSnapshotContent content = new();
         TrackingMemoryProvider memoryProvider = new();
+        using PbtSnapshotContent content = new(nodeGroupMemory: memoryProvider);
         for (int round = 0; round < 2; round++)
         {
             RefCountingMemory?[] persisted = new RefCountingMemory?[groupCount];
@@ -195,7 +311,7 @@ public class PbtSnapshotBundleTests
                 {
                     Assert.That(content.NodeGroupCount(), Is.EqualTo(groupCount));
                     Assert.That(content.GetPayloadSize(), Is.EqualTo(new PbtSnapshotPayloadSize(0, nodeBytes)));
-                    Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount * (tombstone ? 1 : 2)));
+                    Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount + (tombstone ? 0 : 1)), "independent read copies plus one authoritative log generation");
                 }
 
                 content.Reset();

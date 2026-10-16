@@ -4,15 +4,18 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using NUnit.Framework;
 using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 
@@ -1010,6 +1013,220 @@ public class PbtNodeGroupTests
         Assert.Throws<ArgumentOutOfRangeException>(() => PbtNodeGroupEncoder.Encode(groupKey, [record], slots));
         slots[slot] = PbtNodeGroupCodec.MaxDescendantBytes + 1;
         Assert.Throws<InvalidDataException>(() => PbtNodeGroupEncoder.Encode(groupKey, [record], slots));
+    }
+
+    [Test]
+    public void Group_log_links_distinguish_tombstones_from_unresolved_descendants()
+    {
+        PbtGroupLinks unknown = PbtGroupLinks.Unknown;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(default(PbtGroupReference), Is.EqualTo(PbtGroupReference.None));
+            Assert.That(PbtGroupReference.None.IsNone, Is.True);
+            Assert.That(PbtGroupReference.Unknown.IsUnknown, Is.True);
+            Assert.That(PbtGroupReference.Unknown, Is.Not.EqualTo(PbtGroupReference.None));
+            Assert.That(PbtGroupReference.None.IsDirect || PbtGroupReference.Unknown.IsDirect, Is.False);
+            Assert.That(((ReadOnlySpan<PbtGroupReference>)unknown).ToArray(), Has.All.EqualTo(PbtGroupReference.Unknown));
+            Assert.That(Unsafe.SizeOf<PbtGroupReference>(), Is.EqualTo(sizeof(ulong)));
+        }
+    }
+
+    [Test]
+    public void Group_log_reservations_preserve_canonical_payloads_and_immutable_links([Values] bool native, [Values(0, 3, 267)] int depth)
+    {
+        using GroupLogContext context = new(native);
+        using PbtGroupLog.OperationLease operation = context.Log.BeginOperation();
+        byte[] key = new byte[PbtVariableTreeKey.MaxLength];
+        PbtStorageNodePath path = PbtTestPaths.Prefix<PbtStorageNodePath>(key, depth);
+        PbtStorageNodePath childPath = PbtTestPaths.Prefix<PbtStorageNodePath>(key, depth + 6);
+        byte[] payload = GroupLogPayload(path);
+        PbtGroupReference child = context.Log.Append(operation, childPath, GroupLogPayload(childPath), default);
+        PbtGroupLinks links = default;
+        links[0] = child;
+        links[1] = PbtGroupReference.Unknown;
+        PbtGroupReference reference = context.Log.Reserve(operation, path, payload.Length, links, out Span<byte> destination);
+        payload.CopyTo(destination);
+        Assert.That(context.Log.TryGetRecord(operation, reference, out PbtGroupRecord record), Is.True);
+        PbtGroupLinks copiedLinks = record.Links;
+        copiedLinks[0] = PbtGroupReference.None;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reference.IsDirect, Is.True);
+            Assert.That(record.Path, Is.EqualTo(path));
+            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+            Assert.That(record.GetLink(0), Is.EqualTo(child));
+            Assert.That(record.GetLink(1), Is.EqualTo(PbtGroupReference.Unknown));
+            Assert.That(record.GetLink(2), Is.EqualTo(PbtGroupReference.None));
+        }
+        PbtNodeGroupCodec.ValidateNodes(path, record.Payload.Span);
+    }
+
+    [Test]
+    public void Group_log_authoritative_owners_transfer_and_balance_generation_retention([Values] bool native)
+    {
+        using GroupLogContext context = new(native);
+        using PbtGroupLog.RecordOwner first = context.Log.CreateOwner();
+        using PbtGroupLog.RecordOwner second = context.Log.CreateOwner();
+        PbtGroupReference reference;
+        byte[] payload = RootGroup(LeafEncoding(0x20));
+        using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
+        {
+            reference = context.Log.Append(operation, default, payload, default);
+            first.Retain(reference);
+            first.Retain(reference);
+            second.Retain(reference);
+            for (int i = 0; i < 16; i++) context.Log.Append(operation, default, payload, default);
+            Assert.That(context.Log.GenerationCount, Is.GreaterThan(1));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Log.GenerationCount, Is.EqualTo(1));
+            Assert.That(context.Log.PinnedBytes, Is.EqualTo(context.Log.ResidentBytes));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.EqualTo(1));
+        }
+        first.Release(reference);
+        first.Dispose();
+        using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
+        {
+            Assert.That(context.Log.TryGetRecord(operation, reference, out PbtGroupRecord record), Is.True);
+            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+        }
+        second.Release(reference);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Log.ResidentBytes, Is.Zero);
+            Assert.That(context.Log.GenerationCount, Is.Zero);
+            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Group_log_operation_protects_borrowed_views_after_owner_and_log_disposal([Values] bool native, [Values(0, 32)] int rotations)
+    {
+        using GroupLogContext context = new(native);
+        using PbtGroupLog.RecordOwner owner = context.Log.CreateOwner();
+        using PbtGroupLog.OperationLease operation = context.Log.BeginOperation();
+        byte[] payload = RootGroup(LeafEncoding(0x40));
+        PbtGroupReference reference = context.Log.Append(operation, default, payload, default);
+        owner.Retain(reference);
+        Assert.That(context.Log.TryGetRecord(operation, reference, out PbtGroupRecord record), Is.True);
+        Parallel.For(0, rotations, index =>
+        {
+            context.Log.Append(operation, default, RootGroup(LeafEncoding((byte)(index + 1))), default);
+            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+        });
+        owner.Dispose();
+        context.Log.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+            Assert.That(context.Log.TryGetRecord(operation, reference, out _), Is.True);
+            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.EqualTo(rotations + 1));
+        }
+        Assert.Throws<ObjectDisposedException>(() => context.Log.BeginOperation());
+        Assert.Throws<ObjectDisposedException>(() => context.Log.Append(operation, default, payload, default));
+        operation.Dispose();
+        operation.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Log.ResidentBytes, Is.Zero);
+            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
+        }
+        Assert.Throws<ObjectDisposedException>(() => context.Log.TryGetRecord(operation, reference, out _));
+    }
+
+    [Test]
+    public void Group_log_retired_references_miss_even_when_storage_is_reused([Values] bool native)
+    {
+        using GroupLogContext context = new(native);
+        PbtGroupReference retired;
+        using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
+            retired = context.Log.Append(operation, default, RootGroup(LeafEncoding(0x20)), default);
+        Assert.That(context.Log.ResidentBytes, Is.Zero);
+        using PbtGroupLog.OperationLease next = context.Log.BeginOperation();
+        byte[] payload = RootGroup(LeafEncoding(0x40));
+        PbtGroupReference current = context.Log.Append(next, default, payload, default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(current, Is.Not.EqualTo(retired));
+            Assert.That(context.Log.TryGetRecord(next, retired, out _), Is.False);
+            Assert.That(context.Log.TryGetRecord(next, current, out PbtGroupRecord record), Is.True);
+            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+        }
+    }
+
+    [Test]
+    public void Group_log_concurrent_appends_and_reads_share_one_operation_without_allocating_per_read([Values] bool native)
+    {
+        using GroupLogContext context = new(native);
+        using PbtGroupLog.OperationLease operation = context.Log.BeginOperation();
+        ConcurrentBag<(PbtGroupReference Reference, byte[] Payload)> written = [];
+        Parallel.For(0, 128, index =>
+        {
+            byte[] payload = RootGroup(LeafEncoding((byte)index));
+            PbtGroupReference reference = context.Log.Reserve(operation, default, payload.Length, default, out Span<byte> destination);
+            payload.CopyTo(destination);
+            written.Add((reference, payload));
+        });
+        Assert.That(written.Select(static entry => entry.Reference).Distinct().Count(), Is.EqualTo(128));
+        foreach ((PbtGroupReference reference, byte[] payload) in written)
+        {
+            Assert.That(context.Log.TryGetRecord(operation, reference, out PbtGroupRecord record), Is.True);
+            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+        }
+        PbtGroupReference retained = written.First().Reference;
+        for (int i = 0; i < 100; i++) context.Log.TryGetRecord(operation, retained, out _);
+        long allocated = GC.GetAllocatedBytesForCurrentThread();
+        bool found = true;
+        for (int i = 0; i < 10_000; i++) found &= context.Log.TryGetRecord(operation, retained, out _);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Group_log_opportunistic_retention_is_bounded([Values] bool native)
+    {
+        using GroupLogContext context = new(native, retainedGenerations: 2);
+        using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
+            for (int i = 0; i < 32; i++) context.Log.Append(operation, default, RootGroup(LeafEncoding((byte)i)), default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Log.GenerationCount, Is.EqualTo(2));
+            Assert.That(context.Log.PinnedBytes, Is.Zero);
+            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.EqualTo(2));
+        }
+        context.Log.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
+    }
+
+    private static byte[] GroupLogPayload(PbtStorageNodePath path)
+    {
+        PbtStorageNodePath node = PbtTestPaths.Prefix<PbtStorageNodePath>(new byte[PbtVariableTreeKey.MaxLength], path.BitDepth == 0 ? 0 : path.BitDepth + 1);
+        return PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(node, LeafBranch(node, 1))], default);
+    }
+
+    private sealed class GroupLogContext : IDisposable
+    {
+        private readonly NativeBucketedMemoryPool _nativePool = PbtNodeGroupMemory.CreateNativePool();
+
+        public GroupLogContext(bool native, int retainedGenerations = 0)
+        {
+            Memory = new TrackingMemoryProvider(native ? _nativePool : PooledRefCountingMemoryProvider.Instance) { FillByte = 0xFF };
+            Log = new PbtGroupLog(Memory, generationBytes: 256, retainedGenerations);
+        }
+
+        public TrackingMemoryProvider Memory { get; }
+        public PbtGroupLog Log { get; }
+
+        public void Dispose()
+        {
+            Log.Dispose();
+            _nativePool.Dispose();
+        }
     }
 
     private sealed class WarmReadStore(IPbtStore store) : IPbtStore, IPbtNodeGroupSink

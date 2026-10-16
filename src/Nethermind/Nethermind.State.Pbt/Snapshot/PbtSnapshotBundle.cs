@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
@@ -48,6 +49,24 @@ public sealed class PbtSnapshotBundle(
     private readonly bool _filterInMemorySlotReads = filterInMemorySlotReads && readOnlyBundle.MayFilterSlots;
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
+
+    /// <summary>The traversal log used by the current write buffer.</summary>
+    public PbtGroupLog NodeGroupLog => WriteBuffer.NodeGroupLog;
+
+    /// <summary>The last published root reference visible to this branch, or an unresolved persisted root.</summary>
+    public PbtGroupReference RootGroupReference
+    {
+        get
+        {
+            if (WriteBuffer.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference reference)) return reference;
+            if (snapshots.Count > 0)
+            {
+                PbtSnapshot snapshot = snapshots[^1];
+                return ReferenceEquals(snapshot.Content.NodeGroupLog, NodeGroupLog) ? snapshot.RootGroupReference : PbtGroupReference.Unknown;
+            }
+            return readOnlyBundle.GetRootGroupReference(NodeGroupLog);
+        }
+    }
 
     private PbtSnapshotContent WriteBuffer
     {
@@ -87,6 +106,9 @@ public sealed class PbtSnapshotBundle(
     public void CompleteLeafChanges() => _leafChanges.Reset();
 
     public void SetNodeGroup(PbtStorageNodePath groupKey, RefCountingMemory? payload) => WriteBuffer.SetNodeGroup(groupKey, payload);
+
+    /// <summary>Publishes an authoritative group reference from this bundle's traversal log.</summary>
+    public void SetNodeGroupReference(PbtStorageNodePath groupKey, PbtGroupReference reference) => WriteBuffer.SetNodeGroupReference(groupKey, reference);
 
     public RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey)
     {
@@ -339,7 +361,10 @@ public sealed class PbtSnapshotBundle(
     {
         if (_accountsAwaitingCode.Count != 0 || PendingMutationCount != 0)
             throw new InvalidOperationException("Pending leaf changes must be folded before collecting a snapshot.");
-        PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
+        PbtGroupReference rootReference = treeRoot == TreeRoot ? RootGroupReference : PbtGroupReference.Unknown;
+        if (treeRoot == default) rootReference = PbtGroupReference.None;
+        if (WriteBuffer.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference writtenRoot)) rootReference = writtenRoot;
+        PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage) { RootGroupReference = rootReference };
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _hintedAccounts.Clear();

@@ -14,6 +14,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
@@ -73,6 +74,17 @@ public sealed class PbtReadOnlySnapshotBundle(
     private int LayerCount => persistedSnapshots.Count + snapshots.Count;
     private PbtSnapshot? MemoryLayer(int index) => index >= persistedSnapshots.Count ? snapshots[index - persistedSnapshots.Count] : null;
     private PbtPersistedSnapshot? PersistedLayer(int index) => index < persistedSnapshots.Count ? persistedSnapshots[index] : null;
+
+    internal PbtGroupReference GetRootGroupReference(PbtGroupLog log)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        if (snapshots.Count > 0)
+        {
+            PbtSnapshot snapshot = snapshots[^1];
+            return ReferenceEquals(snapshot.Content.NodeGroupLog, log) ? snapshot.RootGroupReference : PbtGroupReference.Unknown;
+        }
+        return TreeRoot == default ? PbtGroupReference.None : PbtGroupReference.Unknown;
+    }
 
     private bool TryAccount(int index, in ValueHash256 address, out PbtAccount? account) =>
         MemoryLayer(index) is { } memory ? memory.Content.Accounts.TryGetValue(address, out account) : PersistedLayer(index)!.TryGetAccount(address, out account);

@@ -3,9 +3,9 @@
 
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Io;
@@ -54,9 +54,10 @@ public static class PbtPersistedSnapshotBuilder
         foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun value) in c.Storages) entries.Add(new(PbtPersistedKey.Run(key.Key), value));
         foreach ((ValueHash256 key, CodeInfo value) in c.Codes) entries.Add(new(PbtPersistedKey.CodeEntity(key), value));
         foreach ((ValueHash256 key, bool value) in c.SelfDestructedStorageAddresses) entries.Add(new(PbtPersistedKey.AddressEntity(key, PbtPersistedKey.Clear), value));
-        foreach ((PbtNodePath key, RefCountingMemory? value) in c.AccountNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
-        foreach ((PbtNodePath key, RefCountingMemory? value) in c.CodeNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
-        foreach ((PbtStorageNodePath key, RefCountingMemory? value) in c.StorageNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
+        using PbtGroupLog.OperationLease operation = c.NodeGroupLog.BeginOperation();
+        foreach ((PbtNodePath key, PbtGroupReference value) in c.AccountNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
+        foreach ((PbtNodePath key, PbtGroupReference value) in c.CodeNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
+        foreach ((PbtStorageNodePath key, PbtGroupReference value) in c.StorageNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
         entries.Sort(static (a, b) => a.Key.AsSpan().SequenceCompareTo(b.Key));
         SortedTableBuilder<TWriter> table = new(ref writer);
         try
@@ -65,7 +66,7 @@ public static class PbtPersistedSnapshotBuilder
             foreach (Entry entry in entries)
             {
                 bloom.AddUnsynchronized(PbtPersistedKey.BloomHash(entry.Key));
-                byte[]? payload = Encode(entry.Value);
+                byte[]? payload = Encode(entry.Value, c, operation);
                 WriteEntity(ref table, entry.Key, payload, blobs);
             }
             PbtPersistedFormat.WriteMetadata(ref table, new(snapshot.From, snapshot.To, snapshot.TreeRoot));
@@ -74,7 +75,7 @@ public static class PbtPersistedSnapshotBuilder
         finally { table.Dispose(); }
     }
 
-    private static byte[]? Encode(object? value)
+    private static byte[]? Encode(object? value, PbtSnapshotContent content, PbtGroupLog.OperationLease operation)
     {
         switch (value)
         {
@@ -90,7 +91,7 @@ public static class PbtPersistedSnapshotBuilder
                 run.Encode(runBytes);
                 return runBytes;
             case CodeInfo code: return code.CodeSpan.ToArray();
-            case RefCountingMemory group: return group.GetSpan().ToArray();
+            case PbtGroupReference group: return content.GetNodeGroupPayload(operation, group)?.ToArray();
             default: throw new InvalidOperationException("Unsupported persisted PBT payload.");
         }
     }

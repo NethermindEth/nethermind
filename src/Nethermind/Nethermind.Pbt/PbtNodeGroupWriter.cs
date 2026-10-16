@@ -8,13 +8,14 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
+using Nethermind.Pbt.NodeLog;
 
 namespace Nethermind.Pbt;
 
 /// <summary>Appends canonical nodes in position order to an owned, growable group payload.</summary>
 /// <remarks>
-/// Writable spans are borrowed until the next writer operation. The group is composed in a pooled scratch array and
-/// rented from the memory provider only once, at its final size, when detached; Detach transfers that sole output lease.
+/// Writable spans are borrowed until the next writer operation. The group is composed in a pooled scratch array.
+/// Detach rents a final-size output and transfers its lease; DetachTo finalizes directly into caller-owned storage.
 /// </remarks>
 public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     where TPath : struct, IPbtNodePath<TPath>
@@ -56,12 +57,15 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
         writer._memoryProvider = memoryProvider;
         ((Span<long>)writer._descendantDeltas).Clear();
         writer._descendantDeltaMask = 0;
+        writer.DescendantReferences = default;
         writer._availability = 0;
         writer._written = 0;
         writer._disposed = false;
         writer._rented = true;
         return writer;
     }
+
+    internal PbtGroupLinks DescendantReferences;
 
     public int WrittenCount => _written;
     /// <summary>The number of leading key bytes inline leaf keys omit in a branch written at <paramref name="position"/>.</summary>
@@ -137,24 +141,42 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// <param name="candidateSlots">The slots of <paramref name="descendantBytes"/> that may be nonzero; every other slot is known to be zero.</param>
     public RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
-        if (_availability == 0)
+        int length = GetPayloadLength(descendantBytes, candidateSlots);
+        if (length == 0)
         {
-            Release();
+            DetachTo(Span<byte>.Empty, descendantBytes, candidateSlots);
             return null;
         }
 
-        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
-        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability, descendantMask, descendantBytes);
-        int length = PbtNodeGroupCodec.HeaderLength + _written + trailerLength;
         // The snapshot retains the payload's whole capacity until the segment is persisted, so it is rented at its final size.
         RefCountingMemory memory = _memoryProvider.Rent(length);
-        Span<byte> payload = memory.GetSpan();
-        PbtNodeGroupCodec.Header.CopyTo(payload);
-        _scratch.AsSpan(PbtNodeGroupCodec.HeaderLength, _written).CopyTo(payload[PbtNodeGroupCodec.HeaderLength..]);
-        PbtNodeGroupCodec.WriteFooter(payload.Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength), _offsets, _availability, descendantMask,
-            descendantBytes);
-        Release();
+        DetachTo(memory.GetSpan(), descendantBytes, candidateSlots);
         return memory;
+    }
+
+    /// <summary>The exact canonical payload length, or zero for an empty group.</summary>
+    internal int GetPayloadLength(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+    {
+        if (_availability == 0) return 0;
+        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
+        return PbtNodeGroupCodec.HeaderLength + _written + PbtNodeGroupCodec.GetTrailerLength(_availability, descendantMask, descendantBytes);
+    }
+
+    /// <summary>Finishes the canonical payload in an exactly sized destination and releases the scratch buffer.</summary>
+    internal void DetachTo(Span<byte> payload, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+    {
+        int length = GetPayloadLength(descendantBytes, candidateSlots);
+        if (payload.Length != length) throw new ArgumentException("The destination must match the canonical payload length.", nameof(payload));
+        if (length != 0)
+        {
+            ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
+            int trailerLength = length - PbtNodeGroupCodec.HeaderLength - _written;
+            PbtNodeGroupCodec.Header.CopyTo(payload);
+            _scratch.AsSpan(PbtNodeGroupCodec.HeaderLength, _written).CopyTo(payload[PbtNodeGroupCodec.HeaderLength..]);
+            PbtNodeGroupCodec.WriteFooter(payload.Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength), _offsets, _availability, descendantMask,
+                descendantBytes);
+        }
+        Release();
     }
 
     public void Dispose()

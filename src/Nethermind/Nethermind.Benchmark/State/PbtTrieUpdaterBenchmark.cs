@@ -28,7 +28,7 @@ public class PbtTrieUpdaterBenchmark
     private const int BuildChunk = 1 << 16;
 
     private PbtOverlayStore _store = null!;
-    private readonly ConcurrencyController _foldQuota = new(Environment.ProcessorCount);
+    private ConcurrencyController _foldQuota = null!;
     private ValueHash256 _root;
     private Batch[] _batches = null!;
     private int _next;
@@ -39,9 +39,13 @@ public class PbtTrieUpdaterBenchmark
     [Params(1, 16, 256, 4096)]
     public int BatchSize { get; set; }
 
+    [Params(1, 16)]
+    public int FoldConcurrency { get; set; }
+
     [GlobalSetup]
     public void GlobalSetup()
     {
+        _foldQuota = new ConcurrencyController(FoldConcurrency);
         Random random = new(8297);
         _store = new PbtOverlayStore();
         PbtPath[] keys = new PbtPath[TreeSize];

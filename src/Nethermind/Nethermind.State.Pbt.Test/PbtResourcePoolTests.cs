@@ -11,6 +11,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
+using Nethermind.Core.Memory;
 using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 
@@ -168,6 +170,13 @@ public class PbtResourcePoolTests
         content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 1), (UInt256)0x01);
         content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(Bytes.FromHexString("6001"));
         content.SelfDestructedStorageAddresses[addressHash] = true;
+        byte[] encoding = PbtNodeGroupEncoder.Encode(default(PbtNodePath), [new PbtNodeRecord(default, PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey([0])))], default);
+        using (RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(encoding.Length))
+        {
+            encoding.CopyTo(payload.GetSpan());
+            content.SetNodeGroup(default(PbtNodePath), payload);
+        }
+        Assert.That(content.TryGetNodeGroupReference(default(PbtNodePath), out PbtGroupReference reference), Is.True);
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, content);
         PbtSnapshotContent rented = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         using (Assert.EnterMultipleScope())
@@ -177,7 +186,13 @@ public class PbtResourcePoolTests
             Assert.That(rented.HeaderStorages, Is.Empty);
             Assert.That(rented.Codes, Is.Empty);
             Assert.That(rented.SelfDestructedStorageAddresses, Is.Empty);
+            Assert.That(rented.AccountNodeGroups, Is.Empty);
             Assert.That(rented.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
+            Assert.That(rented.NodeGroupLog.ResidentBytes, Is.Zero);
+        }
+        using (PbtGroupLog.OperationLease operation = rented.NodeGroupLog.BeginOperation())
+        {
+            Assert.That(rented.NodeGroupLog.TryGetRecord(operation, reference, out _), Is.False);
         }
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, rented);
     }

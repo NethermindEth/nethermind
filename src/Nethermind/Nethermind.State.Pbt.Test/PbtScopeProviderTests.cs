@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -162,40 +163,59 @@ public class PbtScopeProviderTests
     }
 
     [Test]
-    public async Task IncrementalUpdateRootHash_FoldsLaterWritesOnTopOfEarlierFold()
+    public async Task IncrementalUpdateRootHash_FoldsLaterWritesOnTopOfEarlierFold([Values] bool native, [Values] bool clearStorage)
     {
-        await using PbtTestContext ctx = NewContext();
+        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
+        IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
+        await using PbtTestContext ctx = new(nodeGroupMemory: memory);
         PbtScopeProvider provider = ctx.CreateScopeProvider();
         Address address = TestItem.AddressC;
 
         Dictionary<string, byte[]> model = [];
         using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
+        if (clearStorage)
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
+            using (IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, 0))
+                storage.Clear();
+            scope.UpdateRootHash();
+            Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
+        }
 
         // first writes then an explicit fold, which flushes the dirty stems into the overlays; with no
         // account entry the header stem has no dirty account to fold it in, so the stem pass must emit it
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
         {
-            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 2);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 3);
             storageBatch.Set(3, (UInt256)0x11);    // header-region slot on the account header stem
             storageBatch.Set(500, (UInt256)0x11);  // storage-zone slot on its own stem
+            storageBatch.Set(UInt256.MaxValue, (UInt256)0x11);
         }
         scope.UpdateRootHash();
         PbtReferenceModel.SetSlot(model, address, 3, 0x11);
         PbtReferenceModel.SetSlot(model, address, 500, 0x11);
+        PbtReferenceModel.SetSlot(model, address, UInt256.MaxValue, 0x11);
         Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
 
         // more writes after the fold: slot 4 shares the header stem with slot 3 (so its blob must be
         // read back from the overlay, not the empty bundle) and slot 500 is overwritten
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
         {
-            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 2);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 3);
             storageBatch.Set(4, (UInt256)0x22);
             storageBatch.Set(500, (UInt256)0x22);
+            storageBatch.Set(UInt256.MaxValue, (UInt256)0x22);
         }
         scope.Commit(1);
 
         PbtReferenceModel.SetSlot(model, address, 4, 0x22);
         PbtReferenceModel.SetSlot(model, address, 500, 0x22);
-        Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
+        PbtReferenceModel.SetSlot(model, address, UInt256.MaxValue, 0x22);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
+            Assert.That(scope.CreateStorageTree(address).Get(3), Is.EqualTo((UInt256)0x11));
+            Assert.That(scope.CreateStorageTree(address).Get(UInt256.MaxValue), Is.EqualTo((UInt256)0x22));
+        }
     }
 }

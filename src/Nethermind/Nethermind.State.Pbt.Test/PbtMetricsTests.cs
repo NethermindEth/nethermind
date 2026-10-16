@@ -163,9 +163,7 @@ public class PbtMetricsTests
                 content.SetSlot(headerStorageKey, deleted ? default : slot);
                 content.SetSlot(storageKey, deleted ? default : slot);
             }
-            if (!deleted) payload.AcquireLease();
-            if (partition == "storage") content.StorageNodeGroups[groupKey.ToPath<PbtStorageNodePath>()] = deleted ? null : payload;
-            else (partition == "code" ? content.CodeNodeGroups : content.AccountNodeGroups)[groupKey] = deleted ? null : payload;
+            content.SetNodeGroup(groupKey, deleted ? null : payload);
             if (!deleted) content.Codes[codeHash] = code;
         }
         IPbtResourcePool pool = Substitute.For<IPbtResourcePool>();
@@ -191,7 +189,7 @@ public class PbtMetricsTests
             Assert.That(actualSlot, Is.EqualTo(empty ? default : slot));
             Assert.That(headerRun.Get(SlotRun.IndexOf(headerStorageKey)), Is.EqualTo(actualHeaderSlot));
             Assert.That(storageRun.Get(SlotRun.IndexOf(storageKey)), Is.EqualTo(actualSlot));
-            Assert.That(actualGroup, Is.SameAs(empty ? null : payload));
+            Assert.That(actualGroup?.GetSpan().ToArray(), Is.EqualTo(empty ? null : payload.GetSpan().ToArray()));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
                 ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"storage_run_header_{tier}", $"storage_run_{tier}", $"node_group_{partition}_{groupTier}", $"code_{codeTier}" }

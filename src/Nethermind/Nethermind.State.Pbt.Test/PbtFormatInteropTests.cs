@@ -126,9 +126,9 @@ public class PbtFormatInteropTests
         for (int i = 0; i < words.Length; i++) words[i] = (UInt256)(i + 1);
         content.Storages[new(storageKey)] = SlotRun.Create(ushort.MaxValue, words);
         PbtNodePath root = new([], 0);
-        content.AccountNodeGroups[root] = null;
-        content.CodeNodeGroups[new([Eip8297KeyDerivation.CodeZone, 0], 9)] = null;
-        content.StorageNodeGroups[new([0xE0], 3)] = null;
+        content.AccountNodeGroups[root] = default;
+        content.CodeNodeGroups[new([Eip8297KeyDerivation.CodeZone, 0], 9)] = default;
+        content.StorageNodeGroups[new([0xE0], 3)] = default;
         using PbtSnapshot source = PersistedSource(content);
         using PbtPersistedSnapshot persisted = store.Build(source);
         using (Assert.EnterMultipleScope())
