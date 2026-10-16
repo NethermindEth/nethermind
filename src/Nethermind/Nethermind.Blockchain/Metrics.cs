@@ -109,6 +109,22 @@ public static class Metrics
     [Description("Transactions block processing took over from a pre-warm run of the mempool pass")]
     public static long PrewarmMempoolRunsTakenOver { get; set; }
 
+    [CounterMetric]
+    [Description("Transactions whose reads past the pre-block caches started a storage discovery while block processing executed them")]
+    public static long PrewarmInFlightStarted { get; set; }
+
+    [CounterMetric]
+    [Description("Discovery rounds run for transactions block processing was executing")]
+    public static long PrewarmInFlightRounds { get; set; }
+
+    [CounterMetric]
+    [Description("Storage cells discovered and read for transactions block processing was executing")]
+    public static long PrewarmInFlightCells { get; set; }
+
+    [CounterMetric]
+    [Description("Reads past the pre-block caches block processing made in a transaction after its in-flight discovery started")]
+    public static long PrewarmInFlightLateMisses { get; set; }
+
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
     public static ulong GasUsed { get; set; }
