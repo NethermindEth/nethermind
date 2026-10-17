@@ -41,12 +41,18 @@ internal sealed class StateTrieStoreAdapter(
 
 internal sealed class StateTrieStoreWarmerAdapter(
     SnapshotBundle bundle
-) : AbstractMinimalTrieStore
+) : AbstractMinimalTrieStore, IBatchTrieNodeResolver
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
         TrieNode node = bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
         return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+    }
+
+    public void LoadRlps(ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, Span<byte[]?> values)
+    {
+        bundle.LoadStateRlps(requests, values);
+        for (int i = 0; i < requests.Length; i++) values[i] = GetMatchingRlp(values[i], requests[i].Hash);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
@@ -105,12 +111,18 @@ internal sealed class StorageTrieStoreAdapter(
 internal sealed class StorageTrieStoreWarmerAdapter(
     SnapshotBundle bundle,
     Hash256AsKey addressHash
-) : AbstractMinimalTrieStore
+) : AbstractMinimalTrieStore, IBatchTrieNodeResolver
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {
         TrieNode node = bundle.FindStorageNodeOrUnknownTrieWarmer(addressHash, path, hash);
         return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+    }
+
+    public void LoadRlps(ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, Span<byte[]?> values)
+    {
+        bundle.LoadStorageRlps(addressHash, requests, values);
+        for (int i = 0; i < requests.Length; i++) values[i] = StateTrieStoreWarmerAdapter.GetMatchingRlp(values[i], requests[i].Hash);
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>

@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat;
 /// </summary>
 /// <param name="slotFilterBitsPerKey">Bits per key of the negative filter <see cref="GetSlotFiltered"/> builds over the
 /// in-memory snapshots' slots; 0 never builds one.</param>
-public sealed class ReadOnlySnapshotBundle(
+public sealed partial class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,

@@ -339,6 +339,16 @@ public static class BasePersistence
 
     public interface ITrieReader
     {
+        void LoadRlps(ReadOnlySpan<(Hash256? Address, TreePath Path)> requests, Span<byte[]?> values)
+        {
+            for (int i = 0; i < requests.Length; i++)
+                values[i] = requests[i].Address is { } address
+                    ? TryLoadStorageRlp(address, in requests[i].Path, ReadFlags.None)
+                    : TryLoadStateRlp(in requests[i].Path, ReadFlags.None);
+        }
+
+        void LoadStateRlps(ReadOnlySpan<TreePath> paths, Span<byte[]?> values);
+        void LoadStorageRlps(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values);
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
     }
@@ -453,7 +463,7 @@ public static class BasePersistence
         TTrieReader trieReader,
         StateId currentState,
         IDisposable disposer)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IBatchTriePersistenceReader
         where TFlatReader : struct, IFlatReader
         where TTrieReader : struct, ITrieReader
     {
@@ -475,6 +485,15 @@ public static class BasePersistence
 
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStorageRlp(address, path, flags);
+
+        public void LoadRlps(ReadOnlySpan<(Hash256? Address, TreePath Path)> requests, Span<byte[]?> values) =>
+            _trieReader.LoadRlps(requests, values);
+
+        public void LoadStateRlps(ReadOnlySpan<TreePath> paths, Span<byte[]?> values) =>
+            _trieReader.LoadStateRlps(paths, values);
+
+        public void LoadStorageRlps(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values) =>
+            _trieReader.LoadStorageRlps(address, paths, values);
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);

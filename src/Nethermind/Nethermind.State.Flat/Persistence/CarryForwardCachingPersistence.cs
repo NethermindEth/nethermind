@@ -239,7 +239,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IBatchTriePersistenceReader
     {
         // A reader is shared by every thread reading its state, so enabled counters must support concurrent updates.
         // DetailedMetricsEnabled is captured once per reader after normal startup registration to avoid its hot-path
@@ -290,6 +290,15 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             if (current) parent.TryCacheSlot(hash, address, slot, found, outValue, generation);
             return found;
         }
+
+        public void LoadRlps(ReadOnlySpan<(Hash256? Address, TreePath Path)> requests, Span<byte[]?> values) =>
+            inner.LoadRlps(requests, values);
+
+        public void LoadStateRlps(ReadOnlySpan<TreePath> paths, Span<byte[]?> values) =>
+            inner.LoadStateRlps(paths, values);
+
+        public void LoadStorageRlps(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values) =>
+            inner.LoadStorageRlps(address, paths, values);
 
         public StateId CurrentState => inner.CurrentState;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);

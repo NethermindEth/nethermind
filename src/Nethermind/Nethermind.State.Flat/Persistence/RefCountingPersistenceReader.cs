@@ -11,7 +11,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader
+public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader, IBatchTriePersistenceReader
 {
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
@@ -40,6 +40,15 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);
+
+    public void LoadRlps(ReadOnlySpan<(Hash256? Address, TreePath Path)> requests, Span<byte[]?> values) =>
+        _innerReader.LoadRlps(requests, values);
+
+    public void LoadStateRlps(ReadOnlySpan<TreePath> paths, Span<byte[]?> values) =>
+        _innerReader.LoadStateRlps(paths, values);
+
+    public void LoadStorageRlps(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values) =>
+        _innerReader.LoadStorageRlps(address, paths, values);
 
     public StateId CurrentState => _innerReader.CurrentState;
 

@@ -60,7 +60,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// └────────┴────────────────┴─────────────────────────────────┴─────────────┴───────────────────────────────────┘
 /// </code>
 /// </summary>
-public static class BaseTriePersistence
+public static partial class BaseTriePersistence
 {
     private const int StorageHashPrefixLength = 20; // Store prefix of the 32 byte of the storage. Reduces index size.
     private const int FullPathLength = 32;
@@ -301,7 +301,7 @@ public static class BaseTriePersistence
         return from.CompareTo(path.ToLowerBoundPath()) <= 0 && path.ToUpperBoundPath().CompareTo(to) <= 0;
     }
 
-    public readonly struct Reader(
+    public readonly partial struct Reader(
         IReadOnlyKeyValueStore stateTopNodes,
         IReadOnlyKeyValueStore stateNodes,
         IReadOnlyKeyValueStore storageNodes,

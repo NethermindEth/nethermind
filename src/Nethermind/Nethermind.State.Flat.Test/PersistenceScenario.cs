@@ -91,6 +91,99 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     }
 
     [Test]
+    public void TrieBatchReads_WithMixedWidthsAndLiveChanges_PreservePinnedValues([Values(1, 8, 64, 257)] int count,
+        [Values(-1, 0, 6, 16)] int fixedLength)
+    {
+        int[] lengths = [0, 5, 6, 15, 16, 63, 64];
+        TreePath[] paths = new TreePath[count];
+        Dictionary<TreePath, byte[]> expected = [];
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+        {
+            for (int i = 0; i < count; i++)
+            {
+                int key = i % 32;
+                int length = fixedLength < 0 ? lengths[key % lengths.Length] : fixedLength;
+                paths[i] = TreePath.FromHexString(length == 0 ? "" : key.ToString("x").PadLeft(length, '0'));
+                if (key % 4 == 3) continue;
+                byte[] data = new byte[513 + key * 17];
+                for (int j = 0; j < data.Length; j++) data[j] = (byte)(key + j);
+                expected[paths[i]] = data;
+                writer.SetStateTrieNode(in paths[i], data);
+                writer.SetStorageTrieNode(TestItem.KeccakA, in paths[i], data);
+                writer.SetStorageTrieNode(TestItem.KeccakB, in paths[i], [0xFF]);
+            }
+        }
+        byte[]?[] states = new byte[]?[count];
+        byte[]?[] storages = new byte[]?[count];
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.Sync))
+        {
+            using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            {
+                foreach (TreePath path in paths)
+                {
+                    writer.SetStateTrieNode(in path, [0xEE]);
+                    writer.SetStorageTrieNode(TestItem.KeccakA, in path, [0xDD]);
+                }
+            }
+            reader.LoadStateRlps(paths, states);
+            reader.LoadStorageRlps(TestItem.KeccakA, paths, storages);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < count; i++)
+            {
+                byte[]? value = expected.GetValueOrDefault(paths[i]);
+                Assert.That(states[i], Is.EqualTo(value), "state batches must preserve snapshot, key width, duplicate order and owned bytes after disposal");
+                Assert.That(storages[i], Is.EqualTo(value), "storage batches must preserve the address partition, snapshot and all value bytes after disposal");
+            }
+        }
+    }
+
+    [Test]
+    public void TrieBatchReads_AcrossAddressesAndFamilies_PreservePinnedValues([Values(1, 8, 64, 129)] int count,
+        [Values] bool mixedFamilies)
+    {
+        (Hash256? Address, TreePath Path)[] requests = new (Hash256?, TreePath)[count];
+        Dictionary<(Hash256? Address, TreePath Path), byte[]?> expected = [];
+        int[] lengths = [0, 3, 6, 16, 64];
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+        {
+            for (int i = 0; i < count; i++)
+            {
+                int key = i % 53;
+                Hash256? address = mixedFamilies && key % 3 == 0 ? null : key % 3 == 1 ? TestItem.KeccakA : TestItem.KeccakB;
+                int length = mixedFamilies ? lengths[(key / 3) % lengths.Length] : 6;
+                TreePath path = TreePath.FromHexString(length == 0 ? "" : key.ToString("x").PadLeft(length, '0'));
+                requests[i] = (address, path);
+                byte[]? value = key % 4 == 3 ? null : new byte[521 + key * 13];
+                if (value is not null)
+                {
+                    for (int j = 0; j < value.Length; j++) value[j] = (byte)(key + j);
+                    if (address is null) writer.SetStateTrieNode(in path, value);
+                    else writer.SetStorageTrieNode(address, in path, value);
+                    expected[(address, path)] = value;
+                }
+                else expected.TryAdd((address, path), null);
+            }
+        }
+        byte[]?[] values = new byte[]?[count];
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.Sync))
+        {
+            using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            {
+                foreach ((Hash256? address, TreePath path) in requests)
+                {
+                    if (address is null) writer.SetStateTrieNode(in path, [0xee]);
+                    else writer.SetStorageTrieNode(address, in path, [0xdd]);
+                }
+            }
+            reader.LoadRlps(requests, values);
+        }
+        for (int i = 0; i < count; i++)
+            Assert.That(values[i], Is.EqualTo(expected[requests[i]]), "mixed batches must preserve CF, address, snapshot, duplicates and owned bytes");
+    }
+
+    [Test]
     public void TestCanWriteAccount()
     {
         Account acc = TestItem.GenerateIndexedAccount(0);

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,7 +16,7 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class WarmUpPathForDeleteTests
+public partial class WarmUpPathForDeleteTests
 {
     // A and B differ only in the last nibble, so they hang from one branch at depth 63; C sits under another root child.
     private static readonly byte[] KeyA = Bytes.FromHexString("0x1000000000000000000000000000000000000000000000000000000000000001");
@@ -122,11 +123,30 @@ public class WarmUpPathForDeleteTests
     }
 
     /// <summary>Hands out one node object per path and hash, as the real stores do, so a warmed node is the one a later write finds.</summary>
-    private sealed class PathCachingTrieStore(IKeyValueStoreWithBatching db) : RawScopedTrieStore(db), IScopedTrieStore
+    private sealed class PathCachingTrieStore(IKeyValueStoreWithBatching db) : RawScopedTrieStore(db), IScopedTrieStore, IBatchTrieNodeResolver
     {
         private readonly ConcurrentDictionary<(TreePath, Hash256), TrieNode> _nodes = new();
 
-        TrieNode ITrieNodeResolver.FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-            _nodes.GetOrAdd((path, hash), static key => new TrieNode(NodeType.Unknown, key.Item2));
+        public List<int> BatchSizes { get; } = [];
+        public Action? AfterBatchRead;
+        public int MissingNibble = -1;
+        public bool ThrowChildLookup;
+
+        public void LoadRlps(ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, Span<byte[]?> values)
+        {
+            BatchSizes.Add(requests.Length);
+            for (int i = 0; i < requests.Length; i++)
+            {
+                ref readonly (TreePath Path, Hash256 Hash) request = ref requests[i];
+                values[i] = request.Path.Length > 0 && request.Path[0] == MissingNibble ? null : TryLoadRlp(request.Path, request.Hash);
+            }
+            AfterBatchRead?.Invoke();
+        }
+
+        TrieNode ITrieNodeResolver.FindCachedOrUnknown(in TreePath path, Hash256 hash)
+        {
+            if (ThrowChildLookup && path.Length > 0) throw new StaleWarmupException();
+            return _nodes.GetOrAdd((path, hash), static key => new TrieNode(NodeType.Unknown, key.Item2));
+        }
     }
 }

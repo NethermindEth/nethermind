@@ -23,7 +23,7 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.Test;
 
 [TestFixture]
-public class SnapshotBundleWarmerTests
+public partial class SnapshotBundleWarmerTests
 {
     private const int ChurnMilliseconds = 2_000;
     private static readonly TimeSpan BailOutTimeout = TimeSpan.FromSeconds(30);

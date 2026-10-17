@@ -17,7 +17,7 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.Test;
 
 [TestFixture]
-public class TrieWarmerTests
+public partial class TrieWarmerTests
 {
     private static readonly TestCaseData[] SlotJobCases =
     [

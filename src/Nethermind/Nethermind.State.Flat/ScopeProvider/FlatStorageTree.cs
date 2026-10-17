@@ -15,7 +15,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatStorageTree(
+public sealed partial class FlatStorageTree(
     FlatWorldStateScope scope,
     ITrieWarmer trieCacheWarmer,
     SnapshotBundle bundle,

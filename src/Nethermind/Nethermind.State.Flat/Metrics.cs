@@ -100,6 +100,11 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
     public static IMetricObserver ReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 
+    [DetailedMetric]
+    [Description("Persistence requests per snapshot bundle batch, grouped by operation type")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 2, Count = 8, LabelNames = ["type"])]
+    public static IMetricObserver ReadOnlySnapshotBundleReadBatchSize { get; set; } = new NoopMetricObserver();
+
     // --- Carry-forward cache metrics ---
     //
     // Hit/miss counters are the cross-block state-cache signal: they count only reads that already
