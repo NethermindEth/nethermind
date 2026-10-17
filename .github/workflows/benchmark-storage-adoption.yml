@@ -22,7 +22,7 @@ on:
         description: Components to measure
         required: true
         type: choice
-        options: [blob, history, both, chain, receipt]
+        options: [blob, history, both, chain, receipt, native]
         default: both
       control_ref:
         description: Exact shared-master decoded API control SHA for chain measurements
@@ -45,7 +45,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    if: inputs.components != 'chain' && inputs.components != 'receipt'
+    if: inputs.components != 'chain' && inputs.components != 'receipt' && inputs.components != 'native'
     strategy:
       fail-fast: false
       matrix:
@@ -369,4 +369,65 @@ jobs:
         if: always()
         with:
           name: receipt-scan-${{ matrix.os }}
+          path: results
+
+  native:
+    if: inputs.components == 'native'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CANDIDATE_REF: ${{ inputs.multiget_ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: proof
+      - name: Validate source input
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_REF" =~ ^[0-9a-f]{40}$ ]]
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.multiget_ref }}
+          path: candidate
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: candidate/global.json
+      - name: Verify source and run native tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir results
+          test "$(git -C candidate rev-parse HEAD)" = "$CANDIDATE_REF"
+          git -C candidate rev-parse HEAD > results/source-sha.txt
+          dotnet --info > results/dotnet.txt
+          lscpu > results/cpu.txt
+          projects=(Nethermind.Db.Test Nethermind.State.Flat.Test Nethermind.Consensus.Test Nethermind.Trie.Test Nethermind.State.Test)
+          for project in "${projects[@]}"; do
+            dotnet build "candidate/src/Nethermind/$project/$project.csproj" -c Release -p:EnforceCodeStyleInBuild=true
+            dotnet "candidate/src/Nethermind/artifacts/bin/$project/release/$project.dll" | tee "results/$project.log"
+            python3 proof/benchmarks/storage-adoption/validate-tests.py "results/$project.log"
+          done
+          git -C candidate diff --exit-code
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("candidate/src/Nethermind/artifacts/obj/Nethermind.Db.Rocks/project.assets.json").read_text())
+          item = data["libraries"]["Nethermind.RocksDbBindings/11.8.1.174"]
+          assert item["type"] == "package"
+          roots = [Path(p, item["path"]) for p in data["packageFolders"] if Path(p, item["path"], ".nupkg.metadata").exists()]
+          assert len(roots) == 1
+          metadata = json.loads((roots[0] / ".nupkg.metadata").read_text())
+          assert metadata["source"] == "https://api.nuget.org/v3/index.json"
+          assert metadata["contentHash"] == item["sha512"]
+          Path("results/package-consumption.json").write_text(json.dumps({"library": item, "metadata": metadata}, indent=2) + "\n")
+          PY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: live-state-native-${{ matrix.os }}
           path: results
