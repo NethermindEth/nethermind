@@ -1980,15 +1980,21 @@ public class FlatWorldStateScopeProviderTests
         FlatWorldStateScope scope = ctx.Scope;
         ReadOnlyAccountChanges[] changes = new ReadOnlyAccountChanges[8];
         for (int i = 0; i < changes.Length; i++) changes[i] = ReadOnlyAccount(TestItem.Addresses[i]);
-        ctx.PersistenceReader.GetAccount(TestItem.Addresses[0]).Returns(_ =>
+        int reads = 0;
+        ctx.PersistenceReader.GetAccount(Arg.Any<Address>()).Returns(_ =>
         {
+            reads++;
             scope._pausePrewarmer = true;
             return new Account(1, 1);
         });
         RecordingBalReaderSink sink = new();
         await scope.HintBal(CreateBal(changes), sink);
 
-        Assert.That(sink.AccountReads, Is.Empty, "pausing during the read must suppress publication of its result");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reads, Is.EqualTo(1), "the first actual account read must pause the single worker regardless of queue order");
+            Assert.That(sink.AccountReads, Is.Empty, "pausing during the read must suppress publication of its result");
+        }
     }
 
     [TestCase(1, TestName = "HintBal_ScalarSlotRead_PauseSuppressesPublication")]
