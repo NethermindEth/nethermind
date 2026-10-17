@@ -1,0 +1,30 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- The frame code runner API is experimental in the core (NMEVM0001). -->
+    <NoWarn>$(NoWarn);NMEVM0001;CS1591</NoWarn>
+    <!-- NuGet's audit of the packages the core's projects bring in, which the node ships and the plugin never copies:
+         reported, but an advisory published since the last restore must not fail a clean build. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+    <!--
+      What the plugin builds against, a Nethermind build that carries the frame code runner hook, one of:
+        -p:NethermindBin=<published node folder>   the node's own assemblies, as for a release (the plugin only);
+        -p:NethermindSrc=<checkout>/src/Nethermind  the core's projects (needed by the test project in any case).
+      Either may also come from an environment variable of the same name. There is no default.
+    -->
+    <!-- Global properties (-p:) cannot be reassigned, so the folder with its trailing slash is a property of its own. -->
+    <NethermindBinDir Condition="'$(NethermindBin)' != ''">$([MSBuild]::EnsureTrailingSlash('$(NethermindBin)'))</NethermindBinDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="System.Runtime.Intrinsics.Vector256&lt;byte&gt;" Alias="EvmWord" />
+  </ItemGroup>
+  <Target Name="IlEvmRequireNethermind" BeforeTargets="CollectPackageReferences;ResolveProjectReferences;ResolveAssemblyReferences"
+          Condition="'$(NethermindSrc)' == '' and '$(NethermindBin)' == '' and '$(IlEvmNeedsNethermind)' != 'false'">
+    <Error Text="IL-EVM: set NethermindSrc (a Nethermind checkout's src/Nethermind folder) or NethermindBin (a published node folder), for a build that carries the frame code runner hook. See README.md." />
+  </Target>
+</Project>

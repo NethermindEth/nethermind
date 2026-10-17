@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Nethermind.IlEvm</AssemblyName>
+    <RootNamespace>Nethermind.IlEvm</RootNamespace>
+    <!-- Emits IL at run time; never part of an AOT or zkEVM image. -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.IlEvm.Test" />
+    <!-- The replay harness starts the Adaptive rules as a node's startup does, with no node around it. -->
+    <InternalsVisibleTo Include="RpcReplay" />
+  </ItemGroup>
+
+  <!-- The contracts compiled at startup: code hashes, busiest first; the candidates are the wider list measurement runs time. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Precompile.txt" LogicalName="Nethermind.IlEvm.Precompile.txt" />
+    <EmbeddedResource Include="PrecompileCandidates.txt" LogicalName="Nethermind.IlEvm.PrecompileCandidates.txt" />
+  </ItemGroup>
+
+  <!--
+    Compiled against these, never copied: the node that loads the plugin provides them. With NethermindBin set to a
+    published node's folder, the plugin is built against that node's own assemblies, as for a release; otherwise
+    against the sources.
+  -->
+  <ItemGroup Condition="'$(NethermindBin)' == ''">
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Api/Nethermind.Api.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Config/Nethermind.Config.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Core/Nethermind.Core.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Evm/Nethermind.Evm.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Logging/Nethermind.Logging.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Init/Nethermind.Init.csproj" Private="false" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NethermindBin)' != ''">
+    <!-- A node's folder may hold a copy of the plugin itself, which must not shadow the sources built here. -->
+    <Reference Include="$(NethermindBinDir)Nethermind.*.dll" Exclude="$(NethermindBinDir)Nethermind.IlEvm.dll" Private="false" />
+    <Reference Include="$(NethermindBinDir)Autofac.dll" Private="false" />
+  </ItemGroup>
+</Project>
