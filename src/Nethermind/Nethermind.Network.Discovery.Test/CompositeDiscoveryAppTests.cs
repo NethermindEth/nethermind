@@ -42,16 +42,18 @@ public class CompositeDiscoveryAppTests
 
     [Test]
     [NonParallelizable]
-    public async Task StartAsync_ReleasesSocketWhenBindFails()
+    public async Task StartAsync_ReleasesSocketWhenBindFails([Values] bool portInUse)
     {
         int port;
         using (Socket blocker = CreateUdpListenerSocket(IPAddress.Any, 0))
         {
             port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
-            NetworkConfig networkConfig = new() { LocalIp = "0.0.0.0", DiscoveryPort = port };
+            // 192.0.2.1 is an RFC 5737 documentation address, never assigned to a local interface.
+            string localIp = portInUse ? "0.0.0.0" : "192.0.2.1";
+            NetworkConfig networkConfig = new() { LocalIp = localIp, DiscoveryPort = port };
             IIPResolver ipResolver = Substitute.For<IIPResolver>();
             ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
-                new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback)));
+                new IIPResolver.NethermindIp(IPAddress.Parse(localIp), IPAddress.Loopback)));
             NetworkListenerState listenerState = new(networkConfig, ipResolver, LimboLogs.Instance);
             RecordingDiscoveryApp discoveryApp = new();
             RecordingChannelFactory channelFactory = new();
@@ -63,7 +65,8 @@ public class CompositeDiscoveryAppTests
                 [discoveryApp],
                 channelFactory);
 
-            Assert.That(async () => await app.StartAsync(), Throws.TypeOf<PortInUseException>());
+            Assert.That(async () => await app.StartAsync(),
+                Throws.TypeOf(portInUse ? typeof(PortInUseException) : typeof(ListenerBindException)));
 
             Assert.That(channelFactory.CreatedSockets, Has.Count.EqualTo(1));
             using (Assert.EnterMultipleScope())
