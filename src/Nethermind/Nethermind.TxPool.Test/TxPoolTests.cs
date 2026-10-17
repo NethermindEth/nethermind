@@ -7478,7 +7478,8 @@ namespace Nethermind.TxPool.Test
             bool thereIsPriorityContract = false,
             IEthereumEcdsa ethereumEcdsa = null,
             ITxValidator specChangeTxValidator = null,
-            IFrameTxPrefixSimulator frameTxPrefixSimulator = null)
+            IFrameTxPrefixSimulator frameTxPrefixSimulator = null,
+            IStateHeaderProvider stateHeaderProvider = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -7506,7 +7507,8 @@ namespace Nethermind.TxPool.Test
                 ShouldGossip.Instance,
                 incomingTxFilter is null ? null : [incomingTxFilter],
                 thereIsPriorityContract,
-                frameTxPrefixSimulator);
+                frameTxPrefixSimulator,
+                stateHeaderProvider);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
