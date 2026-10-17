@@ -18,7 +18,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
+public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer, IAccountBatchReader
 {
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
@@ -219,6 +219,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void UpdateRootHash()
     {
         if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();
+    }
+
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
+        if (_configuration.VerifyWithTrie && !_trieless)
+        {
+            for (int i = 0; i < addresses.Length; i++) accounts[i] = Get(addresses[i]);
+            return;
+        }
+        _snapshotBundle.GetAccounts(addresses, accounts);
     }
 
     public Account? Get(Address address)

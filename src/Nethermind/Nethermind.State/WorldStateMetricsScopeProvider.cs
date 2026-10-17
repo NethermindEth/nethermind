@@ -47,7 +47,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         return true;
     }
 
-    private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
+    private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope, IAccountBatchReader
     {
         public void HintWarmAccount(Address address) => baseScope.HintWarmAccount(address);
 
@@ -65,6 +65,14 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         public void UpdateRootHash() => baseScope.UpdateRootHash();
 
         public Account? Get(Address address) => baseScope.Get(address);
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
+            if (baseScope is IAccountBatchReader batch) batch.GetAccounts(addresses, accounts);
+            else for (int i = 0; i < addresses.Length; i++) accounts[i] = baseScope.Get(addresses[i]);
+        }
+
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 

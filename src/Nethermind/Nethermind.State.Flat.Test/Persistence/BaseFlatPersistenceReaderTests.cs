@@ -3,6 +3,9 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Core.Exceptions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -14,6 +17,27 @@ namespace Nethermind.State.Flat.Test.Persistence;
 [TestFixture]
 public class BaseFlatPersistenceReaderTests
 {
+    [Test]
+    public void GetAccounts_WithIndependentKeys_UsesDecodedBatchWithoutScalarReads([Values(8, 64)] int count)
+    {
+        Account expected = new(7, (UInt256.One << 200) + 19);
+        using ArrayPoolSpan<byte> encoded = AccountDecoder.Slim.EncodeToArrayPoolSpan(expected);
+        AccountBatchStore store = new(((ReadOnlySpan<byte>)encoded).ToArray());
+        BaseFlatPersistence.Reader reader = new(store, store);
+        ValueHash256[] paths = new ValueHash256[count];
+        for (int i = 0; i < paths.Length; i++) paths[i] = new ValueHash256(Keccak.Compute(i.ToString()).Bytes);
+        Account?[] actual = new Account?[count];
+
+        reader.GetAccounts(paths, actual, AccountDecoder.Slim);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.BatchReads, Is.EqualTo(1), "independent account keys must share one decoded database call");
+            Assert.That(store.ScalarReads, Is.Zero, "batch reads must not also perform scalar database reads");
+            Assert.That(actual, Is.All.EqualTo(expected), "native slices must decode to complete owned account objects");
+        }
+    }
+
     // Regression: a slot value longer than BaseFlatPersistence.StorageValueSize must fail loudly instead of underflowing
     // the unchecked Unsafe.InitBlockUnaligned in TryGetStorage (which produced a wild memset / SIGSEGV).
     // Shorter values are right-aligned into the 32-byte slot with leading zeros.
@@ -80,4 +104,27 @@ public class BaseFlatPersistenceReaderTests
         public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
             throw new NotSupportedException();
     }
+    private sealed class AccountBatchStore(byte[] value) : ISortedKeyValueStore, IBatchReadOnlyDb
+    {
+        internal int BatchReads { get; private set; }
+        internal int ScalarReads { get; private set; }
+        public byte[]? FirstKey => null;
+        public byte[]? LastKey => null;
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            ScalarReads++;
+            return value;
+        }
+        public void GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
+            where TDecoder : IValueDecoder<T>
+        {
+            Assert.That(keyLength, Is.EqualTo(20), "account reads must use the State column's encoded key width");
+            Assert.That(keys.Length, Is.EqualTo(keyLength * values.Length), "every result must have exactly one encoded key");
+            BatchReads++;
+            for (int i = 0; i < values.Length; i++) values[i] = decoder.Decode(value);
+        }
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive,
+            ReadFlags flags = ReadFlags.None) => throw new NotSupportedException();
+    }
+
 }

@@ -200,6 +200,15 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
         private const int AccountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            using ArrayPoolSpan<ValueHash256> paths = new(addresses.Length);
+            ((Span<ValueHash256>)paths).Clear();
+            for (int i = 0; i < addresses.Length; i++) addresses[i].Bytes.CopyTo(paths[i].BytesAsSpan);
+            _flatReader.GetAccounts(paths, accounts, AccountDecoder.Slim);
+        }
+
+
         public Account? GetAccount(Address address)
         {
             ValueHash256 fakeHash = ValueKeccak.Zero;

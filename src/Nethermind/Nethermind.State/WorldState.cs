@@ -30,7 +30,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public sealed partial class WorldState : IWorldState
+    public sealed partial class WorldState : IWorldState, IAccountPrewarmer
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -200,6 +200,10 @@ namespace Nethermind.State
         }
 
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
+
+        public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken = default)
+            => _stateProvider.WarmUpAccounts(addresses, cancellationToken);
+
         public void ClearStorage(Address address)
         {
             DebugGuardInScope();

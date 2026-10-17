@@ -17,13 +17,34 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.State;
+using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>The world state of a pre-warm env; while active it records the footprint of the transaction it runs.</summary>
 /// <remarks>Re-implements <see cref="HasCode"/> and <see cref="MarkStorageDestroyed"/>, which the interface implements itself.</remarks>
-internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator(state), IWorldState
+internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator(state), IWorldState, IAccountPrewarmer
 {
+    public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken = default)
+    {
+        if (State is IAccountPrewarmer prewarmer)
+        {
+            prewarmer.WarmUpAccounts(addresses, cancellationToken);
+            return;
+        }
+        foreach (Address address in addresses)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            try
+            {
+                State.WarmUp(address);
+            }
+            catch (MissingTrieNodeException)
+            {
+            }
+        }
+    }
+
     private bool _active;
     private bool _opaque;
 

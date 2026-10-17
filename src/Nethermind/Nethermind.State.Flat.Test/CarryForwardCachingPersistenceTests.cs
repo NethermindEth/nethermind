@@ -52,6 +52,40 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
+    public async Task GetAccounts_AfterCacheGenerationAdvances_UsesPinnedReaderValues([Values] bool accountExists)
+    {
+        FakePersistence inner = new()
+        {
+            AccountAt = address =>
+            {
+                int index = Array.IndexOf(TestItem.Addresses, address);
+                return accountExists && index % 3 != 0 ? new Account((ulong)(index + 1), (ulong)(index + 9)) : null;
+            }
+        };
+        await using CarryForwardCachingPersistence cache = new(inner);
+        using IPersistence.IPersistenceReader oldReader = cache.CreateReader();
+        Address[] addresses = TestItem.Addresses[..12];
+        Account?[] expected = new Account?[addresses.Length];
+        for (int i = 0; i < addresses.Length; i++) expected[i] = inner.AccountAt!(addresses[i]);
+        Account?[] first = new Account?[addresses.Length];
+        ((IAccountBatchReader)oldReader).GetAccounts(addresses, first);
+        Assert.That(first, Is.EqualTo(expected), "the first batch must match independently constructed account values");
+        Account?[] warm = new Account?[addresses.Length];
+        ((IAccountBatchReader)oldReader).GetAccounts(addresses, warm);
+        Assert.That(warm, Is.EqualTo(expected), "cache fills must preserve each distinct positive and missing account result");
+        Assert.That(inner.AccountReads, Is.EqualTo(addresses.Length), "the second batch must use cached positive and negative accounts");
+        using (IPersistence.IWriteBatch write = cache.CreateWriteBatch(Basis0, Basis1))
+            foreach (Address address in addresses) write.SetAccount(address, new Account(77, 33));
+        Account?[] second = new Account?[addresses.Length];
+        ((IAccountBatchReader)oldReader).GetAccounts(addresses, second);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.EqualTo(expected), "old readers must retain their pinned values after cache invalidation");
+            Assert.That(inner.AccountReads, Is.EqualTo(addresses.Length * 2), "an old generation must not use or populate current cache rows");
+        }
+    }
+
+    [Test]
     public async Task GetAccount_SecondReadAtSameBasis_ServedFromCache()
     {
         FakePersistence inner = new();
@@ -1004,6 +1038,7 @@ public class CarryForwardCachingPersistenceTests
 
     public sealed class FakePersistence : IPersistence
     {
+        public Func<Address, Account?>? AccountAt { get; set; }
         public StateId ReaderState = Basis0;
         public int AccountReads;
         public int SlotReads;
@@ -1021,7 +1056,7 @@ public class CarryForwardCachingPersistenceTests
             public Account? GetAccount(Address address)
             {
                 parent.AccountReads++;
-                return parent.AccountExists ? new Account(1, 100) : null;
+                return parent.AccountAt is { } getAccount ? getAccount(address) : parent.AccountExists ? new Account(1, 100) : null;
             }
 
             public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)

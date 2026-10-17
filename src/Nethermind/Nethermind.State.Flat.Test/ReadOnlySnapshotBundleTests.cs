@@ -46,6 +46,33 @@ public class ReadOnlySnapshotBundleTests
             PersistedSnapshotStack.Empty(recordDetailedMetrics));
 
     [Test]
+    public void GetAccounts_WithSnapshotHits_ReadsOnlyPersistedMisses([Values] bool detailedMetrics)
+    {
+        Address[] addresses = TestItem.Addresses[..12];
+        Account snapshotAccount = new(91, 17);
+        AccountBatchReaderProbe reader = new();
+        using ReadOnlySnapshotBundle bundle = Bundle(
+            FlatTestHelpers.SnapshotList(MakeSnapshot(content =>
+            {
+                content.Accounts[new HashedKey<Address>(addresses[0])] = snapshotAccount;
+                content.Accounts[new HashedKey<Address>(addresses[1])] = null;
+            })), reader, detailedMetrics);
+        Account?[] values = new Account?[addresses.Length];
+
+        bundle.GetAccounts(addresses, values);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(values[0], Is.EqualTo(snapshotAccount), "the newest snapshot account must win");
+            Assert.That(values[1], Is.Null, "a snapshot null must suppress persisted state");
+            Assert.That(reader.BatchAddresses, Is.EqualTo(addresses[2..]), "snapshot hits must not reach persistence");
+            Assert.That(reader.ScalarReads, Is.Zero, "misses must not be replayed through scalar cache probes");
+        }
+        for (int i = 2; i < addresses.Length; i++)
+            Assert.That(values[i], Is.EqualTo(AccountBatchReaderProbe.ValueAt(addresses[i])), "persisted results must return to their original output positions");
+    }
+
+    [Test]
     public void GetAccount_FoundInSnapshot_ReturnsIt([Values] bool detailedMetrics)
     {
         Address address = TestItem.AddressA;
@@ -231,6 +258,33 @@ public class ReadOnlySnapshotBundleTests
 
         Assert.That(() => bundle.GetAccount(TestItem.AddressA), Throws.TypeOf<ObjectDisposedException>());
     }
+    private sealed class AccountBatchReaderProbe : IPersistence.IPersistenceReader, IAccountBatchReader
+    {
+        internal static Account? ValueAt(Address address)
+        {
+            int index = Array.IndexOf(TestItem.Addresses, address);
+            return index % 3 == 0 ? null : new Account((ulong)(index + 1), (ulong)(index + 2));
+        }
+        internal Address[] BatchAddresses { get; private set; } = [];
+        internal int ScalarReads { get; private set; }
+        public StateId CurrentState => StateId.PreGenesis;
+        public bool IsPreimageMode => false;
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            BatchAddresses = addresses.ToArray();
+            for (int i = 0; i < addresses.Length; i++) accounts[i] = ValueAt(addresses[i]);
+        }
+        public Account? GetAccount(Address address) { ScalarReads++; return ValueAt(address); }
+        public void Dispose() { }
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => throw new NotSupportedException();
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => throw new NotSupportedException();
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => throw new NotSupportedException();
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => throw new NotSupportedException();
+        public bool TryGetStorageRaw(in ValueHash256 address, in ValueHash256 slot, ref UInt256 value) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 address, in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+    }
+
 }
 
 /// <summary>
@@ -1241,4 +1295,5 @@ public class ReadOnlySnapshotBundleFilterTests
         public bool IsPreimageMode => false;
         public void Dispose() { }
     }
+
 }

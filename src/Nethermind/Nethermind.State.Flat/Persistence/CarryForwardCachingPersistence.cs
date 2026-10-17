@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -239,13 +240,52 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IAccountBatchReader
     {
         // A reader is shared by every thread reading its state, so enabled counters must support concurrent updates.
         // DetailedMetricsEnabled is captured once per reader after normal startup registration to avoid its hot-path
         // cost. Existing readers retain that captured value if the flag later changes.
         private readonly bool _recordDetailedMetrics = Db.Metrics.DetailedMetricsEnabled;
         private int _disposed;
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
+            using ArrayPoolListRef<Address> misses = new(0);
+            using ArrayPoolListRef<int> positions = new(0);
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                Address address = addresses[i];
+                bool current = parent.IsCurrent(generation);
+                if (current && parent._accounts.TryGetValue(address, out Account? account) && parent.IsCurrent(generation))
+                {
+                    accounts[i] = account;
+                    if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
+                    continue;
+                }
+                if (parent.IsCurrent(generation) && _recordDetailedMetrics) Metrics.IncrementCarryForwardAccountMisses();
+                misses.Add(address);
+                positions.Add(i);
+            }
+            if (misses.Count == 0) return;
+            if (misses.Count < 8)
+            {
+                for (int i = 0; i < misses.Count; i++)
+                {
+                    Account? account = inner.GetAccount(misses[i]);
+                    accounts[positions[i]] = account;
+                    parent.TryCacheAccount(misses[i], account, generation);
+                }
+                return;
+            }
+            using ArrayPoolListRef<Account?> results = new(misses.Count, misses.Count);
+            inner.ReadAccounts(misses.AsSpan(), results.AsSpan());
+            for (int i = 0; i < misses.Count; i++)
+            {
+                accounts[positions[i]] = results[i];
+                parent.TryCacheAccount(misses[i], results[i], generation);
+            }
+        }
 
         public Account? GetAccount(Address address)
         {

@@ -1948,6 +1948,48 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void GetAccounts_WithCachedAndMissingRows_PublishesOwnedValuesToSharedCache([Values] bool isPrewarmer)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Address[] addresses = TestItem.Addresses[..12];
+        Account[] expected = new Account[addresses.Length];
+        Hash256 root;
+        using (IWorldStateScopeProvider.IScope initial = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writes = initial.StartWriteBatch(addresses.Length))
+            {
+                for (int i = 2; i < addresses.Length; i++)
+                {
+                    expected[i] = i % 3 == 0 ? null : new Account((ulong)(i + 1), (ulong)(i + 9));
+                    writes.Set(addresses[i], expected[i]);
+                }
+            }
+            initial.Commit(1);
+            root = initial.RootHash;
+        }
+        PreBlockCaches caches = NewCaches();
+        PrewarmerScopeProvider provider = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer), LimboLogs.Instance);
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(HeaderAt(root, 1));
+        expected[0] = new Account(123, 456);
+        AddressAsKey cachedKey = addresses[0];
+        AddressAsKey cachedNullKey = addresses[1];
+        caches.StateCache.Set(in cachedKey, expected[0]);
+        caches.StateCache.Set(in cachedNullKey, null);
+        Account[] values = new Account[addresses.Length];
+
+        ((IAccountBatchReader)scope).GetAccounts(addresses, values);
+
+        Assert.That(values, Is.EqualTo(expected), "cached hits, persisted accounts and missing rows must retain input order");
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            AddressAsKey key = addresses[i];
+            Assert.That(caches.StateCache.TryGetValue(in key, out Account actual), Is.True, "each positive and negative account must be published for later workers");
+            Assert.That(actual, Is.EqualTo(expected[i]), "cache fills must use each account result rather than another row from the batch");
+            Assert.That(scope.Get(addresses[i]), Is.EqualTo(expected[i]), "later scalar reads must see the same owned account values");
+        }
+    }
+
+    [Test]
     public void Test_MainScope_RegisteredForConsumerScopeLifetime([Values] bool isPrewarmer)
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);

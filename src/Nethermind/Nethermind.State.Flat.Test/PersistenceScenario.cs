@@ -91,6 +91,35 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     }
 
     [Test]
+    public void GetAccounts_WhenDatabaseChanges_PreservesSnapshotAndInputOrder([Values(0, 1, 8, 64)] int count)
+    {
+        Address[] addresses = new Address[count];
+        Account?[] expected = new Account?[count];
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+        {
+            for (int i = 0; i < count; i++)
+            {
+                addresses[i] = TestItem.Addresses[i % 11];
+                if (i % 11 == 0) continue;
+                Account account = new((ulong)(i % 11 + 1), (UInt256.One << 200) + (UInt256)(i % 11));
+                writer.SetAccount(addresses[i], account);
+                expected[i] = account;
+            }
+        }
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        Assert.That(reader, Is.InstanceOf<IAccountBatchReader>(), "the persistence reader must forward batch account reads");
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+        {
+            foreach (Address address in addresses) writer.SetAccount(address, new Account(999, 77));
+        }
+        Account?[] actual = new Account?[count];
+        ((IAccountBatchReader)reader).GetAccounts(addresses, actual);
+        Assert.That(actual, Is.EqualTo(expected), "batch reads must preserve the pinned snapshot, missing rows and duplicate positions");
+        for (int i = 0; i < count; i++)
+            Assert.That(actual[i], Is.EqualTo(reader.GetAccount(addresses[i])), "batch account decoding must match the existing scalar decoder");
+    }
+
+    [Test]
     public void TestCanWriteAccount()
     {
         Account acc = TestItem.GenerateIndexedAccount(0);

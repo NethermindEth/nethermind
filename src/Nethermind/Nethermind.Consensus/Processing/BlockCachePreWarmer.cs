@@ -1670,7 +1670,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             for (int i = 0; i < count; i++)
             {
                 if (cancellationToken.IsCancellationRequested) return addresses;
-                ReadOnlySpan<byte> data = AddressWarmer.TransactionAt(block, i).Data.Span;
+                ReadOnlySpan<byte> data = TransactionAt(block, i).Data.Span;
                 if (data.Length < 4 + MinCalldataWordsForAddressWarm * 32) continue;
                 for (int offset = 4; offset + 32 <= data.Length; offset += 32)
                 {
@@ -1712,6 +1712,43 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         uint zeros = Vector256.Equals(Vector256.Create(word), Vector256<byte>.Zero).ExtractMostSignificantBits();
         return (zeros & 0xFFFu) == 0xFFFu && (zeros & 0xF000u) != 0xF000u;
     }
+
+    internal static Transaction TransactionAt(Block block, int i)
+    {
+        Transaction[] txs = block.Transactions;
+        return i < txs.Length ? txs[i] : block.InclusionListTransactions![i - txs.Length];
+    }
+
+    internal static void WarmupTransactionAccounts(Block block, int start, int end, IWorldState worldState,
+        CancellationToken cancellationToken)
+    {
+        if (worldState is not IAccountPrewarmer prewarmer)
+        {
+            for (int i = start; i < end && !cancellationToken.IsCancellationRequested; i++)
+            {
+                Transaction tx = TransactionAt(block, i);
+                AddressWarmer.WarmupSender(tx.SenderAddress, tx.To, worldState);
+            }
+            return;
+        }
+
+        const int batchSize = 64;
+        using ArrayPoolListRef<Address> addresses = new(batchSize);
+        for (int i = start; i < end; i++)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            Transaction tx = TransactionAt(block, i);
+            if (tx.SenderAddress is { } sender) addresses.Add(sender);
+            if (tx.To is { } recipient) addresses.Add(recipient);
+            if (addresses.Count >= batchSize - 1)
+            {
+                prewarmer.WarmUpAccounts(addresses.AsSpan(), cancellationToken);
+                addresses.Clear();
+            }
+        }
+        if (addresses.Count > 0) prewarmer.WarmUpAccounts(addresses.AsSpan(), cancellationToken);
+    }
+
 
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, IReleaseSpec spec, bool warmSystemAccessLists, bool warmCalldataAddresses, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
@@ -1813,7 +1850,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     // contended writes to one cache line for a few nanoseconds of work each.
                     int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
                     int rangeSize = Math.Max(16, count / (parallelOptions.MaxDegreeOfParallelism * 4));
-                    WarmingState<(Block Block, int RangeSize, int Count)> baseState = new(envPool, (block, rangeSize, count), block.Header);
+                    WarmingState<(Block Block, int RangeSize, int Count, CancellationToken Token)> baseState = new(envPool, (block, rangeSize, count, parallelOptions.CancellationToken), block.Header);
                     ParallelUnbalancedWork.For(
                         0,
                         (count + rangeSize - 1) / rangeSize,
@@ -1821,18 +1858,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         baseState.InitThreadState,
                         static (range, state) =>
                         {
-                            (Block block, int rangeSize, int count) = state.Payload;
+                            (Block block, int rangeSize, int count, CancellationToken token) = state.Payload;
                             IWorldState worldState = state.Scope!.WorldState;
                             int end = Math.Min((range + 1) * rangeSize, count);
-                            for (int i = range * rangeSize; i < end; i++)
-                            {
-                                Transaction tx = TransactionAt(block, i);
-                                WarmupSender(tx.SenderAddress, tx.To, worldState);
-                            }
+                            WarmupTransactionAccounts(block, range * rangeSize, end, worldState, token);
 
                             return state;
                         },
-                        WarmingState<(Block, int, int)>.FinallyAction);
+                        WarmingState<(Block, int, int, CancellationToken)>.FinallyAction);
 
                     if (warmCalldataAddresses) WarmCalldataAddresses(parallelOptions, block, envPool);
                 }
@@ -1841,13 +1874,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             {
                 // Ignore, block completed cancel
             }
-        }
-
-        /// <summary>Indexes past the block transactions address inclusion-list ones, which may be promoted into the block.</summary>
-        internal static Transaction TransactionAt(Block block, int i)
-        {
-            Transaction[] txs = block.Transactions;
-            return i < txs.Length ? txs[i] : block.InclusionListTransactions![i - txs.Length];
         }
 
         /// <summary>Warms every system-contract hint.</summary>

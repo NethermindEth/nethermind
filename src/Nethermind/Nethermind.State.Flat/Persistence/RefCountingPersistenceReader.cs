@@ -11,7 +11,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader
+public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader, IAccountBatchReader
 {
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
@@ -37,6 +37,9 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public Account? GetAccount(Address address) =>
         _innerReader.GetAccount(address);
+
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) =>
+        _innerReader.ReadAccounts(addresses, accounts);
 
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);

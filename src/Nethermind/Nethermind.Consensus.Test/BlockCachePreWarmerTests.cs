@@ -49,6 +49,40 @@ namespace Nethermind.Consensus.Test;
 [TestFixture]
 public class BlockCachePreWarmerTests
 {
+    [Test]
+    public void WarmupTransactionAccounts_WithoutBal_UsesBoundedBatchesAndIncludesInclusionList([Values(1, 17, 80)] int count)
+    {
+        Transaction[] transactions = new Transaction[count];
+        List<Address> expected = [];
+        for (int i = 0; i < count; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.Addresses[i]).TestObject;
+            transactions[i].SenderAddress = i % 3 == 0 ? null : TestItem.AddressA;
+            if (transactions[i].SenderAddress is { } sender) expected.Add(sender);
+            expected.Add(transactions[i].To!);
+        }
+        Block block = Build.A.Block.WithTransactions(transactions[..(count / 2)]).TestObject;
+        block.InclusionListTransactions = transactions[(count / 2)..];
+        RecordingAccountPrewarmer warmer = new(Substitute.For<IWorldState>());
+
+        BlockCachePreWarmer.WarmupTransactionAccounts(block, 0, count, warmer, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.Addresses, Is.EqualTo(expected), "ordinary and inclusion-list sender/recipient order must be preserved");
+            Assert.That(warmer.LargestBatch, Is.LessThanOrEqualTo(64), "temporary batches must remain bounded");
+        }
+    }
+
+    [Test]
+    public void WarmupTransactionAccounts_WhenCancelled_DoesNotReadAccounts()
+    {
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithTo(TestItem.AddressA).TestObject).TestObject;
+        RecordingAccountPrewarmer warmer = new(Substitute.For<IWorldState>());
+        BlockCachePreWarmer.WarmupTransactionAccounts(block, 0, 1, warmer, new CancellationToken(true));
+        Assert.That(warmer.Addresses, Is.Empty, "cancelled address ranges must not read or publish account values");
+    }
+
     private static readonly TimeSpan PendingProbe = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan DiscoveryTimeout = TimeSpan.FromSeconds(30);
     private static readonly Address LongLoopContract = new("0x00000000000000000000000000000000000010ad");
@@ -3709,4 +3743,16 @@ public class BlockCachePreWarmerTests
 
         Assert.That(claims, Is.All.EqualTo(1));
     }
+    private sealed class RecordingAccountPrewarmer(IWorldState inner) : WorldStateDecorator(inner), IAccountPrewarmer
+    {
+        internal List<Address> Addresses { get; } = [];
+        internal int LargestBatch { get; private set; }
+
+        public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken = default)
+        {
+            LargestBatch = Math.Max(LargestBatch, addresses.Length);
+            foreach (Address address in addresses) Addresses.Add(address);
+        }
+    }
+
 }

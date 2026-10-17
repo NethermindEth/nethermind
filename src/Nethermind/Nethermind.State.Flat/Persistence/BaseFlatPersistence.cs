@@ -5,9 +5,11 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -137,6 +139,16 @@ public static class BaseFlatPersistence
             $"(rlpWrapSlots={rlpWrapSlots}). The slot-encoding metadata is likely missing or mismatched " +
             $"(RLP-wrapped values read as raw). Re-sync the flat DB to recover.", -1);
 
+    private readonly struct AccountValueDecoder(AccountDecoder decoder) : IValueDecoder<Account?>
+    {
+        public Account? Decode(ReadOnlySpan<byte> buffer)
+        {
+            if (buffer.IsEmpty) return null;
+            RlpReader reader = new(buffer);
+            return decoder.Decode(ref reader);
+        }
+    }
+
     public readonly struct Reader(
         ISortedKeyValueStore state,
         ISortedKeyValueStore storage,
@@ -146,6 +158,15 @@ public static class BaseFlatPersistence
     ) : BasePersistence.IHashedFlatReader
     {
         public bool IsPreimageMode => isPreimageMode;
+
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<Account?> accounts, AccountDecoder decoder)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
+            using ArrayPoolSpan<byte> keys = new(checked(addresses.Length * AccountKeyLength));
+            for (int i = 0; i < addresses.Length; i++)
+                EncodeAccountKeyHashed(keys.Slice(i * AccountKeyLength, AccountKeyLength), in addresses[i]);
+            state.GetMany<Account?, AccountValueDecoder>(keys, AccountKeyLength, accounts, new(decoder));
+        }
 
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {

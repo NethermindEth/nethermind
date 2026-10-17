@@ -6,6 +6,8 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -26,6 +28,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -1103,5 +1106,96 @@ public class CodeDbTests
             .GetCode(Keccak.Compute([0x60, 0x00]).ValueHash256);
 
         Assert.That(read.IsNull(), Is.True);
+    }
+}
+
+
+[TestFixture]
+public class AccountBatchPrewarmingTests
+{
+    [Test]
+    public void WarmUpAccounts_WithRepeatedAndMissingAccounts_ReadsEachMissOnce()
+    {
+        AccountBatchScope scope = new();
+        StateProvider provider = new(LimboLogs.Instance, new LocalMetrics());
+        provider.SetScope(scope);
+        Address[] unique = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, .. TestItem.Addresses[10..18]];
+        Address[] addresses = [.. unique, TestItem.AddressA];
+
+        provider.WarmUpAccounts(addresses, CancellationToken.None);
+        provider.WarmUpAccounts(addresses, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.BatchReads, Is.EqualTo(1), "a repeated range must use the block-start account cache");
+            Assert.That(scope.BatchAddresses, Is.EqualTo(unique), "duplicate accounts must not reach native batch reads");
+            Assert.That(provider.GetPureRead(TestItem.AddressA), Is.EqualTo(scope.Account), "the decoded account must be cached unchanged");
+            Assert.That(provider.GetPureRead(TestItem.AddressB), Is.Null, "a cached missing account must remain distinct from an unresolved read");
+            Assert.That(scope.ScalarReads, Is.Zero, "successful batch reads must not trigger a second scalar pass");
+        }
+    }
+
+    [Test]
+    public void WarmUpAccounts_WhenBatchFails_DoesNotCacheUnresolvedNulls([Values] bool missingTrie)
+    {
+        AccountBatchScope scope = new() { Failure = missingTrie
+            ? new MissingTrieNodeException("test missing account", null, default, Keccak.Zero)
+            : new InvalidOperationException("test failed batch") };
+        StateProvider provider = new(LimboLogs.Instance, new LocalMetrics());
+        provider.SetScope(scope);
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressC, .. TestItem.Addresses[10..18]];
+
+        if (missingTrie) provider.WarmUpAccounts(addresses, CancellationToken.None);
+        else Assert.Throws<InvalidOperationException>(() => provider.WarmUpAccounts(addresses, CancellationToken.None));
+        scope.Failure = null;
+
+        Assert.That(provider.GetPureRead(TestItem.AddressC), Is.EqualTo(scope.Account), "a failed batch must not poison later account reads with temporary null entries");
+        Assert.That(provider.GetPureRead(TestItem.AddressA), Is.EqualTo(scope.Account), "a scalar fallback failure must leave the failed account unresolved for a later retry");
+        Assert.That(scope.ScalarReads, Is.GreaterThan(0), "failed batches must either retry scalar reads or leave the account unresolved");
+    }
+
+    [Test]
+    public void WarmUpAccounts_WhenCancelled_DoesNotTouchBackend()
+    {
+        AccountBatchScope scope = new();
+        StateProvider provider = new(LimboLogs.Instance, new LocalMetrics());
+        provider.SetScope(scope);
+        provider.WarmUpAccounts([TestItem.AddressA], new CancellationToken(true));
+        Assert.That(scope.BatchReads + scope.ScalarReads, Is.Zero, "cancelled warmup must not start database reads");
+    }
+
+    private sealed class AccountBatchScope : IWorldStateScopeProvider.IScope, IAccountBatchReader
+    {
+        internal Account Account { get; } = new(7, 3);
+        internal Exception? Failure { get; set; }
+        internal int ScalarReads { get; private set; }
+        internal int BatchReads { get; private set; }
+        internal Address[] BatchAddresses { get; private set; } = [];
+        public Hash256 RootHash => Keccak.EmptyTreeHash;
+        public IWorldStateScopeProvider.ICodeDb CodeDb { get; } = Substitute.For<IWorldStateScopeProvider.ICodeDb>();
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            BatchReads++;
+            BatchAddresses = addresses.ToArray();
+            if (Failure is not null) throw Failure;
+            for (int i = 0; i < addresses.Length; i++) accounts[i] = addresses[i] == TestItem.AddressB ? null : Account;
+        }
+
+        public Account? Get(Address address)
+        {
+            ScalarReads++;
+            if (Failure is MissingTrieNodeException && address == TestItem.AddressA) throw Failure;
+            return address == TestItem.AddressB ? null : Account;
+        }
+
+        public void UpdateRootHash() { }
+        public void HintGet(Address address, Account? account) { }
+        public void Commit(ulong blockNumber) { }
+        public void Dispose() { }
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => throw new NotSupportedException();
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => throw new NotSupportedException();
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
+        public void ApplyBal(ReadOnlyBlockAccessList bal) => throw new NotSupportedException();
     }
 }

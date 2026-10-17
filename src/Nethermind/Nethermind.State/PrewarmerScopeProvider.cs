@@ -29,6 +29,7 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
     public PrewarmerGetTimeLabel UpdateRootHash { get; } = new("update_root_hash", isPrewarmer);
     public PrewarmerGetTimeLabel AddressHit { get; } = new("address_hit", isPrewarmer);
     public PrewarmerGetTimeLabel AddressMiss { get; } = new("address_miss", isPrewarmer);
+    public PrewarmerGetTimeLabel AddressBatchMiss { get; } = new("address_batch_miss", isPrewarmer);
     public PrewarmerGetTimeLabel SlotGetHit { get; } = new("slot_get_hit", isPrewarmer);
     public PrewarmerGetTimeLabel SlotGetMiss { get; } = new("slot_get_miss", isPrewarmer);
     public PrewarmerGetTimeLabel WriteBatchLifetime { get; } = new("write_batch_lifetime", isPrewarmer);
@@ -128,7 +129,7 @@ public class PrewarmerScopeProvider(
         Hash256? baseStateRoot,
         ICodeCache? codeCache,
         bool prefetchCode,
-        CommittedStorageWrites? committedWrites) : IWorldStateScopeProvider.IScope
+        CommittedStorageWrites? committedWrites) : IWorldStateScopeProvider.IScope, IAccountBatchReader
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         public bool StorageRootsAreAuthoritative => baseScope.StorageRootsAreAuthoritative;
@@ -280,6 +281,67 @@ public class PrewarmerScopeProvider(
             long sw = Stopwatch.GetTimestamp();
             baseScope.UpdateRootHash();
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.UpdateRootHash);
+        }
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
+            if (addresses.Length < 8 || _appliedBalAccounts is not null || baseScope is not IAccountBatchReader batch)
+            {
+                for (int i = 0; i < addresses.Length; i++) accounts[i] = Get(addresses[i]);
+                return;
+            }
+
+            using ArrayPoolListRef<Address> misses = new(0);
+            using ArrayPoolListRef<int> positions = new(0);
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                Address address = addresses[i];
+                AddressAsKey key = address;
+                long start = _measureMetric ? Stopwatch.GetTimestamp() : 0;
+                if (preBlockCache.TryGetValue(in key, out Account? account))
+                {
+                    accounts[i] = account;
+                    if (!isPrewarmer)
+                    {
+                        baseScope.HintGet(address, account);
+                        _metrics.IncrementPreBlockAccountHits();
+                    }
+                    _metrics.IncrementStateTreeCacheHits();
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - start, _labels.AddressHit);
+                    continue;
+                }
+                misses.Add(address);
+                positions.Add(i);
+            }
+            if (misses.Count == 0) return;
+            if (misses.Count < 8)
+            {
+                for (int i = 0; i < misses.Count; i++)
+                {
+                    AddressAsKey key = misses[i];
+                    long start = _measureMetric ? Stopwatch.GetTimestamp() : 0;
+                    Account? account = baseScope.Get(misses[i]);
+                    accounts[positions[i]] = account;
+                    preBlockCache.Set(in key, account);
+                    if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - start, _labels.AddressMiss);
+                }
+                return;
+            }
+            using ArrayPoolListRef<Account?> results = new(misses.Count, misses.Count);
+            long readStart = _measureMetric ? Stopwatch.GetTimestamp() : 0;
+            batch.GetAccounts(misses.AsSpan(), results.AsSpan());
+            if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - readStart, _labels.AddressBatchMiss);
+            for (int i = 0; i < misses.Count; i++)
+            {
+                AddressAsKey key = misses[i];
+                Account? account = results[i];
+                accounts[positions[i]] = account;
+                preBlockCache.Set(in key, account);
+                if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
+
+            }
         }
 
         public Account? Get(Address address)

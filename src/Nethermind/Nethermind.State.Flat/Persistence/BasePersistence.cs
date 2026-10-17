@@ -284,6 +284,19 @@ public static class BasePersistence
     public interface IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
+
+        void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<Account?> accounts, AccountDecoder decoder)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
+            Span<byte> buffer = stackalloc byte[256];
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                int length = GetAccount(in addresses[i], buffer);
+                RlpReader reader = new(buffer[..length]);
+                accounts[i] = length == 0 ? null : decoder.Decode(ref reader);
+            }
+        }
+
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
@@ -311,6 +324,13 @@ public static class BasePersistence
     public interface IFlatReader
     {
         public Account? GetAccount(Address address);
+
+        void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
+            for (int i = 0; i < addresses.Length; i++) accounts[i] = GetAccount(addresses[i]);
+        }
+
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref UInt256 outValue);
@@ -408,6 +428,13 @@ public static class BasePersistence
         private readonly int _accountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            using ArrayPoolSpan<ValueHash256> paths = new(addresses.Length);
+            for (int i = 0; i < addresses.Length; i++) paths[i] = addresses[i].ToAccountPath;
+            _flatReader.GetAccounts(paths, accounts, _accountDecoder);
+        }
+
         public Account? GetAccount(Address address)
         {
             Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
@@ -453,7 +480,7 @@ public static class BasePersistence
         TTrieReader trieReader,
         StateId currentState,
         IDisposable disposer)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IAccountBatchReader
         where TFlatReader : struct, IFlatReader
         where TTrieReader : struct, ITrieReader
     {
@@ -466,6 +493,9 @@ public static class BasePersistence
 
         public Account? GetAccount(Address address) =>
             _flatReader.GetAccount(address);
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) =>
+            _flatReader.GetAccounts(addresses, accounts);
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);

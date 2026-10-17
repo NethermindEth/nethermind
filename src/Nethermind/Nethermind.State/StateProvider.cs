@@ -21,6 +21,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State;
@@ -962,6 +963,67 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _metrics.IncrementStateTreeWrites(writes);
         if (skipped > 0)
             _metrics.IncrementStateSkippedWrites(skipped);
+    }
+
+    public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested) return;
+        if (addresses.Length < 8 || Tree is not IAccountBatchReader batch)
+        {
+            WarmUpAccountsIndividually(addresses, cancellationToken);
+            return;
+        }
+
+        using ArrayPoolListRef<Address> misses = new(0);
+        foreach (Address address in addresses)
+        {
+            GetOrAddBlockChange(address, out bool exists);
+            if (exists) _metrics.IncrementStateTreeCacheHits();
+            else misses.Add(address);
+        }
+        if (misses.Count == 0) return;
+
+        using ArrayPoolListRef<Account?> accounts = new(misses.Count, misses.Count);
+        try
+        {
+            if (misses.Count < 8)
+            {
+                for (int i = 0; i < misses.Count; i++) accounts[i] = Tree.Get(misses[i]);
+            }
+            else batch.GetAccounts(misses.AsSpan(), accounts.AsSpan());
+            for (int i = 0; i < misses.Count; i++)
+            {
+                Account? account = accounts[i];
+                _blockChanges[misses[i]] = new(account, account);
+                _metrics.IncrementStateTreeReads();
+            }
+        }
+        catch (MissingTrieNodeException)
+        {
+            foreach (Address address in misses.AsSpan()) _blockChanges.Remove(address);
+            WarmUpAccountsIndividually(misses.AsSpan(), cancellationToken);
+        }
+        catch
+        {
+            foreach (Address address in misses.AsSpan()) _blockChanges.Remove(address);
+            throw;
+        }
+    }
+
+    private void WarmUpAccountsIndividually(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken)
+    {
+        foreach (Address address in addresses)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            try
+            {
+                WarmUp(address);
+            }
+            catch (MissingTrieNodeException)
+            {
+                _blockChanges.Remove(address);
+            }
+        }
     }
 
     public bool WarmUp(Address address)
