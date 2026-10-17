@@ -62,7 +62,7 @@ public partial class PatriciaTree
         }
     }
 
-    private bool TryWarmUpCachedPath(in WarmUpEntry entry)
+    internal bool TryWarmUpCachedPath(in WarmUpEntry entry)
     {
         TrieNode? node = RootRef;
         if (node is null) return true;
@@ -116,16 +116,53 @@ public partial class PatriciaTree
     private void WarmUpChunk<TState>(ReadOnlySpan<WarmUpEntry> entries, IBatchTrieNodeResolver resolver,
         TState state, Func<TState, bool> shouldStop)
     {
-        using ArrayPoolListRef<WarmUpEntry> keys = new(entries);
-        keys.AsSpan().Sort();
-        int unique = 0;
-        for (int i = 0; i < keys.Count; i++)
+        Span<WarmUpWork> work = stackalloc WarmUpWork[WarmUpBatchSize];
+        for (int i = 0; i < entries.Length; i++) work[i] = new(0, entries[i]);
+        ReadOnlySpan<WarmUpTarget> targets = [new(this, RootRef)];
+        WarmUpTargets(targets, work[..entries.Length], new SingleTreeWarmUpReader(resolver), state, shouldStop);
+    }
+
+    internal readonly record struct WarmUpTarget(PatriciaTree Tree, TrieNode? Root);
+
+    internal readonly struct WarmUpWork(int target, WarmUpEntry entry) : IComparable<WarmUpWork>
+    {
+        public readonly int Target = target;
+        public readonly WarmUpEntry Entry = entry;
+        public int CompareTo(WarmUpWork other)
         {
-            WarmUpEntry entry = keys[i];
-            if (unique > 0 && keys[unique - 1].Key == entry.Key)
-                keys[unique - 1] = new(entry.Key, keys[unique - 1].ForDelete || entry.ForDelete);
+            int targetOrder = Target.CompareTo(other.Target);
+            return targetOrder != 0 ? targetOrder : Entry.CompareTo(other.Entry);
+        }
+    }
+
+    internal interface IWarmUpReader
+    {
+        void LoadRlps(scoped ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, scoped ReadOnlySpan<int> targets, scoped Span<byte[]?> values);
+        bool IsUnavailable(Exception exception);
+    }
+
+    private readonly struct SingleTreeWarmUpReader(IBatchTrieNodeResolver resolver) : IWarmUpReader
+    {
+        public void LoadRlps(scoped ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, scoped ReadOnlySpan<int> targets, scoped Span<byte[]?> values) =>
+            resolver.LoadRlps(requests, values);
+        public bool IsUnavailable(Exception exception) => false;
+    }
+
+    internal static void WarmUpTargets<TReader, TState>(ReadOnlySpan<WarmUpTarget> targets,
+        Span<WarmUpWork> work, TReader reader, TState state, Func<TState, bool> shouldStop)
+        where TReader : struct, IWarmUpReader, allows ref struct
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(work.Length, WarmUpBatchSize);
+        Span<WarmUpWork> keys = work;
+        keys.Sort();
+        int unique = 0;
+        for (int i = 0; i < keys.Length; i++)
+        {
+            WarmUpWork item = keys[i];
+            if (unique > 0 && keys[unique - 1].Target == item.Target && keys[unique - 1].Entry.Key == item.Entry.Key)
+                keys[unique - 1] = new(item.Target, new(item.Entry.Key, keys[unique - 1].Entry.ForDelete || item.Entry.ForDelete));
             else
-                keys[unique++] = entry;
+                keys[unique++] = item;
         }
 
         ArrayPoolListRef<WarmUpFrontier> current = new(WarmUpBatchSize);
@@ -133,9 +170,17 @@ public partial class PatriciaTree
         try
         {
             next = new(WarmUpBatchSize);
-            current.Add(new(RootRef, TreePath.Empty, 0, unique, null));
+            for (int first = 0; first < unique;)
+            {
+                int last = first + 1;
+                int target = keys[first].Target;
+                while (last < unique && keys[last].Target == target) last++;
+                if (targets[target].Root is { } root) current.Add(new(root, TreePath.Empty, first, last - first, null, target));
+                first = last;
+            }
             using ArrayPoolListRef<(TreePath Path, Hash256 Hash)> requests = new(WarmUpBatchSize);
             using ArrayPoolListRef<byte[]?> values = new(WarmUpBatchSize, WarmUpBatchSize);
+            Span<int> requestTargets = stackalloc int[WarmUpBatchSize];
             while (current.Count > 0)
             {
                 if (shouldStop(state)) return;
@@ -143,37 +188,49 @@ public partial class PatriciaTree
                 for (int i = 0; i < current.Count; i++)
                 {
                     ref WarmUpFrontier frontier = ref current.AsSpan()[i];
-                    TrieNode? node = frontier.Node;
-                    if (node is null) continue;
-                    if (node.IsSealed && node.Keccak is not null && (frontier.Path.Length & 1) != 0)
-                        node = TrieStore.FindCachedOrUnknown(in frontier.Path, node.Keccak);
-                    frontier.Node = node;
-                    frontier.RlpIndex = -1;
-                    if (node.NodeType == NodeType.Unknown && !node.HasRlp && node.Keccak is { } hash)
+                    try
                     {
-                        frontier.RlpIndex = requests.Count;
-                        requests.Add((frontier.Path, hash));
+                        TrieNode? node = frontier.Node;
+                        if (node is null) continue;
+                        PatriciaTree tree = targets[frontier.Target].Tree;
+                        if (node.IsSealed && node.Keccak is not null && (frontier.Path.Length & 1) != 0)
+                            node = tree.TrieStore.FindCachedOrUnknown(in frontier.Path, node.Keccak);
+                        frontier.Node = node;
+                        frontier.RlpIndex = -1;
+                        if (node.NodeType == NodeType.Unknown && !node.HasRlp && node.Keccak is { } hash)
+                        {
+                            frontier.RlpIndex = requests.Count;
+                            requestTargets[requests.Count] = frontier.Target;
+                            requests.Add((frontier.Path, hash));
+                        }
+                    }
+                    catch (Exception exception) when (reader.IsUnavailable(exception))
+                    {
+                        frontier.Node = null;
                     }
                 }
                 if (requests.Count > 0)
                 {
                     if (shouldStop(state)) return;
-                    resolver.LoadRlps(requests.AsSpan(), values.AsSpan()[..requests.Count]);
+                    reader.LoadRlps(requests.AsSpan(), requestTargets[..requests.Count], values.AsSpan()[..requests.Count]);
                 }
                 if (shouldStop(state)) return;
                 for (int i = 0; i < current.Count; i++)
                 {
                     if (shouldStop(state)) return;
                     ref WarmUpFrontier frontier = ref current.AsSpan()[i];
-                    TrieNode? node = frontier.Node;
-                    if (node is not null && !node.TryResolveNodeFromRlp(frontier.RlpIndex < 0 ? null : values[frontier.RlpIndex]))
+                    try
+                    {
+                        TrieNode? node = frontier.Node;
+                        if (node is not null && !node.TryResolveNodeFromRlp(frontier.RlpIndex < 0 ? null : values[frontier.RlpIndex]))
+                            frontier.Node = null;
+                        if (frontier.Node is not null)
+                            targets[frontier.Target].Tree.AdvanceWarmUpFrontier(in frontier, keys[..unique], ref next);
+                    }
+                    catch (Exception exception) when (reader.IsUnavailable(exception))
+                    {
                         frontier.Node = null;
-                }
-                for (int i = 0; i < current.Count; i++)
-                {
-                    if (shouldStop(state)) return;
-                    ref WarmUpFrontier frontier = ref current.AsSpan()[i];
-                    if (frontier.Node is not null) AdvanceWarmUpFrontier(in frontier, keys.AsSpan()[..unique], ref next);
+                    }
                 }
                 current.Clear();
                 ArrayPoolListRef<WarmUpFrontier> swap = current;
@@ -188,7 +245,7 @@ public partial class PatriciaTree
         }
     }
 
-    private void AdvanceWarmUpFrontier(in WarmUpFrontier frontier, ReadOnlySpan<WarmUpEntry> entries,
+    private void AdvanceWarmUpFrontier(in WarmUpFrontier frontier, ReadOnlySpan<WarmUpWork> entries,
         scoped ref ArrayPoolListRef<WarmUpFrontier> next)
     {
         TrieNode node = frontier.Node!;
@@ -202,10 +259,10 @@ public partial class PatriciaTree
             bool forDelete = false;
             for (int i = frontier.Start; i < end; i++)
             {
-                if (!MatchesWarmUpPrefix(in entries[i], path.Length, key)) continue;
+                if (!MatchesWarmUpPrefix(in entries[i].Entry, path.Length, key)) continue;
                 if (first < 0) first = i;
                 count++;
-                forDelete |= entries[i].ForDelete;
+                forDelete |= entries[i].Entry.ForDelete;
             }
             if (first < 0) return;
             if (node.IsLeaf)
@@ -216,7 +273,7 @@ public partial class PatriciaTree
             {
                 path.AppendMut(key);
                 TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
-                if (child is not null) next.Add(new(child, path, first, count, null));
+                if (child is not null) next.Add(new(child, path, first, count, null, frontier.Target));
             }
             return;
         }
@@ -224,12 +281,12 @@ public partial class PatriciaTree
         if (path.Length >= 64) return;
         for (int first = frontier.Start; first < end;)
         {
-            int nibble = entries[first].GetNibble(path.Length);
+            int nibble = entries[first].Entry.GetNibble(path.Length);
             int last = first + 1;
-            while (last < end && entries[last].GetNibble(path.Length) == nibble) last++;
+            while (last < end && entries[last].Entry.GetNibble(path.Length) == nibble) last++;
             TreePath childPath = path.Append(nibble);
             TrieNode? child = node.GetChildWithChildPath(TrieStore, ref childPath, nibble, keepChildRef: true);
-            if (child is not null) next.Add(new(child, childPath, first, last - first, node));
+            if (child is not null) next.Add(new(child, childPath, first, last - first, node, frontier.Target));
             first = last;
         }
     }
@@ -242,8 +299,9 @@ public partial class PatriciaTree
         return true;
     }
 
-    private struct WarmUpFrontier(TrieNode? node, TreePath path, int start, int count, TrieNode? parentBranch)
+    private struct WarmUpFrontier(TrieNode? node, TreePath path, int start, int count, TrieNode? parentBranch, int target)
     {
+        public readonly int Target = target;
         public TrieNode? Node = node;
         public TreePath Path = path;
         public readonly int Start = start;

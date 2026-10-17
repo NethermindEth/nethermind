@@ -22,9 +22,9 @@ public static partial class BaseTriePersistence
                 int count = Math.Min(BatchTriePersistenceReaderExtensions.BatchSize, paths.Length - start);
                 ReadOnlySpan<TreePath> chunk = paths.Slice(start, count);
                 Span<byte[]?> results = values.Slice(start, count);
-                ReadRlpGroup(stateTopNodes, chunk, results, null, RlpKeyKind.StateTop);
-                ReadRlpGroup(stateNodes, chunk, results, null, RlpKeyKind.State);
-                ReadRlpGroup(fallbackNodes, chunk, results, null, RlpKeyKind.StateFallback);
+                ReadRlpGroup(stateTopNodes, new UniformRlpSource(chunk, null), results, RlpKeyKind.StateTop);
+                ReadRlpGroup(stateNodes, new UniformRlpSource(chunk, null), results, RlpKeyKind.State);
+                ReadRlpGroup(fallbackNodes, new UniformRlpSource(chunk, null), results, RlpKeyKind.StateFallback);
             }
         }
 
@@ -36,18 +36,35 @@ public static partial class BaseTriePersistence
                 int count = Math.Min(BatchTriePersistenceReaderExtensions.BatchSize, paths.Length - start);
                 ReadOnlySpan<TreePath> chunk = paths.Slice(start, count);
                 Span<byte[]?> results = values.Slice(start, count);
-                ReadRlpGroup(storageNodes, chunk, results, address, RlpKeyKind.Storage);
-                ReadRlpGroup(fallbackNodes, chunk, results, address, RlpKeyKind.StorageFallback);
+                ReadRlpGroup(storageNodes, new UniformRlpSource(chunk, address), results, RlpKeyKind.Storage);
+                ReadRlpGroup(fallbackNodes, new UniformRlpSource(chunk, address), results, RlpKeyKind.StorageFallback);
+            }
+        }
+
+        public void LoadRlps(ReadOnlySpan<(Hash256? Address, TreePath Path)> requests, Span<byte[]?> values)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, requests.Length, nameof(values));
+            for (int start = 0; start < requests.Length; start += BatchTriePersistenceReaderExtensions.BatchSize)
+            {
+                int count = Math.Min(BatchTriePersistenceReaderExtensions.BatchSize, requests.Length - start);
+                MixedRlpSource source = new(requests.Slice(start, count));
+                Span<byte[]?> output = values.Slice(start, count);
+                ReadRlpGroup(stateTopNodes, source, output, RlpKeyKind.StateTop);
+                ReadRlpGroup(stateNodes, source, output, RlpKeyKind.State);
+                ReadRlpGroup(storageNodes, source, output, RlpKeyKind.Storage);
+                ReadRlpGroup(fallbackNodes, source, output, RlpKeyKind.StateFallback);
+                ReadRlpGroup(fallbackNodes, source, output, RlpKeyKind.StorageFallback);
             }
         }
 
         [SkipLocalsInit]
-        private static void ReadRlpGroup(IReadOnlyKeyValueStore store, ReadOnlySpan<TreePath> paths,
-            Span<byte[]?> values, Hash256? address, RlpKeyKind kind)
+        private static void ReadRlpGroup<TSource>(IReadOnlyKeyValueStore store, TSource source,
+            Span<byte[]?> values, RlpKeyKind kind)
+            where TSource : struct, IRlpSource, allows ref struct
         {
             int first = 0;
-            while (first < paths.Length && !MatchesGroup(in paths[first], kind)) first++;
-            if (first == paths.Length) return;
+            while (first < source.Count && !MatchesGroup(source, first, kind)) first++;
+            if (first == source.Count) return;
 
             int keyLength = kind switch
             {
@@ -58,20 +75,20 @@ public static partial class BaseTriePersistence
                 _ => FullStorageNodesKeyLength
             };
             Span<int> indexes = stackalloc int[BatchTriePersistenceReaderExtensions.BatchSize];
-            Span<byte> keys = stackalloc byte[paths.Length * keyLength];
+            Span<byte> keys = stackalloc byte[source.Count * keyLength];
             int count = 0;
-            for (int i = first; i < paths.Length; i++)
+            for (int i = first; i < source.Count; i++)
             {
-                ref readonly TreePath path = ref paths[i];
-                if (!MatchesGroup(in path, kind)) continue;
+                if (!MatchesGroup(source, i, kind)) continue;
+                ref readonly TreePath path = ref source.GetPath(i);
                 Span<byte> destination = keys.Slice(count * keyLength, keyLength);
                 _ = kind switch
                 {
                     RlpKeyKind.StateTop => EncodeStateTopNodeKey(destination, in path),
                     RlpKeyKind.State => EncodeShortenedStateNodeKey(destination, in path),
                     RlpKeyKind.StateFallback => EncodeFullStateNodeKey(destination, in path),
-                    RlpKeyKind.Storage => EncodeShortenedStorageNodeKey(destination, address!, in path),
-                    _ => EncodeFullStorageNodeKey(destination, address!, in path)
+                    RlpKeyKind.Storage => EncodeShortenedStorageNodeKey(destination, source.GetAddress(i)!, in path),
+                    _ => EncodeFullStorageNodeKey(destination, source.GetAddress(i)!, in path)
                 };
                 indexes[count++] = i;
             }
@@ -80,7 +97,7 @@ public static partial class BaseTriePersistence
                 for (int i = 0; i < count; i++) values[indexes[i]] = store.Get(keys.Slice(i * keyLength, keyLength));
                 return;
             }
-            if (count == paths.Length)
+            if (count == source.Count)
             {
                 store.GetMany<byte[]?, OwnedRlpDecoder>(keys[..(count * keyLength)], keyLength, values, default);
                 return;
@@ -91,13 +108,43 @@ public static partial class BaseTriePersistence
             for (int i = 0; i < count; i++) values[indexes[i]] = results[i];
         }
 
-        private static bool MatchesGroup(in TreePath path, RlpKeyKind kind) => kind switch
+        private static bool MatchesGroup<TSource>(TSource source, int index, RlpKeyKind kind)
+            where TSource : struct, IRlpSource, allows ref struct
         {
-            RlpKeyKind.StateTop => path.Length <= StateNodesTopThreshold,
-            RlpKeyKind.State => path.Length > StateNodesTopThreshold && path.Length <= ShortenedPathThreshold,
-            RlpKeyKind.StateFallback or RlpKeyKind.StorageFallback => path.Length > ShortenedPathThreshold,
-            _ => path.Length <= ShortenedPathThreshold
-        };
+            bool storage = kind is RlpKeyKind.Storage or RlpKeyKind.StorageFallback;
+            if ((source.GetAddress(index) is not null) != storage) return false;
+            int length = source.GetPath(index).Length;
+            return kind switch
+            {
+                RlpKeyKind.StateTop => length <= StateNodesTopThreshold,
+                RlpKeyKind.State => length > StateNodesTopThreshold && length <= ShortenedPathThreshold,
+                RlpKeyKind.StateFallback or RlpKeyKind.StorageFallback => length > ShortenedPathThreshold,
+                _ => length <= ShortenedPathThreshold
+            };
+        }
+
+        private interface IRlpSource
+        {
+            int Count { get; }
+            ref readonly TreePath GetPath(int index);
+            Hash256? GetAddress(int index);
+        }
+
+        private readonly ref struct UniformRlpSource(ReadOnlySpan<TreePath> paths, Hash256? address) : IRlpSource
+        {
+            private readonly ReadOnlySpan<TreePath> _paths = paths;
+            public int Count => _paths.Length;
+            public ref readonly TreePath GetPath(int index) => ref _paths[index];
+            public Hash256? GetAddress(int index) => address;
+        }
+
+        private readonly ref struct MixedRlpSource(ReadOnlySpan<(Hash256? Address, TreePath Path)> requests) : IRlpSource
+        {
+            private readonly ReadOnlySpan<(Hash256? Address, TreePath Path)> _requests = requests;
+            public int Count => _requests.Length;
+            public ref readonly TreePath GetPath(int index) => ref _requests[index].Path;
+            public Hash256? GetAddress(int index) => _requests[index].Address;
+        }
 
         private enum RlpKeyKind { StateTop, State, StateFallback, Storage, StorageFallback }
 

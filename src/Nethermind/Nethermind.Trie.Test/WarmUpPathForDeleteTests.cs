@@ -130,6 +130,7 @@ public partial class WarmUpPathForDeleteTests
         public List<int> BatchSizes { get; } = [];
         public Action? AfterBatchRead;
         public int MissingNibble = -1;
+        public bool ThrowChildLookup;
 
         public void LoadRlps(ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, Span<byte[]?> values)
         {
@@ -142,7 +143,10 @@ public partial class WarmUpPathForDeleteTests
             AfterBatchRead?.Invoke();
         }
 
-        TrieNode ITrieNodeResolver.FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-            _nodes.GetOrAdd((path, hash), static key => new TrieNode(NodeType.Unknown, key.Item2));
+        TrieNode ITrieNodeResolver.FindCachedOrUnknown(in TreePath path, Hash256 hash)
+        {
+            if (ThrowChildLookup && path.Length > 0) throw new StaleWarmupException();
+            return _nodes.GetOrAdd((path, hash), static key => new TrieNode(NodeType.Unknown, key.Item2));
+        }
     }
 }

@@ -24,6 +24,70 @@ public sealed partial class ReadOnlySnapshotBundle
     internal void LoadStorageRlps(Hash256 address, ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, Span<byte[]?> values) =>
         LoadRlps(requests, values, new StorageRlpReader(address));
 
+    private static readonly StringLabel _readMixedRlpBatchLabel = new("trie_rlp_batch");
+
+    internal void LoadRlps(ReadOnlySpan<(Hash256? Address, TreePath Path)> requests, Span<byte[]?> values)
+    {
+        GuardDispose();
+        ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, requests.Length, nameof(values));
+        Span<int> indexes = stackalloc int[BatchTriePersistenceReaderExtensions.BatchSize];
+        for (int start = 0; start < requests.Length; start += BatchTriePersistenceReaderExtensions.BatchSize)
+        {
+            int count = Math.Min(BatchTriePersistenceReaderExtensions.BatchSize, requests.Length - start);
+            ReadOnlySpan<(Hash256? Address, TreePath Path)> chunk = requests.Slice(start, count);
+            Span<byte[]?> output = values.Slice(start, count);
+            int misses = 0;
+            if (_persistedSnapshotCount == 0) misses = count;
+            else
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    bool found = chunk[i].Address is { } address
+                        ? persistedSnapshots.TryLoadStorageRlp(address, in chunk[i].Path, out output[i])
+                        : persistedSnapshots.TryLoadStateRlp(in chunk[i].Path, out output[i]);
+                    if (!found) indexes[misses++] = i;
+                }
+            }
+            for (int i = 0; i < misses; i++) Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
+            if (misses < BatchTriePersistenceReaderExtensions.MinBatchSize)
+            {
+                for (int i = 0; i < misses; i++)
+                {
+                    int index = misses == count ? i : indexes[i];
+                    long readStart = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+                    output[index] = chunk[index].Address is { } address
+                        ? persistenceReader.TryLoadStorageRlp(address, in chunk[index].Path, ReadFlags.None)
+                        : persistenceReader.TryLoadStateRlp(in chunk[index].Path, ReadFlags.None);
+                    if (recordDetailedMetrics)
+                        Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - readStart,
+                            chunk[index].Address is null ? _readStateRlpLabel : _readStorageRlpLabel);
+                }
+                continue;
+            }
+            if (misses == count)
+            {
+                ReadRlps(chunk, output);
+                continue;
+            }
+            using ArrayPoolListRef<(Hash256? Address, TreePath Path)> inputs = new(misses, misses);
+            using ArrayPoolListRef<byte[]?> results = new(misses, misses);
+            for (int i = 0; i < misses; i++) inputs[i] = chunk[indexes[i]];
+            ReadRlps(inputs.AsSpan(), results.AsSpan());
+            for (int i = 0; i < misses; i++) output[indexes[i]] = results[i];
+        }
+    }
+
+    private void ReadRlps(ReadOnlySpan<(Hash256? Address, TreePath Path)> requests, Span<byte[]?> values)
+    {
+        long start = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        persistenceReader.LoadRlps(requests, values);
+        if (recordDetailedMetrics)
+        {
+            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start, _readMixedRlpBatchLabel);
+            Metrics.ReadOnlySnapshotBundleReadBatchSize.Observe(requests.Length, _readMixedRlpBatchLabel);
+        }
+    }
+
     [SkipLocalsInit]
     private void LoadRlps<TReader>(ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, Span<byte[]?> values, TReader reader)
         where TReader : struct, IRlpReader

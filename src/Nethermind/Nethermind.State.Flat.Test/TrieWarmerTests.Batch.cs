@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -15,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -194,6 +196,111 @@ public partial class TrieWarmerTests
     public void QueuedBatch_BudgetPreservesWorkerShare(long pending, int workers, int expected) =>
         Assert.That(TrieWarmer.GetWarmUpBatchSize(pending, workers), Is.EqualTo(expected));
 
+    [Test]
+    public async Task QueuedBatch_AcrossContracts_ReadsIndependentRootsTogether([Values(8, 16, 64, 65)] int count)
+    {
+        await using TrieWarmer warmer = new(_logManager, _config);
+        CohortReader reader = new(count);
+        using BatchScope context = new(reader: reader);
+        FlatStorageTree[] trees = new FlatStorageTree[count];
+        for (int i = 0; i < count; i++)
+        {
+            trees[i] = (FlatStorageTree)context.Scope.CreateStorageTree(TestItem.Addresses[i]);
+            EnqueueBatchJob(warmer, context.Scope, trees[i], i, 0);
+        }
+        DrainBatchJobs(warmer);
+        int reads = reader.Reads;
+        for (int i = 0; i < count; i++) EnqueueBatchJob(warmer, context.Scope, trees[i], i, 0);
+        DrainBatchJobs(warmer);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Scope.OutstandingWarmups, Is.Zero);
+            Assert.That(reader.MixedBatchSizes, Is.Not.Empty, "different contracts must reach the mixed batch capability");
+            Assert.That(reader.MixedBatchSizes[0], Is.EqualTo(Math.Min(count, 64)));
+            Assert.That(reader.Reads, Is.EqualTo(reads), "all-cached mixed cohorts must avoid further persistence reads");
+        }
+        if (count <= 64)
+            foreach (FlatStorageTree tree in trees)
+                Assert.That(typeof(FlatStorageTree).GetField("_trees", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(tree),
+                    Is.Null, "mixed warmup must not initialize the execution tree through mutable snapshot readers");
+    }
+
+    [TestCase(false, TestName = "QueuedMixedBatch_MissingRoot_StillWarmsOtherContracts")]
+    [TestCase(true, TestName = "QueuedMixedBatch_ForeignRoot_StillWarmsOtherContracts")]
+    public async Task QueuedBatch_WithUnavailableContract_StillWarmsOtherContracts(bool foreignRoot)
+    {
+        const int count = 16;
+        await using TrieWarmer warmer = new(_logManager, _config);
+        CohortReader reader = new(count) { UnavailableAddress = TestItem.Addresses[0].ToAccountPath.ToHash256(), ForeignRoot = foreignRoot };
+        using BatchScope context = new(reader: reader);
+        FlatStorageTree[] trees = new FlatStorageTree[count];
+        for (int i = 0; i < count; i++)
+        {
+            trees[i] = (FlatStorageTree)context.Scope.CreateStorageTree(TestItem.Addresses[i]);
+            EnqueueBatchJob(warmer, context.Scope, trees[i], i, 0);
+        }
+        DrainBatchJobs(warmer);
+        int reads = reader.Reads;
+        for (int i = 1; i < count; i++) EnqueueBatchJob(warmer, context.Scope, trees[i], i, 0);
+        DrainBatchJobs(warmer);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Scope.OutstandingWarmups, Is.Zero);
+            Assert.That(reader.MixedBatchSizes[0], Is.EqualTo(count));
+            Assert.That(reader.Reads, Is.EqualTo(reads), "one missing or foreign RLP must not discard valid contracts in the cohort");
+        }
+        StorageTree? unavailable = typeof(FlatStorageTree).GetField("_cohortWarmupTree", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(trees[0]) as StorageTree;
+        Assert.That(unavailable, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unavailable!.RootRef!.HasRlp, Is.False, "foreign bytes must be rejected before they reach the requested root node");
+            Assert.That(unavailable.RootHash, Is.EqualTo(((IPersistence.IPersistenceReader)reader).GetAccount(TestItem.Addresses[0])!.StorageRoot));
+        }
+    }
+
+    private sealed class CohortReader : NoopPersistenceReader, IPersistence.IPersistenceReader, IBatchTriePersistenceReader
+    {
+        private readonly Dictionary<Address, Account> _accounts = [];
+        private readonly Dictionary<Hash256, byte[]> _rlps = [];
+        public List<int> MixedBatchSizes { get; } = [];
+        public int Reads;
+        public Hash256? UnavailableAddress;
+        public bool ForeignRoot;
+
+        public CohortReader(int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                using MemDb db = new();
+                StorageTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+                tree.Set((UInt256)(ulong)i, [(byte)(i + 1)]);
+                tree.Commit();
+                _accounts[TestItem.Addresses[i]] = new Account(1, 100, tree.RootHash, Keccak.OfAnEmptyString);
+                _rlps[TestItem.Addresses[i].ToAccountPath.ToHash256()] = db.Get(tree.RootHash.Bytes)!;
+            }
+        }
+
+        Account? IPersistence.IPersistenceReader.GetAccount(Address address) => _accounts.GetValueOrDefault(address);
+        byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => Read(address);
+        public void LoadRlps(ReadOnlySpan<(Hash256? Address, TreePath Path)> requests, Span<byte[]?> values)
+        {
+            MixedBatchSizes.Add(requests.Length);
+            for (int i = 0; i < requests.Length; i++) values[i] = Read(requests[i].Address!);
+        }
+        public void LoadStateRlps(ReadOnlySpan<TreePath> paths, Span<byte[]?> values) => throw new InvalidOperationException("Unexpected state batch");
+        public void LoadStorageRlps(Hash256 address, ReadOnlySpan<TreePath> paths, Span<byte[]?> values)
+        {
+            for (int i = 0; i < paths.Length; i++) values[i] = Read(address);
+        }
+        private byte[]? Read(Hash256 address)
+        {
+            Reads++;
+            if (address == UnavailableAddress) return ForeignRoot ? _rlps[TestItem.Addresses[1].ToAccountPath.ToHash256()] : null;
+            return _rlps[address];
+        }
+    }
+
     private static object NewBatchJob(object target, Address? address, UInt256 slot, int sequence) =>
         Activator.CreateInstance(typeof(TrieWarmer).GetNestedType("Job", BindingFlags.NonPublic)!,
             [target, address, slot, sequence, false])!;
@@ -230,12 +337,13 @@ public partial class TrieWarmerTests
 
     private sealed class BatchScope : IDisposable
     {
-        public IPersistence.IPersistenceReader Reader { get; } = Substitute.For<IPersistence.IPersistenceReader>();
+        public IPersistence.IPersistenceReader Reader { get; }
         public BatchTrieCache Cache { get; } = new();
         public FlatWorldStateScope Scope { get; }
 
-        public BatchScope(Hash256? root = null)
+        public BatchScope(Hash256? root = null, IPersistence.IPersistenceReader? reader = null)
         {
+            Reader = reader ?? Substitute.For<IPersistence.IPersistenceReader>();
             FlatDbConfig config = new() { ApplyStorageWritesOnIdleThread = false };
             ResourcePool pool = new(config);
             SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(pool, Reader), Cache, pool, ResourcePool.Usage.MainBlockProcessing);

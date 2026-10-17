@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -221,6 +222,102 @@ public partial class WarmUpPathForDeleteTests
             Assert.That(db.Reads, Is.EqualTo(reads), "valid paths must remain cached after another subtree was missing");
             Assert.That(tree.RootHash, Is.EqualTo(original.RootHash), "a missing subtree during warmup must not change the root");
         }
+    }
+
+    [Test]
+    public void WarmUpTargets_WithIndependentTries_PreservesEveryRoot([Values(8, 16, 32)] int targetCount, [Values] bool delete)
+    {
+        using CountingMemDb db = new();
+        PatriciaTree.WarmUpTarget[] targets = new PatriciaTree.WarmUpTarget[targetCount];
+        PatriciaTree.WarmUpWork[] work = new PatriciaTree.WarmUpWork[targetCount * 2];
+        PathCachingTrieStore[] stores = new PathCachingTrieStore[targetCount];
+        for (int i = 0; i < targetCount; i++)
+        {
+            PatriciaTree original = new(new RawScopedTrieStore(db), NullLogManager.Instance);
+            byte[] value = new byte[64];
+            value[^1] = (byte)(i + 1);
+            foreach (byte[] key in new[] { KeyA, KeyB, KeyC }) original.Set(key, value);
+            original.Commit();
+            stores[i] = new(db);
+            PatriciaTree tree = new(stores[i], NullLogManager.Instance) { RootHash = original.RootHash };
+            targets[i] = new(tree, tree.RootRef);
+            work[i] = new(i, new(new ValueHash256(KeyA)));
+            work[work.Length - i - 1] = new(i, new(new ValueHash256(KeyA), delete));
+        }
+        List<int[]> batches = [];
+        PatriciaTree.WarmUpTargets(targets, work, new MixedTargetReader(stores, batches), false, static _ => false);
+        int reads = db.Reads;
+        for (int i = 0; i < targetCount; i++)
+        {
+            byte[] value = new byte[64];
+            value[^1] = (byte)(i + 1);
+            using MemDb expectedDb = new();
+            PatriciaTree expected = new(new RawScopedTrieStore(expectedDb), NullLogManager.Instance);
+            expected.Set(KeyB, value);
+            expected.Set(KeyC, value);
+            if (!delete) expected.Set(KeyA, [0xdd, (byte)i]);
+            expected.UpdateRootHash();
+            targets[i].Tree.Set(KeyA, delete ? [] : [0xdd, (byte)i]);
+            targets[i].Tree.UpdateRootHash();
+            Assert.That(targets[i].Tree.RootHash, Is.EqualTo(expected.RootHash), "target identity and duplicate delete flags must remain independent");
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Reads, Is.EqualTo(reads), "every required path and delete sibling must be warmed");
+            Assert.That(batches, Is.Not.Empty);
+            Assert.That(batches[0].Distinct().Count(), Is.EqualTo(targetCount), "independent roots must reach the same frontier read");
+            Assert.That(batches, Has.All.Length.LessThanOrEqualTo(64));
+        }
+    }
+
+    [Test]
+    public void WarmUpTargets_WhenOneChildLookupFails_StillWarmsOtherTargets()
+    {
+        const int count = 8;
+        using CountingMemDb db = new();
+        PatriciaTree.WarmUpTarget[] targets = new PatriciaTree.WarmUpTarget[count];
+        PatriciaTree.WarmUpWork[] work = new PatriciaTree.WarmUpWork[count];
+        PathCachingTrieStore[] stores = new PathCachingTrieStore[count];
+        for (int i = 0; i < count; i++)
+        {
+            PatriciaTree original = new(new RawScopedTrieStore(db), NullLogManager.Instance);
+            byte[] value = new byte[64];
+            value[^1] = (byte)(i + 1);
+            foreach (byte[] key in new[] { KeyA, KeyB, KeyC }) original.Set(key, value);
+            original.Commit();
+            stores[i] = new(db);
+            PatriciaTree tree = new(stores[i], NullLogManager.Instance) { RootHash = original.RootHash };
+            targets[i] = new(tree, tree.RootRef);
+            work[i] = new(i, new(new ValueHash256(KeyA)));
+        }
+        stores[0].ThrowChildLookup = true;
+        List<int[]> batches = [];
+        PatriciaTree.WarmUpTargets(targets, work, new MixedTargetReader(stores, batches), false, static _ => false);
+        int reads = db.Reads;
+        for (int i = 1; i < count; i++)
+        {
+            byte[] actual = targets[i].Tree.Get(KeyA).ToArray();
+            Assert.That(actual[^1], Is.EqualTo((byte)(i + 1)));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Reads, Is.EqualTo(reads), "a cache/child-lookup failure must not discard other targets");
+            Assert.That(batches[0].Distinct().Count(), Is.EqualTo(count));
+        }
+    }
+
+    private sealed class StaleWarmupException : Exception;
+
+    private readonly struct MixedTargetReader(PathCachingTrieStore[] stores, List<int[]> batches) : PatriciaTree.IWarmUpReader
+    {
+        public void LoadRlps(scoped ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, scoped ReadOnlySpan<int> targets,
+            scoped Span<byte[]?> values)
+        {
+            batches.Add(targets.ToArray());
+            for (int i = 0; i < requests.Length; i++)
+                values[i] = stores[targets[i]].TryLoadRlp(in requests[i].Path, requests[i].Hash);
+        }
+        public bool IsUnavailable(Exception exception) => exception is StaleWarmupException;
     }
 
     private sealed class CancellationState

@@ -291,6 +291,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return found;
         }
 
+        public void LoadRlps(ReadOnlySpan<(Hash256? Address, TreePath Path)> requests, Span<byte[]?> values) =>
+            inner.LoadRlps(requests, values);
+
         public void LoadStateRlps(ReadOnlySpan<TreePath> paths, Span<byte[]?> values) =>
             inner.LoadStateRlps(paths, values);
 

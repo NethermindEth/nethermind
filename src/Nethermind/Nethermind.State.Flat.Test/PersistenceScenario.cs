@@ -140,6 +140,50 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     }
 
     [Test]
+    public void TrieBatchReads_AcrossAddressesAndFamilies_PreservePinnedValues([Values(1, 8, 64, 129)] int count,
+        [Values] bool mixedFamilies)
+    {
+        (Hash256? Address, TreePath Path)[] requests = new (Hash256?, TreePath)[count];
+        Dictionary<(Hash256? Address, TreePath Path), byte[]?> expected = [];
+        int[] lengths = [0, 3, 6, 16, 64];
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+        {
+            for (int i = 0; i < count; i++)
+            {
+                int key = i % 53;
+                Hash256? address = mixedFamilies && key % 3 == 0 ? null : key % 3 == 1 ? TestItem.KeccakA : TestItem.KeccakB;
+                int length = mixedFamilies ? lengths[(key / 3) % lengths.Length] : 6;
+                TreePath path = TreePath.FromHexString(length == 0 ? "" : key.ToString("x").PadLeft(length, '0'));
+                requests[i] = (address, path);
+                byte[]? value = key % 4 == 3 ? null : new byte[521 + key * 13];
+                if (value is not null)
+                {
+                    for (int j = 0; j < value.Length; j++) value[j] = (byte)(key + j);
+                    if (address is null) writer.SetStateTrieNode(in path, value);
+                    else writer.SetStorageTrieNode(address, in path, value);
+                    expected[(address, path)] = value;
+                }
+                else expected.TryAdd((address, path), null);
+            }
+        }
+        byte[]?[] values = new byte[]?[count];
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.Sync))
+        {
+            using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            {
+                foreach ((Hash256? address, TreePath path) in requests)
+                {
+                    if (address is null) writer.SetStateTrieNode(in path, [0xee]);
+                    else writer.SetStorageTrieNode(address, in path, [0xdd]);
+                }
+            }
+            reader.LoadRlps(requests, values);
+        }
+        for (int i = 0; i < count; i++)
+            Assert.That(values[i], Is.EqualTo(expected[requests[i]]), "mixed batches must preserve CF, address, snapshot, duplicates and owned bytes");
+    }
+
+    [Test]
     public void TestCanWriteAccount()
     {
         Account acc = TestItem.GenerateIndexedAccount(0);
