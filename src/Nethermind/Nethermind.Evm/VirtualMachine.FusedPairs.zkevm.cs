@@ -734,7 +734,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
         {
             // Indexed first and offset after, so the offset folds into the load.
-            nint next = Unsafe.Add(ref handlers[Unsafe.Add(ref ip, 2)], -FollowerHandlersLength);
+            nint next = Unsafe.Add(ref AlignedTable(handlers)[Unsafe.Add(ref ip, 2)], -FollowerHandlersLength);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -794,7 +794,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
             }
 
-            nint next = Unsafe.Add(ref handlers[following], -FollowerHandlersLength);
+            nint next = Unsafe.Add(ref AlignedTable(handlers)[following], -FollowerHandlersLength);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
