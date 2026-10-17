@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Merge.Plugin.Benchmark;
@@ -18,11 +19,10 @@ namespace Nethermind.Merge.Plugin.Benchmark;
 /// <see cref="ExecutionPayload.TryGetBlock"/> call.
 /// </summary>
 /// <remarks>
-/// <see cref="HandlerPrefix"/> decodes transactions before computing their trie root inline.
-/// <see cref="HandlerPrefixWithEarlyRoot"/> overlaps root computation with decoding through
-/// the same preparation object used by <c>NewPayloadHandler.HandleAsync</c>. Transactions are
-/// real signed EIP-1559 transactions with a mainnet-like calldata mix, not opaque blobs,
-/// so decode and trie-leaf costs are honest.
+/// <see cref="HandlerPrefix"/> validates parameters before starting root preparation.
+/// <see cref="HandlerPrefixWithEarlyRoot"/> measures speculative root preparation alongside
+/// parameter validation. Both use signed EIP-1559 transactions with a mainnet-like calldata
+/// mix to include transaction-decoding and trie-leaf costs.
 /// </remarks>
 [MemoryDiagnoser]
 public class NewPayloadPrefixBenchmarks
@@ -34,6 +34,7 @@ public class NewPayloadPrefixBenchmarks
     private ExecutionPayloadV3 _payload = null!;
     private byte[][] _encodedTransactions = null!;
     private Withdrawal[] _withdrawals = null!;
+    private ExecutionPayloadParams<ExecutionPayloadV3> _parameters = null!;
 
     [GlobalSetup]
     public void GlobalSetup()
@@ -62,6 +63,7 @@ public class NewPayloadPrefixBenchmarks
         };
         _payload.SetTransactions(BuildTransactions(Txs));
         _encodedTransactions = _payload.Transactions;
+        _parameters = new(_payload, [], TestItem.KeccakA);
     }
 
     [Benchmark(Description = "TryGetTransactions (decode)")]
@@ -77,20 +79,29 @@ public class NewPayloadPrefixBenchmarks
     [Benchmark(Description = "WithdrawalTrie root")]
     public Hash256 WithdrawalsRoot() => WithdrawalTrie.CalculateRoot(_withdrawals);
 
-    [Benchmark(Description = "decode + inline root + TryGetBlock", Baseline = true)]
+    [Benchmark(Description = "validate + late root + TryGetBlock", Baseline = true)]
     public Block HandlerPrefix()
     {
         _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
-        _payload.TryGetTransactions();
-        return _payload.TryGetBlock().Data!;
+        ValidateParams();
+        using ExecutionPayloadPreparation preparation = new(_payload);
+        return preparation.TryGetBlock().Data!;
     }
 
-    [Benchmark(Description = "early root + decode + TryGetBlock")]
+    [Benchmark(Description = "early root + validate + TryGetBlock")]
     public Block HandlerPrefixWithEarlyRoot()
     {
         _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
         using ExecutionPayloadPreparation preparation = new(_payload);
+        using (preparation.Workers.Enter())
+            ValidateParams();
         return preparation.TryGetBlock().Data!;
+    }
+
+    private void ValidateParams()
+    {
+        if (_parameters.ValidateParams(Cancun.Instance, EngineApiVersions.NewPayload.V3, out string? error) != Data.ValidationResult.Success)
+            throw new InvalidOperationException(error);
     }
 
     private static Transaction[] BuildTransactions(int count)

@@ -141,8 +141,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
+            StartSenderRecovery(request);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
-            if (!decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
         {
@@ -199,7 +199,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (parentHeader is null)
         {
             // Keep full orphan validation because ValidateOrphanedBlock is also used without this handler's hash gate.
-            if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
+            if (!_blockValidator.ValidateOrphanedBlock(block, out string? error))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"orphaned block is invalid: {error}"));
                 RecordBadBlock(block);
@@ -273,6 +273,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             }
         }
 
+        using BlockValidator.TransactionValidation? transactionValidation = PrepareTransactions(block, workers);
+
         // The parent may have been answered VALID a moment ago and still be committing: its processed flag and its
         // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
         // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
@@ -288,7 +290,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 return NewPayloadV1Result.Syncing;
             }
 
-            if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out string? error, validateHashes: false))
+            if (!ValidateWithBlockValidator(block, parentHeader, transactionValidation, out string? error))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
                 RecordBadBlock(block);
@@ -346,7 +348,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
         // never be restored.
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers, transactionValidation);
 
         switch (result)
         {
@@ -706,7 +708,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers, BlockValidator.TransactionValidation? transactionValidation)
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
@@ -742,7 +744,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         // Validate
-        if (!ValidateWithBlockValidator(block, parent, out validationMessage))
+        if (!ValidateWithBlockValidator(block, parent, transactionValidation, out validationMessage))
         {
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
@@ -999,11 +1001,27 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         blockProcessed.TrySetResult((validationResult, validationMessage));
     }
 
-    private bool ValidateWithBlockValidator(Block block, BlockHeader parent, out string? error)
+    private BlockValidator.TransactionValidation? PrepareTransactions(Block block, ParallelUnbalancedWork.WorkerGroup workers)
+    {
+        using ParallelUnbalancedWork.WorkerScope scope = workers.Enter();
+        return _blockValidator switch
+        {
+            BlockValidator validator => validator.PrepareTransactions(block),
+            InvalidBlockInterceptor interceptor => interceptor.PrepareTransactions(block),
+            _ => null
+        };
+    }
+
+    private bool ValidateWithBlockValidator(Block block, BlockHeader parent, BlockValidator.TransactionValidation? transactionValidation, [NotNullWhen(false)] out string? error)
     {
         block.Header.TotalDifficulty ??= parent.TotalDifficulty + block.Difficulty;
         block.Header.IsPostMerge = true; // I think we don't need to set it again here.
-        bool isValid = _blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes: false);
+        bool isValid = (transactionValidation, _blockValidator) switch
+        {
+            (not null, InvalidBlockInterceptor interceptor) => interceptor.ValidateSuggestedBlock(block, parent, out error, validateHashes: false, transactionValidation),
+            (not null, BlockValidator validator) => validator.ValidateSuggestedBlock(block, parent, out error, validateHashes: false, transactionValidation),
+            _ => _blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes: false)
+        };
         if (!isValid && _logger.IsWarn) _logger.Warn($"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}.");
         return isValid;
     }
