@@ -10,40 +10,6 @@ namespace Nethermind.State.Flat;
 
 public sealed partial class SnapshotBundle
 {
-    internal void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> values)
-    {
-        GuardDispose();
-        ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, addresses.Length, nameof(values));
-        using ArrayPoolListRef<int> misses = new(0);
-        for (int i = 0; i < addresses.Length; i++)
-        {
-            HashedKey<Address> key = new(addresses[i]);
-            if (_changedAccounts.TryGetValue(key, out Account? account) || _readAccounts.TryGetValue(key, out account)
-                || TryGetAccountFromSnapshots(key, out account))
-                values[i] = account;
-            else
-                misses.Add(i);
-        }
-        if (misses.Count < BatchPersistenceReaderExtensions.MinBatchSize)
-        {
-            for (int i = 0; i < misses.Count; i++) values[misses[i]] = _readOnlySnapshotBundle.GetAccount(addresses[misses[i]]);
-            return;
-        }
-
-        using ArrayPoolListRef<Address> inputs = new(misses.Count, misses.Count);
-        using ArrayPoolListRef<Account?> results = new(misses.Count, misses.Count);
-        for (int i = 0; i < misses.Count; i++) inputs[i] = addresses[misses[i]];
-        _readOnlySnapshotBundle.GetAccounts(inputs.AsSpan(), results.AsSpan());
-        for (int i = 0; i < misses.Count; i++) values[misses[i]] = results[i];
-    }
-
-    private bool TryGetAccountFromSnapshots(HashedKey<Address> key, out Account? account)
-    {
-        for (int i = _snapshots.Count - 1; i >= 0; i--)
-            if (_snapshots[i].TryGetAccount(key, out account)) return true;
-        account = null;
-        return false;
-    }
 
     internal void GetSlots(ReadOnlySpan<(Address Address, int SelfDestructIdx, UInt256 Slot)> requests, Span<UInt256?> values)
     {
@@ -63,7 +29,10 @@ public sealed partial class SnapshotBundle
             for (int i = 0; i < misses.Count; i++)
             {
                 ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref requests[misses[i]];
-                _readOnlySnapshotBundle.GetSlot(request.Address, in request.Slot, request.SelfDestructIdx, out values[misses[i]]);
+                if (_filterInMemorySlotReads)
+                    _readOnlySnapshotBundle.GetSlotFiltered(request.SelfDestructIdx, new((request.Address, request.Slot)), out values[misses[i]]);
+                else
+                    _readOnlySnapshotBundle.GetSlot(request.Address, in request.Slot, request.SelfDestructIdx, out values[misses[i]]);
             }
             return;
         }

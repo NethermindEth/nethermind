@@ -292,51 +292,6 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return found;
         }
 
-        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> values)
-        {
-            ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, addresses.Length, nameof(values));
-            using ArrayPoolListRef<int> misses = new(0);
-            for (int i = 0; i < addresses.Length; i++)
-            {
-                bool current = parent.IsCurrent(generation);
-                if (current && parent._accounts.TryGetValue(addresses[i], out Account? cached))
-                {
-                    if (parent.IsCurrent(generation))
-                    {
-                        if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
-                        values[i] = cached;
-                        continue;
-                    }
-                    current = false;
-                }
-                if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardAccountMisses();
-                misses.Add(i);
-            }
-            if (misses.Count < BatchPersistenceReaderExtensions.MinBatchSize)
-            {
-                for (int i = 0; i < misses.Count; i++)
-                {
-                    int index = misses[i];
-                    Account? result = inner.GetAccount(addresses[index]);
-                    values[index] = result;
-                    if (parent.IsCurrent(generation)) parent.TryCacheAccount(addresses[index], result, generation);
-                }
-                return;
-            }
-
-            using ArrayPoolListRef<Address> inputs = new(misses.Count, misses.Count);
-            using ArrayPoolListRef<Account?> results = new(misses.Count, misses.Count);
-            for (int i = 0; i < misses.Count; i++) inputs[i] = addresses[misses[i]];
-            inner.GetAccounts(inputs.AsSpan(), results.AsSpan());
-            for (int i = 0; i < misses.Count; i++)
-            {
-                int index = misses[i];
-                Account? result = results[i];
-                values[index] = result;
-                if (parent.IsCurrent(generation)) parent.TryCacheAccount(addresses[index], result, generation);
-            }
-        }
-
         public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, cells.Length, nameof(values));

@@ -10,44 +10,6 @@ namespace Nethermind.State.Flat;
 
 public sealed partial class ReadOnlySnapshotBundle
 {
-    internal void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> values)
-    {
-        GuardDispose();
-        ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, addresses.Length, nameof(values));
-        if (recordDetailedMetrics)
-        {
-            for (int i = 0; i < addresses.Length; i++) values[i] = GetAccount(addresses[i]);
-            return;
-        }
-
-        using ArrayPoolListRef<int> misses = new(0);
-        for (int i = 0; i < addresses.Length; i++)
-        {
-            if (TryGetAccountFromSnapshots(addresses[i], out Account? account)) values[i] = account;
-            else misses.Add(i);
-        }
-        if (misses.Count < BatchPersistenceReaderExtensions.MinBatchSize)
-        {
-            for (int i = 0; i < misses.Count; i++) values[misses[i]] = persistenceReader.GetAccount(addresses[misses[i]]);
-            return;
-        }
-
-        using ArrayPoolListRef<Address> inputs = new(misses.Count, misses.Count);
-        using ArrayPoolListRef<Account?> results = new(misses.Count, misses.Count);
-        for (int i = 0; i < misses.Count; i++) inputs[i] = addresses[misses[i]];
-        persistenceReader.GetAccounts(inputs.AsSpan(), results.AsSpan());
-        for (int i = 0; i < misses.Count; i++) values[misses[i]] = results[i];
-    }
-
-    private bool TryGetAccountFromSnapshots(Address address, out Account? account)
-    {
-        HashedKey<Address> key = new(address);
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-            if (snapshots[i].TryGetAccount(key, out account)) return true;
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out account)) return true;
-        account = null;
-        return false;
-    }
 
     internal void GetSlots(ReadOnlySpan<(Address Address, int SelfDestructIdx, UInt256 Slot)> requests, Span<UInt256?> values)
     {

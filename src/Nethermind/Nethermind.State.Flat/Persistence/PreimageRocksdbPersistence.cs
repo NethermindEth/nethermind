@@ -227,18 +227,6 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             return TryGetSlotRaw(fakeHash, fakeSlotHash, ref outValue);
         }
 
-        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> values)
-        {
-            using ArrayPoolSpan<ValueHash256> hashes = new(addresses.Length);
-            for (int i = 0; i < addresses.Length; i++)
-            {
-                ValueHash256 hash = default;
-                addresses[i].Bytes.CopyTo(hash.BytesAsSpan);
-                hashes[i] = hash;
-            }
-            _flatReader.GetAccounts<Account?, BasePersistence.AccountValueDecoder>(hashes, values, new(AccountDecoder.Slim));
-        }
-
         public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
         {
             using ArrayPoolSpan<(ValueHash256 Address, ValueHash256 Slot)> hashes = new(cells.Length);

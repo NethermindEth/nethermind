@@ -155,15 +155,6 @@ public static class BaseFlatPersistence
             return state.Get(key, outBuffer);
         }
 
-        public void GetAccounts<T, TDecoder>(ReadOnlySpan<ValueHash256> addresses, Span<T> values, TDecoder decoder)
-            where TDecoder : IValueDecoder<T>
-        {
-            using ArrayPoolSpan<byte> keys = new(checked(addresses.Length * AccountKeyLength));
-            for (int i = 0; i < addresses.Length; i++)
-                EncodeAccountKeyHashed(keys.Slice(i * AccountKeyLength, AccountKeyLength), in addresses[i]);
-            state.GetMany<T, TDecoder>(keys, AccountKeyLength, values, decoder);
-        }
-
         public void GetSlots(ReadOnlySpan<(ValueHash256 Address, ValueHash256 Slot)> cells, Span<UInt256?> values)
         {
             using ArrayPoolSpan<byte> keys = new(checked(cells.Length * StorageKeyLength));
