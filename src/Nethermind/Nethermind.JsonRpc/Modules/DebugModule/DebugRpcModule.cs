@@ -46,7 +46,8 @@ public class DebugRpcModule(
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
-    IBlockForRpcFactory blockForRpcFactory)
+    IBlockForRpcFactory blockForRpcFactory,
+    IOverridableCodeInfoRepository codeInfoRepository)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
@@ -130,17 +131,28 @@ public class DebugRpcModule(
 
         blockParameter = new BlockParameter(header!.Hash!);
 
+        // The call converts against the fork it runs in, which a block override can change.
+        IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
         if (options?.StateOverrides is { } stateOverrides)
         {
-            foreach ((Address address, AccountOverride accountOverride) in stateOverrides)
+            Address[] addresses = new Address[stateOverrides.Count];
+            stateOverrides.Keys.CopyTo(addresses, 0);
+            Array.Sort(addresses);
+            foreach (Address address in addresses)
             {
+                AccountOverride accountOverride = stateOverrides[address];
+                if (accountOverride.MovePrecompileToAddress is { } destination)
+                {
+                    string? moveError = StateOverridesExtensions.GetPrecompileMoveError(address, destination,
+                        codeInfoRepository.GetPrecompile(address, spec) is not null, stateOverrides);
+                    if (moveError is not null)
+                        return ResultWrapper<GethLikeTxTrace>.Fail(moveError, ErrorCodes.InvalidInput);
+                }
                 if (accountOverride is { State: not null, StateDiff: not null })
                     return ResultWrapper<GethLikeTxTrace>.Fail($"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'", ErrorCodes.InvalidInput);
             }
         }
 
-        // The call converts against the fork it runs in, which a block override can change.
-        IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
         Result<Transaction> txResult = call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
