@@ -90,11 +90,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         _tmpDirectory.Dispose();
     }
 
-    [TestCase(1, TestName = "TrieBatchReads_SinglePath_PreservePinnedValues")]
-    [TestCase(8, TestName = "TrieBatchReads_SmallMixedColumns_PreservePinnedValues")]
-    [TestCase(64, TestName = "TrieBatchReads_FrontierMixedColumns_PreservePinnedValues")]
-    [TestCase(257, TestName = "TrieBatchReads_MultipleChunks_PreservePinnedValues")]
-    public void TrieBatchReads_WithMixedWidthsAndLiveChanges_PreservePinnedValues(int count)
+    [Test]
+    public void TrieBatchReads_WithMixedWidthsAndLiveChanges_PreservePinnedValues([Values(1, 8, 64, 257)] int count,
+        [Values(-1, 0, 6, 16)] int fixedLength)
     {
         int[] lengths = [0, 5, 6, 15, 16, 63, 64];
         TreePath[] paths = new TreePath[count];
@@ -104,7 +102,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             for (int i = 0; i < count; i++)
             {
                 int key = i % 32;
-                int length = lengths[key % lengths.Length];
+                int length = fixedLength < 0 ? lengths[key % lengths.Length] : fixedLength;
                 paths[i] = TreePath.FromHexString(length == 0 ? "" : key.ToString("x").PadLeft(length, '0'));
                 if (key % 4 == 3) continue;
                 byte[] data = new byte[513 + key * 17];

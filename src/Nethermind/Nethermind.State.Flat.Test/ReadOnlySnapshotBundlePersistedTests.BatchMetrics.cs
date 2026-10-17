@@ -19,10 +19,10 @@ public partial class ReadOnlySnapshotBundlePersistedTests
     private static IEnumerable<TestCaseData> BatchMetricsCases()
     {
         foreach (bool storage in new[] { false, true })
-        foreach (bool detailedMetrics in new[] { false, true })
-        foreach (int count in new[] { 1, 7, 8, 64 })
-            yield return new TestCaseData(storage, detailedMetrics, count)
-                .SetName($"BatchRlps_{(storage ? "Storage" : "State")}_Metrics{detailedMetrics}_Count{count}_PreservesBatchRouting");
+            foreach (bool detailedMetrics in new[] { false, true })
+                foreach (int count in new[] { 1, 7, 8, 64, 65, 72, 129 })
+                    yield return new TestCaseData(storage, detailedMetrics, count)
+                        .SetName($"BatchRlps_{(storage ? "Storage" : "State")}_Metrics{detailedMetrics}_Count{count}_PreservesBatchRouting");
     }
 
     [TestCaseSource(nameof(BatchMetricsCases))]
@@ -58,8 +58,8 @@ public partial class ReadOnlySnapshotBundlePersistedTests
         {
             Assert.That(actual, Is.EqualTo(expected), "metrics must preserve missing, empty and multi-byte values in request order");
             Assert.That(reader.Paths, Is.EqualTo(paths), "each request must reach the intended reader exactly once");
-            Assert.That(reader.BatchCalls, Is.EqualTo(count >= 8 ? 1 : 0), "detailed metrics must not disable eligible batch reads");
-            Assert.That(reader.ScalarCalls, Is.EqualTo(count < 8 ? count : 0), "small frontiers must retain scalar reads with either metrics setting");
+            Assert.That(reader.BatchCalls, Is.EqualTo(count / 64 + (count % 64 >= 8 ? 1 : 0)), "detailed metrics must not disable eligible batch reads");
+            Assert.That(reader.ScalarCalls, Is.EqualTo(count % 64 < 8 ? count % 64 : 0), "small frontiers must retain scalar reads with either metrics setting");
         }
     }
 

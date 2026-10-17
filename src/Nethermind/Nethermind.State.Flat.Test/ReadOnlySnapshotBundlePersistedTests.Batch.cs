@@ -13,17 +13,15 @@ namespace Nethermind.State.Flat.Test;
 
 public partial class ReadOnlySnapshotBundlePersistedTests
 {
-    [TestCase(false, false, TestName = "BatchStateRlps_PersistedBeforeBase")]
-    [TestCase(true, false, TestName = "BatchStorageRlps_PersistedBeforeBase")]
-    [TestCase(false, true, TestName = "BatchStateRlps_DetailedMetricsPreservePriority")]
-    [TestCase(true, true, TestName = "BatchStorageRlps_DetailedMetricsPreservePriority")]
-    public void BatchRlps_WithMixedPersistedAndBaseNodes_PreservesPriority(bool storage, bool detailedMetrics)
+    [Test]
+    public void BatchRlps_WithMixedPersistedAndBaseNodes_PreservesPriority([Values] bool storage, [Values] bool detailedMetrics,
+        [Values(8, 16, 65, 129)] int count)
     {
         StateId start = new(0, Keccak.EmptyTreeHash);
         StateId end = new(1, Keccak.Compute("batch-end"));
         Hash256 address = Keccak.Compute("batch-address");
         SnapshotContent content = new();
-        (TreePath Path, Hash256 Hash)[] requests = new (TreePath, Hash256)[16];
+        (TreePath Path, Hash256 Hash)[] requests = new (TreePath, Hash256)[count];
         byte[]?[] expected = new byte[]?[requests.Length];
         byte[]?[] values = new byte[]?[requests.Length];
         byte[] fallback = [0xc2, 0x80, 0x01];

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -40,26 +41,31 @@ public static partial class BaseTriePersistence
             }
         }
 
+        [SkipLocalsInit]
         private static void ReadRlpGroup(IReadOnlyKeyValueStore store, ReadOnlySpan<TreePath> paths,
             Span<byte[]?> values, Hash256? address, RlpKeyKind kind)
         {
+            int first = 0;
+            while (first < paths.Length && !MatchesGroup(in paths[first], kind)) first++;
+            if (first == paths.Length) return;
+
+            int keyLength = kind switch
+            {
+                RlpKeyKind.StateTop => StateNodesTopPathLength,
+                RlpKeyKind.State => ShortenedPathLength,
+                RlpKeyKind.StateFallback => FullStateNodesKeyLength,
+                RlpKeyKind.Storage => ShortenedStorageNodesKeyLength,
+                _ => FullStorageNodesKeyLength
+            };
             Span<int> indexes = stackalloc int[BatchTriePersistenceReaderExtensions.BatchSize];
-            Span<byte> keys = stackalloc byte[BatchTriePersistenceReaderExtensions.BatchSize * FullStorageNodesKeyLength];
+            Span<byte> keys = stackalloc byte[paths.Length * keyLength];
             int count = 0;
-            int keyLength = 0;
-            for (int i = 0; i < paths.Length; i++)
+            for (int i = first; i < paths.Length; i++)
             {
                 ref readonly TreePath path = ref paths[i];
-                bool matches = kind switch
-                {
-                    RlpKeyKind.StateTop => path.Length <= StateNodesTopThreshold,
-                    RlpKeyKind.State => path.Length > StateNodesTopThreshold && path.Length <= ShortenedPathThreshold,
-                    RlpKeyKind.StateFallback or RlpKeyKind.StorageFallback => path.Length > ShortenedPathThreshold,
-                    _ => path.Length <= ShortenedPathThreshold
-                };
-                if (!matches) continue;
-                Span<byte> destination = keys[(count * keyLength)..];
-                ReadOnlySpan<byte> encoded = kind switch
+                if (!MatchesGroup(in path, kind)) continue;
+                Span<byte> destination = keys.Slice(count * keyLength, keyLength);
+                _ = kind switch
                 {
                     RlpKeyKind.StateTop => EncodeStateTopNodeKey(destination, in path),
                     RlpKeyKind.State => EncodeShortenedStateNodeKey(destination, in path),
@@ -67,7 +73,6 @@ public static partial class BaseTriePersistence
                     RlpKeyKind.Storage => EncodeShortenedStorageNodeKey(destination, address!, in path),
                     _ => EncodeFullStorageNodeKey(destination, address!, in path)
                 };
-                keyLength = encoded.Length;
                 indexes[count++] = i;
             }
             if (count < BatchTriePersistenceReaderExtensions.MinBatchSize)
@@ -75,11 +80,24 @@ public static partial class BaseTriePersistence
                 for (int i = 0; i < count; i++) values[indexes[i]] = store.Get(keys.Slice(i * keyLength, keyLength));
                 return;
             }
+            if (count == paths.Length)
+            {
+                store.GetMany<byte[]?, OwnedRlpDecoder>(keys[..(count * keyLength)], keyLength, values, default);
+                return;
+            }
 
             using ArrayPoolListRef<byte[]?> results = new(count, count);
             store.GetMany<byte[]?, OwnedRlpDecoder>(keys[..(count * keyLength)], keyLength, results.AsSpan(), default);
             for (int i = 0; i < count; i++) values[indexes[i]] = results[i];
         }
+
+        private static bool MatchesGroup(in TreePath path, RlpKeyKind kind) => kind switch
+        {
+            RlpKeyKind.StateTop => path.Length <= StateNodesTopThreshold,
+            RlpKeyKind.State => path.Length > StateNodesTopThreshold && path.Length <= ShortenedPathThreshold,
+            RlpKeyKind.StateFallback or RlpKeyKind.StorageFallback => path.Length > ShortenedPathThreshold,
+            _ => path.Length <= ShortenedPathThreshold
+        };
 
         private enum RlpKeyKind { StateTop, State, StateFallback, Storage, StorageFallback }
 

@@ -101,7 +101,7 @@ public static class Metrics
     public static IMetricObserver ReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
-    [Description("Persistence RLP requests per snapshot bundle batch, grouped by operation type")]
+    [Description("Persistence requests per snapshot bundle batch, grouped by operation type")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 2, Count = 8, LabelNames = ["type"])]
     public static IMetricObserver ReadOnlySnapshotBundleReadBatchSize { get; set; } = new NoopMetricObserver();
 
