@@ -35,9 +35,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (TCancelable.IsActive && (nuint)programCounter < (nuint)stack.CodeLength && _txTracer.IsCancelled)
             ThrowOperationCanceledException();
 
-        return !TTracingInst.IsActive && _frameCodeRunner is not null
-            ? RunFrameCodeOnRunner<TCancelable>(ref stack, ref gas, ref programCounter)
-            : RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+        if (TTracingInst.IsActive || _frameCodeRunner is null)
+            return RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+
+        // The out-of-line call takes a copy by reference, so the caller's own counter stays in a register on the
+        // dispatch-loop path instead of living in its frame.
+        nint runnerProgramCounter = programCounter;
+        EvmExceptionType result = RunFrameCodeOnRunner<TCancelable>(ref stack, ref gas, ref runnerProgramCounter);
+        programCounter = runnerProgramCounter;
+        return result;
     }
 
     /// <remarks>Out of line, so the runner path stays out of <c>RunByteCode</c>'s frame.</remarks>
