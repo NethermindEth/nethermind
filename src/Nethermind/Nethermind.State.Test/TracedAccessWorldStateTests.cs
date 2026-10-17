@@ -93,6 +93,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     }
 
     [TestCase("SetNonce")]
+    [TestCase("SubtractFromBalanceAndSetNonce")]
     [TestCase("CreateAccount")]
     [TestCase("CreateAccountIfNotExists")]
     [TestCase("DeleteAccount")]
@@ -104,6 +105,11 @@ public class TracedAccessWorldStateTests(bool parallel)
             (Action mutate, Func<bool> applied) = member switch
             {
                 "SetNonce" => ((Action)(() => tws.SetNonce(TestItem.AddressA, 1)), (Func<bool>)(() => inner.GetNonce(TestItem.AddressA) == 1)),
+                "SubtractFromBalanceAndSetNonce" => (() =>
+                {
+                    inner.AddToBalance(TestItem.AddressA, 5, Spec);
+                    tws.SubtractFromBalanceAndSetNonce(TestItem.AddressA, 2, 1, Spec);
+                }, () => inner.GetBalance(TestItem.AddressA) == 3 && inner.GetNonce(TestItem.AddressA) == 1),
                 "CreateAccount" => (() => tws.CreateAccount(TestItem.AddressB, 5), () => inner.GetBalance(TestItem.AddressB) == 5),
                 "CreateAccountIfNotExists" => (() => tws.CreateAccountIfNotExists(TestItem.AddressB, 5), () => inner.GetBalance(TestItem.AddressB) == 5),
                 _ => (() => tws.DeleteAccount(TestItem.AddressA), () => !inner.AccountExists(TestItem.AddressA))
@@ -198,6 +204,27 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.NonceChange, Is.Not.Null);
                 Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(expectedNonce));
+            }
+        }
+    }
+
+    [Test]
+    public void SubtractFromBalanceAndSetNonce_RecordsBalanceAndNonceChanges()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            tws.SubtractFromBalanceAndSetNonce(TestItem.AddressA, 30, 1, Spec);
+
+            AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ac, Is.Not.Null);
+                Assert.That(ac!.BalanceChange!.Value.Value, Is.EqualTo((UInt256)70));
+                Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(1UL));
+                Assert.That(tws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)70));
+                Assert.That(tws.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
             }
         }
     }
