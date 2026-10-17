@@ -217,6 +217,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : ref slot;
         }
 
+        /// <summary><paramref name="handlers"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
+        /// <remarks>As <see cref="AlignedSlot"/>: one <c>andi</c> lets the JIT prove the handler load aligned and drop its alignment test.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nint* AlignedTable(nint* handlers)
+        {
+            Debug.Assert(((nuint)handlers & (nuint)(sizeof(nint) - 1)) == 0);
+            return StrictAlignmentFlag.IsActive ? (nint*)((nuint)handlers & ~(nuint)(sizeof(nint) - 1)) : handlers;
+        }
+
         /// <summary>The big-endian 16-bit value in the two lowest bytes of <paramref name="bytes"/>; the bytes above them are ignored.</summary>
         /// <remarks>
         /// The full-width byte reversal leaves it zero-extended by its shift, where a 16-bit one needs one more instruction
@@ -226,6 +235,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static nuint ReadBigEndianUInt16(ulong bytes) => ZkEvmBitOperations.HasByteReverse
             ? (nuint)(BinaryPrimitives.ReverseEndianness(bytes) >> 48)
             : (nuint)(((bytes & 0xFF) << 8) | ((bytes >> 8) & 0xFF));
+
+        /// <summary>The big-endian 16-bit value in the two bytes at <paramref name="bytes"/>, which need not be aligned.</summary>
+        /// <remarks>Where <see cref="StrictAlignmentFlag"/> is on, the bytes are read one at a time, already in big-endian order: half the time they are misaligned, and there the alignment-tested load would assemble them from bytes anyway.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nuint ReadBigEndianUInt16(ref byte bytes) => StrictAlignmentFlag.IsActive
+            ? ((nuint)bytes << 8) | Unsafe.Add(ref bytes, 1)
+            : ReadBigEndianUInt16(Unsafe.ReadUnaligned<ushort>(ref bytes));
 
         /// <summary>Marks a direct tail transfer that the opcode weaver emits into the calling handler.</summary>
         /// <remarks>The target is last to match the calli evaluation stack; this method must never survive weaving.</remarks>
@@ -359,7 +375,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head -= TCondition.Inputs - 1;
                     sp = ref Moved(ref sp, -(TCondition.Inputs - 1));
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint unfused = handlers[(ushort)branch];
+                    nint unfused = AlignedTable(handlers)[(ushort)branch];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
                 }
             }
@@ -368,7 +384,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
 
         Dispatch:
-            nint next = handlers[PairAt(ref ip)];
+            nint next = AlignedTable(handlers)[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
 
         AnalyzeBranch:
@@ -494,7 +510,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -773,7 +789,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 NotStep.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -839,7 +855,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -934,7 +950,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head++;
                     sp = ref Moved(ref sp, 1);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint unfused = handlers[following];
+                    nint unfused = AlignedTable(handlers)[following];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
                 }
             }
@@ -943,7 +959,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
 
         Dispatch:
-            nint next = handlers[PairAt(ref ip)];
+            nint next = AlignedTable(handlers)[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -969,7 +985,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1005,12 +1021,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -1);
                     gas -= BaseGasCost.GasCost;
                     ip = ref Unsafe.Add(ref ip, 2);
-                    nint fused = handlers[PairAt(ref ip)];
+                    nint fused = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, fused);
                 }
 
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[following];
+                nint next = AlignedTable(handlers)[following];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1041,7 +1057,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 SwapStep<TOpCount>.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1079,7 +1095,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 // Both read off the opcode's address, so the immediate's needs no add of its own.
                 ref byte opcode = ref ip;
-                nint next = handlers[PairAt(ref Unsafe.Add(ref opcode, 2))];
+                nint next = AlignedTable(handlers)[PairAt(ref Unsafe.Add(ref opcode, 2))];
                 SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), Unsafe.Add(ref opcode, 1));
                 ip = ref Unsafe.Add(ref ip, 2);
                 head++;
@@ -1108,7 +1124,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (TryCharge(ref gas, JumpDestGasCost.GasCost))
             {
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1137,7 +1153,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1242,7 +1258,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1 + TOpCount.Count);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1280,7 +1296,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             // A fused step charges the push with the rest in one test, and short of all of it runs the shared handler.
             ref byte opcode = ref ip;
-            nuint value = ReadBigEndianUInt16(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref opcode, 1)));
+            nuint value = ReadBigEndianUInt16(ref Unsafe.Add(ref opcode, 1));
             byte following = Unsafe.Add(ref opcode, 3);
             nint analyze;
             if (following == (byte)Instruction.JUMP)
@@ -1349,11 +1365,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ip = ref Unsafe.Add(ref ip, 3);
             head++;
             sp = ref Moved(ref sp, 1);
-            nint next = handlers[following];
+            nint next = AlignedTable(handlers)[following];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
 
         Dispatch:
-            nint target = handlers[PairAt(ref ip)];
+            nint target = AlignedTable(handlers)[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, target);
 
         Analyze:
@@ -1403,7 +1419,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = handlers[PairAt(ref ip)];
+                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -1454,7 +1470,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1490,7 +1506,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1528,7 +1544,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head -= 2;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1616,7 +1632,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head -= 3;
             sp = ref Moved(ref sp, -3);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = handlers[PairAt(ref ip)];
+            nint next = AlignedTable(handlers)[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -1688,7 +1704,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = handlers[PairAt(ref ip)];
+                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -1729,7 +1745,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
                         LoadBigEndian(ref slot, ref source);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = handlers[PairAt(ref ip)];
+                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -1771,7 +1787,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ref byte source = ref Unsafe.Add(ref Unsafe.AsRef(in stack.InputData), (nint)offset);
                     LoadBigEndian(ref slot, ref source);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint next = handlers[PairAt(ref ip)];
+                    nint next = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
@@ -1833,7 +1849,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         Unsafe.Add(ref hash, 2) = limb2;
                         Unsafe.Add(ref hash, 3) = limb3;
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = handlers[PairAt(ref ip)];
+                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -1864,7 +1880,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1893,7 +1909,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -1946,7 +1962,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2009,7 +2025,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = handlers[PairAt(ref ip)];
+            nint next = AlignedTable(handlers)[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -2068,7 +2084,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = handlers[PairAt(ref ip)];
+            nint next = AlignedTable(handlers)[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -2166,7 +2182,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2216,7 +2232,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = handlers[PairAt(ref ip)];
+            nint next = AlignedTable(handlers)[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -2257,7 +2273,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
-                    nint next = handlers[PairAt(ref ip)];
+                    nint next = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
@@ -2297,7 +2313,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -2);
                     gas -= JumpIGasCost.GasCost;
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint notTaken = handlers[PairAt(ref ip)];
+                    nint notTaken = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, notTaken);
                 }
 
@@ -2316,7 +2332,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -2);
                     gas -= jumpIAndJumpDestGas;
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
-                    nint taken = handlers[PairAt(ref ip)];
+                    nint taken = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, taken);
                 }
             }
@@ -2356,7 +2372,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 sp = ref Moved(ref sp, -(TConditional.IsActive ? 2 : 1));
                 gas -= JumpAndJumpDestGas<TConditional>();
                 ip = ref Unsafe.Add(ref code, target + 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
@@ -2392,7 +2408,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 sp = ref SlotAt(ref stack.Bottom, head);
                 gas -= JumpAndJumpDestGas<TConditional>();
                 ip = ref Unsafe.Add(ref code, target + 1);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
