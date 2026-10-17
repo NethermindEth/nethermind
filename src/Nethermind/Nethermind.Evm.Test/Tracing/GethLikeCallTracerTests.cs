@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -101,7 +102,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
-    public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
+    public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, StaticCallWrite, Revert, Success, InvalidDeposit, DepositOutOfGas, PrecompileFailure, TopLevelHalt }
 
     [Test]
     public void Action_gas_matches_instruction_gas([Values] GasCheckpointCase scenario)
@@ -110,8 +111,9 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
             GasCheckpointCase.InvalidOpcode => Prepare.EvmCode.Op(Instruction.INVALID).Done,
             GasCheckpointCase.StackUnderflow => Prepare.EvmCode.Op(Instruction.POP).Done,
-            GasCheckpointCase.OutOfGas => Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done,
+            GasCheckpointCase.OutOfGas or GasCheckpointCase.StaticCallWrite => Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done,
             GasCheckpointCase.Revert => Prepare.EvmCode.Revert(0, 0).Done,
+            GasCheckpointCase.Success => Prepare.EvmCode.PushData(1).Op(Instruction.POP).STOP().Done,
             GasCheckpointCase.InvalidDeposit => Prepare.EvmCode.ForInitOf([0xEF]).Done,
             GasCheckpointCase.DepositOutOfGas => Prepare.EvmCode.ForInitOf(new byte[1024]).Done,
             _ => []
@@ -122,6 +124,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
             GasCheckpointCase.InvalidDeposit or GasCheckpointCase.DepositOutOfGas => Prepare.EvmCode.Create(childCode, 0).STOP().Done,
             GasCheckpointCase.PrecompileFailure => Prepare.EvmCode.Call(new Address("0x0000000000000000000000000000000000000009"), 50000).STOP().Done,
+            GasCheckpointCase.StaticCallWrite => Prepare.EvmCode.StaticCall(TestItem.AddressC, 50000).STOP().Done,
+            GasCheckpointCase.TopLevelHalt => Prepare.EvmCode.Op(Instruction.INVALID).Done,
             _ => Prepare.EvmCode.Call(TestItem.AddressC, 10000).STOP().Done
         };
         (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
@@ -136,12 +140,20 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         _processor.CallAndRestore(tx, block.Header, traced);
         using GethLikeTxTrace expected = tracedNative.BuildResult();
 
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)actual.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame frame = scenario == GasCheckpointCase.TopLevelHalt ? root : root.CallsSpan[0];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JsonSerializer.Serialize(actual.CustomTracerResult?.Value, SerializerOptions),
                 Is.EqualTo(JsonSerializer.Serialize(expected.CustomTracerResult?.Value, SerializerOptions)));
             Assert.That(checkpoints.GasMatches, Is.True);
-            Assert.That(checkpoints.Errors, Is.EqualTo(scenario == GasCheckpointCase.Revert ? 0 : 1));
+            Assert.That(checkpoints.Errors, Is.EqualTo(scenario is GasCheckpointCase.Revert or GasCheckpointCase.Success ? 0 : 1));
+            Assert.That(frame.GasUsed, Is.EqualTo(scenario switch
+            {
+                GasCheckpointCase.Revert => 6UL,
+                GasCheckpointCase.Success => 5UL,
+                _ => frame.Gas
+            }), "gasUsed");
         }
     }
 
@@ -699,6 +711,33 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 Is.EqualTo(collided ? rejected.GetProperty("gas").GetString() : "0x0"), "gasUsed");
             Assert.That(rejected.TryGetProperty("to", out _), Is.EqualTo(scenario == RejectedAction.CallBalance), "to");
             Assert.That(rejected.TryGetProperty("calls", out _), Is.False, "nested calls");
+        }
+    }
+
+    [Test]
+    public void Test_CallTrace_CallDepthExceeded_ConsumesNoGas()
+    {
+        // Calls itself until the self-call fails at the depth limit, then calls identity with no value and with 1 wei,
+        // and creates: four failed attempts. Before EIP-150 a call forwards what it asks for, so 2M gas gets that deep.
+        byte[] code = Bytes.FromHexString("0x60006000600060006000306102005a03f1603c576000600060006000600060046000f1506000600060006000600160046000f150600060006000f0505b00");
+        ForkActivation homestead = (ForkActivation)MainnetSpecProvider.HomesteadBlockNumber;
+        (Block block, Transaction tx) = PrepareTx(homestead, 2_000_000, code);
+        using NativeCallTracer tracer = new(tx, SpecProvider.GetSpec(homestead), GetGethTraceOptions(null));
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        NativeCallTracerCallFrame deepest = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        while (deepest.CallsSpan.Length == 1 && deepest.CallsSpan[0].Error is null)
+        {
+            deepest = deepest.CallsSpan[0];
+        }
+
+        NativeCallTracerCallFrame[] attempts = deepest.CallsSpan.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Has.Length.EqualTo(4), "attempts");
+            Assert.That(attempts.Select(static frame => frame.Error), Is.All.EqualTo("max call depth exceeded"), "errors");
+            Assert.That(attempts.Select(static frame => frame.GasUsed), Is.All.Zero, "gasUsed");
         }
     }
 
