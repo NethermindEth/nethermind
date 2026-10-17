@@ -7,6 +7,7 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
@@ -96,6 +97,51 @@ public class ScopeBalApplierTests
             Assert.That(activeAtParentDispose, Is.Zero, "all workers must have joined before parent disposal");
             Assert.That(disposedAtParent, Is.All.EqualTo(1), "every staged batch must be disposed before its parent");
             Assert.That(disposed, Is.All.EqualTo(1));
+        }
+    }
+
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    [TestCase(false, true)]
+    public void ApplyBal_KeepsOriginalFailureWhenParentDisposalAlsoFails(bool writeFails, bool codeSetterDisposalFails)
+    {
+        InvalidOperationException writeFailure = new("storage write failed");
+        InvalidOperationException parentDisposeFailure = new("parent dispose failed");
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.IWorldStateWriteBatch parent = Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>();
+        IWorldStateScopeProvider.IStorageWriteBatch child = Substitute.For<IWorldStateScopeProvider.IStorageWriteBatch>();
+        // A hand-written fake: a proxy cannot take the span Set receives.
+        CodeSetter codeSetter = new(codeSetterDisposalFails ? new InvalidOperationException("code setter dispose failed") : null);
+        scope.StartWriteBatch(Arg.Any<int>()).Returns(parent);
+        scope.Get(Arg.Any<Address>()).Returns(new Account(nonce: 1, balance: 1));
+        scope.CodeDb.BeginCodeWrite().Returns(codeSetter);
+        parent.CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>()).Returns(child);
+        if (writeFails) child.When(x => x.Set(Arg.Any<UInt256>(), Arg.Any<UInt256>())).Do(_ => throw writeFailure);
+        parent.When(x => x.Dispose()).Do(_ => throw parentDisposeFailure);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithNonceChanges(new NonceChange(1, 2))
+                .WithCodeChanges(new CodeChange(1, [0x00]))
+                .WithStorageChanges(1, new StorageChange(1, 2)).TestObject).TestObject;
+
+        Exception? failure = Assert.Catch(() => ScopeBalApplier.Apply(scope, bal, LimboLogs.Instance));
+        // Without an earlier failure, the parent's disposal is itself the original and must not be swallowed.
+        Assert.That(failure, Is.SameAs(writeFails ? writeFailure : parentDisposeFailure));
+        child.Received(1).Dispose();
+        parent.Received(1).Dispose();
+        Assert.That(codeSetter.Disposed, Is.EqualTo(1));
+    }
+
+    private sealed class CodeSetter(Exception? disposeFailure) : IWorldStateScopeProvider.ICodeSetter
+    {
+        public int Disposed { get; private set; }
+
+        public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) { }
+
+        public void Dispose()
+        {
+            Disposed++;
+            if (disposeFailure is not null) throw disposeFailure;
         }
     }
 }
