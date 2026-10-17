@@ -651,7 +651,7 @@ jobs:
           $reporter = Get-ChildItem dottrace-clt -Recurse -Filter Reporter.exe | Select-Object -First 1
           if (-not $reporter) { throw 'Reporter.exe was not found' }
           New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
-          '<Patterns><Pattern PrintCallstacks="Full">.*</Pattern></Patterns>' | Set-Content pattern.xml
+          '<Patterns><Pattern PrintCallstacks="Full">.*(WarmUp|Warmup|LoadRlps|LoadStateRlps|LoadStorageRlps|ReadRlpGroup|MultiGet|GetManyWithColumnFamily|TryLoadStateRlp|TryLoadStorageRlp|ApplyBal|WaitForBal|RecalculateStateRoot).*</Pattern></Patterns>' | Set-Content pattern.xml
           Get-ChildItem snapshots -Filter '*.zip' | ForEach-Object {
             Expand-Archive -Path $_.FullName -DestinationPath (Join-Path extracted $_.BaseName)
           }
