@@ -225,7 +225,7 @@ public partial class WarmUpPathForDeleteTests
     }
 
     [Test]
-    public void WarmUpTargets_WithIndependentTries_PreservesEveryRoot([Values(8, 16, 32)] int targetCount, [Values] bool delete)
+    public void WarmUpTargets_WithIndependentTries_PreservesEveryRoot([Values(8, 16, 32)] int targetCount, [Values] bool delete, [Values] bool pathCached)
     {
         using CountingMemDb db = new();
         PatriciaTree.WarmUpTarget[] targets = new PatriciaTree.WarmUpTarget[targetCount];
@@ -240,6 +240,7 @@ public partial class WarmUpPathForDeleteTests
             original.Commit();
             stores[i] = new(db);
             PatriciaTree tree = new(stores[i], NullLogManager.Instance) { RootHash = original.RootHash };
+            if (pathCached) tree.WarmUpPath(KeyA);
             targets[i] = new(tree, tree.RootRef);
             work[i] = new(i, new(new ValueHash256(KeyA)));
             work[work.Length - i - 1] = new(i, new(new ValueHash256(KeyA), delete));
@@ -264,8 +265,13 @@ public partial class WarmUpPathForDeleteTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.Reads, Is.EqualTo(reads), "every required path and delete sibling must be warmed");
-            Assert.That(batches, Is.Not.Empty);
-            Assert.That(batches[0].Distinct().Count(), Is.EqualTo(targetCount), "independent roots must reach the same frontier read");
+            if (pathCached && !delete)
+                Assert.That(batches, Is.Empty, "fully cached targets need no persistence read");
+            else
+            {
+                Assert.That(batches, Is.Not.Empty);
+                Assert.That(batches[0].Distinct().Count(), Is.EqualTo(targetCount), "independent roots or cold delete siblings must reach the same frontier read");
+            }
             Assert.That(batches, Has.All.Length.LessThanOrEqualTo(64));
         }
     }

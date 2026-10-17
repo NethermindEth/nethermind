@@ -28,7 +28,7 @@ public sealed partial class FlatWorldStateScope
                     PatriciaTree tree = hint.Storage?.GetCohortWarmupTree()
                         ?? (Volatile.Read(ref _warmupStateTree) ?? CreateWarmupStateTree());
                     PatriciaTree.WarmUpEntry entry = hint.Entry;
-                    if (tree.TryWarmUpCachedPath(in entry)) continue;
+                    if (count == 0 && tree.TryWarmUpCachedPath(in entry)) continue;
                     int target = 0;
                     while (target < targets.Count && !ReferenceEquals(targets[target].Tree, tree)) target++;
                     if (target == targets.Count)

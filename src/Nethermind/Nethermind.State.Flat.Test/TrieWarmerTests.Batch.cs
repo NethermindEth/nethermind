@@ -273,11 +273,15 @@ public partial class TrieWarmerTests
             for (int i = 0; i < count; i++)
             {
                 using MemDb db = new();
-                StorageTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+                RawScopedTrieStore store = new(db);
+                StorageTree tree = new(store, LimboLogs.Instance);
                 tree.Set((UInt256)(ulong)i, [(byte)(i + 1)]);
                 tree.Commit();
                 _accounts[TestItem.Addresses[i]] = new Account(1, 100, tree.RootHash, Keccak.OfAnEmptyString);
-                _rlps[TestItem.Addresses[i].ToAccountPath.ToHash256()] = db.Get(tree.RootHash.Bytes)!;
+                byte[] rlp = store.LoadRlp(TreePath.Empty, tree.RootHash)!;
+                Assert.That(rlp, Is.Not.Null.And.Not.Empty, "precondition: the committed root RLP must exist");
+                Assert.That(ValueKeccak.Compute(rlp), Is.EqualTo(tree.RootHash.ValueHash256), "precondition: every cohort fixture must provide the committed root RLP");
+                _rlps[TestItem.Addresses[i].ToAccountPath.ToHash256()] = rlp;
             }
         }
 

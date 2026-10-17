@@ -69,11 +69,20 @@ public partial class PatriciaTree
         if (node.NodeType == NodeType.Unknown && !node.HasRlp) return false;
         TrieNode? parentBranch = null;
         TreePath path = TreePath.Empty;
+        return TryWarmUpCachedPath(in entry, ref node, ref path, ref parentBranch, out _);
+    }
+
+    private bool TryWarmUpCachedPath(in WarmUpEntry entry, ref TrieNode? node, ref TreePath path,
+        ref TrieNode? parentBranch, out bool resolveOnly)
+    {
+        resolveOnly = false;
+        if (node is null) return true;
+        if (!TryResolveCachedWarmUpNode(ref node, in path)) return false;
         Span<byte> remainingKey = stackalloc byte[64];
         Nibbles.BytesToNibbleBytes(entry.Key.Bytes, remainingKey);
+        remainingKey = remainingKey[path.Length..];
         while (node is not null)
         {
-            if (!TryResolveCachedWarmUpNode(ref node, in path)) return false;
             if (node.IsLeaf || node.IsExtension)
             {
                 byte[] key = node.Key!;
@@ -85,8 +94,10 @@ public partial class PatriciaTree
                     if (siblingNibble < 0) return true;
                     path.TruncateOne();
                     path.AppendMut(siblingNibble);
-                    TrieNode? sibling = parentBranch.GetChildWithChildPath(TrieStore, ref path, siblingNibble, keepChildRef: true);
-                    return sibling is null || TryResolveCachedWarmUpNode(ref sibling, in path);
+                    node = parentBranch.GetChildWithChildPath(TrieStore, ref path, siblingNibble, keepChildRef: true);
+                    parentBranch = null;
+                    resolveOnly = true;
+                    return node is null || TryResolveCachedWarmUpNode(ref node, in path);
                 }
                 path.AppendMut(key);
                 remainingKey = remainingKey[key.Length..];
@@ -102,6 +113,7 @@ public partial class PatriciaTree
                 node = node.GetChildWithChildPath(TrieStore, ref path, nibble, keepChildRef: true);
                 remainingKey = remainingKey[1..];
             }
+            if (node is not null && !TryResolveCachedWarmUpNode(ref node, in path)) return false;
         }
         return true;
     }
@@ -165,11 +177,13 @@ public partial class PatriciaTree
                 keys[unique++] = item;
         }
 
-        ArrayPoolListRef<WarmUpFrontier> current = new(WarmUpBatchSize);
+        ArrayPoolListRef<WarmUpFrontier> current = new(keys.Length);
         ArrayPoolListRef<WarmUpFrontier> next = default;
+        ArrayPoolListRef<(TreePath Path, Hash256 Hash)> requests = default;
+        ArrayPoolListRef<byte[]?> values = default;
         try
         {
-            next = new(WarmUpBatchSize);
+            next = new(keys.Length);
             for (int first = 0; first < unique;)
             {
                 int last = first + 1;
@@ -178,8 +192,6 @@ public partial class PatriciaTree
                 if (targets[target].Root is { } root) current.Add(new(root, TreePath.Empty, first, last - first, null, target));
                 first = last;
             }
-            using ArrayPoolListRef<(TreePath Path, Hash256 Hash)> requests = new(WarmUpBatchSize);
-            using ArrayPoolListRef<byte[]?> values = new(WarmUpBatchSize, WarmUpBatchSize);
             Span<int> requestTargets = stackalloc int[WarmUpBatchSize];
             while (current.Count > 0)
             {
@@ -193,12 +205,28 @@ public partial class PatriciaTree
                         TrieNode? node = frontier.Node;
                         if (node is null) continue;
                         PatriciaTree tree = targets[frontier.Target].Tree;
-                        if (node.IsSealed && node.Keccak is not null && (frontier.Path.Length & 1) != 0)
+                        if (frontier.Count == 1)
+                        {
+                            if (tree.TryWarmUpCachedPath(in keys[frontier.Start].Entry, ref frontier.Node,
+                                    ref frontier.Path, ref frontier.ParentBranch, out bool resolveOnly))
+                            {
+                                frontier.Node = null;
+                                continue;
+                            }
+                            if (resolveOnly) frontier.Count = 0;
+                            node = frontier.Node!;
+                        }
+                        else if (node.IsSealed && node.Keccak is not null && (frontier.Path.Length & 1) != 0)
                             node = tree.TrieStore.FindCachedOrUnknown(in frontier.Path, node.Keccak);
                         frontier.Node = node;
                         frontier.RlpIndex = -1;
                         if (node.NodeType == NodeType.Unknown && !node.HasRlp && node.Keccak is { } hash)
                         {
+                            if (values.Count == 0)
+                            {
+                                requests = new(keys.Length);
+                                values = new(keys.Length, keys.Length);
+                            }
                             frontier.RlpIndex = requests.Count;
                             requestTargets[requests.Count] = frontier.Target;
                             requests.Add((frontier.Path, hash));
@@ -224,7 +252,7 @@ public partial class PatriciaTree
                         TrieNode? node = frontier.Node;
                         if (node is not null && !node.TryResolveNodeFromRlp(frontier.RlpIndex < 0 ? null : values[frontier.RlpIndex]))
                             frontier.Node = null;
-                        if (frontier.Node is not null)
+                        if (frontier.Node is not null && frontier.Count > 0)
                             targets[frontier.Target].Tree.AdvanceWarmUpFrontier(in frontier, keys[..unique], ref next);
                     }
                     catch (Exception exception) when (reader.IsUnavailable(exception))
@@ -242,6 +270,8 @@ public partial class PatriciaTree
         {
             current.Dispose();
             next.Dispose();
+            requests.Dispose();
+            values.Dispose();
         }
     }
 
@@ -305,8 +335,8 @@ public partial class PatriciaTree
         public TrieNode? Node = node;
         public TreePath Path = path;
         public readonly int Start = start;
-        public readonly int Count = count;
-        public readonly TrieNode? ParentBranch = parentBranch;
+        public int Count = count;
+        public TrieNode? ParentBranch = parentBranch;
         public int RlpIndex = -1;
     }
 }
