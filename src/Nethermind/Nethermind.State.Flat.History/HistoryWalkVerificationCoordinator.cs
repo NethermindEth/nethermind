@@ -96,6 +96,10 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
             return;
         }
 
+        // Started only to build a snap pivot's commitments: a checkpoint without a pivot image is from a run with the
+        // flag on, and this run will never resume it.
+        if (!_verifyEveryBlock && !_availability.TryGetPivotImageBlock(out _)) AbandonLeftoverWalk();
+
         if (!ReferenceEquals(_loop, Task.CompletedTask)) return;
         _loop = RunAsync();
     }
@@ -265,16 +269,33 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
     /// <summary>A history started at a snap pivot records the pivot's state at the start of its checkpoint window, so
     /// the rows rebuild the pivot's root at every block from there up to the pivot; those blocks are below the floor
-    /// and never served, and the walk compares them against the pivot's own root.</summary>
+    /// and never served, and the walk compares them against the pivot's own root. Both blocks are published together
+    /// and an unwindowed floor never moves, so they are read once.</summary>
     private sealed class PivotImageHeaderSource(IHistoryHeaderSource inner, HistoryAvailability availability) : IHistoryHeaderSource
     {
+        // A reference, so the walk's workers never see half of it.
+        private ImageRange? _image;
+
         public ValueHash256? TryGetStateRoot(ulong block) =>
-            availability.TryGetPivotImageBlock(out ulong imageBlock)
-            && availability.TryGetGlobalFloor(out ulong floor)
-            && block >= imageBlock
-            && block < floor
+            TryGetImage(out ulong imageBlock, out ulong floor) && block >= imageBlock && block < floor
                 ? inner.TryGetStateRoot(floor)
                 : inner.TryGetStateRoot(block);
+
+        private bool TryGetImage(out ulong imageBlock, out ulong floor)
+        {
+            ImageRange? range = Volatile.Read(ref _image);
+            if (range is null && availability.TryGetPivotImageBlock(out ulong image) && availability.TryGetGlobalFloor(out ulong published))
+            {
+                range = new ImageRange(image, published);
+                Volatile.Write(ref _image, range);
+            }
+
+            imageBlock = range?.ImageBlock ?? 0;
+            floor = range?.Floor ?? 0;
+            return range is not null;
+        }
+
+        private sealed record ImageRange(ulong ImageBlock, ulong Floor);
     }
 
     private string? GetRestartReason(ulong from, ulong pendingFrom)

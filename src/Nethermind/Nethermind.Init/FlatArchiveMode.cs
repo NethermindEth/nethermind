@@ -18,7 +18,9 @@ namespace Nethermind.Init;
 /// <remarks>Only settings the operator left unset change: an explicit value always stands.</remarks>
 public static class FlatArchiveMode
 {
+    // Arguments name the category as written ("FlatDb.X"); JSON and environment sources key it by the config type.
     private const string Category = "FlatDb";
+    private const string TypeCategory = nameof(FlatDbConfig);
 
     public static void Apply(IFlatDbConfig flatDbConfig, IPruningConfig pruningConfig, ISyncConfig syncConfig, IConfigProvider configProvider, ILogger logger)
     {
@@ -50,5 +52,9 @@ public static class FlatArchiveMode
             $"eth_getProof below the head is {(flatDbConfig.ArchiveProofBuildEnabled && flatDbConfig.ArchiveProofServeEnabled ? "served" : "not served")}.");
     }
 
-    private static bool IsSet(IConfigProvider configProvider, string name) => configProvider.GetRawValue(Category, name) is string;
+    // A blank value binds as unset, so it does not count as a choice either.
+    private static bool IsSet(IConfigProvider configProvider, string name) =>
+        IsValue(configProvider.GetRawValue(Category, name)) || IsValue(configProvider.GetRawValue(TypeCategory, name));
+
+    private static bool IsValue(object? raw) => raw is string value && !string.IsNullOrWhiteSpace(value);
 }

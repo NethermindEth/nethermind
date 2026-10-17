@@ -65,7 +65,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private readonly ForwardCommitmentCapture? _commitments;
     private readonly ulong _pivotImageGranularity;
     private readonly FlatLayout _layout;
-    private readonly PivotHistoryImageWriter? _pivotImage;
+    private readonly PivotHistoryImageWriter? _pivotImageWriter;
     private bool _formatStamped;
 
     public HistoryWriter(
@@ -77,10 +77,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         ILogManager logManager,
         ForwardCommitmentCapture? commitments,
         CommitmentDepthPolicy? commitmentPolicy = null,
-        PivotHistoryImageWriter? pivotImage = null)
+        PivotHistoryImageWriter? pivotImageWriter = null)
     {
         ArgumentNullException.ThrowIfNull(history);
-        _pivotImage = pivotImage;
+        _pivotImageWriter = pivotImageWriter;
         _pivotImageGranularity = Math.Max(1UL, commitmentPolicy?.Interval ?? 1UL);
         _commitments = commitments is { Enabled: true } ? commitments : null;
         ILogger logger = logManager.GetClassLogger<HistoryWriter>();
@@ -122,7 +122,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
             bool hasFloor = _availability.TryGetGlobalFloor(out ulong floor);
             if (hasFloor) Metrics.FlatHistoryFloor = (long)floor;
-            if (_pivotImage is not null) _pivotImage.Failed += DisableCapture;
+            if (_pivotImageWriter is not null) _pivotImageWriter.Failed += DisableCapture;
             if (_captureFromBlock > 0) PublishSinceBlockFloor();
             else if (hasFloor && config.HistoryRetention == HistoryRetentionMode.None)
             {
@@ -133,10 +133,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     }
 
     /// <inheritdoc/>
-    public bool HoldsFlatPersist => _enabled && _pivotImage is { Holds: true };
+    public bool HoldsFlatPersist => _enabled && _pivotImageWriter is { Holds: true };
 
     /// <inheritdoc/>
-    public Task FlatPersistReleased => _pivotImage?.Released ?? Task.CompletedTask;
+    public Task FlatPersistReleased => _pivotImageWriter?.Released ?? Task.CompletedTask;
 
     /// <inheritdoc/>
     public bool CaptureHealthy => _enabled && !_permanentGapDetected && _captureProven;
@@ -506,8 +506,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// A since-block floor already standing above the pivot stays - the state starts at the pivot, the history at the
     /// configured block. Every slice floor rises with the general one: a row below the pivot resolves through live
     /// state the sync replaced, so nothing below it may stay readable. Receipt bodies still retained in memory for
-    /// blocks the pivot passes over are not derivable afterwards. Call
-    /// at the sync-completion seam before any block processes on top.
+    /// blocks the pivot passes over are not derivable afterwards. Call at the sync-completion seam before any block
+    /// processes on top.
     /// </remarks>
     public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
     {
@@ -594,14 +594,14 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             return;
         }
 
-        if (_pivotImage is null)
+        if (_pivotImageWriter is null)
         {
             throw new InvalidOperationException(
                 $"Cannot start the unwindowed flat history at the sync pivot {pivotBlock} without the pivot image writer.");
         }
 
         DiscardPriorHistory();
-        _pivotImage.Begin(pivotBlock, pivotStateRoot, pivotBlock - pivotBlock % _pivotImageGranularity);
+        _pivotImageWriter.Begin(pivotBlock, pivotStateRoot, pivotBlock - pivotBlock % _pivotImageGranularity);
     }
 
     /// <summary>A fresh node executes genesis before it syncs, and an earlier sync attempt can leave part of an image:

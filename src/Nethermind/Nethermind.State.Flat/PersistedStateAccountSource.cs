@@ -84,6 +84,6 @@ public sealed class PersistedStateAccountSource(IPersistence persistence, ILogMa
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+            reader.TryLoadStateRlp(path, flags | ReadFlags.HintCacheMiss);
     }
 }

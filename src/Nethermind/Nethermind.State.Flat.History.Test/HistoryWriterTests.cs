@@ -1216,6 +1216,8 @@ public class HistoryWriterTests
 
         // Genesis knew AddrB; by the pivot it is gone, so the image has no row for it.
         fixture.Writer.SeedGenesis([new(AddrB, new Account(0, 42))], StateAt(0).StateRoot);
+        FlatHistoryColumns[] otherColumns = [FlatHistoryColumns.StorageClears, FlatHistoryColumns.AccountCommitments, FlatHistoryColumns.StorageCommitments, FlatHistoryColumns.TransactionChangesets];
+        foreach (FlatHistoryColumns column in otherColumns) _historyColumns.GetColumnDb(column).PutSpan([0x01, 0x02], [0x03]);
         Assert.That(fixture.Reader.TryGetAccount(0, AddrB, out _), Is.True, "precondition: genesis is readable before the sync");
 
         fixture.Writer.SeedPivot(100, pivot.StateRoot);
@@ -1228,6 +1230,10 @@ public class HistoryWriterTests
             Assert.That(fixture.Reader.TryGetAccount(100, AddrA, out AccountStruct a) && a.Balance == 500, Is.True);
             Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(100UL));
             Assert.That(fixture.Reader.IsPrunedBelowFloor(0), Is.True);
+            foreach (FlatHistoryColumns column in otherColumns)
+            {
+                Assert.That(_historyColumns.GetColumnDb(column).GetAll(), Is.Empty, $"{column} must not keep rows from before the pivot");
+            }
         }
     }
 
@@ -1278,6 +1284,8 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(source.PartitionsRead, Is.EqualTo(1), "only the partition that was not done is read again");
+            Assert.That(fixture.Availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock == 512, Is.True, "the resumed image keeps the block it was recorded at");
+            Assert.That(HasMarker(512) && HasMarker(1000), Is.True);
             Assert.That(fixture.Reader.TryGetAccount(1000, AddrA, out AccountStruct a) && a.Balance == 500, Is.True);
             Assert.That(fixture.Reader.TryGetAccount(1000, AddrB, out AccountStruct b) && b.Balance == 7, Is.True);
             Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(1000UL));
@@ -1323,17 +1331,24 @@ public class HistoryWriterTests
     public void Stopping_while_a_pivot_image_is_written_keeps_its_record_for_the_next_start()
     {
         StateId pivot = StateAt(100);
-        ListStateSource source = new((AddrA, new Account(5, 500))) { PersistedState = pivot, BlockUntilCancelled = true };
+        // Partition 0 completes, partition 1 is still being read when the node stops.
+        ListStateSource source = new((AddrA, new Account(5, 500))) { PersistedState = pivot, BlockFromPartition = 1 };
         PivotFixture fixture = CreatePivotFixture(source);
-
-        fixture.Writer.SeedPivot(100, pivot.StateRoot);
-        Assert.That(() => source.PartitionsRead, Is.GreaterThan(0).After(10_000, 10));
-        fixture.Dispose();
+        try
+        {
+            fixture.Writer.SeedPivot(100, pivot.StateRoot);
+            Assert.That(source.Blocked.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.Availability.TryGetPendingPivotImage(out PendingPivotImage? pending), Is.True);
-            Assert.That(pending!.DoneCount, Is.LessThan(PendingPivotImage.Partitions));
+            Assert.That(pending!.IsDone(0), Is.True, "a partition finished before the stop is not written again");
+            Assert.That(pending.DoneCount, Is.EqualTo(1));
             Assert.That(fixture.Availability.TryGetWatermark(out _), Is.False);
         }
     }
@@ -1360,14 +1375,20 @@ public class HistoryWriterTests
 
         public StateId PersistedState { get; set; } = StateId.PreGenesis;
         public Exception? Failure { get; init; }
-        public bool BlockUntilCancelled { get; init; }
+        public int BlockFromPartition { get; init; } = int.MaxValue;
+        public ManualResetEventSlim Blocked { get; } = new();
         public int PartitionsRead => Volatile.Read(ref _partitionsRead);
 
         public void ForEachAccount(in ValueHash256 stateRoot, byte partition, Action<ValueHash256, Account> sink, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _partitionsRead);
             if (Failure is not null) throw Failure;
-            if (BlockUntilCancelled) cancellationToken.WaitHandle.WaitOne();
+            if (partition >= BlockFromPartition)
+            {
+                Blocked.Set();
+                cancellationToken.WaitHandle.WaitOne();
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
 
             foreach ((Address address, Account account) in accounts)

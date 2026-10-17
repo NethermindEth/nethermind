@@ -78,7 +78,7 @@ public sealed class PivotHistoryImageWriter : IDisposable
         _parallelism = parallelism > 0 ? parallelism : Math.Clamp(Environment.ProcessorCount / 2, 1, 8);
         _released.SetResult();
 
-        if (config.HistoryEnabled && !rowFormat.IsV3 && availability.TryGetPendingPivotImage(out PendingPivotImage pending))
+        if (config.HistoryEnabled && !rowFormat.IsV3 && availability.TryGetPendingPivotImage(out PendingPivotImage? pending))
         {
             ResumeOrDrop(pending);
         }
@@ -252,7 +252,8 @@ public sealed class PivotHistoryImageWriter : IDisposable
         }
 
         long slots = 0;
-        using ISortedView view = _persistedStorage.GetViewBetween(lower, upper);
+        // One pass over the whole column: keep it out of the block cache that block processing reads from.
+        using ISortedView view = _persistedStorage.GetViewBetween(lower, upper, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead);
         while (view.MoveNext())
         {
             ReadOnlySpan<byte> key = view.CurrentKey;

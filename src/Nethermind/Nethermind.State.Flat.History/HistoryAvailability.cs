@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Collections.ObjectModel;
 using Nethermind.Core;
@@ -186,16 +187,6 @@ public sealed class HistoryAvailability
         return length == RootBytes && capturedRoot.SequenceEqual(stateRoot.Bytes);
     }
 
-    /// <summary>The state root captured for <paramref name="block"/>; false when it has no marker.</summary>
-    public bool TryGetMarker(ulong block, out ValueHash256 stateRoot)
-    {
-        Span<byte> key = stackalloc byte[BlockBytes];
-        BinaryPrimitives.WriteUInt64BigEndian(key, block);
-        byte[]? value = _availableBlocks.Get(key);
-        stateRoot = value is { Length: RootBytes } ? new ValueHash256(value) : default;
-        return value is { Length: RootBytes };
-    }
-
     /// <summary>The raw stamped format byte, or <c>null</c> for a fresh DB.</summary>
     internal byte? StampedFormatVersion => _availableBlocks.Get(FormatVersionKey) is { Length: 1 } value ? value[0] : null;
 
@@ -265,12 +256,12 @@ public sealed class HistoryAvailability
     }
 
     /// <summary>The snap-pivot image still being written; false when there is none.</summary>
-    public bool TryGetPendingPivotImage(out PendingPivotImage image)
+    public bool TryGetPendingPivotImage([NotNullWhen(true)] out PendingPivotImage? image)
     {
         byte[]? value = _availableBlocks.Get(PivotImagePendingKey);
         if (value is not { Length: PendingPivotImageLength })
         {
-            image = null!;
+            image = null;
             return false;
         }
 

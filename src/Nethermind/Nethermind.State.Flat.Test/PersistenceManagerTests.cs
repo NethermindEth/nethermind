@@ -643,7 +643,7 @@ public class PersistenceManagerTests
 
     private const ulong ByteBudgetMinReorgDepth = 64;
 
-    private PersistenceManager CreateByteBudgetManager(ulong byteBudget, bool enableLongFinality, int maxInMemoryBaseSnapshotCount = 160)
+    private PersistenceManager CreateByteBudgetManager(ulong byteBudget, bool enableLongFinality, int maxInMemoryBaseSnapshotCount = 160, IFlatPersistenceCaptureHook? captureHook = null)
     {
         _config.MinReorgDepth = ByteBudgetMinReorgDepth;
         _config.EnableLongFinality = enableLongFinality;
@@ -652,12 +652,39 @@ public class PersistenceManagerTests
 
         _persistenceManager.Dispose();
         _tier.Dispose();
-        _tier = new FlatTestContainer(_config, finalizedStateProvider: _finalizedStateProvider, configure: builder => builder
-            .AddSingleton(_persistence)
-            .AddSingleton(_persistedSnapshotCompactor));
+        _tier = new FlatTestContainer(_config, finalizedStateProvider: _finalizedStateProvider, configure: builder =>
+        {
+            builder
+                .AddSingleton(_persistence)
+                .AddSingleton(_persistedSnapshotCompactor);
+            if (captureHook is not null) builder.AddSingleton<IFlatPersistenceCaptureHook>(captureHook);
+        });
         _snapshotRepository = _tier.Repository;
         _persistenceManager = (PersistenceManager)_tier.Resolve<IPersistenceManager>();
         return _persistenceManager;
+    }
+
+    // The byte budget is the one persist that fires with finality stalled and the depth far below the backstop.
+    [Test]
+    public void DetermineSnapshotAction_OverByteBudget_WhileTheCaptureHookHoldsTheFlatPersist_PersistsNothing()
+    {
+        RecordingCaptureHook hook = new();
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 1, enableLongFinality: true, maxInMemoryBaseSnapshotCount: 1, hook);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+        hook.Hold();
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(CreateStateId(100));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toPersist, Is.Null, "a byte-budget persist would move the state the pivot image reads");
+        }
+
+        toPersist?.Dispose();
     }
 
     [TestCase(0, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_AboveInMemoryFloor_PrefersConversion")]
