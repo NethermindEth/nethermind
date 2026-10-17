@@ -142,13 +142,8 @@ public class DebugRpcModule(
 
         blockParameter = new BlockParameter(header!.Hash!);
 
-        if (options?.BlockOverrides is { } blockOverrides)
-        {
-            string? unsupported = blockOverrides.BeaconRoot is not null ? "beaconRoot"
-                : blockOverrides.Withdrawals is not null ? "withdrawals" : null;
-            if (unsupported is not null)
-                return ResultWrapper<GethLikeTxTrace>.Fail($"block override \"{unsupported}\" is not supported for this RPC method", ErrorCodes.InvalidInput);
-        }
+        if (options?.BlockOverrides?.BeaconRoot is not null)
+            return ResultWrapper<GethLikeTxTrace>.Fail("block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput);
 
         if (options?.StateOverrides is { } stateOverrides)
         {
