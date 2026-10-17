@@ -67,89 +67,48 @@ public static partial class AbiType
             // Empty element heads (`T[0]`) are bounded as a word so that allocations stay proportional to the input
             if (length > (UInt256)(r.Remaining / int.Max(abi.HeadSize, 32))) throw new AbiException();
 
-            return r.Scoped(((int)length, abi), static ((int, Abi<T>) ctx, ref BinarySpanReader r) =>
-            {
-                (int length, Abi<T> abi) = ctx;
-
-                T[] array = new T[length];
-                int headSize = length * abi.HeadSize;
-                int next = headSize;
-                if (abi.IsDynamic)
-                {
-                    for (int i = 0; i < length; i++)
-                    {
-                        array[i] = r.ReadOffset(abi.Read, ref next);
-                    }
-                }
-                else
-                {
-                    for (int i = 0; i < length; i++)
-                    {
-                        array[i] = abi.Read(ref r);
-                    }
-                }
-                r.Advance(next - headSize);
-
-                return array;
-            });
+            return r.ReadArray(abi, (int)length);
         },
         Write = (ref BinarySpanWriter w, T[] array) =>
         {
             UInt256.Write(ref w, (UInt256)array.Length);
-            w.Scoped((array, abi), static ((T[], Abi<T>) ctx, ref BinarySpanWriter w) =>
-            {
-                (T[] array, Abi<T> abi) = ctx;
-
-                int headSize = array.Length * abi.HeadSize;
-                int next = headSize;
-                foreach (T e in array)
-                {
-                    if (abi.IsDynamic) w.WriteOffset(abi.Write, e, ref next);
-                    else abi.Write(ref w, e);
-                }
-                w.Advance(next - headSize);
-            });
+            w.WriteArray(abi, array);
         },
         TailSize = array =>
         {
             const int lengthSize = 32;
+            if (!abi.IsDynamic) return lengthSize + array.Length * abi.HeadSize;
 
-            int elementsSize = array.Length * abi.HeadSize;
-            if (abi.TailSize is { } elementTailSize)
+            int size = lengthSize;
+            foreach (T e in array)
             {
-                foreach (T e in array)
-                {
-                    elementsSize += elementTailSize(e);
-                }
+                size += 32 + abi.Size(e);
             }
 
-            return lengthSize + elementsSize;
+            return size;
         }
     };
 
     public static Abi<T[]> Array<T>(Abi<T> abi, int length) => new()
     {
         Name = $"{abi.Name}[{length}]",
-        Read = (ref BinarySpanReader r) =>
-        {
-            T[] array = new T[length];
-            for (int i = 0; i < length; i++)
-            {
-                array[i] = abi.Read(ref r);
-            }
-
-            return array;
-        },
+        Read = (ref BinarySpanReader r) => r.ReadArray(abi, length),
         Write = (ref BinarySpanWriter w, T[] array) =>
         {
             if (array.Length != length) throw new AbiException();
-
-            foreach (T item in array)
-            {
-                abi.Write(ref w, item);
-            }
+            w.WriteArray(abi, array);
         },
-        HeadSize = length * abi.HeadSize
+        HeadSize = abi.IsDynamic ? 32 : length * abi.HeadSize,
+        TailSize = !abi.IsDynamic ? null : array =>
+        {
+            int size = 0;
+            foreach (T e in array)
+            {
+                size += 32 + abi.Size(e);
+            }
+
+            return size;
+        }
     };
 
     public static Abi<byte[]> Bytes => new()

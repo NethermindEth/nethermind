@@ -64,6 +64,33 @@ public ref struct BinarySpanReader
 
         return result;
     }
+
+    internal T[] ReadArray<T>(Abi<T> element, int length) =>
+        Scoped((element, length), static ((Abi<T>, int) ctx, ref BinarySpanReader r) =>
+        {
+            (Abi<T> element, int length) = ctx;
+
+            T[] values = new T[length];
+            int headSize = length * element.HeadSize;
+            int next = headSize;
+            if (element.IsDynamic)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values[i] = r.ReadOffset(element.Read, ref next);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values[i] = element.Read(ref r);
+                }
+            }
+            r.Advance(next - headSize);
+
+            return values;
+        });
 }
 
 public delegate void BinarySpanWriterAction<in TCtx>(TCtx ctx, ref BinarySpanWriter w);
@@ -125,6 +152,21 @@ public ref struct BinarySpanWriter
 
         _position = restorePosition;
     }
+
+    internal void WriteArray<T>(Abi<T> element, T[] values) =>
+        Scoped((element, values), static ((Abi<T>, T[]) ctx, ref BinarySpanWriter w) =>
+        {
+            (Abi<T> element, T[] values) = ctx;
+
+            int headSize = values.Length * element.HeadSize;
+            int next = headSize;
+            foreach (T value in values)
+            {
+                if (element.IsDynamic) w.WriteOffset(element.Write, value, ref next);
+                else element.Write(ref w, value);
+            }
+            w.Advance(next - headSize);
+        });
 }
 
 
