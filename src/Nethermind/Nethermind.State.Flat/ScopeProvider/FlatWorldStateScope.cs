@@ -274,52 +274,24 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
-                bool IsWarmupCancelled() => token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer;
-
-                void QueueAccountWarmup(ReadOnlyAccountChanges account)
-                {
-                    if (account.HasStateChanges && _snapshotBundle.ShouldQueuePrewarm(account.Address))
-                    {
-                        Interlocked.Increment(ref _outstandingWarmups);
-                        if (!_warmer.PushAddressJob(this, account.Address, snapshot)) CompleteWarmup();
-                    }
-                }
-
                 void WarmAccount(int i)
                 {
-                    if (IsWarmupCancelled()) return;
-                    ReadOnlyAccountChanges account = accountChanges[i];
-                    QueueAccountWarmup(account);
-                    WarmAccountReads(i, account, _snapshotBundle.GetAccount(account.Address));
-                }
+                    if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
-                void WarmAccountBatch(int batch)
-                {
-                    if (IsWarmupCancelled()) return;
-                    int first = batch * BatchPersistenceReaderExtensions.BatchSize;
-                    int count = Math.Min(BatchPersistenceReaderExtensions.BatchSize, accountCount - first);
-                    using ArrayPoolListRef<Address> inputs = new(count, count);
-                    using ArrayPoolListRef<Account?> results = new(count, count);
-                    for (int i = 0; i < count; i++)
-                    {
-                        if (IsWarmupCancelled()) return;
-                        ReadOnlyAccountChanges account = accountChanges[first + i];
-                        inputs[i] = account.Address;
-                        QueueAccountWarmup(account);
-                    }
-                    _snapshotBundle.GetAccounts(inputs.AsSpan(), results.AsSpan());
-                    for (int i = 0; i < count; i++)
-                    {
-                        if (IsWarmupCancelled()) return;
-                        WarmAccountReads(first + i, accountChanges[first + i], results[i]);
-                    }
-                }
-
-                void WarmAccountReads(int i, ReadOnlyAccountChanges ac, Account? account)
-                {
+                    ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
+
+                    if (ac.HasStateChanges && _snapshotBundle.ShouldQueuePrewarm(address))
+                    {
+                        Interlocked.Increment(ref _outstandingWarmups);
+                        if (!_warmer.PushAddressJob(this, address, snapshot)) CompleteWarmup();
+                    }
+
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
+
+                    Account? account = _snapshotBundle.GetAccount(address);
+                    if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
                     if (sink is not null && sink.StillNeeded(address, out _))
                         sink.OnAccountRead(address, account);
@@ -364,15 +336,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     WarmReadPool pool = _warmReadPool.Value;
                     int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, accountCount / 64));
-                    if (accountCount >= BatchPersistenceReaderExtensions.MinBatchSize)
-                    {
-                        int batches = (accountCount - 1) / BatchPersistenceReaderExtensions.BatchSize + 1;
-                        pool.Run(batches, workers, WarmAccountBatch, token);
-                    }
-                    else
-                    {
-                        pool.Run(accountCount, workers, WarmAccount, token);
-                    }
+                    pool.Run(accountCount, workers, WarmAccount, token);
                 }
                 else
                 {
@@ -430,13 +394,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         WarmReadPool pool = _warmReadPool.Value;
         int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
 
-        if (idx < BatchPersistenceReaderExtensions.MinBatchSize)
+        if (idx < 2 * BatchPersistenceReaderExtensions.BatchSize)
         {
             pool.Run(idx, workers, j =>
             {
-                if (_pausePrewarmer) return;
+                if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;
                 (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-                ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+                ReadSlotToSink(sink, address, in slot, selfDestructIdx, sequenceId);
             }, parallelOptions.CancellationToken);
             return;
         }
@@ -468,11 +432,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }, parallelOptions.CancellationToken);
     }
 
-    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
+    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx, int sequenceId)
     {
         StorageCell cell = new(address, in slot);
         if (!sink.StillNeeded(in cell)) return;
         _snapshotBundle.GetSlot(address, in slot, selfDestructIdx, out UInt256? value);
+        if (_pausePrewarmer || _hintSequenceId != sequenceId) return;
         sink.OnStorageRead(in cell, value.GetValueOrDefault());
     }
 

@@ -1930,7 +1930,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [TestCase(1, TestName = "HintBal_OneAccount_DeliversScalarReads")]
-    [TestCase(8, TestName = "HintBal_EightAccounts_DeliversBatchReads")]
+    [TestCase(8, TestName = "HintBal_EightAccounts_DeliversAllReads")]
     [TestCase(65, TestName = "HintBal_MultipleChunks_DeliversAllReads")]
     public async Task HintBal_WithMixedAccountAndSlotPresence_DeliversExpectedValues(int count)
     {
@@ -1973,7 +1973,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public async Task HintBal_WhenPausedDuringAccountRead_DoesNotPublishBatchResults()
+    public async Task HintBal_WhenPausedDuringAccountRead_DoesNotPublishPendingResults()
     {
         using WarmReadPool pool = new(1);
         using TestContext ctx = new(warmReadPool: pool);
@@ -1988,7 +1988,32 @@ public class FlatWorldStateScopeProviderTests
         RecordingBalReaderSink sink = new();
         await scope.HintBal(CreateBal(changes), sink);
 
-        Assert.That(sink.AccountReads, Is.Empty, "pausing after a batch starts must suppress publication of its results");
+        Assert.That(sink.AccountReads, Is.Empty, "pausing during the read must suppress publication of its result");
+    }
+
+    [TestCase(1, TestName = "HintBal_ScalarSlotRead_PauseSuppressesPublication")]
+    [TestCase(129, TestName = "HintBal_BatchedSlotRead_PauseSuppressesPublication")]
+    public async Task HintBal_WhenPausedDuringSlotRead_DoesNotPublishPendingResults(int slots)
+    {
+        using WarmReadPool pool = new(1);
+        using TestContext ctx = new(warmReadPool: pool);
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(new Account(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString));
+        ctx.PersistenceReader.TryGetSlot(address, Arg.Any<UInt256>(), ref Arg.Any<UInt256>()).Returns(call =>
+        {
+            scope._pausePrewarmer = true;
+            call[2] = UInt256.One;
+            return true;
+        });
+        UInt256[] keys = new UInt256[slots];
+        for (int i = 0; i < keys.Length; i++) keys[i] = (UInt256)(ulong)i;
+        ReadOnlyAccountChanges changes = new(address, [], keys, [], [], []);
+        RecordingBalReaderSink sink = new();
+
+        await scope.HintBal(CreateBal(changes), sink);
+
+        Assert.That(sink.StorageReads, Is.Empty, "pausing during a slot read must stop scalar and bulk publication alike");
     }
 
     [Test]
