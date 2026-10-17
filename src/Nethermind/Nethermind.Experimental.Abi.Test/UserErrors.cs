@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -88,10 +89,91 @@ public class UserErrors
             "8000000000000000000000000000000000000000000000000000000000000000").SetName("array length overflows int");
     }
 
+    private static IEnumerable<TestCaseData> NonCanonicalOffsetTestCases()
+    {
+        AbiSignature<(string, string)> twoStrings = new AbiSignature("f").With(AbiType.String, AbiType.String);
+
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.Bytes)),
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the array
+            "0000000000000000000000000000000000000000000000000000000000000003" + // Length of the array
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to first element
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to second element, aliasing the first
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to third element, aliasing the first
+            "0000000000000000000000000000000000000000000000000000000000000003" + // Length of the shared element
+            "6162630000000000000000000000000000000000000000000000000000000000"   // "abc"
+        ).SetName("bytes[] elements aliasing one tail");
+        yield return MalformedInput(twoStrings,
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first string
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second string, aliasing the first
+            "0000000000000000000000000000000000000000000000000000000000000005" + // Length of the shared string
+            "68656c6c6f000000000000000000000000000000000000000000000000000000"   // "hello"
+        ).SetName("tuple components aliasing one tail");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.String),
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to the string, one word past the head
+            "0000000000000000000000000000000000000000000000000000000000000000" + // Gap
+            "0000000000000000000000000000000000000000000000000000000000000005" + // Length of the string
+            "68656c6c6f000000000000000000000000000000000000000000000000000000"   // "hello"
+        ).SetName("gap before tail");
+        yield return MalformedInput(twoStrings,
+            "0000000000000000000000000000000000000000000000000000000000000080" + // Offset to first string, pointing at the second tail
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second string, pointing at the first tail
+            "0000000000000000000000000000000000000000000000000000000000000005" + // Length of second string
+            "776f726c64000000000000000000000000000000000000000000000000000000" + // "world"
+            "0000000000000000000000000000000000000000000000000000000000000005" + // Length of first string
+            "68656c6c6f000000000000000000000000000000000000000000000000000000"   // "hello"
+        ).SetName("tails out of order");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.UInt256, AbiType.String),
+            "0000000000000000000000000000000000000000000000000000000000000003" + // First argument, also read as the length of the string
+            "0000000000000000000000000000000000000000000000000000000000000000"   // Offset to the string, pointing at the first head
+        ).SetName("offset into the head area");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.Tuple(AbiType.UInt256, AbiType.String))),
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the array
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of the array
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to first element
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First component of first element, `1`
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to second component of first element, one word past the head
+            "0000000000000000000000000000000000000000000000000000000000000000" + // Gap
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second component of first element
+            "6100000000000000000000000000000000000000000000000000000000000000"   // "a"
+        ).SetName("gap before tail in tuple inside array");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Tuple(AbiType.UInt256, AbiType.Array(AbiType.String))),
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the tuple
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First component of the tuple, `1`
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component of the tuple
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first element
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second element, aliasing the first
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of the shared element
+            "6100000000000000000000000000000000000000000000000000000000000000"   // "a"
+        ).SetName("string[] elements aliasing one tail inside tuple");
+    }
+
+    private static IEnumerable<TestCaseData> TrailingDataTestCases()
+    {
+        AbiSignature<(uint, bool)> baz = new AbiSignature("baz").With(AbiType.UInt32, AbiType.Bool);
+        AbiSignature<string> str = new AbiSignature("f").With(AbiType.String);
+
+        const string bazBody =
+            "0000000000000000000000000000000000000000000000000000000000000045" + // `69`
+            "0000000000000000000000000000000000000000000000000000000000000001";  // `true`
+        const string strBody =
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the string
+            "0000000000000000000000000000000000000000000000000000000000000005" + // Length of the string
+            "68656c6c6f000000000000000000000000000000000000000000000000000000";  // "hello"
+        const string word = "0000000000000000000000000000000000000000000000000000000000000000";
+
+        yield return MalformedInput(baz, bazBody + word).SetName("static arguments followed by a word");
+        yield return MalformedInput(baz, bazBody + "00").SetName("static arguments followed by a byte");
+        yield return MalformedInput(str, strBody + word).SetName("dynamic argument followed by a word");
+        yield return MalformedInput(str, strBody + "00").SetName("dynamic argument followed by a byte");
+    }
+
     private static TestCaseData MalformedInput<T>(AbiSignature<T> signature, string body) =>
         new(signature, Bytes.Concat(signature.MethodId(), Bytes.FromHexString(body)));
 
     [TestCaseSource(nameof(MalformedInputTestCases))]
+    [TestCaseSource(nameof(NonCanonicalOffsetTestCases))]
+    [TestCaseSource(nameof(TrailingDataTestCases))]
     public void Decode_MalformedInput<T>(AbiSignature<T> signature, byte[] input) =>
         Assert.Throws<AbiException>(() => AbiCodec.Decode(signature, input));
 
@@ -104,7 +186,7 @@ public class UserErrors
             Throws.TypeOf<AbiException>().With.InnerException.TypeOf<ArgumentOutOfRangeException>());
     }
 
-    private static IEnumerable<TestCaseData> ArrayLengthBeyondInputTestCases()
+    private static IEnumerable<TestCaseData> AmplifyingInputTestCases()
     {
         yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.UInt256)),
             "0000000000000000000000000000000000000000000000000000000000000020" +
@@ -112,15 +194,22 @@ public class UserErrors
         yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.String)),
             "0000000000000000000000000000000000000000000000000000000000000020" +
             "0000000000000000000000000000000000000000000000000000000000989680").SetName("string[] length beyond input");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.Bytes)),
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the array
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Length of the array, 32
+            string.Concat(Enumerable.Repeat("0000000000000000000000000000000000000000000000000000000000000400", 32)) + // Offsets to all 32 elements, aliasing the first
+            "0000000000000000000000000000000000000000000000000000000000000400" + // Length of the shared element, 1 KB
+            new string('0', 2 * 1024) // Contents of the shared element
+        ).SetName("bytes[] elements aliasing one 1 KB tail");
     }
 
-    [TestCaseSource(nameof(ArrayLengthBeyondInputTestCases))]
-    public void Decode_ArrayLengthBeyondInput_ThrowsBeforeAllocating<T>(AbiSignature<T> signature, byte[] input)
+    [TestCaseSource(nameof(AmplifyingInputTestCases))]
+    public void Decode_AmplifyingInput_ThrowsBeforeAllocating<T>(AbiSignature<T> signature, byte[] input)
     {
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         Assert.Throws<AbiException>(() => AbiCodec.Decode(signature, input));
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
 
-        Assert.That(allocated, Is.LessThan(1_000_000));
+        Assert.That(allocated, Is.LessThan(16 * 1024));
     }
 }
