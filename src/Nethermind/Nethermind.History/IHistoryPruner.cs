@@ -22,6 +22,9 @@ public interface IHistoryPruner
 
     event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
 
+    /// <summary>Epochs of history the <c>Rolling</c> mode keeps: the configured retention, or the chain's floor when unset.</summary>
+    ulong RetentionEpochs { get; }
+
     void SchedulePruneHistory();
 
     /// <summary>

@@ -40,6 +40,7 @@ public class ChainSpecLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.MinEpochsForBlockRequests));
             Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
             Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
             Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
@@ -108,6 +109,7 @@ public class ChainSpecLoaderTests
 
             Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0L));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1677557088));
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "Glamsterdam is live");
         }
     }
 

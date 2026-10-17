@@ -24,6 +24,7 @@
     "accountStartNonce": "0x0",
     "maximumExtraDataSize": "0x20",
     "minGasLimit": "0x1388",
+    "minHistoryRetentionEpochs": "0x37db",
     "networkId": "0xaa36a7",
     "forkBlock": "0x0",
     "maxCodeSize": "0x6000",
