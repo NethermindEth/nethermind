@@ -28,10 +28,7 @@ using Nethermind.TxPool;
 namespace Nethermind.IlEvm;
 
 /// <summary>Counts every contract's frames and interpreted opcodes, for <see cref="IlEvmSettings.Profile"/>, and logs the busiest.</summary>
-/// <remarks>
-/// The log lines are the input for the shipped list: <c>IL-EVM profile &lt;rank&gt; &lt;keccak&gt; ops=… frames=… size=… cum=…</c>,
-/// busiest first by interpreted opcodes. Nothing is compiled while profiling, so the counts are the interpreter's work.
-/// </remarks>
+/// <remarks>The log lines are the input for the shipped list. Nothing is compiled while profiling, so the counts are the interpreter's work.</remarks>
 public static class IlEvmProfile
 {
     private sealed class Entry(int size)
@@ -119,7 +116,6 @@ public enum IlEvmCodeShape : byte
 {
     /// <summary>Straight-line code: a visit runs fewer opcodes than a tenth of the code's size.</summary>
     Line,
-    /// <summary>Between straight-line code and loops.</summary>
     Mixed,
     /// <summary>Loops: a visit runs at least as many opcodes as the code has bytes.</summary>
     Loop,
@@ -138,18 +134,9 @@ public enum IlEvmUse : byte
 
 /// <summary>The contracts shipped with the plugin to compile at startup: code hashes, busiest first.</summary>
 /// <remarks>
-/// <para>
-/// A list line names its contract by the first token of 64 hex digits and may go on with fields: the profile's
-/// <c>ops= frames= size=</c>, the measured list's <c>score= use= minv= L=</c>, and <c>qminv= code=</c>. Lines starting
-/// <c># calib</c> carry the constants the list's Stats runs fitted.
-/// </para>
-/// <para>
-/// An entry with <c>code=</c> carries its bytecode, and compiles from it rather than from the code database: the code of
-/// a state override, which read-only calls send with every request, is in no code database. Its contract is found by its
-/// content (<see cref="IlRuntime.ShippedByContent"/>), as no cache stamps override code with its keccak, and by its
-/// keccak where a cache does. A list file <c>NETHERMIND_ILEVM_PRECOMPILE_LIST</c> names may carry such entries; the
-/// plugin ships none (<see cref="LoadRpcList"/>).
-/// </para>
+/// An entry with <c>code=</c> compiles from the bytecode it carries: state-override code, which read-only calls send, is
+/// in no code database. Its contract is found by content (<see cref="IlRuntime.ShippedByContent"/>) where no cache stamped
+/// the code with its keccak. The plugin ships no such entries (<see cref="LoadRpcList"/>).
 /// </remarks>
 public static class IlEvmPrecompileList
 {
@@ -161,23 +148,16 @@ public static class IlEvmPrecompileList
     /// <summary>The variable naming a list file that replaces the embedded lists, for experiments.</summary>
     public const string OverrideVariable = "NETHERMIND_ILEVM_PRECOMPILE_LIST";
 
-    /// <summary>The prefix of a calibration line.</summary>
     public const string CalibrationPrefix = "# calib";
 
     /// <summary>A list entry: the code hash, and the fields its line gives beside it.</summary>
     /// <param name="Ops">The <c>ops=</c> count: the opcodes the code ran on the interpreter in the profile.</param>
     /// <param name="Frames">The <c>frames=</c> count: the frames the code ran in the profile.</param>
-    /// <param name="Size">The <c>size=</c> count: the code's size in bytes.</param>
     /// <param name="Score">The <c>score=</c>: the nanoseconds per block compiling the contract saved in the Stats runs.</param>
-    /// <param name="Use">The <c>use=</c> letters, <c>m</c> and <c>w</c>: the block-processing threads compiled code may run the contract on.</param>
     /// <param name="MinVisitLog2">The <c>minv=</c>: the log2 of the visit length from which block processing's runner admits the contract.</param>
-    /// <param name="Shape">The <c>L=</c>: <c>line</c>, <c>mixed</c> or <c>loop</c>.</param>
-    /// <param name="QueryMinVisitLog2">
-    /// The <c>qminv=</c>: the log2 of the visit length from which the read-only queries' runner admits the contract from a
-    /// visit's first part, its visits of a key not learned yet admitted too rather than rented; 0 admits every visit, from
-    /// the first. Null leaves the contract to the runner's own thresholds, learned visit by visit.
-    /// </param>
-    /// <param name="Code">The <c>code=</c>: the contract's bytecode, which the startup compile compiles once its keccak matches <paramref name="Hash"/>; null for code the code database holds.</param>
+    /// <param name="QueryMinVisitLog2">The <c>qminv=</c>: the log2 of the visit length from which the read-only queries' runner admits the contract
+    /// from a visit's first part, visits of keys not learned yet too, rather than rented; 0 admits every visit; null leaves it to the runner's learned thresholds.</param>
+    /// <param name="Code">The <c>code=</c>: the bytecode, compiled once its keccak matches <paramref name="Hash"/>; null for code the code database holds.</param>
     public readonly record struct Entry(ValueHash256 Hash, long? Ops = null, long? Frames = null, int? Size = null,
         double? Score = null, IlEvmUse? Use = null, int? MinVisitLog2 = null, IlEvmCodeShape? Shape = null,
         int? QueryMinVisitLog2 = null, byte[]? Code = null)
@@ -197,11 +177,10 @@ public static class IlEvmPrecompileList
     /// <summary>The shipped list, or the one in <c>NETHERMIND_ILEVM_PRECOMPILE_LIST</c> when that names a file, for experiments.</summary>
     public static List<ValueHash256> Load() => Load(IlEvmPrecompileSource.Shipped);
 
-    /// <summary>The hashes of <paramref name="source"/>'s list, or of the file <c>NETHERMIND_ILEVM_PRECOMPILE_LIST</c> names, which overrides either.</summary>
+    /// <summary>The hashes of <paramref name="source"/>'s list, or of the override file.</summary>
     public static List<ValueHash256> Load(IlEvmPrecompileSource source) => [.. LoadEntries(source, out _).Select(static e => e.Hash)];
 
-    /// <summary>The entries of <paramref name="source"/>'s list, or of the file <c>NETHERMIND_ILEVM_PRECOMPILE_LIST</c> names, which overrides either.</summary>
-    /// <param name="origin">Where the entries came from, for the log: the source's name, or the file's path.</param>
+    /// <summary>The entries of <paramref name="source"/>'s list, or of the override file; <paramref name="origin"/> names the source or the file's path.</summary>
     public static List<Entry> LoadEntries(IlEvmPrecompileSource source, out string origin) => LoadList(source, out origin).Entries;
 
     /// <summary>As <see cref="LoadEntries"/>, with the list's calibration lines.</summary>
@@ -218,12 +197,9 @@ public static class IlEvmPrecompileList
     }
 
     /// <summary>
-    /// The RPC list: contracts read-only calls send as state-override code, each entry with its bytecode, which the
-    /// Adaptive rules compile at startup ahead of the block list. The plugin ships no RPC list, so this is empty; a list
-    /// file <c>NETHERMIND_ILEVM_PRECOMPILE_LIST</c> names may carry entries with their code (<c>code=</c>) instead, which
-    /// then compile as part of the block list. Tests set <see cref="RpcLinesForTests"/>.
+    /// The RPC list: state-override contracts with their bytecode, which the Adaptive rules compile ahead of the block list.
+    /// None ships, so it is empty but in tests (<see cref="RpcLinesForTests"/>); an override file's <c>code=</c> entries compile in its block list instead.
     /// </summary>
-    /// <param name="origin">Where the entries came from, for the log.</param>
     public static ListFile LoadRpcList(out string origin)
     {
         if (OverridePath() is { } path)
@@ -236,10 +212,8 @@ public static class IlEvmPrecompileList
         return RpcLinesForTests is { } lines ? ParseList(lines) : new ListFile([], []);
     }
 
-    /// <summary>The RPC list's lines in tests; null, as in a node, for none.</summary>
     internal static IReadOnlyList<string>? RpcLinesForTests { get; set; }
 
-    /// <summary>An embedded list; empty when the plugin carries no such resource.</summary>
     private static ListFile ParseResource(string name)
     {
         using Stream? stream = typeof(IlEvmPrecompileList).Assembly.GetManifestResourceStream(name);
@@ -253,19 +227,15 @@ public static class IlEvmPrecompileList
     }
 
     /// <summary>
-    /// One code hash per line, the first token of 64 hex digits (with or without 0x); blank lines, lines starting with #,
-    /// and the stats dump's lines are skipped; duplicates once.
+    /// One code hash per line, the first token of 64 hex digits (with or without 0x), duplicates once. Blank lines, # lines and
+    /// the stats dump's lines (<see cref="IlEvmStats.LinePrefix"/>) are skipped, so a log with both reads as the profile's lines alone.
     /// </summary>
-    /// <remarks>
-    /// The stats dump's lines (<see cref="IlEvmStats.LinePrefix"/>) rank contracts by time and carry no <c>ops=</c> or
-    /// <c>frames=</c>, so a log with both a stats dump and the profile's lines reads as the profile's lines alone.
-    /// </remarks>
     public static List<ValueHash256> Parse(IEnumerable<string> lines) => [.. ParseEntries(lines).Select(static e => e.Hash)];
 
-    /// <summary>As <see cref="Parse"/>, with the fields that follow the hash on its line, as the profile and the list tooling write them.</summary>
+    /// <summary>As <see cref="Parse"/>, with the fields that follow the hash on its line.</summary>
     public static List<Entry> ParseEntries(IEnumerable<string> lines) => ParseList(lines).Entries;
 
-    /// <summary>As <see cref="ParseEntries"/>, with the calibration lines, <c># calib</c> and what follows, kept in order without the prefix.</summary>
+    /// <summary>As <see cref="ParseEntries"/>, with the <c># calib</c> lines in order, without the prefix.</summary>
     public static ListFile ParseList(IEnumerable<string> lines)
     {
         List<Entry> entries = [];
@@ -352,8 +322,7 @@ public static class IlEvmPrecompileList
             token.StartsWith(name, StringComparison.Ordinal) &&
             long.TryParse(token.AsSpan(name.Length), NumberStyles.None, CultureInfo.InvariantCulture, out long value) ? value : null;
 
-        // Hex digits, with or without 0x, two to a byte; anything else, or nothing, is no code, and the entry is one of the
-        // code database's.
+        // Anything but whole hex bytes is no code: the entry then compiles from the code database.
         static byte[]? Code(ReadOnlySpan<char> hex)
         {
             if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
@@ -363,7 +332,6 @@ public static class IlEvmPrecompileList
             return Convert.FromHexString(hex);
         }
 
-        // The letters m and w, in any order; - or nothing for neither.
         static IlEvmUse Use(ReadOnlySpan<char> letters)
         {
             IlEvmUse use = IlEvmUse.None;
@@ -385,7 +353,6 @@ public static class IlEvmPrecompileList
     }
 
     /// <summary>The entries whose profile ran at least <paramref name="minOpsPerFrame"/> opcodes per frame, in order; those without the counts are kept.</summary>
-    /// <param name="skipped">How many entries were left out.</param>
     public static List<Entry> WithMinOpsPerFrame(List<Entry> entries, int minOpsPerFrame, out int skipped)
     {
         List<Entry> kept = minOpsPerFrame <= 0 ? entries : [.. entries.Where(e => e.OpsPerFrame is not { } perFrame || perFrame >= minOpsPerFrame)];
@@ -396,35 +363,11 @@ public static class IlEvmPrecompileList
 
 /// <summary>Compiles the shipped contracts before blocks are processed or calls served, and arms the profile's and the stats' dumps.</summary>
 /// <remarks>
-/// <para>
 /// Runs after the blockchain is initialized, so the code database, the head and the specs are there, and before the
 /// block processor starts and the RPC modules (the Engine API among them) are registered: a client is not ready for
 /// payloads or calls until the compile is done, and none of it competes with block processing.
-/// </para>
-/// <para>
-/// Under the Adaptive rules the list compiles at every startup, whatever the scope, the source of live profiling or the
-/// kind of node, and at genesis too, for the spec of the wall clock; the compile stops at
-/// <see cref="IIlEvmConfig.StartupCompileSeconds"/> and leaves the rest to the inter-block windows; entries whose code
-/// the code database lacks are kept for a retry once the node has synced it (<see cref="IlShippedBacklog"/>). An RPC list
-/// (<see cref="IlEvmPrecompileList.LoadRpcList"/>, none shipped) would compile first, from the code its entries carry; list
-/// entries that run every visit compiled get an ahead copy for the node's first calls (<see cref="IlWarmUp.ArmAhead"/>).
-/// The Legacy and measurement rules compile as they did: the block list alone, for the spec 12 seconds after the head,
-/// and nothing at genesis.
-/// </para>
-/// <para>
-/// Under the Simple rules the block list's first <see cref="IIlEvmConfig.ListSize"/> entries compile, whole, with no
-/// deadline and no RPC list, for the spec the Adaptive rules take, at genesis too; then the live promotion rounds start
-/// (<see cref="IlSimple"/>), which also retry the entries the code database lacked.
-/// </para>
-/// <para>
-/// Under the Adaptive rules the step also attaches the inter-block scheduler (<see cref="IlScheduler"/>) to block
-/// processing's events, before the compile, with live profiling's scorer (<see cref="IlLive"/>) on its maintenance;
-/// compiles ahead what a frame part may call (<see cref="IlWarmUp"/>); and starts the scheduler's workers once the
-/// compile is done.
-/// </para>
 /// </remarks>
-/// <param name="mainProcessingContext">Block processing, whose blocks the stats count and whose branches the scheduler's windows fall between; resolved only for <see cref="IlEvmSettings.Stats"/> and the Adaptive rules.</param>
-/// <param name="blocksConfig">Block processing's settings: the slot length the spec of the next block is taken at and the scheduler's guard time at the tip, and the pre-warm handoff the stats warn about.</param>
+/// <param name="mainProcessingContext">Resolved only for <see cref="IlEvmSettings.Stats"/> and the Adaptive rules.</param>
 /// <param name="chainHeadInfo">Whether the node syncs, during which the scheduler opens no window; the block tree tells, without it.</param>
 [RunnerStepDependencies(dependencies: [typeof(InitializeBlockchain)], dependents: [typeof(StartBlockProcessor), typeof(RegisterRpcModules)])]
 public sealed class IlEvmStartupStep(
@@ -445,7 +388,6 @@ public sealed class IlEvmStartupStep(
         if (!IlEvmSettings.Enabled)
             return Task.CompletedTask;
 
-        // What ran compiled, once the node stops: in a benchmark's log, next to its numbers.
         processExit.Token.Register(LogSummary);
         if (_logger.IsInfo)
             _logger.Info($"IL-EVM: mode {IlEvmSettings.Mode}, scope {IlEvmSettings.Scope}, read-only query surfaces {DescribeSurfaces()}; the exit line counts each surface's frame parts offered and run compiled");
@@ -505,8 +447,7 @@ public sealed class IlEvmStartupStep(
         {
             try
             {
-                // What a frame part may call is compiled before any part runs, not on block processing's thread at its
-                // first parts.
+                // What a frame part may call compiles before any part runs, not on block processing's thread at its first parts.
                 PrepareFramePathSafely();
                 if (config.Precompile)
                     PrecompileSafely(cancellationToken);
@@ -518,7 +459,6 @@ public sealed class IlEvmStartupStep(
         }, cancellationToken);
     }
 
-    /// <summary>Compiles the Adaptive rules' frame path ahead (<see cref="IlWarmUp"/>); a failure leaves it to the first parts, as before.</summary>
     private void PrepareFramePathSafely()
     {
         try
@@ -536,10 +476,7 @@ public sealed class IlEvmStartupStep(
         }
     }
 
-    /// <summary>
-    /// Attaches the inter-block scheduler to the main processing context's branch events and the block tree's new heads;
-    /// a node whose block processing cannot be reached gets one that never sees a block, idle from the start.
-    /// </summary>
+    /// <summary>Attaches the inter-block scheduler; where block processing cannot be reached, it never sees a block and idles from the start.</summary>
     private IlScheduler AttachScheduler()
     {
         IBranchProcessor? branchProcessor = null;
@@ -567,7 +504,6 @@ public sealed class IlEvmStartupStep(
 
         IlSchedulerOptions options = IlSchedulerOptions.From(config, blocksConfig);
         IlScheduler scheduler = IlScheduler.Attach(options, branchProcessor, blockTree, chainHeadInfo, specProvider, dbProvider?.CodeDb, _logger, processingQueue: processingQueue);
-        // Live profiling scores, promotes and demotes at the windows' maintenance, for the source Prefer picks.
         IlScheduler.ScorerTick = IlLive.Tick;
         processExit.Token.Register(scheduler.Stop);
         if (_logger.IsInfo)
@@ -584,7 +520,6 @@ public sealed class IlEvmStartupStep(
         return scheduler;
     }
 
-    /// <summary>Counts blocks as they start, for each code's distinct blocks, and logs the stats at shutdown.</summary>
     private void ArmStats(int top)
     {
         int every = Math.Max(0, config.StatsSnapshotBlocks);
@@ -603,8 +538,7 @@ public sealed class IlEvmStartupStep(
                 (config.Scope == IlEvmScope.All ? "in block processing and on the other threads" : $"in read-only queries only, of {DescribeSurfaces()} (the node's own block processing runs no runner with Scope=Rpc)") +
                 $"; the self-check is off; the {top} contracts with the most time, and every contract that ran compiled, are logged at shutdown, with each surface's parts offered and compiled in the header");
 
-        // Replayed transactions run nothing on block processing: which ones are replayed depends on how far warming got,
-        // which compiled code changes, so the block-processing parts of two runs would not be the same parts.
+        // Replayed transactions run nothing on block processing, and which are replayed depends on warming, which compiled code changes.
         if (config.Scope == IlEvmScope.All && blocksConfig.PreWarming != PreWarmMode.None && blocksConfig.PreWarmHandoff && _logger.IsWarn)
             _logger.Warn("IL-EVM timing: Blocks.PreWarmHandoff is on, so block processing replays the transactions whose pre-warm run finished first instead of running them; " +
                 "for block-processing times that two runs can compare per contract, set --Blocks.PreWarmHandoff false");
@@ -631,10 +565,7 @@ public sealed class IlEvmStartupStep(
     /// <summary>The kinds of query environment the runners were attached to, for the exit line: All, None, or the kinds joined by +.</summary>
     internal static string DescribeSurfaces() => IlEvmSettings.Surfaces.ToString().Replace(", ", "+", StringComparison.Ordinal);
 
-    /// <summary>
-    /// The exit line: the rules, the scope and the kinds of query environment attached, the parts each surface's runner was
-    /// offered and ran compiled (<see cref="IlSurfaceCounts"/>), the startup list, then the rules' own counters.
-    /// </summary>
+    /// <summary>The exit line: what ran compiled, for a benchmark's log next to its numbers.</summary>
     private void LogSummary()
     {
         if (IlEvmSettings.Mode == IlMode.Simple)
@@ -657,19 +588,21 @@ public sealed class IlEvmStartupStep(
         string rules;
         if (IlEvmSettings.Mode == IlMode.Adaptive)
         {
-            // What live profiling promoted and holds, what the visit gate decided, summed over the threads, the switchback
-            // checks' verdicts, the windows between blocks, and what was compiled ahead off the frames' threads.
             rules = IlLive.Describe() + "; " + IlGate.Describe() + "; " + IlCheck.Describe() + "; " + IlScheduler.DescribeCurrent() +
                 string.Create(CultureInfo.InvariantCulture, $"; {IlWarmUp.Prepared} methods compiled ahead, {IlWarmUp.Failed} left to their first call; {IlWarmUp.DescribeAhead()}");
         }
         else
         {
-            // The Legacy rules' own: the run-time compiles and their self-check, and the compile thread.
             (int kept, int probation, int givenBack) = IlEvm.SelfCheckVerdicts;
+            (int shortContracts, int longContracts) = IlEvmSettings.ShortPartVerdicts;
+            string shortParts = IlEvmSettings.ShortParts > 0
+                ? string.Create(CultureInfo.InvariantCulture, $"short-part rule {IlEvmSettings.ShortParts} opcodes: {shortContracts} to the interpreter, {longContracts} kept")
+                : "short-part rule off";
             rules = string.Create(CultureInfo.InvariantCulture,
                 $"{IlEvm.PrecompiledCount} precompiled, taken by {IlEvm.PrecompiledAttached} code states; " +
                 $"{IlEvmSettings.CompiledContracts} compiled at run time, {IlEvmSettings.FailedContracts} declined, {IlEvmSettings.DeferredCompiles} deferred; " +
-                $"self-check {kept} kept, {probation} probation, {givenBack} given back (keep ratio {IlEvmSettings.SelfCheckKeepRatio}); compile thread busy " +
+                $"self-check {kept} kept, {probation} probation, {givenBack} given back (keep ratio {IlEvmSettings.SelfCheckKeepRatio}); {shortParts}; " +
+                $"decided entry {(IlEvmSettings.DecidedEntry ? "on" : "off")}; compile thread busy " +
                 $"{IlEvmSettings.CompileBusyTicks / (double)Stopwatch.Frequency:F1} s on {IlEvmSettings.CompileThreads} thread(s), " +
                 $"order {(IlEvmSettings.CompileOrderHot ? "hot" : "fifo")}, entry chunk {(IlEvmSettings.EntryChunk ? "on" : "off")}, " +
                 $"check cold restart {(IlEvmSettings.SelfCheckColdRestart ? "on" : "off")}, " +
@@ -708,8 +641,7 @@ public sealed class IlEvmStartupStep(
             : $"list {origin}";
         if (simple)
             source += $", the first {entries.Count} of {kept} entries (ListSize={config.ListSize})";
-        // The Adaptive rules also compile the RPC list, whatever the scope or the source of live profiling, ahead of the
-        // block list: a few contracts, each with its code, which calls send as state overrides and no code database holds.
+        // The Adaptive rules compile the RPC list ahead of the block list, whatever the scope or the source of live profiling.
         bool adaptive = IlEvmSettings.Mode == IlMode.Adaptive;
         if (adaptive && config.PrecompileRpc)
         {
@@ -729,11 +661,8 @@ public sealed class IlEvmStartupStep(
             return;
         }
 
-        // The spec of the next block, which the first payload runs on: a slot after the head, so a fork activating at
-        // the next block is the one compiled for. A node at genesis is about to sync to a head of today, and the spec
-        // of the wall clock is the one the blocks after its sync run; the list compiles for it rather than not at all.
-        // The Legacy and measurement rules compile as they did: a slot of 12 seconds, and nothing at genesis.
-        // The Simple rules take the spec as the Adaptive ones do.
+        // The next block's spec, a slot after the head, so a fork activating there is the one compiled for; at genesis the wall
+        // clock's, as the node syncs to a head of today. The Legacy and measurement rules take 12 seconds, and skip genesis.
         BlockHeader? head = blockTree.Head?.Header;
         bool atGenesis = head is null || head.Number == 0;
         bool slotSpec = adaptive || simple;
@@ -756,8 +685,7 @@ public sealed class IlEvmStartupStep(
             return;
         }
 
-        // Under the Adaptive rules the windows between blocks compile what the deadline leaves; the other rules have no
-        // such windows, so they compile the whole list before blocks or calls start.
+        // Only the Adaptive rules have windows between blocks to take what a deadline leaves; the others compile the whole list.
         bool deadline = IlEvmSettings.Mode == IlMode.Adaptive;
         TimeSpan budget = TimeSpan.FromSeconds(Math.Max(0, config.StartupCompileSeconds));
         IDb codeDb = dbProvider.CodeDb;
@@ -777,7 +705,6 @@ public sealed class IlEvmStartupStep(
                 return;
             }
 
-            // Past the memory cap the rest of the list is skipped; the list is busiest first.
             if (Interlocked.Read(ref ilBytes) >= MaxPrecompiledBytes)
             {
                 Interlocked.Increment(ref skipped);
@@ -797,9 +724,8 @@ public sealed class IlEvmStartupStep(
             compiled[index] = contract;
             Interlocked.Add(ref ilBytes, contract!.MemoryBytes);
             Interlocked.Add(ref codeBytes, codeLength);
-            // An entry the list vouches for on every visit serves the first calls from a copy whose helpers are optimized
-            // from the start, until they have tiered up on calls (IlWarmUp.SwitchFromAhead); its code is the entry's own,
-            // checked against its hash above.
+            // An entry admitted on every visit serves the first calls from a copy whose helpers are optimized from the start,
+            // until they tier up (IlWarmUp.SwitchFromAhead); its code is the entry's own, checked against its hash above.
             if (adaptive && IlWarmUp.AheadMaxMs > 0 && entries[index] is { QueryMinVisitLog2: 0, Code: { } carried } &&
                 IlEvm.PrecompileAhead(carried, bodies, out _) is { } copy)
             {
@@ -851,24 +777,17 @@ public sealed class IlEvmStartupStep(
     }
 }
 
-/// <summary>
-/// The list entries the startup compile did not compile: those past its deadline, left in list order for the windows
-/// between blocks, and those whose code the code database lacked, left for a retry once the node has synced it.
-/// </summary>
+/// <summary>The list entries the startup compile left: past its deadline, or with code the code database lacked until the node syncs it.</summary>
 /// <remarks>
-/// Each entry compiles for the body set the startup compiled for, and is published as the startup publishes; the
-/// inter-block scheduler's jobs do it, a step at a time: a <see cref="ShippedLayoutJob"/> per entry left, and a
-/// <see cref="RetryMissingJob"/> every ten minutes for the missing ones. The counts here are the whole list's, for the exit line.
+/// The scheduler's jobs compile them for the startup's body set: a <see cref="ShippedLayoutJob"/> per entry left, in list
+/// order, and a <see cref="RetryMissingJob"/> every ten minutes for the missing ones. The counts are the whole list's.
 /// </remarks>
 internal static class IlShippedBacklog
 {
-    /// <summary>What compiling an entry came to.</summary>
     internal enum Outcome
     {
         Compiled,
-        /// <summary>The code database holds no code for the hash.</summary>
         Missing,
-        /// <summary>The compiler declined the code, a failure counted as any other.</summary>
         Declined,
     }
 
@@ -896,7 +815,6 @@ internal static class IlShippedBacklog
     /// <summary>List entries compiled, at startup or since.</summary>
     public static int Compiled => Volatile.Read(ref _compiled);
 
-    /// <summary>List entries the compiler declined.</summary>
     public static int Declined => Volatile.Read(ref _declined);
 
     /// <summary>Entries the deadline left, not compiled yet: those waiting, and those a job is compiling.</summary>
@@ -919,21 +837,18 @@ internal static class IlShippedBacklog
         }
     }
 
-    /// <summary>The entries the deadline left, in list order.</summary>
     public static List<IlEvmPrecompileList.Entry> Leftovers()
     {
         lock (_lock)
             return [.. _leftovers];
     }
 
-    /// <summary>The entries whose code was missing, in list order.</summary>
     public static List<IlEvmPrecompileList.Entry> Missing()
     {
         lock (_lock)
             return [.. _missing];
     }
 
-    /// <summary>Records what a startup compile left, in place of what an earlier one did.</summary>
     internal static void Record(OpcodeBodySet bodies, IDb codeDb, IEnumerable<IlEvmPrecompileList.Entry> leftovers, IEnumerable<IlEvmPrecompileList.Entry> missing, int compiled, int declined)
     {
         lock (_lock)
@@ -949,8 +864,7 @@ internal static class IlShippedBacklog
         }
     }
 
-    /// <summary>Compiles and publishes the first entry the deadline left: one step of the windows between blocks.</summary>
-    /// <returns>Whether there was an entry; one whose code is missing joins the missing ones.</returns>
+    /// <summary>Compiles and publishes the first entry the deadline left, one step of the windows between blocks; false when none is left.</summary>
     public static bool CompileNextLeftover()
     {
         IlEvmPrecompileList.Entry entry;
@@ -985,7 +899,6 @@ internal static class IlShippedBacklog
     }
 
     /// <summary>Compiles and publishes every entry whose code the code database lacked and now holds; the rest stay missing.</summary>
-    /// <returns>How many entries were compiled.</returns>
     public static int RetryMissing()
     {
         List<IlEvmPrecompileList.Entry> missing;
@@ -1024,11 +937,8 @@ internal static class IlShippedBacklog
         return compiled.Count;
     }
 
-    /// <summary>
-    /// Takes <paramref name="entry"/> off the leftovers for the job that compiles it, with the body set and the code
-    /// database it compiles from; false when it is not among them, as when something compiled it meanwhile.
-    /// </summary>
-    /// <remarks>The job reports how it went with <see cref="Finish"/>; until then the entry still counts as left.</remarks>
+    /// <summary>Takes <paramref name="entry"/> off the leftovers for the job that compiles it; false when it is not among them, as when something compiled it meanwhile.</summary>
+    /// <remarks>Until the job reports with <see cref="Finish"/>, the entry still counts as left.</remarks>
     internal static bool Take(IlEvmPrecompileList.Entry entry, [NotNullWhen(true)] out OpcodeBodySet? bodies, [NotNullWhen(true)] out IDb? codeDb)
     {
         lock (_lock)
@@ -1049,7 +959,7 @@ internal static class IlShippedBacklog
         }
     }
 
-    /// <summary>A job is done with the entry it took: compiled, then published as the startup compile publishes; missing from the code database, then kept for a retry; or declined.</summary>
+    /// <summary>A job is done with the entry it took: a compiled one is published, a missing one kept for a retry.</summary>
     internal static void Finish(IlEvmPrecompileList.Entry entry, Outcome outcome, IlEvm.IlContract? contract)
     {
         lock (_lock)
@@ -1101,11 +1011,8 @@ internal static class IlShippedBacklog
         return -1;
     }
 
-    /// <summary>
-    /// The code <paramref name="entry"/> compiles from: the code it carries, once its keccak is the entry's hash, else the
-    /// code database's for the hash; null when neither has it.
-    /// </summary>
-    /// <param name="mismatched">Whether the entry carries code whose keccak is not its hash, which never compiles: a shipped contract runs wherever its keccak is met.</param>
+    /// <summary>The code <paramref name="entry"/> carries, else the code database's for its hash; null when there is none.</summary>
+    /// <param name="mismatched">Whether the carried code's keccak is not the entry's hash, which never compiles: a shipped contract runs wherever its keccak is met.</param>
     internal static byte[]? CodeOf(IDb codeDb, IlEvmPrecompileList.Entry entry, out bool mismatched)
     {
         mismatched = false;
@@ -1117,14 +1024,9 @@ internal static class IlShippedBacklog
         return null;
     }
 
-    /// <summary>The reason a declined entry is counted under when its code is not its hash's.</summary>
     internal const string MismatchedCode = "the list's code does not match its hash";
 
-    /// <summary>
-    /// Compiles the code of <paramref name="entry"/>, the code it carries or else the code database's, for
-    /// <paramref name="bodies"/>, every chunk at once; a failure counts as any compiler failure.
-    /// </summary>
-    /// <param name="codeLength">The code's length, or 0 when it is missing.</param>
+    /// <summary>Compiles the code of <paramref name="entry"/> for <paramref name="bodies"/>, every chunk at once; a failure counts as any compiler failure.</summary>
     internal static Outcome TryCompile(IDb codeDb, IlEvmPrecompileList.Entry entry, OpcodeBodySet bodies, out IlEvm.IlContract? contract, out int codeLength)
     {
         contract = null;
@@ -1155,7 +1057,6 @@ internal static class IlShippedBacklog
         return Outcome.Declined;
     }
 
-    /// <summary>Forgets what was recorded, for tests.</summary>
     internal static void Reset()
     {
         lock (_lock)

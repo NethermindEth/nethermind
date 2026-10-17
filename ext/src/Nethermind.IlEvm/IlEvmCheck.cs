@@ -12,35 +12,22 @@ namespace Nethermind.IlEvm;
 
 /// <summary>The switchback check's clock: a tick every <see cref="TickMs"/> milliseconds, <see cref="WindowTicks"/> ticks to a window.</summary>
 /// <remarks>
-/// <para>
-/// A window is what the checks take turns by: in a window a contract's check names interpreted, every part of the
-/// contract its runner admits runs on the interpreter, on every thread, and in the others on compiled code. A window's
-/// first tick settles, the caches catching up with the switch, and is timed on neither path.
-/// </para>
-/// <para>
-/// One static int, which every part a check runs reads; a timer moves it on by the time elapsed, so a late tick skips
-/// a value rather than stretching the windows. Once a window it also lifts the marks of losses whose transactions are
-/// over, and ends the probations whose time has come unless the scheduler does that between blocks
-/// (<see cref="IlCheck.SchedulerRestores"/>) and has done it lately: with blocks back to back, or while the node syncs, no
-/// window opens, and a probation would otherwise last until one does. The timer starts with the first check that
-/// becomes active.
-/// </para>
+/// In a window a contract's check names interpreted, every part of the contract its runner admits runs on the interpreter,
+/// on every thread. A window's first tick settles, the caches catching up with the switch, and is timed on neither path.
+/// A timer moves the clock on by the time elapsed, so a late tick skips a value rather than stretching the windows.
 /// </remarks>
 internal static class IlCheckClock
 {
-    /// <summary>The milliseconds a tick stands for.</summary>
     public const int TickMs = 25;
 
-    /// <summary>The ticks of a window, of which the first settles.</summary>
     public const int WindowTicks = 10;
 
-    /// <summary>The ticks since the clock started: the window is <c>Tick / WindowTicks</c>, and it settles where the remainder is 0.</summary>
+    /// <summary>The ticks since the clock started, which every part a check runs reads: the window is <c>Tick / WindowTicks</c>.</summary>
     public static int Tick;
 
     /// <summary>For tests: the timer leaves <see cref="Tick"/> and the probations alone, and the test moves them.</summary>
     public static bool ManualTicks { get; set; }
 
-    /// <summary>For tests: called after the timer's work of each new window, so a test of the timer waits for windows rather than sleeping.</summary>
     internal static Action? WindowForTests;
 
     private static readonly object _starting = new();
@@ -49,10 +36,8 @@ internal static class IlCheckClock
     private static int _lastWindow = -1;
     private static int _ticking;
 
-    /// <summary>Whether the timer runs.</summary>
     public static bool Running => Volatile.Read(ref _timer) is not null;
 
-    /// <summary>Starts the timer, once, unless the ticks are manual.</summary>
     public static void EnsureStarted()
     {
         if (ManualTicks || Volatile.Read(ref _timer) is not null)
@@ -93,64 +78,35 @@ internal static class IlCheckClock
         }
     }
 
-    /// <summary>
-    /// The timer's work once a window, at <paramref name="now"/> in <see cref="Environment.TickCount64"/> milliseconds:
-    /// the marks of losses whose transactions are over are lifted, which changes nothing that runs; the probations and
-    /// waits whose time has come end here unless the scheduler ends them, as it does at its maintenance between blocks,
-    /// and has within <see cref="IlCheck.RestoreGraceMs"/>.
-    /// </summary>
-    /// <returns>How many checks started over.</returns>
+    /// <summary>Once a window: lifts the marks of losses whose transactions are over, and ends the probations due unless the scheduler has within <see cref="IlCheck.RestoreGraceMs"/>.</summary>
+    /// <remarks>The scheduler opens no window between blocks back to back or while the node syncs, and a probation would otherwise last until one opens.</remarks>
     internal static int OnWindow(long now) => IlCheck.RestoreDue(now, rechecks: !IlCheck.SchedulerRestores || now - Volatile.Read(ref IlCheck.LastSchedulerRestore) >= IlCheck.RestoreGraceMs);
 
-    /// <summary>Sets the clock to <paramref name="tick"/>, for tests with <see cref="ManualTicks"/>.</summary>
     internal static void SetForTests(int tick) => Volatile.Write(ref Tick, tick);
 
-    /// <summary>The first tick of <paramref name="window"/>, which settles; for tests.</summary>
     internal static int SettleTickOf(int window) => window * WindowTicks;
 
-    /// <summary>A tick of <paramref name="window"/> past its settling, for tests.</summary>
     internal static int TimedTickOf(int window) => window * WindowTicks + WindowTicks / 2;
 }
 
-/// <summary>
-/// The switchback check of one compiled contract on one runner: times the parts the runner admits against the
-/// interpreter's on the same code, and takes the runner off the contract where compiled code does not win.
-/// </summary>
+/// <summary>The switchback check of one compiled contract on one runner: times the parts the runner admits against the interpreter's, and takes the runner off the contract where compiled code does not win.</summary>
 /// <remarks>
 /// <para>
-/// The interpreter's side comes from switchback windows of <see cref="IlCheckClock"/>: windows in which every part the
-/// runner admits runs on the interpreter, on every thread, so the interpreter is timed on the code it has run for a while
-/// rather than between compiled runs that evict its handlers; timed that way, the Legacy rules' per-frame check kept
-/// light contracts compiled that lost against a clean interpreter. One window in <see cref="TrialShare"/> is interpreted
-/// until a verdict and one in <see cref="KeptShare"/> once kept; block processing's runner, whose time matters most, one
-/// in <see cref="BlockShare"/> throughout. Never two in a row, and salted per check, so contracts take their turns apart.
-/// Parts are timed one in <see cref="TimeInterpretedEvery"/> in an interpreted window, and one in
-/// <see cref="TimeCompiledTrialEvery"/> or <see cref="TimeCompiledKeptEvery"/> in the others.
+/// The interpreter is timed in switchback windows (<see cref="IlCheckClock"/>), on code it has run for a while rather
+/// than between compiled runs that evict its handlers; salted per check, contracts take their turns apart. A thread pools
+/// its timed samples per check (<see cref="IlThread"/>) and adds a full bucket to the check's shared one, which takes the
+/// check's lock once it fills; an untimed compiled part reads only the clock, the window word and a draw of its thread.
+/// Buckets hold at least <see cref="BucketOps"/> opcodes, so short parts measure past the timer's resolution. A full
+/// compiled bucket joins a ring of recent samples; a full interpreted bucket makes a pair, the ring's median time per
+/// opcode over its own. The verdict comes at <see cref="Pairs"/> pairs, or early when all agree by a clear margin: kept
+/// when the pairs' median is at most <see cref="KeepRatio"/>. Kept, the contract is still timed, at the kept rates.
 /// </para>
 /// <para>
-/// Samples pool into buckets of at least <see cref="BucketOps"/> opcodes, so short parts measure past the timer's
-/// resolution. A full compiled bucket joins a ring of the latest <see cref="RecentSamples"/>; a full interpreted bucket
-/// makes a pair, the ring's median time per opcode over its own, at most <see cref="MaxPairsPerWindow"/> from one window,
-/// during which the ring stands still. The verdict comes at <see cref="Pairs"/> pairs, or early at <see cref="EarlyPairs"/>
-/// over <see cref="EarlyWindows"/> windows that all agree by a clear margin: kept when the pairs' median is at most
-/// <see cref="KeepRatio"/>. Kept, the contract is still timed, at the kept rates: each <see cref="RollingPairs"/> pairs
-/// whose median passes <see cref="RollingLossRatio"/> are a loss.
-/// </para>
-/// <para>
-/// A loss clears the runner's bits of the contract's <see cref="IlEvm.IlContract.RunMask"/>, so the runner leaves the
-/// contract to the interpreter at once, on every code state. The first loss, and any in the start-up window
-/// (<see cref="IlEvmSettings.SelfCheckWarmUpMs"/>), is a probation: the bits come back when its time is up, and the check
-/// starts over. A second loss outside the start-up window gives the contract back: one that live profiling promoted for
-/// this runner's source is released (<see cref="ReleaseLive"/>); any other keeps its code, its bits cleared, and is checked
-/// again every <see cref="MaskedRecheckMs"/>. The read-only queries' runner's check of a shipped contract does not run in
-/// the start-up window at all, and a loss there would only start it over: the list's contracts serve a node's first calls
-/// compiled, and are checked once the window is over.
-/// </para>
-/// <para>
-/// No part writes the check on its own: a thread pools its timed samples per check until they fill a bucket
-/// (<see cref="IlThread"/>), then adds them to the check's shared bucket, which takes the check's lock once it fills.
-/// An untimed compiled part reads the clock, a word of the check and a draw of its thread, and runs on the runner's own
-/// path. Block processing's check times compiled parts at the kept rate once its ring of compiled samples is full.
+/// A loss clears the runner's bits of <see cref="IlEvm.IlContract.RunMask"/>: the runner leaves the contract to the
+/// interpreter at once, on every code state. The first loss, and any in the start-up window
+/// (<see cref="IlEvmSettings.SelfCheckWarmUpMs"/>), is a probation: the bits come back when it ends, and the check starts
+/// over. A second releases a contract live profiling promoted for this runner's source (<see cref="ReleaseLive"/>); any
+/// other keeps its code for the runner it still serves, masked until a recheck <see cref="MaskedRecheckMs"/> on.
 /// </para>
 /// </remarks>
 internal sealed class IlCheck
@@ -170,13 +126,11 @@ internal sealed class IlCheck
     /// <summary>Lost twice: a live contract, released; the check is over.</summary>
     public const int GivenBack = 4;
 
-    /// <summary>The fewest opcodes a sample pools.</summary>
     public const int BucketOps = 1_024;
 
     /// <summary>The compiled samples a pair's compiled side is the median of.</summary>
     public const int RecentSamples = 8;
 
-    /// <summary>The pairs a verdict waits for, unless they agree early.</summary>
     public const int Pairs = 31;
 
     /// <summary>The pairs, and the windows they come from, after which a verdict every pair agrees on by a clear margin is taken early.</summary>
@@ -203,11 +157,7 @@ internal sealed class IlCheck
 
     public const uint TimeCompiledKeptEvery = 32;
 
-    /// <summary>
-    /// The bits of a window word: a timing state, compiled parts timed at the kept rate, and interpreted; the window and
-    /// one above them. The kept rate is a kept check's, and block processing's once its ring of compiled samples is full:
-    /// its pairs wait on interpreted windows that meet a block, a few an hour at the chain's tip, and a fuller ring buys none.
-    /// </summary>
+    /// <summary>The bits of a window word: a switchback window, compiled parts timed at the kept rate, and a timing state; the window plus one sits above them.</summary>
     internal const long WordInterpreted = 1, WordSparse = 2, WordTiming = 4;
 
     private const int WordShift = 3;
@@ -224,7 +174,7 @@ internal sealed class IlCheck
     /// <summary>One window in this many is interpreted once it is kept.</summary>
     public static int KeptShare { get; set; } = (int)Knob("KEPT_SHARE", 32);
 
-    /// <summary>One window in this many is interpreted for block processing's runner, decided or not.</summary>
+    /// <summary>One window in this many is interpreted for block processing's runner, whose time matters most, decided or not.</summary>
     public static int BlockShare { get; set; } = (int)Knob("BLOCK_SHARE", 32);
 
     /// <summary>How long block processing's runner leaves a contract on probation; the queries' runner takes <see cref="IlEvmSettings.SelfCheckRecheckMs"/>.</summary>
@@ -234,16 +184,10 @@ internal sealed class IlCheck
     public static int MaskedRecheckMs { get; set; } = (int)Knob("MASKED_RECHECK_MS", 600_000);
 
     /// <summary>How long a contract a check takes its runner off still has its parts looked at for a visit under way, in milliseconds.</summary>
-    /// <remarks>
-    /// A visit starts only on a part its runner may run, so once the transactions under way at the loss are over, no
-    /// visit of the contract can still be counting; past this the mark that sends its parts to be looked at is lifted.
-    /// </remarks>
+    /// <remarks>A visit starts only on a part its runner may run, so once the transactions under way at the loss are over, no visit of the contract can still be counting.</remarks>
     public const int UnderWayMs = 1_000;
 
-    /// <summary>
-    /// Releases a live contract a check gave back: by default at once, on the thread whose sample decided; the scheduler
-    /// routes it to a job between blocks (<see cref="ReleaseJob"/>), which also marks the profile demoted.
-    /// </summary>
+    /// <summary>Releases a live contract a check gave back: by default at once, on the thread whose sample decided; the scheduler routes it to a job between blocks (<see cref="ReleaseJob"/>).</summary>
     public static Action<IlEvm.IlContract> ReleaseLive { get; set; } = ReleaseNow;
 
     /// <summary>Whether the scheduler ends the probations whose time has come, at its windows' maintenance; until it is attached the clock's timer does, once a window.</summary>
@@ -252,10 +196,8 @@ internal sealed class IlCheck
     /// <summary>When the scheduler's maintenance last ended the probations due, in <see cref="Environment.TickCount64"/> milliseconds.</summary>
     public static long LastSchedulerRestore;
 
-    /// <summary>How long the clock's timer leaves due probations to the scheduler's maintenance before it ends them itself, as when no window opens between blocks back to back.</summary>
     public const int RestoreGraceMs = 2_000;
 
-    /// <summary>The contract checked.</summary>
     public readonly IlEvm.IlContract Contract;
 
     /// <summary>Whether this is block processing's runner's check, else the read-only queries' runner's.</summary>
@@ -264,11 +206,9 @@ internal sealed class IlCheck
     /// <summary>What the windows of this check are hashed with: the profile's number, twice, and the runner, so the two runners' checks of one contract take different windows.</summary>
     public readonly uint Salt;
 
-    /// <summary>The window last decided, in a word every part reads: <c>(window + 1) &lt;&lt; 3</c>, and the timing, kept and interpreted bits.</summary>
-    /// <remarks>Written once a window by whichever part first meets it, and cleared on every change of state, so the next part decides again.</remarks>
+    /// <summary>The window word last decided, which every part reads: written by whichever part first meets a window, and cleared on every change of state so the next part decides again.</summary>
     private long _window;
 
-    /// <summary>Whether the check runs, once <see cref="IlEvmSettings.SelfCheckDelayMs"/> have passed since the contract was attached.</summary>
     private bool _active;
 
     private volatile int _state;
@@ -290,10 +230,8 @@ internal sealed class IlCheck
     /// <summary>When the mark that has the contract's parts looked at for a visit under way is lifted; 0 once it is.</summary>
     private long _underWayUntil;
 
-    /// <summary>The runner's bits a loss cleared, which the recheck sets again.</summary>
     private byte _maskedBits;
 
-    /// <summary>Whether the check is on the list of those awaiting a recheck or a lift.</summary>
     private bool _listed;
     private int _checks = 1;
     private long _totalPairs;
@@ -301,7 +239,6 @@ internal sealed class IlCheck
     /// <summary>The pairs' median at the latest verdict: compiled time per opcode over the interpreter's.</summary>
     public double Ratio { get; private set; }
 
-    /// <summary>The latest rolling median of a kept contract.</summary>
     public double RollingRatio { get; private set; }
 
     /// <summary>The medians of the latest verdict's or rolling block's pairs, interpreted and compiled, in <see cref="Stopwatch"/> ticks per opcode; 0 before any.</summary>
@@ -318,7 +255,6 @@ internal sealed class IlCheck
     private static int _awaitingCount;
     private static readonly long[] _kept = new long[2], _probations = new long[2], _masked = new long[2], _givenBack = new long[2], _rechecks = new long[2];
 
-    /// <summary>A check of <paramref name="contract"/> for one runner.</summary>
     public IlCheck(IlEvm.IlContract contract, bool block)
     {
         Contract = contract;
@@ -340,9 +276,8 @@ internal sealed class IlCheck
 
     /// <summary>
     /// Whether the check takes the runner's admitted parts: from <see cref="IlEvmSettings.SelfCheckDelayMs"/> after the
-    /// contract was attached, so the helpers compiled code calls have tiered up first; for a shipped contract on the
-    /// read-only queries' runner, not before the start-up window (<see cref="IlEvmSettings.SelfCheckWarmUpMs"/>) is over,
-    /// so a node's first calls run compiled throughout, with no switchback window and no probation.
+    /// contract was attached, so the helpers compiled code calls have tiered up first; for the queries' runner's check of a
+    /// shipped contract, only once the start-up window is over, so a node's first calls run compiled throughout.
     /// </summary>
     public bool Active
     {
@@ -363,8 +298,6 @@ internal sealed class IlCheck
         }
         if (now - attached < IlEvmSettings.SelfCheckDelayMs)
             return false;
-        // The list's contracts serve the queries from the first call; a check in the start-up window would time start-up,
-        // and take a share of its calls to the interpreter for it.
         if (StartUpExempt && IlEvmSettings.InWarmUpAt(now))
             return false;
         IlCheckClock.EnsureStarted();
@@ -372,18 +305,11 @@ internal sealed class IlCheck
         return true;
     }
 
-    /// <summary>The check's state: <see cref="Trial"/>, <see cref="Kept"/>, <see cref="Probation"/>, <see cref="Masked"/> or <see cref="GivenBack"/>.</summary>
     public int State => _state;
 
-    /// <summary>Whether the check leaves its contract alone in the start-up window: the read-only queries' runner's check of a shipped contract.</summary>
     private bool StartUpExempt => !Block && Contract.Origin == IlOrigin.Shipped;
 
-    /// <summary>
-    /// Whether the check takes an admitted part offered at <paramref name="tick"/>: every part of an interpreted window,
-    /// and one compiled part in <see cref="TimeCompiledTrialEvery"/> or <see cref="TimeCompiledKeptEvery"/>, drawn to be
-    /// timed, never in a window's settling tick. The rest run compiled untimed, on the runner's own path.
-    /// </summary>
-    /// <param name="word">The window's decision, <see cref="WindowWord"/>, for the part the check takes.</param>
+    /// <summary>Whether the check takes an admitted part offered at <paramref name="tick"/>: every part of an interpreted window, else a drawn share of compiled parts outside a settling tick.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TakesPart(IlThread thread, int tick, out long word)
     {
@@ -395,11 +321,6 @@ internal sealed class IlCheck
             (thread.Next() & ((word & WordSparse) != 0 ? TimeCompiledKeptEvery - 1 : TimeCompiledTrialEvery - 1)) == 0;
     }
 
-    /// <summary>
-    /// The decision for <paramref name="window"/>, as a word: <see cref="WordTiming"/> while the check times,
-    /// <see cref="WordSparse"/> where compiled parts are timed at the kept rate, <see cref="WordInterpreted"/> for a
-    /// switchback window.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public long WindowWord(int window)
     {
@@ -412,7 +333,8 @@ internal sealed class IlCheck
     {
         int state = _state;
         bool timing = state is Trial or Kept;
-        // Racy: a ring that fills during the window is read full in the next.
+        // Block processing's pairs wait on interpreted windows that meet a block, a few an hour at the tip, so past a full ring
+        // it times compiled parts at the kept rate. Racy: a ring that fills during the window is read full in the next.
         bool sparse = state == Kept || (Block && Volatile.Read(ref _recentCount) >= RecentSamples);
         long word = ((long)(window + 1) << WordShift) | (timing ? WordTiming : 0) | (sparse ? WordSparse : 0) |
             (timing && IsInterpretedWindow(window, ShareOf(state)) ? WordInterpreted : 0);
@@ -425,17 +347,14 @@ internal sealed class IlCheck
 
     private bool Hit(int window, int share) => (Mix(window, Salt) & (uint)(Pow2(share) - 1)) == 0;
 
-    /// <summary>Whether <paramref name="window"/> is a switchback window at the share the check's state takes now; for tests and diagnostics.</summary>
     public bool IsInterpretedWindow(int window)
     {
         int state = _state;
         return state is Trial or Kept && IsInterpretedWindow(window, ShareOf(state));
     }
 
-    /// <summary>One window in this many is interpreted in <paramref name="state"/>: block processing's runner's share, else the queries' undecided or kept one.</summary>
     private int ShareOf(int state) => Block ? BlockShare : state == Kept ? KeptShare : TrialShare;
 
-    /// <summary>A murmur-style mix of a window and a salt.</summary>
     internal static uint Mix(int window, uint salt)
     {
         uint h = (uint)window * 0x9E3779B1u ^ salt * 0x85EBCA6Bu;
@@ -449,7 +368,7 @@ internal sealed class IlCheck
 
     private static int Pow2(int share) => (int)System.Numerics.BitOperations.RoundUpToPowerOf2((uint)Math.Clamp(share, 1, 1 << 30));
 
-    /// <summary>A compiled part, or one handed back with the interpreter's rest of it, ran <paramref name="opCodes"/> in <paramref name="ticks"/>: pooled, and a full bucket joins the ring of recent compiled samples.</summary>
+    /// <summary>A compiled part, or one handed back with the interpreter's rest of it, ran <paramref name="opCodes"/> in <paramref name="ticks"/>; a full bucket joins the ring.</summary>
     public void AddCompiled(long ticks, int opCodes)
     {
         if (opCodes <= 0)
@@ -470,8 +389,7 @@ internal sealed class IlCheck
         }
     }
 
-    /// <summary>A part of a switchback window ran <paramref name="opCodes"/> on the interpreter in <paramref name="ticks"/>: pooled, and a full bucket makes a pair with the recent compiled samples.</summary>
-    /// <param name="window">The window the part ran in, by which the pairs are counted.</param>
+    /// <summary>A part of switchback <paramref name="window"/> ran <paramref name="opCodes"/> on the interpreter in <paramref name="ticks"/>; a full bucket makes a pair with the ring.</summary>
     public void AddInterpreted(long ticks, int opCodes, int window)
     {
         if (opCodes <= 0)
@@ -517,7 +435,6 @@ internal sealed class IlCheck
             _pairInterpreted[_pairs] = interpreted;
             int pairs = ++_pairs;
             ReadOnlySpan<double> ratios = _ratios.AsSpan(0, pairs);
-            // Every pair clearly one way, over a few windows, decides early; anything closer runs to the full count.
             bool early = pairs >= EarlyPairs && _pairWindows >= EarlyWindows &&
                 (ratios.IndexOfAnyExceptInRange(0, EarlyCompiled) < 0 || ratios.IndexOfAnyExceptInRange(EarlyInterpreted, double.MaxValue) < 0);
             if (!early && pairs < Pairs)
@@ -554,8 +471,7 @@ internal sealed class IlCheck
     private bool Lose()
     {
         long now = Environment.TickCount64;
-        // While the process starts up a loss mostly measures start-up: re-checked soon, and it counts toward nothing; a
-        // shipped contract stays on the queries' runner, its check from the start.
+        // In the start-up window a loss mostly measures start-up: rechecked soon and counted toward nothing, or for an exempt check just started over.
         bool warmUp = IlEvmSettings.InWarmUp;
         if (warmUp && StartUpExempt)
         {
@@ -573,8 +489,6 @@ internal sealed class IlCheck
             return false;
         }
 
-        // A live contract goes when the runner of the source that promoted it finds it slower; one the other runner
-        // finds slower, or a shipped one, keeps its code for the runner it still serves, and for a later recheck.
         if (Contract.Origin == (Block ? IlOrigin.LiveBlocks : IlOrigin.LiveRpc))
         {
             TakeOff(GivenBack, 0, now);
@@ -587,7 +501,6 @@ internal sealed class IlCheck
         return false;
     }
 
-    /// <summary>Clears the runner's bits of the run mask, marked as a check's doing, and awaits the recheck at <paramref name="recheckAt"/>, if any.</summary>
     private void TakeOff(int state, long recheckAt, long now)
     {
         byte before = UpdateMask(ref Contract.RunMask, clear: RunBits, set: OffBit);
@@ -606,8 +519,7 @@ internal sealed class IlCheck
         {
             if (_state is not (Probation or Masked))
                 return;
-            // The compiled samples are from before the loss; the parts since ran interpreted. Timing before the bits are
-            // back, so the first parts that may run find the check at its start.
+            // Before the bits are back, so the first parts that may run find the check at its start, not with pre-loss samples.
             StartOver();
             _recheckAt = 0;
             _underWayUntil = 0;
@@ -645,12 +557,8 @@ internal sealed class IlCheck
         }
     }
 
-    /// <summary>
-    /// Ends the probations and waits whose time has come at <paramref name="now"/>, in <see cref="Environment.TickCount64"/>
-    /// milliseconds, and lifts the marks of losses whose transactions are over: the scheduler's maintenance between blocks,
-    /// or the clock's timer once a window (<see cref="IlCheckClock.OnWindow"/>).
-    /// </summary>
-    /// <param name="rechecks">Whether the probations and waits due end here; false lifts the marks only.</param>
+    /// <summary>Ends the probations and waits due at <paramref name="now"/>, in <see cref="Environment.TickCount64"/> milliseconds, and lifts the marks of losses whose transactions are over.</summary>
+    /// <param name="rechecks">False lifts the marks only.</param>
     /// <returns>How many checks started over.</returns>
     public static int RestoreDue(long now, bool rechecks = true)
     {
@@ -700,7 +608,6 @@ internal sealed class IlCheck
     }
 
     /// <summary>The default release of a live contract given back: its profile lets go of it, its code goes, live profiling's budget gets its bytes back, and every state resolves again.</summary>
-    /// <remarks>The scheduler's release job ends in it too, once it has demoted the profile, as does the scorer's demotion.</remarks>
     internal static void ReleaseNow(IlEvm.IlContract contract)
     {
         if (contract.Profile is { } profile && ReferenceEquals(profile.Live, contract))
@@ -712,7 +619,6 @@ internal sealed class IlCheck
 
     private int Runner => Block ? 1 : 0;
 
-    /// <summary>The run-mask bits this check's runner runs the contract by.</summary>
     private byte RunBits => Block ? (byte)(IlRuntime.RunMain | IlRuntime.RunWorkers) : IlRuntime.RunQuery;
 
     /// <summary>The run-mask bit that marks the runner's bits as cleared by this check.</summary>
@@ -758,10 +664,8 @@ internal sealed class IlCheck
             Interlocked.Read(ref _givenBack[runner]), Interlocked.Read(ref _rechecks[runner]));
     }
 
-    /// <summary>The checks awaiting a recheck or a lift now.</summary>
     public static int Awaiting => Volatile.Read(ref _awaitingCount);
 
-    /// <summary>The checks for the exit line: each runner's verdicts, and how many checks await a recheck.</summary>
     public static string Describe()
     {
         string Runner(bool block)
@@ -774,11 +678,9 @@ internal sealed class IlCheck
         return string.Create(CultureInfo.InvariantCulture, $"check {Runner(block: false)}; {Runner(block: true)}; {Awaiting} awaiting a recheck");
     }
 
-    /// <summary>A check as tests read it.</summary>
     internal readonly record struct View(int State, int Pairs, int PairWindows, int Recent, long InterpretedOps, long CompiledOps, int Rolling,
         double Ratio, double RollingRatio, long RecheckAt, bool LostOnce, int Checks, byte MaskedBits, long TotalPairs);
 
-    /// <summary>The check's state and samples, for tests.</summary>
     internal View ViewForTests()
     {
         lock (this)
@@ -786,7 +688,6 @@ internal sealed class IlCheck
                 _rollingCount, Ratio, RollingRatio, _recheckAt, _lostOnce, _checks, _maskedBits, _totalPairs);
     }
 
-    /// <summary>Forgets every check awaiting a recheck and the verdicts, and puts the hooks back, for tests.</summary>
     internal static void ResetForTests()
     {
         lock (_registry)

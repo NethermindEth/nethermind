@@ -21,13 +21,14 @@ using Nethermind.Logging;
 namespace Nethermind.IlEvm;
 
 /// <summary>The sampled counts of one profile, striped by thread so the threads that run one hot code write separate cache lines.</summary>
-/// <remarks>Made on a profile's first sampled part, so the many codes met once and never sampled carry none.</remarks>
+/// <remarks>
+/// Made on a profile's first sampled part, so the many codes never sampled carry none. Plain writes: mostly one thread
+/// writes a stripe, and a lost count only moves a rate.
+/// </remarks>
 internal sealed class IlSimpleCounts
 {
-    /// <summary>The stripes; a thread writes the one its <see cref="IlSimpleThread.Stripe"/> names.</summary>
     public const int Stripes = 4;
 
-    /// <summary>One stripe's counts, a cache line of its own.</summary>
     [StructLayout(LayoutKind.Explicit, Size = 64)]
     private struct Stripe
     {
@@ -39,19 +40,15 @@ internal sealed class IlSimpleCounts
     // One stripe of padding first, so the first one written shares no line with the array's header.
     private readonly Stripe[] _stripes = new Stripe[Stripes + 1];
 
-    /// <summary>A sampled interpreted part. Plain writes: mostly one thread writes a stripe, and a lost count only moves a rate.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void AddPart(int stripe) => _stripes[stripe + 1].Parts++;
 
-    /// <summary>The interpreted opcodes of a sampled part.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void AddOps(int stripe, int ops) => _stripes[stripe + 1].Ops += ops;
 
-    /// <summary>A sampled compiled part of the profile's promoted contract.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void AddCompiled(int stripe) => _stripes[stripe + 1].CompiledParts++;
 
-    /// <summary>The counts summed over the stripes, and cleared when <paramref name="take"/>.</summary>
     public (long Parts, long Ops, long CompiledParts) Sum(bool take)
     {
         long parts = 0, ops = 0, compiled = 0;
@@ -68,30 +65,23 @@ internal sealed class IlSimpleCounts
 }
 
 /// <summary>What the Simple rules keep of one code content, whichever code infos carry it: its compiled contracts and live profiling's counts.</summary>
-/// <remarks>
-/// Keyed by the keccak of code a cache stamped, else by the code's bytes, which a content profile keeps
-/// (<see cref="Bytes"/>): code no cache stamped, as a state override's, is found by its length and bytes, never hashed.
-/// The counts are written racily from the frames' threads, a sampled part at a time, into per-thread stripes
-/// (<see cref="IlSimpleCounts"/>); a lost update only moves a rate.
-/// </remarks>
+/// <remarks>Keyed by the keccak of code a cache stamped, else by its length and bytes: code no cache stamped, as a state override's, is never hashed to be found.</remarks>
 internal sealed class IlSimpleProfile
 {
-    /// <summary>The stamped keccak, or default for a profile found by content.</summary>
     public readonly ValueHash256 Hash;
 
-    /// <summary>The code's length in bytes.</summary>
     public readonly int Length;
 
-    /// <summary>For a profile in the content index, the code it matches, byte for byte: the startup or promoted contract's code, or the bytes kept for a live compile; empty for one found by hash alone.</summary>
+    /// <summary>For a profile in the content index, the code it matches byte for byte; empty for one found by hash alone.</summary>
     public ReadOnlyMemory<byte> Bytes;
 
-    /// <summary>For stamped code, a code info of it, which a live compile reads the code from; the code database's copy where it was collected.</summary>
+    /// <summary>For stamped code, a code info a live compile reads the code from; the code database serves once it is collected.</summary>
     public WeakReference<CodeInfo>? Source;
 
     /// <summary>The contract the startup list compiled, for the body set the node started on; never released.</summary>
     public volatile IlEvm.IlContract? Startup;
 
-    /// <summary>The contract live promotion compiled, for the body set of its time; null until then, and once evicted. A promotion for a newer fork replaces it.</summary>
+    /// <summary>The contract live promotion compiled; null once evicted. A promotion for a newer fork replaces it.</summary>
     public volatile IlEvm.IlContract? Promoted;
 
     /// <summary>The body set of the latest sampled part, the one a live compile is for.</summary>
@@ -102,22 +92,20 @@ internal sealed class IlSimpleProfile
     /// <summary>Interpreted parts per round, scaled back from the sample and halved each round: what a newcomer weighs against the promoted contracts it would evict.</summary>
     public double Demand;
 
-    /// <summary>The promoted contract's compiled parts per round, scaled back from the sample and halved each round, seeded with the demand it was promoted on: the eviction's order.</summary>
+    /// <summary>The promoted contract's compiled parts per round, likewise, seeded with the demand it was promoted on: the eviction's order.</summary>
     public double Usage;
 
-    /// <summary>Rounds in a row with nothing counted, for pruning.</summary>
     public int IdleRounds;
 
     /// <summary>The compiler declined the code, or its code could not be had: never counted or tried again.</summary>
     public volatile bool Declined;
 
-    /// <summary>The round before which a contract the budget turned away is not compiled again.</summary>
     public long RetryRound;
 
-    /// <summary>The size of the last contract the budget turned away, which the next try checks the budget against before compiling; 0 for none.</summary>
+    /// <summary>The size of the last contract the budget turned away, checked against the budget before compiling again; 0 for none.</summary>
     public long RejectedBytes;
 
-    /// <summary>Whether the profile is in the content index, as every content profile is until retired, and a stamped one once promoted or compiled at startup.</summary>
+    /// <summary>Whether the profile is in the content index: every content profile until retired, a stamped one once promoted or compiled at startup.</summary>
     public bool InContentIndex;
 
     /// <summary>A content profile taken out of the index, pruned or merged into a stamped twin; states still counting into it resolve again at the next generation.</summary>
@@ -129,10 +117,8 @@ internal sealed class IlSimpleProfile
         Length = length;
     }
 
-    /// <summary>Whether the profile was found by content, so a code info's bytes must match before its state takes a contract.</summary>
     public bool ByContent => Hash == default;
 
-    /// <summary>The sampled counts, made on the first sampled part.</summary>
     public IlSimpleCounts Counts
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -146,19 +132,15 @@ internal sealed class IlSimpleProfile
         return _counts!;
     }
 
-    /// <summary>Takes the counts since the last round, clearing them.</summary>
     public (long Parts, long Ops, long CompiledParts) Take() => _counts?.Sum(take: true) ?? default;
 
-    /// <summary>The sampled interpreted parts since the last round, for tests.</summary>
     internal long Parts => _counts?.Sum(take: false).Parts ?? 0;
 
-    /// <summary>Their opcodes, for tests.</summary>
     internal long Ops => _counts?.Sum(take: false).Ops ?? 0;
 
-    /// <summary>The sampled compiled parts since the last round, for tests.</summary>
     internal long CompiledParts => _counts?.Sum(take: false).CompiledParts ?? 0;
 
-    /// <summary>The contract a runner runs the code on for <paramref name="bodies"/>: the startup one, else, for the queries' runner, the promoted one; null for none.</summary>
+    /// <summary>The contract a runner runs the code on for <paramref name="bodies"/>; block processing runs only the startup one.</summary>
     public IlEvm.IlContract? RunFor(OpcodeBodySet bodies, bool block)
     {
         IlEvm.IlContract? startup = Startup;
@@ -170,10 +152,9 @@ internal sealed class IlSimpleProfile
         return promoted is not null && ReferenceEquals(promoted.Bodies, bodies) ? promoted : null;
     }
 
-    /// <summary>Whether the profile holds a contract for any body set.</summary>
     public bool HoldsAny => Startup is not null || Promoted is not null;
 
-    /// <summary>A short name for the logs: the first bytes of the keccak, or, for code found by content, its length and a hash of its bytes, taken off the frame path.</summary>
+    /// <summary>A short name for the logs; for code found by content, a hash of its bytes taken here, off the frame path.</summary>
     public string ShortName => ByContent
         ? string.Create(CultureInfo.InvariantCulture, $"c{Length}-{(uint)((ReadOnlySpan<byte>)Bytes.Span).FastHash():x8}")
         : Hash.ToString()[..10];
@@ -183,13 +164,12 @@ internal sealed class IlSimpleProfile
 /// <remarks>Resolved once per code info, <see cref="IlSimple.Generation"/> and body set: every part reads the slot, its type, the generation, the body set and one contract.</remarks>
 internal sealed class IlSimpleState
 {
-    /// <summary>What the read-only queries' runner runs the code on, or null for the interpreter.</summary>
     public IlEvm.IlContract? Query;
 
-    /// <summary>What block processing's runner runs the code on (Scope=All): a startup contract, or null.</summary>
+    /// <summary>Block processing's runner's contract (Scope=All): a startup one, or null.</summary>
     public IlEvm.IlContract? Block;
 
-    /// <summary>The profile the queries' runner counts the code's interpreted parts into, sampled; null when it has a contract or counts nothing.</summary>
+    /// <summary>The profile the queries' runner counts sampled interpreted parts into; null when it has a contract or counts nothing.</summary>
     public IlSimpleProfile? Count;
 
     /// <summary>The profile of a promoted <see cref="Query"/>, whose compiled parts are sampled for eviction; null for a startup contract.</summary>
@@ -198,18 +178,16 @@ internal sealed class IlSimpleState
     /// <summary>The body set the state was resolved for; a part on another, as a call at an older fork's block, resolves again.</summary>
     public OpcodeBodySet? Bodies;
 
-    /// <summary>The <see cref="IlSimple.Generation"/> the state was resolved at; at a newer one it resolves again.</summary>
     public int Generation;
 }
 
-/// <summary>A code slot's mark that neither runner has anything compiled for the code, for any body set, and that the queries' runner counts nothing of it: a part is declined on the mark alone.</summary>
-/// <remarks>Replaced at every new generation, so a mark of an older one resolves once more.</remarks>
+/// <summary>A code slot's mark on which alone a part is declined; replaced at every new generation, so a mark of an older one resolves once more.</summary>
 internal sealed class IlSimpleMark(string name)
 {
     public override string ToString() => name;
 }
 
-/// <summary>Per-thread state of the Simple rules' runners: the parts each was offered, summed for the exit line, the sample's random numbers and the stripe of the counts; one thread writes each.</summary>
+/// <summary>Per-thread state of the Simple rules' runners; one thread writes each.</summary>
 internal sealed class IlSimpleThread
 {
     [ThreadStatic] private static IlSimpleThread? _current;
@@ -218,7 +196,6 @@ internal sealed class IlSimpleThread
     /// <summary>Parts each runner ran compiled and left to the interpreter.</summary>
     public long QueryCompiled, QueryInterpreted, BlockCompiled, BlockInterpreted;
 
-    /// <summary>The stripe of the profiles' counts this thread writes.</summary>
     public readonly int Stripe;
 
     private uint _random;
@@ -236,10 +213,7 @@ internal sealed class IlSimpleThread
         get => _current ?? Create();
     }
 
-    /// <summary>
-    /// The thread's next xorshift number. The sample draws on it rather than taking every nth part: a thread that repeats
-    /// one call pattern would sample the same parts of it every time, and the others never.
-    /// </summary>
+    /// <summary>The next xorshift number for the sample: taking every nth part instead would sample the same parts of a repeated call pattern every time.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public uint Next()
     {
@@ -265,7 +239,6 @@ internal sealed class IlSimpleThread
         return created;
     }
 
-    /// <summary>The counts summed over every thread that ran a part.</summary>
     public static (long QueryCompiled, long QueryInterpreted, long BlockCompiled, long BlockInterpreted) Totals()
     {
         long qc = 0, qi = 0, bc = 0, bi = 0;
@@ -285,27 +258,12 @@ internal sealed class IlSimpleThread
 }
 
 /// <summary>
-/// The Simple rules (<see cref="IlMode.Simple"/>): the startup list compiled at startup, and what live promotion adds from
-/// the read-only queries' own load; every frame part of a contract in the compiled set runs compiled, with no gate, check
-/// or probation.
+/// The Simple rules (<see cref="IlMode.Simple"/>): the startup list, and what live promotion adds from the read-only
+/// queries' own load; every frame part of a contract in the compiled set runs compiled, with no gate, check or probation.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Lookup: a code info's slot holds an <see cref="IlSimpleState"/> naming each runner's contract for one body set, or a
-/// mark where neither runner has anything to run or count. Stamped code is found by its keccak, code no cache stamped by
-/// its length and bytes; stamped code whose own profile has nothing compiled for the body set is also looked for by its
-/// bytes, so one contract serves the database's code and override code of the same bytes. Every change to the compiled
-/// set moves <see cref="Generation"/>, and the states and marks of older ones resolve again.
-/// </para>
-/// <para>
-/// Live promotion (<see cref="IlEvmPrefer.Rpc"/>): the queries' runner counts one part in <see cref="SampleEvery"/> of
-/// each code not compiled, drawn at random per thread, with its opcodes. Every <see cref="PromoteMs"/> a background round
-/// takes the codes whose interpreted opcodes per second, scaled back from the sample, reach <see cref="PromoteOps"/>,
-/// busiest first, compiles them on <see cref="CompileThreads"/> threads at the lowest priority, and adds them to the
-/// compiled set within <see cref="BudgetBytes"/>, evicting the least used promoted contracts used less than the newcomer
-/// is in demand to make room. The startup contracts are never evicted, and nothing is demoted for its speed. A code
-/// promoted for one fork is promoted again for the next, its old contract replaced.
-/// </para>
+/// The startup contracts are never evicted, nothing is demoted for its speed, and a code promoted for one fork is promoted
+/// again for the next, its old contract replaced.
 /// </remarks>
 internal static class IlSimple
 {
@@ -314,13 +272,11 @@ internal static class IlSimple
 
     private const uint SampleMask = SampleEvery - 1;
 
-    /// <summary>The most codes promoted in one round, busiest first; the rest wait for the next.</summary>
     public const int MaxPerRound = 32;
 
     /// <summary>The most content profiles of one code length, so a flood of distinct override codes stays cheap to match.</summary>
     public const int MaxPerLength = 16;
 
-    /// <summary>Rounds a contract the budget turned away waits before it is tried again.</summary>
     public const int BudgetRetryRounds = 12;
 
     /// <summary>Rounds in a row with nothing counted after which a profile holding nothing may be pruned.</summary>
@@ -350,7 +306,6 @@ internal static class IlSimple
     /// <summary>The most bytes of code no cache stamped the content profiles keep for live compiles.</summary>
     public static long MaxRetainedBytes { get; set; } = 16L << 20;
 
-    /// <summary>For tests: <see cref="Start"/> starts no thread, and the test runs the rounds itself.</summary>
     internal static bool ManualForTests { get; set; }
 
     /// <summary>Moves on every change to the compiled set; states and marks of an older one resolve again.</summary>
@@ -365,10 +320,10 @@ internal static class IlSimple
     private static readonly object _lock = new();
     private static readonly ConcurrentDictionary<ValueHash256, IlSimpleProfile> _byHash = new();
 
-    /// <summary>The content index: the content profiles, and the stamped ones promoted or compiled at startup, by code length; copied on write.</summary>
+    /// <summary>The content index, by code length; copied on write.</summary>
     private static Dictionary<int, IlSimpleProfile[]> _byLength = [];
 
-    /// <summary>The content profiles, for the rounds, which also walk <see cref="_byHash"/>; copied on write.</summary>
+    /// <summary>The content profiles, for the rounds; copied on write.</summary>
     private static IlSimpleProfile[] _content = [];
 
     /// <summary>The profiles holding a promoted contract, under the lock.</summary>
@@ -387,10 +342,8 @@ internal static class IlSimple
     private static ILogger _logger;
     private static IDb? _codeDb;
 
-    /// <summary>Contracts compiled from the startup list.</summary>
     public static int StartupCount => Volatile.Read(ref _startup);
 
-    /// <summary>Promoted contracts held now.</summary>
     public static int PromotedCount
     {
         get
@@ -400,40 +353,26 @@ internal static class IlSimple
         }
     }
 
-    /// <summary>Promotions so far, evicted ones included; evictions; candidates the budget turned away; codes the compiler declined.</summary>
     public static (int Promoted, int Evicted, int Rejected, int Declined) Totals =>
         (Volatile.Read(ref _promotedTotal), Volatile.Read(ref _evicted), Volatile.Read(ref _rejected), Volatile.Read(ref _declined));
 
-    /// <summary>The IL and tables the promoted contracts hold, against <see cref="BudgetBytes"/>.</summary>
     public static long UsedBytes => Interlocked.Read(ref _usedBytes);
 
-    /// <summary>The bytes of code the content profiles keep, against <see cref="MaxRetainedBytes"/>.</summary>
     public static long RetainedBytes => Interlocked.Read(ref _retainedBytes);
 
-    /// <summary>The profiles kept.</summary>
     public static int ProfileCount => Volatile.Read(ref _profiles);
 
-    /// <summary>States resolved: once per code info, generation and body set.</summary>
     public static long Resolved => Interlocked.Read(ref _resolved);
 
-    /// <summary>Promotion rounds run, and those that promoted anything.</summary>
     public static (int Rounds, int Promoting) Rounds => (Volatile.Read(ref _rounds), Volatile.Read(ref _promotionRounds));
 
-    /// <summary>Contracts the rounds compiled, those the budget then turned away included; for tests.</summary>
     internal static int Compiles => Volatile.Read(ref _compiles);
 
-    /// <summary>The profile of stamped code, for tests.</summary>
     internal static IlSimpleProfile? ProfileOf(in ValueHash256 hash) => _byHash.TryGetValue(hash, out IlSimpleProfile? profile) ? profile : null;
 
-    /// <summary>The profile of code found by content, for tests.</summary>
     internal static IlSimpleProfile? ProfileOf(ReadOnlySpan<byte> code) => FindByContent(code);
 
-    /// <summary>
-    /// Resolves a code info whose slot holds no current state for <paramref name="bodies"/>: <paramref name="seen"/>,
-    /// nothing, a mark, or a state of an older generation or another body set. Installs the state, or the mark when
-    /// neither runner has anything to run or count.
-    /// </summary>
-    /// <returns>The state, or null for a part the runner declines.</returns>
+    /// <summary>Resolves a code info whose slot holds no current state for <paramref name="bodies"/>, installing the state or a mark; null for a part the runner declines.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static IlSimpleState? Resolve(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies, object? seen, bool block)
     {
@@ -446,9 +385,8 @@ internal static class IlSimple
         if (vm.VmState.ExecutionType.IsAnyCreate())
             return Mark(codeInfo, seen, nothing);
 
-        // Stamped code by its keccak. Code no cache stamped, and stamped code whose own profile has nothing for these
-        // bodies, by its length and bytes: a contract compiled from a state override's bytes, or a startup entry's,
-        // serves the same code from the database, and the other way round.
+        // Stamped code by its keccak; code no cache stamped, or stamped code with nothing for these bodies, by its bytes,
+        // so a contract compiled from a state override's bytes serves the same code from the database, and the other way round.
         ValueHash256 hash = codeInfo.CodeHash;
         IlSimpleProfile? profile = hash != default && _byHash.TryGetValue(hash, out IlSimpleProfile? stamped) ? stamped : null;
         if (profile is null || profile.RunFor(bodies, block: false) is null)
@@ -489,8 +427,7 @@ internal static class IlSimple
         return Install(codeInfo, seen, state);
     }
 
-    /// <summary>Among the content index's profiles as long as <paramref name="code"/>, the one whose bytes equal it; stops at the first difference, mostly within the first words.</summary>
-    /// <remarks>The index holds one profile per content: adding one retires any content profile of the same bytes.</remarks>
+    /// <summary>The content index's profile whose bytes equal <paramref name="code"/>; a compare mostly stops within the first words.</summary>
     private static IlSimpleProfile? FindByContent(ReadOnlySpan<byte> code)
     {
         if (!Volatile.Read(ref _byLength).TryGetValue(code.Length, out IlSimpleProfile[]? candidates))
@@ -504,7 +441,6 @@ internal static class IlSimple
         return null;
     }
 
-    /// <summary>Whether a content profile of <paramref name="length"/> bytes would be refused: its length's slots, or the retained bytes, are full.</summary>
     private static bool ContentFull(int length)
     {
         if (Interlocked.Read(ref _retainedBytes) + length > MaxRetainedBytes)
@@ -521,7 +457,6 @@ internal static class IlSimple
         return content >= MaxPerLength;
     }
 
-    /// <summary>A profile for code the queries' runner met, unless the table, or for content profiles their length's slots or the retained bytes, are full.</summary>
     private static IlSimpleProfile? Create(CodeInfo codeInfo, in ValueHash256 hash)
     {
         if (Volatile.Read(ref _profiles) >= MaxProfiles)
@@ -564,10 +499,7 @@ internal static class IlSimple
         }
     }
 
-    /// <summary>
-    /// Adds <paramref name="profile"/> to the content index, under the lock. A content profile of the same bytes is
-    /// retired, its promoted contract evicted into <paramref name="evicted"/>, so one profile compiles and holds the code.
-    /// </summary>
+    /// <summary>Adds a profile to the content index, under the lock, retiring any content profile of the same bytes, so one profile holds the code.</summary>
     private static void AddToIndex(IlSimpleProfile profile, List<IlSimpleProfile>? evicted)
     {
         IlSimpleProfile[] known = _byLength.TryGetValue(profile.Length, out IlSimpleProfile[]? bucket) ? bucket : [];
@@ -587,10 +519,7 @@ internal static class IlSimple
         Volatile.Write(ref _byLength, index);
     }
 
-    /// <summary>
-    /// Takes <paramref name="gone"/> out of the content index, under the lock: their promoted contracts are evicted, and
-    /// the content profiles among them retired, with their kept bytes given back; stamped ones stay in the keccak table.
-    /// </summary>
+    /// <summary>Takes profiles out of the content index, under the lock, evicting their contracts; stamped ones stay in the keccak table.</summary>
     private static void Remove(HashSet<IlSimpleProfile> gone, List<IlSimpleProfile>? evicted)
     {
         Dictionary<int, IlSimpleProfile[]> index = new(_byLength);
@@ -631,7 +560,6 @@ internal static class IlSimple
         }
     }
 
-    /// <summary>Marks the slot over nothing, a mark or an old state, and declines the part.</summary>
     private static IlSimpleState? Mark(CodeInfo codeInfo, object? seen, IlSimpleMark mark)
     {
         if (!ReferenceEquals(seen, mark) && Replaceable(seen))
@@ -642,8 +570,7 @@ internal static class IlSimple
     /// <summary>Installs <paramref name="state"/> over <paramref name="seen"/>; another thread's state, installed first, serves the part instead when it is current for the same bodies.</summary>
     private static IlSimpleState Install(CodeInfo codeInfo, object? seen, IlSimpleState state)
     {
-        // Whatever else holds the slot, as another rules' state in a process that switched, keeps it; the part runs on
-        // the state just made.
+        // Another rules' state, in a process that switched, keeps the slot; the part runs on the state just made.
         if (!Replaceable(seen))
             return state;
         object? found = Interlocked.CompareExchange(ref IlEvmFrameRunner.CodeSlot(codeInfo), state, seen);
@@ -661,11 +588,7 @@ internal static class IlSimple
         Interlocked.Increment(ref Generation);
     }
 
-    /// <summary>Publishes the startup list's contracts, found by their keccak and, for code no cache stamped, by their bytes.</summary>
-    /// <remarks>
-    /// Adds to what was published, as the retry of the entries the code database lacked does. A contract promoted for
-    /// the same body set meanwhile, under the code's keccak or its bytes, is evicted: the startup one serves it now.
-    /// </remarks>
+    /// <summary>Publishes startup list contracts, adding to what was published; a contract promoted meanwhile for the same body set is evicted.</summary>
     public static void PublishStartup(IReadOnlyList<(IlEvmPrecompileList.Entry Entry, IlEvm.IlContract Contract)> contracts)
     {
         if (contracts.Count == 0)
@@ -696,10 +619,9 @@ internal static class IlSimple
         Changed();
     }
 
-    /// <summary>The IL and tables of the startup contracts.</summary>
     public static long StartupBytes => Interlocked.Read(ref _startupBytes);
 
-    /// <summary>Starts the promotion rounds on their own thread, unless <see cref="Promote"/> is off; the code database is where a stamped code collected from memory is read from.</summary>
+    /// <summary>Starts the promotion rounds on their own thread; <paramref name="codeDb"/> serves stamped code whose code infos were collected.</summary>
     public static void Start(ILogger logger, IDb? codeDb)
     {
         _logger = logger;
@@ -714,7 +636,6 @@ internal static class IlSimple
         thread.Start();
     }
 
-    /// <summary>Stops the rounds, at shutdown.</summary>
     public static void Stop()
     {
         _stopping = true;
@@ -754,13 +675,10 @@ internal static class IlSimple
     }
 
     /// <summary>
-    /// The calling thread at the lowest priority it may take: the lowest .NET priority, which Windows honors; Linux ignores
-    /// it for unprivileged threads, and the idle class, which it allows, is taken only under <see cref="IlEvmSettings.CompileIdle"/>.
+    /// The lowest .NET priority, which Linux ignores for unprivileged threads; the idle class only under
+    /// <see cref="IlEvmSettings.CompileIdle"/>: a thread an idle-class thread creates inherits it, possibly the runtime's
+    /// tier-up worker, which would leave the whole node's tier-up to idle time.
     /// </summary>
-    /// <remarks>
-    /// A thread created by an idle-class thread inherits the class, and the runtime starts its tier-up worker on whichever
-    /// thread first needs it, so an idle-class compiler could leave the whole node's tier-up to idle time while it is busy.
-    /// </remarks>
     private static void LowerPriority()
     {
         try
@@ -777,7 +695,6 @@ internal static class IlSimple
             IlEvm.IlCompileQueue.SetIdleScheduling();
     }
 
-    /// <summary>A round's candidate: its profile, rate and the code and body set it compiles for.</summary>
     private sealed class Candidate(IlSimpleProfile profile, double rate, byte[] code, OpcodeBodySet bodies)
     {
         public readonly IlSimpleProfile Profile = profile;
@@ -788,12 +705,7 @@ internal static class IlSimple
         public string? Reason;
     }
 
-    /// <summary>
-    /// One promotion round over the counts of the last <paramref name="seconds"/>: folds every profile's counts, compiles the
-    /// codes past <see cref="PromoteOps"/> that the budget could take, busiest first, and adds them; prunes idle profiles
-    /// near the caps; logs a line when it promoted any.
-    /// </summary>
-    /// <returns>How many contracts the round promoted.</returns>
+    /// <summary>One promotion round over the counts of the last <paramref name="seconds"/>; returns how many contracts it promoted.</summary>
     internal static int Round(double seconds)
     {
         seconds = Math.Max(seconds, 1e-3);
@@ -827,8 +739,7 @@ internal static class IlSimple
             if (candidates.Count >= MaxPerRound)
                 break;
             OpcodeBodySet bodies = profile.Bodies!;
-            // Code no live code info or database has now, as one collected with its code infos where the database is
-            // not at hand, is looked for again at a later round; a code info resolved meanwhile serves.
+            // Code no live code info or database has now is looked for again at a later round.
             if (CodeOf(profile) is not { Length: > 0 } code)
                 continue;
 
@@ -919,7 +830,6 @@ internal static class IlSimple
         return promoted.Count;
     }
 
-    /// <summary>Compiles the candidates on up to <see cref="CompileThreads"/> threads, the calling one among them, each whole.</summary>
     private static void Compile(List<Candidate> candidates)
     {
         if (candidates.Count == 0)
@@ -960,11 +870,10 @@ internal static class IlSimple
             thread.Join();
     }
 
-    /// <summary>The promoted contracts <paramref name="profile"/> may evict, least used first: those other than its own used less than it is in demand.</summary>
     private static IEnumerable<IlSimpleProfile> Evictable(IlSimpleProfile profile) =>
         _promoted.Where(p => !ReferenceEquals(p, profile) && p.Usage < profile.Demand).OrderBy(static p => p.Usage);
 
-    /// <summary>Whether a contract of <paramref name="bytes"/> for <paramref name="profile"/> could be admitted, before it is compiled: the budget's room, its own older contract's and what it may evict.</summary>
+    /// <summary>Whether a contract of <paramref name="bytes"/> could be admitted, checked before compiling it.</summary>
     private static bool CouldAdmit(IlSimpleProfile profile, long bytes)
     {
         lock (_lock)
@@ -985,12 +894,7 @@ internal static class IlSimple
         }
     }
 
-    /// <summary>
-    /// Adds a promoted contract within the budget, under the lock: the profile's own contract for an older fork is
-    /// replaced, and the least used promoted contracts used less than the newcomer is in demand are evicted first, as
-    /// many as it needs. False, with nothing evicted and the contract dropped, when it would still not fit the budget or
-    /// <see cref="IlEvmSettings.MaxLiveIlBytes"/>.
-    /// </summary>
+    /// <summary>Adds a promoted contract under the lock, replacing its own older one and evicting as needed; false, with nothing evicted, when it does not fit.</summary>
     private static bool Admit(IlSimpleProfile profile, IlEvm.IlContract contract, List<IlSimpleProfile> evicted)
     {
         long bytes = contract.MemoryBytes;
@@ -1050,7 +954,7 @@ internal static class IlSimple
         return true;
     }
 
-    /// <summary>Takes a promoted contract out of the compiled set and releases its code and tables, under the lock; its frames hand back meanwhile, and the code is counted again.</summary>
+    /// <summary>Evicts a promoted contract, under the lock; its frames hand back meanwhile, and the code is counted again.</summary>
     private static void Evict(IlSimpleProfile profile)
     {
         if (profile.Promoted is not { } contract)
@@ -1064,12 +968,7 @@ internal static class IlSimple
         Interlocked.Increment(ref _evicted);
     }
 
-    /// <summary>
-    /// Forgets the profiles idle for <see cref="IdleToPrune"/> rounds that hold nothing, under the lock: content ones are
-    /// retired from the index, their kept bytes given back; stamped ones leave the keccak table. Their states resolve
-    /// again with the next generation.
-    /// </summary>
-    /// <returns>Whether any was forgotten.</returns>
+    /// <summary>Forgets the idle profiles that hold nothing, under the lock; their states resolve again with the next generation.</summary>
     private static bool Prune()
     {
         HashSet<IlSimpleProfile> unindexed = [];
@@ -1105,7 +1004,6 @@ internal static class IlSimple
             yield return profile;
     }
 
-    /// <summary>The code a live compile compiles: the bytes a profile keeps, as a content or startup one does, else a live code info's, else the code database's.</summary>
     private static byte[]? CodeOf(IlSimpleProfile profile)
     {
         if (!profile.Bytes.IsEmpty || profile.ByContent)
@@ -1115,7 +1013,6 @@ internal static class IlSimple
         return _codeDb?.Get(profile.Hash.Bytes);
     }
 
-    /// <summary>The exit line's part: the compiled set, what promotion did, and the parts each runner ran compiled and interpreted.</summary>
     public static string Describe()
     {
         (long qc, long qi, long bc, long bi) = IlSimpleThread.Totals();
@@ -1127,7 +1024,6 @@ internal static class IlSimple
             $"parts compiled/interpreted: queries {qc}/{qi}, blocks {bc}/{bi}; {ProfileCount} profiles, {Resolved} states resolved");
     }
 
-    /// <summary>Forgets everything, for tests: profiles, the compiled set and the counts; code infos resolved before resolve again.</summary>
     internal static void ResetForTests()
     {
         lock (_lock)
@@ -1146,8 +1042,7 @@ internal static class IlSimple
         Changed();
     }
 
-    /// <summary>Counts a sampled interpreted part of a code not compiled into its profile, with the body set a live compile is for; its opcodes follow in <see cref="CountOps"/>.</summary>
-    /// <remarks>Plain writes into the thread's stripe: a lost count only moves a rate, and a body set is written only when it changes.</remarks>
+    /// <summary>Counts a sampled interpreted part, whose opcodes follow in <see cref="CountOps"/>; the body set is written only when it changes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Sample(IlSimpleProfile profile, OpcodeBodySet bodies, IlSimpleThread thread)
     {
@@ -1156,11 +1051,9 @@ internal static class IlSimple
             profile.Bodies = bodies;
     }
 
-    /// <summary>Whether the part is drawn for the sample: one in <see cref="SampleEvery"/>, at random per thread.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool Draw(IlSimpleThread thread) => (thread.Next() & SampleMask) == 0;
 
-    /// <summary>The interpreter ran <paramref name="opCodes"/> opcodes of a sampled part of <paramref name="codeInfo"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void CountOps(CodeInfo codeInfo, int opCodes)
     {

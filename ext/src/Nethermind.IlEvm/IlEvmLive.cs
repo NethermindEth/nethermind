@@ -12,29 +12,21 @@ using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
-using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.IlEvm;
 
 /// <summary>
-/// The live model's constants for one source: what a visit of x opcodes saves run compiled,
-/// <c>a·x − g − b·Cold(d)·min(x, U)</c> with <c>Cold(d) = d/(d + d0)</c>, per shape and kind of thread, and the charges
-/// on top of it.
+/// The live model's constants for one source: run compiled, a visit of x opcodes saves <c>a·x − g − b·Cold(d)·min(x, U)</c>
+/// with <c>Cold(d) = d/(d + d0)</c>, per shape and kind of thread: block processing's own (M, index 0) or the other
+/// threads its runner serves (O, index 1); the read-only queries count kind M only.
 /// </summary>
-/// <remarks>
-/// The kinds are block processing's own thread (M, index 0) and the other threads its runner serves (O, index 1); the
-/// read-only queries count kind M only. The priors are the laptop calibration's, with block code's cold cost at the shared
-/// caches' level rather than memory's, as the block runs showed; a list's <c># calib</c> line replaces them.
-/// </remarks>
 internal sealed class IlModel
 {
-    /// <summary>Block processing's priors: a = 0.25/0.6/1.1 ns per opcode for line/mixed/loop code, g = 25 ns, b = 1.5 ns per opcode, U = 300, d0 = 32, ρ = 0.25, λ = 0, τ = 0.</summary>
     public static readonly IlModel BlocksPrior = new([0.25, 0.6, 1.1, 0.25, 0.6, 1.1], [25, 25], [1.5, 1.5], u: 300, d0: 32, rho: 0.25, lambda: 0, tau: 0);
 
-    /// <summary>The read-only queries' priors: as block processing's, with the cold cost of code met from memory, b = 10 ns per opcode.</summary>
+    /// <summary>As block processing's, but the queries meet their code cold from memory rather than from the shared caches.</summary>
     public static readonly IlModel RpcPrior = new([0.25, 0.6, 1.1, 0.25, 0.6, 1.1], [25, 25], [10, 10], u: 300, d0: 32, rho: 0.25, lambda: 0, tau: 0);
 
-    /// <summary>The warm saving per opcode, by kind then shape: <c>kind·3 + shape</c>.</summary>
     private readonly double[] _a;
 
     /// <summary>A constant set: <paramref name="a"/> by kind then shape, <paramref name="g"/> and <paramref name="b"/> by kind.</summary>
@@ -71,14 +63,13 @@ internal sealed class IlModel
     /// <summary>The model's residual, in nanoseconds per epoch, which a check's measurements shrink.</summary>
     public readonly double Tau;
 
-    /// <summary>The warm saving per opcode of <paramref name="shape"/> code on <paramref name="kind"/>, in nanoseconds.</summary>
+    /// <summary>The warm saving per opcode, in nanoseconds.</summary>
     public double A(IlEvmCodeShape shape, int kind) => _a[kind * 3 + (int)shape];
 
     /// <summary>
-    /// <paramref name="prior"/> with each constant the calibration tokens name, after <paramref name="prefix"/>, in its
-    /// place: <c>a.line=</c>, <c>a.mixed=</c> and <c>a.loop=</c> for both kinds, or with <c>.M</c> or <c>.O</c> for one;
-    /// <c>g=</c> and <c>b=</c> likewise; <c>U=</c>, <c>d0=</c>, <c>rho=</c>, <c>lambda=</c> and <c>tau=</c>. Names are read
-    /// without regard to case; a value that is not a finite number is skipped.
+    /// <paramref name="prior"/> with the constants the tokens after <paramref name="prefix"/> name, case-insensitively:
+    /// <c>a.line=</c>, <c>a.mixed=</c>, <c>a.loop=</c>, <c>g=</c> and <c>b=</c> for both kinds or, with <c>.M</c> or
+    /// <c>.O</c>, one; <c>U=</c>, <c>d0=</c>, <c>rho=</c>, <c>lambda=</c>, <c>tau=</c>. Non-finite values are skipped.
     /// </summary>
     public static IlModel From(IlModel prior, IReadOnlyDictionary<string, string> tokens, string prefix)
     {
@@ -121,16 +112,14 @@ internal sealed class IlModel
             $"a {_a[0]}/{_a[1]}/{_a[2]} M, {_a[3]}/{_a[4]}/{_a[5]} O ns/op, g {G[0]}/{G[1]} ns, b {B[0]}/{B[1]} ns/op, U {U}, d0 {D0}, rho {Rho}, lambda {Lambda}, tau {Tau}");
 }
 
-/// <summary>A source of live profiling's thresholds and constants, fixed once made: block processing's, or the read-only queries'.</summary>
+/// <summary>One source's live profiling thresholds and constants, block processing's or the read-only queries'; immutable.</summary>
 internal sealed class IlLiveParams
 {
-    /// <summary>Block processing: a counted block an epoch, promoted from 5,000 ns saved per block over 8 epochs and 32 measured visits; a half-life of 512 blocks.</summary>
     public static IlLiveParams BlocksPrior => new(block: true, minEpochs: 8, minMeasured: 32, thetaUp: 5_000, halfLife: 512, IlModel.BlocksPrior);
 
-    /// <summary>The read-only queries: a second an epoch, promoted from 50,000 ns saved per second, about the Legacy rules' 50,000 opcodes a second at a nanosecond each, over 2 epochs and 16 measured visits; a half-life of 600 seconds.</summary>
+    /// <summary>The read-only queries': the threshold is about the Legacy rules' 50,000 opcodes a second at a nanosecond each.</summary>
     public static IlLiveParams RpcPrior => new(block: false, minEpochs: 2, minMeasured: 16, thetaUp: 50_000, halfLife: 600, IlModel.RpcPrior);
 
-    /// <summary>Thresholds and constants, each kept within what the scorer can use.</summary>
     public IlLiveParams(bool block, int minEpochs, int minMeasured, double thetaUp, double halfLife, IlModel model)
     {
         Block = block;
@@ -143,7 +132,6 @@ internal sealed class IlLiveParams
         RestartEpochs = (int)Math.Min(int.MaxValue, Math.Ceiling(4 * HalfLife));
     }
 
-    /// <summary>Whether this is block processing's source, else the read-only queries'.</summary>
     public readonly bool Block;
 
     /// <summary>The epochs a code must have been counted in before it is promoted.</summary>
@@ -152,28 +140,23 @@ internal sealed class IlLiveParams
     /// <summary>The measured visits, decayed, a code must have before it is promoted.</summary>
     public readonly int MinMeasured;
 
-    /// <summary>What compiling must save to promote, in nanoseconds per epoch; a quarter of it, three ticks running, demotes.</summary>
+    /// <summary>What compiling must save to promote, in nanoseconds per epoch.</summary>
     public readonly double ThetaUp;
 
-    /// <summary>The epochs after which a count weighs half: 512 blocks, about 1.7 hours of mainnet, or 600 seconds.</summary>
     public readonly double HalfLife;
 
-    /// <summary>The silence, four half-lives, after which a code counted again is counted afresh: its rate and its epochs from then.</summary>
+    /// <summary>The silence after which a code counted again is counted afresh, its rate and epochs from then.</summary>
     public readonly int RestartEpochs;
 
-    /// <summary>The model's constants.</summary>
     public readonly IlModel Model;
 
-    /// <summary>What an epoch keeps of the history: <c>2^(−1/HalfLife)</c>.</summary>
     public readonly double Retain;
 
-    /// <summary>The source's name, for the log: <c>blocks</c> or <c>rpc</c>.</summary>
     public string Name => Block ? "blocks" : "rpc";
 
-    /// <summary>The epochs a demoted code, or one whose layout failed, waits before it may be promoted again: ten half-lives.</summary>
+    /// <summary>The epochs a demoted code, or one whose layout failed, waits before it may be promoted again.</summary>
     public long CooldownEpochs => (long)Math.Round(10 * HalfLife);
 
-    /// <summary>These thresholds with the knobs given replaced.</summary>
     public IlLiveParams With(int? minEpochs = null, int? minMeasured = null, double? thetaUp = null, double? halfLife = null, IlModel? model = null) =>
         new(Block, minEpochs ?? MinEpochs, minMeasured ?? MinMeasured, thetaUp ?? ThetaUp, halfLife ?? HalfLife, model ?? Model);
 
@@ -186,91 +169,66 @@ internal sealed class IlLiveParams
 /// blocks, promotes the codes compiling would gain most on and demotes those it no longer gains on.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The counting runner samples transactions, one in <see cref="IlGate.QuerySampleEvery"/> on the queries' runner and one
-/// in <see cref="IlGate.BlockSampleEvery"/> on block processing's; each visit of a sampled transaction its gate folds
-/// (<see cref="IlThread"/>) is counted on its code's profile, standing for as many visits as sampling left out: the
-/// transactions not sampled, times the visit's own sampling - a measured settled visit stands for 8, a compiled, renting
-/// or uncompiled one for itself. The counts are visits and opcodes by visit length in log2 buckets, per kind of thread,
-/// then parts and measured visits: plain adds on the profile's own array, racy, once per visit of a sampled transaction,
-/// never per part. Only the counting runner's visits are counted, so neither source ever writes the other's.
-/// </para>
-/// <para>
-/// Epochs are the source's: a counted block for block processing (<see cref="IlRuntime.BlockEpoch"/>), a second for the
-/// queries (<see cref="IlRuntime.RpcEpoch"/>). A profile counted in an epoch joins the touched queue, once however often
-/// it is counted. The scorer, <see cref="Tick"/>, runs on a scheduler worker at each window's opening and once a second,
-/// never beside a step: it folds what each touched profile gained into a history that halves every
-/// <see cref="IlLiveParams.HalfLife"/> epochs, decayed lazily, rescores it, and decides.
-/// </para>
-/// <para>
-/// The score is what compiling would save per epoch, in nanoseconds, where the gate would run the code compiled: over
-/// the buckets whose mean visit reaches the runner's admission length, <c>a·ops − visits·(g + b·Cold(d)·min(x, U))</c>, with
-/// d the other visits between two of the code's, less λ per MiB of footprint; block processing's other threads count at
-/// ρ. For a contract a check has timed, what the check measured is blended in. A code is promoted once its score clears
-/// <see cref="IlLiveParams.ThetaUp"/> by twice its noise, greedily by score per MiB, within <see cref="BudgetBytes"/>, by a
-/// layout job the scheduler runs between blocks; demoted after three ticks under a quarter of it, and kept out for ten
-/// half-lives unless it scores four times over. Shipped contracts are never promoted or demoted here.
-/// </para>
+/// The counting runner samples one transaction in <see cref="IlGate.QuerySampleEvery"/> on the queries' runner and one in
+/// <see cref="IlGate.BlockSampleEvery"/> on block processing's. Each visit its gate folds (<see cref="IlThread"/>) is
+/// counted once, never per part, standing for the visits sampling left out: the transactions not sampled, times the
+/// visit's own sampling (a measured settled visit stands for 8, a compiled, renting or uncompiled one for itself). Only
+/// the counting runner counts, so neither source writes the other's. The scorer, <see cref="Tick"/>, runs on a scheduler
+/// worker, never beside a step. Shipped contracts are never promoted or demoted here.
 /// </remarks>
 internal static class IlLive
 {
     /// <summary>The log2 buckets of visit length: fewer than 64 opcodes, then each power of two, the last from 65,536.</summary>
     public const int Buckets = 12;
 
-    /// <summary>The index of the weighted parts, after each kind's buckets' visits and opcodes.</summary>
     public const int PartsIndex = 48;
 
-    /// <summary>The index of the measured visits, unweighted: the evidence behind the rest.</summary>
+    /// <summary>The measured visits, unweighted: the evidence behind the rest.</summary>
     public const int MeasuredIndex = 49;
 
-    /// <summary>The counters a profile keeps.</summary>
     public const int CounterCount = 50;
 
-    /// <summary>The IL and tables a contract compiles to per byte of its code, about, for the budget before its layout says.</summary>
+    /// <summary>About the IL and tables a contract takes per byte of code: the budget's estimate until its layout says.</summary>
     public const double IlBytesPerCodeByte = 52.7;
 
-    /// <summary>The IL, tables and native code a contract takes per byte of its code, about, for the footprint's charge.</summary>
+    /// <summary>About the IL, tables and native code a contract takes per byte of code, for the footprint's charge.</summary>
     public const double FootprintBytesPerCodeByte = 90;
 
     /// <summary>The epochs a profile nothing compiled for must go untouched before the table, near its cap, may let it go.</summary>
     public const int UntouchedEpochs = 1_024;
 
-    /// <summary>The candidates kept between ticks; past it the least dense goes.</summary>
     public const int MaxCandidates = 1_024;
 
     /// <summary>The touched profiles a tick folds whatever its time, so it always gets on.</summary>
     private const int MinDrain = 64;
 
-    /// <summary>The profiles a tick's step of an eviction scan looks at whatever its time.</summary>
+    /// <summary>The profiles a step of an eviction scan looks at whatever its time.</summary>
     private const int MinScan = 1_024;
 
-    /// <summary>Ticks a live code's score must stay under a quarter of the threshold, running, for its demotion.</summary>
+    /// <summary>Ticks running a live code must score under a quarter of the threshold to be demoted.</summary>
     public const int DemoteTicks = 3;
 
     private static IlLiveParams _rpc = Overridden(IlLiveParams.RpcPrior, IlModel.RpcPrior, []);
     private static IlLiveParams _blocks = Overridden(IlLiveParams.BlocksPrior, IlModel.BlocksPrior, []);
 
-    /// <summary>The read-only queries' thresholds and constants: the priors, the calibration's <c>rpc.</c> tokens, and the environment's.</summary>
     public static IlLiveParams Rpc
     {
         get => Volatile.Read(ref _rpc);
         set => Volatile.Write(ref _rpc, value);
     }
 
-    /// <summary>Block processing's thresholds and constants: the priors, the calibration, and the environment's.</summary>
     public static IlLiveParams Blocks
     {
         get => Volatile.Read(ref _blocks);
         set => Volatile.Write(ref _blocks, value);
     }
 
-    /// <summary>The thresholds and constants of the source <paramref name="block"/> names.</summary>
     public static IlLiveParams For(bool block) => block ? Blocks : Rpc;
 
     /// <summary>The IL and tables the contracts live profiling compiled may hold, <see cref="IIlEvmConfig.LiveBudgetMiB"/>; <see cref="IlEvmSettings.MaxLiveIlBytes"/> stays the hard cap.</summary>
     public static long BudgetBytes { get; set; } = 128L << 20;
 
-    /// <summary>How long a tick may take, in milliseconds, before it leaves the rest to the next; tests raise it.</summary>
+    /// <summary>How long a tick may take, in milliseconds, before it leaves the rest to the next.</summary>
     public static double TickBudgetMs { get; set; } = 1;
 
     /// <summary>The profiles counted since the scorer last folded them, each once.</summary>
@@ -284,22 +242,17 @@ internal static class IlLive
     private static IEnumerator<KeyValuePair<IlProfileKey, IlCodeProfile>>? _scan;
     private static List<(double Ops, IlCodeProfile Profile)>? _evictable;
 
-    /// <summary>The IL and tables of the live contracts, laid out or reserved for a layout, per source: the queries' at 0, block processing's at 1.</summary>
+    /// <summary>The IL and tables of the live contracts, laid out or reserved for a layout: the queries' at 0, block processing's at 1.</summary>
     private static readonly long[] _liveBytes = new long[2];
 
-    /// <summary>The live contracts published and not released, per source.</summary>
     private static readonly long[] _liveCount = new long[2];
 
-    // What the exit line reports.
     private static long _promoted, _demoted, _displaced, _released, _failed, _deferred, _evicted, _folds, _scored, _ticks, _forkMoves;
 
-    /// <summary>Counts a counting runner's folded visit of <paramref name="ops"/> opcodes over <paramref name="parts"/> parts on <paramref name="profile"/>, standing for <paramref name="weight"/> visits.</summary>
-    /// <param name="main">The kind: block processing's own thread, or any thread of the read-only queries' runner; else block processing's other threads.</param>
-    /// <param name="block">Whether block processing's runner counted it, whose epochs it is counted in.</param>
-    /// <remarks>
-    /// On the frame's thread, once per visit: four racy adds to the profile's array, and once per epoch the touched
-    /// queue. Two threads adding at once may lose one's count, which only adds noise.
-    /// </remarks>
+    /// <summary>Counts a folded visit on <paramref name="profile"/>, standing for <paramref name="weight"/> visits.</summary>
+    /// <param name="main">Block processing's own thread or any query thread; else block processing's other threads.</param>
+    /// <param name="block">Whether block processing's runner counted it, in whose epochs it counts.</param>
+    /// <remarks>Racy plain adds on the frame's thread, once per visit: two threads adding at once may lose a count, which only adds noise.</remarks>
     public static void Count(IlCodeProfile profile, int ops, int parts, bool main, int weight, bool block)
     {
         int epoch = Epoch(block);
@@ -317,11 +270,7 @@ internal static class IlLive
             Touched.Enqueue(profile);
     }
 
-    /// <summary>
-    /// The code's first count in an epoch: one more epoch counted; and back after a silence of
-    /// <see cref="IlLiveParams.RestartEpochs"/>, what came before has all but decayed, so its rate and its epochs count
-    /// afresh from now, and the scorer drops the rest of its history at the next fold.
-    /// </summary>
+    /// <summary>The code's first count in an epoch; after <see cref="IlLiveParams.RestartEpochs"/> of silence the history has all but decayed, so it counts afresh.</summary>
     private static void NewEpoch(IlCodeProfile profile, int epoch, bool block)
     {
         if (profile.LastEpoch >= 0 && epoch - profile.LastEpoch >= For(block).RestartEpochs)
@@ -334,7 +283,6 @@ internal static class IlLive
         profile.Epochs++;
     }
 
-    /// <summary>A profile's first count: its counters, and the epoch its rates count from.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static long[] Start(IlCodeProfile profile, int epoch)
     {
@@ -344,13 +292,11 @@ internal static class IlLive
         return Interlocked.CompareExchange(ref profile.Counters, created, null) ?? created;
     }
 
-    /// <summary>The bucket of a visit of <paramref name="ops"/> opcodes: <c>clamp(⌊log2 ops⌋ − 5, 0, 11)</c>.</summary>
     public static int BucketOf(long ops) => Math.Clamp(BitOperations.Log2((ulong)Math.Max(ops, 1)) - 5, 0, Buckets - 1);
 
-    /// <summary>The epoch now of the source <paramref name="block"/> names.</summary>
     public static int Epoch(bool block) => block ? Volatile.Read(ref IlRuntime.BlockEpoch) : IlRuntime.RpcEpoch;
 
-    /// <summary>The source the scorer serves: the queries' with <see cref="IlEvmPrefer.Rpc"/>, block processing's with <see cref="IlEvmPrefer.Blocks"/>; none with <see cref="IlEvmPrefer.None"/>, or under rules other than the Adaptive ones.</summary>
+    /// <summary>The source the scorer serves; null with <see cref="IlEvmPrefer.None"/> or under rules other than the Adaptive ones.</summary>
     public static IlLiveParams? Active => IlEvmSettings.Mode != IlMode.Adaptive ? null : IlEvmSettings.Prefer switch
     {
         IlEvmPrefer.Rpc => Rpc,
@@ -358,12 +304,8 @@ internal static class IlLive
         _ => null,
     };
 
-    /// <summary>
-    /// The scorer, at a window's opening and once a second, on the scheduler's worker: folds the profiles counted since,
-    /// within <see cref="TickBudgetMs"/>, leaving the rest queued for the next tick; rescores the live and candidate codes;
-    /// demotes, then promotes; and, near the table's cap, lets go of the profiles least worth keeping.
-    /// </summary>
-    /// <param name="nowMs">The scheduler's clock, which the scorer does not need: it goes by its source's epochs.</param>
+    /// <summary>The scorer, on the scheduler's worker at each window's opening and once a second.</summary>
+    /// <param name="nowMs">Unused: the scorer goes by its source's epochs.</param>
     public static void Tick(long nowMs)
     {
         IlLiveParams? source = Active;
@@ -374,7 +316,6 @@ internal static class IlLive
         int epoch = Epoch(source.Block);
         _ticks++;
 
-        // What was counted since the last tick, as far as the time allows; the queue keeps the rest.
         for (int drained = 0; (drained < MinDrain || Stopwatch.GetTimestamp() - started < budget) && Touched.TryDequeue(out IlCodeProfile? profile); drained++)
         {
             Volatile.Write(ref profile.InTouched, 0);
@@ -390,7 +331,6 @@ internal static class IlLive
         EvictStep(epoch, source, started, budget);
     }
 
-    /// <summary>Folds the counts <paramref name="profile"/> gained since its last fold into its history, decayed to <paramref name="epoch"/>; false for a profile never counted.</summary>
     internal static bool Fold(IlCodeProfile profile, int epoch, IlLiveParams source)
     {
         long[]? counters = Volatile.Read(ref profile.Counters);
@@ -427,29 +367,25 @@ internal static class IlLive
         return true;
     }
 
-    /// <summary>What <paramref name="epochs"/> epochs keep of a count: <c>2^(−epochs/HalfLife)</c>; all of it for none, or for a clock a test set back.</summary>
+    /// <summary>What <paramref name="epochs"/> epochs keep of a count: all of it for none, or for a clock a test set back.</summary>
     internal static double Keep(long epochs, IlLiveParams source) => epochs <= 0 ? 1 : Math.Pow(2, -epochs / source.HalfLife);
 
-    /// <summary>The epochs a history over <paramref name="epochs"/> epochs at one count each adds up to, decayed: what turns a history into a rate.</summary>
-    /// <remarks>So a code counted for a few epochs is scored at its rate from its first count, not diluted over a half-life it was not around for.</remarks>
+    /// <summary>What turns a history into a rate, so a code counted for a few epochs is not diluted over a half-life it was not around for.</summary>
     internal static double Window(long epochs, IlLiveParams source) =>
         epochs <= 1 ? 1 : (1 - Math.Pow(source.Retain, epochs)) / (1 - source.Retain);
 
-    /// <summary>A profile's counter, decayed to <paramref name="epoch"/>: 0 for one never folded.</summary>
     internal static double Decayed(IlCodeProfile profile, int index, int epoch, IlLiveParams source) =>
         profile.Hist is { } history ? history[index] * Keep(epoch - profile.HistEpoch, source) : 0;
 
-    /// <summary>The visits over every profile, of kind <paramref name="kind"/>, decayed to <paramref name="epoch"/>: the reuse distance's numerator.</summary>
+    /// <summary>The decayed visits of a kind over every profile: the reuse distance's numerator.</summary>
     internal static double AllVisits(int kind, int epoch, IlLiveParams source) => _allVisits[kind] * Keep(epoch - _allEpoch, source);
 
-    /// <summary>The shape of visits of <paramref name="ops"/> opcodes per visit over code of <paramref name="size"/> bytes: line under a tenth of a pass over the code, loop past a whole one.</summary>
     internal static IlEvmCodeShape ShapeOf(double opsPerVisit, int size)
     {
         double passes = opsPerVisit / Math.Max(1, size);
         return passes < 0.1 ? IlEvmCodeShape.Line : passes >= 1 ? IlEvmCodeShape.Loop : IlEvmCodeShape.Mixed;
     }
 
-    /// <summary>The visit length from which the source's runner admits the code's visits cold: its gate's, a list entry's own for block processing, and none with the gate off.</summary>
     internal static double AdmissionOps(IlCodeProfile profile, bool block)
     {
         if (!IlEvmSettings.Gate)
@@ -459,16 +395,11 @@ internal static class IlLive
         return profile.BlockMinVisitLog2 > 0 ? Math.Pow(2, Math.Clamp((int)profile.BlockMinVisitLog2, 2, 30)) : IlGate.Block.VisitColdOps;
     }
 
-    /// <summary>The footprint the code's compiled contract takes, in MiB: IL, tables and native code.</summary>
     internal static double FootprintMiB(int size) => Math.Max(1, size) * FootprintBytesPerCodeByte / (1 << 20);
 
-    /// <summary>The IL and tables the code's contract is expected to take, which the budget counts until its layout says.</summary>
     internal static long EstimateBytes(int size) => (long)Math.Ceiling(Math.Max(1, size) * IlBytesPerCodeByte);
 
-    /// <summary>
-    /// Scores <paramref name="profile"/> at <paramref name="epoch"/>: its gate-aware saving per epoch, blended with its
-    /// check's measurement once it has one, its noise, and its density per MiB.
-    /// </summary>
+    /// <summary>Scores a profile: its gate-aware saving per epoch, blended with its check's measurement, its noise and its density per MiB.</summary>
     internal static void Rescore(IlCodeProfile profile, int epoch, IlLiveParams source)
     {
         _scored++;
@@ -514,8 +445,7 @@ internal static class IlLive
                 if (v <= 0)
                     continue;
                 double mean = o / v;
-                // Only what the gate would run compiled: visits that reach its admission length cold. Those it would
-                // admit warm, after a compiled visit on the same thread, are left out.
+                // Only visits the gate would admit cold count; those it would admit warm, after a compiled visit, are left out.
                 if (mean < admission)
                     continue;
                 admitted += weight * o;
@@ -552,20 +482,16 @@ internal static class IlLive
         profile.Density = score / footprint;
     }
 
-    /// <summary>Whether a code may be promoted at all: nothing decided against it, nothing compiled for its body set, and its code at hand.</summary>
     private static bool Promotable(IlCodeProfile profile, IlLiveParams source) =>
         profile.State is IlCodeProfile.LiveNone or IlCodeProfile.LiveDemoted && profile.Live is null && profile.LastBodies is { } bodies &&
         !ShippedFor(profile, bodies) && !(source.Block && IlEvmSettings.BlockDeclineAll) && HasCode(profile);
 
-    /// <summary>Whether the list shipped the code compiled for <paramref name="bodies"/>, in which case it is the list's, never live profiling's.</summary>
     private static bool ShippedFor(IlCodeProfile profile, OpcodeBodySet bodies) =>
         ReferenceEquals(profile.Shipped?.Bodies, bodies) || ReferenceEquals(profile.ShippedNext?.Bodies, bodies);
 
-    /// <summary>Whether a layout could read the code: its retained bytes for code no cache stamped, else the code database.</summary>
     private static bool HasCode(IlCodeProfile profile) =>
         profile.Key.IsByContent ? !profile.Retained.IsEmpty : IlScheduler.Current?.CodeDb is not null;
 
-    /// <summary>Whether a scored code clears the threshold by twice its noise, on enough epochs and measured visits, out of any cooldown but for a score four times over.</summary>
     private static bool Eligible(IlCodeProfile profile, int epoch, IlLiveParams source) =>
         profile.Score - source.ThetaUp >= 2 * profile.Sigma && profile.Epochs >= source.MinEpochs && profile.Measures >= source.MinMeasured &&
         (profile.State != IlCodeProfile.LiveDemoted || epoch >= profile.CooldownUntil || profile.Score > 4 * source.ThetaUp);
@@ -592,12 +518,7 @@ internal static class IlLive
         _candidates.Add(profile);
     }
 
-    /// <summary>
-    /// The live codes: those whose layout failed or a check released are let go of, as is one the list now ships; one
-    /// whose code was resolved on another body set at <see cref="DemoteTicks"/> ticks running, as after a fork, is released
-    /// to be promoted again for that one; the rest are rescored, and demoted after <see cref="DemoteTicks"/> ticks under a
-    /// quarter of the threshold.
-    /// </summary>
+    /// <summary>Lets go of live codes no longer promoted, as after a failed layout or a check's release; rescores the rest and the candidates.</summary>
     private static void Review(int epoch, IlLiveParams source)
     {
         for (int i = _live.Count - 1; i >= 0; i--)
@@ -612,7 +533,7 @@ internal static class IlLive
                 continue;
             }
 
-            // The list's leftovers compile between blocks too: a shipped contract for the same body set takes over.
+            // A list leftover compiled between blocks for the same body set takes over.
             if (ShippedFor(profile, live.Bodies))
             {
                 IlCheck.ReleaseNow(live);
@@ -623,8 +544,8 @@ internal static class IlLive
 
             if (profile.LastBodies is { } bodies && !ReferenceEquals(live.Bodies, bodies))
             {
-                // A fork moved the body set the code runs on, and no part runs the contract any more; a resolution on
-                // another one now and then, as a call on an old block's state makes, does not move it.
+                // A fork moved the code's body set and no part runs the contract any more; an occasional resolution on
+                // another one, as a call on an old block's state makes, does not.
                 if (++profile.MovedTicks < DemoteTicks)
                     continue;
                 IlCheck.ReleaseNow(live);
@@ -650,7 +571,6 @@ internal static class IlLive
             Drop(i);
         }
 
-        // The candidates of earlier ticks, rescored: one that no longer clears the bar goes.
         for (int i = _candidates.Count - 1; i >= 0; i--)
         {
             IlCodeProfile profile = _candidates[i];
@@ -684,10 +604,7 @@ internal static class IlLive
         _demoted++;
     }
 
-    /// <summary>
-    /// A live code released to make room for a denser one: nothing was found against it, so it takes no cooldown and may
-    /// be promoted again as soon as the budget has room for it; counted apart from the demotions.
-    /// </summary>
+    /// <summary>A live code released to make room for a denser one: nothing was found against it, so it takes no cooldown.</summary>
     private static void Displace(IlEvm.IlContract live)
     {
         if (live.Profile is { } profile && ReferenceEquals(profile.Live, live))
@@ -696,10 +613,7 @@ internal static class IlLive
         _displaced++;
     }
 
-    /// <summary>
-    /// Promotes the candidates greedily by score per MiB while the budget allows, each by a layout job; one the budget
-    /// cannot hold takes the place of the least dense live codes, each of them at most half as dense, when that makes room.
-    /// </summary>
+    /// <summary>Promotes candidates greedily by score per MiB within the budget; one that does not fit displaces live codes at most half as dense.</summary>
     private static void Choose(IlLiveParams source)
     {
         if (_candidates.Count == 0)
@@ -715,7 +629,6 @@ internal static class IlLive
             if (!Fits(index, estimate, freed: 0))
             {
                 laidOut ??= LaidOut();
-                // One less than twice as dense as the least dense live code displaces none.
                 int displaced = laidOut.Count == 0 || candidate.Density < 2 * laidOut[0].Density ? 0 : Displaced(candidate, laidOut, index, estimate);
                 if (displaced == 0)
                     continue;
@@ -735,11 +648,9 @@ internal static class IlLive
         }
     }
 
-    /// <summary>Whether <paramref name="bytes"/> more fit the source's budget and the hard cap on all compiled code, once <paramref name="freed"/> are let go of.</summary>
     private static bool Fits(int index, long bytes, long freed) =>
         Interlocked.Read(ref _liveBytes[index]) - freed + bytes <= BudgetBytes && IlEvmSettings.LiveIlBytes - freed + bytes <= IlEvmSettings.MaxLiveIlBytes;
 
-    /// <summary>The live codes laid out, the least dense first.</summary>
     private static List<IlCodeProfile> LaidOut()
     {
         List<IlCodeProfile> laidOut = [];
@@ -753,11 +664,7 @@ internal static class IlLive
         return laidOut;
     }
 
-    /// <summary>
-    /// How many of the least dense live codes, <paramref name="laidOut"/>'s first, must be released to make room for
-    /// <paramref name="candidate"/>, each of them at most half as dense as it; 0 when those cannot make room, so that none
-    /// is released in vain.
-    /// </summary>
+    /// <summary>How many of the least dense live codes must go to make room for <paramref name="candidate"/>; 0 when they cannot, so none is released in vain.</summary>
     private static int Displaced(IlCodeProfile candidate, List<IlCodeProfile> laidOut, int index, long estimate)
     {
         long freed = 0;
@@ -771,7 +678,7 @@ internal static class IlLive
         return 0;
     }
 
-    /// <summary>Queues the layout that promotes <paramref name="profile"/> for its last body set, its budget reserved meanwhile; false when no scheduler takes it.</summary>
+    /// <summary>Queues the layout that promotes <paramref name="profile"/> for its last body set, its budget reserved meanwhile.</summary>
     private static bool Promote(IlCodeProfile profile, IlLiveParams source)
     {
         IlScheduler? scheduler = IlScheduler.Current;
@@ -797,7 +704,6 @@ internal static class IlLive
         return true;
     }
 
-    /// <summary>The code a promotion lays out: the retained bytes of code no cache stamped, else the code database's for the keccak; empty when neither has it.</summary>
     private static ReadOnlyMemory<byte> CodeOf(IlCodeProfile profile, IDb? codeDb)
     {
         if (profile.Key.IsByContent)
@@ -808,9 +714,8 @@ internal static class IlLive
     }
 
     /// <summary>
-    /// A promotion's layout ended, on a scheduler worker: the contract is published for the source's runners - its
-    /// profile, origin, run mask and checks set before the profile takes it, then every state resolves again and the marks
-    /// of the runners that may run it are replaced - or, for a layout that failed, the code waits a cooldown.
+    /// A promotion's layout ended, on a scheduler worker. The contract's profile, origin, run mask and checks are set
+    /// before the profile takes it, and only then do the states resolve again; a failed layout waits a cooldown.
     /// </summary>
     internal static void Published(IlCodeProfile profile, bool block, long estimate, IlEvm.IlContract? contract, string? reason)
     {
@@ -826,10 +731,9 @@ internal static class IlLive
             return;
         }
 
-        // Taken back meanwhile, as by a reset, or shipped meanwhile by a list entry the startup compile left; or past the
-        // hard cap on compiled code, which the estimate missed: tried again after a cooldown, as a failed layout. The cap
-        // is checked and the contract's bytes counted in one step, so publications on several workers never pass it
-        // together.
+        // Stale: taken back meanwhile, as by a reset, or shipped by a list leftover. Over the hard cap, which the estimate
+        // missed: retried after a cooldown. The cap is checked and the bytes counted in one step, so publications on
+        // several workers never pass it together.
         bool stale = profile.State != IlCodeProfile.LiveQueued || ShippedFor(profile, contract.Bodies);
         bool overCap = !stale && !contract.TryMarkLive();
         if (stale || overCap)
@@ -855,8 +759,6 @@ internal static class IlLive
 
         contract.Profile = profile;
         contract.Origin = block ? IlOrigin.LiveBlocks : IlOrigin.LiveRpc;
-        // Block processing's promotions run on the block threads BlockThreads allows and on the queries; the queries'
-        // only on theirs.
         contract.RunMask = block ? (byte)((IlRuntime.RunMain | IlRuntime.RunWorkers) & IlRuntime.BlockThreadsMask | IlRuntime.RunQuery) : IlRuntime.RunQuery;
         contract.Check.Name = contract.Name;
         Volatile.Write(ref contract.BudgetBytes, contract.MemoryBytes);
@@ -881,11 +783,7 @@ internal static class IlLive
         Interlocked.Increment(ref _released);
     }
 
-    /// <summary>
-    /// Near the table's cap, a step of its eviction: the profiles go by in slices over the ticks, and once all have,
-    /// those nothing compiled for, untouched for <see cref="UntouchedEpochs"/>, go, the fewest decayed opcodes first,
-    /// until the table is at seven eighths of its cap.
-    /// </summary>
+    /// <summary>Near the table's cap, scans the profiles in slices over the ticks, then evicts idle ones, the fewest decayed opcodes first.</summary>
     private static void EvictStep(int epoch, IlLiveParams source, long started, long budget)
     {
         int cap = IlRuntime.MaxProfiles;
@@ -949,9 +847,8 @@ internal static class IlLive
 
     /// <summary>Takes the model's constants and the scorer's thresholds from a list's calibration lines and the environment, over the priors.</summary>
     /// <remarks>
-    /// Model tokens as <see cref="IlModel.From"/> reads them, block processing's bare and the queries' after <c>rpc.</c>;
-    /// <c>NETHERMIND_ILEVM_LIVE_CALIB</c> adds tokens of its own, which win; the thresholds come from
-    /// <c>NETHERMIND_ILEVM_LIVE_{BLOCKS,RPC}_{THETA_NS,MIN_EPOCHS,MIN_MEASURED,HALF_LIFE}</c>.
+    /// Model tokens as <see cref="IlModel.From"/> reads them, the queries' after <c>rpc.</c>; <c>NETHERMIND_ILEVM_LIVE_CALIB</c>
+    /// adds tokens, which win; thresholds from <c>NETHERMIND_ILEVM_LIVE_{BLOCKS,RPC}_{THETA_NS,MIN_EPOCHS,MIN_MEASURED,HALF_LIFE}</c>.
     /// </remarks>
     public static void Calibrate(IReadOnlyList<string> calibration)
     {
@@ -982,18 +879,15 @@ internal static class IlLive
                 : null;
     }
 
-    /// <summary>The live contracts published and not released, of the source <paramref name="block"/> names, and the IL and tables they hold with those reserved for layouts queued.</summary>
+    /// <summary>The source's live contracts published and not released, and the IL and tables they hold with those reserved for queued layouts.</summary>
     public static (long Count, long Bytes) Live(bool block) =>
         (Interlocked.Read(ref _liveCount[block ? 1 : 0]), Interlocked.Read(ref _liveBytes[block ? 1 : 0]));
 
-    /// <summary>Live codes released to make room for denser ones, which took no cooldown.</summary>
     public static long Displacements => Interlocked.Read(ref _displaced);
 
-    /// <summary>Promotions published, demotions, releases of live contracts (by demotions and checks), layouts that failed, and profiles the table let go of.</summary>
     public static (long Promoted, long Demoted, long Released, long Failed, long Evicted) Totals() =>
         (Interlocked.Read(ref _promoted), Interlocked.Read(ref _demoted), Interlocked.Read(ref _released), Interlocked.Read(ref _failed), Interlocked.Read(ref _evicted));
 
-    /// <summary>The live profile for the exit line: its source, promotions and demotions, what the live contracts hold against the budget, and the scorer's work.</summary>
     public static string Describe()
     {
         if (Active is not { } source)
@@ -1005,10 +899,8 @@ internal static class IlLive
             $"{live} live in {bytes / (double)(1 << 20):F1} of {BudgetBytes >> 20} MiB; {_candidates.Count} candidates, {_scored} scored over {_ticks} ticks, {_folds} folds, {Touched.Count} waiting; {evicted} profiles evicted");
     }
 
-    /// <summary>The scorer's lists, for tests: the live codes it promoted, and the candidates it keeps.</summary>
     internal static (IReadOnlyList<IlCodeProfile> Live, IReadOnlyList<IlCodeProfile> Candidates) ListsForTests() => (_live.ToArray(), _candidates.ToArray());
 
-    /// <summary>Forgets every count, decision and total, and takes the priors and the environment again, for tests.</summary>
     internal static void ResetForTests()
     {
         while (Touched.TryDequeue(out IlCodeProfile? profile))
@@ -1043,10 +935,7 @@ internal sealed partial class IlCodeProfile
     /// <summary>Further values of <see cref="State"/>: a promotion's layout queued, not yet published; and a profile the table let go of.</summary>
     public const byte LiveQueued = 3, LiveEvicted = 4;
 
-    /// <summary>
-    /// The counts, made at the first: per kind (block processing's own thread, then its others; the queries count the
-    /// first) and bucket, weighted visits then weighted opcodes; then weighted parts, and measured visits. Racy adds.
-    /// </summary>
+    /// <summary>Per kind and bucket, weighted visits then weighted opcodes; then weighted parts, and measured visits. Racy adds.</summary>
     public long[]? Counters;
 
     /// <summary>The epoch of the first count, which the scorer's rates count from.</summary>
@@ -1055,7 +944,6 @@ internal sealed partial class IlCodeProfile
     /// <summary>The epoch of the latest count, and how many epochs the code was counted in; racy.</summary>
     public int LastEpoch = -1, Epochs;
 
-    /// <summary>The epoch the code last joined the touched queue in; once an epoch.</summary>
     public int TouchedEpoch = -1;
 
     /// <summary>1 while the profile is on the touched queue, so it is there once however many epochs go by before a tick.</summary>
@@ -1073,17 +961,15 @@ internal sealed partial class IlCodeProfile
 
     public int HistEpoch;
 
-    /// <summary>The ticks running a live code's score was under a quarter of the threshold, and its code last resolved on another body set than its contract's.</summary>
+    /// <summary>Ticks running a live code scored under a quarter of the threshold, and was resolved on another body set than its contract's.</summary>
     public int BelowTicks, MovedTicks;
 
     /// <summary>The latest score, in nanoseconds per epoch, its noise, the measured visits behind it, decayed, and the score per MiB of footprint.</summary>
     public double Score, Sigma, Measures, Density;
 
-    /// <summary>Whether the scorer's live list, or its candidates, hold the profile.</summary>
     internal bool InLive, InCandidates;
 }
 
-/// <summary>Live profiling's side of a thread's gate: a counting runner's folded visit goes to the code's live counts.</summary>
 internal sealed partial class IlThread
 {
     partial void CountLive(IlCodeProfile profile, int ops, int parts, bool main, int weightLog2, bool block) =>

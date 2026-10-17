@@ -12,11 +12,6 @@ using Nethermind.Core.Container;
 namespace Nethermind.IlEvm;
 
 /// <summary>The environments a runner instance serves, which its frame parts are counted under.</summary>
-/// <remarks>
-/// The core loads a read-only query module into the environments of the kinds it names, one kind per environment, so the
-/// plugin registers a module per kind, each attaching a runner of its own surface; block processing's runner (Scope=All)
-/// is <see cref="Blocks"/>.
-/// </remarks>
 public enum IlEvmSurface : byte
 {
     /// <summary>The read-only call environments (<see cref="ReadOnlyQueryKind.Call"/>): eth_call, eth_estimateGas, eth_createAccessList.</summary>
@@ -31,22 +26,14 @@ public enum IlEvmSurface : byte
 
 /// <summary>The frame parts each surface's runner was offered, and of those the parts compiled code ran, summed over threads.</summary>
 /// <remarks>
-/// <para>
-/// A part counts as compiled when compiled code ran at least one of its opcodes, to the part's end or until it handed
-/// back; a part declined, or handed back before its first opcode, counts as offered only. Every rules' runner counts its
-/// parts the same way, at its entry, so the counts say which environments ran compiled code whatever the rules: a
-/// benchmark of a trace endpoint whose trace count of compiled parts stays at zero measured the interpreter.
-/// </para>
-/// <para>
-/// Each thread counts into an array of its own, with plain writes, and the totals are read without stopping the threads:
-/// a total read while parts run is as of some moment during the read. The counters sit between a cache line of padding
-/// on either side, so two threads' arrays, however close a collection moves them, never write to one line. A thread's
-/// array outlives it here, for the totals: one per thread that ever ran a part.
-/// </para>
+/// A part counts as compiled when compiled code ran at least one of its opcodes; every rules' runner counts the same way,
+/// so the counts say which environments ran compiled code. Each thread counts into its own array with plain writes, and
+/// totals are read without stopping the threads, so a total is as of some moment during the read. A cache line of padding
+/// on either side keeps two threads' counters off one line however close a collection moves the arrays. A thread's array
+/// outlives it, for the totals: one per thread that ever ran a part.
 /// </remarks>
 internal sealed class IlSurfaceCounts
 {
-    /// <summary>The surfaces counted: <see cref="IlEvmSurface"/>'s values.</summary>
     public const int Surfaces = 4;
 
     /// <summary>The names the exit line and the stats give the surfaces, in <see cref="IlEvmSurface"/> order.</summary>
@@ -58,23 +45,17 @@ internal sealed class IlSurfaceCounts
     /// <summary>A cache line of padding, in counters.</summary>
     private const int Padding = 8;
 
-    /// <summary>Where the counters of the parts offered start in a thread's array: <see cref="Offered"/> plus the surface.</summary>
     public const int Offered = Padding;
 
-    /// <summary>Where the counters of the parts compiled code ran start in a thread's array: <see cref="Compiled"/> plus the surface.</summary>
     public const int Compiled = Padding + Surfaces;
 
-    /// <summary>Per surface, the parts offered at <see cref="Offered"/> plus the surface and those compiled code ran at <see cref="Compiled"/> plus it, padded.</summary>
     private readonly long[] _counts = new long[Padding + Surfaces * 2 + Padding];
 
     private IlSurfaceCounts()
     {
     }
 
-    /// <summary>
-    /// This thread's counts, which only this thread writes: a runner adds one at <see cref="Offered"/> plus its surface for
-    /// each part it is offered, and one at <see cref="Compiled"/> plus its surface for each part compiled code ran.
-    /// </summary>
+    /// <summary>This thread's counts, which only it writes: parts offered at <see cref="Offered"/> plus the surface, parts compiled at <see cref="Compiled"/> plus it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long[] OfThisThread() => (_current ?? Create())._counts;
 

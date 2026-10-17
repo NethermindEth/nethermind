@@ -22,42 +22,17 @@ namespace Nethermind.IlEvm;
 
 /// <summary>Times every contract's frame parts on the path each took, for <see cref="IlEvmSettings.Stats"/>, and logs the per-contract totals at shutdown.</summary>
 /// <remarks>
-/// <para>
-/// A part is what the machine offers the runner at once: a frame from its entry, or from where it resumes after a
-/// nested call, up to its next nested call or its end. A callee's frames are parts of their own, but what an opcode does
-/// without a frame stays in its part: a state read that misses the caches, and a STATICCALL of a precompile, which the
-/// machine runs inline. Each part is counted on the path it took - the interpreter alone, compiled code alone, or compiled
-/// code that handed back and the interpreter that finished it - on block processing or another thread, in a bucket by its
-/// opcode count. Two runs over the same blocks, one with nothing compiled and one with the candidates compiled, then give
-/// each contract's time on either path under the same load, prewarming included.
-/// </para>
-/// <para>
-/// A part's time leaves out the collections it waited for: the GC's total pause is read before the part starts and after
-/// it ends, and the difference is taken off. What no collection explains stays, as a preemption or a cold read, so each
-/// bucket also keeps its longest part, and each path tallies apart the parts slower than <see cref="SlowNanosecondsPerOpcode"/>
-/// per opcode, which its totals still include. The paths' windows are not quite alike: an interpreted or handed-back
-/// part's takes in the core hook's few instructions around the dispatch loop and its call reporting the opcodes, which a
-/// compiled part's does not; the buckets of the fewest opcodes, in the dump's header, measure that difference.
-/// </para>
-/// <para>
-/// Block processing (<see cref="ProcessingThread.IsBlockProcessingThread"/>) is M, every other thread O: prewarming,
-/// read-only queries. With the core's pre-warm handoff on, block processing replays the transactions whose warm run
-/// finished first instead of running them, so which parts are M depends on how fast warming went; runs whose M parts are
-/// compared turn the handoff off.
-/// </para>
-/// <para>
-/// Each thread counts into a table of its own, keyed by code hash, so a part's bookkeeping takes no lock and no
-/// interlocked operation, but for a thread's first part of a contract, which adds its entry, and a contract's first part
-/// of each block on block processing, which counts that block; the dump merges the tables. A table holds no code: its
-/// memory is that of the contracts its thread ran, until shutdown.
-/// The log lines: <c>IL-EVM stats &lt;rank&gt; &lt;keccak&gt; size=… entries=… blocks=… shipped=… I.M=parts/ops/ns …
-/// sI.M=parts/ops/ns … hI.M=bucket:parts/ops/ns/max,…</c>, by time over every path, where I, C and H are the interpreted,
-/// compiled and handed-back paths, the s fields their slow parts and the h fields their nonzero opcode-count buckets.
-/// </para>
+/// A part is a frame from its entry, or from where it resumes after a nested call, up to its next nested call or its end;
+/// it keeps what an opcode does without a frame, as a cache-missing state read or a precompile's STATICCALL. Two runs over
+/// the same blocks, with nothing and with the candidates compiled, give each contract's time on either path under the same
+/// load. A part's time leaves out the GC pauses it waited for; what no collection explains stays, as a preemption or a
+/// cold read, so each bucket keeps its longest part and each path tallies its slow parts apart. An interpreted or
+/// handed-back part's window takes in the core hook's few instructions around the dispatch loop, which a compiled part's
+/// does not; the smallest buckets measure that. Each thread counts into its own table, taking no lock or interlocked
+/// operation but for its first part of a contract and, on block processing, a contract's first part of each block.
 /// </remarks>
 public static class IlEvmStats
 {
-    /// <summary>The path a part ran on.</summary>
     public enum RunPath : byte
     {
         /// <summary>No compiled code ran: the interpreter ran the whole part. Logged as I.</summary>
@@ -68,7 +43,6 @@ public static class IlEvmStats
         HandedBack,
     }
 
-    /// <summary>The thread a part ran on.</summary>
     public enum ThreadKind : byte
     {
         /// <summary>Block processing, as <see cref="ProcessingThread.IsBlockProcessingThread"/> marks its threads for each processing pass. Logged as M.</summary>
@@ -94,14 +68,12 @@ public static class IlEvmStats
 
     private const int Slots = SlowSlot + 3;
 
-    /// <summary>The path and thread kind pairs, path first: I.M, I.O, C.M, C.O, H.M, H.O.</summary>
     private const int Combos = 6;
 
     private static readonly string[] _comboNames = ["I.M", "I.O", "C.M", "C.O", "H.M", "H.O"];
 
     private static readonly long _slowTicksPerOpcode = Math.Max(1, SlowNanosecondsPerOpcode * Stopwatch.Frequency / 1_000_000_000);
 
-    /// <summary><see cref="Stopwatch"/> ticks per <see cref="TimeSpan"/> tick, the unit of the GC's pauses.</summary>
     private static readonly double _ticksPerPauseTick = (double)Stopwatch.Frequency / TimeSpan.TicksPerSecond;
 
     /// <summary>What every thread's entry for one code hash shares: the distinct blocks block processing ran the code in.</summary>
@@ -118,17 +90,13 @@ public static class IlEvmStats
         public readonly ValueHash256 Hash = hash;
         public readonly int Size = size;
         public readonly Shared Shared = shared;
-        /// <summary>Parts that started the frame, at program counter 0: the frames entered.</summary>
         public long Entries;
-        /// <summary>Of the handed-back parts' opcodes, those compiled code ran before it handed back.</summary>
         public long HandedBackCompiledOps;
         /// <summary>The block this entry last counted toward <see cref="Shared.Blocks"/>.</summary>
         public int LastBlock;
-        /// <summary>Per path and thread kind, the counters of each bucket and of the slow parts; allocated on first use.</summary>
         public readonly long[]?[] Counters = new long[]?[Combos];
     }
 
-    /// <summary>One thread's counts, and the part it is timing.</summary>
     private sealed class ThreadTable(int generation)
     {
         public readonly int Generation = generation;
@@ -147,10 +115,8 @@ public static class IlEvmStats
         public int PendingCompiledOps;
         public RunPath PendingPath;
         public bool PendingEntry;
-        /// <summary>Whether the frame counts toward its code's hotness, as the lookup sampled it.</summary>
         public bool PendingCount;
 
-        /// <summary>The parts that waited for a collection, and the ticks taken off them.</summary>
         public long PausedParts;
         public long PausedTicks;
     }
@@ -168,10 +134,9 @@ public static class IlEvmStats
     /// <summary>A block starts: block processing's parts from now on count toward it in each code's distinct blocks.</summary>
     public static int BlockStarted() => Interlocked.Increment(ref _blocks);
 
-    /// <summary>The blocks started so far.</summary>
     public static int Blocks => Volatile.Read(ref _blocks);
 
-    /// <summary>The GC's total pause so far, in <see cref="TimeSpan"/> ticks: read before a part starts and after it ends, it gives the collections the part waited for.</summary>
+    /// <summary>The GC's total pause so far, in <see cref="TimeSpan"/> ticks.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static long PausedTicks() => GC.GetTotalPauseDuration().Ticks;
 
@@ -188,7 +153,6 @@ public static class IlEvmStats
     }
 
     /// <summary>Starts timing a part the interpreter runs alone; the runner declines it right after, asking for its opcode count.</summary>
-    /// <param name="entry">Whether the part starts the frame, at program counter 0.</param>
     /// <param name="count">Whether the frame counts toward its code's hotness, which <see cref="TryEnd"/> hands back.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void BeginInterpreted(CodeInfo codeInfo, bool entry, bool count)
@@ -205,8 +169,6 @@ public static class IlEvmStats
     }
 
     /// <summary>Goes on timing a part compiled code handed back, from <paramref name="start"/>, before compiled code ran; the interpreter finishes it.</summary>
-    /// <param name="paused">The GC's total pause before the part started, from <see cref="PausedTicks"/>.</param>
-    /// <param name="compiledOps">The opcodes compiled code ran before it handed back.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void BeginHandedBack(CodeInfo codeInfo, bool entry, long start, long paused, int compiledOps)
     {
@@ -222,8 +184,6 @@ public static class IlEvmStats
     }
 
     /// <summary>Ends the pending part of <paramref name="codeInfo"/>, of which the interpreter ran <paramref name="opCodes"/> opcodes, at <paramref name="end"/>, and counts it.</summary>
-    /// <param name="end">The part's end, the first thing the runner took once the interpreter returned.</param>
-    /// <param name="forwardHotness">Whether the frame counts toward its code's hotness, as <see cref="BeginInterpreted"/> was told.</param>
     /// <returns>False when no part of <paramref name="codeInfo"/> was pending; a pending part of other code, whose interpreter run threw, is dropped.</returns>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal static bool TryEnd(CodeInfo codeInfo, int opCodes, long end, out bool forwardHotness)
@@ -243,7 +203,6 @@ public static class IlEvmStats
     }
 
     /// <summary>Counts a part compiled code ran from start to finish, in <paramref name="ticks"/>.</summary>
-    /// <param name="paused">The GC's total pause before the part started, from <see cref="PausedTicks"/>.</param>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal static void RecordCompiled(CodeInfo codeInfo, bool entry, int opCodes, long ticks, long paused)
     {
@@ -292,8 +251,7 @@ public static class IlEvmStats
         }
     }
 
-    /// <summary>A part's <paramref name="ticks"/> less the collections it waited for, <paramref name="paused"/> in <see cref="TimeSpan"/> ticks.</summary>
-    /// <remarks>A pause that began just before the part's start is taken off it too; the part then counts no time rather than less than none.</remarks>
+    /// <summary>A part's <paramref name="ticks"/> less the collections it waited for, <paramref name="paused"/> in <see cref="TimeSpan"/> ticks; a pause that began before the part can make it no time, never less.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static long WithoutPause(ThreadTable table, long ticks, long paused)
     {
@@ -324,7 +282,6 @@ public static class IlEvmStats
         return stats;
     }
 
-    /// <summary>The entry of code no cache stamped, as from a state override: hashed once per code info and thread.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static LocalStats Unstamped(ThreadTable table, CodeInfo codeInfo)
     {
@@ -337,7 +294,6 @@ public static class IlEvmStats
     }
 
     /// <summary>Counts <paramref name="block"/> toward a code's distinct blocks once, however many threads and entries run the code in it; a block older than the latest one counted is not counted again.</summary>
-    /// <returns>Whether the block was counted.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static bool CountBlock(Shared shared, int block)
     {
@@ -376,10 +332,8 @@ public static class IlEvmStats
             Shipped = shipped;
         }
 
-        /// <summary>The keccak of the code.</summary>
         public ValueHash256 Hash { get; }
 
-        /// <summary>The code's size in bytes.</summary>
         public int Size { get; }
 
         /// <summary>The distinct blocks block processing ran the code in.</summary>
@@ -394,7 +348,6 @@ public static class IlEvmStats
         /// <summary>Of the handed-back parts' opcodes, those compiled code ran before it handed back.</summary>
         public long HandedBackCompiledOps { get; private set; }
 
-        /// <summary>Opcodes over every path and thread.</summary>
         public long Ops { get; private set; }
 
         /// <summary><see cref="Stopwatch"/> ticks over every path and thread, the collections waited for left out.</summary>
@@ -404,13 +357,10 @@ public static class IlEvmStats
         public bool RanCompiled => _counters[Combo(RunPath.Compiled, ThreadKind.Main)] is not null || _counters[Combo(RunPath.Compiled, ThreadKind.Other)] is not null ||
             _counters[Combo(RunPath.HandedBack, ThreadKind.Main)] is not null || _counters[Combo(RunPath.HandedBack, ThreadKind.Other)] is not null;
 
-        /// <summary>The parts, opcodes and ticks on <paramref name="path"/> and <paramref name="thread"/>, over every bucket.</summary>
         public (long Parts, long Ops, long Ticks) Of(RunPath path, ThreadKind thread) => Of(Combo(path, thread));
 
-        /// <summary>The parts, opcodes and ticks on <paramref name="path"/> and <paramref name="thread"/> in one opcode-count bucket.</summary>
         public (long Parts, long Ops, long Ticks) Of(RunPath path, ThreadKind thread, int bucket) => Of(Combo(path, thread), bucket);
 
-        /// <summary>The ticks of the longest part on <paramref name="path"/> and <paramref name="thread"/> in one opcode-count bucket.</summary>
         public long LongestTicks(RunPath path, ThreadKind thread, int bucket) => LongestTicks(Combo(path, thread), bucket);
 
         /// <summary>The parts, opcodes and ticks of the slow parts on <paramref name="path"/> and <paramref name="thread"/>, which <see cref="Of(RunPath, ThreadKind)"/> includes.</summary>
@@ -454,7 +404,6 @@ public static class IlEvmStats
             }
         }
 
-        /// <summary>Adds another contract's counts, for the totals over every contract.</summary>
         internal void Add(ContractTotals other)
         {
             Entries += other.Entries;
@@ -489,13 +438,10 @@ public static class IlEvmStats
     }
 
     /// <summary>The bookkeeping beside the contracts, for the dump's header.</summary>
-    /// <param name="PausedParts">Parts that waited for a collection.</param>
-    /// <param name="PausedTicks">The <see cref="Stopwatch"/> ticks taken off them.</param>
+    /// <param name="PausedTicks">The <see cref="Stopwatch"/> ticks taken off the parts that waited for a collection.</param>
     /// <param name="Entries">The tables' entries: one per contract and thread that ran it.</param>
-    /// <param name="Threads">The threads that kept a table.</param>
     public readonly record struct TableTotals(long PausedParts, long PausedTicks, int Entries, int Threads);
 
-    /// <summary>The bookkeeping over every thread's table so far.</summary>
     public static TableTotals Tables()
     {
         long parts = 0, ticks = 0;
@@ -535,11 +481,7 @@ public static class IlEvmStats
         return [.. merged.Values.OrderByDescending(static c => c.Ticks).ThenByDescending(static c => c.Ops)];
     }
 
-    /// <summary>
-    /// Logs the <paramref name="top"/> contracts with the most time once, at shutdown, and after them every other contract
-    /// compiled code ran, so that no shipped contract falls below the cut; with <see cref="IlEvmSettings.Profile"/> on,
-    /// the profile's lines too. A contract's rank is its place by time among all of them.
-    /// </summary>
+    /// <summary>Logs the <paramref name="top"/> contracts with the most time once, at shutdown, and every other one compiled code ran, so that no shipped contract falls below the cut.</summary>
     public static void Dump(ILogger logger, int top)
     {
         if (Interlocked.Exchange(ref _dumped, 1) == 1)
@@ -563,8 +505,7 @@ public static class IlEvmStats
 
         if (IlEvmSettings.Profile)
         {
-            // The profile's own lines, busiest by opcodes, so the tooling that builds the shipped list reads a stats
-            // run's log as it reads a profile's. Nothing is compiled while profiling: every opcode is interpreted.
+            // The profile's own lines, so the list tooling reads a stats run's log as a profile's; profiling compiles nothing.
             List<ContractTotals> busiest = [.. contracts.OrderByDescending(static c => c.Ops)];
             long totalOps = busiest.Sum(static c => c.Ops);
             Write(string.Create(CultureInfo.InvariantCulture,
@@ -584,12 +525,7 @@ public static class IlEvmStats
         Write(LinePrefix + " end");
     }
 
-    /// <summary>
-    /// The header: the totals over every contract on each path and thread kind, their slow parts and buckets, then what
-    /// says whether two runs compare - the collections taken off, the run-time compiles, the core's pre-warm handoffs
-    /// (replayed, rejected, missing), the tables' entries and threads, and the managed heap - and last the parts each
-    /// surface's runner was offered and ran compiled (<see cref="IlSurfaceCounts.StatsToken"/>).
-    /// </summary>
+    /// <summary>The header: the totals over every contract, then what says whether two runs compare.</summary>
     private static string Header(string prefix, List<ContractTotals> contracts, TableTotals tables)
     {
         ContractTotals all = new(default, 0, 0, false);
@@ -610,7 +546,6 @@ public static class IlEvmStats
         return line.ToString();
     }
 
-    /// <summary>A contract's line: its totals on each path and thread kind it ran on, its slow parts, then the nonzero buckets of each.</summary>
     private static string Describe(string prefix, int rank, ContractTotals contract)
     {
         StringBuilder line = new();
@@ -635,7 +570,6 @@ public static class IlEvmStats
     private static void AppendCounts(StringBuilder line, string name, (long Parts, long Ops, long Ticks) counts) =>
         line.Append(CultureInfo.InvariantCulture, $" {name}={counts.Parts}/{counts.Ops}/{Nanoseconds(counts.Ticks)}");
 
-    /// <summary>One h field per path and thread kind with parts: <c>bucket:parts/ops/ns/longest</c> for each nonzero bucket.</summary>
     private static void AppendBuckets(StringBuilder line, ContractTotals totals)
     {
         for (int combo = 0; combo < Combos; combo++)
@@ -657,11 +591,7 @@ public static class IlEvmStats
         }
     }
 
-    /// <summary>
-    /// Logs the totals so far, tagged with the blocks started: <c>IL-EVM stats@&lt;blocks&gt;</c> lines, the <paramref name="top"/>
-    /// contracts with the most time and every one compiled code ran, then <c>IL-EVM stats@&lt;blocks&gt; end</c>. The shutdown
-    /// dump is untouched: tooling that reads <c>IL-EVM stats </c> lines never sees these.
-    /// </summary>
+    /// <summary>Logs the totals so far as <c>IL-EVM stats@&lt;blocks&gt;</c> lines, which tooling that reads the shutdown dump's <c>IL-EVM stats </c> lines never sees.</summary>
     /// <remarks>Called off the block-processing thread; safe while threads still count, as <see cref="Snapshot"/> is.</remarks>
     public static void DumpSnapshot(ILogger logger, int top, int blocks)
     {
@@ -701,18 +631,12 @@ public static class IlEvmStats
     }
 }
 
-/// <summary>
-/// The frame runner of a <see cref="IlEvmSettings.Stats"/> run: runs frames as the production runner does but for the
-/// self-check, which is off, and times each part on the path it takes.
-/// </summary>
+/// <summary>The frame runner of a <see cref="IlEvmSettings.Stats"/> run: runs frames as the production runner does but for the self-check, which is off, and times each part on the path it takes.</summary>
 /// <remarks>
-/// A runner of its own, which the module attaches only for a measurement run, so the production runner carries no trace
-/// of the timing. A part compiled code runs to its end is timed here; one the interpreter runs, alone or after compiled
-/// code handed it back, is declined asking for its opcode count and timed until <see cref="OnInterpreted"/>, whose first
-/// act ends it. Initcode is never timed: it is never in the code database, so no list could ship it. Block processing runs
-/// compiled only the contracts the startup compile shipped, never one a read-only query compiled at run time, so that two
-/// runs differ only by their lists. One instance per surface (<see cref="IlEvmSurface"/>), each counting its parts under
-/// its own (<see cref="IlSurfaceCounts"/>), which the dump's header gives.
+/// A runner of its own, attached only for a measurement run, so the production runner carries no trace of the timing. A
+/// part the interpreter runs, alone or after a hand-back, is declined asking for its opcode count and timed until
+/// <see cref="OnInterpreted"/>. Initcode is never timed: it is never in the code database, so no list could ship it.
+/// Block processing runs compiled only the shipped contracts, so that two runs differ only by their lists.
 /// </remarks>
 public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
 {
@@ -728,7 +652,6 @@ public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     /// <summary>The runner for block processing (Scope=All): runs the shipped contracts compiled, and compiles at run time only as <see cref="IlEvmSettings.BlockRuntimeCompile"/> says.</summary>
     public static IlEvmTimedFrameRunner Block { get; } = new(IlEvmSurface.Blocks);
 
-    /// <summary>The instance for <paramref name="surface"/>.</summary>
     public static IlEvmTimedFrameRunner For(IlEvmSurface surface) => surface switch
     {
         IlEvmSurface.Call => Instance,
@@ -739,7 +662,6 @@ public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
 
     private readonly bool _block;
 
-    /// <summary>The environments the instance serves, which its parts are counted under.</summary>
     public IlEvmSurface Surface { get; }
 
     private IlEvmTimedFrameRunner(IlEvmSurface surface)
@@ -748,7 +670,6 @@ public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         _block = surface == IlEvmSurface.Blocks;
     }
 
-    /// <summary>The core's offer of a frame part, counted under the instance's surface as the production runner counts its own.</summary>
     // Optimized from the first call, as the production runner: a tier-0 copy would time the runner, not the frames.
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     protected override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
@@ -777,8 +698,7 @@ public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         bool count = false;
         if (IlEvmSettings.Profile)
         {
-            // Nothing is compiled while profiling: every part is the interpreter's. The stats replace the profile's
-            // counters, and their dump logs the profile's lines.
+            // Nothing is compiled while profiling; the stats replace the profile's counters, and their dump logs its lines.
             if (create)
                 return Declined;
         }

@@ -15,34 +15,16 @@ using Nethermind.Logging;
 
 namespace Nethermind.IlEvm;
 
-/// <summary>
-/// JIT-compiles ahead, off the frames' threads, the methods the Adaptive rules' frame path and compiled code call, so the
-/// first blocks after a start, and the first frames of a contract promoted between blocks, pay no JIT on block processing.
-/// </summary>
+/// <summary>JIT-compiles ahead, off the frames' threads, the methods the Adaptive frame path and compiled code call, so block processing pays no JIT for them.</summary>
 /// <remarks>
-/// <para>
-/// A chunk's JIT compiles the chunk alone: what it calls - the helpers its IL calls, the opcode bodies it reaches through
-/// their entry points, and what those call in turn - is compiled where it is first called, on whichever frame's thread
-/// that is, tens of methods and milliseconds for a contract's first run. So once a chunk is compiled, the methods it calls
-/// are, and what they call, a few levels down within Nethermind's own assemblies, read from their IL; and the plugin's own
-/// methods on the frame path are, once, before the startup compile. Each method is compiled once a process.
-/// </para>
-/// <para>
-/// A method compiled ahead is compiled as its first call would have it - at tier 0, or fully optimized where it asks to
-/// be - and tiers up in the background as any other. Under the Legacy and measurement rules nothing is compiled ahead,
-/// so they run as they did.
-/// </para>
-/// <para>
-/// Tier 0 is not enough for the helpers compiled code calls out of line - arithmetic, comparisons, memory and calldata
-/// words, the call of an embedded body - which a contract's parts call millions of times a second: at tier 0 they make
-/// compiled code slower than the interpreter, and the runtime promotes nothing until its JIT has been quiet for a while,
-/// seconds into a node's first calls. Calling them ahead on made-up operands would promote them, but profiled on those
-/// operands, which costs compiled code a few percent for good; marking them optimized from the start would leave them
-/// with no profile at all. So the list's RPC contracts get a copy laid out against ahead twins of the helpers, optimized
-/// from their first call (<see cref="IlEvm.IlContract.Ahead"/>), which serves the first calls, while one compiled part in
-/// <see cref="AheadOwnShare"/> runs the contract's own code, which tiers its helpers up on real calls; once the JIT is
-/// quiet, <see cref="SwitchFromAhead"/> drops the copies.
-/// </para>
+/// A chunk's JIT compiles the chunk alone; its callees would compile on whichever frame's thread first calls them, so they
+/// are compiled too, a few levels down within Nethermind's assemblies, each once a process and as its first call would
+/// have it. Tier 0 is too slow for the helpers compiled code calls out of line, and the runtime promotes nothing until its
+/// JIT has been quiet a while; calling them ahead on made-up operands would profile them on those for good, and marking
+/// them optimized would leave no profile. So the list's RPC contracts get a copy against ahead twins of the helpers,
+/// optimized from their first call (<see cref="IlEvm.IlContract.Ahead"/>), while one part in <see cref="AheadOwnShare"/>
+/// runs the contract's own code to tier its helpers up on real calls; <see cref="SwitchFromAhead"/> drops the copies once
+/// the JIT is quiet.
 /// </remarks>
 internal static class IlWarmUp
 {
@@ -72,10 +54,7 @@ internal static class IlWarmUp
         }
     }
 
-    /// <summary>
-    /// The longest the list's RPC contracts run their ahead copies after the first frame, in milliseconds:
-    /// <c>NETHERMIND_ILEVM_AHEAD_MS</c>, 60,000 by default; 0 compiles no ahead copies.
-    /// </summary>
+    /// <summary>The longest the ahead copies run after the first frame, in milliseconds: <c>NETHERMIND_ILEVM_AHEAD_MS</c>, 60,000 by default; 0 compiles none.</summary>
     public static int AheadMaxMs { get; set; } =
         int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_AHEAD_MS"), out int aheadMs) && aheadMs >= 0 ? aheadMs : 60_000;
 
@@ -87,10 +66,7 @@ internal static class IlWarmUp
 
     public const int AheadQuietMethods = 16;
 
-    /// <summary>
-    /// One compiled part in this many, a power of two, runs a contract's own code while it has an ahead copy: its helpers
-    /// get their first calls and their profile from real calls then, and are optimized by the time the copies go.
-    /// </summary>
+    /// <summary>One compiled part in this many, a power of two, runs a contract's own code while it has an ahead copy.</summary>
     public const int AheadOwnShare = 32;
 
     /// <summary><see cref="AheadOwnShare"/> less one, the mask a part's draw is taken with; tests run half the parts on either code.</summary>
@@ -120,11 +96,7 @@ internal static class IlWarmUp
 
     public static long AheadSwitchedAfterMs => Interlocked.Read(ref _aheadSwitchedAfterMs);
 
-    /// <summary>
-    /// Has <paramref name="contracts"/>, each with an ahead copy, run their copies until the switch: from
-    /// <see cref="AheadMinMs"/> after the first frame once the JIT has compiled at most <see cref="AheadQuietMethods"/>
-    /// methods over <see cref="AheadQuietMs"/>, and at <see cref="AheadMaxMs"/> whatever the JIT does.
-    /// </summary>
+    /// <summary>Arms the ahead copies to serve until the JIT is quiet, at least <see cref="AheadMinMs"/> and at most <see cref="AheadMaxMs"/> after the first frame.</summary>
     public static void ArmAhead(IEnumerable<IlEvm.IlContract> contracts, ILogger logger)
     {
         lock (_ahead)
@@ -169,15 +141,11 @@ internal static class IlWarmUp
         }
     }
 
-    /// <summary>
-    /// Whether the ahead copies are due to go at <paramref name="now"/>: a frame has run, and either
-    /// <see cref="AheadMaxMs"/> have passed since the first, or <see cref="AheadMinMs"/> have and the JIT has been quiet
-    /// since <paramref name="quietSince"/>, -1 for not quiet.
-    /// </summary>
+    /// <summary>Whether the ahead copies are due to go; <paramref name="quietSince"/> is -1 while the JIT is not quiet.</summary>
     internal static bool AheadDue(long now, long firstFrame, long quietSince) =>
         firstFrame != 0 && (now - firstFrame >= AheadMaxMs || (now - firstFrame >= AheadMinMs && quietSince >= 0));
 
-    /// <summary>Drops every ahead copy: each contract runs its own code from its next part, its helpers tiering up on those calls; the contracts that switched.</summary>
+    /// <summary>Drops every ahead copy, so each contract runs its own code from its next part; returns the contracts that switched.</summary>
     /// <param name="afterMs">When, from the first frame, for the exit line.</param>
     public static int SwitchFromAhead(long afterMs = 0)
     {
@@ -200,13 +168,11 @@ internal static class IlWarmUp
         return contracts.Count;
     }
 
-    /// <summary>The ahead copies for the exit line.</summary>
     public static string DescribeAhead() => AheadArmed == 0
         ? "no ahead copies"
         : string.Create(System.Globalization.CultureInfo.InvariantCulture,
             $"{AheadArmed} ahead copies, {AheadSwitched} switched to their own code{(AheadSwitchedAfterMs >= 0 ? $" {AheadSwitchedAfterMs / 1000.0:F1} s after the first frame" : "")}");
 
-    /// <summary>Drops the ahead copies and forgets the counts, for tests.</summary>
     internal static void ResetAheadForTests()
     {
         SwitchFromAhead();
@@ -231,17 +197,11 @@ internal static class IlWarmUp
             _failures.Enqueue($"{method.DeclaringType?.Name}.{method.Name}: {exception.GetType().Name}: {exception.Message.Split('\n')[0]}");
     }
 
-    /// <summary>Whether the plugin's frame path was compiled ahead.</summary>
     public static bool FramePathPrepared => Volatile.Read(ref _framePath) == 2;
 
     /// <summary>Compiles <paramref name="methods"/> ahead, with what they call to <see cref="MaxDepth"/>; each method once a process.</summary>
-    /// <remarks>
-    /// A method met before only deep down, where what it calls was left, is walked again when met higher up: the methods
-    /// it calls are then compiled too, whichever walk met it first.
-    /// </remarks>
     public static void Prepare(IEnumerable<MethodBase>? methods) => Prepare(methods, MaxDepth);
 
-    /// <summary>As <see cref="Prepare(IEnumerable{MethodBase})"/>, to <paramref name="maxDepth"/> calls down.</summary>
     private static void Prepare(IEnumerable<MethodBase>? methods, int maxDepth)
     {
         if (methods is null)
@@ -272,27 +232,22 @@ internal static class IlWarmUp
         }
     }
 
-    /// <summary>
-    /// Compiles ahead, once, every method of the plugin's types a frame part may reach under the Adaptive rules: the
-    /// runner, the gate, the lookup, the checks, live profiling's counts and the contracts' run, with what they call.
-    /// </summary>
-    /// <returns>
-    /// What of the core's side it could not find, for the log, or null. The core's hook path is found by name, best
-    /// effort: it is not part of the hook's API, and a core that renames it leaves that path to its first frames.
-    /// </returns>
+    /// <summary>Compiles ahead, once, every method of the plugin's types a frame part may reach under the Adaptive rules, with what they call.</summary>
+    /// <returns>What of the core's side it could not find, for the log, or null.</returns>
     public static string? PrepareFramePath()
     {
         if (Interlocked.CompareExchange(ref _framePath, 1, 0) != 0)
             return null;
         List<MethodBase> methods = [];
-        foreach (Type type in (Type[])[typeof(IlEvmFrameRunner), typeof(IlEvmLegacyFrameRunner<OffFlag>), typeof(IlEvmLegacyFrameRunner<OnFlag>), typeof(IlSurfaceCounts), typeof(IlThread), typeof(IlRuntime), typeof(IlCheck), typeof(IlCheckClock),
+        foreach (Type type in (Type[])[typeof(IlEvmFrameRunner), typeof(IlSurfaceCounts), typeof(IlThread), typeof(IlRuntime), typeof(IlCheck), typeof(IlCheckClock),
                      typeof(IlLive), typeof(IlVisitStats), typeof(IlGate), typeof(IlCodeProfile), typeof(IlEvm.IlContract), typeof(IlEvm.IlChunk), typeof(IlEvm)])
         {
             foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
                 methods.Add(method);
         }
 
-        // The core's hook into the runner, which a machine with no runner never calls, for both of its flavours.
+        // The core's hook into the runner, which a machine with no runner never calls, for both of its flavours: found by
+        // name, best effort, as it is not part of the hook's API.
         string? missing = "the core's RunFrameCodeOnRunner was not found, so its hook path compiles at its first frames";
         try
         {
@@ -320,7 +275,6 @@ internal static class IlWarmUp
         return missing;
     }
 
-    /// <summary>Compiles one method ahead; false when it has no body of its own to compile, or the runtime declined.</summary>
     private static bool PrepareOne(MethodBase method)
     {
         if (method.IsAbstract || method.ContainsGenericParameters || method.DeclaringType is { ContainsGenericParameters: true } ||
@@ -344,7 +298,7 @@ internal static class IlWarmUp
         }
         catch (Exception exception)
         {
-            // A method the runtime does not compile ahead, as some of its own: compiled at its first call, as before.
+            // A method the runtime does not compile ahead, as some of its own: compiled at its first call.
             Interlocked.Increment(ref _failed);
             RecordFailure(method, exception);
             return false;
@@ -434,7 +388,7 @@ internal static class IlWarmUp
             }
             catch (Exception)
             {
-                // A token this context cannot resolve: its method is compiled at its first call, as before.
+                // A token this context cannot resolve: its method is compiled at its first call.
                 constrained = null;
             }
         }
@@ -442,11 +396,7 @@ internal static class IlWarmUp
         return callees;
     }
 
-    /// <summary>
-    /// <paramref name="type"/>'s implementation of <paramref name="method"/> of <paramref name="contract"/>, or null for
-    /// none of its own, as where the interface's default body serves: by the interface map, else, where the runtime maps no
-    /// static members, by the name a method implementing it takes, implicitly or explicitly, and its parameters.
-    /// </summary>
+    /// <summary><paramref name="type"/>'s own implementation of <paramref name="method"/>, or null: by the interface map, else by name and parameters (static members have no map).</summary>
     private static MethodInfo? Implementation(Type type, Type contract, MethodInfo method)
     {
         // A generic method's implementation comes as its definition: instantiated as the call was.

@@ -28,13 +28,10 @@ internal enum IlSchedulerState
     /// <summary>Block processing processes a branch: no step starts.</summary>
     Busy,
 
-    /// <summary>
-    /// The <see cref="IIlEvmConfig.QuietMs"/> after a branch completes, or after a new head: the commit, the forkchoice
-    /// update and the calls a new head brings take the CPU first. No step starts.
-    /// </summary>
+    /// <summary>The <see cref="IIlEvmConfig.QuietMs"/> after a branch or a new head, left to the commit, forkchoice and calls: no step starts.</summary>
     Quiet,
 
-    /// <summary>A window between blocks: a step starts when it ends, twice over by its estimate, before the guard time.</summary>
+    /// <summary>A window between blocks: a step starts when twice its estimate ends before the guard time.</summary>
     Open,
 
     /// <summary>The window's guard time went by: no step starts until the next block, or until its slot counts as missed.</summary>
@@ -56,14 +53,9 @@ internal enum IlStepKind
 }
 
 /// <summary>The scheduler's knobs, from <see cref="IIlEvmConfig"/> and block processing's slot length.</summary>
-/// <param name="QuietMs">The quiet time after a branch or a new head, <see cref="IIlEvmConfig.QuietMs"/>.</param>
-/// <param name="SlotGuardMs">How long before the next block is expected no step starts, <see cref="IIlEvmConfig.SlotGuardMs"/>.</param>
-/// <param name="CompileThreads">The workers that step in windows.</param>
-/// <param name="IdleCompileThreads">The workers that step while idle, the window workers among them.</param>
 /// <param name="SecondsPerSlot">The chain's slot length, which the guard time at the tip is taken from.</param>
 internal sealed record IlSchedulerOptions(int QuietMs, int SlotGuardMs, int CompileThreads, int IdleCompileThreads, ulong SecondsPerSlot)
 {
-    /// <summary>The knobs as configured: <see cref="IIlEvmConfig.IdleCompileThreads"/> 0 for a quarter of the cores, at least 1 and at most 4.</summary>
     public static IlSchedulerOptions From(IIlEvmConfig config, IBlocksConfig? blocksConfig) =>
         new(Math.Max(0, config.QuietMs), Math.Max(0, config.SlotGuardMs), Math.Clamp(config.CompileThreads, 0, 64),
             config.IdleCompileThreads > 0 ? Math.Min(config.IdleCompileThreads, 64) : Math.Clamp(Environment.ProcessorCount / 4, 1, 4),
@@ -75,34 +67,10 @@ internal sealed record IlSchedulerOptions(int QuietMs, int SlotGuardMs, int Comp
 /// windows between blocks.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The main processing context's branch events drive it, as they drive the core's background task scheduler: a branch
-/// makes it <see cref="IlSchedulerState.Busy"/>; its completion, after the commit, and a new head start a quiet time
-/// of <see cref="IlSchedulerOptions.QuietMs"/>; then a window opens until the guard time before the next block is
-/// expected. At the chain's tip that block's slot gives the guard time; elsewhere, as in a benchmark replaying old
-/// blocks, the gaps between recent single-block branches do. A window too short to open, a node that syncs, and blocks
-/// with no known cadence leave it <see cref="IlSchedulerState.Closed"/>; a slot that goes by without its block opens
-/// the next slot's window; with no block for a while, or none since startup, it is <see cref="IlSchedulerState.Idle"/>,
-/// open with no guard and with the idle workers too. A block the node's own producer builds is processed outside the
-/// main processing context; while the chain head says one is being built, no step starts either.
-/// </para>
-/// <para>
-/// A job is one or more steps - a layout, one chunk's JIT, a release - each short enough to end within a guard time;
-/// one that is not done goes back to its place in the queue, so a long job resumes in the next window. A step starts in
-/// a window only when twice its estimate ends before the guard time; the estimates are per KiB, learned from what the
-/// steps took. Jobs wait by class - the shipped list first, then the chunks frames wait for, promotions, releases and
-/// retries - then by density, then in the order they came.
-/// </para>
-/// <para>
-/// At a window's opening, and once a second in a long window or while idle, one worker looks after the rest first: live
-/// profiling's scorer (<see cref="ScorerTick"/>), the switchback checks' probations whose time has come, the fork
-/// lookahead (<see cref="ForkLookahead"/>), a retry of the list entries whose code the node lacked, every ten minutes,
-/// and persistence (<see cref="Persist"/>). It never runs beside a step: the steps under way end first, and none
-/// starts until it is done.
-/// </para>
-/// <para>
-/// The frames' paths never wait on it: a frame only queues a job, under a lock it holds for a moment, once per chunk.
-/// </para>
+/// The main processing context's branch events drive it (<see cref="IlSchedulerState"/>), as they drive the core's
+/// background task scheduler. At the chain's tip the next block's slot gives the guard time; elsewhere, as in a benchmark
+/// replaying old blocks, the gaps between recent single-block branches do. The frames' paths never wait on it: a frame
+/// only queues a job, under a lock it holds for a moment, once per chunk.
 /// </remarks>
 internal sealed class IlScheduler
 {
@@ -127,16 +95,13 @@ internal sealed class IlScheduler
     /// <summary>The least time with no block after which the scheduler is idle; twice the median gap where that is longer.</summary>
     public const int IdleAfterMinMs = 3_000;
 
-    /// <summary>After a branch the node processed while syncing, the time with no block after which the scheduler is idle: more batches are likely to come, with gaps between them.</summary>
+    /// <summary>The idle time after a branch processed while syncing: more batches are likely to come, with gaps between them.</summary>
     public const int SyncingIdleAfterMs = 60_000;
 
-    /// <summary>
-    /// While idle within this of the latest block, a block may come at any moment, so a step starts only when twice its
-    /// estimate fits in the guard time, as in a window; past it, idle is idle and any step starts.
-    /// </summary>
+    /// <summary>While idle within this of the latest block, a block may come at any moment: a step starts only when twice its estimate fits in the guard time.</summary>
     public const int ShallowIdleMs = 60_000;
 
-    /// <summary>How long a block the processing queue took in keeps the scheduler busy before its branch starts, at most: its senders are being recovered, and the branch is being built.</summary>
+    /// <summary>The longest a block the processing queue took in keeps the scheduler busy before its branch starts, while its senders are recovered and its branch built.</summary>
     public const int ArrivalMs = 5_000;
 
     /// <summary>At the chain's tip, a slot whose block has not come this long after its start is missed.</summary>
@@ -145,13 +110,11 @@ internal sealed class IlScheduler
     /// <summary>How often the maintenance runs in a long window and while idle, besides at each window's opening.</summary>
     public const int MaintenanceEveryMs = 1_000;
 
-    /// <summary>How often the maintenance runs the fork lookahead, the retry of missing codes, and persistence.</summary>
     public const int LookaheadEveryMs = 60_000, RetryMissingEveryMs = 600_000, PersistEveryMs = 900_000;
 
     /// <summary>The estimates' starting rates: a layout per KiB of code, a chunk's JIT per KiB of its IL, any other step.</summary>
     public const double LayoutMsPerKiB = 1.0, ChunkMsPerKiB = 1.6, LightStepMs = 1.0;
 
-    /// <summary>How far each step moves its kind's rate toward what it took: an eighth.</summary>
     private const double Learning = 1.0 / 8;
 
     /// <summary>The least size a step's rate is taken over, so a tiny chunk's fixed cost does not swell the rate per KiB.</summary>
@@ -169,11 +132,7 @@ internal sealed class IlScheduler
     /// <summary>The scheduler the startup step attached, which jobs are queued to; null before it, and under rules other than the Adaptive ones.</summary>
     public static IlScheduler? Current => Volatile.Read(ref _current);
 
-    /// <summary>
-    /// Live profiling's scorer: called at each window's opening, and once a second in a long window or while idle, with
-    /// the scheduler's clock in milliseconds. It must return within about a millisecond, going on where it stopped at the
-    /// next call; promotions it decides are jobs it queues.
-    /// </summary>
+    /// <summary>Live profiling's scorer, run by each maintenance with the clock in milliseconds: it must return within about a millisecond, going on at the next call.</summary>
     public static Action<long>? ScorerTick { get; set; }
 
     /// <summary>The fork lookahead: once a minute at a window's maintenance, it queues what compiles the next fork's body set ahead; none yet.</summary>
@@ -198,17 +157,15 @@ internal sealed class IlScheduler
     private IChainHeadInfoProvider? _chainHeadInfo;
     private IBlockProcessingQueue? _processingQueue;
 
-    /// <summary>The blocks the processing queue took in whose branch has not started, and when it took in the latest, on the scheduler's clock; while there are some, recently, the scheduler is busy.</summary>
+    /// <summary>Blocks the processing queue took in whose branch has not started, and when the latest came; while some came recently, the scheduler is busy.</summary>
     private readonly HashSet<Hash256> _arriving = [];
     private long _arrivedAt;
 
     /// <summary>Whether the latest branch completed while the node synced, until the chain head says it no longer does.</summary>
     private bool _syncing;
 
-    /// <summary>When the chain head was last asked whether the node still syncs, past a syncing branch's idle time.</summary>
     private long _syncCheckedAt;
 
-    /// <summary>How often, past a syncing branch's idle time, the chain head is asked whether the node still syncs.</summary>
     private const int SyncCheckEveryMs = 100;
 
     // The state and what moves it, under the lock.
@@ -240,7 +197,6 @@ internal sealed class IlScheduler
     private long _starvedWindow = -1;
     private readonly double[] _rates = [LayoutMsPerKiB, ChunkMsPerKiB, LightStepMs];
 
-    // What the exit line reports.
     private long _windows, _backToBack, _steps, _overlapSteps, _starved, _rejected, _failed, _maintenanceRuns;
     private double _stepMs, _overlapMs, _jitMs;
     private readonly long[] _stepsByKind = new long[3];
@@ -254,8 +210,6 @@ internal sealed class IlScheduler
         NoCadence,
     }
 
-    /// <summary>A scheduler on <paramref name="time"/>'s clock, attached to nothing yet.</summary>
-    /// <param name="threads">Whether <see cref="Start"/> starts its workers' threads; tests pump them instead.</param>
     internal IlScheduler(IlSchedulerOptions options, TimeProvider time, bool threads, ILogger logger = default)
     {
         _options = options;
@@ -265,29 +219,20 @@ internal sealed class IlScheduler
         _logger = logger;
     }
 
-    /// <summary>The workers: those of the windows, and those only idleness wakes.</summary>
     public int WorkerCount => Math.Max(_options.CompileThreads, _options.IdleCompileThreads);
 
-    /// <summary>The knobs the scheduler runs by.</summary>
     public IlSchedulerOptions Options => _options;
 
     /// <summary>The code database, which live compiles read the code of stamped contracts from; null where the startup had none.</summary>
     public IDb? CodeDb { get; private set; }
 
-    /// <summary>The specs, for the fork lookahead's next body set.</summary>
+    /// <summary>The specs and the block tree, for the fork lookahead's next fork and body set.</summary>
     public ISpecProvider? SpecProvider { get; private set; }
 
-    /// <summary>The block tree, for the fork lookahead's next fork.</summary>
     public IBlockTree? BlockTree => _blockTree;
 
-    /// <summary>
-    /// Makes the scheduler, subscribes it to block processing's branch events and to new heads, and makes it the
-    /// <see cref="Current"/> one, which the switchback checks' releases and restores go to; it starts with <see cref="Start"/>.
-    /// </summary>
+    /// <summary>Makes the scheduler, subscribes it to block processing's events, and makes it <see cref="Current"/>, which the checks' releases and restores go to.</summary>
     /// <param name="branchProcessor">The main processing context's branch processor; null on a node that processes no blocks, which is then idle.</param>
-    /// <param name="chainHeadInfo">Whether the node syncs; the block tree tells, without it.</param>
-    /// <param name="time">The clock, for tests; the system's by default.</param>
-    /// <param name="threads">Whether its workers get threads; by default unless <see cref="ManualForTests"/>.</param>
     /// <param name="processingQueue">The main processing context's queue, whose blocks make the scheduler busy as they arrive, before their branch starts.</param>
     public static IlScheduler Attach(IlSchedulerOptions options, IBranchProcessor? branchProcessor, IBlockTree? blockTree, IChainHeadInfoProvider? chainHeadInfo,
         ISpecProvider? specProvider, IDb? codeDb, ILogger logger = default, TimeProvider? time = null, bool? threads = null, IBlockProcessingQueue? processingQueue = null)
@@ -299,8 +244,7 @@ internal sealed class IlScheduler
         };
         scheduler.Subscribe(branchProcessor, blockTree, chainHeadInfo, processingQueue);
         Interlocked.Exchange(ref _current, scheduler)?.Detach();
-        // A live contract a check gives back goes in a window, as does the end of a probation; the frame that decided
-        // only queues the release, or releases at once when the queue is full.
+        // A live contract a check gives back is released in a window; the deciding frame only queues it, or releases at once on a full queue.
         IlCheck.ReleaseLive = static contract =>
         {
             if (!TryEnqueue(new ReleaseJob(contract)))
@@ -354,7 +298,7 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>Ends <see cref="IlSchedulerState.Starting"/>, once the startup compile is done, and starts the workers' threads: below normal priority, and on Linux under SCHED_IDLE when <see cref="IlEvmSettings.CompileIdle"/> asks.</summary>
+    /// <summary>Ends <see cref="IlSchedulerState.Starting"/> and starts the workers' threads: below normal priority, under SCHED_IDLE on Linux with <see cref="IlEvmSettings.CompileIdle"/>.</summary>
     /// <remarks>Started after the startup compile, so no thread the runtime starts for its own work inherits their scheduling.</remarks>
     public void Start()
     {
@@ -385,17 +329,11 @@ internal sealed class IlScheduler
             Monitor.PulseAll(_lock);
     }
 
-    /// <summary>Queues <paramref name="job"/> on the <see cref="Current"/> scheduler; false with none, or with <see cref="MaxPending"/> jobs waiting.</summary>
     public static bool TryEnqueue(IlJob job) => Current?.Enqueue(job) ?? false;
 
-    /// <summary>
-    /// Whether a job may publish what it compiled, or release what it held, now: no block is under way, so moving the
-    /// version has no state resolve again beside block processing. A step that ran into a block publishes in a step of
-    /// its own, in the next window; with no scheduler, always.
-    /// </summary>
+    /// <summary>Whether a job may publish what it compiled, or release what it held: not while a block is under way, beside which states would resolve again.</summary>
     public static bool MayPublish => Current?.BlockUnderWay() != true;
 
-    /// <summary>Whether a branch is being processed, or a block the queue took in is on its way to one.</summary>
     private bool BlockUnderWay()
     {
         lock (_lock)
@@ -420,7 +358,7 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>Releases a live contract a check gave back: its profile, demoted for a cooldown, lets go of it, its code goes, and every state resolves again.</summary>
+    /// <summary>Releases a live contract a check gave back: its profile is demoted for a cooldown, its code goes, and every state resolves again.</summary>
     internal static void Release(IlEvm.IlContract contract)
     {
         if (contract.Profile is { } profile && ReferenceEquals(profile.Live, contract))
@@ -456,12 +394,7 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>
-    /// One look of worker <paramref name="worker"/>: the state brought up to now, the maintenance when it is due and no
-    /// other worker runs it, then the queue's first job's next step, when the state lets this worker start one and, in a
-    /// window, twice its estimate ends before the guard time.
-    /// </summary>
-    /// <returns>Whether a step ran, after which the worker looks again at once.</returns>
+    /// <summary>One look of a worker: the state brought up to now, the maintenance when due, then the first job's next step if it may start; true when a step ran.</summary>
     internal bool Pump(int worker)
     {
         RefreshSyncing();
@@ -472,8 +405,7 @@ internal sealed class IlScheduler
             Advance(now);
             if (!MayWork(worker))
                 return false;
-            // The maintenance never runs beside a step, so the scorer sees each job's work whole: once it is due no step
-            // starts, and the worker that finds none running runs it.
+            // The maintenance never runs beside a step, so the scorer sees jobs' work whole: once due, no step starts until it has run.
             if (_maintaining)
                 return false;
             if (_maintenanceDue || now - _lastMaintenance >= MaintenanceEveryMs)
@@ -540,7 +472,6 @@ internal sealed class IlScheduler
         }
 
         bool done;
-        // The JIT's share of the step, on this thread: the time the windows give compiled code.
         TimeSpan jitBefore = System.Runtime.JitInfo.GetCompilationTime(currentThread: true);
         try
         {
@@ -579,7 +510,6 @@ internal sealed class IlScheduler
         return true;
     }
 
-    /// <summary>Drops a job whose step threw, or which could not tell its next step: counted, logged, and the job lets go of what it holds.</summary>
     private void Drop(IlJob job, Exception exception)
     {
         Interlocked.Increment(ref _failed);
@@ -598,7 +528,6 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>Whether the node's block producer is executing a block it builds, where the chain head can tell: no step starts then.</summary>
     private bool BuildingBlock()
     {
         try
@@ -612,11 +541,7 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>
-    /// Whether a step estimated at <paramref name="estimateMs"/> may start at <paramref name="now"/>, under the lock: in a
-    /// window when twice its estimate ends before the guard time; while idle soon after a block, when twice its estimate
-    /// fits in the guard time, as a block may come at any moment; deeper in idleness, always.
-    /// </summary>
+    /// <summary>Whether a step estimated at <paramref name="estimateMs"/> may start now in the state, under the lock.</summary>
     private bool Fits(long now, double estimateMs) => _state switch
     {
         IlSchedulerState.Open => now + 2 * estimateMs < _guard,
@@ -624,7 +549,6 @@ internal sealed class IlScheduler
         _ => true,
     };
 
-    /// <summary>Whether worker <paramref name="worker"/> may start a step in the state now: the window workers in a window, every worker while idle.</summary>
     private bool MayWork(int worker) => _state switch
     {
         IlSchedulerState.Open => worker < _options.CompileThreads,
@@ -639,8 +563,7 @@ internal sealed class IlScheduler
         {
             long now = Now;
             ScorerTick?.Invoke(now);
-            // The probations and masks whose time has come end between blocks, on the checks' own clock; the clock's
-            // timer ends them itself only when this has not run for a while.
+            // Due probations and masks end here, between blocks, on the checks' own clock; their timer ends them only when this has not run for a while.
             long checksNow = Environment.TickCount64;
             IlCheck.RestoreDue(checksNow);
             Volatile.Write(ref IlCheck.LastSchedulerRestore, checksNow);
@@ -707,8 +630,6 @@ internal sealed class IlScheduler
             return;
         }
 
-        // A block the queue took in is on its way: its senders are recovered and its branch built before the branch's
-        // events say so, and a step started now would run beside that.
         if (_arriving.Count > 0)
         {
             if (now - _arrivedAt < ArrivalMs)
@@ -738,8 +659,7 @@ internal sealed class IlScheduler
         else if (_state == IlSchedulerState.Open && now >= _guard)
             _state = IlSchedulerState.Guard;
 
-        // The block the window waited for did not come in its slot: the next slot's window. A missed slot ends a guard,
-        // and a closing for blocks back to back; a closing for syncing or for no cadence waits for a block or idleness.
+        // The awaited block missed its slot: a guard or a back-to-back closing moves on to the next slot's window.
         for (int skipped = 0; (_state == IlSchedulerState.Guard || (_state == IlSchedulerState.Closed && _closed == ClosedReason.BackToBack)) && now >= _missedAt; skipped++)
         {
             if (skipped == MaxSlotsSkipped)
@@ -757,14 +677,9 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>Whether block processing processed nothing for <see cref="IdleAfterMs"/>, from the end of its latest branch, or nothing since startup, as a node in a state sync.</summary>
     private bool IdleDue(long now) => !_sawBranch || now - _lastBlockAt >= IdleAfterMs();
 
-    /// <summary>
-    /// Past the idle time a syncing branch would have had had the node been synced, asks the chain head, outside the lock,
-    /// whether the node still syncs: once it does not, the scheduler goes idle as after any branch; while it does, only
-    /// <see cref="SyncingIdleAfterMs"/> after the branch.
-    /// </summary>
+    /// <summary>Past a synced node's idle time after a syncing branch, asks the chain head, outside the lock, whether the node still syncs.</summary>
     private void RefreshSyncing()
     {
         if (!Volatile.Read(ref _syncing))
@@ -780,11 +695,7 @@ internal sealed class IlScheduler
             _syncing = false;
     }
 
-    /// <summary>
-    /// How long with no block makes the scheduler idle: <see cref="IdleAfterMinMs"/>, or twice the median gap where that is
-    /// longer, a slot standing in for it at the tip until the gaps are known; after a branch processed while syncing, at
-    /// least <see cref="SyncingIdleAfterMs"/>, as the next batch is on its way.
-    /// </summary>
+    /// <summary>How long with no block makes the scheduler idle; at the tip a slot stands in for the median gap until the gaps are known.</summary>
     private long IdleAfterMs()
     {
         long median = _gapCount >= MinGaps ? _medianGap : _atTip ? SlotMs : 0;
@@ -818,12 +729,7 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>
-    /// When the next block is expected, from the head: at the chain's tip (the head within two slots of the wall clock),
-    /// the guard time is <see cref="IlSchedulerOptions.SlotGuardMs"/> before the next slot starts, and the slot is missed
-    /// <see cref="MissedSlotMs"/> after it starts; elsewhere they follow the latest branch by the 10th percentile of the
-    /// recent gaps, less the guard, and by twice their median; with fewer than <see cref="MinGaps"/> gaps there, none.
-    /// </summary>
+    /// <summary>When the next block is expected, from the head; the chain's tip is the head within two slots of the wall clock.</summary>
     private void ComputeGuard(long now)
     {
         long unixNow = UnixNow;
@@ -861,7 +767,6 @@ internal sealed class IlScheduler
         _missedAt = from + Math.Max(1, 2 * _medianGap);
     }
 
-    /// <summary>The guard time and the missed time of the slot starting at <see cref="_slotStartUnix"/>, on the scheduler's own clock.</summary>
     private void SetSlot(long now, long unixNow)
     {
         long offset = unixNow - now;
@@ -891,7 +796,6 @@ internal sealed class IlScheduler
         _starved++;
     }
 
-    /// <summary>What a step of <paramref name="kind"/> over <paramref name="units"/> is expected to take, in milliseconds.</summary>
     public double EstimateMs(IlStepKind kind, double units)
     {
         lock (_lock)
@@ -900,7 +804,6 @@ internal sealed class IlScheduler
 
     private double EstimateLocked(IlStepKind kind, double units) => _rates[(int)kind] * Math.Max(units, MinUnits);
 
-    /// <summary>Moves the kind's rate an eighth of the way toward what the step took per unit.</summary>
     private void Learn(IlStepKind kind, double units, double ms)
     {
         ref double rate = ref _rates[(int)kind];
@@ -911,7 +814,6 @@ internal sealed class IlScheduler
 
     private long UnixNow => _time.GetUtcNow().ToUnixTimeMilliseconds();
 
-    /// <summary>Whether the node syncs: the chain head's word, else the block tree's; false when neither can tell.</summary>
     private bool IsSyncing()
     {
         try
@@ -927,11 +829,7 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>
-    /// A branch starts, on block processing's thread: no step starts until it completes; a single block's arrival adds
-    /// its gap to the cadence; the checks of block processing's runner may sample on every thread it serves; and with
-    /// <see cref="IlEvmPrefer.Blocks"/> a branch of at most two blocks, not syncing, feeds live profiling.
-    /// </summary>
+    /// <summary>A branch starts, on block processing's thread: no step starts until it completes.</summary>
     private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
     {
         try
@@ -975,7 +873,6 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>The processing queue took in a block, before its senders are recovered and its branch built: no step starts from now until its branch completes.</summary>
     private void OnBlockAdded(object? sender, BlockEventArgs e)
     {
         try
@@ -1035,14 +932,13 @@ internal sealed class IlScheduler
         _quietUntil = Math.Max(_quietUntil, now);
     }
 
-    /// <summary>A block of the branch starts: live profiling of blocks counts it as an epoch.</summary>
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
         if (IlRuntime.BlocksCounting)
             Interlocked.Increment(ref IlRuntime.BlockEpoch);
     }
 
-    /// <summary>The branch completed, its blocks committed: the quiet time starts, or the scheduler closes while the node syncs; the next block's guard time follows from the head.</summary>
+    /// <summary>The branch completed, its blocks committed: the quiet time starts, or the scheduler closes while the node syncs.</summary>
     private void OnBranchProcessingCompleted(object? sender, BranchProcessingCompletedEventArgs e)
     {
         try
@@ -1112,7 +1008,6 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>The state now, moved on to the clock.</summary>
     public IlSchedulerState State
     {
         get
@@ -1125,7 +1020,6 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>The jobs waiting.</summary>
     public int Pending
     {
         get
@@ -1140,7 +1034,6 @@ internal sealed class IlScheduler
 
     public long ClosedBackToBack => Read(ref _backToBack);
 
-    /// <summary>Steps run, and the milliseconds they took.</summary>
     public long Steps => Read(ref _steps);
 
     public double StepMs
@@ -1182,7 +1075,6 @@ internal sealed class IlScheduler
 
     public long FailedSteps => Interlocked.Read(ref _failed);
 
-    /// <summary>Maintenance runs.</summary>
     public long MaintenanceRuns => Read(ref _maintenanceRuns);
 
     private long Read(ref long counter)
@@ -1211,7 +1103,7 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>The scheduler for the exit line: its state, windows, steps and their time, the steps that ran into a block, the JIT's time in them, the starved and the waiting.</summary>
+    /// <summary>The scheduler for the exit line.</summary>
     public string Describe()
     {
         lock (_lock)
@@ -1225,7 +1117,6 @@ internal sealed class IlScheduler
         }
     }
 
-    /// <summary>The <see cref="Current"/> scheduler for the exit line, or that there is none.</summary>
     public static string DescribeCurrent() => Current?.Describe() ?? "scheduler not attached";
 
     /// <summary>Lets go of the <see cref="Current"/> scheduler and the hooks, for tests; the checks' hooks are the checks' to reset.</summary>
@@ -1237,7 +1128,7 @@ internal sealed class IlScheduler
         Persist = null;
     }
 
-    /// <summary>Jobs in the order they run: by class, then the denser first, then in the order they came; a job resumed keeps its place.</summary>
+    /// <summary>Jobs in the order they run: by class, then the denser first, then in the order they came.</summary>
     private sealed class JobOrder : IComparer<IlJob>
     {
         public static readonly JobOrder Instance = new();
@@ -1261,7 +1152,6 @@ internal abstract class IlJob(int jobClass, double density = 0)
     /// <summary>The shipped list's entries left by the startup compile, and the fork lookahead's compiles: before everything else.</summary>
     public const int ClassShipped = 0;
 
-    /// <summary>The fork lookahead's compiles, beside the shipped list's.</summary>
     public const int ClassLookahead = 0;
 
     /// <summary>A chunk that frames reached before it was compiled, which they wait for on the interpreter.</summary>
@@ -1270,20 +1160,17 @@ internal abstract class IlJob(int jobClass, double density = 0)
     /// <summary>A promotion's layout, whose chunks then compile as frames reach them.</summary>
     public const int ClassLayout = 2;
 
-    /// <summary>A release of a live contract a check gave back.</summary>
     public const int ClassRelease = 3;
 
-    /// <summary>A retry of the list entries whose code the node lacked.</summary>
     public const int ClassRetry = 4;
 
     public readonly int Class = jobClass;
 
     public readonly double Density = density;
 
-    /// <summary>The job's place among those of its class and density, set when it is first queued and kept when it resumes.</summary>
     internal long Sequence;
 
-    /// <summary>The next step's kind and size, for its estimate: KiB of code for a layout, KiB of IL for a chunk, 1 for any other step.</summary>
+    /// <summary>The next step's kind and size, in its kind's units (<see cref="IlStepKind"/>), for its estimate.</summary>
     public abstract (IlStepKind Kind, double Units) Next { get; }
 
     /// <summary>Runs the next step, on a worker, outside the scheduler's lock.</summary>
@@ -1295,7 +1182,6 @@ internal abstract class IlJob(int jobClass, double density = 0)
     {
     }
 
-    /// <summary>The job's name, for the log.</summary>
     public virtual string Name => GetType().Name;
 }
 
@@ -1316,11 +1202,7 @@ internal sealed class ChunkJob(IlEvm.IlContract contract, int chunk) : IlJob(Cla
     }
 }
 
-/// <summary>
-/// A shipped list entry the startup compile left: its code, the one it carries or else the code database's, laid out for
-/// the body set the startup compiled for, then each chunk JIT-compiled in a step of its own, and published once all are,
-/// as the startup compile publishes its contracts.
-/// </summary>
+/// <summary>A shipped list entry the startup compile left: read, laid out for the startup's body set, each chunk compiled in a step of its own, then published.</summary>
 internal sealed class ShippedLayoutJob(IlEvmPrecompileList.Entry entry) : IlJob(ClassShipped)
 {
     private const int Reading = 0, LayingOut = 1, Compiling = 2, Publishing = 3;
@@ -1336,7 +1218,6 @@ internal sealed class ShippedLayoutJob(IlEvmPrecompileList.Entry entry) : IlJob(
 
     public IlEvmPrecompileList.Entry Entry => entry;
 
-    /// <summary>The contract once laid out, its chunks compiling a step at a time; null before.</summary>
     internal IlEvm.IlContract? Contract => _contract;
 
     public override (IlStepKind Kind, double Units) Next => _stage switch
@@ -1403,7 +1284,6 @@ internal sealed class ShippedLayoutJob(IlEvmPrecompileList.Entry entry) : IlJob(
         }
     }
 
-    /// <summary>Moves to the next chunk not compiled yet; past the last, publishes the contract.</summary>
     private bool NextChunk()
     {
         IlEvm.IlContract contract = _contract!;
@@ -1417,10 +1297,8 @@ internal sealed class ShippedLayoutJob(IlEvmPrecompileList.Entry entry) : IlJob(
         return Publish();
     }
 
-    /// <summary>Publishes the compiled contract, unless a block is under way, when a step of its own does in the next window.</summary>
     private bool Publish() => IlScheduler.MayPublish && Finish(IlShippedBacklog.Outcome.Compiled, _contract);
 
-    /// <summary>Hands the entry back to the backlog, done with: compiled and published, missing, or declined.</summary>
     private bool Finish(IlShippedBacklog.Outcome outcome, IlEvm.IlContract? contract)
     {
         _taken = false;
@@ -1436,11 +1314,7 @@ internal sealed class ShippedLayoutJob(IlEvmPrecompileList.Entry entry) : IlJob(
     }
 }
 
-/// <summary>
-/// A layout for live profiling's promotion: the code read, then laid out for a body set, its chunks left to compile as
-/// frames reach them; <paramref name="laidOut"/> publishes it, or hears why the compiler declined it.
-/// </summary>
-/// <param name="code">The code: a profile's retained bytes, or the code database's.</param>
+/// <summary>A promotion's layout: the code read, then laid out for <paramref name="bodies"/>; <paramref name="laidOut"/> publishes it, or hears why it was declined.</summary>
 internal sealed class LayoutJob(Func<ReadOnlyMemory<byte>> code, OpcodeBodySet bodies, Action<IlEvm.IlContract?, string?> laidOut, double density = 0)
     : IlJob(ClassLayout, density)
 {
@@ -1477,7 +1351,6 @@ internal sealed class LayoutJob(Func<ReadOnlyMemory<byte>> code, OpcodeBodySet b
             _laidOut = true;
         }
 
-        // A layout that ran into a block publishes in a step of its own, in the next window.
         return IlScheduler.MayPublish && Report(_contract, _reason);
     }
 
@@ -1510,7 +1383,6 @@ internal sealed class ReleaseJob(IlEvm.IlContract contract) : IlJob(ClassRelease
 
     public override (IlStepKind Kind, double Units) Next => (IlStepKind.Light, 1);
 
-    /// <summary>Releases the contract, unless a block is under way, when the next window's step does.</summary>
     public override bool Step()
     {
         if (!IlScheduler.MayPublish)
@@ -1520,13 +1392,9 @@ internal sealed class ReleaseJob(IlEvm.IlContract contract) : IlJob(ClassRelease
     }
 }
 
-/// <summary>
-/// A retry of the list entries whose code the code database lacked, as at genesis before a sync: <see cref="ProbesPerStep"/>
-/// probed a step, and each whose code is there now goes back to the leftovers, a <see cref="ShippedLayoutJob"/> queued for it.
-/// </summary>
+/// <summary>A retry of the list entries whose code the code database lacked, as at genesis before a sync: each found now gets a <see cref="ShippedLayoutJob"/>.</summary>
 internal sealed class RetryMissingJob(IlScheduler scheduler) : IlJob(ClassRetry)
 {
-    /// <summary>The entries a step probes the code database for.</summary>
     public const int ProbesPerStep = 32;
 
     private List<IlEvmPrecompileList.Entry>? _missing;
@@ -1551,7 +1419,6 @@ internal sealed class RetryMissingJob(IlScheduler scheduler) : IlJob(ClassRetry)
         return true;
     }
 
-    /// <summary>A step threw: another retry may be queued ten minutes on.</summary>
     public override void Dropped() => scheduler.RetryDone();
 }
 
@@ -1561,13 +1428,12 @@ internal sealed partial class IlCodeProfile
     /// <summary>Values of <see cref="State"/>: nothing decided, promoted by live profiling, and demoted, in a cooldown.</summary>
     public const byte LiveNone = 0, LivePromoted = 1, LiveDemoted = 2;
 
-    /// <summary>Live profiling's state of the code: <see cref="LiveNone"/>, <see cref="LivePromoted"/> or <see cref="LiveDemoted"/>.</summary>
     public byte State;
 
     /// <summary>Until which epoch of the source that promoted it a demoted code may not be promoted again: <see cref="IlRuntime.BlockEpoch"/> or <see cref="IlRuntime.RpcEpoch"/>.</summary>
     public long CooldownUntil;
 
-    /// <summary>The live contract of <paramref name="origin"/>'s source was released: demoted, in a cooldown of ten of that source's half-lives (<see cref="IlLiveParams.CooldownEpochs"/>): 5,120 blocks, or 6,000 seconds.</summary>
+    /// <summary>The live contract of <paramref name="origin"/>'s source was released: demoted, in a cooldown of ten of that source's half-lives (<see cref="IlLiveParams.CooldownEpochs"/>).</summary>
     internal void Demote(IlOrigin origin)
     {
         bool block = origin == IlOrigin.LiveBlocks;

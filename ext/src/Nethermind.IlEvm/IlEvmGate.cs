@@ -19,40 +19,13 @@ namespace Nethermind.IlEvm;
 
 /// <summary>
 /// The visit gate: of the frame parts a runner may run compiled, it sends to compiled code those of visits expected to
-/// gain from it - long ones, ones warm on their thread, and ones already long on the interpreter - and leaves the rest to
-/// the interpreter, as on a node without the plugin.
+/// gain from it - long ones, ones warm on their thread, and ones already long on the interpreter - and interprets the rest.
 /// </summary>
 /// <remarks>
-/// <para>
 /// A part is one offer of a frame: its entry, or a resume after a nested call. A visit is every part of one code state
-/// within one transaction on one thread. Its mode is chosen at its first part, from what the code's profile learned of
-/// earlier visits with the same key - the first part's selector and calldata length class, or its resume point - and
-/// from when this thread last ran the code compiled:
-/// </para>
-/// <list type="bullet">
-/// <item>Compiled from the first part, once <see cref="IlGateParams.MinVisits"/> visits are learned and their geometric
-/// mean reaches <see cref="IlGateParams.VisitColdOps"/>: long enough to pay for meeting the code cold.</item>
-/// <item>Compiled, when this thread ran the code compiled within <see cref="IlGateParams.WarmOps"/> of its work clock.</item>
-/// <item>Compiled, on the read-only queries' runner, for a shipped contract the list vouches for with <c>qminv=</c>
-/// (<see cref="IlCodeProfile.QuerySeeded"/>): every visit with 0, else the visits of a key not learned yet, which would
-/// rent; a learned key's length is then held to the entry's threshold.</item>
-/// <item>Renting, with fewer visits learned: interpreted, every part reported, and switched to compiled code, once, when
-/// the visit has run <see cref="IlGateParams.SwitchOps"/> opcodes. Renting too when the visits learned come within
-/// <see cref="IlGateParams.RentFactor"/> of the switch point, then switched only past twice their mean: an outlier
-/// switches, a typical visit never pays a cold entry at its end.</item>
-/// <item>Settled otherwise: interpreted, unreported but for one visit in <see cref="IlGateParams.MeasureEvery"/>.</item>
-/// </list>
-/// <para>
-/// A thread's work clock is its machine's opcode count, plus at each new transaction the larger of a fixed gap and the
-/// wall time since the last one at <see cref="IlGateParams.OpsPerMicrosecond"/>: one timestamp per transaction, none
-/// per part. Each runner learns visit lengths of its own and has thresholds of its own: block code mostly comes from the
-/// shared caches, so block processing's runner admits shorter visits than the read-only queries', which meet their
-/// code colder, and a list entry's <c>minv=</c> sets it per contract.
-/// </para>
-/// <para>
-/// The gate only chooses between two exact paths, so correctness never depends on its decisions; <see cref="Chaos"/>
-/// randomises them for the differential tests.
-/// </para>
+/// within one transaction on one thread. Its mode is chosen at its first part, from the lengths learned of earlier visits
+/// with the same key and from when this thread last ran the code compiled. The gate only chooses between two exact paths,
+/// so correctness never depends on its decisions; <see cref="Chaos"/> randomises them for the differential tests.
 /// </remarks>
 internal static class IlGate
 {
@@ -77,31 +50,27 @@ internal static class IlGate
     /// <summary>A visit of code its runner has nothing compiled for, which a counting runner samples for the live profile.</summary>
     internal const byte ModeSampled = 4;
 
-    /// <summary>The words of a code's learned visit lengths per runner: 8 sets of 2 ways.</summary>
     internal const int VisitWords = 16;
 
     /// <summary>
-    /// The knobs' names, in the order <see cref="IlGateParams.Values"/> holds them: each is read from
-    /// <c>NETHERMIND_ILEVM_GATE_BLOCK_&lt;NAME&gt;</c> and <c>NETHERMIND_ILEVM_GATE_QUERY_&lt;NAME&gt;</c>, and for the block
-    /// runner from a list's calibration line as <c>gate_block_&lt;name&gt;=</c>, the name in lower case.
+    /// The knobs, in <see cref="IlGateParams.Values"/> order, read from <c>NETHERMIND_ILEVM_GATE_BLOCK_&lt;NAME&gt;</c> and
+    /// <c>NETHERMIND_ILEVM_GATE_QUERY_&lt;NAME&gt;</c>, and for the block runner from a list's <c>gate_block_&lt;name&gt;=</c>.
     /// </summary>
     internal static readonly string[] Names = ["VISIT_COLD_OPS", "SWITCH_OPS", "RENT_FACTOR", "WARM_OPS", "TX_GAP_OPS", "MIN_VISITS", "MEASURE_EVERY", "OPS_PER_US"];
 
     /// <summary>
-    /// Block processing's runner before a list's calibration says otherwise: block code mostly comes from the shared
-    /// caches rather than memory, so visits from 2,048 opcodes are admitted cold, and consecutive transactions on the same
-    /// contracts are warm.
+    /// Block processing's runner before a list's calibration: block code mostly comes from the shared caches, so visits
+    /// from 2,048 opcodes are admitted cold, and consecutive transactions on the same contracts are warm.
     /// </summary>
     internal static readonly IlGateParams BlockPrior = new(visitColdOps: 2048, switchOps: 1536, rentFactor: 4, warmOps: 4096, txGapOps: 2048, minVisits: 3, measureEvery: 8, opsPerMicrosecond: 250);
 
-    /// <summary>The read-only queries' runner: the laptop calibration's memory-cold crossovers, as the zero-regression gate was tuned.</summary>
+    /// <summary>The read-only queries' runner, which meets its code colder: memory-cold crossovers.</summary>
     internal static readonly IlGateParams QueryPrior = new(visitColdOps: 8192, switchOps: 6144, rentFactor: 4, warmOps: 4096, txGapOps: 4096, minVisits: 3, measureEvery: 8, opsPerMicrosecond: 250);
 
     private static IlGateParams _block = Overridden("BLOCK", BlockPrior);
     private static IlGateParams _query = Overridden("QUERY", QueryPrior);
 
-    /// <summary>Block processing's runner's thresholds: the prior, or the shipped list's calibration, under any environment override.</summary>
-    /// <remarks>Read once per visit and per transaction, never per part; replaced whole, so a visit reads one set.</remarks>
+    /// <summary>Block processing's runner's thresholds, replaced whole so a visit reads one set; read per visit and per transaction, never per part.</summary>
     public static IlGateParams Block
     {
         get => Volatile.Read(ref _block);
@@ -115,21 +84,14 @@ internal static class IlGate
         set => Volatile.Write(ref _query, value);
     }
 
-    /// <summary>For correctness runs, <c>NETHERMIND_ILEVM_GATE_CHAOS=1</c>: each visit takes a random mode, switch point and measurement.</summary>
-    /// <remarks>Read at a visit's start only.</remarks>
-    /// <summary>For tests: <see cref="Stopwatch"/> ticks added to the wall time between transactions reads, so a test moves it on rather than sleeping.</summary>
+    /// <summary>For tests: <see cref="Stopwatch"/> ticks added to the wall time the gate reads per transaction, so a test moves it on rather than sleeping.</summary>
     internal static long ClockOffsetForTests;
 
+    /// <summary>For correctness runs, <c>NETHERMIND_ILEVM_GATE_CHAOS=1</c>: each visit takes a random mode, switch point and measurement.</summary>
     public static bool Chaos { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_GATE_CHAOS") == "1";
 
-    /// <summary>
-    /// One transaction in this many on the read-only queries' runner is sampled for live profiling when it counts, a power
-    /// of two: every visit of it is counted, standing for this many; <c>NETHERMIND_ILEVM_QUERY_SAMPLE_EVERY</c>.
-    /// </summary>
-    /// <remarks>
-    /// Drawn per transaction rather than per visit, so a transaction not drawn costs its parts no more than a runner that
-    /// does not count: they decline from their slots' marks, and no visit of it writes a profile's counts.
-    /// </remarks>
+    /// <summary>One transaction in this many, a power of two, is sampled on the queries' runner when it counts; <c>NETHERMIND_ILEVM_QUERY_SAMPLE_EVERY</c>.</summary>
+    /// <remarks>Drawn per transaction, not per visit, so a transaction not drawn costs its parts no more than on a runner that does not count.</remarks>
     public static int QuerySampleEvery
     {
         get => 1 << _querySampleLog2;
@@ -146,31 +108,25 @@ internal static class IlGate
     private static int _querySampleLog2 = SampleLog2(int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_QUERY_SAMPLE_EVERY"), out int query) ? query : 8);
     private static int _blockSampleLog2 = SampleLog2(int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_BLOCK_SAMPLE_EVERY"), out int block) ? block : 16);
 
-    /// <summary>The log2 of a sampling rate, rounded up to a power of two between 1 and 2^16.</summary>
     private static int SampleLog2(int every) => BitOperations.Log2(BitOperations.RoundUpToPowerOf2((uint)Math.Clamp(every, 1, 1 << 16)));
 
-    /// <summary>The log2 of the sampling rate of <paramref name="block"/>'s runner.</summary>
     internal static int SampleLog2For(bool block) => block ? _blockSampleLog2 : _querySampleLog2;
 
-    /// <summary>A visit's learned length moves only one visit in this many once its key has <see cref="LearnAlwaysBelow"/> learned, so threads running one contract rarely write its line.</summary>
+    /// <summary>Once a key has <see cref="LearnAlwaysBelow"/> visits learned, one visit in this many is learned, so threads running one contract rarely write its line.</summary>
     public const int LearnEvery = 8;
 
-    /// <summary>The visits a key learns from, every one, before learning slows to one in <see cref="LearnEvery"/>.</summary>
     public const int LearnAlwaysBelow = 16;
 
-    /// <summary>The key of a visit whose first part is a frame's entry: its selector, with the log2 class of its calldata length, so array arguments of other sizes learn apart.</summary>
-    /// <returns>Odd, so never the empty word's 0.</returns>
+    /// <summary>A frame entry's visit key: its selector and calldata length's log2 class, so array arguments of other sizes learn apart; odd, so never an empty word's 0.</summary>
     internal static uint EntryKey(ReadOnlySpan<byte> input)
     {
         uint selector = input.Length >= 4 ? BinaryPrimitives.ReadUInt32BigEndian(input) : 0xFFFF_FF00u | (uint)input.Length;
         return (selector * 0x9E3779B1u ^ (uint)BitOperations.Log2((uint)input.Length | 1) * 0x85EBCA6Bu) | 1u;
     }
 
-    /// <summary>The key of a visit whose first part resumes a frame at <paramref name="pc"/>.</summary>
     internal static uint ResumeKey(nint pc) => ((uint)pc * 0x9E3779B1u) | 0x8000_0001u;
 
-    /// <summary>The log2 of <paramref name="ops"/> in 1/256ths, its fraction read linearly from the bits below the leading one, as the thresholds need no more.</summary>
-    /// <remarks><see cref="Exp2Q8"/> inverts it exactly where <paramref name="ops"/> has no bits past those 8.</remarks>
+    /// <summary>The log2 of <paramref name="ops"/> in 1/256ths, its fraction read linearly from the 8 bits below the leading one, as the thresholds need no more.</summary>
     internal static int Log2Q8(long ops)
     {
         if (ops <= 1)
@@ -181,7 +137,7 @@ internal static class IlGate
         return (whole << 8) | fraction;
     }
 
-    /// <summary>The opcodes whose <see cref="Log2Q8"/> is <paramref name="q8"/>.</summary>
+    /// <summary>The opcodes whose <see cref="Log2Q8"/> is <paramref name="q8"/>; exact for counts with no bits past its 8 fraction bits.</summary>
     internal static long Exp2Q8(int q8)
     {
         if (q8 <= 0)
@@ -191,10 +147,7 @@ internal static class IlGate
         return whole >= 8 ? (long)(mantissa << (whole - 8)) : (long)(mantissa >> (8 - whole));
     }
 
-    /// <summary>
-    /// Takes block processing's thresholds from a list's calibration lines, <c>gate_block_switch_ops=1536</c> and the like,
-    /// over the prior and under any environment override; with no such tokens, the prior.
-    /// </summary>
+    /// <summary>Sets block processing's thresholds from a list's <c>gate_block_*=</c> calibration lines, over the prior and under any environment override.</summary>
     public static void Calibrate(IReadOnlyList<string> calibration)
     {
         Dictionary<string, string> tokens = IlEvmPrecompileList.CalibrationValues(calibration);
@@ -209,7 +162,6 @@ internal static class IlGate
         Block = Overridden("BLOCK", new IlGateParams(values));
     }
 
-    /// <summary><paramref name="prior"/> with each knob the environment sets for <paramref name="runner"/> (BLOCK or QUERY) in its place.</summary>
     private static IlGateParams Overridden(string runner, IlGateParams prior)
     {
         int[] values = prior.Values();
@@ -226,7 +178,7 @@ internal static class IlGate
     private static readonly List<IlThread> _threads = [];
     private static IlGateCounters _retired;
 
-    /// <summary>Keeps a thread's counters for the totals; the threads that ended since the last one are let go, their counts kept.</summary>
+    /// <summary>Keeps a thread's counters for the totals; threads that ended are let go, their counts kept.</summary>
     internal static void Register(IlThread thread)
     {
         lock (_registry)
@@ -247,7 +199,7 @@ internal static class IlGate
         }
     }
 
-    /// <summary>The counters of every thread that offered the gate a part, summed; a running thread's are read as they stand.</summary>
+    /// <summary>The counters of every thread that offered the gate a part, summed.</summary>
     public static IlGateCounters Totals()
     {
         lock (_registry)
@@ -260,7 +212,7 @@ internal static class IlGate
         }
     }
 
-    /// <summary>The gate for the exit line: each runner's cold and switch thresholds, then the visits by mode and the parts by path over all threads.</summary>
+    /// <summary>The gate for the exit line.</summary>
     public static string Describe()
     {
         IlGateCounters c = Totals();
@@ -274,10 +226,9 @@ internal static class IlGate
     }
 }
 
-/// <summary>A runner's gate thresholds, fixed once made: the knobs as set, and their log2 forms the visits compare with.</summary>
+/// <summary>A runner's gate thresholds, fixed once made: the knobs, and the log2 forms the visits compare with.</summary>
 internal sealed class IlGateParams
 {
-    /// <summary>Thresholds from the knobs, each kept within what the gate can use.</summary>
     public IlGateParams(int visitColdOps, int switchOps, int rentFactor, int warmOps, int txGapOps, int minVisits, int measureEvery, int opsPerMicrosecond)
     {
         VisitColdOps = Math.Max(1, visitColdOps);
@@ -297,7 +248,6 @@ internal sealed class IlGateParams
         OpsPerTick = OpsPerMicrosecond * 1e6 / Stopwatch.Frequency;
     }
 
-    /// <summary>From the knobs in the order of <see cref="IlGate.Names"/>.</summary>
     internal IlGateParams(int[] values) : this(values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7])
     {
     }
@@ -326,7 +276,6 @@ internal sealed class IlGateParams
     /// <summary>The work-clock opcodes a microsecond of wall time between transactions counts for: the interpreter's pace.</summary>
     public readonly int OpsPerMicrosecond;
 
-    /// <summary><see cref="VisitColdOps"/>, <see cref="SwitchOps"/> and <see cref="RentFactor"/> as <see cref="IlGate.Log2Q8"/> gives them.</summary>
     public readonly int VisitColdLog, SwitchLog, RentLog;
 
     /// <summary><see cref="MeasureEvery"/> less one, and its log2: a measured visit's weight in the live counts.</summary>
@@ -337,10 +286,8 @@ internal sealed class IlGateParams
     /// <summary><see cref="OpsPerMicrosecond"/> per <see cref="Stopwatch"/> tick.</summary>
     public readonly double OpsPerTick;
 
-    /// <summary>The knobs in the order of <see cref="IlGate.Names"/>.</summary>
     internal int[] Values() => [VisitColdOps, SwitchOps, RentFactor, WarmOps, TxGapOps, MinVisits, MeasureEvery, OpsPerMicrosecond];
 
-    /// <summary>These thresholds with the knobs given replaced.</summary>
     public IlGateParams With(int? visitColdOps = null, int? switchOps = null, int? rentFactor = null, int? warmOps = null, int? txGapOps = null,
         int? minVisits = null, int? measureEvery = null, int? opsPerMicrosecond = null) =>
         new(visitColdOps ?? VisitColdOps, switchOps ?? SwitchOps, rentFactor ?? RentFactor, warmOps ?? WarmOps, txGapOps ?? TxGapOps,
@@ -356,31 +303,25 @@ internal struct IlGateCounters
     /// <summary>Visits compiled from their first part for their learned length, and for this thread's recent compiled run.</summary>
     public long VisitsLong, VisitsWarm;
 
-    /// <summary>Visits compiled from their first part because the list vouches for their contract on the queries' runner (<see cref="IlCodeProfile.QuerySeeded"/>).</summary>
+    /// <summary>Visits compiled because the list vouches for their contract on the queries' runner (<see cref="IlCodeProfile.QuerySeeded"/>).</summary>
     public long VisitsSeeded;
 
-    /// <summary>Visits that rented, and those of them that switched to compiled code.</summary>
     public long VisitsRenting, VisitsSwitched;
 
-    /// <summary>Visits left to the interpreter, and those of them reported and learned from.</summary>
     public long VisitsSettled, VisitsMeasured;
 
-    /// <summary>Visits of uncompiled code a counting runner met, measured or not.</summary>
     public long VisitsSampled;
 
-    /// <summary>Visits compiled because the gate is off, and visits whose mode chaos chose.</summary>
     public long VisitsUngated, VisitsChaos;
 
-    /// <summary>Parts that ran compiled, and parts the gate sent to the interpreter.</summary>
     public long PartsCompiled, PartsInterpreted;
 
-    /// <summary>Parts the gate admitted that a switchback check's interpreted window sent to the interpreter.</summary>
+    /// <summary>Admitted parts that a switchback check's interpreted window sent to the interpreter.</summary>
     public long PartsSwitchedBack;
 
-    /// <summary>Parts a switchback check timed, compiled (with the interpreter's rest of those handed back) and interpreted.</summary>
+    /// <summary>Parts a switchback check timed: compiled (with the interpreter's rest of a handed-back part) and interpreted.</summary>
     public long SamplesCompiled, SamplesInterpreted;
 
-    /// <summary>Adds another thread's counters to these.</summary>
     public void Add(in IlGateCounters other)
     {
         VisitsLong += other.VisitsLong;
@@ -401,12 +342,11 @@ internal struct IlGateCounters
     }
 }
 
-/// <summary>A code's learned visit lengths for one runner, by key: 8 sets of 2 ways, one 64-bit word per key.</summary>
-/// <remarks>
-/// A word is the key (bits 0-31), the visits learned (32-39, at most 255) and the mean of their <see cref="IlGate.Log2Q8"/>
-/// (40-55): a geometric mean, which one outlier does not drag. Each update is one 64-bit store, so a reader sees the old
-/// word or the new one, never a mix; two threads learning at once lose one update, which only slows learning.
-/// </remarks>
+/// <summary>
+/// A code's learned visit lengths for one runner: 8 sets of 2 ways, one word per key holding the key (bits 0-31), its
+/// visits learned (32-39) and their <see cref="IlGate.Log2Q8"/> mean (40-55), a geometric mean one outlier does not drag.
+/// </summary>
+/// <remarks>Each update is one 64-bit store, so a reader never sees a mix of words; two threads learning at once lose one update, which only slows learning.</remarks>
 [InlineArray(IlGate.VisitWords)]
 internal struct IlVisitStats
 {
@@ -424,10 +364,6 @@ internal struct IlVisitStats
     }
 
     /// <summary>Learns a visit of <paramref name="ops"/> opcodes: a plain mean over the first 8, then one that moves an eighth of the way.</summary>
-    /// <remarks>
-    /// A key that finds neither way its own takes the one with fewer visits learned. A word that would not change is not
-    /// written, so threads visiting a busy contract stop writing its line once its count is full and its mean settled.
-    /// </remarks>
     public static void Learn(ref IlVisitStats stats, uint key, long ops)
     {
         int way = Way(key);
@@ -456,6 +392,7 @@ internal struct IlVisitStats
         mean = count == 0 ? x : count < 8 ? (mean * count + x) / (count + 1) : mean + (x - mean) / 8;
         count = Math.Min(count + 1, 255);
         ulong learned = key | ((ulong)count << 32) | ((ulong)(uint)mean << 40);
+        // Unchanged words are not written, so threads on a busy contract stop writing its line once its count and mean settle.
         if (learned != word)
             stats[at] = learned;
     }
@@ -470,7 +407,6 @@ internal struct IlVisitStats
 /// <summary>A runner's learned visit lengths for one code, apart from the profile's other fields, made when the runner first learns.</summary>
 internal sealed class IlVisitBox
 {
-    /// <summary>The learned words, read and written in place.</summary>
     public IlVisitStats Stats;
 }
 
@@ -478,16 +414,11 @@ internal sealed class IlVisitBox
 internal sealed partial class IlCodeProfile
 {
     /// <summary>What block processing's runner learned of the code's visits; null until it folds its first.</summary>
-    /// <remarks>
-    /// Each runner learns on its own, so neither source's visits move the other's decisions: block code and calls meet
-    /// their code differently warm, and live profiling reads only its own source's counts.
-    /// </remarks>
+    /// <remarks>Each runner learns apart: block code and calls meet their code differently warm, and live profiling reads only its own source's counts.</remarks>
     public IlVisitBox? BlockVisits;
 
-    /// <summary>What the read-only queries' runner learned of them.</summary>
     public IlVisitBox? QueryVisits;
 
-    /// <summary>The runner's learned visit lengths, made on first use.</summary>
     public IlVisitBox VisitsFor(bool block)
     {
         ref IlVisitBox? field = ref block ? ref BlockVisits : ref QueryVisits;
@@ -498,29 +429,15 @@ internal sealed partial class IlCodeProfile
         return Interlocked.CompareExchange(ref field, created, null) ?? created;
     }
 
-    /// <summary>The runner's learned visit lengths, or null while it has learned none.</summary>
     public IlVisitBox? PeekVisits(bool block) => block ? BlockVisits : QueryVisits;
 }
 
 /// <summary>A thread's side of the visit gate: its visits, its work clock, the part it waits to hear from, and its counters.</summary>
 /// <remarks>
-/// <para>
-/// The only thread-static the gate reads on a part's path. The visit table holds 256 sets of 2 ways, about 24 KB, keyed
-/// by code state: it holds states, which their code infos' slots hold anyway, and never a code info; a released
-/// contract's code goes with its runners whatever holds the state.
-/// </para>
-/// <para>
-/// A part costs no timestamp and no write outside this object, unless a switchback check times it (<see cref="IlCheck"/>):
-/// the thread keeps the one sample the interpreter's report finishes, and pools its timed samples per check until they
-/// fill a bucket, so threads timing one contract seldom write its check. A visit's first part looks up what its runner
-/// learned, on the profile; its end is learned from when its way is next taken, by the next visit of the same state or
-/// by another state's.
-/// </para>
-/// <para>
-/// A transaction starts where its top-level frame enters, which the runner reports however it then runs that frame
-/// (<see cref="TopLevelEntry"/>), or where the opcode count falls or the machine changes. A counting runner draws there
-/// whether the transaction is sampled for live profiling.
-/// </para>
+/// The only thread-static the gate reads on a part's path. The visit table, 256 sets of 2 ways (about 24 KB), is keyed by
+/// code state, which the code infos' slots hold anyway, and never holds a code info: a released contract's code goes with
+/// its runners whatever holds the state. A part costs no timestamp and no write outside this object unless a switchback
+/// check times it (<see cref="IlCheck"/>). A visit's end is learned from when its way is next taken.
 /// </remarks>
 internal sealed partial class IlThread
 {
@@ -535,11 +452,7 @@ internal sealed partial class IlThread
 
     private static int _stateHashes;
 
-    /// <summary>
-    /// A transaction's top-level frame enters, on runner <paramref name="block"/>: the visits of the transaction before end,
-    /// so the next part the gate sees starts a transaction, and a counting runner draws whether this one is sampled.
-    /// </summary>
-    /// <remarks>Once per transaction, whatever runs the frame, its part declined from its mark or not; out of line.</remarks>
+    /// <summary>A transaction's top-level frame enters, whatever then runs it: a counting runner draws whether the transaction is sampled.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void TopLevelEntry(bool block)
     {
@@ -553,27 +466,26 @@ internal sealed partial class IlThread
             thread = Create();
         }
 
+        // Ends the transaction before: the next part sees a new machine and starts another.
         thread._vm = null;
         int log2 = IlGate.SampleLog2For(block);
         thread._sampleLog2 = (byte)log2;
         thread._sampleTx = counting && (thread.Next() & ((1u << log2) - 1)) == 0;
     }
 
-    /// <summary>Whether the transaction under way on this thread was drawn for live profiling; false on a thread that never met the gate.</summary>
+    /// <summary>Whether the transaction under way on this thread was drawn for live profiling.</summary>
     public static bool SamplingTransaction
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => _current is { } thread && thread._sampleTx;
     }
 
-    /// <summary>The thread's gate, made at its first part.</summary>
     public static IlThread Current
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => _current ?? Create();
     }
 
-    /// <summary>The thread's gate, or null on a thread that never offered it a part.</summary>
     public static IlThread? CurrentOrNull
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -602,23 +514,18 @@ internal sealed partial class IlThread
         public int Tx;
         /// <summary>The opcodes the visit's parts ran so far, compiled and reported.</summary>
         public int Ops;
-        /// <summary>The parts offered so far.</summary>
         public int Parts;
-        /// <summary>The opcodes from which a renting visit's next part runs compiled.</summary>
         public int SwitchAt;
-        /// <summary>The first part's key: <see cref="IlGate.EntryKey"/> or <see cref="IlGate.ResumeKey"/>.</summary>
         public uint EntryKey;
-        /// <summary>How the visit's parts run: <see cref="IlGate.ModeCompiled"/>, <see cref="IlGate.ModeRenting"/>, <see cref="IlGate.ModeSettled"/> or <see cref="IlGate.ModeSampled"/>.</summary>
         public byte Mode;
         /// <summary>The log2 of the visits a measured one stands for in the live counts.</summary>
         public byte WeightLog2;
         /// <summary>Whether every part is counted, so the visit's length is known and is learned.</summary>
         public bool Measured;
-        /// <summary>Whether a measured visit's length is learned: always while its key has few learned, then one in <see cref="IlGate.LearnEvery"/>.</summary>
+        /// <summary>Whether a measured visit's length is learned (<see cref="IlGate.LearnEvery"/>).</summary>
         public bool Learns;
         /// <summary>Whether the runner counted the visit for live profiling.</summary>
         public bool Counting;
-        /// <summary>Whether block processing's runner offered it, whose learning it goes to.</summary>
         public bool Block;
         /// <summary>The live counts' kind: block processing's own thread, or any thread of the read-only queries' runner.</summary>
         public bool Main;
@@ -636,7 +543,6 @@ internal sealed partial class IlThread
     private object? _vm;
     private int _ops;
 
-    /// <summary>The thread's transactions so far, of which a visit's <see cref="Visit.Tx"/> is one; never 0.</summary>
     private int _tx = 1;
 
     /// <summary>The visit of the latest part the gate admitted, for <see cref="AfterCompiled"/>.</summary>
@@ -651,10 +557,7 @@ internal sealed partial class IlThread
     private CodeInfo? _reportCode;
     private int _reportVisit, _reportTx;
 
-    /// <summary>
-    /// The check whose timed sample the report finishes, or null: when it started, in which window, whether the part runs
-    /// interpreted or was handed back by compiled code after the opcodes given, and the contract's chunk events then.
-    /// </summary>
+    /// <summary>The check whose timed sample the armed report finishes, or null, with what <see cref="ArmTimed"/> gave.</summary>
     private IlCheck? _timed;
     private long _timedStart;
     private int _timedWindow, _timedCompiledOps, _timedEvents;
@@ -676,10 +579,7 @@ internal sealed partial class IlThread
 
     private readonly Pooled[] _pooled = new Pooled[PoolWays];
 
-    /// <summary>
-    /// Decides how the part of <paramref name="state"/>'s code offered at <paramref name="pc"/> runs, for a contract its
-    /// runner may run on this thread: <see cref="IlGate.Compile"/>, <see cref="IlGate.Interpret"/> or <see cref="IlGate.InterpretReport"/>.
-    /// </summary>
+    /// <summary>Decides how a part of a contract its runner may run on this thread runs, as an <see cref="IlGate"/> decision.</summary>
     /// <remarks>A compiled part must be followed by <see cref="AfterCompiled"/>; a reported one arms the report <see cref="FinishReport"/> completes.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int Offer(VirtualMachine<EthereumGasPolicy> vm, IlEvm.IlCodeState state, CodeInfo code, nint pc, bool block, bool counting)
@@ -719,11 +619,7 @@ internal sealed partial class IlThread
         }
     }
 
-    /// <summary>
-    /// Counts a part of code its runner has nothing compiled for on <paramref name="bodies"/>, in a transaction sampled for
-    /// live profiling: every visit of it is measured, every part reported, and stands for the transactions not sampled.
-    /// </summary>
-    /// <returns>Whether the interpreter should report the part's opcodes: always, as a visit of a sampled transaction is measured.</returns>
+    /// <summary>Counts a part of code its runner has nothing compiled for, in a sampled transaction; true when the interpreter should report it.</summary>
     public bool Sample(VirtualMachine<EthereumGasPolicy> vm, IlEvm.IlCodeState state, CodeInfo code, OpcodeBodySet bodies, nint pc, bool block)
     {
         DetectTx(vm, pc, block);
@@ -738,7 +634,7 @@ internal sealed partial class IlThread
         return true;
     }
 
-    /// <summary>A compiled part ran: the visit counts its opcodes, the thread its run, and a part handed back mid-way waits for the interpreter's report of the rest.</summary>
+    /// <summary>A compiled part ran: its visit counts its opcodes, the thread its run; a part handed back mid-way waits for the report of the rest.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void AfterCompiled(VirtualMachine<EthereumGasPolicy> vm, int before, CodeInfo code, bool handedBack)
     {
@@ -751,10 +647,7 @@ internal sealed partial class IlThread
             ArmReport(code, _cur);
     }
 
-    /// <summary>
-    /// An admitted part a switchback check's interpreted window sends to the interpreter all the same: it is reported, so
-    /// its visit still counts it, and it counts as switched back rather than compiled.
-    /// </summary>
+    /// <summary>An admitted part a switchback check's interpreted window sends to the interpreter: reported, so its visit still counts it.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SwitchedBack(CodeInfo code)
     {
@@ -763,11 +656,7 @@ internal sealed partial class IlThread
         Counters.PartsSwitchedBack++;
     }
 
-    /// <summary>
-    /// Has the report armed last finish a sample for <paramref name="check"/>, timed from <paramref name="start"/>: a part
-    /// of an interpreted window, or one compiled code handed back after <paramref name="compiledOps"/> opcodes, with the
-    /// contract's chunk events at <paramref name="events"/>.
-    /// </summary>
+    /// <summary>Has the armed report finish a sample for <paramref name="check"/>: an interpreted window's part, or a part compiled code handed back.</summary>
     public void ArmTimed(IlCheck check, int window, bool interpreted, long start, int compiledOps, int events)
     {
         _timed = check;
@@ -778,26 +667,18 @@ internal sealed partial class IlThread
         _timedEvents = events;
     }
 
-    /// <summary>A compiled part ran to its end in <paramref name="ticks"/>, timed for <paramref name="check"/>.</summary>
     public void AddCompiledSample(IlCheck check, long ticks, int opCodes)
     {
         Counters.SamplesCompiled++;
         Pool(check, ticks, opCodes, interpreted: false, window: 0);
     }
 
-    /// <summary>
-    /// Pools a timed sample for <paramref name="check"/> on this thread, and hands the check the pool once it fills a
-    /// bucket: threads timing one contract then write its shared buckets once a bucket each, not once a part.
-    /// </summary>
-    /// <remarks>
-    /// A way holds one check's side, and for the interpreted side one window, whose pairs are counted by it: another
-    /// takes the way only after the pool it held goes to its check's shared bucket, as every part's sample once went.
-    /// </remarks>
+    /// <summary>Pools a timed sample and hands it to <paramref name="check"/> a bucket at a time, so threads timing one contract seldom write its buckets.</summary>
     private void Pool(IlCheck check, long ticks, int opCodes, bool interpreted, int window)
     {
         if (opCodes <= 0)
             return;
-        // A multiplicative hash of the check's salt and side: consecutive salts, as the profiles' numbers make them, spread.
+        // A multiplicative hash of the check's salt and side, so consecutive salts spread.
         ref Pooled pool = ref _pooled[(int)(((check.Salt * 2 + (interpreted ? 1u : 0u)) * 0x9E3779B1u) >> (32 - PoolLog2))];
         if (!ReferenceEquals(pool.Check, check) || pool.Interpreted != interpreted || pool.Window != window)
         {
@@ -813,7 +694,6 @@ internal sealed partial class IlThread
             Flush(ref pool);
     }
 
-    /// <summary>Hands a way's pool to its check, and empties the way.</summary>
     private static void Flush(ref Pooled pool)
     {
         if (pool.Check is { } check && pool.Ops > 0)
@@ -827,7 +707,6 @@ internal sealed partial class IlThread
         pool = default;
     }
 
-    /// <summary>The opcodes this thread pooled for <paramref name="check"/> and has not handed it yet, on one side; for tests.</summary>
     internal int PooledOps(IlCheck check, bool interpreted)
     {
         foreach (Pooled pool in _pooled)
@@ -839,13 +718,9 @@ internal sealed partial class IlThread
         return 0;
     }
 
-    /// <summary>Pools an interpreted sample as a timed part of <paramref name="window"/> would; for tests.</summary>
     internal void PoolInterpretedForTests(IlCheck check, long ticks, int opCodes, int window) => Pool(check, ticks, opCodes, interpreted: true, window);
 
-    /// <summary>
-    /// A part of a contract a check has just taken this runner off: a visit of it under way on this thread no longer sees
-    /// each of its parts, so it is neither learned from nor counted.
-    /// </summary>
+    /// <summary>A check just took this runner off the part's contract: a visit of it under way here misses parts now, so it is neither learned from nor counted.</summary>
     /// <remarks>A visit starts only on a part its runner may run, so a sampled one, or one of an earlier transaction, is whole.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void Unmeasure(VirtualMachine<EthereumGasPolicy> vm, IlEvm.IlCodeState state, nint pc, bool block)
@@ -860,8 +735,8 @@ internal sealed partial class IlThread
         }
     }
 
-    /// <summary>The interpreter ran <paramref name="opCodes"/> opcodes of a part of <paramref name="code"/> it was asked to report: they count toward the visit that asked.</summary>
-    /// <remarks>Called first when the machine reports; a report for code other than the one armed, as after a part whose interpreter run threw, is dropped.</remarks>
+    /// <summary>The interpreter ran <paramref name="opCodes"/> opcodes of a part it was asked to report: they count toward the visit that asked.</summary>
+    /// <remarks>Called first when the machine reports; a report for other code than the armed one, as after a part whose interpreter run threw, is dropped.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void FinishReport(CodeInfo code, int opCodes)
     {
@@ -873,7 +748,7 @@ internal sealed partial class IlThread
         }
 
         _reportCode = null;
-        // The part ended where the interpreter stopped: the clock and the next part's count go on from there.
+        // The clock and the next part's count go on from where the interpreter stopped.
         _ops += opCodes;
         ref Visit v = ref At(_reportVisit);
         if (v.Tx == _reportTx)
@@ -901,11 +776,8 @@ internal sealed partial class IlThread
         }
     }
 
-    /// <summary>A part arrives: a new transaction starts when the opcode count went back, the machine changed, or the runner reported a top-level entry since the last part.</summary>
-    /// <remarks>
-    /// Drops any report still armed, and with it its timed sample: the machine reports a part before it offers the next
-    /// one, so one armed now belongs to a part whose interpreter run threw.
-    /// </remarks>
+    /// <summary>A part arrives: a new transaction starts when the opcode count went back, the machine changed, or a top-level entry was reported.</summary>
+    /// <remarks>Drops any report still armed: the machine reports a part before it offers the next, so one armed now is of a part whose interpreter run threw.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void DetectTx(VirtualMachine<EthereumGasPolicy> vm, nint pc, bool block)
     {
@@ -917,9 +789,8 @@ internal sealed partial class IlThread
     }
 
     /// <summary>
-    /// Moves the work clock on by the last transaction's opcodes and a gap for the work between, the larger of the
-    /// runner's fixed gap and the wall time since the last transaction started at the interpreter's pace: what the
-    /// opcode count cannot see, request handling and idle time, cools the caches too. The gate's only timestamp.
+    /// Moves the work clock on by the last transaction's opcodes and the larger of the fixed gap and the wall time since the
+    /// last one started, at the interpreter's pace: idle time and request handling cool the caches too. The gate's only timestamp.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void NewTransaction(VirtualMachine<EthereumGasPolicy> vm, bool block)
@@ -938,7 +809,6 @@ internal sealed partial class IlThread
             _tx = 1;
     }
 
-    /// <summary>The way of <paramref name="state"/>'s visits, taking the older way of its set when neither is its.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int SlotOf(IlEvm.IlCodeState state)
     {
@@ -968,7 +838,6 @@ internal sealed partial class IlThread
     }
 
     /// <summary>Chooses the mode of a visit of compiled code at its first part, after learning from the state's last visit.</summary>
-    /// <param name="counting">Whether the transaction is sampled for live profiling, so the visit counts, standing for the transactions not sampled.</param>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void StartVisit(ref Visit v, VirtualMachine<EthereumGasPolicy> vm, IlEvm.IlCodeState state, nint pc, bool block, bool counting)
     {
@@ -978,7 +847,6 @@ internal sealed partial class IlThread
         v.Ops = 0;
         v.Parts = 0;
         v.SwitchAt = 0;
-        // A counted visit stands for the transactions its transaction's draw left out.
         v.WeightLog2 = counting ? _sampleLog2 : (byte)0;
         v.Measured = true;
         v.Learns = true;
@@ -1005,8 +873,7 @@ internal sealed partial class IlThread
         int coldLog = p.VisitColdLog, switchLog = p.SwitchLog;
         long switchOps = p.SwitchOps;
         IlCodeProfile? profile = state.Profile;
-        // A list entry's own threshold for block processing, where its Stats runs found compiled code to gain; the switch
-        // point stays three quarters of it, as the prior's.
+        // A list entry's own block threshold (minv=); the switch point stays three quarters of it, as in the prior.
         if (block && profile is not null && profile.BlockMinVisitLog2 > 0)
         {
             int minv = Math.Clamp((int)profile.BlockMinVisitLog2, 2, 30);
@@ -1015,10 +882,8 @@ internal sealed partial class IlThread
             switchLog = IlGate.Log2Q8(switchOps);
         }
 
-        // The list vouches for the contract on the queries' runner, from the in-process A/B of its calls: with qminv=0
-        // every visit runs compiled from its first part, measured for nothing, so a node's first calls run as its later
-        // ones; with a threshold, visits of a key not learned yet run compiled rather than renting, and a learned key's
-        // length is held to the entry's threshold, its switch point three quarters of it.
+        // The list vouches for the contract on the queries' runner: qminv=0 runs every visit compiled and unmeasured, so
+        // first calls run as later ones; else unlearned keys run compiled rather than renting, learned ones meet the entry's threshold.
         bool seeded = false;
         if (!block && profile is { QuerySeeded: true })
         {
@@ -1038,8 +903,6 @@ internal sealed partial class IlThread
         }
 
         (int count, int log) = profile?.PeekVisits(block) is { } box ? IlVisitStats.Get(ref box.Stats, v.EntryKey) : (0, 0);
-        // A key well learned moves on one visit in a few, of those every visit of it measures: the threads that run a
-        // contract then seldom write its line.
         bool learns = count < IlGate.LearnAlwaysBelow || (Next() & (IlGate.LearnEvery - 1)) == 0;
         long now = _base + _ops;
         if (count >= p.MinVisits && log >= coldLog)
@@ -1067,9 +930,9 @@ internal sealed partial class IlThread
         }
         else if (log + p.RentLog >= switchLog)
         {
-            // Visits near the switch point rent too, but switch only past twice their mean: a typical one ends before it.
-            // Block processing's, which its lower thresholds make many, rent one in MeasureEvery, standing for the rest,
-            // which settle unreported: a key whose typical visit never switches would otherwise have every part reported.
+            // Visits near the switch point rent too, but switch only past twice their mean: an outlier switches, a typical
+            // visit never pays a cold entry at its end. Block processing's, which are many, rent one in MeasureEvery for the
+            // rest, which settle unreported, so a key whose typical visit never switches does not report every part.
             if (block && (Next() & p.MeasureMask) != 0)
             {
                 v.Mode = IlGate.ModeSettled;
@@ -1111,11 +974,7 @@ internal sealed partial class IlThread
         Counters.VisitsChaos++;
     }
 
-    /// <summary>
-    /// Starts a visit of uncompiled code in a sampled transaction, after learning from the state's last visit: measured,
-    /// standing for the transactions not sampled; and the body set it ran on is the code's latest, the one a live compile
-    /// is for, as after a fork, which resolves no state again.
-    /// </summary>
+    /// <summary>Starts a measured visit of uncompiled code in a sampled transaction, after learning from the state's last visit.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void StartSample(ref Visit v, VirtualMachine<EthereumGasPolicy> vm, IlEvm.IlCodeState state, OpcodeBodySet bodies, nint pc, bool block)
     {
@@ -1132,12 +991,13 @@ internal sealed partial class IlThread
         v.Learns = true;
         v.WeightLog2 = _sampleLog2;
         v.EntryKey = pc == 0 ? IlGate.EntryKey(vm.VmState.Env.InputData.Span) : IlGate.ResumeKey(pc);
+        // A live compile is for the code's latest body set, which a fork changes without resolving any state again.
         if (state.Profile is { } profile && !ReferenceEquals(profile.LastBodies, bodies))
             profile.LastBodies = bodies;
         Counters.VisitsSampled++;
     }
 
-    /// <summary>Learns a measured visit's length for its runner, unless its key learns it no more this time, and adds a counted one to the code's live profile.</summary>
+    /// <summary>Learns a measured visit's length for its runner when the visit learns, and adds a counted one to the code's live profile.</summary>
     private void Fold(ref Visit v)
     {
         // A visit of no opcodes says nothing, as one whose only part threw.
@@ -1149,7 +1009,7 @@ internal sealed partial class IlThread
             CountLive(profile, v.Ops, v.Parts, v.Main, v.WeightLog2, v.Block);
     }
 
-    /// <summary>Adds a counting runner's folded visit to the code's live profile, standing for 2^<paramref name="weightLog2"/> visits, in the epochs of <paramref name="block"/>'s source; live profiling implements it (<see cref="IlLive.Count"/>).</summary>
+    /// <summary>Adds a counted visit to the code's live profile, standing for 2^<paramref name="weightLog2"/> visits; live profiling implements it (<see cref="IlLive.Count"/>).</summary>
     partial void CountLive(IlCodeProfile profile, int ops, int parts, bool main, int weightLog2, bool block);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1158,8 +1018,7 @@ internal sealed partial class IlThread
         _reportCode = code;
         _reportVisit = visit;
         _reportTx = _tx;
-        // A sample is armed right after its report and finished only by it, so one left by a dropped report goes here,
-        // off the path of the parts no one reports.
+        // A sample is armed right after its report and finished only by it: one a dropped report left is cleared here, off the unreported parts' path.
         _timed = null;
     }
 
@@ -1178,10 +1037,9 @@ internal sealed partial class IlThread
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ref Visit At(int i) => ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_v), i);
 
-    /// <summary>A visit as tests read it.</summary>
     internal readonly record struct VisitView(bool Current, byte Mode, int Ops, int Parts, int SwitchAt, bool Measured, bool Counting, bool Block, bool Main, uint EntryKey, long LastCompiled);
 
-    /// <summary>The latest visit of <paramref name="state"/> this thread keeps, whether of the transaction under way, or null; for tests.</summary>
+    /// <summary>The latest visit of <paramref name="state"/> this thread keeps, current or not, or null; for tests.</summary>
     internal VisitView? VisitOf(IlEvm.IlCodeState state)
     {
         foreach (Visit v in _v)
@@ -1193,7 +1051,6 @@ internal sealed partial class IlThread
         return null;
     }
 
-    /// <summary>The latest visit this thread keeps of a state whose profile is <paramref name="profile"/>, or null; for tests.</summary>
     internal VisitView? VisitOf(IlCodeProfile profile)
     {
         foreach (Visit v in _v)
@@ -1223,7 +1080,6 @@ internal sealed partial class IlThread
     /// <summary>Starts the thread's draws from <paramref name="seed"/>, so a chaos run repeats; for tests.</summary>
     internal void Reseed(uint seed) => _random = seed * 2654435761u | 1;
 
-    /// <summary>Forgets every visit, the clock, the samples pooled, the transaction's draw and the counters; for tests.</summary>
     internal void ResetForTests()
     {
         Array.Clear(_v);
@@ -1240,7 +1096,7 @@ internal sealed partial class IlThread
         _sampleLog2 = 0;
     }
 
-    /// <summary>Has the transaction under way sampled for live profiling, or not, standing for 2^<paramref name="log2"/> transactions; for tests that drive the gate without a top-level entry.</summary>
+    /// <summary>Sets whether the transaction under way is sampled, standing for 2^<paramref name="log2"/>; for tests that drive the gate without a top-level entry.</summary>
     internal void SampleTransactionForTests(bool sampled, int log2 = 0)
     {
         _sampleTx = sampled;
