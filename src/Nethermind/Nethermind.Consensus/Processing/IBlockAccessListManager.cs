@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
@@ -62,6 +63,12 @@ public interface IBlockAccessListManager
 
     void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token);
     void SetBlockAccessList(Block block);
+
+    /// <summary>
+    /// The state after the block's transactions and before its post-execution changes, when the world state no longer
+    /// holds it because the whole block access list was applied to it up front; otherwise <c>null</c>.
+    /// </summary>
+    IReadOnlyStateProvider? GetPostTransactionsState(Block block) => null;
     void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);

@@ -218,7 +218,7 @@ public class BranchProcessorVerdictTests
             .Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
 
         BranchProcessor branchProcessor = new(blockProcessor, Substitute.For<ISpecProvider>(), worldState, Substitute.For<IBlockhashProvider>(),
-            Substitute.For<IInclusionListSatisfactionChecker>(), LimboLogs.Instance);
+            LimboLogs.Instance);
         branchProcessor.BlockExecuted += (_, e) => e.Answered = answered;
         branchProcessor.BlockProcessed += (_, _) => throw new InvalidBlockException(block, "failed after the verdict");
 

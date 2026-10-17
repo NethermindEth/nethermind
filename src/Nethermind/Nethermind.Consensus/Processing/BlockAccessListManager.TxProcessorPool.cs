@@ -364,6 +364,9 @@ public partial class BlockAccessListManager
         private ParentReaderLease? _parentReader;
         private BalReadCoverage? _readCoverage;
 
+        /// <summary>The block access list backed state, read without recording into the generated list; null in sequential execution.</summary>
+        public IReadOnlyStateProvider? BlockAccessListWorldState => _balWorldState;
+
         public TxProcessorWithWorldState(
             bool parallel,
             IWorldState stateProvider,

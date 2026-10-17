@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -129,8 +130,16 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        // Withdrawing 9.5 of the 10 ether leaves 0.5, below _validTx's ~1.001 ether cost.
-        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+        UInt256 postBlockBalance = 10.Ether;
+        ReadOnlyAccountChanges[] changes = withdrawnGwei == 0
+            ? []
+            : [new ReadOnlyAccountChanges(TestItem.AddressA, [], [], [new BalanceChange((uint)block.Transactions.Length + 1, postBlockBalance)], [], [])];
+        PostTransactionsStateProvider state = new(
+            StateWith(TestItem.AddressA, postBlockBalance, 0),
+            StateWith(TestItem.AddressA, withdrawnGwei == 0 ? postBlockBalance : postBlockBalance - withdrawals[0].AmountInWei, 0),
+            new ReadOnlyBlockAccessList(changes, changes.Length),
+            block.Transactions.Length);
+        return InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator);
     }
 
     // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent
