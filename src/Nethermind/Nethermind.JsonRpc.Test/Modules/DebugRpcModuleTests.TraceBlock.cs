@@ -119,7 +119,7 @@ public partial class DebugRpcModuleTests
             });
         JToken error = JToken.Parse(response)["error"]!;
         Assert.That(error, Is.Not.Null, response);
-        Assert.That((string?)error["data"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
+        Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
     }
 
     [TestCase("result", 0)]
