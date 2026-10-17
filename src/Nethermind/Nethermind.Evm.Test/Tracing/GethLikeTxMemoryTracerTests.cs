@@ -667,6 +667,28 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         AssertStreamingMatchesInMemory(code);
     }
 
+    [Test]
+    public void Streamed_deep_stack_of_mixed_width_words_matches_in_memory()
+    {
+        const int depth = 300;
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 0; i < depth; i++)
+        {
+            prepare.PushData((i % 4) switch
+            {
+                0 => UInt256.Zero,
+                1 => (UInt256)i,
+                2 => (UInt256.One << 159) + (UInt256)i,
+                _ => UInt256.MaxValue >> (i % 8),
+            });
+        }
+        byte[] code = prepare.Op(Instruction.STOP).Done;
+
+        Assert.That(ExecuteStreamingTracerEntries(code)[^1].GetProperty("stack").GetArrayLength(), Is.EqualTo(depth),
+            "precondition: the last entry carries the whole stack");
+        AssertStreamingMatchesInMemory(code);
+    }
+
     private void AssertStreamingMatchesInMemory(byte[] code)
     {
         GethLikeTxTrace trace = ExecuteAndTrace(code);
