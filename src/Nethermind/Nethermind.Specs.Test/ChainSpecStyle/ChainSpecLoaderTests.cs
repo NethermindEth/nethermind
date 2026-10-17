@@ -39,10 +39,9 @@ public class ChainSpecLoaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GenesisSpec.ForkBaseFee, Is.EqualTo(1.GWei), $"fork base fee");
             Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
-            Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
-            Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), nameof(chainSpec.Name));
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
             Assert.That(chainSpec.HomesteadBlockNumber, Is.EqualTo(MainnetSpecProvider.HomesteadBlockNumber));
@@ -50,7 +49,7 @@ public class ChainSpecLoaderTests
             Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(MainnetSpecProvider.TangerineWhistleBlockNumber));
             Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(MainnetSpecProvider.SpuriousDragonBlockNumber));
             Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(MainnetSpecProvider.ByzantiumBlockNumber));
-            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(null));
+            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(MainnetSpecProvider.ConstantinopleFixBlockNumber));
             Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(MainnetSpecProvider.ConstantinopleFixBlockNumber));
             Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(MainnetSpecProvider.IstanbulBlockNumber));
             Assert.That(chainSpec.MuirGlacierNumber, Is.EqualTo(MainnetSpecProvider.MuirGlacierBlockNumber));
@@ -101,8 +100,7 @@ public class ChainSpecLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
-            Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
-            Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), nameof(chainSpec.Name));
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
             Assert.That(chainSpec.Bootnodes, Has.Length.EqualTo(5), nameof(chainSpec.Bootnodes));
 

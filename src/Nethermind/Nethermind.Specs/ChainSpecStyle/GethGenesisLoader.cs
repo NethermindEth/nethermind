@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
@@ -19,8 +21,10 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// Loader for Geth-style genesis.json files as defined in EIP-7949.
 /// Converts Geth-style genesis format to Nethermind's ChainSpec format.
 /// </summary>
-public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
+public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManager = null) : IChainSpecLoader
 {
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<GethGenesisLoader>();
+
     public ChainSpec Load(Stream streamData)
     {
         try
@@ -43,6 +47,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         ChainSpec chainSpec = new()
         {
+            Name = gethGenesisJson.Name,
+            Bootnodes = NetworkNode.ParseNodes(gethGenesisJson.Bootnodes, _logger),
             ChainId = config.ChainId,
             NetworkId = config.ChainId
         };
@@ -119,14 +125,11 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip140Transition = config.ByzantiumBlock,
             Eip211Transition = config.ByzantiumBlock,
 
-            ValidateChainIdTransition = config.Eip155Block ?? config.SpuriousDragonBlock,
-
             Eip214Transition = config.ByzantiumBlock,
             Eip658Transition = config.ByzantiumBlock,
 
             Eip145Transition = config.ConstantinopleBlock,
 
-            ValidateReceiptsTransition = config.ByzantiumBlock,
             Eip1014Transition = config.ConstantinopleBlock,
             Eip1052Transition = config.ConstantinopleBlock,
             Eip1283Transition = config.ConstantinopleBlock,
@@ -148,7 +151,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip3198Transition = config.LondonBlock,
             Eip3529Transition = config.LondonBlock,
             Eip3541Transition = config.LondonBlock,
-            Eip3607Transition = config.LondonBlock,
+            // Geth applies EIP-3607 throughout chain history.
+            Eip3607Transition = 0,
 
             MergeForkIdTransition = config.MergeNetsplitBlock,
             TerminalTotalDifficulty = config.TerminalTotalDifficulty,
@@ -256,7 +260,6 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.SlotNumber = gethGenesisJson.SlotNumber ?? 0;
         }
 
-        chainSpec.Bootnodes = [];
         chainSpec.Genesis = isAmsterdamActive
             ? new Block(genesisHeader, [], [], [], new())
             : isShanghaiActive
@@ -366,7 +369,7 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
         public string SealEngineType => Core.SealEngineType.Ethash;
 
         public ulong HomesteadTransition { get; } = config.HomesteadBlock ?? 0;
-        public ulong? DaoHardforkTransition { get; } = config.DaoForkSupport == false ? null : config.DaoForkBlock;
+        public ulong? DaoHardforkTransition { get; } = config.DaoForkSupport == true ? config.DaoForkBlock : null;
         public Address? DaoHardforkBeneficiary { get; }
         public Address[] DaoHardforkAccounts { get; } = [];
         public ulong? Eip100bTransition { get; } = config.ByzantiumBlock;
@@ -477,22 +480,26 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
             }
 
             SortedDictionary<ulong, ulong> bombDelays = [];
-            AddBombDelay(bombDelays, config.ByzantiumBlock, 3_000_000);
-            AddBombDelay(bombDelays, GetConstantinopleTransition(config), 2_000_000);
-            AddBombDelay(bombDelays, config.MuirGlacierBlock, 4_000_000);
-            AddBombDelay(bombDelays, config.ArrowGlacierBlock, 700_000);
-            AddBombDelay(bombDelays, config.GrayGlacierBlock, 1_000_000);
+            ulong previousDelay = 0;
+            AddBombDelay(bombDelays, config.ByzantiumBlock, 3_000_000, ref previousDelay);
+            AddBombDelay(bombDelays, GetConstantinopleTransition(config), 5_000_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.MuirGlacierBlock, 9_000_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.LondonBlock, 9_700_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.ArrowGlacierBlock, 10_700_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.GrayGlacierBlock, 11_400_000, ref previousDelay);
 
             return bombDelays.Count == 0 ? null : bombDelays;
         }
 
-        private static void AddBombDelay(SortedDictionary<ulong, ulong> bombDelays, ulong? transition, ulong delay)
+        private static void AddBombDelay(SortedDictionary<ulong, ulong> bombDelays, ulong? transition, ulong cumulativeDelay, ref ulong previousDelay)
         {
             if (transition is not null)
             {
+                ulong delay = cumulativeDelay - previousDelay;
                 bombDelays[transition.Value] = !bombDelays.TryGetValue(transition.Value, out ulong existingDelay)
                     ? delay
                     : existingDelay + delay;
+                previousDelay = cumulativeDelay;
             }
         }
 
