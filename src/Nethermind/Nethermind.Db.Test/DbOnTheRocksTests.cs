@@ -1215,6 +1215,48 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void SnapshotCeiling_WhenBoundsCrossPrefixBuckets_FindsTheNextBucket([Values] bool flush, [Values] bool snapshot)
+        {
+            using DbOnTheRocks db = CreateFreshDb("Code");
+            byte[] key = new byte[32];
+            key[0] = 1;
+            db.PutSpan(key, new byte[] { 0x11, 0x22 }, WriteFlags.None);
+            if (flush) db.Flush();
+            using IKeyValueStoreSnapshot? captured = snapshot ? db.CreateSnapshot() : null;
+            ISnapshotSortedKeyValueStore store = captured is null ? db : (ISnapshotSortedKeyValueStore)captured;
+            db.PutSpan(key, new byte[] { 0x33, 0x44 }, WriteFlags.None);
+            if (flush) db.Flush();
+            byte[] lower = new byte[32];
+            byte[] upper = new byte[32];
+            upper[0] = 2;
+            byte[] found = new byte[32];
+            byte[] value = new byte[2];
+
+            Assert.That(store.TryGetCeilingInSnapshot(lower, upper, found, out int keyLength, value, out int valueLength), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keyLength, Is.EqualTo(32));
+                Assert.That(valueLength, Is.EqualTo(2));
+                Assert.That(found, Is.EqualTo(key));
+                Assert.That(value, Is.EqualTo(snapshot ? new byte[] { 0x11, 0x22 } : new byte[] { 0x33, 0x44 }));
+            }
+            db.Remove(key);
+            Assert.That(store.TryGetCeilingInSnapshot(lower, upper, found, out _, value, out _), Is.EqualTo(snapshot));
+        }
+
+        [Test]
+        public void ResetBounds_WhenNewRangeCrossesPrefixBuckets_RequiresANewView()
+        {
+            using DbOnTheRocks db = CreateFreshDb("Code");
+            byte[] lower = new byte[32];
+            byte[] upper = new byte[32];
+            upper[8] = 1;
+            using IRebindableSortedView view = (IRebindableSortedView)((ISortedKeyValueStore)db).GetViewBetween(lower, upper, ReadFlags.HintRepeatedReads);
+            upper[0] = 1;
+            Assert.That(view.TryResetBounds(lower, upper), Is.False);
+        }
+
+        [Test]
         public void GetViewBetween_on_a_prefix_extractor_database_returns_a_range_that_stays_inside_one_prefix()
         {
             using DbOnTheRocks db = CreateFreshDb("Code");
@@ -1484,6 +1526,48 @@ namespace Nethermind.Db.Test
                 bool found = sorted.TryGetCeiling(lowerBoundIncl, upperBoundExcl, key, out _, value, out _);
                 Assert.That(found, Is.False, $"the pooled iterator must not report a stale hit ({because})");
             }
+        }
+
+        [Test]
+        public void SnapshotCeiling_WhenValuesChange_PreservesVisibilityAndBufferLengths(
+            [Values] bool snapshot, [Values(0, 1, 2, 4)] int bufferSize, [Values(0, 4)] int initialLength)
+        {
+            byte[] initial = Enumerable.Repeat((byte)0x11, initialLength).ToArray();
+            _db[[1, 1]] = [0x77];
+            _db[[1, 3]] = initial;
+            _db[[1, 4]] = [0x88];
+            using IKeyValueStoreSnapshot? captured = snapshot ? ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot() : null;
+            ISnapshotSortedKeyValueStore store = captured is null ? (ISnapshotSortedKeyValueStore)_db : (ISnapshotSortedKeyValueStore)captured;
+            byte[] changed = [0x22, 0x33, 0x44, 0x55];
+            _db[[1, 3]] = changed;
+            byte[] key = Enumerable.Repeat((byte)0xA5, bufferSize).ToArray();
+            byte[] value = Enumerable.Repeat((byte)0xA5, bufferSize).ToArray();
+            byte[] expectedKey = (byte[])key.Clone();
+            byte[] expectedValue = (byte[])value.Clone();
+            byte[] visible = snapshot ? initial : changed;
+            if (bufferSize >= 2) new byte[] { 1, 3 }.CopyTo(expectedKey, 0);
+            if (bufferSize >= visible.Length) visible.CopyTo(expectedValue, 0);
+
+            Assert.That(store.TryGetCeilingInSnapshot([1, 2], [1, 4], key, out int keyLength, value, out int valueLength), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keyLength, Is.EqualTo(2));
+                Assert.That(valueLength, Is.EqualTo(visible.Length));
+                Assert.That(key, Is.EqualTo(expectedKey), "a short key buffer stays unchanged");
+                Assert.That(value, Is.EqualTo(expectedValue), "a short value buffer stays unchanged");
+            }
+
+            Assert.That(store.TryGetCeilingInSnapshot([1, 2], [1, 3], key, out keyLength, value, out valueLength), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keyLength, Is.Zero);
+                Assert.That(valueLength, Is.Zero);
+                Assert.That(key, Is.EqualTo(expectedKey), "a miss leaves the key buffer unchanged");
+                Assert.That(value, Is.EqualTo(expectedValue), "a miss leaves the value buffer unchanged");
+            }
+            _db[[1, 3]] = null;
+            Assert.That(store.TryGetCeilingInSnapshot([1, 2], [1, 4], key, out _, value, out _), Is.EqualTo(snapshot),
+                "a fresh call sees deletion while a pinned snapshot keeps its original row");
         }
 
         [Test]
@@ -1802,6 +1886,40 @@ namespace Nethermind.Db.Test
             Assert.That(view.SeekTo([6]), Is.False, "the only key at or after 6 is the excluded upper bound itself");
             Assert.That(view.SeekTo([0]), Is.True, "a target below the lower bound is clamped to it");
             Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 1 }), "0 sits outside the view, so the seek lands on the lower bound");
+        }
+
+        [Test]
+        public void ResetBounds_WhenReused_PreservesSnapshotAndBounds(
+            [Values] bool snapshot,
+            [Values(ReadFlags.None, ReadFlags.HintCacheMiss, ReadFlags.HintReadAhead,
+                ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead)] ReadFlags flags)
+        {
+            foreach (byte key in new byte[] { 1, 2, 3, 4, 5 }) _db[[key]] = [key];
+            using IKeyValueStoreSnapshot? captured = snapshot ? ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot() : null;
+            ISortedKeyValueStore store = captured is null ? (ISortedKeyValueStore)_db : (ISortedKeyValueStore)captured;
+            using (ISortedView ordinary = store.GetViewBetween([0, 0], [9, 9], flags))
+            {
+                Assert.That(ordinary, Is.Not.InstanceOf<IRebindableSortedView>(), "ordinary reads do not retain bound-reset state");
+                Assert.That(ordinary.MoveNext(), Is.True, "the ordinary view reads the same range");
+                Assert.That(ordinary.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 1 }));
+            }
+            using IRebindableSortedView view = (IRebindableSortedView)store.GetViewBetween([0, 0], [9, 9], flags | ReadFlags.HintRepeatedReads);
+            Assert.That(view.MoveNext(), Is.True);
+            _db[[6]] = [6];
+
+            Assert.That(view.TryResetBounds([3], [5]), Is.True);
+            Assert.That(view.MoveNext(), Is.True);
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 3 }));
+            Assert.That(view.MoveNext(), Is.True);
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 4 }));
+            Assert.That(view.MoveNext(), Is.False);
+
+            Assert.That(view.TryResetBounds([5], [7]), Is.True);
+            Assert.That(view.MoveNext(), Is.True);
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 5 }));
+            Assert.That(view.MoveNext(), Is.False);
+            Assert.That(view.TryResetBounds([0, 0, 0], [8]), Is.False);
+            Assert.That(view.TryResetBounds([0], [8, 0, 0]), Is.False);
         }
 
         [Test]

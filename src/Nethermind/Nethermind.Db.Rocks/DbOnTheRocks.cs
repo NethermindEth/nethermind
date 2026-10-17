@@ -33,7 +33,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
 {
     protected ILogger _logger;
 
@@ -2275,12 +2275,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // stay correct within the seek key's prefix bucket, so a range crossing buckets can come back short or
         // empty. Total order fixes that at the cost of the prefix index and bloom, so it is asked for only when
         // the range can actually leave the bucket; a range that stays inside one keeps the optimisation.
-        if (CrossesPrefixBucket(firstKey, lastKey)) readOptions.SetTotalOrderSeek(true);
+        bool totalOrder = CrossesPrefixBucket(firstKey, lastKey);
+        if (totalOrder) readOptions.SetTotalOrderSeek(true);
         readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = CreateIterator(readOptions, cf);
-        return new RocksdbSortedView(iterator, readOptions);
+        return (flags & ReadFlags.HintRepeatedReads) != 0
+            ? new RebindableRocksdbSortedView(iterator, readOptions, this, firstKey.Length, lastKey.Length, totalOrder)
+            : new RocksdbSortedView(iterator, readOptions);
     }
+
+    /// <inheritdoc/>
+    public bool TryGetCeilingInSnapshot(
+        scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength) =>
+        _reader.TryGetCeilingInSnapshot(lowerBoundInclusive, upperBoundExclusive, keyBuffer, out keyLength, valueBuffer, out valueLength);
 
     public bool TryGetCeiling(
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
@@ -2311,9 +2320,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         Func<ReadOptions> readOptionsFactory,
         IColumnFamilyHandle? columnFamily,
         Snapshot snapshot
-    ) : RocksDbReader(mainDb, readOptionsFactory, null, columnFamily), IKeyValueStoreSnapshot
+    ) : RocksDbReader(mainDb, readOptionsFactory, null, columnFamily), IKeyValueStoreSnapshot, ISnapshotSortedKeyValueStore
     {
         private int _disposed;
+
+        /// <inheritdoc/>
+        bool ISnapshotSortedKeyValueStore.TryGetCeilingInSnapshot(
+            scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength) =>
+            TryGetCeilingInSnapshot(lowerBoundInclusive, upperBoundExclusive, keyBuffer, out keyLength, valueBuffer, out valueLength);
 
         public override void Dispose()
         {
