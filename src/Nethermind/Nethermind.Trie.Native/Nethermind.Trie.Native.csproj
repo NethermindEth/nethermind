@@ -3,15 +3,25 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <_NativePatriciaRid>$(NativePatriciaRuntimeIdentifier)</_NativePatriciaRid>
+    <_NativePatriciaRid Condition="'$(_NativePatriciaRid)' == ''">$(RuntimeIdentifier)</_NativePatriciaRid>
+    <_NativePatriciaRid Condition="'$(_NativePatriciaRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</_NativePatriciaRid>
+    <_NativePatriciaFile Condition="$(_NativePatriciaRid.StartsWith('linux-'))">libnethermind_patricia.so</_NativePatriciaFile>
+    <_NativePatriciaFile Condition="$(_NativePatriciaRid.StartsWith('osx-'))">libnethermind_patricia.dylib</_NativePatriciaFile>
+    <_NativePatriciaFile Condition="$(_NativePatriciaRid.StartsWith('win-'))">nethermind_patricia.dll</_NativePatriciaFile>
+    <_NativePatriciaPath>$(MSBuildThisFileDirectory)rust/target/native/$(_NativePatriciaRid)/$(_NativePatriciaFile)</_NativePatriciaPath>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
   </ItemGroup>
 
-  <!-- Built manually by running cargo build in release mode in rust/ -->
-  <ItemGroup Condition="Exists('rust/target/release/libnethermind_patricia.so')">
-    <None Include="rust/target/release/libnethermind_patricia.so" Link="libnethermind_patricia.so" CopyToOutputDirectory="PreserveNewest" />
+  <ItemGroup Condition="Exists('$(_NativePatriciaPath)')">
+    <None Include="$(_NativePatriciaPath)" Link="$(_NativePatriciaFile)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <Target Name="ValidateNativePatriciaLibrary" BeforeTargets="GetCopyToPublishDirectoryItems">
+    <Error Condition="!Exists('$(_NativePatriciaPath)')" Text="Native Patricia library for $(_NativePatriciaRid) is missing. Run bash scripts/build/native.sh $(_NativePatriciaRid) with the matching Rust toolchain, or supply its RID-specific artifact." />
+  </Target>
 
 </Project>

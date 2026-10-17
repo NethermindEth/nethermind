@@ -23,7 +23,7 @@ using Nethermind.State.Flat.Test;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 using Nethermind.Trie.Pruning;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
@@ -2491,7 +2491,7 @@ public class ArchiveProofTests
         _container = builder.Build();
         IResourcePool pool = _container.Resolve<IResourcePool>();
         ForwardCommitmentCapture capture = _container.Resolve<ForwardCommitmentCapture>();
-        TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
         for (ulong block = 0; block <= _chain.Head; block++)
         {
             using Snapshot snapshot = pool.CreateSnapshot(block == 0 ? StateId.PreGenesis : _chain.StateIdAt(block - 1), _chain.StateIdAt(block), ResourcePool.Usage.ReadOnlyProcessingEnv, log);

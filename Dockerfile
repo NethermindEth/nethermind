@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 # The native Patricia bulk set (Nethermind.Trie.Native) is a Rust cdylib that dotnet publish does not build.
-# It is cross-compiled here on the build platform and copied to where Nethermind.Trie.Native.csproj looks for it.
+# It is cross-compiled here on the build platform and staged for the target runtime identifier.
 FROM --platform=$BUILDPLATFORM rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f AS native-build
 
 ARG TARGETARCH
@@ -38,9 +38,11 @@ COPY --parents src/Nethermind/**/*.csproj src/Nethermind/Directory.Build.props s
 RUN cd src/Nethermind/Nethermind.Runner && dotnet restore --locked-mode
 
 COPY src/Nethermind src/Nethermind
-COPY --from=native-build /out/libnethermind_patricia.so src/Nethermind/Nethermind.Trie.Native/rust/target/release/
+COPY --from=native-build /out/libnethermind_patricia.so /native/
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
+  mkdir -p src/Nethermind/Nethermind.Trie.Native/rust/target/native/linux-$arch && \
+  cp /native/libnethermind_patricia.so src/Nethermind/Nethermind.Trie.Native/rust/target/native/linux-$arch/ && \
   cd src/Nethermind/Nethermind.Runner && \
   dotnet publish -c $BUILD_CONFIG -a $arch -o /publish --no-restore --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH

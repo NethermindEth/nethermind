@@ -11,7 +11,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Native;
 using NUnit.Framework;
 
@@ -25,7 +24,7 @@ public class SnapshotCompactorTests
     private FlatDbConfig _config = null!;
     private FlatTestContainer _tier = null!;
     private SnapshotRepository _snapshotRepository;
-    private TrieNodeLog _log = null!;
+    private NativeTrieNodeLog _log = null!;
 
     [SetUp]
     public void SetUp()
@@ -216,8 +215,8 @@ public class SnapshotCompactorTests
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
         Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
         Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
-        Assert.That(snapshot1.LogRetain!.Generation, Is.GreaterThan(snapshot0.LogRetain!.Generation));
-        Assert.That(compacted.LogRetain!.Generation, Is.EqualTo(snapshot0.LogRetain.Generation));
+        Assert.That(snapshot1.LogPin!.Generation, Is.GreaterThan(snapshot0.LogPin!.Generation));
+        Assert.That(compacted.LogPin!.Generation, Is.EqualTo(snapshot0.LogPin.Generation));
         Assert.That(compacted.TryGetStateNode(statePath1, out ulong stateNode1), Is.True);
         Assert.That(compacted.GetRlp(stateNode1).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
     }
@@ -369,19 +368,19 @@ public class SnapshotCompactorTests
     [Test]
     public void CompactSnapshotBundle_SelectsEarliestFullBoundaryNotFirstGenerationMatch()
     {
-        TrieNodeLogRetain earliest = _log.RetainActive();
+        NativeTrieNodeLogPin earliest = _log.PinActiveGeneration();
         SnapshotContent finalContent = new();
         finalContent.SetStateNodeRlp(_log, TreePath.FromHexString("1"), FlatTestHelpers.LeafRlpA);
         using Snapshot first = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, TestItem.KeccakA), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
-        using Snapshot final = new(first.To, new(2, TestItem.KeccakB), finalContent, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv) { LogRetain = earliest };
+        using Snapshot final = new(first.To, new(2, TestItem.KeccakB), finalContent, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv) { LogPin = earliest };
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { first, final });
         using Snapshot result = _compactor.CompactSnapshotBundle(new(1) { compacted });
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(first.LogRetain!.Generation, Is.EqualTo(earliest.Generation));
-            Assert.That(first.LogRetain.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
-            Assert.That(result.LogRetain!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
+            Assert.That(first.LogPin!.Generation, Is.EqualTo(earliest.Generation));
+            Assert.That(first.LogPin.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
+            Assert.That(result.LogPin!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
             Assert.That(result.StateNodes.Count(), Is.EqualTo(2));
         }
     }
@@ -389,7 +388,6 @@ public class SnapshotCompactorTests
     [Test]
     public void CompactSnapshotBundle_SelectsEarliestNativeWriteBoundaryWithinGeneration()
     {
-        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
         using NativeTrieNodeLog log = new(0);
         NativeTrieNodeLogPin earliest = log.PinActiveGeneration();
         Hash256 root = FlatTestHelpers.WriteNative(log, null, Keccak.EmptyTreeHash, new PatriciaTree.BulkSetEntry(TestItem.KeccakA.ValueHash256, [1]));
@@ -407,7 +405,6 @@ public class SnapshotCompactorTests
             Assert.That(first.LogPin.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
             Assert.That(result.LogPin!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
             Assert.That(result.StateNodes.Count(), Is.EqualTo(1));
-            Assert.That(result.LogRetain, Is.Null);
         }
     }
 

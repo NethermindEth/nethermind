@@ -20,6 +20,12 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
 {
     private NativePendingNodes? _pending;
     private bool _rootDirty;
+    private INativeNodeStore? _warmUpSource;
+
+    internal INativeNodeStore WarmUpSource =>
+        Volatile.Read(ref _warmUpSource)
+        ?? Interlocked.CompareExchange(ref _warmUpSource, bundle.CreateNativeWarmUpSource(addressHash), null)
+        ?? _warmUpSource!;
 
     /// <summary>Whether the trie has an unpublished root, including a change to empty.</summary>
     public bool HasPending => _rootDirty;

@@ -14,9 +14,10 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
+
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -24,7 +25,7 @@ namespace Nethermind.State.Flat.Test;
 public class FlatWorldStateScopeHistoricalRootTests
 {
     private ResourcePool _pool = null!;
-    private TrieNodeLog _log = null!;
+    private NativeTrieNodeLog _log = null!;
 
     [SetUp]
     public void SetUp()
@@ -169,21 +170,6 @@ public class FlatWorldStateScopeHistoricalRootTests
     }
 
     [Test]
-    public void Get_WithVerifyWithTrie_OnTrieLessScope_DoesNotThrow()
-    {
-        // VerifyWithTrie cross-checks each flat read against the trie. A trie-less historical scope has no trie — the
-        // backing reader throws on trie-node access — so verification must be skipped, not throw, for account and slot.
-        StateId currentStateId = new(100, TestItem.KeccakA);
-        using FlatWorldStateScope scope = BuildScope(currentStateId, isHistorical: true, verifyWithTrie: true);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => scope.Get(TestItem.AddressA), Throws.Nothing);
-            Assert.That(() => scope.CreateStorageTree(TestItem.AddressA).Get((UInt256)7, out _), Throws.Nothing);
-        }
-    }
-
-    [Test]
     public void IsHistorical_DefaultsToFalse()
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -193,7 +179,7 @@ public class FlatWorldStateScopeHistoricalRootTests
         Assert.That(readOnlyBundle.IsHistorical, Is.False);
     }
 
-    private FlatWorldStateScope BuildScope(StateId currentStateId, bool isHistorical, bool verifyWithTrie = false)
+    private FlatWorldStateScope BuildScope(StateId currentStateId, bool isHistorical)
     {
         SnapshotBundle bundle = BuildBundle(isHistorical);
 
@@ -202,8 +188,8 @@ public class FlatWorldStateScopeHistoricalRootTests
             bundle,
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new MemDb()),
             Substitute.For<IFlatCommitTarget>(),
-            new FlatDbConfig { CompactSize = 2, VerifyWithTrie = verifyWithTrie },
-            null,
+            new FlatDbConfig { CompactSize = 2 },
+            _log,
             new NoopTrieWarmer(),
             LimboLogs.Instance);
     }
@@ -227,7 +213,6 @@ public class FlatWorldStateScopeHistoricalRootTests
             readOnlyBundle,
             _log,
             _pool,
-            ResourcePool.Usage.MainBlockProcessing,
-            nativeTrieNodeLog: null);
+            ResourcePool.Usage.MainBlockProcessing);
     }
 }

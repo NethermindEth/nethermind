@@ -3,20 +3,19 @@
 
 using System;
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Native;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 
 namespace Nethermind.State.Flat.Test;
@@ -31,7 +30,7 @@ public static class FlatTestHelpers
     }
 
     /// <summary>A log with 64 KiB generations, so tests can rotate it cheaply.</summary>
-    public static TrieNodeLog NewTestLog() => new(0, 64 * 1024);
+    public static NativeTrieNodeLog NewTestLog() => new(0, 64 * 1024);
 
     /// <summary>A trie-node path with all nibbles after its length cleared.</summary>
     public static TreePath CanonicalPath(in ValueHash256 hash, int length) => new TreePath(hash, 64).Truncate(length);
@@ -41,11 +40,11 @@ public static class FlatTestHelpers
     public const string LeafRlpC = "c482200103";
 
     /// <summary>Creates a snapshot owning a retain on the active generation of <paramref name="log"/>.</summary>
-    public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, TrieNodeLog log) =>
-        new(from, to, pool.GetSnapshotContent(usage), pool, usage) { LogRetain = log.RetainActive() };
+    public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, NativeTrieNodeLog log) =>
+        new(from, to, pool.GetSnapshotContent(usage), pool, usage) { LogPin = log.PinActiveGeneration() };
 
     /// <summary>Appends records until <paramref name="log"/> starts a new generation.</summary>
-    public static void StartNewGeneration(TrieNodeLog log)
+    public static void StartNewGeneration(NativeTrieNodeLog log)
     {
         byte[] leaf = Bytes.FromHexString(LeafRlpA);
         ulong generation = AppendNode(log, null, TreePath.Empty, leaf) >> 32;
@@ -53,7 +52,7 @@ public static class FlatTestHelpers
     }
 
     /// <summary>Makes a snapshot owning a retain on <paramref name="log"/> taken before <paramref name="populate"/> writes its nodes.</summary>
-    public static Snapshot MakeSnapshot(IResourcePool pool, TrieNodeLog log, Action<SnapshotContent> populate)
+    public static Snapshot MakeSnapshot(IResourcePool pool, NativeTrieNodeLog log, Action<SnapshotContent> populate)
     {
         Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, log);
         populate(snapshot.Content);
@@ -66,6 +65,16 @@ public static class FlatTestHelpers
         return NativePatriciaBulkSet.BulkSet(new NativeLogOnlySource(), pending, log, null, address, root.ValueHash256, entries);
     }
 
+    internal static FixtureRoot BulkSet(NativeTrieNodeLog log, Hash256? address, FixtureRoot root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    {
+        using NativePendingNodes pending = NativePendingNodes.Rent(entries.Length);
+        Hash256 hash = NativePatriciaBulkSet.BulkSet(new NativeLogOnlySource(), pending, log, null, address, root.Hash, entries);
+        return new FixtureRoot(hash.ValueHash256, log.ResolveRoot(address, hash.ValueHash256));
+    }
+
+    internal static IEnumerable<(TreePath Path, ulong Pointer, NativeTrieNodeLog.FixtureRecord Record)> EnumerateNodes(this NativeTrieNodeLog log, ulong root) =>
+        log.EnumerateFixtureNodes(root);
+
     private sealed class NativeLogOnlySource : INativeNodeStore
     {
         public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) => false;
@@ -75,11 +84,11 @@ public static class FlatTestHelpers
 
     /// <summary>Connects supplied state nodes to the snapshot root, synthesizing missing ancestors.</summary>
     /// <remarks>Supplied parent RLP is authoritative; inputs it does not reference remain unreachable.</remarks>
-    public static ulong SetStateNodeRlp(this SnapshotContent content, TrieNodeLog log, in TreePath path, string rlpHex) =>
+    public static ulong SetStateNodeRlp(this SnapshotContent content, NativeTrieNodeLog log, in TreePath path, string rlpHex) =>
         content.SetStateNodeRlp(log, path, Bytes.FromHexString(rlpHex));
 
-    /// <inheritdoc cref="SetStateNodeRlp(SnapshotContent, TrieNodeLog, in TreePath, string)"/>
-    public static ulong SetStateNodeRlp(this SnapshotContent content, TrieNodeLog log, in TreePath path, byte[] rlp)
+    /// <inheritdoc cref="SetStateNodeRlp(SnapshotContent, NativeTrieNodeLog, in TreePath, string)"/>
+    public static ulong SetStateNodeRlp(this SnapshotContent content, NativeTrieNodeLog log, in TreePath path, byte[] rlp)
     {
         FixtureTrie trie = _fixtureNodes.GetValue(content, static _ => new FixtureNodes()).State;
         if (!content.HasStateRoot || content.StateRootPointer != trie.RootPointer) trie.Nodes.Clear();
@@ -90,11 +99,11 @@ public static class FlatTestHelpers
     }
 
     /// <summary>Connects the supplied storage node to its address's root, synthesizing missing ancestors.</summary>
-    public static ulong SetStorageNodeRlp(this SnapshotContent content, TrieNodeLog log, Hash256 address, in TreePath path, string rlpHex) =>
+    public static ulong SetStorageNodeRlp(this SnapshotContent content, NativeTrieNodeLog log, Hash256 address, in TreePath path, string rlpHex) =>
         content.SetStorageNodeRlp(log, address, path, Bytes.FromHexString(rlpHex));
 
-    /// <inheritdoc cref="SetStorageNodeRlp(SnapshotContent, TrieNodeLog, Hash256, in TreePath, string)"/>
-    public static ulong SetStorageNodeRlp(this SnapshotContent content, TrieNodeLog log, Hash256 address, in TreePath path, byte[] rlp)
+    /// <inheritdoc cref="SetStorageNodeRlp(SnapshotContent, NativeTrieNodeLog, Hash256, in TreePath, string)"/>
+    public static ulong SetStorageNodeRlp(this SnapshotContent content, NativeTrieNodeLog log, Hash256 address, in TreePath path, byte[] rlp)
     {
         FixtureNodes fixtures = _fixtureNodes.GetValue(content, static _ => new FixtureNodes());
         if (!fixtures.Storage.TryGetValue(address, out FixtureTrie? trie)) fixtures.Storage[address] = trie = new();
@@ -115,20 +124,19 @@ public static class FlatTestHelpers
         public readonly Dictionary<TreePath, byte[]> Nodes = [];
         public ulong RootPointer;
 
-        public ulong Set(TrieNodeLog log, Hash256? address, in TreePath path, byte[] rlp)
+        public ulong Set(NativeTrieNodeLog log, Hash256? address, in TreePath path, byte[] rlp)
         {
             TreePath normalizedPath = CanonicalPath(path.Path, path.Length);
             Nodes[normalizedPath] = rlp;
-            using TrieNodeLog.ReadLease lease = log.BeginRead();
             RootPointer = Build(log, address, TreePath.Empty, Nodes.ToArray()).Pointer;
             return log.TryGetNodePointer(RootPointer, path, out ulong pointer) ? pointer : AppendNode(log, address, path, rlp);
         }
 
-        private static ChildRef Build(TrieNodeLog log, Hash256? address, TreePath path, KeyValuePair<TreePath, byte[]>[] nodes)
+        private static FixtureRoot Build(NativeTrieNodeLog log, Hash256? address, TreePath path, KeyValuePair<TreePath, byte[]>[] nodes)
         {
             KeyValuePair<TreePath, byte[]> exact = nodes.FirstOrDefault(n => n.Key == path);
             byte[] rlp;
-            ChildRef[]? references = null;
+            FixtureRoot[] references = new FixtureRoot[16];
             if (exact.Value is not null)
             {
                 rlp = exact.Value;
@@ -140,75 +148,124 @@ public static class FlatTestHelpers
                 if (shared > path.Length)
                 {
                     TreePath childPath = nodes[0].Key.Truncate(shared);
-                    ChildRef child = Build(log, address, childPath, nodes);
-                    references = [child];
+                    references[0] = Build(log, address, childPath, nodes);
                     byte[] key = Enumerable.Range(path.Length, shared - path.Length).Select(i => (byte)nodes[0].Key[i]).ToArray();
-                    rlp = new byte[NodeRlp.ExtensionLength(key, child)];
-                    NodeRlp.WriteExtension(key, child, rlp);
+                    rlp = ExtensionRlp(key, references[0].Hash);
                 }
                 else
                 {
-                    ChildRef[] children = new ChildRef[16];
-                    for (int i = 0; i < children.Length; i++)
+                    TrieNode branch = new(NodeType.Branch);
+                    for (int i = 0; i < references.Length; i++)
                     {
                         TreePath childPath = path.Append(i);
                         KeyValuePair<TreePath, byte[]>[] descendants = nodes.Where(n => n.Key.Length >= childPath.Length && n.Key.StartsWith(childPath)).ToArray();
-                        if (descendants.Length > 0) children[i] = Build(log, address, childPath, descendants);
+                        if (descendants.Length == 0) continue;
+                        references[i] = Build(log, address, childPath, descendants);
+                        branch.SetChild(i, new TrieNode(NodeType.Unknown, references[i].ToHash256()));
                     }
-                    references = children;
-                    rlp = new byte[NodeRlp.BranchLength(children)];
-                    NodeRlp.WriteBranch(children, rlp);
+                    rlp = EncodeNode(branch);
                 }
             }
 
-            if (!NodeRecord.TryMeasure(rlp, out NodeRecordKind kind, out ushort mask)) throw new ArgumentException("Invalid fixture node RLP.", nameof(nodes));
-            ValueHash256 hash = ValueKeccak.Compute(rlp);
-            int length = NodeRecord.Length(BitOperations.PopCount(mask), rlp.Length);
-            byte[] record = new byte[length];
-            NodeRecord.WriteFromRlp(rlp, kind, mask, hash, NodeRecord.NodeKey(address, path), record);
-            RecordView view = new(record);
-            int position = NodeRecord.HeaderLength;
-            Span<byte> keyNibbles = stackalloc byte[64];
-            for (int i = 0; i < 16; i++)
+            TrieNode node = new(NodeType.Unknown, rlp);
+            node.ResolveNode(NullTrieNodeResolver.Instance, path);
+            ulong[] pointers = new ulong[16];
+            if (!node.IsLeaf)
             {
-                if ((mask & (1 << i)) == 0) continue;
-                ChildRef child = view.Child(i);
-                TreePath childPath;
-                if (kind == NodeRecordKind.Extension)
+                int count = node.IsExtension ? 1 : 16;
+                for (int i = 0; i < count; i++)
                 {
-                    view.CopyKey(0, keyNibbles);
-                    childPath = path.Append(keyNibbles[..view.KeyLength(0)]);
+                    Hash256? expectedHash = node.GetChildHash(i);
+                    if (expectedHash is null) continue;
+                    TreePath childPath = node.IsExtension ? path.Append(node.Key!) : path.Append(i);
+                    FixtureRoot child = references[i];
+                    if (exact.Value is not null)
+                    {
+                        KeyValuePair<TreePath, byte[]>[] descendants = nodes.Where(n => n.Key.Length >= childPath.Length && n.Key.StartsWith(childPath)).ToArray();
+                        if (descendants.Length > 0) child = Build(log, address, childPath, descendants);
+                    }
+                    if (child.Pointer != 0 && child.Hash == expectedHash.ValueHash256) pointers[i] = child.Pointer;
                 }
-                else childPath = path.Append(i);
-                ChildRef connected = default;
-                if (references is not null) connected = references[i];
-                else
-                {
-                    KeyValuePair<TreePath, byte[]>[] descendants = nodes.Where(n => n.Key.Length >= childPath.Length && n.Key.StartsWith(childPath)).ToArray();
-                    if (descendants.Length > 0) connected = Build(log, address, childPath, descendants);
-                }
-                if (connected.Kind == ChildRefKind.Hash && connected.Data == child.Data)
-                    BinaryPrimitives.WriteUInt64LittleEndian(record.AsSpan(position), connected.Pointer);
-                position += NodeRecord.PointerLength;
             }
 
-            ulong pointer = log.Reserve(NodeRecord.AlignedLength(length), out LogBuffer buffer, out int offset);
-            record.CopyTo(buffer.AsSpan(offset, length));
-            log.FindBloom(pointer)?.Add(NodeRecord.NodeKey(address, path));
-            return ChildRef.ForHash(hash, pointer);
+            ulong pointer = log.AppendRlp(address, path, rlp, pointers, indexRoot: path.Length == 0);
+            return new FixtureRoot(ValueKeccak.Compute(rlp), pointer);
         }
     }
 
     /// <summary>The RLP of a leaf with an empty key holding <paramref name="value"/>, a distinct valid trie node per value.</summary>
-    public static byte[] LeafRlp(params byte[] value)
+    public static byte[] LeafRlp(params byte[] value) => EncodeNode(new TrieNode(NodeType.Leaf) { Key = [], Value = new CappedArray<byte>(value) });
+
+    internal static byte[] ExtensionRlp(byte[] key, in ValueHash256 childHash)
     {
-        byte[] rlp = new byte[NodeRlp.LeafLength([], value)];
-        NodeRlp.WriteLeaf([], value, rlp);
-        return rlp;
+        TrieNode extension = new(NodeType.Extension) { Key = key };
+        extension.SetChild(0, new TrieNode(NodeType.Unknown, new Hash256(childHash)));
+        return EncodeNode(extension);
     }
 
-    private static ulong AppendNode(TrieNodeLog log, Hash256? address, in TreePath path, byte[] rlp) =>
-        log.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp);
+    internal static byte[] BranchRlp(params (int Index, ValueHash256 Hash)[] children)
+    {
+        TrieNode branch = new(NodeType.Branch);
+        foreach ((int index, ValueHash256 hash) in children) branch.SetChild(index, new TrieNode(NodeType.Unknown, new Hash256(hash)));
+        return EncodeNode(branch);
+    }
+
+    private static byte[] EncodeNode(TrieNode node)
+    {
+        TreePath path = TreePath.Empty;
+        return node.RlpEncode(NullTrieNodeResolver.Instance, ref path).AsSpan().ToArray();
+    }
+
+    private static ulong AppendNode(NativeTrieNodeLog log, Hash256? address, in TreePath path, byte[] rlp) =>
+        log.AppendRlp(address, path, rlp, indexRoot: path.Length == 0);
+
+    internal static ulong AppendRecordFromRlp(this NativeTrieNodeLog log, Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp)
+    {
+        if (ValueKeccak.Compute(rlp) != hash) throw new ArgumentException("Fixture node hash does not match its RLP.", nameof(hash));
+        return log.AppendRlp(address, path, rlp, indexRoot: path.Length == 0);
+    }
+
+    internal static bool TryGetNodePointer(this NativeTrieNodeLog log, ulong root, in TreePath path, out ulong pointer)
+    {
+        foreach ((TreePath nodePath, ulong candidate, _) in log.EnumerateFixtureNodes(root))
+        {
+            if (nodePath == path)
+            {
+                pointer = candidate;
+                return true;
+            }
+        }
+        pointer = 0;
+        return false;
+    }
+
+    internal static IEnumerable<(TreePath Path, ulong Pointer, NativeTrieNodeLog.FixtureRecord Record)> EnumerateFixtureNodes(this NativeTrieNodeLog log, ulong root)
+    {
+        if (root == 0) yield break;
+        Stack<(TreePath Path, ulong Pointer)> pending = new();
+        pending.Push((TreePath.Empty, root));
+        while (pending.TryPop(out (TreePath Path, ulong Pointer) next))
+        {
+            NativeTrieNodeLog.FixtureRecord record = log.GetRecord(next.Pointer);
+            yield return (next.Path, next.Pointer, record);
+            TrieNode node = new(NodeType.Unknown, record.Rlp.ToArray());
+            node.ResolveNode(NullTrieNodeResolver.Instance, next.Path);
+            if (node.IsLeaf) continue;
+            if (node.IsExtension)
+            {
+                ulong pointer = record.ChildPointer(0);
+                if (pointer != 0) pending.Push((next.Path.Append(node.Key!), pointer));
+            }
+            else
+            {
+                for (int i = 15; i >= 0; i--)
+                {
+                    ulong pointer = record.ChildPointer(i);
+                    if (pointer != 0) pending.Push((next.Path.Append(i), pointer));
+                }
+            }
+        }
+    }
 
     public static SnapshotPooledList SnapshotList(params Snapshot[] snapshots)
     {
@@ -235,7 +292,7 @@ public static class FlatTestHelpers
 
     /// <inheritdoc cref="MakeBundle(ResourcePool, Action{SnapshotContent})"/>
     /// <param name="log">The log <paramref name="populate"/> records nodes in; the snapshot retains it.</param>
-    public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, TrieNodeLog log, Action<SnapshotContent> populate) =>
+    public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, NativeTrieNodeLog log, Action<SnapshotContent> populate) =>
         new(SnapshotList(MakeSnapshot(pool, log, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
             recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
 }
@@ -322,4 +379,11 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
         DeleteStorageTrieNodeRangeCalls.Add((addressHash, from, to));
 
     public void Dispose() => DisposeCount++;
+}
+
+internal readonly record struct FixtureRoot(ValueHash256 Hash, ulong Pointer)
+{
+    internal static FixtureRoot Empty => new(ValueKeccak.EmptyTreeHash, 0);
+
+    internal Hash256 ToHash256() => new(Hash);
 }

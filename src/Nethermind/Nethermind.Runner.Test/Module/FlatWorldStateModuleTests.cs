@@ -1,17 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Core.Exceptions;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Trie.Native;
-using Nethermind.Trie.NodeLog;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Module;
@@ -42,16 +44,33 @@ public class FlatWorldStateModuleTests
     }
 
     [Test]
-    public void Trie_node_log_backend_can_be_resolved([Values] bool useNativeBulkSet)
+    public void Native_trie_node_log_is_registered_by_default()
     {
-        if (useNativeBulkSet) Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
-        FlatDbConfig config = new() { UseNativeBulkSet = useNativeBulkSet };
+        FlatDbConfig config = new();
         using IContainer container = new ContainerBuilder()
             .AddModule(new FlatWorldStateModule(config))
             .AddSingleton<IFlatDbConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
 
-        Assert.That(useNativeBulkSet ? (object)container.Resolve<NativeTrieNodeLog>() : container.Resolve<TrieNodeLog>(), Is.Not.Null);
+        Assert.That(container.Resolve<NativeTrieNodeLog>(), Is.Not.Null);
+    }
+
+    [Test]
+    public void Native_backend_validation_runs_on_resolution_not_module_registration([Values] bool enabled)
+    {
+        FlatDbConfig config = new() { Enabled = enabled, VerifyWithTrie = true };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new FlatWorldStateModule(config))
+            .AddSingleton<IFlatDbConfig>(config)
+            .Build();
+
+        DependencyResolutionException error = Assert.Throws<DependencyResolutionException>(() => container.Resolve<NativeTrieNodeLog>())!;
+        Exception cause = error.GetBaseException();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cause, Is.TypeOf<InvalidConfigurationException>());
+            Assert.That(cause.Message, Does.Contain("VerifyWithTrie"));
+        }
     }
 }

@@ -10,7 +10,6 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat;
@@ -26,8 +25,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly IPersistenceManager _persistenceManager;
     private readonly ISnapshotCompactor _snapshotCompactor;
     private readonly ISnapshotRepository _snapshotRepository;
-    private readonly TrieNodeLog? _trieNodeLog;
-    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
+    private readonly NativeTrieNodeLog _nativeTrieNodeLog;
     private readonly IResourcePool _resourcePool;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
@@ -60,7 +58,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public FlatDbManager(
         IResourcePool resourcePool,
         IProcessExitSource processExitSource,
-        TrieNodeLog? trieNodeLog,
+        NativeTrieNodeLog nativeTrieNodeLog,
         ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
@@ -68,10 +66,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IFlatDbConfig config,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
-        bool enableDetailedMetrics,
-        NativeTrieNodeLog? nativeTrieNodeLog = null)
+        bool enableDetailedMetrics)
     {
-        _trieNodeLog = trieNodeLog;
         _nativeTrieNodeLog = nativeTrieNodeLog;
         _snapshotCompactor = snapshotCompactor;
         _snapshotRepository = snapshotRepository;
@@ -238,10 +234,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
         return new SnapshotBundle(
             GatherReadOnlySnapshotBundle(baseBlock),
-            _trieNodeLog,
+            _nativeTrieNodeLog,
             _resourcePool,
             usage: usage,
-            nativeTrieNodeLog: _nativeTrieNodeLog,
             filterInMemorySlotReads: filterInMemorySlotReads);
     }
 

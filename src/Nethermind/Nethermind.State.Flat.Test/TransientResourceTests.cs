@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -49,7 +49,7 @@ public class TransientResourceTests
     [Test]
     public void Reset_AfterPrewarmMarks_ClearsTheDedupeBloom()
     {
-        using TransientResource resource = new(new TransientResource.Size(1024, 1024));
+        using TransientResource resource = new(new TransientResource.Size(1024));
         Assert.That(resource.ShouldPrewarm(TestItem.AddressA, null), Is.True, "precondition: the first hint is queued");
         Assert.That(resource.ShouldPrewarm(TestItem.AddressA, null), Is.False, "precondition: a repeated hint is deduplicated");
 
@@ -59,44 +59,47 @@ public class TransientResourceTests
     }
 
     [Test]
-    public void Reset_GrowsTheWarmedNodesOnlyPastTheirCapacity([Values] bool pastCapacity)
+    public void Reset_ClearsNativeWarmedRecords()
     {
-        const int capacity = 4;
-        using TransientResource resource = new(new TransientResource.Size(1024, capacity));
-        WarmedNodes warmedNodes = resource.WarmedNodes;
-        int nodeCount = pastCapacity ? capacity + 1 : capacity;
-        ulong originalPointer = 0;
-        for (byte value = 0; value < nodeCount; value++)
-        {
-            byte[] rlp = FlatTestHelpers.LeafRlp(value);
-            warmedNodes.TryInsert(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, out _, out ulong pointer);
-            if (value == 0) originalPointer = pointer;
-        }
+        using TransientResource resource = new(new TransientResource.Size(1024));
+        using NativeTrieNodeLog log = new(0);
+        byte[] rlp = FlatTestHelpers.LeafRlp(1);
+        ValueHash256 root = ValueKeccak.Compute(rlp);
+        CountingSource source = new(rlp);
+        NativeWarmedNodes warmed = resource.NativeWarmedNodes;
+
+        WarmUp();
+        WarmUp();
+        Assert.That(source.Reads, Is.EqualTo(1));
 
         resource.Reset();
+        WarmUp();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resource.WarmedNodes, pastCapacity ? Is.Not.SameAs(warmedNodes) : Is.SameAs(warmedNodes));
-            Assert.That(resource.WarmedNodes.Count, Is.Zero);
-            Assert.That(resource.GetSize().NodesCacheSize, Is.EqualTo(nodeCount));
+            Assert.That(resource.NativeWarmedNodes, Is.SameAs(warmed));
+            Assert.That(source.Reads, Is.EqualTo(2), "reset must discard the old native records");
         }
 
-        byte[] originalRlp = FlatTestHelpers.LeafRlp(0);
-        ValueHash256 originalHash = ValueKeccak.Compute(originalRlp);
-        resource.WarmedNodes.TryInsert(null, TreePath.Empty, originalHash, originalRlp, out _, out ulong newPointer);
-        using (Assert.EnterMultipleScope())
+        void WarmUp() => NativePatriciaBulkSet.WarmUp(source, log, resource.NativeWarmedNodes, null, root, ValueKeccak.Zero);
+    }
+
+    private sealed class CountingSource(byte[] rlp) : INativeNodeStore
+    {
+        public int Reads { get; private set; }
+
+        public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver)
         {
-            Assert.That(newPointer, Is.Not.EqualTo(originalPointer), "growth and reuse both change pointer identity");
-            Assert.That(resource.WarmedNodes.TryGet(originalPointer, originalHash, out _), Is.False);
-            Assert.That(resource.WarmedNodes.TryGet(newPointer, originalHash, out _), Is.True);
+            Reads++;
+            receiver.Receive(rlp);
+            return true;
         }
     }
 
     [Test]
     public void Reset_WhenNothingWasMarked_KeepsTheDedupeBloomEmpty()
     {
-        using TransientResource resource = new(new TransientResource.Size(1024, 1024));
+        using TransientResource resource = new(new TransientResource.Size(1024));
 
         resource.Reset();
 

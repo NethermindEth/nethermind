@@ -388,6 +388,88 @@ pub extern "C" fn nm_patricia_log_new(compressed_max_memory: u64) -> *mut TrieNo
     Box::into_raw(TrieNodeLog::new(compressed_max_memory))
 }
 
+/// Creates a small-generation log for internal RLP fixtures.
+#[no_mangle]
+pub extern "C" fn nm_patricia_log_fixture_new(compressed_max_memory: u64, generation_bytes: usize) -> *mut TrieNodeLog {
+    Box::into_raw(TrieNodeLog::for_fixtures(generation_bytes, compressed_max_memory))
+}
+
+/// Appends fixture RLP using the live record encoder, linking only matching hash-referenced children.
+///
+/// # Safety
+/// `log` is live, `rlp` is readable for `length`, `path` and `pointer_out` are valid, and `address` is null or
+/// readable for 32 bytes. `children` is null or readable for 16 pointers to retained records in this log.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_fixture_append_rlp(
+    log: *const TrieNodeLog, address: *const [u8; 32], path: *const TreePath,
+    rlp: *const u8, length: usize, children: *const u64, index_root: bool, pointer_out: *mut u64,
+) -> i32 {
+    if log.is_null() || rlp.is_null() || path.is_null() || pointer_out.is_null() {
+        return Error::InvalidArgument.code();
+    }
+    match catch_unwind(AssertUnwindSafe(|| {
+        let rlp = std::slice::from_raw_parts(rlp, length);
+        let mut decoded = decode_rlp(rlp)?;
+        let pointers = children.as_ref().map(|_| std::slice::from_raw_parts(children, 16));
+        if pointers.is_some_and(|p| p.iter().any(|pointer| pointer & node::TRANSIENT_POINTER != 0)) {
+            return Err(Error::CorruptNode);
+        }
+        let session = (*log).pin();
+        let link = |child: &mut node::ChildRef, slot: usize| {
+            let Some(pointers) = pointers else { return; };
+            let candidate = pointers[slot];
+            if candidate == 0 { return; }
+            if let node::ChildRef::Hash { hash, pointer } = child {
+                if session.record(candidate).is_some_and(|record| node::LoggedNode::new(record).hash() == hash) {
+                    *pointer = candidate;
+                }
+            }
+        };
+        match &mut decoded {
+            Node::Leaf { .. } => {},
+            Node::Extension { child, .. } => link(child, 0),
+            Node::Branch { children } => {
+                for (slot, child) in children.iter_mut().enumerate() { link(child, slot); }
+            }
+        }
+        let hash = keccak::keccak(rlp);
+        let key = log::node_key(address.as_ref(), &*path);
+        let mut written = Vec::new();
+        session.append_all(std::iter::once((&decoded, key, &hash, rlp)), &mut written);
+        let pointer = written[0];
+        if index_root { session.set_root(address.as_ref(), &hash, pointer); }
+        *pointer_out = pointer;
+        Ok(())
+    })) {
+        Ok(Ok(())) => 0,
+        Ok(Err(error)) => error.code(),
+        Err(_) => -1,
+    }
+}
+
+/// Copies a fixture record while a read session protects it; returns the required size or zero if unavailable.
+///
+/// # Safety
+/// `log` is live, `pointer` is a previously imported or written record, and `output` is writable for `capacity`.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_fixture_copy(log: *const TrieNodeLog, pointer: u64, output: *mut u8, capacity: usize) -> i32 {
+    match catch_unwind(AssertUnwindSafe(|| {
+        let session = (*log).pin();
+        let Some(record) = session.record(pointer) else { return 0; };
+        if record.len() <= capacity { std::ptr::copy_nonoverlapping(record.as_ptr(), output, record.len()); }
+        record.len() as i32
+    })) { Ok(length) => length, Err(_) => -1 }
+}
+
+/// Whether a fixture record still has its uncompressed generation buffer.
+///
+/// # Safety
+/// `log` must be live.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_fixture_live(log: *const TrieNodeLog, pointer: u64) -> bool {
+    (*log).fixture_generation_live(pointer)
+}
+
 /// # Safety
 /// `log` must come from [`nm_patricia_log_new`], not be freed yet, and not be in use by a bulk set.
 #[no_mangle]
@@ -634,6 +716,42 @@ pub unsafe extern "C" fn nm_patricia_metrics(metrics: *mut Metrics) {
 mod tests {
     use super::*;
     use std::ptr::{null, null_mut};
+
+    #[test]
+    fn fixture_append_links_matching_children_and_rejects_invalid_inputs() {
+        let log = TrieNodeLog::for_fixtures(64 << 10, 0);
+        let session = log.pin();
+        let rlp = [0xc4, 0x82, 0x20, 0x01, 0x05];
+        let hash = keccak::keccak(&rlp);
+        let path = TreePath::default();
+        let mut child = 0;
+        unsafe {
+            assert_eq!(nm_patricia_log_fixture_append_rlp(&*log, null(), &path, rlp.as_ptr(), rlp.len(), null(), false, &mut child), 0);
+        }
+        let extension = Node::Extension { key: node::Nibbles::from_slice(&[1]), child: node::ChildRef::Hash { hash, pointer: 0 } };
+        let mut extension_rlp = Vec::new();
+        node::encode(&extension, &mut extension_rlp);
+        let extension_hash = keccak::keccak(&extension_rlp);
+        let mut children = [0; 16];
+        children[0] = child;
+        let mut root = 0;
+        unsafe {
+            assert_eq!(nm_patricia_log_fixture_append_rlp(&*log, null(), &path, extension_rlp.as_ptr(), extension_rlp.len(), children.as_ptr(), true, &mut root), 0);
+        }
+        assert_eq!(session.root(None, &extension_hash), root);
+        assert_eq!(session.find_node(root, &path.append(&[1])).unwrap().rlp(), rlp);
+        assert_eq!(node::LoggedNode::new(session.record(root).unwrap()).pointer(0), child);
+        children[0] = root;
+        unsafe {
+            assert_eq!(nm_patricia_log_fixture_append_rlp(&*log, null(), &path, extension_rlp.as_ptr(), extension_rlp.len(), children.as_ptr(), false, &mut root), 0);
+        }
+        assert_eq!(node::LoggedNode::new(session.record(root).unwrap()).pointer(0), 0);
+        children[0] = node::TRANSIENT_POINTER;
+        unsafe {
+            assert_eq!(nm_patricia_log_fixture_append_rlp(&*log, null(), &path, extension_rlp.as_ptr(), extension_rlp.len(), children.as_ptr(), false, &mut root), Error::CorruptNode.code());
+            assert_eq!(nm_patricia_log_fixture_append_rlp(&*log, null(), &path, rlp.as_ptr(), rlp.len() - 1, null(), false, &mut root), Error::CorruptNode.code());
+        }
+    }
 
     unsafe extern "C" fn missing_node(
         _: *mut c_void,

@@ -9,9 +9,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
+
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test.ScopeProvider;
 
@@ -64,7 +65,7 @@ public class FlatReadOnlyTrieStoreTests
     {
         TreePath path = TreePath.FromHexString("12");
         Hash256 storageAddress = TestItem.KeccakA;
-        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
 
         _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool, log, c =>
         {

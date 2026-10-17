@@ -17,7 +17,7 @@ public class FlatScopeProvider(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
     IFlatDbConfig configuration,
-    NativeTrieNodeLog? nativeTrieNodeLog,
+    NativeTrieNodeLog nativeTrieNodeLog,
     ITrieWarmer trieWarmer,
     ResourcePool.Usage usage,
     IStateHeaderProvider stateHeaderProvider,

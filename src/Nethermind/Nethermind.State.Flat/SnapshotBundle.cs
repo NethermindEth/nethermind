@@ -9,8 +9,8 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat;
@@ -41,11 +41,8 @@ public sealed class SnapshotBundle : IDisposable
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
     private TransientResource _transientResource = null!;
-    // Not pooled: abandoned idle passes may keep this block's warmed records after retirement.
-    private WarmedNodes? _earlyWarmedNodes;
 
     internal SnapshotPooledList _snapshots;
-    private readonly TrieNodeLog? _trieNodeLog;
     private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
@@ -56,22 +53,20 @@ public sealed class SnapshotBundle : IDisposable
     // block processing keeps the plain loop, so its reads do not depend on the filter.
     private readonly bool _filterInMemorySlotReads;
 
-    /// <param name="nativeTrieNodeLog">The log the native bulk set writes the nodes of this bundle to, when it is
-    /// used.</param>
+    /// <param name="nativeTrieNodeLog">The log the native bulk set writes the nodes of this bundle to; null only for a trie-less historical bundle.</param>
     /// <param name="filterInMemorySlotReads">Serve slot reads with
     /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
-        TrieNodeLog? trieNodeLog,
+        NativeTrieNodeLog? nativeTrieNodeLog,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
         SnapshotPooledList? snapshots = null,
-        bool filterInMemorySlotReads = false,
-        NativeTrieNodeLog? nativeTrieNodeLog = null)
+        bool filterInMemorySlotReads = false)
     {
+        if (!readOnlySnapshotBundle.IsHistorical) ArgumentNullException.ThrowIfNull(nativeTrieNodeLog);
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
-        _trieNodeLog = trieNodeLog;
         _nativeTrieNodeLog = nativeTrieNodeLog;
         _resourcePool = resourcePool;
         _usage = usage;
@@ -86,8 +81,8 @@ public sealed class SnapshotBundle : IDisposable
         Metrics.ActiveSnapshotBundle++;
     }
 
-    /// <summary>The log the trie nodes written through this bundle are recorded in; <c>null</c> for a trie-less bundle.</summary>
-    internal TrieNodeLog? TrieNodeLog => _trieNodeLog;
+    /// <summary>The log the trie nodes written through this bundle are recorded in.</summary>
+    internal NativeTrieNodeLog NativeTrieNodeLog => _nativeTrieNodeLog!;
 
     private void ExpandCurrentPooledContent()
     {
@@ -216,20 +211,31 @@ public sealed class SnapshotBundle : IDisposable
     /// Warms the path to <paramref name="key"/> in the trie with root hash <paramref name="root"/> into the transient
     /// resource, see <see cref="NativePatriciaBulkSet.WarmUp"/>, unless the bundle is being torn down.
     /// </summary>
-    internal void WarmUpNative(INativeNodeStore store, NativeTrieNodeLog log, Hash256? address, Hash256 root, in ValueHash256 key, bool forDelete = false)
+    internal void WarmUpNative(NativeTrieNodeStore store, NativeTrieNodeLog log, Hash256? address, Hash256 root, in ValueHash256 key, bool forDelete = false)
     {
         if (!TryLeaseReadOnlyBundle()) return;
         TransientResource? transientResource = TryLeaseTransientResource();
         try
         {
             if (transientResource is not null)
-                NativePatriciaBulkSet.WarmUp(store, log, transientResource.NativeWarmedNodes, address, root.ValueHash256, key, forDelete);
+                NativePatriciaBulkSet.WarmUp(store.WarmUpSource, log, transientResource.NativeWarmedNodes, address, root.ValueHash256, key, forDelete);
         }
         finally
         {
             transientResource?.ReleaseLease();
             ReleaseReadOnlyBundleLease();
         }
+    }
+
+    internal INativeNodeStore CreateNativeWarmUpSource(Hash256? address) => new NativeWarmUpSource(_readOnlySnapshotBundle, address);
+
+    // The traversal holds a read-only lease, so owner disposal must not reject its later persistence callbacks.
+    private sealed class NativeWarmUpSource(ReadOnlySnapshotBundle readOnly, Hash256? address) : INativeNodeStore
+    {
+        public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) =>
+            address is null
+                ? readOnly.TryLoadStateRlp(path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver)
+                : readOnly.TryLoadStorageRlp(address, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
     }
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
@@ -263,13 +269,8 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    private bool TryGetNode(ulong root, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
-    {
-        node = null;
-        return _nativeTrieNodeLog is { } native
-            ? native.TryGetNode(root, path, out node)
-            : _trieNodeLog is { } log && log.TryGetNode(root, path, out node);
-    }
+    private bool TryGetNode(ulong root, in TreePath path, [NotNullWhen(true)] out TrieNode? node) =>
+        NativeTrieNodeLog.TryGetNode(root, path, out node);
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
@@ -370,94 +371,11 @@ public sealed class SnapshotBundle : IDisposable
         _changedStorageRoots[address] = pointer;
     }
 
-    /// <summary>Makes the final state trie readable from this bundle.</summary>
-    internal void PublishLoggedStateRoot(in TrieRoot root)
-    {
-        GuardDispose();
-        _currentPooledContent.StateRootPointer = root.Pointer;
-        _currentPooledContent.HasStateRoot = root.Pointer != 0 || root.Hash == ValueKeccak.EmptyTreeHash;
-    }
-
-    /// <summary>Makes a changed storage trie readable from this bundle, including a change to empty.</summary>
-    internal void PublishLoggedStorageRoot(Hash256 address, in TrieRoot root)
-    {
-        GuardDispose();
-        Debug.Assert(root.Pointer != 0 || root.Hash == ValueKeccak.EmptyTreeHash);
-        _changedStorageRoots[address] = root.Pointer;
-    }
-
-    /// <summary>Loads the record of a trie node the trie node log does not hold, for a bulk set or point read.</summary>
-    /// <remarks>
-    /// Tries the nodes warmed for this block, then persistence, whose node is verified against
-    /// <paramref name="hash"/> and added to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
-    /// are in the log, which their retains keep readable, so this source skips them and only fetches persisted nodes.
-    /// </remarks>
-    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    internal bool TryLoadTrieNodeRecord(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
-        TryLoadTrieNodeRecord(address, 0, path, hash, out record);
-
-    /// <inheritdoc cref="TryLoadTrieNodeRecord(Hash256, in TreePath, in ValueHash256, out NodeRecordRef)"/>
-    internal bool TryLoadTrieNodeRecord(Hash256? address, ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
-    {
-        GuardDispose();
-
-        WarmedNodes warmed = _transientResource.WarmedNodes;
-        return warmed.TryGet(pointer, hash, out record)
-            || warmed.TryGet(address, path, hash, out record)
-            || TryInsertPersistedRecord(warmed, address, path, hash, out record);
-    }
-
-    /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node log does not hold, for this block's bulk sets.</summary>
-    /// <remarks>
-    /// Reads only the warmed nodes and persistence, never this bundle's changes or snapshots, which the owner
-    /// recycles while a warm-up runs. The transient resource holding the warmed nodes is leased for the walk, so it cannot be recycled
-    /// until the walk ends. Does nothing once the bundle is being torn down.
-    /// </remarks>
-    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    /// <param name="root">The trie's root before the block, as <see cref="LogBulkSet.ResolveRoot"/> returns it.</param>
-    /// <param name="forDelete">Also warms the sibling needed when deleting the leaf collapses its branch.</param>
-    internal void WarmUp(Hash256? address, TrieRoot root, in ValueHash256 key, bool forDelete = false)
-    {
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null) return;
-
-        try
-        {
-            LogBulkSet.WarmUp(_trieNodeLog!, transientResource.WarmedNodes, new WarmUpRlpSource(this, address).Load, address, root, key, forDelete);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    /// <summary>Reads the node at <paramref name="path"/> from persistence into <paramref name="warmed"/>, if it hashes to <paramref name="hash"/>.</summary>
-    private bool TryInsertPersistedRecord(WarmedNodes warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
-        TryInsertPersistedRecord(_readOnlySnapshotBundle, warmed, address, path, hash, out record);
-
-    private static bool TryInsertPersistedRecord(ReadOnlySnapshotBundle readOnly, WarmedNodes warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
-    {
-        record = default;
-        bool inserted = false;
-        PersistedNodeInsert insert = new(warmed, address, in path, in hash, ref record, ref inserted);
-        if (address is null) readOnly.TryLoadStateRlp(path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
-        else readOnly.TryLoadStorageRlp(address, path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
-        return inserted;
-    }
-
-    /// <summary>Captures a source for private trie updates that may outlive this bundle.</summary>
-    internal BackgroundTrieSource CreateBackgroundTrieSource(Hash256 address)
-    {
-        GuardDispose();
-        return new BackgroundTrieSource(_readOnlySnapshotBundle, _trieNodeLog!, _snapshots,
-            _earlyWarmedNodes ??= new WarmedNodes(1024), address);
-    }
-
     /// <summary>Captures native storage for an idle update that may outlive this bundle or its transient resource.</summary>
     internal BackgroundNativeTrieSource CreateBackgroundNativeTrieSource(Hash256 address)
     {
         GuardDispose();
-        return new BackgroundNativeTrieSource(_readOnlySnapshotBundle, _nativeTrieNodeLog!, _snapshots, address);
+        return new BackgroundNativeTrieSource(_readOnlySnapshotBundle, NativeTrieNodeLog, _snapshots, address);
     }
 
     internal sealed class BackgroundNativeTrieSource : INativeNodeStore, IDisposable
@@ -504,96 +422,6 @@ public sealed class SnapshotBundle : IDisposable
             _snapshotPin?.Dispose();
             _pin.Dispose();
             _readOnly.Dispose();
-        }
-    }
-
-    /// <summary>A leased immutable source with private warmed storage, independent of transient-resource retirement.</summary>
-    internal sealed class BackgroundTrieSource : INodeRecordSource, IDisposable
-    {
-        private readonly ReadOnlySnapshotBundle _readOnly;
-        private readonly Hash256 _address;
-        private readonly WarmedNodes _warmed;
-        private readonly TrieNodeLogRetain _retain;
-        private readonly TrieNodeLogRetain? _snapshotRetain;
-
-        internal BackgroundTrieSource(ReadOnlySnapshotBundle readOnly, TrieNodeLog log, SnapshotPooledList snapshots, WarmedNodes warmed, Hash256 address)
-        {
-            _warmed = warmed;
-            _readOnly = readOnly;
-            _address = address;
-            readOnly.AcquireLease();
-            try
-            {
-                _retain = log.RetainActive();
-                // The read-only lease protects its snapshots; the oldest local retain protects later local roots too.
-                foreach (Snapshot snapshot in snapshots)
-                {
-                    if (snapshot.LogRetain is not { } retain) continue;
-                    _snapshotRetain = retain.Copy();
-                    break;
-                }
-            }
-            catch
-            {
-                readOnly.Dispose();
-                _retain?.Dispose();
-                throw;
-            }
-        }
-
-        public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
-            _warmed.TryGet(pointer, hash, out record) || TryLoad(path, hash, out record);
-
-        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
-        {
-            if (_warmed.TryGet(_address, path, hash, out record)) return true;
-            return TryInsertPersistedRecord(_readOnly, _warmed, _address, path, hash, out record);
-        }
-
-        public void Dispose()
-        {
-            _snapshotRetain?.Dispose();
-            _retain.Dispose();
-            _readOnly.Dispose();
-        }
-    }
-
-    /// <summary>Supplies owned RLP for a warm-up without publishing unlinked ancestor records during descent.</summary>
-    private sealed class WarmUpRlpSource(SnapshotBundle bundle, Hash256? address)
-    {
-        public byte[]? Load(in TreePath path, in ValueHash256 hash)
-        {
-            Hash256 expectedHash = new(hash);
-            return address is null
-                ? bundle._readOnlySnapshotBundle.TryLoadStateRlp(path, expectedHash, ReadFlags.None)
-                : bundle._readOnlySnapshotBundle.TryLoadStorageRlp(address, path, expectedHash, ReadFlags.None);
-        }
-    }
-
-    /// <summary>Inserts the persisted RLP handed to it into the warmed nodes, if it is the requested node.</summary>
-    private readonly ref struct PersistedNodeInsert
-    {
-        public static readonly ReadOnlySpanAction<byte, PersistedNodeInsert> Insert =
-            static (rlp, insert) => insert._inserted = insert._warmed.TryInsert(insert._address, insert._path, insert._hash, rlp, out insert._record);
-
-        private readonly WarmedNodes _warmed;
-        private readonly Hash256? _address;
-        private readonly ref readonly TreePath _path;
-        private readonly ref readonly ValueHash256 _hash;
-        private readonly ref NodeRecordRef _record;
-        private readonly ref bool _inserted;
-
-        /// <param name="record">Set to the inserted record.</param>
-        /// <param name="inserted">Set to whether the RLP was verified and inserted.</param>
-        public PersistedNodeInsert(WarmedNodes warmed, Hash256? address, ref readonly TreePath path, ref readonly ValueHash256 hash,
-            ref NodeRecordRef record, ref bool inserted)
-        {
-            _warmed = warmed;
-            _address = address;
-            _path = ref path;
-            _hash = ref hash;
-            _record = ref record;
-            _inserted = ref inserted;
         }
     }
 
@@ -709,8 +537,8 @@ public sealed class SnapshotBundle : IDisposable
     internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
     /// <summary>Turns the changes written since the previous snapshot into a new snapshot and starts collecting the next one.</summary>
-    /// <param name="logRetain">The retain covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
-    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, TrieNodeLogRetain? logRetain, bool returnSnapshot = true, NativeTrieNodeLogPin? logPin = null)
+    /// <param name="logPin">The pin covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
+    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true, NativeTrieNodeLogPin? logPin = null)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
@@ -721,7 +549,6 @@ public sealed class SnapshotBundle : IDisposable
             resourcePool: _resourcePool,
             usage: _usage)
         {
-            LogRetain = logRetain,
             LogPin = logPin
         };
 
@@ -775,11 +602,7 @@ public sealed class SnapshotBundle : IDisposable
     /// </remarks>
     private static void DropReadAccounts(SnapshotContent content) => content.ReadAccounts.NoResizeClear();
 
-    private void SwapTransientResource()
-    {
-        Volatile.Write(ref _transientResource, _resourcePool.GetCachedResource(_usage));
-        _earlyWarmedNodes = null;
-    }
+    private void SwapTransientResource() => Volatile.Write(ref _transientResource, _resourcePool.GetCachedResource(_usage));
 
     private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);
 

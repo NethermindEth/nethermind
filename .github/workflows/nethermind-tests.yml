@@ -147,6 +147,10 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
+      - name: Build native library
+        if: runner.os != 'Linux'
+        uses: ./.github/actions/build-native
+
       - name: Download test binaries
         if: runner.os == 'Linux'
         uses: ./.github/actions/download-test-artifacts
@@ -305,6 +309,10 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
+      - name: Build native library
+        if: runner.os != 'Linux'
+        uses: ./.github/actions/build-native
+
       - name: Download test binaries
         if: runner.os == 'Linux'
         uses: ./.github/actions/download-test-artifacts
@@ -401,6 +409,10 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
+      - name: Build native library
+        if: runner.os != 'Linux'
+        uses: ./.github/actions/build-native
 
       - name: Download test binaries
         if: runner.os == 'Linux'

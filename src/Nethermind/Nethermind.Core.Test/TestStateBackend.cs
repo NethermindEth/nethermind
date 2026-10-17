@@ -21,8 +21,6 @@ public static class TestStateBackend
 {
     public const string UseTrieEnvironmentVariable = "TEST_USE_TRIE";
 
-    public const string UseNativeBulkSetEnvironmentVariable = "TEST_FLAT_NATIVE";
-
     /// <summary>
     /// Whether fixtures that do not pin a backend run under flat.
     /// </summary>
@@ -31,11 +29,6 @@ public static class TestStateBackend
     /// <c>--triedb</c> option before it collects fixtures.
     /// </remarks>
     public static bool UseFlatDb => Environment.GetEnvironmentVariable(UseTrieEnvironmentVariable) != "1";
-
-    /// <summary>
-    /// Whether flat runs with <see cref="IFlatDbConfig.UseNativeBulkSet"/>, set by <c>TEST_FLAT_NATIVE=1</c>.
-    /// </summary>
-    public static bool UseNativeBulkSet => Environment.GetEnvironmentVariable(UseNativeBulkSetEnvironmentVariable) == "1";
 
     /// <summary>
     /// Whether <paramref name="configs"/> already pins the state backend, in which case the suite-wide
@@ -63,7 +56,6 @@ public static class TestStateBackend
         {
             IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
             flatDbConfig.Enabled = UseFlatDb;
-            flatDbConfig.UseNativeBulkSet = UseNativeBulkSet;
         }
 
         return configProvider;

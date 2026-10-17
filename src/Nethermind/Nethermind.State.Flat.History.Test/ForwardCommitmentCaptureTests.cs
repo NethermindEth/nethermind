@@ -12,7 +12,7 @@ using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.Test;
 using Nethermind.Core.Buffers;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -29,7 +29,7 @@ public class ForwardCommitmentCaptureTests
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private ResourcePool _resourcePool = null!;
-    private TrieNodeLog _log = null!;
+    private NativeTrieNodeLog _log = null!;
     private FlatTestContainer _tier = null!;
     private SnapshotRepository _repository = null!;
     private HistoryWriter _writer = null!;
@@ -78,6 +78,7 @@ public class ForwardCommitmentCaptureTests
         _captures.Clear();
         _reclaimers.Clear();
         _tier.Dispose();
+        _log.Dispose();
         _db.Dispose();
         _historyColumns.Dispose();
     }

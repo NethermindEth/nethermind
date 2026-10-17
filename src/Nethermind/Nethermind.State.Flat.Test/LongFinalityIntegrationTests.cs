@@ -18,9 +18,10 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
+
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -34,7 +35,7 @@ public class LongFinalityIntegrationTests
     private IFlatDbConfig _config = null!;
     private ArenaManager _memArena = null!;
     private BlobArenaManager _helperBlobs = null!;
-    private TrieNodeLog _log = null!;
+    private NativeTrieNodeLog _log = null!;
 
     [SetUp]
     public void SetUp()

@@ -11,7 +11,6 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Collections;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Native;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -85,12 +84,8 @@ public class Snapshot : RefCountingDisposable
 
     public bool IsSorted => _isSorted;
 
-    /// <summary>The retain on the trie node log generation that was active when this snapshot's first block started writing; released with the snapshot.</summary>
-    /// <remarks>Protects this generation and later writes. Traversals lease the log to protect any inherited older records they encounter.</remarks>
-    internal TrieNodeLogRetain? LogRetain { get; init; }
     /// <summary>
-    /// With the native bulk set, the pin on the trie node log generation this snapshot's first block started writing
-    /// to, released with the snapshot.
+    /// The pin on the trie node log generation this snapshot's first block started writing to, released with the snapshot.
     /// </summary>
     /// <remarks>
     /// While held, native bulk sets read every trie node of this snapshot from the log, so they never look nodes up in
@@ -143,15 +138,10 @@ public class Snapshot : RefCountingDisposable
             foreach ((TreePath path, ulong pointer) in pin.Log.EnumerateNodes(root, pin.WriteBoundary))
                 yield return (path, pointer);
         }
-        else if (LogRetain is { } retain)
-        {
-            foreach ((TreePath path, ulong pointer, _) in retain.Log.EnumerateNodes(root, retain.WriteBoundary))
-                yield return (path, pointer);
-        }
     }
 
     /// <summary>Protects buffered snapshot-write pointers until their last RLP read.</summary>
-    internal IDisposable? BeginNodeReadScope() => LogPin is { } pin ? pin.Copy() : LogRetain?.Log.BeginReadScope();
+    internal IDisposable? BeginNodeReadScope() => LogPin?.Copy();
 
     /// <summary>The mutable content; only valid for snapshots created for commit (not compacted ones).</summary>
     public SnapshotContent Content => _mutable!;
@@ -219,16 +209,12 @@ public class Snapshot : RefCountingDisposable
     private bool TryGetNode(ulong root, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
-        return LogPin is { } pin
-            ? pin.Log.TryGetNode(root, path, out node)
-            : LogRetain is { } retain && retain.Log.TryGetNode(root, path, out node);
+        return LogPin is { } pin && pin.Log.TryGetNode(root, path, out node);
     }
 
     private bool TryGetNodePointer(ulong root, in TreePath path, out ulong pointer)
     {
         pointer = 0;
-        if (LogPin is null) return LogRetain is { } retain && retain.Log.TryGetNodePointer(root, path, out pointer);
-
         foreach ((TreePath nodePath, ulong nodePointer) in EnumerateNodes(root))
         {
             if (nodePath == path)
@@ -241,15 +227,12 @@ public class Snapshot : RefCountingDisposable
     }
 
     /// <summary>The RLP of a retained write pointer, borrowed until the snapshot's read scope is released.</summary>
-    public ReadOnlySpan<byte> GetRlp(ulong pointer) => LogPin is { } pin
-        ? pin.Log.GetNodeRlp(pointer, out _)
-        : LogRetain!.Log.GetRecord(pointer).Rlp;
+    public ReadOnlySpan<byte> GetRlp(ulong pointer) => LogPin!.Log.GetNodeRlp(pointer, out _);
 
     protected override void CleanUp()
     {
         if (_isSorted) _resourcePool.ReturnSortedSnapshotContent(_usage, _sorted!);
         else _resourcePool.ReturnSnapshotContent(_usage, _mutable!);
-        LogRetain?.Dispose();
         LogPin?.Dispose();
     }
 

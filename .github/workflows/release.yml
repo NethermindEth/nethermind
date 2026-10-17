@@ -14,7 +14,11 @@ env:
   PUB_DIR: pub
 
 jobs:
+  native:
+    uses: ./.github/workflows/build-native-libraries.yml
+
   build:
+    needs: native
     name: Build Nethermind packages
     runs-on: ubuntu-latest
     outputs:
@@ -24,6 +28,13 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Download native libraries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: patricia-*
+          path: src/Nethermind/Nethermind.Trie.Native/rust/target/native
+          merge-multiple: true
 
       - name: Detect version
         id: version

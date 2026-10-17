@@ -15,9 +15,10 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
+
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -81,11 +82,11 @@ public class FlatDbManagerPersistedTests
 
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
-        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
-        TrieNodeLogRetain logRetain = log.RetainActive();
+        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
+        NativeTrieNodeLogPin logRetain = log.PinActiveGeneration();
         SnapshotContent content = new();
         content.SetStateNodeRlp(log, path, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
 
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;
@@ -98,7 +99,7 @@ public class FlatDbManagerPersistedTests
         persistenceManager.LeaseReader().Returns(reader);
         persistenceManager.GetCurrentPersistedStateId().Returns(s0);
 
-        using TrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
+        using NativeTrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
             _processExitSource,
@@ -132,7 +133,7 @@ public class FlatDbManagerPersistedTests
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
         tier.ConvertToPersistedBase(new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
-        using TrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
+        using NativeTrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
         FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
             _processExitSource,
@@ -179,7 +180,7 @@ public class FlatDbManagerPersistedTests
             if (call.Arg<StateId>().BlockNumber == blockedBlock) lastCompactionStarted.TrySetResult();
             return false;
         });
-        using TrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
+        using NativeTrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
             managerLog, compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
@@ -236,7 +237,7 @@ public class FlatDbManagerPersistedTests
         StateId next = new(2, Keccak.Compute("2"));
         ISnapshotCompactor compactor = Substitute.For<ISnapshotCompactor>();
         compactor.DoCompactSnapshot(failing).Returns(_ => throw new IOException("compaction failed"));
-        using TrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
+        using NativeTrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
             managerLog, compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
@@ -278,7 +279,7 @@ public class FlatDbManagerPersistedTests
         await using FlatDbManager manager = new(
             tier.ResourcePool,
             _processExitSource,
-            tier.Resolve<TrieNodeLog>(),
+            tier.Resolve<NativeTrieNodeLog>(),
             tier.Resolve<ISnapshotCompactor>(),
             tier.Repository,
             persistenceManager,

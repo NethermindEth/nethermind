@@ -13,9 +13,10 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
+
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -23,7 +24,7 @@ namespace Nethermind.State.Flat.Test;
 public class ReadOnlySnapshotBundlePersistedTests
 {
     private ResourcePool _pool = null!;
-    private TrieNodeLog _log = null!;
+    private NativeTrieNodeLog _log = null!;
     private ArenaManager _memArena = null!;
     private string _memArenaDir = null!;
     private BlobArenaManager _blobs = null!;
@@ -59,10 +60,10 @@ public class ReadOnlySnapshotBundlePersistedTests
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
 
-        TrieNodeLogRetain logRetain = _log.RetainActive();
+        NativeTrieNodeLogPin logRetain = _log.PinActiveGeneration();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_log, path, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -92,10 +93,10 @@ public class ReadOnlySnapshotBundlePersistedTests
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 6);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
-        TrieNodeLogRetain logRetain = _log.RetainActive();
+        NativeTrieNodeLogPin logRetain = _log.PinActiveGeneration();
         SnapshotContent content = new();
         content.SetStorageNodeRlp(_log, address, path, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -126,10 +127,10 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC0);
         byte[] dbRlp = [0xC1, 0x80, 0x80];
 
-        TrieNodeLogRetain logRetain = _log.RetainActive();
+        NativeTrieNodeLogPin logRetain = _log.PinActiveGeneration();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_log, storedPath, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -192,11 +193,11 @@ public class ReadOnlySnapshotBundlePersistedTests
             else batch.SetStateTrieNode(dbPath, dbRlp);
         }
 
-        TrieNodeLogRetain logRetain = _log.RetainActive();
+        NativeTrieNodeLogPin logRetain = _log.PinActiveGeneration();
         SnapshotContent content = new();
         if (storage) content.SetStorageNodeRlp(_log, address, persistedPath, persistedRlp);
         else content.SetStateNodeRlp(_log, persistedPath, persistedRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
         PersistedSnapshotList list = new(1) { CreatePersistedSnapshot(s0, s1, PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs)) };
 
         using ReadOnlySnapshotBundle bundle = new(

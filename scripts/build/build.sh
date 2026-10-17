@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-set -e
+set -euo pipefail
 
 build_config=release
 output_path=/nethermind/output
@@ -10,6 +10,19 @@ output_path=/nethermind/output
 cd src/Nethermind/Nethermind.Runner
 
 echo "Building Nethermind"
+
+# These artifacts are built on their native platforms before entering the package container.
+for rid in "linux-arm64" "linux-x64" "osx-arm64" "osx-x64" "win-arm64" "win-x64"; do
+  case "$rid" in
+    linux-*) library=libnethermind_patricia.so ;;
+    osx-*) library=libnethermind_patricia.dylib ;;
+    win-*) library=nethermind_patricia.dll ;;
+  esac
+  test -s "../Nethermind.Trie.Native/rust/target/native/$rid/$library" || {
+    echo "Missing native Patricia artifact for $rid; build it with scripts/build/native.sh on the matching platform." >&2
+    exit 1
+  }
+done
 
 dotnet restore --locked-mode
 

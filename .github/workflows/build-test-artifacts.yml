@@ -38,6 +38,10 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
+      - name: Check native publish asset selection
+        if: runner.os == 'Linux'
+        run: python3 scripts/build/test-native-publish.py
+
       - name: Redirect build output to the large scratch disk (Linux)
         # Build on the ~70 GB /mnt; the multi-RID output overflows the ~21 GB root disk.
         if: runner.os == 'Linux'
@@ -46,8 +50,15 @@ jobs:
           sudo chown "$(id -u):$(id -g)" /mnt/nm-artifacts
           ln -s /mnt/nm-artifacts src/Nethermind/artifacts
 
+      - name: Build native library
+        id: native
+        uses: ./.github/actions/build-native
+
+      - name: Verify native RID
+        run: test '${{ steps.native.outputs.rid }}' = '${{ matrix.rid }}'
+
       - name: Free up disk space (macOS)
-        # No /mnt on macOS; reclaim disk for the build (a framework-dependent build needs no Xcode).
+        # Native compilation is complete; the remaining framework-dependent build needs no Xcode.
         if: runner.os == 'macOS'
         run: |
           sudo rm -rf /Applications/Xcode_*.app || true

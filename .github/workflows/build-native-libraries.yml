@@ -1,0 +1,38 @@
+name: Build native libraries
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: Build native library (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64, os: ubuntu-latest }
+          - { rid: linux-arm64, os: ubuntu-24.04-arm }
+          - { rid: osx-x64, os: macos-15-intel }
+          - { rid: osx-arm64, os: macos-latest }
+          - { rid: win-x64, os: windows-latest }
+          - { rid: win-arm64, os: windows-11-arm }
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build native library
+        id: native
+        uses: ./.github/actions/build-native
+
+      - name: Verify native RID
+        shell: bash
+        run: test '${{ steps.native.outputs.rid }}' = '${{ matrix.rid }}'
+
+      - name: Upload native library
+        uses: actions/upload-artifact@v7
+        with:
+          name: patricia-${{ matrix.rid }}
+          path: src/Nethermind/Nethermind.Trie.Native/rust/target/native/
+          retention-days: 1
+          if-no-files-found: error

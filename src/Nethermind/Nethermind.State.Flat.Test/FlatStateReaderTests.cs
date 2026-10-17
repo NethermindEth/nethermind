@@ -13,9 +13,10 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -82,7 +83,7 @@ public class FlatStateReaderTests
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, log);
         trieReader.AddRootsTo(snapshot, log);
@@ -178,7 +179,7 @@ public class FlatStateReaderTests
                 nodeStorage.Get(addressHash, TreePath.Empty, storageTree.RootHash)!);
         }
 
-        public void AddRootsTo(Snapshot snapshot, TrieNodeLog log)
+        public void AddRootsTo(Snapshot snapshot, NativeTrieNodeLog log)
         {
             snapshot.Content.SetStateNodeRlp(log, TreePath.Empty, stateRootRlp);
             snapshot.Content.SetStorageNodeRlp(log, addressHash, TreePath.Empty, storageRootRlp);

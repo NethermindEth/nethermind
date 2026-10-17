@@ -13,9 +13,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -31,15 +29,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
-    // Taken before the block's first trie write and handed to its snapshot at commit, so every node the block writes stays readable.
-    private TrieNodeLogRetain? _logRetain;
-
     private readonly Hash256 _initialStateRoot;
-    // The state root warm-ups walk from; default in a trie-less scope.
-    private readonly TrieRoot _initialTrieRoot;
     // Null in a trie-less scope.
-    private readonly LoggedTrie? _stateTrie;
-    // Set with UseNativeBulkSet, which then maintains the state trie instead of _stateTrie.
     private readonly NativeTrieNodeStore? _nativeStateStore;
     private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     // With _nativeStateStore, the pin of the block being processed, handed to its snapshot on commit.
@@ -81,7 +72,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
     internal bool Trieless => _trieless;
 
-    // Provided whenever UseNativeBulkSet is set.
     internal NativeTrieNodeLog NativeTrieNodeLog => _nativeTrieNodeLog!;
 
     public FlatWorldStateScope(
@@ -114,20 +104,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
-        if (!_trieless && !configuration.UseNativeBulkSet)
-        {
-            TrieNodeLog log = snapshotBundle.TrieNodeLog!;
-            _logRetain = log.RetainActive();
-            _initialTrieRoot = LogBulkSet.ResolveRoot(log, null, _initialStateRoot.ValueHash256);
-            _stateTrie = new LoggedTrie(snapshotBundle, log, null, _initialTrieRoot);
-        }
-        if (configuration.UseNativeBulkSet && !_trieless)
+        if (!_trieless)
         {
             _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null, NativeTrieNodeLog);
             _logPin = NativeTrieNodeLog.PinActiveGeneration();
         }
 
-        if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
+        if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless
             && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
@@ -167,7 +150,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         ReleaseStorageTrees();
-        _logRetain?.Dispose();
         _logPin?.Dispose();
         _nativeStateStore?.Dispose();
         _warmer.OnExitScope();
@@ -237,7 +219,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.Decrement(ref _outstandingWarmups) == 0) Volatile.Read(ref _warmupsDrained)?.Set();
     }
 
-    public Hash256 RootHash => _nativeStateStore is not null ? _nativeStateRoot : _stateTrie?.RootHash ?? _initialStateRoot;
+    public Hash256 RootHash => _nativeStateRoot;
 
     /// <remarks>The root is current after every write batch.</remarks>
     public void UpdateRootHash() { }
@@ -254,18 +236,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Promotion only: a read rewrites nothing at commit, so its trie path needs no warming.
         if (!isInCurrentSnapshot) _snapshotBundle.PromoteAccount(address, account);
-
-        // A trie-less (history-backed) scope has no trie to verify against — the reader throws on trie-node access,
-        // and a historical value verified against the current trie would be wrong anyway.
-        if (_configuration.VerifyWithTrie && !_trieless)
-        {
-            byte[]? accountRlp = _stateTrie!.TryGet(address.ToAccountPath);
-            Account? accTrie = accountRlp is null ? null : AccountDecoder.Instance.Decode(accountRlp);
-            if (accTrie != account)
-            {
-                throw new TrieException($"Incorrect account {address}, account hash {address.ToAccountPath}, trie: {accTrie} vs flat: {account}");
-            }
-        }
 
         return account;
     }
@@ -453,8 +423,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
-                if (_nativeStateStore is not null) _snapshotBundle.WarmUpNative(_nativeStateStore, NativeTrieNodeLog, null, _initialStateRoot, address.ToAccountPath);
-                else _snapshotBundle.WarmUp(null, _initialTrieRoot, address.ToAccountPath);
+                _snapshotBundle.WarmUpNative(_nativeStateStore!, NativeTrieNodeLog, null, _initialStateRoot, address.ToAccountPath);
 
                 return true;
             }
@@ -571,8 +540,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_trieless)
         {
             CommitStorageTrees();
-            if (_nativeStateStore is not null) _nativeStateStore.Publish(_nativeStateRoot);
-            else _stateTrie!.Publish();
+            _nativeStateStore!.Publish(_nativeStateRoot);
         }
 
         ReleaseStorageTrees();
@@ -580,9 +548,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _logRetain, shouldAddSnapshot, _logPin);
-        _logRetain = _trieless || _nativeStateStore is not null ? null : _snapshotBundle.TrieNodeLog!.RetainActive();
-        _logPin = _nativeStateStore is null ? null : NativeTrieNodeLog.PinActiveGeneration();
+        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot, _logPin);
+        _logPin = _trieless ? null : NativeTrieNodeLog.PinActiveGeneration();
 
         if (shouldAddSnapshot)
         {
@@ -640,7 +607,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             return;
         }
 
-        // Each address writes its own node dictionary in the bundle, so the trees commit independently.
+        // Each address publishes its own root in the bundle, so the trees commit independently.
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         ParallelUnbalancedWork.For(0, dirty.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
             dirty, static (i, trees) =>
@@ -671,10 +638,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // This may not get called by the storage write batch as the worldstate does not try to update storage
                 // at all if the end account is null. This is not a problem for trie, but is a problem for flat.
-                // Resolve the storage tree before deleting the account from the flat snapshot: creating it reads
-                // the account, and with VerifyWithTrie that read is compared against the trie, which only applies
-                // this delete on Dispose. Reading after the delete throws for any account the trie still holds,
-                // e.g. the EIP-161 clearing of a pre-existing empty account.
                 FlatStorageTree storage = scope.CreateStorageTreeImpl(key);
                 scope._snapshotBundle.SetAccount(key, account);
                 storage.ClearStorage();
@@ -725,12 +688,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
-                    if (scope._nativeStateStore is not null) scope.SetAccountsNatively(_dirtyAccounts);
-                    else
-                    {
-                        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = StateTree.CreateAccountEntries(_dirtyAccounts);
-                        scope._stateTrie!.BulkSet(entries, canParallelize: true);
-                    }
+                    scope.SetAccountsNatively(_dirtyAccounts);
                 }
             }
             finally

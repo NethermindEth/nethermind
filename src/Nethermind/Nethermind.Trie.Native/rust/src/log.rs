@@ -145,6 +145,24 @@ impl TrieNodeLog {
         )
     }
 
+    /// A log with small generations for record-import fixtures.
+    pub(crate) fn for_fixtures(generation_bytes: usize, compressed_max_memory: u64) -> Box<TrieNodeLog> {
+        TrieNodeLog::create(
+            generation_bytes.max(MIN_GENERATION_BYTES),
+            compressed_max_memory,
+            false,
+            RootTable::new(STATE_ROOT_SLOTS),
+            RootTable::new(STATE_ROOT_SLOTS),
+        )
+    }
+
+    pub(crate) fn fixture_generation_live(&self, pointer: LogPointer) -> bool {
+        let id = pointer >> OFFSET_BITS;
+        let state = self.state.lock().unwrap();
+        id >= state.oldest_allocated && id <= self.active.load(Ordering::Acquire)
+            && !self.generation(id).base.load(Ordering::Acquire).is_null()
+    }
+
     /// A log of the smallest generations, which keeps nothing compacted.
     #[cfg(test)]
     pub fn minimal() -> Box<TrieNodeLog> {

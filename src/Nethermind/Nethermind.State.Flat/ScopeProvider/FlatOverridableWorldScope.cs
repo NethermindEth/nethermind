@@ -10,7 +10,6 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Native;
 using NonBlocking;
 
@@ -27,16 +26,14 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IResourcePool _resourcePool;
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
-    private readonly TrieNodeLog? _trieNodeLog;
-    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
+    private readonly NativeTrieNodeLog _nativeTrieNodeLog;
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
-        Lazy<NativeTrieNodeLog> nativeTrieNodeLog,
-        Lazy<TrieNodeLog> trieNodeLog,
+        NativeTrieNodeLog nativeTrieNodeLog,
         IResourcePool resourcePool,
         IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
@@ -45,8 +42,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _codeDbOverlay = new ReadOnlyDb(codeDb, true);
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
-        _trieNodeLog = configuration.UseNativeBulkSet ? null : trieNodeLog.Value;
-        _nativeTrieNodeLog = configuration.UseNativeBulkSet ? nativeTrieNodeLog.Value : null;
+        _nativeTrieNodeLog = nativeTrieNodeLog;
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
@@ -117,12 +113,11 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         // snapshots' negative filter.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
-            _trieNodeLog,
+            _nativeTrieNodeLog,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             snapshots,
-            filterInMemorySlotReads: true,
-            nativeTrieNodeLog: _nativeTrieNodeLog
+            filterInMemorySlotReads: true
         );
     }
 
@@ -139,7 +134,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private class OverridableFlatScopeProvider(
         FlatOverridableWorldScope flatOverrideScope,
         IFlatDbConfig configuration,
-        NativeTrieNodeLog? nativeTrieNodeLog,
+        NativeTrieNodeLog nativeTrieNodeLog,
         ITrieWarmer trieWarmer,
         IWorldStateScopeProvider.ICodeDb codeDb,
         IStateHeaderProvider stateHeaderProvider,

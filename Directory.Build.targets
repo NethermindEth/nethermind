@@ -1,5 +1,20 @@
 <Project>
 
+  <!-- The SDK removes RuntimeIdentifier from RID-agnostic project references. Preserve the
+       publish RID separately so transitive native content cannot fall back to the build host. -->
+  <PropertyGroup>
+    <NativePatriciaRuntimeIdentifier Condition="'$(NativePatriciaRuntimeIdentifier)' == ''">$(RuntimeIdentifier)</NativePatriciaRuntimeIdentifier>
+  </PropertyGroup>
+
+  <Target Name="PreserveNativePatriciaRuntimeIdentifier" AfterTargets="PrepareProjectReferences"
+          Condition="'$(NativePatriciaRuntimeIdentifier)' != ''">
+    <ItemGroup>
+      <_MSBuildProjectReferenceExistent>
+        <SetConfiguration>%(_MSBuildProjectReferenceExistent.SetConfiguration);NativePatriciaRuntimeIdentifier=$(NativePatriciaRuntimeIdentifier)</SetConfiguration>
+      </_MSBuildProjectReferenceExistent>
+    </ItemGroup>
+  </Target>
+
   <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
     <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
   </PropertyGroup>

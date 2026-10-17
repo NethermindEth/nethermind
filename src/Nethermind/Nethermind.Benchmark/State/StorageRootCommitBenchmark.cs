@@ -12,7 +12,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
-using Nethermind.Trie.NodeLog;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -46,7 +45,6 @@ public class StorageRootCommitBenchmark
     private FlatDbConfig _config = null!;
     private NativeTrieNodeLog _nativeTrieNodeLog;
     private ResourcePool _resourcePool = null!;
-    private TrieNodeLog _trieNodeLog = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _baseStateId;
     private Address _address = null!;
@@ -57,18 +55,14 @@ public class StorageRootCommitBenchmark
     [Params(1, 8, 100, 1000)]
     public int ChangedSlots { get; set; }
 
-    [Params(false, true)]
-    public bool UseNativeBulkSet { get; set; }
-
     [GlobalSetup]
     public void GlobalSetup()
     {
         FlatWorldStateBenchmarkHarness.RequireTieredCompilationDisabled();
 
-        _config = new FlatDbConfig { UseNativeBulkSet = UseNativeBulkSet };
-        _nativeTrieNodeLog = UseNativeBulkSet ? new NativeTrieNodeLog(0) : null;
+        _config = new FlatDbConfig();
+        _nativeTrieNodeLog = new NativeTrieNodeLog(0);
         _resourcePool = new ResourcePool(_config);
-        _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
         _baseSnapshots = new List<FlatSnapshot>(1);
         _address = DeriveAddress(1);
 
@@ -79,7 +73,7 @@ public class StorageRootCommitBenchmark
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty());
         SnapshotBundle bundle = new(
-            readOnly, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: _nativeTrieNodeLog);
+            readOnly, _nativeTrieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
         using FlatWorldStateScope scope = new(
             currentStateId: initialStateId,
@@ -117,8 +111,7 @@ public class StorageRootCommitBenchmark
     {
         IterationCleanup();
         foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
-        _nativeTrieNodeLog?.Dispose();
-        _trieNodeLog.Dispose();
+        _nativeTrieNodeLog.Dispose();
     }
 
     [IterationSetup]
@@ -135,7 +128,7 @@ public class StorageRootCommitBenchmark
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty());
         SnapshotBundle bundle = new(
-            readOnly, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: _nativeTrieNodeLog);
+            readOnly, _nativeTrieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         _commitTarget = new CapturingCommitTarget();
         _scope = new FlatWorldStateScope(
             currentStateId: _baseStateId,

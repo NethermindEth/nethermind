@@ -16,7 +16,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     ulong CompactSize { get; set; }
 
-    [ConfigItem(Description = "Whether a fresh state sync uses the flat-state DB backend, and whether ImportFromPruningTrieState is honored. A node that already has a patricia-trie state DB keeps using it regardless of this setting; set to false to sync a fresh node on the patricia-trie backend instead.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether a fresh state sync uses the flat-state DB backend, and whether ImportFromPruningTrieState is honored. A node that already has a patricia-trie state DB keeps using it regardless of this setting; set to false to sync a fresh node on the patricia-trie backend instead. Flat DB requires the native libnethermind_patricia library.", DefaultValue = "true")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "What happens after a RocksDB repair of the flat DB. Resync wipes flat columns (headers, bodies, and receipts are kept) and re-enters state sync. Ignore keeps the repaired DB (escape hatch; may diverge). Ignore acknowledges the repair on the first start, so switching to Resync afterwards has no effect; a resync then requires wiping the flat DB directory. Resync refills state only through snap/state sync (Sync.FastSync with peers that serve it); a node that cannot state-sync, e.g. an archive synced from genesis, is left without state for its head, so set Ignore there or plan a resync from scratch. The flatHistory DB is not wiped: with HistoryEnabled and a windowed HistoryRetention (Rolling or SinceBlock), the resync fails to finish when its pivot falls inside the already-captured history window, so wipe the flatHistory directory too.", DefaultValue = "Resync")]
@@ -139,17 +139,14 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Cache flat account and slot reads across heads in the persistence layer, so a new head does not re-read the working set from the database. `false` reads every persistence miss from the database.", DefaultValue = "true")]
     bool EnableCarryForwardCache { get; set; }
 
-    [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
+    [ConfigItem(Description = "Unsupported by the native Flat DB trie backend. Must remain false.", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
     [ConfigItem(Description = "Only hash the storage tries before a block is reported valid, and write their nodes when the block commits, as the state trie already does. `false` writes each storage trie's nodes before the block is reported valid.", DefaultValue = "true")]
     bool DeferStorageTrieCommit { get; set; }
 
-    [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
+    [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution.", DefaultValue = "true")]
     bool ApplyStorageWritesOnIdleThread { get; set; }
-
-    [ConfigItem(Description = "Experimental. Update and hash the state and storage tries with the native bulk set in `libnethermind_patricia`, which must be present. Cannot be combined with VerifyWithTrie.", DefaultValue = "false")]
-    bool UseNativeBulkSet { get; set; }
 
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }

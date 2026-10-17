@@ -28,7 +28,6 @@ using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Native;
 
 namespace Nethermind.Init.Modules;
@@ -53,7 +52,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
-                flatDbConfig.UseNativeBulkSet ? null : ctx.Resolve<TrieNodeLog>(),
+                ctx.Resolve<NativeTrieNodeLog>(),
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
@@ -61,12 +60,16 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
-                nativeTrieNodeLog: flatDbConfig.UseNativeBulkSet ? ctx.Resolve<NativeTrieNodeLog>() : null))
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
-            .AddSingleton<TrieNodeLog, IFlatDbConfig>(c => new TrieNodeLog(c.CompressedTrieNodeLogMemoryBudget, TrieNodeLog.DefaultGenerationBytes))
-            // Only created with UseNativeBulkSet, which needs libnethermind_patricia.
-            .AddSingleton<NativeTrieNodeLog, IFlatDbConfig>(config => new NativeTrieNodeLog(config.CompressedTrieNodeLogMemoryBudget))
+            .AddSingleton<NativeTrieNodeLog, IFlatDbConfig>(config =>
+            {
+                if (config.VerifyWithTrie)
+                    throw new InvalidConfigurationException("FlatDb.VerifyWithTrie is not supported by the native Flat DB trie backend.", -1);
+                if (!NativePatriciaBulkSet.IsAvailable)
+                    throw new InvalidConfigurationException("Flat DB requires libnethermind_patricia, but the native library could not be loaded.", -1);
+                return new NativeTrieNodeLog(config.CompressedTrieNodeLogMemoryBudget);
+            })
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
@@ -191,14 +194,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 $"FlatDb.HistoryRetentionSinceBlock is set to {flatDbConfig.HistoryRetentionSinceBlock} but " +
                 $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}. Set FlatDb.HistoryRetention=SinceBlock " +
                 "to start history there, or unset the block.", -1);
-        }
-
-        if (flatDbConfig.Enabled && flatDbConfig.UseNativeBulkSet)
-        {
-            if (!NativePatriciaBulkSet.IsAvailable)
-                throw new InvalidConfigurationException("FlatDb.UseNativeBulkSet is set but libnethermind_patricia could not be loaded.", -1);
-            if (flatDbConfig.VerifyWithTrie)
-                throw new InvalidConfigurationException("FlatDb.UseNativeBulkSet cannot be combined with FlatDb.VerifyWithTrie, which reads the managed tries.", -1);
         }
 
         if (flatDbConfig.HistoryEnabled)

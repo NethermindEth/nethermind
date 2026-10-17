@@ -27,8 +27,9 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using Bloom = Nethermind.Core.Collections.BloomFilter;
+
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -163,7 +164,7 @@ public class ReadOnlySnapshotBundleTests
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
-        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             FlatTestHelpers.MakeSnapshot(_pool, log, c => c.SetStateNodeRlp(log, path, FlatTestHelpers.LeafRlpA))),
@@ -188,7 +189,7 @@ public class ReadOnlySnapshotBundleTests
     {
         Hash256 address = TestItem.KeccakA;
         TreePath path = TreePath.FromHexString("ab");
-        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             FlatTestHelpers.MakeSnapshot(_pool, log, c => c.SetStorageNodeRlp(log, address, path, FlatTestHelpers.LeafRlpB))),
@@ -261,7 +262,7 @@ public class ReadOnlySnapshotBundleFilterTests
     private IArenaManager Arena => _tier.Resolve<IArenaManager>();
     private BlobArenaManager _blobs = null!;
     private FlatTestContainer _tier = null!;
-    private TrieNodeLog _log = null!;
+    private NativeTrieNodeLog _log = null!;
 
     public enum FilterMode
     {
@@ -629,6 +630,7 @@ public class ReadOnlySnapshotBundleFilterTests
     public void Snapshot_bundle_uses_the_filter_only_when_asked([Values] bool filterInMemorySlotReads)
     {
         Address address = Addresses[0];
+        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
         using LayerStack stack = new();
         stack.AddInMemory(MakeSnapshot(0, c => c.Storages[(address, 1)] = 1));
         stack.AddInMemory(MakeSnapshot(1, c => c.Storages[(address, 2)] = 2));
@@ -637,7 +639,7 @@ public class ReadOnlySnapshotBundleFilterTests
         Assert.That(readOnly.TryLease(), Is.True);
         try
         {
-            using (SnapshotBundle bundle = new(readOnly, null, _pool,
+            using (SnapshotBundle bundle = new(readOnly, log, _pool,
                        ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: filterInMemorySlotReads))
             {
                 bundle.GetSlot(address, 1, bundle.DetermineSelfDestructSnapshotIdx(address), out UInt256? value);
@@ -953,6 +955,7 @@ public class ReadOnlySnapshotBundleFilterTests
             }
         }
 
+        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
         SnapshotBundle[] bundles = new SnapshotBundle[2];
         try
         {
@@ -966,7 +969,7 @@ public class ReadOnlySnapshotBundleFilterTests
                 }
 
                 readOnly.TryLease();
-                bundles[b] = new SnapshotBundle(readOnly, null, _pool,
+                bundles[b] = new SnapshotBundle(readOnly, log, _pool,
                     ResourcePool.Usage.ReadOnlyProcessingEnv, ownList, filterInMemorySlotReads: b == 1);
                 foreach ((Address address, UInt256 index, UInt256 value, bool clear) in ops)
                 {

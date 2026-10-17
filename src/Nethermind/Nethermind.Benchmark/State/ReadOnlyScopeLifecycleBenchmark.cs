@@ -11,7 +11,7 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
 namespace Nethermind.Benchmarks.State;
@@ -25,7 +25,7 @@ public class ReadOnlyScopeLifecycleBenchmark
 {
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
-    private TrieNodeLog _trieNodeLog = null!;
+    private NativeTrieNodeLog _trieNodeLog = null!;
     private NoopTrieWarmer _warmer = null!;
     private Address[] _addresses = null!;
 
@@ -37,7 +37,7 @@ public class ReadOnlyScopeLifecycleBenchmark
     {
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
-        _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
+        _trieNodeLog = new NativeTrieNodeLog(0);
         _warmer = new NoopTrieWarmer();
         _addresses = new Address[16];
         for (int i = 0; i < _addresses.Length; i++) _addresses[i] = DeriveAddress(i + 1);
@@ -58,7 +58,7 @@ public class ReadOnlyScopeLifecycleBenchmark
             new NullCodeDb(),
             new CapturingCommitTarget(),
             _config,
-            null,
+            _trieNodeLog,
             _warmer,
             NullLogManager.Instance,
             isReadOnly: true);

@@ -1,0 +1,50 @@
+name: Build native Patricia library
+description: Build the mandatory native trie library for the runner's OS and architecture.
+
+outputs:
+  rid:
+    description: Runtime identifier of the built library.
+    value: ${{ steps.platform.outputs.rid }}
+
+runs:
+  using: composite
+  steps:
+    - name: Select native platform
+      id: platform
+      shell: bash
+      run: |
+        case "$RUNNER_OS" in
+          Linux) os=linux; target_os=unknown-linux-gnu ;;
+          macOS) os=osx; target_os=apple-darwin ;;
+          Windows) os=win; target_os=pc-windows-msvc ;;
+          *) echo "Unsupported runner OS: $RUNNER_OS" >&2; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH" in
+          X64) arch=x64; target_arch=x86_64 ;;
+          ARM64) arch=arm64; target_arch=aarch64 ;;
+          *) echo "Unsupported runner architecture: $RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        echo "rid=$os-$arch" >> "$GITHUB_OUTPUT"
+        echo "target=$target_arch-$target_os" >> "$GITHUB_OUTPUT"
+
+    - name: Build Linux native library
+      if: runner.os == 'Linux'
+      shell: bash
+      # Match the production Docker image's native libc baseline, not the runner's newer libc.
+      run: |
+        docker run --rm --user "$(id -u):$(id -g)" -e CARGO_HOME=/tmp/cargo \
+          -v "$GITHUB_WORKSPACE:/nethermind" -w /nethermind \
+          rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f \
+          bash scripts/build/native.sh '${{ steps.platform.outputs.rid }}'
+
+    - name: Install Rust toolchain
+      if: runner.os != 'Linux'
+      shell: bash
+      run: rustup toolchain install 1.90.0 --profile minimal --target '${{ steps.platform.outputs.target }}'
+
+    - name: Build macOS or Windows native library
+      if: runner.os != 'Linux'
+      shell: bash
+      env:
+        RUSTUP_TOOLCHAIN: 1.90.0
+      run: bash scripts/build/native.sh '${{ steps.platform.outputs.rid }}'

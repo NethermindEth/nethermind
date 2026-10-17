@@ -211,7 +211,6 @@ public class TestBlockchain : IDisposable
         {
             IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
             flatDbConfig.Enabled = UseFlatDb;
-            flatDbConfig.UseNativeBulkSet = TestStateBackend.UseNativeBulkSet;
         }
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);

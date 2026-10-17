@@ -157,7 +157,7 @@ public class ResourcePool : IResourcePool
         private readonly ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<SortedSnapshotContent> _sortedPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
-        private TransientResource.Size _lastCachedResourceSize = new(1024, 1024);
+        private TransientResource.Size _lastCachedResourceSize = new(1024);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
         private readonly PooledResourceLabel _sortedLabel = new(usage.ToString(), "SortedSnapshotContent");
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");

@@ -19,9 +19,10 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -79,7 +80,7 @@ public class FlatStorageTreeDeleteWarmupTests
         private readonly ResourcePool _resourcePool;
         private readonly RocksDbPersistence _persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance);
         private readonly StateId _baseState;
-        private readonly List<TrieNodeLog> _logs = [];
+        private readonly List<NativeTrieNodeLog> _logs = [];
         private readonly List<Snapshot> _snapshots = [];
 
         public Fixture()
@@ -89,7 +90,7 @@ public class FlatStorageTreeDeleteWarmupTests
                 new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
                 NewLog(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget target = new(_snapshots);
-            using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), target, _config, null, new NoopTrieWarmer(), LimboLogs.Instance);
+            using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), target, _config, bundle.NativeTrieNodeLog, new NoopTrieWarmer(), LimboLogs.Instance);
 
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
             {
@@ -150,7 +151,7 @@ public class FlatStorageTreeDeleteWarmupTests
             SnapshotBundle bundle = new(
                 new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
                 NewLog(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            FlatWorldStateScope scope = new(_baseState, bundle, new NullCodeDb(), new CapturingCommitTarget(_snapshots), _config, null, new InlineTrieWarmer(passDeleteFlag), LimboLogs.Instance);
+            FlatWorldStateScope scope = new(_baseState, bundle, new NullCodeDb(), new CapturingCommitTarget(_snapshots), _config, bundle.NativeTrieNodeLog, new InlineTrieWarmer(passDeleteFlag), LimboLogs.Instance);
             return (scope, reader);
         }
 
@@ -183,9 +184,9 @@ public class FlatStorageTreeDeleteWarmupTests
             foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes) batch.SetStorageTrieNode(kv.Key.Key.Item1, kv.Key.Key.Item2, snapshot.GetRlp(kv.Value));
         }
 
-        private TrieNodeLog NewLog()
+        private NativeTrieNodeLog NewLog()
         {
-            TrieNodeLog log = FlatTestHelpers.NewTestLog();
+            NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
             _logs.Add(log);
             return log;
         }
@@ -194,7 +195,7 @@ public class FlatStorageTreeDeleteWarmupTests
         {
             _persistence.Clear();
             foreach (Snapshot snapshot in _snapshots) snapshot.Dispose();
-            foreach (TrieNodeLog log in _logs) log.Dispose();
+            foreach (NativeTrieNodeLog log in _logs) log.Dispose();
         }
     }
 

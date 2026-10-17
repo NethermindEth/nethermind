@@ -9,7 +9,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Native;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -22,7 +21,7 @@ namespace Nethermind.State.Flat;
 /// <param name="size"></param>
 public record TransientResource(TransientResource.Size size) : IDisposable, IResettable
 {
-    public record Size(long PrewarmedAddressSize, int NodesCacheSize);
+    public record Size(long PrewarmedAddressSize);
 
     // Invariant: the pool return runs exactly once, at refcount zero, so an in-flight trie-warmer
     // lookup can never overlap Reset/re-rent of this resource.
@@ -31,18 +30,9 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     private ResourcePool.Usage _returnUsage;
 
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
-    private WarmedNodes? _warmedNodes;
-    internal WarmedNodes WarmedNodes => Volatile.Read(ref _warmedNodes) ?? CreateWarmedNodes();
-    private int _nodesCacheSize = size.NodesCacheSize;
     private NativeWarmedNodes? _nativeWarmedNodes;
 
     internal NativeWarmedNodes NativeWarmedNodes => Volatile.Read(ref _nativeWarmedNodes) ?? CreateNativeWarmedNodes();
-
-    private WarmedNodes CreateWarmedNodes()
-    {
-        WarmedNodes created = new(_nodesCacheSize);
-        return Interlocked.CompareExchange(ref _warmedNodes, created, null) ?? created;
-    }
 
     private NativeWarmedNodes CreateNativeWarmedNodes()
     {
@@ -85,24 +75,11 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         }
     }
 
-    public Size GetSize() => new(PrewarmedAddresses.Capacity, _nodesCacheSize);
+    public Size GetSize() => new(PrewarmedAddresses.Capacity);
 
     public void Reset()
     {
         _nativeWarmedNodes?.Reset();
-        if (_warmedNodes is { } warmed)
-        {
-            if (warmed.Count > _nodesCacheSize)
-            {
-                _nodesCacheSize = warmed.Count;
-                _warmedNodes = new WarmedNodes(_nodesCacheSize);
-            }
-            else
-            {
-                warmed.Reset();
-            }
-        }
-
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
         {
             long newCapacity = (long)BitOperations.RoundUpToPowerOf2((ulong)PrewarmedAddresses.Count);
@@ -116,7 +93,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         {
             PrewarmedAddresses.Clear();
         }
-
     }
 
     public bool ShouldPrewarm(Address address, UInt256? slot) => ShouldPrewarm(address.Bytes, slot);

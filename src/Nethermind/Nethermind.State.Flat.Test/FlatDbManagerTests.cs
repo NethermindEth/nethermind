@@ -17,9 +17,10 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
+
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -35,7 +36,7 @@ public class FlatDbManagerTests
     private IFlatDbConfig _config = null!;
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
-    private TrieNodeLog _log = null!;
+    private NativeTrieNodeLog _log = null!;
 
     private const long HistoryBarrier = 100;
     private static readonly Address HistoryAddr = new("0x0000000000000000000000000000000000000abc");

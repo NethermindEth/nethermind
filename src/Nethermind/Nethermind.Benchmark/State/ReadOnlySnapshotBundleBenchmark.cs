@@ -17,7 +17,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
@@ -30,7 +30,7 @@ namespace Nethermind.Benchmarks.State;
 public class ReadOnlySnapshotBundleBenchmark
 {
     private ReadOnlySnapshotBundle _bundle = null!;
-    private TrieNodeLog _trieNodeLog = null!;
+    private NativeTrieNodeLog _trieNodeLog = null!;
 
     // Hit arrays — sampled from actually written data
     private Address[] _hitAccounts = null!;
@@ -66,7 +66,7 @@ public class ReadOnlySnapshotBundleBenchmark
     {
         FlatDbConfig config = new() { CompactionOffset = 0 };
         ResourcePool resourcePool = new(config);
-        _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
+        _trieNodeLog = new NativeTrieNodeLog(0);
         // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it, and the
         // repository itself does not use the arena managers, so the persisted tier can stay unwired.
         SnapshotCompactor compactor = new(
@@ -110,7 +110,7 @@ public class ReadOnlySnapshotBundleBenchmark
                 codeDb: new NullCodeDb(),
                 commitTarget: commitTarget,
                 configuration: config,
-                nativeTrieNodeLog: null,
+                nativeTrieNodeLog: _trieNodeLog,
                 trieCacheWarmer: new NoopTrieWarmer(),
                 logManager: NullLogManager.Instance);
 

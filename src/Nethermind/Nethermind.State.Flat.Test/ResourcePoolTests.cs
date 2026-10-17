@@ -140,13 +140,12 @@ public class ResourcePoolTests
         TransientResource resource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
         Assert.That(resource, Is.Not.Null);
         Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(1024));
-        Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
     }
 
     [Test]
     public void ShouldPrewarm_SecondRequestForTheSameKey_IsDeduplicated([Values] bool includeSlot)
     {
-        using TransientResource resource = new(new TransientResource.Size(1024, 1));
+        using TransientResource resource = new(new TransientResource.Size(1024));
         Address address = new("0x1234567890123456789012345678901234567890");
         UInt256? slot = includeSlot ? (UInt256)1 : null;
 
@@ -168,7 +167,7 @@ public class ResourcePoolTests
     [Test]
     public void Test_ReleaseLease_WithoutPoolCheckout_Throws()
     {
-        using TransientResource resource = new(new TransientResource.Size(1024, 1));
+        using TransientResource resource = new(new TransientResource.Size(1024));
 
         Assert.That(resource.ReleaseLease, Throws.InvalidOperationException);
     }
