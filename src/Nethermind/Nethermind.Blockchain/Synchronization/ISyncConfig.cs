@@ -205,7 +205,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Max distance between best suggested header and available state to assume state is synced.", DefaultValue = "0", HiddenFromDocs = true)]
     ulong HeaderStateDistance { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "128000000", HiddenFromDocs = true)]
     ulong FastHeadersMemoryBudget { get; set; }
 
     [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
@@ -214,9 +214,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Enable double write check during snap sync for debugging.", DefaultValue = "false", HiddenFromDocs = true)]
     bool EnableSnapDoubleWriteCheck { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Estimated size of memory for storing blocks during download.", DefaultValue = "200000000", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Estimated size of memory for storing blocks during download.", DefaultValue = "209715200", HiddenFromDocs = true)]
     long ForwardSyncDownloadBufferMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Estimated max size of blocks in block processing queue before stop downloading.", DefaultValue = "200000000", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Estimated max size of blocks in block processing queue before stop downloading.", DefaultValue = "209715200", HiddenFromDocs = true)]
     long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; }
 }
