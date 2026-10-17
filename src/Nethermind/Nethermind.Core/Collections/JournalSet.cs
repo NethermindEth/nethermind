@@ -24,9 +24,8 @@ namespace Nethermind.Core.Collections
         private readonly List<T> _items = [];
         private readonly OptimizedHashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
 
-        public int TakeSnapshot() => Position;
-
-        private int Position => Count - 1;
+        // The list holds what the set does; its count is one field where the set's is two.
+        public int TakeSnapshot() => _items.Count - 1;
 
         [SkipLocalsInit]
         public void Restore(int snapshot)
