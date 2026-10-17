@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -1273,6 +1274,8 @@ public class HistoryWriterTests
             _accountHistory.RecordChange(512, AccountKey(AddrB), EncodedAccount(new Account(1, 7)), batch);
         }
 
+        // After a restart the flat state pointer is at the pivot while no watermark exists yet: the image covers that.
+        BasePersistence.SetCurrentState(_db.GetColumnDb(FlatDbColumns.Metadata), pivot);
         ListStateSource source = new((AddrA, new Account(5, 500)), (AddrB, new Account(1, 7))) { PersistedState = pivot };
         using PivotFixture fixture = CreatePivotFixture(source, start: false);
 
@@ -1290,6 +1293,72 @@ public class HistoryWriterTests
             Assert.That(fixture.Reader.TryGetAccount(1000, AddrB, out AccountStruct b) && b.Balance == 7, Is.True);
             Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(1000UL));
         }
+
+        CommitBlock(1000, 1001, accountChanges: [(AddrA, new Account(6, 600))]);
+        fixture.Writer.CaptureUpTo(StateAt(1001), _repository, CancellationToken.None);
+        Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(1001UL), "capture goes on above the resumed image");
+    }
+
+    // The floor is published before the watermark, so a crash between them leaves reads below the pivot refused, and
+    // the restart writes the watermark from the pending record that is cleared last.
+    [Test]
+    public async Task A_crash_after_the_floor_and_before_the_watermark_refuses_old_reads_and_completes_on_restart()
+    {
+        StateId pivot = StateAt(1000);
+        PendingPivotImage pending = new(pivot.BlockNumber, pivot.StateRoot, 512);
+        for (int partition = 0; partition < PendingPivotImage.Partitions; partition++) pending.MarkDone(partition);
+        _availability.WritePendingPivotImage(pending);
+        _availability.PublishUnwindowedPivotFloor(pivot.BlockNumber, 512);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_availability.IsCovered(999), Is.False, "with no watermark yet, no read is served");
+            Assert.That(_reader.IsBelowGlobalFloor(999), Is.True, "and the floor already refuses reads below the pivot");
+        }
+
+        ListStateSource source = new() { PersistedState = pivot };
+        using PivotFixture fixture = CreatePivotFixture(source);
+        await fixture.Image.Released.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.PartitionsRead, Is.Zero);
+            Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(1000UL));
+            Assert.That(fixture.Availability.TryGetGlobalFloor(out ulong floor) && floor == 1000, Is.True);
+            Assert.That(fixture.Availability.TryGetPendingPivotImage(out _), Is.False);
+        }
+    }
+
+    // Capture runs before every flat persist, so a persisted state above the watermark is a gap no walk can fill.
+    [TestCase(false, 50UL, true, TestName = "Flat state above a missing history is reported at startup")]
+    [TestCase(true, 50UL, true, TestName = "Flat state above the watermark is reported at startup")]
+    [TestCase(true, 0UL, false, TestName = "Flat state at the watermark is not reported")]
+    public void A_flat_state_persisted_above_the_history_is_reported_at_startup(bool genesisHistory, ulong persistedBlock, bool expectReport)
+    {
+        if (genesisHistory) _writer.SeedGenesis([], StateAt(0).StateRoot);
+        BasePersistence.SetCurrentState(_db.GetColumnDb(FlatDbColumns.Metadata), StateAt(persistedBlock));
+        TestLogger log = new();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryWriter>().Returns(new ILogger(log));
+
+        _ = new HistoryWriter(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, logManager, commitments: null);
+
+        Assert.That(log.LogList.Any(static line => line.Contains("Flat history cannot follow this node")), Is.EqualTo(expectReport), string.Join("\n", log.LogList));
+    }
+
+    [Test]
+    public void A_flat_state_below_a_since_block_floor_is_not_reported()
+    {
+        BasePersistence.SetCurrentState(_db.GetColumnDb(FlatDbColumns.Metadata), StateAt(50));
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.SinceBlock, HistoryRetentionSinceBlock = 100 };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        TestLogger log = new();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryWriter>().Returns(new ILogger(log));
+
+        _ = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, logManager, commitments: null);
+
+        Assert.That(log.LogList.Any(static line => line.Contains("Flat history cannot follow this node")), Is.False, "below the floor the watermark follows the state without rows");
     }
 
     [Test]

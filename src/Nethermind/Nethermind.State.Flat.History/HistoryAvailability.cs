@@ -236,7 +236,6 @@ public sealed class HistoryAvailability
             Span<byte> value = stackalloc byte[BlockBytes];
             BinaryPrimitives.WriteUInt64BigEndian(value, imageBlock);
             _availableBlocks.PutSpan(PivotImageBlockKey, value);
-            _availableBlocks.Remove(PivotImagePendingKey);
         }
 
         Metrics.FlatHistoryFloor = (long)floor;

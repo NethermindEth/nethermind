@@ -123,6 +123,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             bool hasFloor = _availability.TryGetGlobalFloor(out ulong floor);
             if (hasFloor) Metrics.FlatHistoryFloor = (long)floor;
             if (_pivotImageWriter is not null) _pivotImageWriter.Failed += DisableCapture;
+            ReportFlatStateAboveHistory(db.GetColumnDb(FlatDbColumns.Metadata));
             if (_captureFromBlock > 0) PublishSinceBlockFloor();
             else if (hasFloor && config.HistoryRetention == HistoryRetentionMode.None)
             {
@@ -286,6 +287,28 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             if (_logger.IsWarn) _logger.Warn($"Could not remove the flat history marker for block {watermark}; it stays as an orphan ({e.Message}).");
         }
+    }
+
+    /// <summary>Capture runs before every flat persist, so a flat state persisted above the watermark means history was
+    /// turned on after the node synced without it (for example by <c>Pruning.Mode=None</c> on an upgraded node). The
+    /// blocks between are gone, and the first walk could only fail with a vaguer reason, so say why now.</summary>
+    /// <remarks>Not a gap: no persisted state yet, a wipe for a resync, a pivot image still being written, or a state
+    /// below a since-block floor, where the watermark follows the state without rows.</remarks>
+    private void ReportFlatStateAboveHistory(IDb metadata)
+    {
+        if (_pivotImageWriter is { Holds: true } || BasePersistence.ReadWipedForSync(metadata)) return;
+
+        StateId persisted = BasePersistence.ReadCurrentState(metadata);
+        if (persisted == StateId.PreGenesis || persisted.BlockNumber < _captureFromBlock) return;
+
+        bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
+        if (hasWatermark && persisted.BlockNumber <= watermark) return;
+
+        DisableCapture(
+            $"Flat history cannot follow this node: the flat state is persisted at block {persisted.BlockNumber}, but history is captured " +
+            $"{(hasWatermark ? $"only up to block {watermark}" : "for no block")}, and the blocks between are no longer available. This happens " +
+            "when history is turned on, for example by Pruning.Mode=None, on a node that synced without it. As-of reads report no history. " +
+            "To keep history, wipe the flat and flatHistory databases and sync again.");
     }
 
     /// <summary>A since-block floor is set by config once and never moves. A published floor above it is a snap

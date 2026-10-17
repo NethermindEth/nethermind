@@ -97,8 +97,13 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         }
 
         // Started only to build a snap pivot's commitments: a checkpoint without a pivot image is from a run with the
-        // flag on, and this run will never resume it.
-        if (!_verifyEveryBlock && !_availability.TryGetPivotImageBlock(out _)) AbandonLeftoverWalk();
+        // flag on, and this run will never resume it. A history that already has a watermark but no image started at
+        // genesis, so no image will ever come and there is nothing to wait for.
+        if (!_verifyEveryBlock && !_availability.TryGetPivotImageBlock(out _))
+        {
+            AbandonLeftoverWalk();
+            if (_availability.TryGetWatermark(out ulong watermark) && watermark > 0) return;
+        }
 
         if (!ReferenceEquals(_loop, Task.CompletedTask)) return;
         _loop = RunAsync();
@@ -120,8 +125,9 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         scratch.DeleteAllScratch();
     }
 
-    /// <summary>Whether this instance actually started its background verification - false means
-    /// <c>FlatDb.HistoryVerifyEveryBlock</c> is off and this coordinator is a permanent no-op.</summary>
+    /// <summary>Whether this instance runs the walk: with <c>FlatDb.HistoryVerifyEveryBlock</c> on, or with archive
+    /// proofs built on unwindowed history, where it builds the commitments of a snap pivot. False means a permanent
+    /// no-op.</summary>
     public bool Started { get; }
 
     /// <summary>The completed run's verdict, or <c>null</c> while none has finished.</summary>

@@ -166,7 +166,25 @@ public class HistoryWalkVerificationCoordinatorTests
         {
             Assert.That(coordinator.LastVerdict, Is.Null, "a history synced from genesis is walked only when the flag asks for it");
             Assert.That(CreateMetadata().TryGetWalkInProgress(out _, out _), Is.False);
+            Assert.That(coordinator.VerificationLoop.IsCompleted, Is.True, "nothing may poll for a pivot image that never comes");
         }
+    }
+
+    // A node starts before its snap sync completes: the image comes later, and the walk must wait for it.
+    [Test]
+    public async Task WithProofsOnAndTheFlagOff_TheWalkWaitsForAPivotImageStillToBeWritten()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
+
+        using HistoryWalkVerificationCoordinator coordinator = CreateCoordinator(config, headers);
+        coordinator.Start();
+        availability.PublishUnwindowedPivotFloor(8, 0);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+        await coordinator.VerificationLoop.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.That(coordinator.LastVerdict?.Verified, Is.True);
     }
 
     [Test]

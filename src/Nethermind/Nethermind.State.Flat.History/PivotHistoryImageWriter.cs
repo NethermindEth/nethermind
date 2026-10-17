@@ -287,7 +287,10 @@ public sealed class PivotHistoryImageWriter : IDisposable
     }
 
     /// <summary>Marks the blocks from the image up to the pivot with the pivot's root (the rows hold the pivot's state at
-    /// each of them, which the every-block walk checks), then publishes the watermark and floor at the pivot.</summary>
+    /// each of them, which the every-block walk checks), then publishes the floor and the watermark at the pivot.</summary>
+    /// <remarks>The floor goes first: a read below it is refused even while no watermark exists, whereas a watermark
+    /// without the floor would answer below the image from rows that do not reach that far. The pending record goes
+    /// last, so a crash at any point resumes here and writes the same values again.</remarks>
     private void Complete(PendingPivotImage image)
     {
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
@@ -300,8 +303,9 @@ public sealed class PivotHistoryImageWriter : IDisposable
         }
 
         _history.SyncWal();
-        _availability.PublishWatermark(image.PivotBlock, _formatVersion);
         _availability.PublishUnwindowedPivotFloor(image.PivotBlock, image.ImageBlock);
+        _availability.PublishWatermark(image.PivotBlock, _formatVersion);
+        _availability.ClearPendingPivotImage();
         _history.SyncWal();
         Metrics.FlatHistoryWatermark = (long)image.PivotBlock;
 
