@@ -22,6 +22,7 @@
     <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
+    <Project Path="Nethermind.Experimental.Abi/Nethermind.Experimental.Abi.csproj" />
     <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
     <Project Path="Nethermind.History/Nethermind.History.csproj" />
     <Project Path="Nethermind.Init\Nethermind.Init.csproj" />
@@ -54,6 +55,7 @@
     <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
     <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
   </Folder>
+  <Project Path="Nethermind.Abi.Benchmarks/Nethermind.Abi.Benchmarks.csproj" />
   <Project Path="Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj" />
   <Project Path="Nethermind.Benchmark/Nethermind.Benchmark.csproj" />
   <Project Path="Nethermind.EthereumTests.Benchmark/Nethermind.EthereumTests.Benchmark.csproj" />
