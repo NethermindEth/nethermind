@@ -129,9 +129,46 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
 
         if (value.Logs?.Count > 0)
         {
-            writer.WritePropertyName("logs"u8);
-            TypeInfoJsonSerializer.Serialize(writer, value.Logs.AsMemory(), options);
+            WriteLogs(writer, value.Logs.AsSpan(), options);
         }
+    }
+
+    private static void WriteLogs(Utf8JsonWriter writer, ReadOnlySpan<NativeCallTracerLogEntry> logs, JsonSerializerOptions options)
+    {
+        writer.WritePropertyName("logs"u8);
+        writer.WriteStartArray();
+        foreach (NativeCallTracerLogEntry log in logs)
+        {
+            writer.WriteStartObject();
+
+            if (log.Address is not null)
+            {
+                writer.WritePropertyName("address"u8);
+                TypeInfoJsonSerializer.Serialize(writer, log.Address, options);
+            }
+
+            if (log.Data is not null)
+            {
+                writer.WritePropertyName("data"u8);
+                TypeInfoJsonSerializer.Serialize(writer, log.Data, options);
+            }
+
+            if (log.Topics is not null)
+            {
+                writer.WritePropertyName("topics"u8);
+                TypeInfoJsonSerializer.Serialize(writer, log.Topics, options);
+            }
+
+            writer.WritePropertyName("index"u8);
+            TypeInfoJsonSerializer.Serialize(writer, log.Index, options);
+
+            writer.WritePropertyName("position"u8);
+            TypeInfoJsonSerializer.Serialize(writer, log.Position, options);
+
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
     }
 
     public override NativeCallTracerCallFrame Read(
