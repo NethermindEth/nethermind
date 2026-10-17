@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -39,7 +40,7 @@ public partial class EthRpcModuleTests
             StoredReceipts.FewerThanTransactions => [TestItem.AddressD],
             _ => null
         };
-        ((IClearableCache)test.Container.Resolve<IBlockStore>()).ClearCache();
+        EvictBlocks(test);
 
         ResultWrapper<TransactionForRpc> result = test.EthRpcModule.eth_getTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 1);
 
@@ -59,7 +60,7 @@ public partial class EthRpcModuleTests
         TestRpcBlockchain test = ctx.Test;
         ulong blockNumber = await AddBlockWithTwoTransactionsFromB(test);
         regenerationForbidden = true;
-        ((IClearableCache)test.Container.Resolve<IBlockStore>()).ClearCache();
+        EvictBlocks(test);
 
         ResultWrapper<TransactionForRpc> result = test.EthRpcModule.eth_getTransactionByBlockNumberAndIndex(new BlockParameter(blockNumber), 1);
 
@@ -77,6 +78,14 @@ public partial class EthRpcModuleTests
         ulong blockNumber = test.BlockTree.Head!.Number;
         await test.AddBlock();
         return blockNumber;
+    }
+
+    /// <summary>Makes the block store decode its blocks from the database, so their transactions carry no senders.</summary>
+    /// <remarks>Until the deferred writer lands a body, the store serves its pending snapshot, which shares the processed transactions.</remarks>
+    private static void EvictBlocks(TestRpcBlockchain test)
+    {
+        test.Container.Resolve<IDeferredBlockDataWriter>().Drain();
+        ((IClearableCache)test.Container.Resolve<IBlockStore>()).ClearCache();
     }
 
     /// <summary>Serves the receipts from <paramref name="iteratorReceipts"/> through the iterator, or the inner finder's when it returns null.</summary>
