@@ -187,7 +187,7 @@ public partial class BlockProcessor
                         static (i, state) =>
                         {
                             // Block already rejected — executing the rest cannot change the outcome.
-                            // Iteration 0 is exempt so pre-execution keeps its previous semantics.
+                            // Iteration 0 checks for itself, between the steps of applying the list.
                             if (i != 0 && state.IncrementalValidation.HasFailed) return state;
 
                             // Propagate the parent thread's IsBlockProcessingThread flag onto the
@@ -199,7 +199,11 @@ public partial class BlockProcessor
                             {
                                 if (i == 0)
                                 {
+                                    // The list is the block's own claim, so a rejected block stops applying it between steps;
+                                    // its scope is discarded, and disposing it cancels any warm-up still running.
+                                    if (state.IsBlockRejected) return state;
                                     state.BalManager.WaitForBalWarmup();
+                                    if (state.IsBlockRejected) return state;
                                     ReadOnlyBlockAccessList bal = state.Block.BlockAccessList;
                                     // The world state never sees the BAL's writes, so its account changes would miss them.
                                     if (state.IsBlockProcessingThread) state.Block.AccountChanges = bal.GetStateChangedAddresses();
@@ -207,6 +211,7 @@ public partial class BlockProcessor
                                     // the journal; flush them to the scope before the BAL's values are laid over them.
                                     state.StateProvider.Commit(state.SpecProvider.GetSpec(state.Block.Header));
                                     state.StateProvider.ApplyBal(bal);
+                                    if (state.IsBlockRejected) return state;
                                     state.StateProvider.RecalculateStateRoot();
                                     return state;
                                 }
@@ -572,6 +577,9 @@ public partial class BlockProcessor
             public readonly IBlockProcessor.IBlockTransactionsExecutor Inner = inner;
             public readonly IncrementalValidationWorkItem IncrementalValidation = incrementalValidation;
             public readonly ExecutedGasTally ExecutedGas = executedGas;
+
+            /// <summary>Whether the block is already known to be invalid, so nothing still to run can save it.</summary>
+            public bool IsBlockRejected => IncrementalValidation.HasFailed || ExecutedGas.Failure is not null || ExecutedGas.ExceedsLimit;
         }
 
         /// <summary>Block gas used by the transactions executed so far, in whatever order they ran, and the first
