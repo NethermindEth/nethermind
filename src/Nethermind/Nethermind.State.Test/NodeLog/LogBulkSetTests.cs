@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -364,6 +365,51 @@ internal class LogBulkSetTests
     }
 
     [Test]
+    public void Traversal_preserves_sparse_child_order_with_inline_and_unknown_children()
+    {
+        using TrieNodeLog log = new(0, SmallGenerationBytes);
+        using TrieNodeLogRetain retain = log.RetainActive();
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), null);
+        string prefix = new('0', 63);
+        TrieRoot root = BulkSet(log, source, null, TrieRoot.Empty,
+        [
+            (new Hash256(prefix + "1"), new byte[] { 1 }),
+            (new Hash256(prefix + "5"), ExistingValue),
+            (new Hash256(prefix + "9"), ExistingValue),
+            (new Hash256(prefix + "f"), ExistingValue),
+        ], false);
+        NodeRecordRef extension = log.GetRecord(root.Pointer);
+        ulong branchPointer = extension.View.Child(0).Pointer;
+        NodeRecordRef branch = log.GetRecord(branchPointer);
+        ulong firstChild = branch.View.Child(5).Pointer;
+        ulong lastChild = branch.View.Child(15).Pointer;
+        ulong unlinkedBranch = CopyWithPointer(branch, 1, 0);
+        ulong unlinkedRoot = CopyWithPointer(extension, 0, unlinkedBranch);
+
+        (TreePath Path, ulong Pointer)[] actual = log.EnumerateNodes(unlinkedRoot).Select(node => (node.Path, node.Pointer)).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(branch.Kind, Is.EqualTo(NodeRecordKind.InlineBranch));
+            Assert.That(actual, Is.EqualTo(new[]
+            {
+                (TreePath.Empty, unlinkedRoot),
+                (TreePath.FromHexString(prefix), unlinkedBranch),
+                (TreePath.FromHexString(prefix + "5"), firstChild),
+                (TreePath.FromHexString(prefix + "f"), lastChild),
+            }));
+            Assert.That(source.FetchCount, Is.Zero);
+        }
+
+        ulong CopyWithPointer(NodeRecordRef original, int ordinal, ulong pointer)
+        {
+            ulong copy = log.Reserve(NodeRecord.AlignedLength(original.Span.Length), out LogBuffer buffer, out int offset);
+            original.Span.CopyTo(buffer.AsSpan(offset));
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(offset + NodeRecord.HeaderLength + ordinal * NodeRecord.PointerLength), pointer);
+            return copy;
+        }
+    }
+
+    [Test]
     public void Traversal_stops_at_unknown_child_pointers_without_loading_the_source()
     {
         using TrieNodeLog log = new(0, SmallGenerationBytes);
@@ -562,6 +608,14 @@ internal class LogBulkSetTests
             Assert.That(borrowed.Rlp.ToArray(), Is.EqualTo(expected), "the outer lease covers records after enumerator disposal");
         }
         Assert.That(() => borrowed.Rlp.ToArray(), Throws.InstanceOf<ObjectDisposedException>());
+    }
+
+    [Test]
+    public void Traversal_cannot_start_after_log_disposal()
+    {
+        using TrieNodeLog log = new(0, SmallGenerationBytes);
+        log.Dispose();
+        Assert.That(() => log.EnumerateNodes(0).GetEnumerator(), Throws.InstanceOf<ObjectDisposedException>());
     }
 
     [Test]

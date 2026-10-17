@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie.NodeLog;
 
 public sealed partial class TrieNodeLog
 {
     private const int MaxPathNibbles = 64;
-    private const int ChildrenPerBranch = 16;
 
     /// <summary>Copies the log-resident node at the exact path from the given root, or misses at an unavailable child.</summary>
     /// <remarks>Inline children have no separate record and are not returned.</remarks>
@@ -99,8 +101,7 @@ public sealed partial class TrieNodeLog
     {
         private readonly TrieNodeLog _log;
         private readonly ulong _rootPointer;
-        private Frame[] _stack = [];
-        private int _depth;
+        private readonly ArrayPoolList<Frame> _stack;
         private bool _started;
         private bool _disposed;
 
@@ -108,8 +109,17 @@ public sealed partial class TrieNodeLog
         {
             _log = log;
             _rootPointer = rootPointer;
-            // Unlike an iterator method, this enumerator can own a read operation across MoveNext calls.
-            log.EnterRead();
+            _stack = new ArrayPoolList<Frame>(4);
+            try
+            {
+                // Unlike an iterator method, this enumerator can own a read operation across MoveNext calls.
+                log.EnterRead();
+            }
+            catch
+            {
+                _stack.Dispose();
+                throw;
+            }
         }
 
         public (TreePath Path, ulong Pointer, NodeRecordRef Record) Current { get; private set; }
@@ -142,39 +152,34 @@ public sealed partial class TrieNodeLog
             }
 
             Span<byte> extensionKey = stackalloc byte[MaxPathNibbles];
-            while (_depth > 0)
+            while (_stack.Count > 0)
             {
-                ref Frame frame = ref _stack[_depth - 1];
-                RecordView view = frame.Record.View;
-                TreePath path = frame.Path;
-                ChildRef child;
-                if (view.Kind == NodeRecordKind.Extension)
+                ref Frame frame = ref _stack.GetRef(_stack.Count - 1);
+                if (frame.RemainingChildren == 0)
                 {
-                    if (frame.NextChild++ != 0)
-                    {
-                        _stack[--_depth] = default;
-                        continue;
-                    }
+                    _stack.RemoveAt(_stack.Count - 1);
+                    continue;
+                }
+
+                int nibble = BitOperations.TrailingZeroCount(frame.RemainingChildren);
+                frame.RemainingChildren &= frame.RemainingChildren - 1;
+                // Hash-child pointers are packed in nibble order; traversal needs no child RLP or hash decoding.
+                ulong pointer = BinaryPrimitives.ReadUInt64LittleEndian(frame.Record.Span[(NodeRecord.HeaderLength + frame.NextPointer++ * NodeRecord.PointerLength)..]);
+                if (pointer == 0) continue;
+
+                TreePath path = frame.Path;
+                if (frame.Record.Kind == NodeRecordKind.Extension)
+                {
+                    RecordView view = frame.Record.View;
                     int length = view.KeyLength(0);
                     view.CopyKey(0, extensionKey);
                     path.AppendMut(extensionKey[..length]);
-                    child = view.Child(0);
                 }
-                else
-                {
-                    if (frame.NextChild == ChildrenPerBranch)
-                    {
-                        _stack[--_depth] = default;
-                        continue;
-                    }
-                    int nibble = frame.NextChild++;
-                    path.AppendMut(nibble);
-                    child = view.Child(nibble);
-                }
+                else path.AppendMut(nibble);
 
-                if (child.Kind == ChildRefKind.Hash && child.Pointer != 0 && _log.TryLocate(child.Pointer, out NodeRecordRef record))
+                if (_log.TryLocate(pointer, out NodeRecordRef record))
                 {
-                    return Visit(path, child.Pointer, record);
+                    return Visit(path, pointer, record);
                 }
             }
 
@@ -187,8 +192,7 @@ public sealed partial class TrieNodeLog
             Current = (path, pointer, record);
             if (record.Kind is NodeRecordKind.Extension or NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch)
             {
-                if (_depth == _stack.Length) Array.Resize(ref _stack, Math.Min(MaxPathNibbles + 1, Math.Max(4, _depth * 2)));
-                _stack[_depth++] = new Frame { Path = path, Record = record };
+                _stack.Add(new Frame { Path = path, Record = record, RemainingChildren = record.View.HashMask });
             }
             return true;
         }
@@ -197,7 +201,7 @@ public sealed partial class TrieNodeLog
         {
             if (_disposed) return;
             _disposed = true;
-            Array.Clear(_stack);
+            _stack.Dispose();
             Current = default;
             _log.EndRead();
         }
@@ -208,7 +212,8 @@ public sealed partial class TrieNodeLog
         {
             public TreePath Path;
             public NodeRecordRef Record;
-            public int NextChild;
+            public uint RemainingChildren;
+            public int NextPointer;
         }
     }
 }
