@@ -13,7 +13,7 @@ public partial class DbOnTheRocks
         GetManyWithColumnFamily(keys, keyLength, values, decoder, null);
 
     internal void GetManyWithColumnFamily<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
-        TDecoder decoder, IColumnFamilyHandle? family) where TDecoder : IValueDecoder<T>
+        TDecoder decoder, IColumnFamilyHandle? family, ReadOptions? readOptions = null) where TDecoder : IValueDecoder<T>
     {
         ThrowIfDisposing();
         if (decoder is null) throw new ArgumentNullException(nameof(decoder));
@@ -21,7 +21,7 @@ public partial class DbOnTheRocks
         try
         {
             _db.MultiGet<T, ValueDeserializer<T, TDecoder>>(keys, keyLength, values,
-                new ValueDeserializer<T, TDecoder>(decoder), family);
+                new ValueDeserializer<T, TDecoder>(decoder), family, readOptions);
         }
         catch (RocksDbException e)
         {

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 
@@ -14,7 +15,7 @@ namespace Nethermind.Db
         /// <summary>Decodes a batch of fixed-length keys. Stores without batch support read one key at a time.</summary>
         /// <remarks>Missing keys leave default output values. Empty values are passed to the decoder.
         /// The decoder must not retain the input span. The key and output buffers must not overlap.</remarks>
-        public static void GetMany<T, TDecoder>(this IDb db, ReadOnlySpan<byte> keys, int keyLength,
+        public static void GetMany<T, TDecoder>(this IReadOnlyKeyValueStore db, ReadOnlySpan<byte> keys, int keyLength,
             Span<T> values, TDecoder decoder) where TDecoder : IValueDecoder<T>
         {
             if (decoder is null) throw new ArgumentNullException(nameof(decoder));

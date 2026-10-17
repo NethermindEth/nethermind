@@ -134,6 +134,79 @@ namespace Nethermind.Db.Test
             Assert.That(output, Is.All.EqualTo(-1));
         }
 
+        [Test]
+        public void GetMany_AfterLiveChanges_PreservesSnapshotValuesAndOwnership(
+            [Values("default", "column", "shared-column")] string backend, [Values(1, 2, 3, 257)] int count)
+        {
+            using IDb owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            byte[]?[] original = [[], Enumerable.Range(0, 513).Select(i => (byte)i).ToArray(),
+                Enumerable.Range(0, 1025).Select(i => (byte)(i * 3)).ToArray(), null, []];
+            for (byte i = 0; i < original.Length; i++)
+            {
+                store.Set([i], original[i]);
+                if (owner is ColumnsDb<ReceiptsColumns> otherColumns)
+                {
+                    owner.PutSpan([i], [253]);
+                    otherColumns.GetColumnDb(ReceiptsColumns.Transactions).PutSpan([i], [254]);
+                }
+            }
+
+            (IDisposable snapshot, IReadOnlyKeyValueStore reader) = CreateBatchSnapshot(owner, store, backend);
+            using (snapshot)
+            {
+                Assert.That(reader, Is.AssignableTo<IBatchReadOnlyDb>());
+                for (byte i = 0; i < original.Length; i++) store.Set([i], i == 2 ? null : [(byte)(100 + i)]);
+
+                byte[] keys = Enumerable.Range(0, count).Select(i => (byte)(i % original.Length)).ToArray();
+                byte[]?[] output = new byte[]?[count + 1];
+                output[^1] = [255];
+                reader.GetMany<byte[]?, OwnedValueDecoder>(keys, 1, output.AsSpan(0, count), default);
+                snapshot.Dispose();
+                owner.Dispose();
+
+                byte[]?[] expected = keys.Select(i => original[i]).Append(new byte[] { 255 }).ToArray();
+                Assert.That(output, Is.EqualTo(expected));
+            }
+        }
+
+        [Test]
+        public void GetMany_WithSnapshotDecoderFailure_PreservesPrefixAndClearsTail(
+            [Values("default", "column", "shared-column")] string backend)
+        {
+            using IDb owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            for (byte i = 1; i <= 3; i++) store.PutSpan([i], [i]);
+            (IDisposable snapshot, IReadOnlyKeyValueStore reader) = CreateBatchSnapshot(owner, store, backend);
+            using (snapshot)
+            {
+                long?[] output = [-1, -1, -1, -1];
+                Assert.That(() => reader.GetMany<long?, ThrowingValueDecoder>([1, 2, 3], 1, output.AsSpan(0, 3), default),
+                    Throws.TypeOf<InvalidOperationException>());
+                Assert.That(output, Is.EqualTo(new long?[] { 1, null, null, -1 }));
+                reader.GetMany<long?, CountingValueDecoder>([1, 2, 3], 1, output.AsSpan(0, 3), default);
+                Assert.That(output, Is.EqualTo(new long?[] { 1001, 2002, 3003, -1 }));
+            }
+        }
+
+        [Test]
+        public void GetMany_AfterSnapshotDisposed_ThrowsAndClearsOutput(
+            [Values("default", "column", "shared-column")] string backend, [Values(1, 3)] int count)
+        {
+            using IDb owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            (IDisposable snapshot, IReadOnlyKeyValueStore reader) = CreateBatchSnapshot(owner, store, backend);
+            using (snapshot)
+            {
+                snapshot.Dispose();
+                long?[] output = Enumerable.Repeat<long?>(-1, count + 1).ToArray();
+                Assert.That(() => reader.GetMany<long?, CountingValueDecoder>(new byte[count], 1, output.AsSpan(0, count), default),
+                    Throws.InstanceOf<ObjectDisposedException>());
+                Assert.That(output[..count], Is.All.Null);
+                Assert.That(output[^1], Is.EqualTo(-1));
+            }
+        }
+
         [TearDown]
         public void TearDown()
         {
@@ -1389,6 +1462,23 @@ namespace Nethermind.Db.Test
             _ => new ColumnsDb<ReceiptsColumns>(DbPath, GetRocksDbSettings(DbPath, "Blocks"), _dbConfig,
                 _rocksdbConfigFactory, LimboLogs.Instance, [ReceiptsColumns.Blocks, ReceiptsColumns.Transactions])
         };
+
+        private static (IDisposable Snapshot, IReadOnlyKeyValueStore Reader) CreateBatchSnapshot(IDb owner, IDb store, string backend)
+        {
+            if (backend == "shared-column")
+            {
+                IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)owner).CreateSnapshot();
+                return (snapshot, snapshot.GetColumn(ReceiptsColumns.Blocks));
+            }
+
+            IKeyValueStoreSnapshot columnSnapshot = ((IKeyValueStoreWithSnapshot)store).CreateSnapshot();
+            return (columnSnapshot, columnSnapshot);
+        }
+
+        private readonly struct OwnedValueDecoder : IValueDecoder<byte[]?>
+        {
+            public byte[] Decode(ReadOnlySpan<byte> buffer) => buffer.ToArray();
+        }
 
         private readonly struct ReplacementValueDecoder(byte[]?[] output, byte[] previous) : IValueDecoder<byte[]?>
         {
