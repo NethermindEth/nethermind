@@ -1138,14 +1138,95 @@ public class HistoryWriterTests
     }
 
     [Test]
-    public void SeedPivot_OnAnUnwindowedWriter_IsANoOp()
+    public void SeedPivot_OnAnUnwindowedWriter_WritesThePivotStateAsRows_AtItsCheckpointWindowStart()
     {
-        _writer.SeedPivot(100, StateAt(100).StateRoot);
+        FlatDbConfig config = new() { HistoryEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null, Proofs.CommitmentDepthPolicy.Default);
+        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
+
+        Span<byte> slotValueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+        int slotValueLength = BaseFlatPersistence.EncodeSlotValue(BaseFlatPersistence.DecodeSlotValue([0xAA]), RlpWrapSlots, slotValueBuffer);
+        _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), slotValueBuffer[..slotValueLength]);
+
+        StateId pivot = StateAt(1000);
+        writer.SeedPivot(1000, pivot.StateRoot, new ListAccountSource((AddrA, new Account(5, 500)), (AddrB, new Account(1, 7))));
+
+        // A capture on top connects at the pivot's marker and lands above the image.
+        CommitBlock(1000, 1001, accountChanges: [(AddrA, new Account(6, 600))]);
+        writer.CaptureUpTo(StateAt(1001), _repository, CancellationToken.None);
+
+        bool foundA = reader.TryGetAccount(1000, AddrA, out AccountStruct atPivot);
+        bool foundB = reader.TryGetAccount(1001, AddrB, out AccountStruct untouched);
+        reader.TryGetAccount(1001, AddrA, out AccountStruct afterPivot);
+        bool foundSlot = reader.TryGetStorage(1001, AddrA, Slot1, out UInt256 slot);
+        (_, HistoryRowFormat reopened) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL));
-            Assert.That(_reader.IsPrunedBelowFloor(50), Is.False);
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(1001UL));
+            Assert.That(foundA && atPivot.Balance == 500, Is.True, "the pivot's account must read from its image row");
+            Assert.That(foundB && untouched.Balance == 7, Is.True, "an account untouched since the pivot must still read from its image row");
+            Assert.That(afterPivot.Balance, Is.EqualTo((UInt256)600));
+            Assert.That(foundSlot, Is.True, "the pivot's slots copy over from the flat storage column");
+            Assert.That(slot.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
+            Assert.That(reader.IsAvailable(pivot), Is.True);
+            Assert.That(reader.IsPrunedBelowFloor(999), Is.True, "nothing below the pivot may be served, the image included");
+            Assert.That(availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock == 512, Is.True, "the image sits at the start of the pivot's 512-block checkpoint window");
+            Assert.That(reopened.IsV3, Is.False, "the pivot floor must not stamp the database windowed");
+            Assert.That(HasMarker(512) && HasMarker(999) && availability.RootMatches(700, pivot.StateRoot), Is.True, "every block from the image to the pivot carries the pivot's root for the walk");
+        }
+    }
+
+    [Test]
+    public void SeedPivot_OnAnUnwindowedWriter_WithHistoryPastGenesis_Throws()
+    {
+        SeedGenesisFloor();
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        Assert.That(() => _writer.SeedPivot(100, StateAt(100).StateRoot, new ListAccountSource()),
+            Throws.InvalidOperationException.With.Message.Contains("already holds history"));
+    }
+
+    [Test]
+    public void SeedPivot_OnAnUnwindowedWriter_DropsTheGenesisCapturedBeforeTheSync()
+    {
+        // Genesis knew AddrB; by the pivot it is gone, so the image has no row for it.
+        _writer.SeedGenesis([new(AddrB, new Account(0, 42))], StateAt(0).StateRoot);
+
+        _writer.SeedPivot(100, StateAt(100).StateRoot, new ListAccountSource((AddrA, new Account(5, 500))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.TryGetAccount(100, AddrB, out _), Is.False, "a genesis row must not read through below the pivot image");
+            Assert.That(_reader.TryGetAccount(100, AddrA, out AccountStruct a) && a.Balance == 500, Is.True);
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(100UL));
+            Assert.That(_reader.IsPrunedBelowFloor(0), Is.True);
+        }
+    }
+
+    [Test]
+    public void SeedPivot_OnAnUnwindowedWriter_OnANonFlatLayout_DisablesCaptureInsteadOfCopyingTheState()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, Layout = FlatLayout.FlatInTrie };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
+
+        writer.SeedPivot(100, StateAt(100).StateRoot, new ListAccountSource((AddrA, new Account(5, 500))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.CaptureHealthy, Is.False);
+            Assert.That(availability.TryGetWatermark(out _), Is.False, "nothing may be published over an image that was never written");
+        }
+    }
+
+    private sealed class ListAccountSource(params (Address Address, Account Account)[] accounts) : IPivotAccountSource
+    {
+        public void ForEachAccount(Action<ValueHash256, Account> sink, CancellationToken cancellationToken)
+        {
+            foreach ((Address address, Account account) in accounts) sink(address.ToAccountPath, account);
         }
     }
 

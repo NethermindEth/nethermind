@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Text;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -31,6 +32,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     private readonly ILogger _logger;
     private readonly TimeSpan _pollDelay;
     private readonly CancellationTokenSource _cts = new();
+    private readonly bool _verifyEveryBlock;
     private Task _loop = Task.CompletedTask;
     private HistoryWalkVerdict? _verdict;
     private bool _disposed;
@@ -68,8 +70,10 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         _logger = logManager.GetClassLogger<HistoryWalkVerificationCoordinator>();
         _pollDelay = pollDelay ?? DefaultPollDelay;
 
-        Started = config.HistoryVerifyEveryBlock;
+        _verifyEveryBlock = config.HistoryVerifyEveryBlock;
         _retrofit = retrofit.Enabled ? retrofit : null;
+        // A history started at a snap pivot builds its commitments with the walk, from the pivot's image up.
+        Started = _verifyEveryBlock || (_retrofit is not null && !rowFormat.IsV3);
 
         // Constructed only when the flag is on: the verifier refuses a windowed database in its constructor, and
         // that refusal must fire exactly when the operator asked for a verification the mode cannot deliver -
@@ -77,7 +81,8 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         if (Started)
         {
             HistoryWalkVerifier.RequireUnwindowed(rowFormat);
-            _verifierFactory = rows => new HistoryWalkVerifier(db, history, headers, rowFormat, logManager, rows, _retrofit, _metadata);
+            IHistoryHeaderSource walkHeaders = new PivotImageHeaderSource(headers, availability);
+            _verifierFactory = rows => new HistoryWalkVerifier(db, history, walkHeaders, rowFormat, logManager, rows, _retrofit, _metadata);
         }
     }
 
@@ -128,7 +133,8 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         {
             while (!token.IsCancellationRequested)
             {
-                if (_availability.TryGetWatermark(out ulong watermark) && watermark > 0)
+                if (_availability.TryGetWatermark(out ulong watermark) && watermark > 0
+                    && (_verifyEveryBlock || _availability.TryGetPivotImageBlock(out _)))
                 {
                     WalkResources resources = WalkResources.Resolve(_config);
                     int workers = resources.Workers;
@@ -137,8 +143,13 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
                     _retrofit?.Prepare();
                     ulong from = _retrofit?.FirstBlockToBuild(watermark) ?? 0;
+                    // A history started at a snap pivot has no rows below its image, so the walk starts there.
+                    bool fromPivot = _availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock >= from;
+                    if (fromPivot) from = imageBlock;
                     ulong to = watermark;
-                    if (from > 0 && _logger.IsInfo) _logger.Info(
+                    if (fromPivot && _logger.IsInfo) _logger.Info(
+                        $"History walk will cover [{from}, {to}]: history starts at the snap-sync pivot, whose state was recorded at block {from}; it builds the proof commitments from there.");
+                    else if (from > 0 && _logger.IsInfo) _logger.Info(
                         $"History walk verification will cover [{from}, {to}] rather than the whole chain: only the most recent commitment epochs are kept, so the blocks below that are neither built nor served, and the walk is a fraction of the work.");
 
                     if (!_metadata.TryGetWalkInProgress(out _, out _) && _metadata.TryGetWalkVerified(out ulong verifiedFrom, out ulong verifiedTo) && verifiedFrom <= from && verifiedTo >= from
@@ -250,6 +261,20 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         {
             if (_logger.IsError) _logger.Error("History walk verification crashed; the archive's content is UNVERIFIED, not disproven.", e);
         }
+    }
+
+    /// <summary>A history started at a snap pivot records the pivot's state at the start of its checkpoint window, so
+    /// the rows rebuild the pivot's root at every block from there up to the pivot; those blocks are below the floor
+    /// and never served, and the walk compares them against the pivot's own root.</summary>
+    private sealed class PivotImageHeaderSource(IHistoryHeaderSource inner, HistoryAvailability availability) : IHistoryHeaderSource
+    {
+        public ValueHash256? TryGetStateRoot(ulong block) =>
+            availability.TryGetPivotImageBlock(out ulong imageBlock)
+            && availability.TryGetGlobalFloor(out ulong floor)
+            && block >= imageBlock
+            && block < floor
+                ? inner.TryGetStateRoot(floor)
+                : inner.TryGetStateRoot(block);
     }
 
     private string? GetRestartReason(ulong from, ulong pendingFrom)

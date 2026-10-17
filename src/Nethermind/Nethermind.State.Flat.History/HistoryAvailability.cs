@@ -33,6 +33,9 @@ public sealed class HistoryAvailability
 
     private static ReadOnlySpan<byte> GlobalFloorKey => "history:floor:global"u8;
 
+    // The block an unwindowed history's snap-pivot image is recorded at: the pivot's checkpoint window start.
+    private static ReadOnlySpan<byte> PivotImageBlockKey => "history:pivot:image"u8;
+
     // Point scopes only: one record per address. A range scope would be a new kind under a different prefix.
     private static ReadOnlySpan<byte> ScopeRecordPrefix => "history:floor:scope:"u8;
     private const int ScopeRecordPrefixLength = 20; // == ScopeRecordPrefix.Length, asserted in the static ctor
@@ -179,6 +182,16 @@ public sealed class HistoryAvailability
         return length == RootBytes && capturedRoot.SequenceEqual(stateRoot.Bytes);
     }
 
+    /// <summary>The state root captured for <paramref name="block"/>; false when it has no marker.</summary>
+    public bool TryGetMarker(ulong block, out ValueHash256 stateRoot)
+    {
+        Span<byte> key = stackalloc byte[BlockBytes];
+        BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        byte[]? value = _availableBlocks.Get(key);
+        stateRoot = value is { Length: RootBytes } ? new ValueHash256(value) : default;
+        return value is { Length: RootBytes };
+    }
+
     /// <summary>The raw stamped format byte, or <c>null</c> for a fresh DB.</summary>
     internal byte? StampedFormatVersion => _availableBlocks.Get(FormatVersionKey) is { Length: 1 } value ? value[0] : null;
 
@@ -218,6 +231,35 @@ public sealed class HistoryAvailability
         Metrics.FlatHistoryFloor = (long)floor;
     }
 
+    /// <summary>Publishes the floor of an unwindowed history started at a snap pivot. Keeps the v2 stamp: the rows
+    /// stay post-values, and a windowed stamp would switch the next start to the v3 reader over them.</summary>
+    public void PublishUnwindowedPivotFloor(ulong floor, ulong imageBlock)
+    {
+        lock (_floorLock)
+        {
+            WriteGlobalFloorUnderLock(floor, FormatVersion);
+            Span<byte> value = stackalloc byte[BlockBytes];
+            BinaryPrimitives.WriteUInt64BigEndian(value, imageBlock);
+            _availableBlocks.PutSpan(PivotImageBlockKey, value);
+        }
+
+        Metrics.FlatHistoryFloor = (long)floor;
+    }
+
+    /// <summary>The block an unwindowed history recorded its snap-pivot image at; false when it started at genesis.</summary>
+    public bool TryGetPivotImageBlock(out ulong block)
+    {
+        byte[]? value = _availableBlocks.Get(PivotImageBlockKey);
+        if (value is not { Length: BlockBytes })
+        {
+            block = 0;
+            return false;
+        }
+
+        block = BinaryPrimitives.ReadUInt64BigEndian(value);
+        return true;
+    }
+
     /// <summary>Raises the floor only if <paramref name="newFloor"/> is strictly above it.</summary>
     public bool TryRaiseGlobalFloor(ulong newFloor)
     {
@@ -235,7 +277,7 @@ public sealed class HistoryAvailability
         return raised;
     }
 
-    private void WriteGlobalFloorUnderLock(ulong floor)
+    private void WriteGlobalFloorUnderLock(ulong floor, byte formatVersion = WindowedFormatVersion)
     {
         if (TryGetWatermark(out ulong watermark) && floor > watermark)
         {
@@ -247,7 +289,7 @@ public sealed class HistoryAvailability
         Span<byte> value = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(value, floor);
         _availableBlocks.PutSpan(GlobalFloorKey, value);
-        _availableBlocks.PutSpan(FormatVersionKey, [WindowedFormatVersion]);
+        _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
     }
 
     /// <summary>Refuses on unwindowed v2 data, where a slice is meaningless and stamping would brick the v2 read

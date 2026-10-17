@@ -255,7 +255,7 @@ public class FlatTreeSyncStore(
         {
             Hash256 pivotStateRoot = pivotHeader.StateRoot ?? throw new InvalidOperationException(
                 $"Sync pivot header {pivotHeader.Number} has no state root; cannot seed the flat history floor at it.");
-            historyPivotSeeder.SeedPivot(pivotHeader.Number, pivotStateRoot);
+            historyPivotSeeder.SeedPivot(pivotHeader.Number, pivotStateRoot, new PivotAccountSource(reader, pivotStateRoot, logManager));
         }
 
         // Create and immediately dispose to increment state ID
@@ -304,6 +304,51 @@ public class FlatTreeSyncStore(
     /// <summary>
     /// Minimal trie store for verification context using IPersistenceReader directly.
     /// </summary>
+    /// <summary>Walks the pivot's state trie, which the snap sync persisted in full, for the accounts' full hashed
+    /// paths; storage tries are not descended.</summary>
+    private sealed class PivotAccountSource(IPersistence.IPersistenceReader reader, Hash256 stateRoot, ILogManager logManager) : IPivotAccountSource
+    {
+        public void ForEachAccount(Action<ValueHash256, Account> sink, CancellationToken cancellationToken)
+        {
+            PatriciaTree tree = new(new FlatSyncTrieStore(reader), logManager) { RootHash = stateRoot };
+            tree.Accept(new AccountLeafVisitor(sink, cancellationToken), stateRoot, new VisitingOptions
+            {
+                MaxDegreeOfParallelism = Math.Min(4, Environment.ProcessorCount),
+            });
+        }
+
+        private sealed class AccountLeafVisitor(Action<ValueHash256, Account> sink, CancellationToken cancellationToken) : ITreeVisitor<TreePathContextWithStorage>
+        {
+            private readonly AccountDecoder _decoder = AccountDecoder.Instance;
+
+            public bool IsFullDbScan => true;
+            public bool ExpectAccounts => false;
+
+            public bool ShouldVisit(in TreePathContextWithStorage nodeContext, in ValueHash256 nextNode)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return true;
+            }
+
+            public void VisitTree(in TreePathContextWithStorage nodeContext, in ValueHash256 rootHash) { }
+
+            public void VisitMissingNode(in TreePathContextWithStorage nodeContext, in ValueHash256 nodeHash) =>
+                throw new TrieException($"The pivot state trie is missing node {nodeHash} at {nodeContext.Path}.");
+
+            public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node) { }
+
+            public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node) { }
+
+            public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node)
+            {
+                RlpReader accountReader = new(node.Value.AsSpan());
+                sink(nodeContext.Path.Append(node.Key).Path, _decoder.Decode(ref accountReader)!);
+            }
+
+            public void VisitAccount(in TreePathContextWithStorage nodeContext, TrieNode node, in AccountStruct account) { }
+        }
+    }
+
     private class FlatSyncTrieStore(IPersistence.IPersistenceReader reader) : AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
