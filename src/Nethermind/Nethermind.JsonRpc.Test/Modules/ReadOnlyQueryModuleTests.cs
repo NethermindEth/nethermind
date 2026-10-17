@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;
@@ -22,7 +24,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -32,6 +33,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Flat.History.Changesets;
+using Nethermind.State.OverridableEnv;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -143,7 +145,7 @@ public class ReadOnlyQueryModuleTests
             "debug_traceBlock" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, Rlp.Encode(block).ToString(), GethOptions(tracer)),
             "trace_call" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, CallTo(Target), types, "latest"),
             "trace_callMany" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, new[] { new[] { CallTo(Target), types } }, "latest"),
-            "trace_rawTransaction" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, SignedCallTo(chain, Target), types),
+            "trace_rawTransaction" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, Encoded(SignedCallTo(chain, Target)), types),
             "trace_replayTransaction" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, target, types),
             "trace_replayBlockTransactions" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, "latest", types),
             "trace_block" => RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, "latest"),
@@ -153,13 +155,15 @@ public class ReadOnlyQueryModuleTests
         };
     }
 
-    /// <summary>A transaction from <see cref="TestItem.AddressB"/> at its next nonce calling <paramref name="to"/>, encoded for trace_rawTransaction.</summary>
-    private static byte[] SignedCallTo(TestRpcBlockchain chain, Address to)
+    /// <summary>A transaction from <see cref="TestItem.AddressB"/> at its next nonce calling <paramref name="to"/>.</summary>
+    private static Transaction SignedCallTo(TestRpcBlockchain chain, Address to)
     {
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
-        Transaction transaction = Build.A.Transaction.WithTo(to).WithNonce(nonce).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        return TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+        return Build.A.Transaction.WithTo(to).WithNonce(nonce).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
     }
+
+    /// <summary><paramref name="transaction"/> encoded for trace_rawTransaction.</summary>
+    private static byte[] Encoded(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
 
     /// <summary>Runs <paramref name="method"/> with one call to <see cref="Target"/> in one simulated block.</summary>
     private static Task<string> Simulate(TestRpcBlockchain chain, string method)
@@ -169,8 +173,8 @@ public class ReadOnlyQueryModuleTests
         {
             "eth_simulateV1" => chain.TestEthRpc(method, payload, "latest"),
             "debug_simulateV1" => RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, payload, "latest", new { tracer = "callTracer" }),
-            // A bundle with an override is simulated; one without is traced in the debug environments. Called directly:
-            // the serializer metadata the harness checks has no entry for the projection it returns.
+            // A bundle carrying its own override is simulated; without one the bundles are traced in the debug environments.
+            // Called directly: the serializer metadata the harness checks has no entry for the projection it returns.
             "debug_traceCallMany" => Task.FromResult(Unserialized(chain.DebugRpcModule.debug_traceCallMany(
                 [new TransactionBundle { Transactions = [new LegacyTransactionForRpc { From = TestItem.AddressB, To = Target, Gas = 100_000 }], BlockOverride = new BlockOverride { GasLimit = 30_000_000 } }],
                 BlockParameter.Latest, new GethTraceOptions { Tracer = "callTracer" }))),
@@ -178,6 +182,30 @@ public class ReadOnlyQueryModuleTests
             _ => throw new ArgumentOutOfRangeException(nameof(method), method, null),
         };
     }
+
+    /// <summary>One request served by each of the query environments the module factories build.</summary>
+    private static async Task<string[]> SendToEachEnvironment(TestRpcBlockchain chain, Block block)
+    {
+        Dictionary<Address, AccountOverride> overrides = new() { [OverrideTarget] = new() { Code = Returning42() } };
+        return
+        [
+            await chain.TestEthRpc("eth_call", CallTo(Target), "latest"),
+            await chain.TestEthRpc("eth_call", CallTo(OverrideTarget), "latest", overrides),
+            await Simulate(chain, "eth_simulateV1"),
+            await Trace(chain, "debug_traceCall", block, "callTracer"),
+            await Trace(chain, "trace_call", block, "trace"),
+            await Trace(chain, "trace_replayBlockTransactions", block, "trace"),
+            await Trace(chain, "proof_getTransactionReceipt", block, null),
+        ];
+    }
+
+    /// <summary>Traces <paramref name="block"/> whole through the debug and the trace module: on the workers of their
+    /// parallel tracers once the block is indexed, in their own environments before that.</summary>
+    private static async Task<string[]> TraceWholeBlock(TestRpcBlockchain chain, Block block) =>
+    [
+        await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, new { tracer = "callTracer" }),
+        await RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_replayBlockTransactions", block.Hash!, new[] { "trace" }),
+    ];
 
     private static void AssertSucceeded(string response) => Assert.That(JToken.Parse(response)["error"], Is.Null, response);
 
@@ -221,25 +249,25 @@ public class ReadOnlyQueryModuleTests
     [Test]
     public async Task A_module_for_no_query_kind_is_loaded_nowhere()
     {
-        FrameOfferProbe probe = new();
-        using TestRpcBlockchain chain = await Chain(probe, ReadOnlyQueryKind.None);
+        FrameOfferProbe nowhere = new();
+        FrameOfferProbe everywhere = new();
+        using ParallelTracing parallel = new();
+        using TestRpcBlockchain chain = await Chain(
+            [nowhere.ModuleFor(ReadOnlyQueryKind.None), everywhere.ModuleFor(ReadOnlyQueryKind.All)], parallel.Configure);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddBlockCallingEachContract(chain);
-        Dictionary<Address, AccountOverride> overrides = new() { [OverrideTarget] = new() { Code = Returning42() } };
 
-        string overridden = await chain.TestEthRpc("eth_call", Query(chain, OverrideTarget), "latest", overrides);
-        string[] responses =
-        [
-            await chain.TestEthRpc("eth_call", CallTo(Target), "latest"),
-            await Simulate(chain, "eth_simulateV1"),
-            await Trace(chain, "debug_traceBlockByNumber", block, "callTracer"),
-            await Trace(chain, "trace_replayBlockTransactions", block, "trace"),
-        ];
+        string[] responses = await SendToEachEnvironment(chain, block);
+        HashSet<object> moduleMachines = everywhere.Machines();
+        parallel.Index(chain, block, parent);
+        string[] onTheWorkers = await TraceWholeBlock(chain, block);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JToken.Parse(overridden)["result"]?.Value<string>(), Does.EndWith("2a"), overridden);
-            foreach (string response in responses) AssertSucceeded(response);
-            Assert.That(probe.Offers, Is.Zero, "a module applies only to the query kinds it names");
+            foreach (string response in responses.Concat(onTheWorkers)) AssertSucceeded(response);
+            Assert.That(everywhere.Machines().Except(moduleMachines), Is.Not.Empty, "precondition: the indexed block is traced on the parallel tracer's workers");
+            Assert.That(nowhere.Loads, Is.Zero, "a module applies only to the query kinds it names");
+            Assert.That(nowhere.Offers, Is.Zero, "a module applies only to the query kinds it names");
         }
     }
 
@@ -267,6 +295,8 @@ public class ReadOnlyQueryModuleTests
             ("trace_simulateV1", simulations, Target, () => Simulate(chain, "trace_simulateV1")),
             ("debug_traceCall", traces, Target, () => Trace(chain, "debug_traceCall", block, "callTracer")),
             ("debug_traceCallMany", traces, Target, () => Trace(chain, "debug_traceCallMany", block, "callTracer")),
+            ("debug_traceCallMany with a state override in its trace options", traces, OverrideTarget, () => RpcTest.TestSerializedRequest(chain.DebugRpcModule,
+                "debug_traceCallMany", new[] { new { transactions = new[] { CallTo(OverrideTarget) } } }, "latest", new { tracer = "callTracer", stateOverrides = overrides })),
             ("debug_traceBlockByNumber", traces, Target, () => Trace(chain, "debug_traceBlockByNumber", block, "callTracer")),
             ("trace_call", traces, Target, () => Trace(chain, "trace_call", block, "trace")),
             ("trace_replayBlockTransactions", traces, Target, () => Trace(chain, "trace_replayBlockTransactions", block, "trace")),
@@ -286,6 +316,39 @@ public class ReadOnlyQueryModuleTests
                         $"{request} must reach the module of its own kind, and only that one");
                 }
             }
+        }
+    }
+
+    [Test]
+    public async Task Every_environment_loads_the_modules_after_its_own_registrations()
+    {
+        TestSpecProvider specProvider = new(Prague.Instance) { AllowTestChainOverride = false };
+        SpecProviderReplacement replacement = new(specProvider);
+        using ParallelTracing parallel = new();
+        using TestRpcBlockchain chain = await Chain([replacement], builder =>
+        {
+            builder.AddSingleton<ISpecProvider>(specProvider);
+            parallel.Configure(builder);
+        });
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddBlockCallingEachContract(chain);
+
+        string[] responses = await SendToEachEnvironment(chain, block);
+        parallel.Index(chain, block, parent);
+        string[] onTheWorkers = await TraceWholeBlock(chain, block);
+        SpecProviderReplacement.LoadedEnvironment[] environments = replacement.Environments;
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (string response in responses.Concat(onTheWorkers)) AssertSucceeded(response);
+            // The shared read-only and the per-override call environments, the simulate one, the debug module's, the
+            // trace module's call and replay ones, and the proof module's; then the parallel tracers' workers.
+            Assert.That(environments.Count(static environment => !environment.IsParallelTracerWorker), Is.GreaterThanOrEqualTo(7),
+                "precondition: the module is loaded into every environment the requests ran in");
+            Assert.That(environments.Count(static environment => environment.IsParallelTracerWorker), Is.GreaterThanOrEqualTo(2),
+                "precondition: the module is loaded into the workers of the debug and trace modules' parallel tracers");
+            Assert.That(environments.Where(static environment => !environment.ResolvesTheReplacement), Is.Empty,
+                "what a module registers must take the place of what the environment registers itself, in every environment");
         }
     }
 
@@ -412,14 +475,9 @@ public class ReadOnlyQueryModuleTests
     [Test]
     public async Task Block_traces_offer_frames_on_the_parallel_tracer_workers()
     {
-        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
-        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
-        using ParallelTraceBudget budget = new(2);
         FrameOfferProbe probe = new();
-        using TestRpcBlockchain chain = await Chain(probe, ReadOnlyQueryKind.Trace, builder => builder
-            .AddSingleton<IPrefixStateSeedSource>(new ChangesetPrefixStateSeedSource(index))
-            .AddSingleton(budget)
-            .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true)));
+        using ParallelTracing parallel = new();
+        using TestRpcBlockchain chain = await Chain(probe, ReadOnlyQueryKind.Trace, parallel.Configure);
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddBlockCallingEachContract(chain);
         IDebugRpcModule debug = chain.DebugRpcModule;
@@ -431,7 +489,7 @@ public class ReadOnlyQueryModuleTests
         HashSet<object> moduleMachines = probe.Machines();
         int[] replayedOffers = Contracts.Select(probe.OffersFor).ToArray();
 
-        DebugRpcModuleTests.IndexThroughTheCapture(chain, index, block, parent);
+        parallel.Index(chain, block, parent);
         probe.Clear();
         string debugParallel = await RpcTest.TestSerializedRequest(debug, "debug_traceBlockByNumber", block.Number, new { tracer = "callTracer" });
         HashSet<object> debugWorkers = probe.Machines();
@@ -544,31 +602,99 @@ public class ReadOnlyQueryModuleTests
         using TestRpcBlockchain chain = await Chain(probe, ReadOnlyQueryKind.All);
         Block block = await AddBlockCallingEachContract(chain);
         BlockHeader head = chain.BlockTree.Head!.Header;
-        int receipts = chain.ReceiptFinder.Get(block).Length;
+        // Traced at the sender's next nonce, then included in the next block.
+        Transaction traced = SignedCallTo(chain, Target);
+        List<BlockHeader> stored = [];
+        void Stored(object? sender, ReceiptsEventArgs args) => stored.Add(args.BlockHeader);
 
-        string[] responses =
-        [
-            await Trace(chain, "debug_traceBlockByNumber", block, "callTracer"),
-            await Trace(chain, "debug_traceTransaction", block, "callTracer"),
-            await Trace(chain, "debug_traceCall", block, "callTracer"),
-            await Trace(chain, "trace_replayBlockTransactions", block, "stateDiff"),
-            await Trace(chain, "trace_call", block, "stateDiff"),
-            await Trace(chain, "trace_rawTransaction", block, "trace"),
-            await Simulate(chain, "eth_simulateV1"),
-        ];
+        string[] responses;
+        chain.ReceiptStorage.ReceiptsInserted += Stored;
+        try
+        {
+            responses =
+            [
+                await Trace(chain, "debug_traceBlockByNumber", block, "callTracer"),
+                await Trace(chain, "debug_traceTransaction", block, "callTracer"),
+                await Trace(chain, "debug_traceCall", block, "callTracer"),
+                await Trace(chain, "trace_replayBlockTransactions", block, "stateDiff"),
+                await Trace(chain, "trace_call", block, "stateDiff"),
+                await RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_rawTransaction", Encoded(traced), new[] { "trace" }),
+                await Simulate(chain, "eth_simulateV1"),
+            ];
+        }
+        finally
+        {
+            chain.ReceiptStorage.ReceiptsInserted -= Stored;
+        }
+
+        Hash256? headAfterTraces = chain.BlockTree.Head!.Hash;
+        Hash256? tracedTransactionBlock = chain.ReceiptFinder.FindBlockHash(traced.Hash!);
+        UInt256[] countsAtHead = Contracts.Select(contract =>
+        {
+            chain.StateReader.GetStorage(head, contract, UInt256.Zero, out UInt256 count);
+            return count;
+        }).ToArray();
+
+        // Each traced call to Target counted once more, in its own environment; the next block counts on the head's state.
+        Block next = await chain.AddBlock(traced);
+        chain.StateReader.GetStorage(next.Header, Target, UInt256.Zero, out UInt256 countAfterNext);
 
         using (Assert.EnterMultipleScope())
         {
             foreach (string response in responses) AssertSucceeded(response);
-            Assert.That(probe.OffersFor(Target), Is.GreaterThan(0), "precondition: the replays ran with the runner");
-            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(head.Hash), "the head must not move");
-            Assert.That(chain.ReceiptFinder.Get(block), Has.Length.EqualTo(receipts), "no receipt may be stored");
-            Assert.That(chain.ReceiptFinder.FindBlockHash(block.Transactions[1].Hash!), Is.EqualTo(block.Hash));
-            foreach (Address contract in Contracts)
-            {
-                chain.StateReader.GetStorage(head, contract, UInt256.Zero, out UInt256 count);
-                Assert.That(count, Is.EqualTo(UInt256.One), "each contract was called once in the block; a replay that persisted would count again");
-            }
+            Assert.That(probe.OffersFor(Target), Is.GreaterThan(0), "precondition: the traces ran with the runner");
+            Assert.That(headAfterTraces, Is.EqualTo(head.Hash), "the head must not move");
+            Assert.That(stored, Is.Empty, "a traced replay or call must store no receipts");
+            Assert.That(tracedTransactionBlock, Is.Null, "the transaction traced by trace_rawTransaction must not be found in a block");
+            Assert.That(countsAtHead, Has.All.EqualTo(UInt256.One), "the head's state must stay as its block left it");
+            Assert.That(next.Transactions, Has.Length.EqualTo(1), "the nonce of the transaction traced by trace_rawTransaction must still be free");
+            Assert.That(countAfterNext, Is.EqualTo((UInt256)2), "the next block must count on the head's state, not on what a traced call left");
         }
+    }
+
+    /// <summary>Lets the blocks it indexes be traced on the workers of the parallel tracers.</summary>
+    private sealed class ParallelTracing : IDisposable
+    {
+        private readonly SnapshotableMemColumnsDb<FlatHistoryColumns> _columns = new();
+        private readonly ParallelTraceBudget _budget = new(2);
+        private readonly TransactionChangesetIndex _index;
+
+        public ParallelTracing() => _index = new TransactionChangesetIndex(_columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+
+        public void Configure(ContainerBuilder builder) => builder
+            .AddSingleton<IPrefixStateSeedSource>(new ChangesetPrefixStateSeedSource(_index))
+            .AddSingleton(_budget)
+            .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, _budget, changesetSeeds: true));
+
+        /// <summary>Indexes <paramref name="block"/>, added on top of <paramref name="parent"/>.</summary>
+        public void Index(TestRpcBlockchain chain, Block block, BlockHeader parent) => DebugRpcModuleTests.IndexThroughTheCapture(chain, _index, block, parent);
+
+        public void Dispose()
+        {
+            _budget.Dispose();
+            _columns.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// A module that registers a spec provider of its own, passing everything through to the chain's, and records for each
+    /// environment it is loaded into whether the environment resolves that one rather than a spec provider it registers itself.
+    /// </summary>
+    private sealed class SpecProviderReplacement(ISpecProvider specProvider) : Module, IReadOnlyQueryModule
+    {
+        private readonly OverridableSpecProvider _replacement = new(specProvider);
+        private readonly ConcurrentQueue<LoadedEnvironment> _environments = new();
+
+        public readonly record struct LoadedEnvironment(bool ResolvesTheReplacement, bool IsParallelTracerWorker);
+
+        public ReadOnlyQueryKind AppliesTo => ReadOnlyQueryKind.All;
+
+        public LoadedEnvironment[] Environments => _environments.ToArray();
+
+        protected override void Load(ContainerBuilder builder) => builder
+            .AddScoped<ISpecProvider>(_replacement)
+            .OnBuild(scope => _environments.Enqueue(new LoadedEnvironment(
+                ReferenceEquals(scope.Resolve<ISpecProvider>(), _replacement),
+                scope.IsRegistered<ParallelBlockTracer.Components>())));
     }
 }

@@ -17,7 +17,8 @@ using Nethermind.State;
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 /// <param name="readOnlyQueryModules">The <see cref="ReadOnlyQueryKind.Trace"/> modules among them configure the call
-/// and replay environments of every module instance and those of the parallel block tracer.</param>
+/// and replay environments of every module instance and those of the parallel block tracer, loaded after everything
+/// else those environments register.</param>
 [method: Experimental("NMEVM0001")]
 public class TraceModuleFactory(
     ITraceEnvFactory overridableEnvFactory,
@@ -42,19 +43,16 @@ public class TraceModuleFactory(
     }
 
     private readonly SharedParallelBlockTracer _parallelTracer = new(overridableEnvFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
-        builder => ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules, readOnlyQueryModules));
+        builder => ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules),
+        builder => builder.AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace));
 
-    private static ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory,
-        IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules, IReadOnlyQueryModule[] readOnlyQueryModules) =>
+    private static ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory, IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules) =>
         builder
             .AddModule(validationBlockProcessingModules)
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
 
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
-            .AddScoped<IBlockValidator>(Always.Valid) // Why?
-
-            // The trace_* calls and replays, and the parallel tracer's workers, run in containers built here.
-            .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace);
+            .AddScoped<IBlockValidator>(Always.Valid); // Why?
 
     public override ITraceRpcModule Create()
     {
@@ -62,13 +60,17 @@ public class TraceModuleFactory(
 
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
+        // The trace_* calls and replays run in these two scopes. The modules come last, as in every query environment, so
+        // what a module registers takes precedence.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing(builder, static p => new UnpricedCallTraceAdapter(p), validationBlockProcessingModules, readOnlyQueryModules)
+            ConfigureCommonBlockProcessing(builder, static p => new UnpricedCallTraceAdapter(p), validationBlockProcessingModules)
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, UnpricedBlobFeeCalculator>()
-                .AddModule(env));
+                .AddModule(env)
+                .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules, readOnlyQueryModules)
-                .AddModule(env));
+            ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules)
+                .AddModule(env)
+                .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace));
 
         ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(env)

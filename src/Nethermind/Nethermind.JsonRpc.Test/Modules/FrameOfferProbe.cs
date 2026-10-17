@@ -21,7 +21,8 @@ public sealed class FrameOfferProbe : FrameCodeRunner<EthereumGasPolicy>
     private readonly ConcurrentQueue<Offer> _offers = new();
     private int _loads;
 
-    /// <summary>One offer: the account whose code the frame runs, and the machine that offered it.</summary>
+    /// <summary>One offer: the account the frame executes as - the called account, or the calling frame's own under
+    /// DELEGATECALL and CALLCODE - and the machine that offered it.</summary>
     public readonly record struct Offer(Address Account, object Machine);
 
     public int Offers => _offers.Count;

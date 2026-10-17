@@ -21,22 +21,22 @@ public enum ReadOnlyQueryKind
     /// </summary>
     Call = 1,
     /// <summary>
-    /// Simulated blocks - eth_simulateV1, debug_simulateV1, trace_simulateV1, and debug_traceCallMany with state or block
-    /// overrides. Their environments write to an in-memory overlay and a temporary block tree, resolve moved precompiles
-    /// through the code repository and block hashes through the simulated chain, and are loaded with the modules after
-    /// those registrations.
+    /// Simulated blocks - eth_simulateV1, debug_simulateV1, trace_simulateV1, and debug_traceCallMany when one of its
+    /// bundles carries its own state or block override. Their environments write to an in-memory overlay and a temporary
+    /// block tree, and resolve moved precompiles through the code repository and block hashes through the simulated chain.
     /// </summary>
     Simulate = 2,
     /// <summary>
-    /// Replays and traced calls - debug_traceCall, debug_traceCallMany without overrides, debug_traceTransaction and its
-    /// by-index and in-block variants, debug_traceBlock, debug_traceBlockByNumber, debug_traceBlockByHash,
-    /// debug_traceBlockFromFile, debug_intermediateRoots, debug_standardTraceBlockToFile,
-    /// debug_standardTraceBadBlockToFile, trace_call, trace_callMany, trace_rawTransaction, trace_replayTransaction,
-    /// trace_replayBlockTransactions, trace_block, trace_transaction, trace_get, trace_filter and
-    /// proof_getTransactionReceipt - including the workers that trace the transactions of a block in parallel. These
-    /// environments run whole blocks through the block processor, so the system calls, rewards and withdrawals of a
-    /// replayed block and the untraced transactions around a traced one run there too; the blocks are processed as
-    /// read-only replays, unvalidated, on a read-only chain, and nothing they produce is persisted.
+    /// Replays and traced calls - debug_traceCall, debug_traceCallMany when none of its bundles carries its own override
+    /// (overrides in its trace options keep it here), debug_traceTransaction and its by-index and in-block variants,
+    /// debug_traceBlock, debug_traceBlockByNumber, debug_traceBlockByHash, debug_traceBlockFromFile,
+    /// debug_intermediateRoots, debug_standardTraceBlockToFile, debug_standardTraceBadBlockToFile, trace_call,
+    /// trace_callMany, trace_rawTransaction, trace_replayTransaction, trace_replayBlockTransactions, trace_block,
+    /// trace_transaction, trace_get, trace_filter and proof_getTransactionReceipt - including the workers that trace the
+    /// transactions of a block in parallel. These environments run whole blocks through the block processor, so the
+    /// system calls, rewards and withdrawals of a replayed block and the untraced transactions around a traced one run
+    /// there too; the blocks are processed as read-only replays, unvalidated, on a read-only chain, and nothing they
+    /// produce is persisted.
     /// </summary>
     Trace = 4,
     /// <summary>Every kind of read-only query environment.</summary>
@@ -46,6 +46,10 @@ public enum ReadOnlyQueryKind
 /// <summary>Marker for modules that configure only the environments serving read-only queries.</summary>
 /// <remarks>
 /// <para>Register the module itself in the root container as an <see cref="IReadOnlyQueryModule"/>.</para>
+/// <para>
+/// Every environment loads the modules after its own registrations, so a component a module registers takes the place of
+/// the environment's own, while a decorator the environment adds still wraps it.
+/// </para>
 /// <para>
 /// The modules are never applied to main block processing, prewarming, validation or sync. A
 /// <see cref="ReadOnlyQueryKind.Call"/> module configures every environment of the shared read-only transaction

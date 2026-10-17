@@ -14,7 +14,8 @@ using Nethermind.Evm.TransactionProcessing;
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 /// <param name="readOnlyQueryModules">The <see cref="ReadOnlyQueryKind.Trace"/> modules among them configure the
-/// environments of every module instance and of the parallel block tracer.</param>
+/// environments of every module instance and of the parallel block tracer, loaded after everything else those
+/// environments register.</param>
 [method: Experimental("NMEVM0001")]
 public class DebugModuleFactory(
     ITraceEnvFactory envFactory,
@@ -39,10 +40,10 @@ public class DebugModuleFactory(
     }
 
     private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
-        builder => ConfigureTracerContainer(builder, validationBlockProcessingModules, readOnlyQueryModules));
+        builder => ConfigureTracerContainer(builder, validationBlockProcessingModules),
+        builder => builder.AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace));
 
-    private static ContainerBuilder ConfigureTracerContainer(
-        ContainerBuilder builder, IBlockValidationModule[] validationBlockProcessingModules, IReadOnlyQueryModule[] readOnlyQueryModules) =>
+    private static ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder, IBlockValidationModule[] validationBlockProcessingModules) =>
         builder
             // Standard configuration
             // Note: Not overriding `IReceiptStorage` to null.
@@ -55,10 +56,7 @@ public class DebugModuleFactory(
             // The EIP-7928 BAL pool builds its per-worker adapters from this factory; route them through the
             // same ChangeableTransactionProcessorAdapter so they honour the tracer's runtime Execute↔Trace swap.
             .AddScoped<TransactionProcessorAdapterFactory, ChangeableTransactionProcessorAdapter>(
-                static changeable => changeable.ForProcessor)
-
-            // The debug_* replays and traced calls, and the parallel tracer's workers, run in containers built here.
-            .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace);
+                static changeable => changeable.ForProcessor);
 
     public IDebugRpcModule Create()
     {
@@ -67,8 +65,11 @@ public class DebugModuleFactory(
 
         ILifetimeScope tracerLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
-            ConfigureTracerContainer(builder, validationBlockProcessingModules, readOnlyQueryModules).AddModule(env);
+            ConfigureTracerContainer(builder, validationBlockProcessingModules).AddModule(env);
             if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
+            // The debug_* replays and traced calls run here. Last, as in every query environment, so what a module
+            // registers takes precedence.
+            builder.AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace);
         });
 
         // Pass only `IGethStyleTracer` into the debug rpc lifetime.
