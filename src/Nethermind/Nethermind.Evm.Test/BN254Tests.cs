@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Core.Extensions;
@@ -71,6 +72,28 @@ public class BN254Tests
             Assert.That(BN254.IsInG2(point), Is.True);
             Assert.That(mclBnG2_isValidOrder(shifted), Is.Zero);
             Assert.That(BN254.IsInG2(shifted), Is.False);
+        }
+    }
+
+    [Test]
+    public void IsInG2_kernel_meets_the_twist_only_in_G2()
+    {
+        BigInteger x = BN254.Seed;
+        BigInteger p = 36 * BigInteger.Pow(x, 4) + 36 * BigInteger.Pow(x, 3) + 24 * x * x + 6 * x + 1;
+        BigInteger r = 36 * BigInteger.Pow(x, 4) + 36 * BigInteger.Pow(x, 3) + 18 * x * x + 6 * x + 1;
+        BigInteger t = 6 * x * x + 1;
+
+        // (x + 1) + xψ + xψ² - 2xψ³ reduced to a + bψ with ψ² = tψ - p, so ψ³ = (t² - p)ψ - tp
+        BigInteger a = x + 1 - x * p + 2 * x * t * p;
+        BigInteger b = x + x * t - 2 * x * (t * t - p);
+        BigInteger degree = a * a + a * b * t + b * b * p;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(p, Is.EqualTo(BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208583")));
+            Assert.That(r, Is.EqualTo(BigInteger.Parse("21888242871839275222246405745257275088548364400416034343698204186575808495617")));
+            Assert.That(degree % r, Is.EqualTo(BigInteger.Zero));
+            Assert.That(BigInteger.GreatestCommonDivisor(degree, 2 * p - r), Is.EqualTo(BigInteger.One));
         }
     }
 

@@ -21,7 +21,7 @@ internal static unsafe class BN254
     private const int MaxStackPairCount = 32;
 
     // The curve seed x: p = 36x^4 + 36x^3 + 24x^2 + 6x + 1, r = 36x^4 + 36x^3 + 18x^2 + 6x + 1
-    private const ulong Seed = 4965661367192848881;
+    internal const ulong Seed = 4965661367192848881;
 
     // ξ^((p - 1) / 3) and ξ^((p - 1) / 2) for ξ = 9 + u, the coefficients of ψ
     private static readonly mclBnFp2* PsiCoefficients;
