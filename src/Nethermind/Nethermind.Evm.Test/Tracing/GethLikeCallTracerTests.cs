@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -392,6 +393,24 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 }
 """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    [Test]
+    public void Call_frame_logs_serialize_as_their_entries()
+    {
+        NativeCallTracerLogEntry[] logs =
+        [
+            new(TestItem.AddressB, [], [], 0, 0),
+            new(TestItem.AddressC, [0x01, 0xab, 0xff], [TestItem.KeccakA], 0x10, 3),
+            new(TestItem.AddressD, new byte[64], [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD], ulong.MaxValue, 0x1234)
+        ];
+        using NativeCallTracerCallFrame frame = new() { Type = Instruction.CALL, From = TestItem.AddressA, Gas = 0x5208 };
+        string withoutLogs = JsonSerializer.Serialize(frame, EthereumJsonSerializer.JsonOptions);
+
+        frame.Logs = new ArrayPoolList<NativeCallTracerLogEntry>(logs);
+
+        string entries = string.Join(',', logs.Select(static log => JsonSerializer.Serialize(log, EthereumJsonSerializer.JsonOptions)));
+        Assert.That(JsonSerializer.Serialize(frame, EthereumJsonSerializer.JsonOptions), Is.EqualTo($"{withoutLogs[..^1]},\"logs\":[{entries}]}}"));
     }
 
     [Test]

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -47,7 +46,6 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSerializable(typeof(TxReceipt[]))]
 [JsonSerializable(typeof(UInt256?))]
 [JsonSerializable(typeof(byte[][]))]
-[JsonSerializable(typeof(Memory<NativeCallTracerLogEntry>))]
 [JsonSerializable(typeof(Dictionary<Hash256, byte[]>))]
 [JsonSerializable(typeof(Dictionary<string, int>))]
 [JsonSerializable(typeof(Dictionary<UInt256, UInt256>))]
