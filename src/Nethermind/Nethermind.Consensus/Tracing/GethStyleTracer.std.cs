@@ -277,8 +277,8 @@ public class GethStyleTracer(
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
-        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
-        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
+        using GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
+        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlySigned, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
     }
