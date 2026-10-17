@@ -367,6 +367,12 @@ public class GethStyleTracer(
             return new GethLikeTxTraceCollection(filtered);
         }
 
+        if (writer is not null && options.TxHash is null && GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer))
+        {
+            StreamNativeBlock(block, options, writer, pipeWriter, cancellationToken, allowIndexed);
+            return Array.Empty<GethLikeTxTrace>();
+        }
+
         bool wantsLogIndex = WantsLogIndex(options);
         if (allowIndexed && writer is null && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
             && TryGetParallelLogIndex(block, wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? parallelLogIndex)
@@ -408,6 +414,32 @@ public class GethStyleTracer(
         {
             tracer.TryDispose();
         }
+    }
+
+    private void StreamNativeBlock(Block block, GethTraceOptions options, Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, bool allowIndexed)
+    {
+        bool wantsLogIndex = WantsLogIndex(options);
+        if (allowIndexed && options.StateOverrides is null && parallelTracer is not null
+            && TryGetParallelLogIndex(block, wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? parallelLogIndex)
+            && parallelTracer.TryStream(block, FindParent(block),
+                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, parallelLogIndex),
+                afterTransactions: null,
+                traces =>
+                {
+                    foreach (GethLikeTxTrace trace in traces) GethLikeBlockNativeStreamingTracer.Write(writer, pipeWriter, trace, cancellationToken);
+                },
+                cancellationToken))
+        {
+            return;
+        }
+
+        BlockLogIndex? sharedLogIndex = wantsLogIndex ? new() : null;
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
+        IWorldState worldState = scope.Component.WorldState;
+        GethLikeBlockNativeStreamingTracer tracer = new(
+            (b, tx) => GethLikeNativeTracerFactory.CreateTracer(sharedLogIndex is null ? options : options with { LogIndex = sharedLogIndex }, b, tx, worldState, specProvider.GetSpec(b.Header)),
+            writer, pipeWriter, cancellationToken);
+        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
     }
 
     private static bool WantsLogIndex(GethTraceOptions options) =>

@@ -357,7 +357,7 @@ public partial class DebugRpcModuleTests
 
     // Without usable receipts both paths number the logs from the body they replay, as the receipts would.
     [Test]
-    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce([Values] ReceiptAvailability availability)
+    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce([Values] ReceiptAvailability availability, [Values] bool streamMode)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -382,7 +382,7 @@ public partial class DebugRpcModuleTests
         CountingReceiptFinder receipts = (CountingReceiptFinder)chain.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey);
 
         int before = receipts.BlockGets;
-        GethTraceOptions options = new() { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}""") };
+        GethTraceOptions options = new() { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}"""), StreamMode = streamMode };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, options);
         int blockTraceGets = receipts.BlockGets - before;
         string single = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactions[^1].Hash, options);
@@ -397,6 +397,57 @@ public partial class DebugRpcModuleTests
             // Read once on the calling thread: the parallel workers share it, and the replay it falls back to reads none.
             Assert.That(blockTraceGets, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_NativeTracerFailingOnAnIndexedBlock_StreamsTheTracedPrefixAndASentinel()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using ParallelTraceBudget budget = new(2);
+        Hash256? failingTx = null;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = true })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
+                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new FailingAdapter(inner, () => failingTx)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transactions);
+        IndexThroughTheCapture(chain, index, block, parent);
+        failingTx = transactions[1].Hash;
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, new GethTraceOptions { Tracer = "callTracer" });
+
+        JToken parsed = JToken.Parse(response);
+        JArray result = (JArray)parsed["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"], Is.Null, "the failure comes after the stream opened, so it cannot be a top-level error");
+            Assert.That(result, Has.Count.InRange(1, transactions.Length), response);
+            for (int i = 0; i < result.Count - 1; i++)
+                Assert.That((string)result[i]!["txHash"]!, Is.EqualTo(transactions[i].Hash!.ToString()), "entries before the failure are the block's prefix, in order");
+            Assert.That((string)result[result.Count - 1]!["error"]!, Does.Contain("simulated mid-block failure"), response);
+        }
+    }
+
+    private sealed class FailingAdapter(ITransactionProcessorAdapter inner, Func<Hash256?> failingTx) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
+            transaction.Hash is not null && transaction.Hash == failingTx()
+                ? throw new InvalidOperationException("simulated mid-block failure")
+                : inner.Execute(transaction, txTracer);
+
+        public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
+        public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
     }
 
     private sealed class CountingReceiptFinder(IReceiptFinder inner, ReceiptAvailability availability) : IReceiptFinder

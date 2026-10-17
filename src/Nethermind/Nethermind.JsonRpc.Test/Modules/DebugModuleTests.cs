@@ -27,6 +27,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
@@ -439,6 +440,40 @@ public class DebugModuleTests
             Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
             Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+        }
+    }
+
+    [Test]
+    public void DebugTraceBlock_StreamingNativeTracerWithoutTraceBaseState_FailsBeforeStreaming(
+        [Values("debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values] bool parentHeaderMissing)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        BlockHeader header = block.Header;
+        _blockFinder.Head.Returns(block);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindBlock(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(block);
+        _blockFinder.FindBlock(header.Hash!).Returns(block);
+        _blockFinder.FindHeader(header.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parentHeaderMissing ? null : parent);
+        // The RLP-decoded block of debug_traceBlock is a copy, so headers are matched by hash.
+        _blockchainBridge.HasStateForBlock(Arg.Is<BlockHeader>(h => h.Hash == header.Hash)).Returns(true);
+        GethTraceOptions options = new() { Tracer = NativeCallTracer.CallTracer, StreamMode = true };
+        DebugRpcModule module = CreateModule();
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> actual = method switch
+        {
+            "debug_traceBlock" => module.debug_traceBlock(Rlp.Encode(block).Bytes, options),
+            "debug_traceBlockByNumber" => module.debug_traceBlockByNumber(new BlockParameter(header.Number), options),
+            _ => module.debug_traceBlockByHash(header.Hash!, options),
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(actual.Result.Error, Does.Contain(parentHeaderMissing ? "Cannot find parent header" : "No state available for block"));
         }
     }
 
