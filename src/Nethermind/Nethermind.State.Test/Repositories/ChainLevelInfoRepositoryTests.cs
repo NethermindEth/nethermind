@@ -95,6 +95,26 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
+    public void LoadLevelWithoutCaching_serves_a_cached_level_and_reads_an_uncached_one_through()
+    {
+        MemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ChainLevelInfo level = new(true, new BlockInfo(TestItem.KeccakA, 1));
+        PersistUncached(repository, db, level);
+
+        long readsBefore = db.ReadsCount;
+        AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), level);
+        AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), level);
+        Assert.That(db.ReadsCount - readsBefore, Is.EqualTo(2));
+
+        ChainLevelInfo cached = repository.LoadLevel(1)!;
+        readsBefore = db.ReadsCount;
+        Assert.That(repository.LoadLevelWithoutCaching(1), Is.SameAs(cached));
+        Assert.That(db.ReadsCount, Is.EqualTo(readsBefore));
+    }
+
+    [Test]
     public void LoadLevel_keeps_a_level_persisted_while_the_load_read_the_db()
     {
         TestMemDb db = new();
