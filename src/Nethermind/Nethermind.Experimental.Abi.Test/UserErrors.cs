@@ -186,12 +186,25 @@ public class UserErrors
         yield return MalformedInput(str, strBody + "00").SetName("dynamic argument followed by a byte");
     }
 
+    private static IEnumerable<TestCaseData> NonCanonicalValueTestCases()
+    {
+        AbiSignature<bool> boolean = new AbiSignature("f").With(AbiType.Bool);
+
+        yield return MalformedInput(boolean,
+            "0000000000000000000000000000000000000000000000000000000000000002").SetName("bool of 2");
+        yield return MalformedInput(boolean,
+            "0000000000000000000000000000000000000000000000000000000000000100").SetName("bool with byte 30 set");
+        yield return MalformedInput(boolean,
+            "8000000000000000000000000000000000000000000000000000000000000001").SetName("bool with high bit and low bit set");
+    }
+
     private static TestCaseData MalformedInput<T>(AbiSignature<T> signature, string body) =>
         new(signature, Bytes.Concat(signature.MethodId(), Bytes.FromHexString(body)));
 
     [TestCaseSource(nameof(MalformedInputTestCases))]
     [TestCaseSource(nameof(NonCanonicalOffsetTestCases))]
     [TestCaseSource(nameof(TrailingDataTestCases))]
+    [TestCaseSource(nameof(NonCanonicalValueTestCases))]
     public void Decode_MalformedInput<T>(AbiSignature<T> signature, byte[] input) =>
         Assert.Throws<AbiException>(() => AbiCodec.Decode(signature, input));
 
