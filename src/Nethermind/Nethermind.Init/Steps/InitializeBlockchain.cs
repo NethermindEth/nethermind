@@ -10,7 +10,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Crypto;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps

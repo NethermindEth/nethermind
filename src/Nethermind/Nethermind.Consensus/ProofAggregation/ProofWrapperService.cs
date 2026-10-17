@@ -13,7 +13,6 @@ using Nethermind.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Consensus.Validators;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Evm;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.ProofAggregation;
