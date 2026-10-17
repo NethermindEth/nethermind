@@ -12,7 +12,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -159,8 +158,8 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        // Up to one chunk per worker is in flight; chunks are yielded in source order, so memory stays bounded by
-        // the window rather than the range.
+        /// <summary>Scans <paramref name="source"/> on worker tasks and yields the logs in source order.</summary>
+        /// <remarks>At most one chunk per worker is in flight, so memory is bounded by that window rather than the range.</remarks>
         private IEnumerable<FilterLog> ScanInOrderedChunks<T>(IEnumerable<T> source, Func<T, IEnumerable<FilterLog>> worker)
         {
             Queue<Task<List<FilterLog>>> pending = new(_rpcConfigGetLogsThreads);
