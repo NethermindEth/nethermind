@@ -124,7 +124,10 @@ class Client:
     def close(self):
         if self.control:
             try:
-                subprocess.run(["ssh", "-S", self.control.name + "/socket", "-O", "exit", self.host], capture_output=True, timeout=5, check=False)
+                subprocess.run(
+                    ["ssh", "-S", self.control.name + "/socket", "-O", "exit", "--", self.host],
+                    capture_output=True, timeout=5, check=False,
+                )
             except (OSError, subprocess.TimeoutExpired) as error:
                 print("SSH cleanup warning: " + str(error), file=sys.stderr)
             finally:
@@ -133,8 +136,16 @@ class Client:
     def call(self, queries):
         body = json.dumps(queries).encode()
         if self.control:
-            command = ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPersist=30", "-o", "ControlPath=" + self.control.name + "/socket", "-i", str(self.args.ssh_key), "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3", "-o", "UserKnownHostsFile=" + str(self.args.known_hosts), self.host,
-                       "curl --fail --max-time 120 -sS -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:8545"]
+            command = [
+                "ssh", "-o", "ControlMaster=auto", "-o", "ControlPersist=30",
+                "-o", "ControlPath=" + self.control.name + "/socket",
+                "-i", str(self.args.ssh_key),
+                "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+                "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3",
+                "-o", "UserKnownHostsFile=" + str(self.args.known_hosts),
+                "--", self.host,
+                "curl --fail --max-time 120 -sS -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:8545",
+            ]
             try:
                 raw = subprocess.run(command, input=body, capture_output=True, check=True, timeout=135).stdout
             except subprocess.CalledProcessError as error:
@@ -164,22 +175,37 @@ def verify_versions(before, after):
 
 
 def common_block(clients, metadata_before, explicit):
-    height = int(explicit, 0) if explicit else min(int(result(index(m, range(1, 6))[3])["number"], 16) for m in metadata_before.values()) - 4
+    height = (int(explicit, 0) if explicit else
+              min(int(result(index(m, range(1, 6))[3])["number"], 16) for m in metadata_before.values()) - 4)
     for offset in range(1 if explicit else 32):
-        headers = {name: client.call([request(1, "eth_getBlockByNumber", [hex(height - offset), True])])[0] for name, client in clients.items()}
+        headers = {
+            name: client.call([request(1, "eth_getBlockByNumber", [hex(height - offset), True])])[0]
+            for name, client in clients.items()
+        }
         block = result(headers["geth"])
         candidate = result(headers["nethermind"])
         if block is None or candidate is None:
             raise ValueError("Selected block unavailable")
         fields = ("number", "hash", "stateRoot")
         require(all(block[field] == candidate[field] for field in fields), "Selected block/state differs between clients")
-        require([(t["hash"], t["from"], t["nonce"]) for t in block["transactions"]] == [(t["hash"], t["from"], t["nonce"]) for t in candidate["transactions"]], "Selected transactions differ between clients")
+        require(
+            [(t["hash"], t["from"], t["nonce"]) for t in block["transactions"]] ==
+            [(t["hash"], t["from"], t["nonce"]) for t in candidate["transactions"]],
+            "Selected transactions differ between clients",
+        )
         txs = block["transactions"]
         if len(txs) < 2 or txs[0]["from"].lower() in RESERVED or txs[0].get("authorizationList"):
             continue
-        receipts = {name: client.call([request(i + 1, "eth_getTransactionReceipt", [tx["hash"]]) for i, tx in enumerate(txs[:2])]) for name, client in clients.items()}
+        receipts = {
+            name: client.call([request(i + 1, "eth_getTransactionReceipt", [tx["hash"]]) for i, tx in enumerate(txs[:2])])
+            for name, client in clients.items()
+        }
         require(index(receipts["nethermind"], (1, 2)) == index(receipts["geth"], (1, 2)), "Prefix receipts differ between clients")
-        require(all(result(row) is not None and result(row)["blockHash"] == block["hash"] for rows in receipts.values() for row in rows), "Prefix receipt fixture unavailable")
+        require(
+            all(result(row) is not None and result(row)["blockHash"] == block["hash"]
+                for rows in receipts.values() for row in rows),
+            "Prefix receipt fixture unavailable",
+        )
         if sum(len(result(row)["logs"]) for row in receipts["geth"]) > 0:
             return block, headers, receipts
     raise ValueError("No common retained block with two transactions and prefix logs; no cases counted as passed")
@@ -223,7 +249,11 @@ def run(args, evidence):
         verify_versions(evidence["metadataBefore"], evidence["metadataAfter"])
         classifications = [v for d in evidence["datasets"] for v in d["classifications"]]
         require(len(classifications) == 304, "Incomplete acceptance capture")
-        evidence.update(status="completed", requests=304, exactMatches=classifications.count("exact"), approvedDiagnostics=classifications.count("approved_diagnostic"), skipped=0)
+        evidence.update(
+            status="completed", requests=304,
+            exactMatches=classifications.count("exact"),
+            approvedDiagnostics=classifications.count("approved_diagnostic"), skipped=0,
+        )
 
     finally:
         for client in clients.values():
@@ -248,12 +278,16 @@ def main():
     if args.candidate_host or args.reference_host:
         require(args.ssh_key and args.ssh_key.is_file() and args.known_hosts and args.known_hosts.is_file(), "SSH requires an existing key and verified known_hosts")
     require(not args.output.exists(), "Output already exists; preserve earlier evidence")
-    evidence = {"startedAt": datetime.now(timezone.utc).isoformat(), "status": "running", "referenceCommit": args.reference_commit, "corpusReferenceCommit": CORPUS_REFERENCE, "candidateVersionRequired": args.candidate_version}
+    evidence = {
+        "startedAt": datetime.now(timezone.utc).isoformat(), "status": "running",
+        "referenceCommit": args.reference_commit, "corpusReferenceCommit": CORPUS_REFERENCE,
+        "candidateVersionRequired": args.candidate_version,
+    }
     with args.output.open("x") as stream:
         stream.write(json.dumps(evidence) + "\n")
     try:
         run(args, evidence)
-    except Exception as error:
+    except BaseException as error:
         evidence.update(status="failed", failure=str(error))
         raise
     finally:
