@@ -51,6 +51,7 @@ namespace Nethermind.Consensus.AuRa
             IWithdrawalProcessor withdrawalProcessor,
             IExecutionRequestsProcessor executionRequestsProcessor,
             IBlockAccessListManager blockAccessListManager,
+            IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
@@ -67,7 +68,8 @@ namespace Nethermind.Consensus.AuRa
                 logManager,
                 withdrawalProcessor,
                 executionRequestsProcessor,
-                blockAccessListManager)
+                blockAccessListManager,
+                inclusionListSatisfactionChecker)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));

@@ -46,7 +46,7 @@ public partial class BlockProcessor(
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
-    IInclusionListSatisfactionChecker? inclusionListSatisfactionChecker = null)
+    IInclusionListSatisfactionChecker inclusionListSatisfactionChecker)
     : IBlockProcessor
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
@@ -233,7 +233,7 @@ public partial class BlockProcessor(
     /// <remarks>Withdrawals, rewards and post-execution system calls have not run yet, so none of their credits count.</remarks>
     private void JudgeInclusionList(Block block, ProcessingOptions options)
     {
-        if (inclusionListSatisfactionChecker is null || options.ContainsFlag(ProcessingOptions.NoValidation)) return;
+        if (block.InclusionListTransactions is null || options.ContainsFlag(ProcessingOptions.NoValidation)) return;
 
         IReadOnlyStateProvider postTransactionsState = _balManager.GetPostTransactionsState(block) ?? _stateProvider;
         block.IsInclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(block, postTransactionsState);

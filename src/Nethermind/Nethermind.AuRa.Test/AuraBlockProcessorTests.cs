@@ -227,6 +227,7 @@ namespace Nethermind.AuRa.Test
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(transactionProcessor),
                 balManager,
+                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);
