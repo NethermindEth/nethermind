@@ -1487,17 +1487,17 @@ public class TxValidatorTests
     }
 }
 
-/// <summary>The EIP-7906 fork gate on the <c>POST_TX</c> frame mode.</summary>
+/// <summary>The EIP-7906 fork gate on the <c>ASSERT</c> frame mode.</summary>
 /// <remarks>
 /// Before the fork the mode is undefined, and a node treating such a frame as DEFAULT would execute
 /// it with write access, which the assertion semantics forbid.
 /// </remarks>
 [TestFixture]
-public class FrameTxPostTxModeGateTests
+public class FrameTxAssertFrameModeGateTests
 {
-    [TestCase(false, ExpectedResult = true, TestName = "PostTx frame is admitted once EIP-7906 is enabled")]
-    [TestCase(true, ExpectedResult = false, TestName = "PostTx frame is rejected before EIP-7906")]
-    public bool IsWellFormed_PostTxFrame_IsGatedOnTheFork(bool beforeTheFork)
+    [TestCase(false, ExpectedResult = true, TestName = "ASSERT frame is admitted once EIP-7906 is enabled")]
+    [TestCase(true, ExpectedResult = false, TestName = "ASSERT frame is rejected before EIP-7906")]
+    public bool IsWellFormed_AssertFrame_IsGatedOnTheFork(bool beforeTheFork)
     {
         OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip7906Enabled = !beforeTheFork };
         Transaction tx = new()
@@ -1507,7 +1507,7 @@ public class FrameTxPostTxModeGateTests
             Frames =
             [
                 SelfVerify(PrefixFrameGas),
-                PostTx(PrefixFrameGas),
+                AssertFrame(PrefixFrameGas),
             ],
         };
 

@@ -3829,13 +3829,13 @@ namespace Nethermind.TxPool.Test
         }
 
         /// <summary>The frame-transaction properties a change of head specification can turn from valid to invalid.</summary>
-        public enum FrameForkGate { PostTx, ExecutionGasCap }
+        public enum FrameForkGate { Assert, ExecutionGasCap }
 
         // Each is admitted under a head that allows it, and the block that included it under the next head would
         // be invalid, so the pool must drop it at the transition. The retained rows hold the same transaction
         // across the same transition with the gate untouched, so the flipped flag is the only variable.
-        [TestCase(FrameForkGate.PostTx, true, TestName = "post_tx_frame_is_evicted_when_the_new_head_drops_eip7906")]
-        [TestCase(FrameForkGate.PostTx, false, TestName = "post_tx_frame_is_retained_while_eip7906_stays_active")]
+        [TestCase(FrameForkGate.Assert, true, TestName = "assert_frame_is_evicted_when_the_new_head_drops_eip7906")]
+        [TestCase(FrameForkGate.Assert, false, TestName = "assert_frame_is_retained_while_eip7906_stays_active")]
         [TestCase(FrameForkGate.ExecutionGasCap, true, TestName = "frame_execution_reservation_is_evicted_when_repriced_over_the_cap")]
         [TestCase(FrameForkGate.ExecutionGasCap, false, TestName = "frame_execution_reservation_is_retained_while_the_price_holds")]
         public async Task Frame_transaction_invalidated_by_the_new_head_is_evicted(FrameForkGate gate, bool revokedAtFork)
@@ -3845,12 +3845,12 @@ namespace Nethermind.TxPool.Test
 
             OverridableReleaseSpec preForkSpec = new(Eip8141Prototype.Instance)
             {
-                IsEip7906Enabled = gate == FrameForkGate.PostTx,
+                IsEip7906Enabled = gate == FrameForkGate.Assert,
                 IsEip2780Enabled = false
             };
             OverridableReleaseSpec postForkSpec = new(Eip8141Prototype.Instance)
             {
-                IsEip7906Enabled = preForkSpec.IsEip7906Enabled && !(revokedAtFork && gate == FrameForkGate.PostTx),
+                IsEip7906Enabled = preForkSpec.IsEip7906Enabled && !(revokedAtFork && gate == FrameForkGate.Assert),
                 IsEip2780Enabled = revokedAtFork && gate == FrameForkGate.ExecutionGasCap
             };
             TestSpecProvider provider = new(preForkSpec)
@@ -3876,9 +3876,9 @@ namespace Nethermind.TxPool.Test
         {
             switch (gate)
             {
-                case FrameForkGate.PostTx:
+                case FrameForkGate.Assert:
                     return SelfVerifyFrameTx(
-                        new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
+                        new TxFrame(FrameMode.Assert, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
                 default:
                     // Reserving half the EIP-2780 transfer charge below the cap, so pricing the transfer at the
                     // next head is the whole difference. The half also absorbs the few tokens by which a fresh
@@ -7367,7 +7367,7 @@ namespace Nethermind.TxPool.Test
                 Frames =
                 [
                     FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-                    new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
+                    new TxFrame(FrameMode.Assert, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
                 ],
                 FrameSignatures = [],
                 NonceKeys = [UInt256.One],

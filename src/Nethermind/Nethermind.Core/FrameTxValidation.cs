@@ -17,17 +17,17 @@ public static class FrameTxValidation
 {
     public const string MissingFrames = "frame transaction must contain between 1 and 64 frames";
     public const string MissingSender = "frame transaction sender must be set";
-    public const string InvalidMode = "frame mode must be DEFAULT, VERIFY, SENDER, or POST_TX";
-    public const string PostTxNotTrailing = "POST_TX frames must form a trailing suffix of the frame list";
-    public const string PostTxNotEnabled = "POST_TX frames are not enabled";
+    public const string InvalidMode = "frame mode must be DEFAULT, VERIFY, SENDER, or ASSERT";
+    public const string AssertFrameNotTrailing = "ASSERT frames must form a trailing suffix of the frame list";
+    public const string AssertFrameNotEnabled = "ASSERT frames are not enabled";
     public const string InvalidFlags = "frame flags must not use reserved bits";
     public const string ValueOutsideSenderMode = "frame value is only allowed in SENDER mode";
     public const string ExecutionApprovalWrongTarget = "frames allowed to approve execution must target the sender";
     public const string AtomicBatchOnLastFrame = "the last frame must not have the atomic batch flag set";
     public const string AtomicBatchOnVerifyFrame = "the atomic batch flag must not be set on a VERIFY frame";
-    public const string AtomicBatchOnPostTxFrame = "the atomic batch flag must not be set on a POST_TX frame";
+    public const string AtomicBatchOnAssertFrame = "the atomic batch flag must not be set on an ASSERT frame";
     public const string AtomicBatchFollowedByVerifyFrame = "an atomic batch frame must not be followed by a VERIFY frame";
-    public const string AtomicBatchFollowedByPostTxFrame = "an atomic batch frame must not be followed by a POST_TX frame";
+    public const string AtomicBatchFollowedByAssertFrame = "an atomic batch frame must not be followed by an ASSERT frame";
     public const string ApprovalScopeInAtomicBatch = "frames belonging to an atomic batch must not carry approval scope";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
     /// <summary>The EIP-7825 gas-cap failure message, which names the offending amounts rather than being a
@@ -54,7 +54,7 @@ public static class FrameTxValidation
     /// list, its signature entries and the fields the frame envelope adds.
     /// </summary>
     /// <remarks>
-    /// The decision is a pure function of <paramref name="transaction"/> and <paramref name="postTxEnabled"/>: it
+    /// The decision is a pure function of <paramref name="transaction"/> and <paramref name="assertEnabled"/>: it
     /// reads no state and no release spec, so both consensus (<c>BlockValidator</c>) and the pool can reach it, and
     /// the same transaction always yields the same verdict at a given fork. Structural RLP shape is already enforced
     /// at decode time and is not rechecked. Checks needing the release spec — the EIP-7594 blob limits and the
@@ -64,12 +64,12 @@ public static class FrameTxValidation
     /// </remarks>
     /// <param name="transaction">The frame transaction to check. Must carry <see cref="Transaction.Frames"/> and a
     /// resolved <see cref="Transaction.SenderAddress"/>; both are reported as failures rather than thrown on.</param>
-    /// <param name="postTxEnabled">Whether EIP-7906 is active, which decides only whether
-    /// <see cref="FrameMode.PostTx"/> frames are admitted at all.</param>
+    /// <param name="assertEnabled">Whether EIP-7906 is active, which decides only whether
+    /// <see cref="FrameMode.Assert"/> frames are admitted at all.</param>
     /// <param name="error">On failure, the first violated constraint, always one of this type's message constants;
     /// <see langword="null"/> on success.</param>
     /// <returns><see langword="true"/> if every stateless constraint holds.</returns>
-    public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
+    public static bool IsWellFormed(Transaction transaction, bool assertEnabled, out string? error)
     {
         error = null;
 
@@ -92,32 +92,32 @@ public static class FrameTxValidation
         {
             TxFrame frame = frames[i];
 
-            if (frame.Mode > FrameMode.PostTx)
+            if (frame.Mode > FrameMode.Assert)
             {
                 error = InvalidMode;
                 return false;
             }
 
-            if (frame.Mode == FrameMode.PostTx && !postTxEnabled)
+            if (frame.Mode == FrameMode.Assert && !assertEnabled)
             {
-                error = PostTxNotEnabled;
+                error = AssertFrameNotEnabled;
                 return false;
             }
 
             // Assertions observe the finished transaction, so nothing may run after them.
-            if (frame.Mode == FrameMode.PostTx)
+            if (frame.Mode == FrameMode.Assert)
             {
-                if (i + 1 < frames.Length && frames[i + 1].Mode != FrameMode.PostTx)
+                if (i + 1 < frames.Length && frames[i + 1].Mode != FrameMode.Assert)
                 {
-                    error = PostTxNotTrailing;
+                    error = AssertFrameNotTrailing;
                     return false;
                 }
 
-                // A batch opened by a POST_TX frame can never unroll — the assertion path exits the
+                // A batch opened by an ASSERT frame can never unroll — the assertion path exits the
                 // frame loop first — so the flag would be inert here and clients could diverge on it.
                 if ((frame.Flags & FrameFlags.AtomicBatch) != 0)
                 {
-                    error = AtomicBatchOnPostTxFrame;
+                    error = AtomicBatchOnAssertFrame;
                     return false;
                 }
             }
@@ -163,11 +163,11 @@ public static class FrameTxValidation
                     return false;
                 }
 
-                // An unroll moves the terminal frame onto the successor and marks it skipped. On a POST_TX
+                // An unroll moves the terminal frame onto the successor and marks it skipped. On an ASSERT
                 // successor that silently drops the assertion, which is the case it exists to catch.
-                if (i + 1 < frames.Length && frames[i + 1].Mode == FrameMode.PostTx)
+                if (i + 1 < frames.Length && frames[i + 1].Mode == FrameMode.Assert)
                 {
-                    error = AtomicBatchFollowedByPostTxFrame;
+                    error = AtomicBatchFollowedByAssertFrame;
                     return false;
                 }
             }

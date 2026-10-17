@@ -33,9 +33,9 @@ public static unsafe partial class EvmInstructions
 
         TxFrame frame = ctx.CurrentFrame;
 
-        // EIP-7906 forbids the call, not the permission bits: a POST_TX frame may carry an approval
+        // EIP-7906 forbids the call, not the permission bits: an ASSERT frame may carry an approval
         // scope it never exercises, so the ban belongs here rather than in envelope validation.
-        if (frame.Mode == FrameMode.PostTx) return EvmExceptionType.BadInstruction;
+        if (frame.Mode == FrameMode.Assert) return EvmExceptionType.BadInstruction;
 
         Address resolvedTarget = ctx.ResolvedTarget(ctx.CurrentFrameIndex);
 

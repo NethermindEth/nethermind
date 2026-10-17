@@ -842,7 +842,7 @@ public class FrameTransactionForRpcTests
     [
         new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, 50_000, 1_000, UInt256.Zero, default),
         new TxFrame(FrameMode.Sender, FrameFlags.AtomicBatch, TestItem.AddressB, 21_000, 0, (UInt256)7, new byte[] { 0xde, 0xad }),
-        new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressC, 1_000, 2_000, UInt256.Zero, default),
+        new TxFrame(FrameMode.Assert, FrameFlags.None, TestItem.AddressC, 1_000, 2_000, UInt256.Zero, default),
     ];
 
     [Test]

@@ -40,7 +40,7 @@ public partial class FrameTxProcessorTests
     private static readonly byte[] RevertingWithOutput = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.REVERT).Done;
 
     /// <summary>Frame transactions covering nested calls, a skipped frame, a frame that never enters the VM, a
-    /// sponsored payer, a frame ending on a CALL, a reverted POST_TX frame, a static frame calling a
+    /// sponsored payer, a frame ending on a CALL, a reverted ASSERT frame, a static frame calling a
     /// precompile, and keyed nonces whose calldata the processor measures only once it runs. <see cref="Observer"/> calls <see cref="Recipient"/>, so its frame has a subtrace.</summary>
     private Transaction ParityScenarioTx(string scenario)
     {
@@ -75,15 +75,15 @@ public partial class FrameTxProcessorTests
                 DeployContract(ParityTailCaller, Prepare.EvmCode.Call(Recipient, 50_000).Done);
                 frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityTailCaller), Frame(FrameMode.Default, target: Recipient)];
                 break;
-            case "postTxReverted":
+            case "assertReverted":
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 DeployContract(ParityReverter, RevertingWithOutput);
                 frames =
                 [
                     SelfVerifyFrame(),
                     Frame(FrameMode.Sender, target: Observer),
-                    Frame(FrameMode.PostTx, target: ParityReverter, stateGasLimit: 0),
-                    Frame(FrameMode.PostTx, target: Observer, stateGasLimit: 0)
+                    Frame(FrameMode.Assert, target: ParityReverter, stateGasLimit: 0),
+                    Frame(FrameMode.Assert, target: Observer, stateGasLimit: 0)
                 ];
                 break;
             case "precompileFrame":
@@ -92,7 +92,7 @@ public partial class FrameTxProcessorTests
                 [
                     SelfVerifyFrame(),
                     Frame(FrameMode.Sender, target: Observer),
-                    Frame(FrameMode.PostTx, target: IdentityPrecompile.Address, stateGasLimit: 0)
+                    Frame(FrameMode.Assert, target: IdentityPrecompile.Address, stateGasLimit: 0)
                 ];
                 break;
             case "keyedNonces":
@@ -132,7 +132,7 @@ public partial class FrameTxProcessorTests
     [TestCase("undispatched", new[] { 0, 2 }, new[] { 2, 0 })]
     [TestCase("sponsored", new[] { 0, 1, 2 }, new[] { 2, 0 })]
     [TestCase("tailCall", new[] { 0, 1, 2 }, new[] { 1, 0 })]
-    [TestCase("postTxReverted", new[] { 0, 1, 2 }, new[] { 1, 0 })]
+    [TestCase("assertReverted", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("precompileFrame", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("keyedNonces", new[] { 0, 1 }, new[] { 1, 0 })]
     public void ParityTrace_FrameTx_RootsEveryFrameAtItsIndex(string scenario, int[] framesInVm, int[] nestedCall)
@@ -154,16 +154,16 @@ public partial class FrameTxProcessorTests
             Assert.That(root.Result?.GasUsed ?? 0, Is.LessThanOrEqualTo(root.Gas), "root gasUsed");
             Assert.That(root.Result?.GasUsed, Is.EqualTo(receipt.GasUsed), "root gasUsed");
             // The receipt's status is derived from the frames, and the root's error follows it.
-            Assert.That(root.Error, Is.EqualTo(scenario == "postTxReverted" ? "POST_TX frame reverted"
+            Assert.That(root.Error, Is.EqualTo(scenario == "assertReverted" ? "ASSERT frame reverted"
                 : receipt.StatusCode == StatusCode.Success ? null : "frame failed"), "root error");
 
             Assert.That(root.Subtraces, Has.Count.EqualTo(frames.Length));
-            Assert.That(frameReceipts.Count(static r => r.Status == TxFrameReceipt.StatusSkipped), Is.EqualTo(scenario is "skipped" or "postTxReverted" ? 1 : 0), "skipped frames");
+            Assert.That(frameReceipts.Count(static r => r.Status == TxFrameReceipt.StatusSkipped), Is.EqualTo(scenario is "skipped" or "assertReverted" ? 1 : 0), "skipped frames");
 
             for (int i = 0; i < root.Subtraces.Count; i++)
             {
                 ParityTraceAction frame = root.Subtraces[i];
-                bool isStatic = frames[i].Mode is FrameMode.Verify or FrameMode.PostTx;
+                bool isStatic = frames[i].Mode is FrameMode.Verify or FrameMode.Assert;
                 Assert.That(frame.TraceAddress, Is.SequenceEqualTo(new[] { i }), $"frame {i} address");
                 Assert.That(frame.CallType, Is.EqualTo(isStatic ? "staticcall" : "call"), $"frame {i} call type");
                 Assert.That(frame.From, Is.EqualTo(frames[i].Mode == FrameMode.Sender ? Sender : Eip8141Constants.EntryPointAddress), $"frame {i} from");
@@ -213,7 +213,7 @@ public partial class FrameTxProcessorTests
 
     [Test]
     public void ParityTrace_FrameTx_StreamedMatchesBuffered(
-        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall", "postTxReverted", "precompileFrame", "keyedNonces")] string scenario, [Values] ParityTraceStreamMode mode)
+        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall", "assertReverted", "precompileFrame", "keyedNonces")] string scenario, [Values] ParityTraceStreamMode mode)
     {
         string buffered = BufferedParityJson(mode, ParityScenarioTx(scenario));
         TearDown();
@@ -282,7 +282,7 @@ public partial class FrameTxProcessorTests
 
     [TestCase("nested")]
     [TestCase("undispatched")]
-    [TestCase("postTxReverted")]
+    [TestCase("assertReverted")]
     [TestCase("keyedNonces")]
     public void CallTrace_FrameTx_RootGasIsTheTransactionBudget(string scenario)
     {

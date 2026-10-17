@@ -133,8 +133,8 @@ public sealed class FrameTxContext(
     /// <summary>The frame the outer loop is currently executing.</summary>
     public TxFrame CurrentFrame => Frames[CurrentFrameIndex];
 
-    /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its POST_TX frames.</summary>
-    internal TransactionDiffView? PostTxDiffView { get; set; }
+    /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its ASSERT frames.</summary>
+    internal TransactionDiffView? AssertFrameDiffView { get; set; }
 
     /// <summary>A frame's target with the omitted-target encoding resolved to the sender.</summary>
     public Address ResolvedTarget(int frameIndex) => Frames[frameIndex].Target ?? Sender;
