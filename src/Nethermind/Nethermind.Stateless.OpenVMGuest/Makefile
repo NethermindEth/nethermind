@@ -15,9 +15,9 @@ GUEST_OBJECTS := mul.o
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
-# Fewer executed instructions for more compile time and code size. Tracking every
-# local is most of the gain: the default 0x400 leaves locals of the largest methods
-# out of register allocation.
+# Fewer executed instructions for more compile time and code size (values in hex).
+# Tracking every local is most of the gain: the default 0x400 leaves locals of the
+# largest methods out of register allocation.
 OPT_FLAGS += \
 	--codegenopt JitMaxLocalsToTrack=10000 \
 	--codegenopt JitCloneLoopsSizeLimit=1000 \
