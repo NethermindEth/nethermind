@@ -134,7 +134,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     [Test]
     public void Nested_results_are_not_overwritten_by_later_calls([Values("return", "revert", "identity", "create")] string target)
     {
-        // A shorter ID output would be a slice of the precompile scratch, which is copied anyway.
+        // If the tracing guard were dropped, a shorter ID output would be a slice of the precompile scratch, which is copied anyway.
         int length = target == "identity" ? VirtualMachineStatics.MinPrecompileScratch : 32;
         byte[] first = Enumerable.Repeat((byte)0xa1, length).ToArray();
         byte[] second = Enumerable.Repeat((byte)0xb2, length).ToArray();
