@@ -21,6 +21,7 @@ if mode == "sources":
         "src/Nethermind/Nethermind.Db/DbExtensions.cs",
         "src/Nethermind/Nethermind.Db.Rocks/RocksDbReader.cs",
         "src/Nethermind/Nethermind.Db.Rocks/DbOnTheRocks.BatchReads.cs",
+        "src/Nethermind/Nethermind.Db.Rocks/ColumnDb.cs",
         "src/Nethermind/Nethermind.Db.Test/DbOnTheRocksTests.cs",
     }
     assert changed and all(path.startswith(allowed) or path in foundation for path in changed), changed
