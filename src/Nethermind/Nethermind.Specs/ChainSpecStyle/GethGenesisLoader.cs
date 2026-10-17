@@ -101,7 +101,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             MaximumExtraDataSize = 32,
             MinGasLimit = 5000,
             MinHistoryRetentionEpochs = HistoryRetentionConstants.MinEpochsForBlockRequests,
-            MinBalRetentionEpochs = HistoryRetentionConstants.WeakSubjectivityPeriodEpochs,
+            MinBalRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs,
 
             Eip7Transition = config.HomesteadBlock ?? 0,
 
