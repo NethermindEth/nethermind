@@ -2678,7 +2678,7 @@ jobs:
       && needs.resolve.outputs.dottrace == 'true'
       && needs.resolve.outputs.dottrace_mode != 'timeline'
       && needs.resolve.outputs.should_run == 'true'
-      && (needs.benchmark.result == 'success' || needs.benchmark-multi.result == 'success')
+      && (needs.benchmark.result == 'success' || needs.benchmark-multi.result == 'success' || needs.benchmark.result == 'failure' || needs.benchmark-multi.result == 'failure')
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -3165,10 +3165,9 @@ jobs:
         shell: bash
         env:
           EXPB_IMAGES_JSON: ${{ needs.resolve-images.outputs.images }}
-          # An explicit `docker_images` dispatch is an A/B: one bad arm invalidates the comparison, so
-          # the campaign stops. A retrospective sweep bisects across many master builds and its other
-          # images stay useful, so there only the failed image is abandoned.
-          CAMPAIGN_FAIL_FAST: ${{ needs.resolve.outputs.docker_images != '' }}
+          # Unprofiled A/B stops on a failed arm. Profiling retains the other arms for diagnosis;
+          # the final quality gate still rejects the failed campaign.
+          CAMPAIGN_FAIL_FAST: ${{ needs.resolve.outputs.docker_images != '' && needs.resolve.outputs.dottrace != 'true' && needs.resolve.outputs.perf != 'true' }}
           EXPB_CONFIG_TEMPLATE: ${{ steps.trie-metrics-template.outputs.path || format('{0}/{1}', needs.resolve.outputs.expb_data_dir, needs.resolve.outputs.config_file) }}
           EXPB_CAMPAIGN_DIR: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
           FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
