@@ -98,17 +98,16 @@ internal static unsafe class BN254
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static string? CheckPairing(byte[] output, ReadOnlySpan<byte> input)
+    internal static string? CheckPairing(ReadOnlySpan<byte> input, out bool isOne)
     {
-        if (output.Length < 32)
-            return Errors.Failed;
-
         // Empty input means "true" by convention
         if (input.Length == 0)
         {
-            output[31] = 1;
+            isOne = true;
             return null;
         }
+
+        isOne = false;
 
         if (input.Length % PairSize != 0)
             return Errors.Bn254PairingInputLength;
@@ -119,14 +118,15 @@ internal static unsafe class BN254
         {
             return pairCount switch
             {
-                1 => CheckPairingSingle(output, data),
-                _ => CheckPairingVector(output, data, pairCount),
+                1 => CheckPairingSingle(data, out isOne),
+                _ => CheckPairingVector(data, pairCount, out isOne),
             };
         }
     }
 
-    private static string? CheckPairingSingle(byte[] output, byte* data)
+    private static string? CheckPairingSingle(byte* data, out bool isOne)
     {
+        isOne = false;
         string? error = DeserializeG1(data, out mclBnG1 g1, out bool g1IsZero);
         if (error is not null)
             return error;
@@ -137,7 +137,7 @@ internal static unsafe class BN254
 
         if (g1IsZero || g2IsZero)
         {
-            output[31] = 1;
+            isOne = true;
             return null;
         }
 
@@ -145,12 +145,13 @@ internal static unsafe class BN254
         mclBn_millerLoop(ref acc, g1, g2);
         mclBn_finalExp(ref acc, acc);
 
-        output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
+        isOne = mclBnGT_isOne(acc) == 1;
         return null;
     }
 
-    private static string? CheckPairingVector(byte[] output, byte* data, int pairCount)
+    private static string? CheckPairingVector(byte* data, int pairCount, out bool isOne)
     {
+        isOne = false;
         // Process the pairs in chunks of at most MaxStackPairCount so the scratch buffers stay a fixed,
         // input-independent size on the stack (the >MaxStackPairCount case never grows the allocation),
         // while still feeding the vectorized multi-Miller-loop for every pair rather than falling back to
@@ -213,13 +214,13 @@ internal static unsafe class BN254
         // All pairs had a zero element -> valid
         if (!hasMl)
         {
-            output[31] = 1;
+            isOne = true;
             return null;
         }
 
         mclBn_finalExp(ref acc, acc);
 
-        output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
+        isOne = mclBnGT_isOne(acc) == 1;
         return null;
     }
 
