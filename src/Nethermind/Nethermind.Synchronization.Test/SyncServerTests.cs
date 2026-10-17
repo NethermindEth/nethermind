@@ -1022,6 +1022,7 @@ public class SyncServerTests
         public ulong OldestUnreclaimedBlockNumber => 0;
         public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
         public void SchedulePruneHistory() { }
+        public void PruneToCompletion(CancellationToken cancellationToken) { }
         public ulong GetRetentionBlocks(ulong retentionEpochs) => 0;
         public void RaiseNewOldestBlock(BlockHeader oldest) =>
             NewOldestBlock?.Invoke(this, new OnNewOldestBlockArgs(oldest));

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.History;
@@ -23,6 +24,17 @@ public interface IHistoryPruner
     event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
 
     void SchedulePruneHistory();
+
+    /// <summary>Runs pruning passes back to back until nothing more is owed under the current configuration.</summary>
+    /// <remarks>
+    /// Ignores <see cref="IHistoryConfig.PruningInterval"/> and <see cref="IHistoryConfig.PruningTimeoutSeconds"/>.
+    /// For offline use by the <c>prune-history</c> command.
+    /// </remarks>
+    /// <exception cref="HistoryPruner.HistoryPrunerException">
+    /// Pruning is disabled, the pruning boundary could not be established (no head, no sync pivot, or the ancient
+    /// bodies backfill is still descending), or the transaction index sweep stopped making progress.
+    /// </exception>
+    void PruneToCompletion(CancellationToken cancellationToken);
 
     /// <summary>
     /// Converts a retention window expressed in epochs to a block count using this pruner's

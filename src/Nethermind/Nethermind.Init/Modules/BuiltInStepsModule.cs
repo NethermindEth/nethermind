@@ -26,6 +26,7 @@ public class BuiltInStepsModule : Module
         typeof(LogHardwareInfo),
         typeof(RegisterRpcModules),
         typeof(ReviewBlockTree),
+        typeof(RunPruneHistory),
         typeof(SetupKeyStore),
         typeof(StartBlockProcessor),
         typeof(StartBlockProducer),
