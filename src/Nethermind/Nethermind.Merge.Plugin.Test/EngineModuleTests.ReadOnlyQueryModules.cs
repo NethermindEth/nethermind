@@ -22,7 +22,6 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    // Prague rather than Amsterdam: block-level access list execution runs on machines of its own, which take no runner.
     [Test]
     public async Task A_read_only_query_module_for_every_kind_reaches_no_engine_path()
     {

@@ -103,6 +103,16 @@ public class ReadOnlyQueryModuleTests
             configure?.Invoke(builder);
         });
 
+    /// <summary>Makes a <see cref="Chain"/> an Amsterdam one, whose blocks carry block-level access lists.</summary>
+    /// <remarks>Each contract counts on from one: setting a fresh slot costs more state gas (EIP-8037) than the calls carry.</remarks>
+    private static void WithBlockLevelAccessLists(ContainerBuilder builder) => builder
+        .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance) { AllowTestChainOverride = false })
+        .WithGenesisPostProcessor((_, state) =>
+        {
+            foreach (Address contract in Contracts)
+                state.Set(new StorageCell(contract, UInt256.Zero), UInt256.One);
+        });
+
     /// <summary>Adds a block whose transaction <c>i</c> calls <c>Contracts[i]</c>.</summary>
     private static async Task<Block> AddBlockCallingEachContract(TestRpcBlockchain chain)
     {
@@ -420,6 +430,41 @@ public class ReadOnlyQueryModuleTests
         {
             AssertSucceeded(response);
             Assert.That(probe.OffersFor(Target), Is.GreaterThan(0), $"{method} runs in a simulate environment");
+        }
+    }
+
+    // Blocks with block-level access lists run their transactions and system calls on machines of their own, which must
+    // take the environment's runner as its own machine does. A call runs on the environment's machine alone.
+    [TestCase(ReadOnlyQueryKind.Call, "eth_call", null)]
+    [TestCase(ReadOnlyQueryKind.Trace, "debug_traceCall", "callTracer")]
+    [TestCase(ReadOnlyQueryKind.Trace, "debug_traceTransaction", "callTracer")]
+    [TestCase(ReadOnlyQueryKind.Trace, "debug_traceBlockByNumber", "callTracer")]
+    [TestCase(ReadOnlyQueryKind.Trace, "trace_call", "trace")]
+    [TestCase(ReadOnlyQueryKind.Trace, "trace_replayTransaction", "trace")]
+    [TestCase(ReadOnlyQueryKind.Trace, "trace_replayBlockTransactions", "trace")]
+    [TestCase(ReadOnlyQueryKind.Trace, "proof_getTransactionReceipt", null)]
+    [TestCase(ReadOnlyQueryKind.Simulate, "eth_simulateV1", null)]
+    [TestCase(ReadOnlyQueryKind.Simulate, "debug_simulateV1", null)]
+    [TestCase(ReadOnlyQueryKind.Simulate, "debug_traceCallMany", null)]
+    [TestCase(ReadOnlyQueryKind.Simulate, "trace_simulateV1", null)]
+    public async Task Queries_offer_frames_on_a_chain_with_block_level_access_lists(ReadOnlyQueryKind kind, string method, string? tracer)
+    {
+        FrameOfferProbe probe = new();
+        using TestRpcBlockchain chain = await Chain(probe, kind, WithBlockLevelAccessLists);
+        Block block = await AddBlockCallingEachContract(chain);
+        Assert.That(probe.Offers, Is.Zero, "precondition: block production and processing never run on the runner");
+
+        string response = kind switch
+        {
+            ReadOnlyQueryKind.Call => await chain.TestEthRpc(method, CallTo(Target), "latest"),
+            ReadOnlyQueryKind.Simulate => await Simulate(chain, method),
+            _ => await Trace(chain, method, block, tracer),
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertSucceeded(response);
+            Assert.That(probe.OffersFor(Target), Is.GreaterThan(0), $"{method} runs in an environment of the module's kind");
         }
     }
 
