@@ -19,8 +19,9 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <remarks>
-/// Fixture args: EIP-7708 on/off, and an Amsterdam base, whose EIP-8037 selects the deferred finalization
-/// path and whose EIP-8246 leaves no burn to log; the Prague base runs the inline path with the legacy burn logs.
+/// Fixture args: EIP-7708 on/off, and a Prague or Amsterdam base. Prague runs the inline path with the legacy
+/// burn logs. On Amsterdam, EIP-8246 keeps the self-destructed balance, so the fixture covers the absence of a
+/// burn log rather than the EIP-8037 deferred burn-log branch.
 /// </remarks>
 [TestFixture(true, false)]
 [TestFixture(false, false)]

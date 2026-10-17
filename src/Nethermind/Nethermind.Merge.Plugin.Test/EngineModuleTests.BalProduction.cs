@@ -30,8 +30,8 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    /// <summary>Gas of a value transfer to a cold recipient under EIP-2780 and EIP-8038.</summary>
-    private const ulong IncludedTransferGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780;
+    /// <summary>Gas of a value transfer to a cold recipient: 21,000 per the EIP-2780 reference table.</summary>
+    private const ulong IncludedTransferGas = 21_000;
 
     /// <summary>
     /// A transaction the producer executes and then drops must leave no trace in the block access list, and the

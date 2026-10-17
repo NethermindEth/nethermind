@@ -128,8 +128,8 @@ public class SimpleTransferFastPathDifferentialTests
     [TestCaseSource(nameof(Scenarios))]
     public void Fast_path_and_evm_path_are_equivalent(ulong value, RecipientKind recipientKind, bool eip7708, int dataLength, TracerShape tracer, Mode mode, bool plainState)
     {
-        ExecutionCapture fast = Run(forceEvmPath: false, value, recipientKind, eip7708, dataLength, tracer, mode, plainState: plainState);
-        ExecutionCapture slow = Run(forceEvmPath: true, value, recipientKind, eip7708, dataLength, tracer, mode, plainState: plainState);
+        ExecutionCapture fast = Run(forceEvmPath: false, value, recipientKind, eip7708, dataLength, tracer, mode, plainState);
+        ExecutionCapture slow = Run(forceEvmPath: true, value, recipientKind, eip7708, dataLength, tracer, mode, plainState);
 
         AssertEquivalent(fast, slow, recipientKind);
     }
@@ -173,9 +173,9 @@ public class SimpleTransferFastPathDifferentialTests
     public void Eip8037_dead_account_state_gas_boundaries_are_equivalent(ulong availableGas, byte expectedStatus, TracerShape tracerShape)
     {
         ExecutionCapture fast = Run(forceEvmPath: false, value: 1_000_000, RecipientKind.Nonexistent,
-            eip7708: true, dataLength: 0, tracerShape, Mode.Execute, eip8037: true, availableGas);
+            eip7708: true, dataLength: 0, tracerShape, Mode.Execute, plainState: false, eip8037: true, availableGas);
         ExecutionCapture slow = Run(forceEvmPath: true, value: 1_000_000, RecipientKind.Nonexistent,
-            eip7708: true, dataLength: 0, tracerShape, Mode.Execute, eip8037: true, availableGas);
+            eip7708: true, dataLength: 0, tracerShape, Mode.Execute, plainState: false, eip8037: true, availableGas);
 
         string accessReport =
             $"Access([{string.Join('|', new[] { Address.Zero, TestItem.AddressA, TestItem.AddressC }
@@ -229,11 +229,11 @@ public class SimpleTransferFastPathDifferentialTests
         int dataLength,
         TracerShape tracerShape,
         Mode mode,
+        bool plainState,
         bool eip8037 = false,
         ulong? availableGas = null,
         ulong? gasLimit = null,
-        Coinbase coinbase = Coinbase.Other,
-        bool plainState = false)
+        Coinbase coinbase = Coinbase.Other)
     {
         IReleaseSpec fork = eip8037 ? Amsterdam.Instance : Prague.Instance;
         OverridableReleaseSpec spec = new(fork) { IsEip7708Enabled = eip7708 };
@@ -397,8 +397,8 @@ public class SimpleTransferFastPathDifferentialTests
     [TestCaseSource(nameof(AmsterdamEdgeCases))]
     public void Amsterdam_edge_cases_are_equivalent(ulong value, RecipientKind recipientKind, Coinbase coinbase, ulong? gasLimit, TracerShape tracer)
     {
-        ExecutionCapture fast = Run(false, value, recipientKind, true, 0, tracer, Mode.Execute, eip8037: true, gasLimit: gasLimit, coinbase: coinbase);
-        ExecutionCapture slow = Run(true, value, recipientKind, true, 0, tracer, Mode.Execute, eip8037: true, gasLimit: gasLimit, coinbase: coinbase);
+        ExecutionCapture fast = Run(false, value, recipientKind, true, 0, tracer, Mode.Execute, plainState: false, eip8037: true, gasLimit: gasLimit, coinbase: coinbase);
+        ExecutionCapture slow = Run(true, value, recipientKind, true, 0, tracer, Mode.Execute, plainState: false, eip8037: true, gasLimit: gasLimit, coinbase: coinbase);
         AssertEquivalent(fast, slow, recipientKind);
 
         // EIP-7928: a net-zero balance change is not recorded, any other records the post-tx balance. The base
