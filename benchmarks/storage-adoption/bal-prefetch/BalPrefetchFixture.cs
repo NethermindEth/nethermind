@@ -96,7 +96,8 @@ sealed class BalPrefetchFixture : IDisposable, IWorldStateScopeProvider.IAsyncBa
             }
             snapshots.Add(new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, _resources, ResourcePool.Usage.MainBlockProcessing));
         }
-        ReadOnlySnapshotBundle readOnly = new(snapshots, persistence.CreateReader(), false, PersistedSnapshotStack.Empty());
+        bool detailed = Environment.GetEnvironmentVariable("DETAILED_METRICS") == "1";
+        ReadOnlySnapshotBundle readOnly = new(snapshots, persistence.CreateReader(), detailed, PersistedSnapshotStack.Empty(detailed));
         SnapshotBundle bundle = new(readOnly, Substitute.For<ITrieNodeCache>(), _resources, ResourcePool.Usage.MainBlockProcessing);
         _scope = new(StateId.PreGenesis, bundle, Substitute.For<IWorldStateScopeProvider.ICodeDb>(),
             Substitute.For<IFlatCommitTarget>(), new FlatDbConfig(), new NoopTrieWarmer(), LimboLogs.Instance,

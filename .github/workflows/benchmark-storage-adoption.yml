@@ -41,6 +41,11 @@ on:
         required: false
         type: boolean
         default: false
+      detailed_metrics:
+        description: Enable detailed metrics in BAL and trie component measurements
+        required: false
+        type: boolean
+        default: false
       profile_run_id:
         description: Existing diagnostic run whose snapshot must be converted
         required: false
@@ -445,6 +450,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 240
     env:
+      DETAILED_METRICS: ${{ inputs.detailed_metrics && '1' || '0' }}
       BASELINE_REF: ${{ inputs.baseline_ref }}
       CONTROL_REF: ${{ inputs.control_ref }}
       CANDIDATE_REF: ${{ inputs.multiget_ref }}
@@ -482,6 +488,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir results
+          printf "%s\n" "$DETAILED_METRICS" > results/detailed-metrics.txt
           dotnet --info > results/dotnet.txt
           lscpu > results/cpu.txt
           echo "SOURCE_DATE_EPOCH=$(git -C baseline log -1 --format=%ct)" >> "$GITHUB_ENV"
@@ -535,6 +542,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 240
     env:
+      DETAILED_METRICS: ${{ inputs.detailed_metrics && '1' || '0' }}
       BASELINE_REF: ${{ inputs.baseline_ref }}
       CONTROL_REF: ${{ inputs.control_ref }}
       CANDIDATE_REF: ${{ inputs.multiget_ref }}
@@ -572,6 +580,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir results
+          printf "%s\n" "$DETAILED_METRICS" > results/detailed-metrics.txt
           dotnet --info > results/dotnet.txt
           lscpu > results/cpu.txt
           echo "SOURCE_DATE_EPOCH=$(git -C baseline log -1 --format=%ct)" >> "$GITHUB_ENV"

@@ -1,6 +1,10 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Nethermind.Db;
 
+bool detailedMetrics = Environment.GetEnvironmentVariable("DETAILED_METRICS") == "1";
+Metrics.DetailedMetricsEnabled = detailedMetrics;
+Console.WriteLine($"Detailed metrics: {detailedMetrics}");
 bool verifyOnly = args.Contains("--verify", StringComparer.Ordinal);
 string output = Environment.GetEnvironmentVariable("BAL_OUTPUT") ?? "bal-results.json";
 List<object> rows = [];
@@ -43,7 +47,7 @@ foreach ((int count, string shape) in cases)
         double managedBytes = (double)(GC.GetTotalAllocatedBytes(precise: true) - bytes) / operations;
         samples.Add(new { nanoseconds, managedBytes, operations });
     }
-    rows.Add(new { count, shape, cache = "warm", samples });
+    rows.Add(new { count, shape, cache = "warm", detailedMetrics, samples });
 
     if (count is 8 or 64 or 512 && shape is "accounts" or "slots")
     {
@@ -58,7 +62,7 @@ foreach ((int count, string shape) in cases)
             double managedBytes = GC.GetTotalAllocatedBytes(precise: true) - bytes;
             samples.Add(new { nanoseconds, managedBytes, operations = 1 });
         }
-        rows.Add(new { count, shape, cache = "cold", samples });
+        rows.Add(new { count, shape, cache = "cold", detailedMetrics, samples });
     }
     File.WriteAllText(output, JsonSerializer.Serialize(rows, new JsonSerializerOptions { WriteIndented = true }));
 }

@@ -100,7 +100,8 @@ sealed class TriePrefetchFixture : IDisposable
             };
         }
         IPersistence persistence = new RocksDbPersistence(columns, LimboLogs.Instance);
-        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), persistence.CreateReader(ReaderFlags.Sync), false, PersistedSnapshotStack.Empty());
+        bool detailed = Environment.GetEnvironmentVariable("DETAILED_METRICS") == "1";
+        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), persistence.CreateReader(ReaderFlags.Sync), detailed, PersistedSnapshotStack.Empty(detailed));
         SnapshotBundle bundle = new(readOnly, new EmptyTrieNodeCache(), _resources, ResourcePool.Usage.MainBlockProcessing);
         Type type = typeof(FlatWorldStateScope).Assembly.GetType("Nethermind.State.Flat.ScopeProvider.StateTrieStoreWarmerAdapter", throwOnError: true)!;
         IScopedTrieStore store = (IScopedTrieStore)Activator.CreateInstance(type, [bundle])!;

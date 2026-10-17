@@ -24,7 +24,12 @@ if mode == "sources":
         "src/Nethermind/Nethermind.Db.Test/DbOnTheRocksTests.cs",
     }
     assert changed and all(path.startswith(allowed) or path in foundation for path in changed), changed
-    assert "src/Nethermind/Nethermind.Trie/PatriciaTree.WarmUp.cs" in changed
+    consumers = {
+        "src/Nethermind/Nethermind.Trie/PatriciaTree.WarmUp.cs",
+        "src/Nethermind/Nethermind.State.Flat/ReadOnlySnapshotBundle.TrieReads.cs",
+        "src/Nethermind/Nethermind.State.Flat/Persistence/BaseTriePersistence.BatchReads.cs",
+    }
+    assert consumers.intersection(changed), changed
     Path("results/source-inputs.json").write_text(json.dumps(refs, indent=2) + "\n")
     Path("results/candidate.diff").write_text(subprocess.check_output(["git", "-C", "candidate", "diff", refs["control"], "HEAD"], text=True))
 elif mode == "results":
@@ -33,6 +38,7 @@ elif mode == "results":
     expected |= {(64, shape, f"retained-prefix-{prefix}") for shape in ("state", "storage", "shared") for prefix in (0, 1, 56, 57, 63)}
     assert len(rows) == len(expected) and {(r["count"], r["shape"], r["cache"]) for r in rows} == expected
     for row in rows:
+        assert row["detailedMetrics"] == (os.environ.get("DETAILED_METRICS") == "1"), row
         assert len(row["samples"]) == (12 if row["cache"] != "cold-db" else 8)
         for sample in row["samples"]:
             assert math.isfinite(sample["nanoseconds"]) and sample["nanoseconds"] > 0

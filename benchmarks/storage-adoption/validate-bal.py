@@ -41,6 +41,7 @@ elif mode == "results":
     expected |= {(count, "one-account-cache", "warm") for count in (63, 64, 65, 127, 128, 129)}
     assert len(rows) == len(expected) and {(r["count"], r["shape"], r["cache"]) for r in rows} == expected
     for row in rows:
+        assert row["detailedMetrics"] == (os.environ.get("DETAILED_METRICS") == "1"), row
         assert len(row["samples"]) == (12 if row["cache"] == "warm" else 8)
         for sample in row["samples"]:
             assert math.isfinite(sample["nanoseconds"]) and sample["nanoseconds"] > 0

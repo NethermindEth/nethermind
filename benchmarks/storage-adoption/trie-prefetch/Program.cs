@@ -1,6 +1,10 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Nethermind.Db;
 
+bool detailedMetrics = Environment.GetEnvironmentVariable("DETAILED_METRICS") == "1";
+Metrics.DetailedMetricsEnabled = detailedMetrics;
+Console.WriteLine($"Detailed metrics: {detailedMetrics}");
 bool verifyOnly = args.Contains("--verify", StringComparer.Ordinal);
 string expectedMode = Environment.GetEnvironmentVariable("TRIE_MODE") ?? throw new InvalidOperationException("TRIE_MODE is required");
 #if BATCH_TRIE
@@ -44,7 +48,7 @@ foreach (string shape in new[] { "state", "storage", "shared" })
             } while (cache != "cold-db" && wall.Elapsed.TotalSeconds < 0.3);
             samples.Add(new { nanoseconds = totalNanoseconds / operations, managedBytes = (double)totalBytes / operations, operations });
         }
-        rows.Add(new { count, shape, cache, samples });
+        rows.Add(new { count, shape, cache, detailedMetrics, samples });
         File.WriteAllText(output, JsonSerializer.Serialize(rows, new JsonSerializerOptions { WriteIndented = true }));
     }
 }
