@@ -3592,10 +3592,19 @@ public partial class BlockProcessorTests
         Block block = BuildParallelValidationBlock(2);
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
-        BalApplyRecordingState stateProvider = new(worldState, () => HoldUntilRejected(BalRejectionPoint.DuringApply));
+        // Holds the failing txs until iteration 0 is past its pre-apply checks, so it cannot skip the apply early.
+        using ManualResetEventSlim applying = new();
+        BalApplyRecordingState stateProvider = new(worldState, () =>
+        {
+            applying.Set();
+            HoldUntilRejected(BalRejectionPoint.DuringApply);
+        });
         using ManualResetEventSlim validationFinished = new(true);
         GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, 21_000, validationFinished, outcome: _ =>
-            rejected ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("rejected") : TransactionResult.Ok);
+        {
+            if (rejectedAt == BalRejectionPoint.DuringApply) applying.Wait(TimeSpan.FromSeconds(10));
+            return rejected ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("rejected") : TransactionResult.Ok;
+        });
         ParallelTestBlockAccessListManager balManager = new(transactionProcessor)
         {
             BalWarmupAction = () => HoldUntilRejected(BalRejectionPoint.DuringWarmup),
