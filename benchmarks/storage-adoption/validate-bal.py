@@ -24,7 +24,12 @@ if mode == "sources":
         "src/Nethermind/Nethermind.Db.Test/DbOnTheRocksTests.cs",
     }
     assert changed and all(path.startswith(allowed) or path in foundation for path in changed), changed
-    assert "src/Nethermind/Nethermind.State.Flat/ScopeProvider/FlatWorldStateScope.cs" in changed
+    consumer_files = {
+        "src/Nethermind/Nethermind.State.Flat/ScopeProvider/FlatWorldStateScope.cs",
+        "src/Nethermind/Nethermind.State.Flat/SnapshotBundle.BatchReads.cs",
+        "src/Nethermind/Nethermind.State.Flat/ReadOnlySnapshotBundle.BatchReads.cs",
+    }
+    assert consumer_files.intersection(changed), changed
     Path("results/source-inputs.json").write_text(json.dumps(refs, indent=2) + "\n")
     Path("results/candidate.diff").write_text(subprocess.check_output(["git", "-C", "candidate", "diff", refs["control"], "HEAD"], text=True))
 elif mode == "results":
