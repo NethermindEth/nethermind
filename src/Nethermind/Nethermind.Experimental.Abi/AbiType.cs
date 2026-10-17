@@ -116,7 +116,7 @@ public static partial class AbiType
         }
     };
 
-    public static Abi<byte[]> Bytes => new()
+    public static readonly Abi<byte[]> Bytes = new()
     {
         Name = "bytes",
         Read = (ref BinarySpanReader r) =>
@@ -154,7 +154,7 @@ public static partial class AbiType
 
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
-    public static Abi<String> String => new()
+    public static readonly Abi<String> String = new()
     {
         Name = "string",
         Read = (ref BinarySpanReader r) =>
