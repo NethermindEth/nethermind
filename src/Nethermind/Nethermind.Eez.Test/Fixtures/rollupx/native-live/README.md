@@ -22,3 +22,5 @@ to check that reconstructed native nonces remain consecutive.
 
 Archive SHA256:
 3f5816a5138d9f09902e4f6c7a9c699ba0067f7ad607d2a4ad4cbda59faa5a9d
+
+The JSON fixtures also retain the original complete L1 posting calldata and its SHA256. Settlement transaction hashes match the physical blob transaction. These postings include their original proof bytes. Full L1 table reconstruction compares every canonical entry and static-entry ABI hash; supplied root updates seed the codec and do not authorize prover signing.

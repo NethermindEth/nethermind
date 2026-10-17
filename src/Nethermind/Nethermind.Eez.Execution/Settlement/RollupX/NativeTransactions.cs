@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Eez.Execution.Settlement.RollupX;
@@ -57,38 +56,18 @@ internal sealed class NativeTransactions
         for (int i = outboundSkip; i < outboundSkip + outboundTake; i++)
         {
             (ExecutionTable table, byte[] user) = _outbound[i];
-            transactions.Add(SyncBlock.Encode(context.ChainId, NextNonce(ref nonce), CommittedValue(table.Entries),
+            transactions.Add(SyncBlock.Encode(context.ChainId, NextNonce(ref nonce), NativeValue.Funding(table.Entries),
                 EezCalldata.EncodeLoadExecutionTable(table), eezl2));
             transactions.Add(user);
         }
         for (int i = inboundSkip; i < inboundSkip + inboundTake; i++)
         {
             L2ExecutionEntry[] entries = [_inbound[i]];
-            transactions.Add(SyncBlock.Encode(context.ChainId, NextNonce(ref nonce), CommittedValue(entries),
+            transactions.Add(SyncBlock.Encode(context.ChainId, NextNonce(ref nonce), NativeValue.Funding(entries),
                 EezCalldata.EncodeExecuteIncomingCrossChainCall(new IncomingCrossChainCall(entries, [])), eezl2));
         }
 
         return transactions.ToArray();
-    }
-
-    private static UInt256 CommittedValue(L2ExecutionEntry[] entries)
-    {
-        UInt256 value = 0;
-        foreach (L2ExecutionEntry entry in entries)
-        {
-            AddValue(entry.IncomingCalls, ref value);
-            foreach (ExpectedCall expected in entry.ExpectedOutgoingCalls) AddValue(expected.Calls, ref value);
-        }
-        return value;
-    }
-
-    private static void AddValue(CrossChainCall[] calls, ref UInt256 value)
-    {
-        foreach (CrossChainCall call in calls)
-        {
-            if (UInt256.AddOverflow(value, call.Value, out UInt256 sum)) throw NativeCallTree.Invalid("committed value exceeds uint256");
-            value = sum;
-        }
     }
 
     private static ulong NextNonce(ref ulong nonce) =>

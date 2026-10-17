@@ -10,12 +10,13 @@ using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using SignedInt256 = Nethermind.Int256.Int256;
 
 namespace Nethermind.Eez.Execution.Settlement.RollupX;
 
 internal static class RollupXSettlementVerifier
 {
+    private static readonly UInt256 MaxOutboundValue = UInt256.One << 191;
+    private static readonly UInt256 MaxInboundValue = MaxOutboundValue - 1;
     public static RollupXObservationClaim[] Verify(PostBatch batch, NativeStream stream,
         IReadOnlyList<EezStatelessBlockResult> window, ulong rollupId, CancellationToken cancellation = default)
     {
@@ -23,48 +24,21 @@ internal static class RollupXSettlementVerifier
         RollupUpdate[] updates = RollupUpdateChain.Verify(batch, rollupId, window[0].Block.ParentHash!.ValueHash256, window[^1].Hash.ValueHash256);
         EezStatelessBlockResult terminal = window[^1];
         RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(terminal.Block);
-        NativeTransaction[] transactions = Parse(stream.Messages, rollupId, cancellation);
         Verification verification = new(batch, updates, terminal, plan, rollupId, cancellation);
-        foreach (NativeTransaction transaction in transactions) verification.VerifyTransaction(transaction);
-        return verification.Complete();
-    }
-
-    private static NativeTransaction[] Parse(StreamMessage[] messages, ulong rollupId, CancellationToken cancellation)
-    {
-        List<NativeTransaction> transactions = [];
         bool inbound = false;
         int index = 0;
-        while (index < messages.Length)
+        while (index < stream.Messages.Length)
         {
             cancellation.ThrowIfCancellationRequested();
-            if (messages[index++] is not StreamMessage.Initiate start || start.ChainId != 0 && start.ChainId != rollupId)
+            if (stream.Messages[index++] is not StreamMessage.Initiate start || start.ChainId != 0 && start.ChainId != rollupId)
                 throw Invalid("Native transaction has an invalid origin.");
             if (start.ChainId == rollupId && inbound) throw Invalid("Outbound native transaction follows inbound execution.");
             inbound |= start.ChainId == 0;
             if (start.ChainId == 0 && !start.TxData.IsEmpty) throw Invalid("L1-origin transaction publishes unauthenticated transaction bytes.");
-            List<NativeCall> calls = [];
-            while (index < messages.Length && messages[index] is not StreamMessage.Finish)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                NativeCall call = messages[index++] switch
-                {
-                    StreamMessage.Call item => new(item.ToChain, new CrossChainCall(0, false, item.Gas, item.From, start.ChainId,
-                        item.To, item.Value, item.Data.ToArray()), false, []),
-                    StreamMessage.StaticCall item => new(item.ToChain, new CrossChainCall(0, true, item.Gas, item.From, start.ChainId,
-                        item.To, UInt256.Zero, item.Data.ToArray()), false, []),
-                    _ => throw Invalid("Nested calls and rollback regions require semantic tree validation."),
-                };
-                if (call.TargetRollup != (start.ChainId == 0 ? rollupId : 0) || call.Call.Gas != 0)
-                    throw Invalid("Native call has unsupported routing or gas.");
-                if (index == messages.Length || messages[index++] is not StreamMessage.Return result)
-                    throw Invalid("Native call has no terminal result.");
-                calls.Add(call with { Success = result.Success, Output = result.ReturnData.ToArray() });
-            }
-            if (calls.Count == 0 || index == messages.Length) throw Invalid("Native transaction is empty or unfinished.");
-            index++;
-            transactions.Add(new NativeTransaction(start.ChainId, start.TxData, calls.ToArray()));
+            NativeCallTree tree = NativeCallTree.Read(stream.Messages, ref index, start.ChainId, rollupId);
+            verification.VerifyTransaction(start, tree);
         }
-        return transactions.ToArray();
+        return verification.Complete();
     }
 
     private static EezSettlementException Invalid(string message) => new(message);
@@ -74,111 +48,118 @@ internal static class RollupXSettlementVerifier
     {
         private readonly List<RollupXObservationClaim> _observations = [];
         private readonly List<(int Transaction, ValueHash256 Hash)> _outboundEvents = [];
+        private readonly NativeL1Tables _l1 = new(updates.AsMemory(1), rollupId, terminal.Checkpoints[0].BlockHash.ValueHash256);
         private int _transaction = plan.OrdinaryTransactions;
         private int _checkpoint = 1;
         private int _entry = 1;
         private int _staticEntry;
         private int _outbound;
-        private bool _inbound;
         private ValueHash256 _liveRoot = terminal.Checkpoints[0].BlockHash.ValueHash256;
 
-        public void VerifyTransaction(NativeTransaction transaction)
+        public void VerifyTransaction(StreamMessage.Initiate start, NativeCallTree tree)
         {
             cancellation.ThrowIfCancellationRequested();
-            if (transaction.Origin != 0) VerifyOutbound(transaction);
-            else
+            foreach (NativeCallTree.Node call in tree.Calls)
             {
-                _inbound = true;
-                foreach (NativeCall call in transaction.Calls) VerifyInbound(call);
+                if (call.Encoded.SourceRollupId != rollupId) continue;
+                if (call.Encoded.SourceAddress == EezConstants.SystemAddress)
+                    throw Invalid("Native call uses the reserved L2 system source.");
+                if (start.ChainId != 0 && call.Encoded.Value > MaxOutboundValue)
+                    throw Invalid("Outbound recorded call value exceeds the int192 outflow range.");
             }
+            NativeExecutionTables tables = new(tree, rollupId, _l1);
+            if (start.ChainId != 0) VerifyOutbound(start, tree, tables.Outbound());
+            else VerifyInbound(tree, tables.Inbound());
         }
 
-        private void VerifyOutbound(NativeTransaction transaction)
+        private void VerifyOutbound(StreamMessage.Initiate start, NativeCallTree tree, ExecutionTable source)
         {
-            if (_inbound || _entry >= batch.Entries.Length || _transaction + 1 >= terminal.Block.Transactions.Length)
+            if (_entry >= batch.Entries.Length || _transaction + 1 >= terminal.Block.Transactions.Length)
                 throw Invalid("Outbound transaction has no matching settlement entry and load/user pair.");
             Transaction load = terminal.Block.Transactions[_transaction];
             Transaction user = terminal.Block.Transactions[_transaction + 1];
+            if (!load.Value.IsZero) throw Invalid("Outbound load must carry zero native value.");
             if (user.IsEezSystemTransaction() || user.SenderAddress == EezConstants.SystemAddress ||
-                !TxDecoder.Instance.Encode(user, RlpBehaviors.SkipTypedWrapping).Bytes.AsSpan().SequenceEqual(transaction.Data.Span))
+                !TxDecoder.Instance.Encode(user, RlpBehaviors.SkipTypedWrapping).Bytes.AsSpan().SequenceEqual(start.TxData.Span))
                 throw Invalid("Native outbound transaction bytes differ from canonical execution.");
-            List<L2ExecutionEntry> source = [];
-            List<L2StaticExecutionEntry> sourceStatic = [];
-            CrossChainCall[] calls = new CrossChainCall[transaction.Calls.Length];
-            RollupUpdate update = updates[_entry];
-            ValueHash256 rolling = RollingHash.SeedL1(update, default);
-            SignedInt256 delta = default;
-            for (int i = 0; i < transaction.Calls.Length; i++)
-            {
-                NativeCall call = transaction.Calls[i];
-                ValueHash256 hash = CallHash(call);
-                calls[i] = call.Call;
-                rolling = RollingHash.CallEnd(RollingHash.CallBegin(rolling, hash), call.Success, call.Output);
-                if (call.Call.IsStatic)
-                    sourceStatic.Add(new L2StaticExecutionEntry((UInt256)source.Count, hash, [], default, call.Success, call.Output));
-                else
-                {
-                    source.Add(new L2ExecutionEntry(hash, [], [], RollingHash.SeedL2(hash), call.Success, call.Output));
-                    if (call.Success)
-                    {
-                        _outboundEvents.Add((_transaction + 1, hash));
-                        SignedInt256.Subtract(delta, EtherDelta.Credit(call.Call.Value), out delta);
-                    }
-                }
-            }
-            VerifySystem(load, _transaction, UInt256.Zero,
-                EezCalldata.EncodeLoadExecutionTable(new ExecutionTable(source.ToArray(), sourceStatic.ToArray())));
+            ExecutionEntry expected = _l1.Entries[_entry - 1];
+            VerifySystem(load, _transaction, NativeValue.Funding(source.Entries), EezCalldata.EncodeLoadExecutionTable(source));
             Hash256 checkpoint = NextCheckpoint(_transaction + 1);
-            if (update.EtherDelta != delta || update.CurrentRoot != _liveRoot || update.NewRoot != checkpoint.ValueHash256)
+            RollupUpdate update = updates[_entry];
+            if (update.EtherDelta != NativeValue.Delta(tree) || update.CurrentRoot != _liveRoot || update.NewRoot != checkpoint.ValueHash256)
                 throw Invalid("Outbound value movement or root update differs from canonical execution.");
-            MatchEntry(new ExecutionEntry([update], default, calls, [], rolling, rollupId, true, []));
+            AddEvents(_transaction + 1);
+            MatchEntry(expected);
             _liveRoot = update.NewRoot;
             _transaction += 2;
             _outbound++;
         }
 
-        private void VerifyInbound(NativeCall call)
+        private void VerifyInbound(NativeCallTree tree, L2ExecutionEntry[] deliveries)
         {
-            ValueHash256 hash = CallHash(call);
-            if (call.Call.IsStatic)
+            int delivery = 0;
+            int revertedUntil = 0;
+            foreach (int root in tree.Roots)
             {
-                if (_staticEntry == batch.StaticEntries.Length) throw Invalid("Native static call has no settlement entry.");
-                StaticExecutionEntry expected = new([new ExpectedRoot(rollupId, _liveRoot)], hash, [], default, rollupId, call.Success, call.Output);
-                if (EezCalldata.StaticEntryHash(expected) != EezCalldata.StaticEntryHash(batch.StaticEntries[_staticEntry++]))
-                    throw Invalid("Native static call differs from its settlement entry.");
-                Observe(call, ObservationMode.Static);
-                return;
+                cancellation.ThrowIfCancellationRequested();
+                NativeCallTree.Node call = tree.Calls[root];
+                revertedUntil = Math.Max(revertedUntil, call.RevertEnd);
+                if (call.Encoded.IsStatic)
+                {
+                    VerifyStatic(call);
+                    continue;
+                }
+                if (_entry >= batch.Entries.Length) throw Invalid("Native inbound call has no settlement entry.");
+                ExecutionEntry expected = _l1.Entries[_entry - 1];
+                RollupUpdate update = updates[_entry];
+                if (update.CurrentRoot != _liveRoot) throw Invalid("Inbound call starts from a different FIFO root.");
+                if (root >= revertedUntil && call.Result.Success)
+                {
+                    if (delivery == deliveries.Length || _transaction == terminal.Block.Transactions.Length)
+                        throw Invalid("Successful inbound call has no canonical delivery.");
+                    if (call.Encoded.Value > MaxInboundValue) throw Invalid("Inbound root value exceeds the positive int192 range.");
+                    L2ExecutionEntry[] incoming = [deliveries[delivery++]];
+                    VerifySystem(terminal.Block.Transactions[_transaction], _transaction, NativeValue.Funding(incoming),
+                        EezCalldata.EncodeExecuteIncomingCrossChainCall(new IncomingCrossChainCall(incoming, [])));
+                    if (update.NewRoot != NextCheckpoint(_transaction).ValueHash256 || update.EtherDelta != NativeValue.Delta(tree, call))
+                        throw Invalid("Inbound value movement or root update differs from canonical execution.");
+                    AddEvents(_transaction++);
+                }
+                else
+                {
+                    if (update.NewRoot != _liveRoot || !update.EtherDelta.IsZero || _l1.EntryEvents[_entry - 1].Length != 0)
+                        throw Invalid("Inbound lookup changes the canonical commitment, value or outbound events.");
+                    Observe(call, ObservationMode.Lookup);
+                }
+                MatchEntry(expected);
+                _liveRoot = update.NewRoot;
             }
-            if (_entry >= batch.Entries.Length) throw Invalid("Native inbound call has no settlement entry.");
-            RollupUpdate update = updates[_entry];
-            if (update.CurrentRoot != _liveRoot) throw Invalid("Inbound call starts from a different FIFO root.");
-            if (call.Success)
-            {
-                if (_transaction == terminal.Block.Transactions.Length) throw Invalid("Successful inbound call has no canonical delivery.");
-                L2ExecutionEntry delivery = new(hash, [call.Call], [], RollingHash.SingleL2Call(hash, true, call.Output), true, call.Output);
-                VerifySystem(terminal.Block.Transactions[_transaction], _transaction, call.Call.Value,
-                    EezCalldata.EncodeExecuteIncomingCrossChainCall(new IncomingCrossChainCall([delivery], [])));
-                if (update.NewRoot != NextCheckpoint(_transaction).ValueHash256 || update.EtherDelta != EtherDelta.Credit(call.Call.Value))
-                    throw Invalid("Inbound value movement or root update differs from canonical execution.");
-                _transaction++;
-            }
-            else
-            {
-                if (update.NewRoot != _liveRoot || !update.EtherDelta.IsZero)
-                    throw Invalid("Failed inbound lookup changes the canonical commitment or value.");
-                Observe(call, ObservationMode.Lookup);
-            }
-            MatchEntry(new ExecutionEntry([update], hash, [], [], RollingHash.SeedL1(update, hash), rollupId, call.Success, call.Output));
-            _liveRoot = update.NewRoot;
+            if (delivery != deliveries.Length) throw Invalid("Native stream has unconsumed inbound deliveries.");
         }
 
-        private void Observe(NativeCall call, ObservationMode mode) =>
-            _observations.Add(new RollupXObservationClaim(new Hash256(_liveRoot.Bytes), call.Call.SourceAddress,
-                call.Call.SourceRollupId, call.Call.TargetAddress, call.Call.Data, call.Call.Value, mode, new ObservationOutcome(call.Success, call.Output)));
+        private void VerifyStatic(NativeCallTree.Node call)
+        {
+            if (_staticEntry == batch.StaticEntries.Length || _staticEntry == _l1.StaticEntries.Count)
+                throw Invalid("Native static call has no settlement entry.");
+            StaticExecutionEntry expected = _l1.StaticEntries[_staticEntry];
+            if (expected.ExpectedRoots is not [{ } pin] || pin.Root != _liveRoot ||
+                EezCalldata.StaticEntryHash(expected) != EezCalldata.StaticEntryHash(batch.StaticEntries[_staticEntry++]))
+                throw Invalid("Native static call differs from its FIFO settlement entry.");
+            Observe(call, ObservationMode.Static);
+        }
 
-        private static ValueHash256 CallHash(NativeCall call) => CrossChainCallHash.Compute(call.Call.IsStatic,
-            call.Call.SourceAddress, call.Call.SourceRollupId, call.Call.TargetAddress, call.TargetRollup,
-            call.Call.Value, 0, call.Call.Data);
+        private void Observe(NativeCallTree.Node call, ObservationMode mode)
+        {
+            if (call.Children.Count != 0) throw Invalid("Observation callbacks require independently authenticated replay.");
+            _observations.Add(new RollupXObservationClaim(new Hash256(_liveRoot.Bytes), call.Encoded.SourceAddress,
+                call.Encoded.SourceRollupId, call.Encoded.TargetAddress, call.Encoded.Data, call.Encoded.Value, mode,
+                new ObservationOutcome(call.Result.Success, call.Result.ReturnData.ToArray())));
+        }
+
+        private void AddEvents(int transaction)
+        {
+            foreach (ValueHash256 hash in _l1.EntryEvents[_entry - 1]) _outboundEvents.Add((transaction, hash));
+        }
 
         private void MatchEntry(ExecutionEntry expected)
         {
@@ -204,8 +185,9 @@ internal static class RollupXSettlementVerifier
         public RollupXObservationClaim[] Complete()
         {
             cancellation.ThrowIfCancellationRequested();
+            _l1.Complete();
             if (_transaction != terminal.Block.Transactions.Length || _checkpoint != terminal.Checkpoints.Length ||
-                _entry != batch.Entries.Length || _staticEntry != batch.StaticEntries.Length ||
+                _entry != batch.Entries.Length || _staticEntry != batch.StaticEntries.Length || _staticEntry != _l1.StaticEntries.Count ||
                 batch.ImmediateEntryCount != (UInt256)(_outbound + 1) || !batch.ImmediateStaticEntryCount.IsZero)
                 throw Invalid("Native semantics do not cover the exact settlement and execution suffix.");
             RollupUpdate anchor = updates[0];
@@ -221,7 +203,4 @@ internal static class RollupXSettlementVerifier
             return _observations.ToArray();
         }
     }
-
-    private sealed record NativeTransaction(ulong Origin, ReadOnlyMemory<byte> Data, NativeCall[] Calls);
-    private sealed record NativeCall(ulong TargetRollup, CrossChainCall Call, bool Success, byte[] Output);
 }

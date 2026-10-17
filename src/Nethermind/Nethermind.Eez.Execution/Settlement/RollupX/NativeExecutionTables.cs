@@ -8,17 +8,19 @@ using Nethermind.Int256;
 
 namespace Nethermind.Eez.Execution.Settlement.RollupX;
 
-/// <summary>Reconstructs the L2 tables of one two-chain native transaction.</summary>
-/// <remarks>These tables derive follower execution from accepted DA. They do not authorize prover signing.</remarks>
-internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId)
+/// <summary>Reconstructs execution tables for one two-chain native transaction.</summary>
+/// <remarks>Materialization alone does not authorize prover signing.</remarks>
+internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId, NativeL1Tables? l1 = null)
 {
     private readonly List<Entry> _entries = [];
     private readonly List<L2StaticExecutionEntry> _statics = [];
     private Entry? _active;
+    private Entry? _l1Active;
     private Region? _region;
 
     public ExecutionTable Outbound()
     {
+        OpenL1(default, true, ReadOnlyMemory<byte>.Empty);
         List<(int Root, Entry? Entry)> assignments = PlanSource();
         foreach ((int root, Entry? entry) in assignments)
         {
@@ -30,6 +32,7 @@ internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId)
             CloseRegion(root);
         }
 
+        CloseL1();
         return new ExecutionTable(Finish(), _statics.ToArray());
     }
 
@@ -40,11 +43,31 @@ internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId)
         {
             NativeCallTree.Node call = tree.Calls[root];
             revertedUntil = Math.Max(revertedUntil, call.RevertEnd);
-            if (root < revertedUntil || call.Encoded.IsStatic || !call.Result.Success) continue;
-            Execute(root);
+            if (call.Encoded.IsStatic)
+            {
+                l1?.AppendStatic(StaticEntry(call, 0));
+                continue;
+            }
+            OpenL1(call.Hash, call.Result.Success, call.Result.ReturnData);
+            if (root >= revertedUntil && call.Result.Success) Execute(root);
+            CloseL1();
         }
 
         return Finish();
+    }
+
+    private void OpenL1(in ValueHash256 proxy, bool success, ReadOnlyMemory<byte> output)
+    {
+        if (l1 is null) return;
+        if (_l1Active is not null) throw NativeCallTree.Invalid("L1 host already open");
+        _l1Active = new Entry(proxy, success, output) { Hash = RollingHash.SeedL1(l1.NextUpdate, proxy) };
+    }
+
+    private void CloseL1()
+    {
+        if (_l1Active is null) return;
+        l1!.Append(_l1Active.Finish());
+        _l1Active = null;
     }
 
     private List<(int Root, Entry? Entry)> PlanSource()
@@ -104,10 +127,13 @@ internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId)
             _entries.Add(_active);
         }
 
-        if (destination)
+        if (l1 is not null && call.Target == 0 && !call.Encoded.IsStatic && call.Result.Success)
+            l1.PendingEvents.Add(call.Hash);
+        Entry? target = destination ? _active : _l1Active;
+        if (target is not null)
         {
-            Append(call);
-            _active!.Hash = RollingHash.CallBegin(_active.Hash, call.Hash);
+            Append(call, target);
+            target.Hash = RollingHash.CallBegin(target.Hash, call.Hash);
         }
         foreach (int child in call.Children)
         {
@@ -115,14 +141,14 @@ internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId)
             Reentrant(child);
             CloseRegion(child);
         }
-        if (destination) _active!.Hash = RollingHash.CallEnd(_active.Hash, call.Result.Success, call.Result.ReturnData.Span);
+        if (target is not null) target.Hash = RollingHash.CallEnd(target.Hash, call.Result.Success, call.Result.ReturnData.Span);
         if (opened) _active = null;
     }
 
     private void Reentrant(int index)
     {
         NativeCallTree.Node call = tree.Calls[index];
-        Entry? source = call.Encoded.SourceRollupId == rollupId ? _active : null;
+        Entry? source = call.Encoded.SourceRollupId == rollupId ? _active : _l1Active;
         Row? row = null;
         ValueHash256 saved = default;
         if (source is not null)
@@ -151,12 +177,11 @@ internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId)
         }
     }
 
-    private void Append(NativeCallTree.Node call)
+    private void Append(NativeCallTree.Node call, Entry entry)
     {
-        Entry entry = _active!;
         List<CrossChainCall> calls = entry.Frames.TryPeek(out List<CrossChainCall>? frame) ? frame : entry.Calls;
         calls.Add(call.Encoded);
-        if (_region is not { Host: 0 } region) return;
+        if (_region is not { } region || region.Host == call.Target) return;
         if (!region.FirstCalls.TryGetValue(calls, out int first))
         {
             first = calls.Count - 1;
@@ -172,14 +197,16 @@ internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId)
         NativeCallTree.Node call = tree.Calls[index];
         if (call.RevertEnd == 0) return;
         if (_region is not null) throw NativeCallTree.Invalid("overlapping active revert regions");
-        Entry? host = call.Parent >= 0 && call.Encoded.SourceRollupId == rollupId ? _active : null;
-        _region = new Region(call.RevertEnd, call.Encoded.SourceRollupId, host, host?.Cursor ?? 0, host?.Hash ?? default);
+        Entry? host = call.Parent < 0 ? null : call.Encoded.SourceRollupId == rollupId ? _active : _l1Active;
+        _region = new Region(call.RevertEnd, call.Encoded.SourceRollupId, host, host?.Cursor ?? 0, host?.Hash ?? default,
+            l1?.PendingEvents.Count ?? 0);
     }
 
     private void CloseRegion(int index)
     {
         if (_region is not { } region || tree.Calls[index].SubtreeEnd < region.End) return;
         if (tree.Calls[index].SubtreeEnd != region.End) throw NativeCallTree.Invalid("revert region crosses a subtree boundary");
+        if (l1 is not null) l1.PendingEvents.RemoveRange(region.Events, l1.PendingEvents.Count - region.Events);
         if (region.Entry is { } entry)
         {
             entry.Cursor = region.Cursor;
@@ -190,7 +217,7 @@ internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId)
 
     private L2ExecutionEntry[] Finish()
     {
-        if (_active is not null || _region is not null) throw NativeCallTree.Invalid("unfinished table context");
+        if (_active is not null || _l1Active is not null || _region is not null) throw NativeCallTree.Invalid("unfinished table context");
         L2ExecutionEntry[] entries = new L2ExecutionEntry[_entries.Count];
         for (int i = 0; i < entries.Length; i++) entries[i] = _entries[i].Finish();
         return entries;
@@ -265,7 +292,7 @@ internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId)
         public ValueHash256 RevertedHash { get; set; }
     }
 
-    private sealed record Region(int End, ulong Host, Entry? Entry, int Cursor, ValueHash256 Hash)
+    private sealed record Region(int End, ulong Host, Entry? Entry, int Cursor, ValueHash256 Hash, int Events)
     {
         public Dictionary<List<CrossChainCall>, int> FirstCalls { get; } = [];
     }

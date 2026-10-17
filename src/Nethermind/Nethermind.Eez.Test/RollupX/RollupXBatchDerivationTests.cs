@@ -277,6 +277,44 @@ public class RollupXBatchDerivationTests
         foreach (byte[] user in users) Assert.That(transactions.Count(raw => raw.AsSpan().SequenceEqual(user)), Is.EqualTo(1), "each original signed source transaction executes once");
     }
 
+    [TestCaseSource(nameof(LiveBatches))]
+    public void Materialize_RecordedNativeBatch_MatchesCompleteCanonicalL1Tables(string name)
+    {
+        string directory = Path.Combine(TestContext.CurrentContext.TestDirectory, "Fixtures", "rollupx", "native-live");
+        using JsonDocument fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, name + ".json")));
+        JsonElement recorded = fixture.RootElement;
+        byte[] posting = Bytes.FromHexString(recorded.GetProperty("PostBatchCalldata").GetString()!);
+        Assert.That(Convert.ToHexStringLower(SHA256.HashData(posting)), Is.EqualTo(recorded.GetProperty("PostBatchSha256").GetString()),
+            "the independently captured L1 posting retains its exact ABI and original proof bytes");
+        PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(posting);
+        byte[] physical = File.ReadAllBytes(Path.Combine(directory, name + ".blob"));
+        Assert.That(Convert.ToHexStringLower(SHA256.HashData(physical)), Is.EqualTo(recorded.GetProperty("BlobSha256").GetString()),
+            "the L1 posting oracle and original physical blob must stay independent of the materializer");
+        List<byte[]> blobs = [];
+        for (int offset = 0; offset < physical.Length; offset += BlobStream.BytesPerBlob) blobs.Add(physical.AsSpan(offset, BlobStream.BytesPerBlob).ToArray());
+        NativeStream stream = NativeStream.Decode(BlobStream.Unpack(blobs), RollupId);
+        RollupUpdate[] updates = batch.Entries.Select(static entry => entry.RollupUpdates.Single()).ToArray();
+        NativeL1Tables l1 = new(updates.AsMemory(1), RollupId, updates[0].NewRoot);
+        int index = 0;
+        while (index < stream.Messages.Length)
+        {
+            StreamMessage.Initiate start = (StreamMessage.Initiate)stream.Messages[index++];
+            NativeCallTree tree = NativeCallTree.Read(stream.Messages, ref index, start.ChainId, RollupId);
+            NativeExecutionTables tables = new(tree, RollupId, l1);
+            if (start.ChainId == RollupId) tables.Outbound();
+            else tables.Inbound();
+        }
+        l1.Complete();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(l1.Entries.Select(EezCalldata.EntryHash), Is.EqualTo(batch.Entries.Skip(1).Select(EezCalldata.EntryHash)),
+                "every L1 field, nested position, rollback marker, value, hash and outcome must equal the original accepted posting");
+            Assert.That(l1.StaticEntries.Select(EezCalldata.StaticEntryHash), Is.EqualTo(batch.StaticEntries.Select(EezCalldata.StaticEntryHash)),
+                "static pins, callback arrays and result folds must equal the independent L1 oracle");
+        }
+    }
+
     private static IEnumerable<string> LiveBatches() =>
         ["a9eaf4a03ff196d8", "4f9482cb1caa8968", "ff1f5d1231f68909", "8a24e36aee6b2790",
             "7f37548c16e3ab0c", "ae7f4b9f1b5dcebc", "d1b5ba7cf7f0de3d", "9637ee00bfd583dc"];
