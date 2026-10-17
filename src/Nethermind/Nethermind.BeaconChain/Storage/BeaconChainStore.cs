@@ -34,13 +34,16 @@ public static class BeaconChainMetadataKeys
     public const string CheckpointSyncAnchor = "checkpointSyncAnchor";
     /// <summary>8-byte big-endian slot of the lowest anchor ever recorded, before any verified backfill.</summary>
     public const string EarliestBlockSlot = "earliestBlockSlot";
+    /// <summary>8-byte big-endian finalized slot of the last completed prune, at or below which every stored block is canonical; absent until every summary has its slot key.</summary>
+    public const string PrunedThroughSlot = "prunedThroughSlot";
 }
 
 /// <summary>Persists beacon blocks, states, envelopes, canonical and children indexes, and metadata.</summary>
 /// <remarks>
 /// States use independently snappy-compressed StateChunkSize slices keyed by blockRoot ++ big-endian chunk index,
 /// with chunk count and uncompressed length under the bare root. Blocks use snappy-compressed SSZ.
-/// BlockIndex keys are disjoint: 8-byte slots, BlockSummaryKeyPrefix ++ root, and ChildrenKeyPrefix ++ root.
+/// BlockIndex keys are disjoint: 8-byte slots, BlockSummaryKeyPrefix ++ root, ChildrenKeyPrefix ++ root, and
+/// BlockSlotKeyPrefix ++ big-endian slot ++ root with an empty value, written and removed with the summary so stored blocks sort by slot.
 /// Children values contain state (1 byte), parent root (32), then child roots (32 each). Stored blocks have complete
 /// child lists; absent parents have pending lists.
 /// StateId indexes use prefix 4 for state-to-block roots and 3 for block-to-state roots, updated with blocks.
@@ -77,6 +80,9 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     private const int BlockSummaryHeaderLength = 1 + sizeof(ulong);
     private const byte FuluBlockSummary = 0;
     private const byte GloasBlockSummary = 1;
+
+    internal const byte BlockSlotKeyPrefix = 0x05;
+    private const int BlockSlotKeyLength = 1 + sizeof(ulong) + Hash256.Size;
 
     /// <summary>Children were linked before the block itself was stored (backfill, or a delete that left children behind); its store completes the entry.</summary>
     private const byte ChildrenPending = 0;
@@ -162,6 +168,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         Span<byte> summaryKey = stackalloc byte[BlockSummaryKeyLength];
         BlockSummaryKey(root, summaryKey);
         index.Set(summaryKey, EncodeBlockSummary(block));
+        index.Set(BlockSlotKey(block.Slot, root), []);
 
         Span<byte> parentKey = stackalloc byte[ChildrenKeyLength];
         ChildrenKey(parentRoot, parentKey);
@@ -249,18 +256,97 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return false;
     }
 
-    internal IEnumerable<(Hash256 Root, ulong Slot)> StoredBlocksForPruning(ulong finalizedSlot)
+    /// <summary>The stored blocks a restart must track for pruning: every block above <paramref name="finalizedSlot"/> and every non-canonical one at or below it.</summary>
+    /// <remarks>
+    /// Reads only the block slot keys above the lower of <paramref name="finalizedSlot"/> and the last completed prune's slot, at or below
+    /// which every stored block is canonical. Without that record, as in a database written before the slot keys, every summary is
+    /// scanned once and its slot key written; the next completed prune then records its slot.
+    /// </remarks>
+    internal List<(Hash256 Root, ulong Slot)> StoredBlocksForPruning(ulong finalizedSlot)
     {
+        List<(Hash256 Root, ulong Slot)> stored = GetPrunedThroughSlot() is { } prunedThrough
+            ? StoredBlocksAbove(Math.Min(prunedThrough, finalizedSlot))
+            : IndexAllBlockSlots();
+        stored.RemoveAll(block => block.Slot <= finalizedSlot && TryGetCanonicalRoot(block.Slot, out Hash256? canonical) && canonical == block.Root);
+        return stored;
+    }
+
+    private List<(Hash256 Root, ulong Slot)> StoredBlocksAbove(ulong slot)
+    {
+        List<(Hash256 Root, ulong Slot)> stored = [];
+        if (slot == ulong.MaxValue) return stored;
+
+        byte[] lower = BlockSlotKey(slot + 1, Hash256.Zero);
+        byte[] upper = [BlockSlotKeyPrefix + 1];
+        if (_blockIndex is ISortedKeyValueStore sorted)
+        {
+            using ISortedView view = sorted.GetViewBetween(lower, upper);
+            while (view.MoveNext())
+            {
+                AddBlockSlotKey(view.CurrentKey);
+            }
+
+            return stored;
+        }
+
+        foreach (byte[] key in _blockIndex.GetAllKeys(ordered: true))
+        {
+            if (key.AsSpan().SequenceCompareTo(upper) >= 0) break;
+            if (key.AsSpan().SequenceCompareTo(lower) >= 0) AddBlockSlotKey(key);
+        }
+
+        return stored;
+
+        void AddBlockSlotKey(ReadOnlySpan<byte> key)
+        {
+            if (key.Length == BlockSlotKeyLength)
+                stored.Add((new Hash256(key[(1 + sizeof(ulong))..]), BinaryPrimitives.ReadUInt64BigEndian(key[1..])));
+        }
+    }
+
+    private List<(Hash256 Root, ulong Slot)> IndexAllBlockSlots()
+    {
+        List<(Hash256 Root, ulong Slot)> stored = [];
         foreach ((byte[] key, byte[] value) in _blockIndex.GetAll())
         {
             if (key.Length == BlockSummaryKeyLength && key[0] == BlockSummaryKeyPrefix
                 && TryDecodeBlockSummary(value, out StoredBlockSummary summary))
             {
-                Hash256 root = new(key.AsSpan(1));
-                if (summary.Slot > finalizedSlot || !TryGetCanonicalRoot(summary.Slot, out Hash256? canonical) || canonical != root)
-                    yield return (root, summary.Slot);
+                stored.Add((new Hash256(key.AsSpan(1)), summary.Slot));
             }
         }
+
+        // Written after the scan: an in-memory column cannot change while it is enumerated.
+        using IWriteBatch batch = _blockIndex.StartWriteBatch();
+        foreach ((Hash256 root, ulong slot) in stored)
+        {
+            batch.Set(BlockSlotKey(slot, root), []);
+        }
+
+        return stored;
+    }
+
+    private static byte[] BlockSlotKey(ulong slot, Hash256 root)
+    {
+        byte[] key = new byte[BlockSlotKeyLength];
+        key[0] = BlockSlotKeyPrefix;
+        BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(1), slot);
+        root.Bytes.CopyTo(key.AsSpan(1 + sizeof(ulong)));
+        return key;
+    }
+
+    internal ulong? GetPrunedThroughSlot() =>
+        GetMetadata(BeaconChainMetadataKeys.PrunedThroughSlot) is { Length: sizeof(ulong) } value ? BinaryPrimitives.ReadUInt64BigEndian(value) : null;
+
+    /// <summary>Records that no non-canonical block is stored at or below <paramref name="finalizedSlot"/>; never lowers the record.</summary>
+    /// <remarks>Call only once a prune completes, so the blocks an interrupted one leaves stay above the record for the next startup.</remarks>
+    internal void AdvancePrunedThroughSlot(ulong finalizedSlot)
+    {
+        if (GetPrunedThroughSlot() >= finalizedSlot) return;
+
+        byte[] value = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(value, finalizedSlot);
+        PutMetadata(BeaconChainMetadataKeys.PrunedThroughSlot, value);
     }
 
     /// <summary>Reads the stored slot and bid for gloas/p2p-interface.md sidecar validation without decoding the block.</summary>
@@ -305,7 +391,9 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         byte[] value = EncodeBlockSummary(block);
         if (HasBlock(root))
         {
-            _blockIndex.PutSpan(key, value);
+            using IWriteBatch batch = _blockIndex.StartWriteBatch();
+            batch.PutSpan(key, value);
+            batch.Set(BlockSlotKey(block.Slot, root), []);
         }
 
         TryDecodeBlockSummary(value, out StoredBlockSummary summary);
@@ -476,6 +564,11 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
         Span<byte> summaryKey = stackalloc byte[BlockSummaryKeyLength];
         BlockSummaryKey(root, summaryKey);
+        if (TryDecodeBlockSummary(_blockIndex.Get(summaryKey), out StoredBlockSummary summary))
+        {
+            index.Remove(BlockSlotKey(summary.Slot, root));
+        }
+
         index.Remove(summaryKey);
         RemoveStateRootIndex(index, root);
 

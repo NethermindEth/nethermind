@@ -1091,24 +1091,64 @@ public class BlockImporterTests
     }
 
     [Test]
-    public void Finalization_prunes_side_branches_stored_before_restart()
+    public void Finalization_prunes_side_branches_stored_before_restart([Values] bool interrupted)
     {
         UnsignedChain chain = UnsignedChain.Create();
         UnsignedChain.ChainBlock canonical = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x74);
         UnsignedChain.ChainBlock orphan = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x75);
-        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        UnsignedChain.ChainBlock secondOrphan = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x76);
+        using FailingSummaryReadDb db = new();
         BeaconChainStore store = new(db, chain.Spec);
         store.PutBlock(orphan.Root, orphan.Block);
+        store.PutBlock(secondOrphan.Root, secondOrphan.Block);
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), store: store);
         importer.OnSlotTick(1);
         Assert.That(importer.Import(canonical.Block, canonical.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
         store.SetCanonicalRoot(1, canonical.Root);
+        ulong? prunedBefore = store.GetPrunedThroughSlot();
+        db.Index.FailAfterSummaryReads = interrupted ? 1 : int.MaxValue;
 
-        importer.OnFinalized(new CheckpointRef(0, canonical.Root));
+        if (interrupted)
+            Assert.Throws<InvalidOperationException>(() => importer.OnFinalized(new CheckpointRef(0, canonical.Root)));
+        else
+            importer.OnFinalized(new CheckpointRef(0, canonical.Root));
 
+        db.Index.FailAfterSummaryReads = int.MaxValue;
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(store.HasBlock(orphan.Root), Is.False);
+        Assert.That(prunedBefore, Is.Zero, "fixture: the startup prune at the anchor completed");
         Assert.That(store.HasBlock(canonical.Root), Is.True);
+        if (interrupted)
+        {
+            // A restart seeds only blocks above the last completed prune, so the block the crash left behind must stay above it.
+            Assert.That(store.GetPrunedThroughSlot(), Is.EqualTo(prunedBefore));
+            Hash256[] seeded = [.. new BeaconChainStore(db, chain.Spec).StoredBlocksForPruning(0).Select(static block => block.Root)];
+            Assert.That(seeded, Has.Exactly(1).Matches<Hash256>(root => root == orphan.Root || root == secondOrphan.Root));
+            Assert.That(seeded, Does.Contain(canonical.Root));
+        }
+        else
+        {
+            Assert.That(store.HasBlock(orphan.Root) || store.HasBlock(secondOrphan.Root), Is.False);
+            Assert.That(store.GetPrunedThroughSlot(), Is.EqualTo(1));
+        }
+    }
+
+    /// <summary>Fails block summary reads once a set number have succeeded, as a crash inside a delete loop would.</summary>
+    private sealed class FailingSummaryReadDb : TestColumnsDb
+    {
+        public FailingSummaryReadIndex Index { get; } = new();
+        protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.BlockIndex ? Index : base.CreateColumn(key);
+    }
+
+    private sealed class FailingSummaryReadIndex : MemDb
+    {
+        public int FailAfterSummaryReads { get; set; } = int.MaxValue;
+
+        public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if (key.Length == 1 + Hash256.Size && key[0] == BeaconChainStore.BlockSummaryKeyPrefix && FailAfterSummaryReads-- <= 0)
+                throw new InvalidOperationException("Simulated crash in a block delete");
+            return base.Get(key, flags);
+        }
     }
 
     [Test]

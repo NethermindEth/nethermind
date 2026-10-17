@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -8,6 +9,7 @@ using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
@@ -109,6 +111,12 @@ public class BeaconChainStoreBlockSummaryTests
         _store.PutForkedBlock(GloasRoot, new ForkedSignedBeaconBlock.OfGloas(block));
         MemDb index = (MemDb)_db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
         index.Remove(SummaryKey());
+        foreach (byte[] key in index.Keys.Where(static key => key[0] == BeaconChainStore.BlockSlotKeyPrefix).ToList())
+        {
+            index.Remove(key);
+        }
+
+        _store.AdvancePrunedThroughSlot(0);
         bool before = _store.TryGetBlockSummary(GloasRoot, out _);
 
         StoredBlockSummary written = _store.PutBlockSummary(GloasRoot, new ForkedSignedBeaconBlock.OfGloas(block));
@@ -118,6 +126,8 @@ public class BeaconChainStoreBlockSummaryTests
         Assert.That(_store.TryGetBlockSummary(GloasRoot, out StoredBlockSummary read), Is.True);
         Assert.That((read.Slot, read.IsGloas, read.Commitments.Length), Is.EqualTo((written.Slot, true, written.Commitments.Length)));
         Assert.That(written.Commitments, Is.Not.Empty);
+        // A restart past a completed prune finds blocks by slot key alone, so the backfill must write one.
+        Assert.That(_store.StoredBlocksForPruning(0), Does.Contain((GloasRoot, block.Message!.Slot)));
     }
 
     [TestCase(new byte[] { }, TestName = "An empty summary entry is not a summary")]
@@ -143,29 +153,114 @@ public class BeaconChainStoreBlockSummaryTests
         Assert.That(_store.TryGetBlockSummary(GloasRoot, out _), Is.False);
     }
 
-    [Test]
-    public void Startup_pruning_scan_returns_unfinalized_and_non_canonical_finalized_blocks()
+    /// <param name="prunedFromAnchor">Slot of the last completed prune relative to the anchor; null when none was recorded.</param>
+    [TestCase(null, false, TestName = "Without a completed prune every summary is scanned")]
+    [TestCase(-6, false, TestName = "Slot keys above a completed prune are read from an unsorted index")]
+    [TestCase(-6, true, TestName = "Slot keys above a completed prune are read from a sorted index")]
+    [TestCase(2, true, TestName = "A prune past the persisted anchor still seeds every block above the anchor")]
+    public void Startup_pruning_scan_returns_unfinalized_and_non_canonical_finalized_blocks(int? prunedFromAnchor, bool sorted)
     {
-        (ulong anchorSlot, HashSet<(Hash256, ulong)> expected, _) = StoreBlocksAroundAnchor();
-        Assert.That(_store.StoredBlocksForPruning(anchorSlot), Is.EquivalentTo(expected));
+        using RecordingIndexDb db = new(sorted);
+        BeaconChainStore store = new(db, Sepolia);
+        (ulong anchorSlot, HashSet<(Hash256 Root, ulong Slot)> expected, _) = StoreBlocksAroundAnchor(store);
+        if (prunedFromAnchor is { } offset)
+        {
+            ulong prunedThrough = (ulong)((long)anchorSlot + offset);
+            store.AdvancePrunedThroughSlot(prunedThrough);
+            // A completed prune vouches for every stored block at or below both its slot and the anchor.
+            expected.RemoveWhere(block => block.Slot <= Math.Min(prunedThrough, anchorSlot));
+        }
+
+        Assert.That(store.StoredBlocksForPruning(anchorSlot), Is.EquivalentTo(expected));
     }
 
     [Test]
-    public void Startup_pruning_scan_reads_summaries_from_the_iterator()
+    public void Startup_pruning_scan_reads_no_summary_and_only_canonical_entries_of_finalized_blocks([Values] bool pruned)
     {
-        (ulong anchorSlot, _, int finalizedSummaries) = StoreBlocksAroundAnchor();
-        MemDb index = (MemDb)_db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
-        long readsBefore = index.ReadsCount;
-        _ = _store.StoredBlocksForPruning(anchorSlot).ToList();
-        // The scan runs on every restart over the whole history, so only the canonical-index lookup of a finalized block may cost a read.
-        Assert.That(index.ReadsCount - readsBefore, Is.EqualTo(finalizedSummaries), "summaries come with the scanned keys, not from a Get per key");
+        using RecordingIndexDb db = new(sorted: true);
+        BeaconChainStore store = new(db, Sepolia);
+        (ulong anchorSlot, _, int finalizedSummaries) = StoreBlocksAroundAnchor(store);
+        if (pruned) store.AdvancePrunedThroughSlot(anchorSlot - 6);
+        db.Index.ResetRecording();
+        _ = store.StoredBlocksForPruning(anchorSlot);
+        // The scan runs on every restart, so only the canonical-index lookup of a finalized block may cost a read.
+        Assert.That(db.Index.Reads, Has.Count.EqualTo(finalizedSummaries).And.All.Length.EqualTo(sizeof(ulong)), "summaries come with the scanned keys, not from a Get per key");
+    }
+
+    [Test]
+    public void Startup_after_a_completed_prune_reads_no_key_at_or_below_its_slot()
+    {
+        const ulong prunedThrough = 20;
+        using RecordingIndexDb db = new(sorted: true);
+        BeaconChainStore store = new(db, Sepolia);
+        for (ulong slot = 1; slot <= prunedThrough; slot++)
+        {
+            StoreBlock(store, $"finalized {slot}", slot, canonical: true);
+        }
+
+        HashSet<(Hash256, ulong)> expected =
+        [
+            (StoreBlock(store, "unfinalized canonical", prunedThrough + 1, canonical: true), prunedThrough + 1),
+            (StoreBlock(store, "unfinalized sibling", prunedThrough + 1, canonical: false), prunedThrough + 1),
+        ];
+        store.AdvancePrunedThroughSlot(prunedThrough);
+        db.Index.ResetRecording();
+
+        List<(Hash256 Root, ulong Slot)> seeded = new BeaconChainStore(db, Sepolia).StoredBlocksForPruning(prunedThrough);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(seeded, Is.EquivalentTo(expected));
+        // Restart cost must follow the unfinalized blocks, not the finalized history below the prune.
+        Assert.That(db.Index.Scanned.Concat(db.Index.Reads), Has.All.Matches<byte[]>(key => IsBlockSlotKeyAbove(key, prunedThrough)));
+    }
+
+    [Test]
+    public void A_store_without_block_slot_keys_is_scanned_once_then_read_above_its_completed_prune()
+    {
+        using RecordingIndexDb db = new(sorted: true);
+        BeaconChainStore store = new(db, Sepolia);
+        (ulong anchorSlot, HashSet<(Hash256 Root, ulong Slot)> expected, _) = StoreBlocksAroundAnchor(store);
+        foreach (byte[] key in db.Index.Keys.Where(static key => key[0] == BeaconChainStore.BlockSlotKeyPrefix).ToList())
+        {
+            db.Index.Remove(key);
+        }
+
+        List<(Hash256 Root, ulong Slot)> upgraded = new BeaconChainStore(db, Sepolia).StoredBlocksForPruning(anchorSlot);
+        int summaries = db.Index.Keys.Count(static key => key.Length == 1 + Hash256.Size && key[0] == BeaconChainStore.BlockSummaryKeyPrefix);
+        int slotKeys = db.Index.Keys.Count(static key => key[0] == BeaconChainStore.BlockSlotKeyPrefix);
+        foreach ((Hash256 root, ulong slot) in upgraded.Where(block => block.Slot <= anchorSlot))
+        {
+            store.DeleteBlock(root);
+        }
+
+        store.AdvancePrunedThroughSlot(anchorSlot);
+        db.Index.ResetRecording();
+        List<(Hash256 Root, ulong Slot)> afterPrune = new BeaconChainStore(db, Sepolia).StoredBlocksForPruning(anchorSlot);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(upgraded, Is.EquivalentTo(expected));
+        Assert.That(slotKeys, Is.EqualTo(summaries), "the upgrade scan indexes every stored block by slot");
+        Assert.That(afterPrune, Is.EquivalentTo(expected.Where(block => block.Slot > anchorSlot)));
+        Assert.That(db.Index.Scanned.Concat(db.Index.Reads), Has.All.Matches<byte[]>(key => IsBlockSlotKeyAbove(key, anchorSlot)));
+    }
+
+    private static bool IsBlockSlotKeyAbove(byte[]? key, ulong slot) =>
+        key is { Length: 1 + sizeof(ulong) + Hash256.Size } && key[0] == BeaconChainStore.BlockSlotKeyPrefix
+        && BinaryPrimitives.ReadUInt64BigEndian(key.AsSpan(1)) > slot;
+
+    private static Hash256 StoreBlock(BeaconChainStore store, string name, ulong slot, bool canonical)
+    {
+        Hash256 root = Keccak.Compute(name);
+        store.PutForkedBlock(root, new ForkedSignedBeaconBlock.OfFulu(CreateMinimalBlock(slot)));
+        if (canonical) store.SetCanonicalRoot(slot, root);
+        return root;
     }
 
     /// <returns>The anchor slot, the blocks a restart must seed for pruning, and how many stored blocks are at or below the anchor.</returns>
-    private (ulong AnchorSlot, HashSet<(Hash256, ulong)> Expected, int FinalizedSummaries) StoreBlocksAroundAnchor()
+    private static (ulong AnchorSlot, HashSet<(Hash256 Root, ulong Slot)> Expected, int FinalizedSummaries) StoreBlocksAroundAnchor(BeaconChainStore store)
     {
         ulong anchorSlot = FirstGloasSlot - 10;
-        HashSet<(Hash256, ulong)> expected = [];
+        HashSet<(Hash256 Root, ulong Slot)> expected = [];
         int finalizedSummaries = 0;
         Store("finalized canonical", anchorSlot - 5, canonical: true, seeded: false);
         Store("finalized sibling", anchorSlot - 5, canonical: false, seeded: true);
@@ -175,16 +270,14 @@ public class BeaconChainStoreBlockSummaryTests
         Store("unfinalized sibling", anchorSlot + 2, canonical: false, seeded: true);
         // A finalization delete loop interrupted between two non-canonical blocks of the same slot.
         Hash256 deleted = Store("deleted before interruption", anchorSlot - 4, canonical: false, seeded: false);
-        _store.DeleteBlock(deleted);
+        store.DeleteBlock(deleted);
         finalizedSummaries--;
         Store("left by interruption", anchorSlot - 4, canonical: false, seeded: true);
         return (anchorSlot, expected, finalizedSummaries);
 
         Hash256 Store(string name, ulong slot, bool canonical, bool seeded)
         {
-            Hash256 root = Keccak.Compute(name);
-            _store.PutForkedBlock(root, new ForkedSignedBeaconBlock.OfFulu(CreateMinimalBlock(slot)));
-            if (canonical) _store.SetCanonicalRoot(slot, root);
+            Hash256 root = StoreBlock(store, name, slot, canonical);
             if (seeded) expected.Add((root, slot));
             if (slot <= anchorSlot) finalizedSummaries++;
             return root;
@@ -221,6 +314,82 @@ public class BeaconChainStoreBlockSummaryTests
             }
 
             base.Set(key, value, flags);
+        }
+    }
+
+    // A sorted index seeks like the on-disk column; an unsorted one must walk its keys.
+    private sealed class RecordingIndexDb(bool sorted) : TestColumnsDb
+    {
+        public RecordingIndex Index { get; } = sorted ? new SortedRecordingIndex() : new RecordingIndex();
+        protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.BlockIndex ? Index : base.CreateColumn(key);
+    }
+
+    private class RecordingIndex : MemDb, IDb
+    {
+        public List<byte[]> Reads { get; } = [];
+        public List<byte[]> Scanned { get; } = [];
+
+        public void ResetRecording()
+        {
+            Reads.Clear();
+            Scanned.Clear();
+        }
+
+        public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            Reads.Add(key.ToArray());
+            return base.Get(key, flags);
+        }
+
+        public new IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
+        {
+            foreach (KeyValuePair<byte[], byte[]> pair in base.GetAll(ordered))
+            {
+                Scanned.Add(pair.Key);
+                yield return pair;
+            }
+        }
+
+        public new IEnumerable<byte[]> GetAllKeys(bool ordered = false)
+        {
+            foreach (byte[] key in base.GetAllKeys(ordered))
+            {
+                Scanned.Add(key);
+                yield return key;
+            }
+        }
+    }
+
+    private sealed class SortedRecordingIndex : RecordingIndex, ISortedKeyValueStore
+    {
+        public byte[]? FirstKey => Keys.MinBy(static key => key, Bytes.Comparer);
+        public byte[]? LastKey => Keys.MaxBy(static key => key, Bytes.Comparer);
+
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
+        {
+            byte[] first = firstKeyInclusive.ToArray();
+            byte[] last = lastKeyExclusive.ToArray();
+            List<KeyValuePair<byte[], byte[]>> inRange = [.. ((MemDb)this).GetAll(ordered: true)
+                .Where(pair => Bytes.BytesComparer.Compare(pair.Key, first) >= 0 && Bytes.BytesComparer.Compare(pair.Key, last) < 0)];
+            return new RecordingView(this, inRange);
+        }
+
+        private sealed class RecordingView(SortedRecordingIndex owner, List<KeyValuePair<byte[], byte[]>> entries) : ISortedView
+        {
+            private int _index = -1;
+
+            public bool StartBefore(ReadOnlySpan<byte> value) => throw new NotSupportedException();
+
+            public bool MoveNext()
+            {
+                if (++_index >= entries.Count) return false;
+                owner.Scanned.Add(entries[_index].Key);
+                return true;
+            }
+
+            public ReadOnlySpan<byte> CurrentKey => entries[_index].Key;
+            public ReadOnlySpan<byte> CurrentValue => entries[_index].Value;
+            public void Dispose() { }
         }
     }
 }

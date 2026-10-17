@@ -1464,6 +1464,8 @@ public sealed class BlockImporter : IBlockImporter
             }
         }
 
+        _store.AdvancePrunedThroughSlot(finalizedSlot);
+
         if (pruned > 0 && _logger.IsDebug) _logger.Debug($"Pruned {pruned} non-canonical blocks below finalized slot {finalizedSlot}");
     }
 
