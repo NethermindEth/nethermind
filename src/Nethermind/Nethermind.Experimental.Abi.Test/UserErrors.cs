@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -51,6 +52,21 @@ public class UserErrors
             );
 
         Assert.Throws<AbiException>(() => AbiCodec.Encode(signature, elements));
+    }
+
+    private static IEnumerable<TestCaseData> LoneSurrogateTestCases()
+    {
+        yield return new TestCaseData("\uD800").SetName("lone high surrogate");
+        yield return new TestCaseData("a\uDC00b").SetName("lone low surrogate inside text");
+    }
+
+    [TestCaseSource(nameof(LoneSurrogateTestCases))]
+    public void Encode_LoneSurrogate(string value)
+    {
+        AbiSignature<string> signature = new AbiSignature("f").With(AbiType.String);
+
+        Assert.That(() => AbiCodec.Encode(signature, value),
+            Throws.TypeOf<AbiException>().With.InnerException.TypeOf<EncoderFallbackException>());
     }
 
     [Test]
@@ -208,6 +224,22 @@ public class UserErrors
             "0000000000000000000000000000000000000000000000000000000000000001" + // Length of the string
             "6101000000000000000000000000000000000000000000000000000000000000"   // "a" followed by non-zero padding
         ).SetName("string with non-zero padding");
+
+        (string Utf8, string Description)[] invalidUtf8 =
+        [
+            ("ff", "invalid UTF-8 byte 0xff"),
+            ("c328", "invalid UTF-8 continuation 0xc3 0x28"),
+            ("c0af", "overlong UTF-8 encoding 0xc0 0xaf"),
+            ("eda080", "UTF-8 encoded surrogate 0xed 0xa0 0x80"),
+        ];
+        foreach ((string utf8, string description) in invalidUtf8)
+        {
+            yield return MalformedInput(new AbiSignature("f").With(AbiType.String),
+                "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the string
+                (utf8.Length / 2).ToString("x64") +                                   // Length of the string
+                utf8.PadRight(64, '0')                                                // Invalid UTF-8 followed by zero padding
+            ).SetName($"string with {description}");
+        }
     }
 
     private static TestCaseData MalformedInput<T>(AbiSignature<T> signature, string body) =>
