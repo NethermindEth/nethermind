@@ -49,6 +49,8 @@ def prepare(args):
     beacon = ", l1_cl.beacon_http_url" if native else ""
     if native and "l1_cl = participants[0].cl_context" not in original:
         raise ValueError("upstream beacon endpoint boundary changed")
+    if native:
+        prepare_native_evidence(package)
     main.write_text('nethermind = import_module("./nethermind.star")\n' + original +
         '\n    nethermind.add_initial(plan, eez, l1_el.rpc_http_url, chain_id, deploy.files_artifacts[0]' + beacon + ')\n')
     shutil.copyfile(source / "nethermind.star", package / "nethermind.star")
@@ -101,6 +103,20 @@ def prepare(args):
             '    timeout 30s kurtosis service logs --all "$KURTOSIS_ENCLAVE" "$service" ')
     driver.write_text(commands)
     (args.output.parent / "scenario-hooks.json").write_text(json.dumps(names) + "\n")
+
+def prepare_native_evidence(package):
+    path = package / "scripts/verify-static-counter-l2.sh"
+    text = path.read_text()
+    for name, source in (("causal_graph", "$causal_tmp/output.json"), ("blob_da", "$blob_evidence_file")):
+        argument = '--argjson ' + name + ' "$' + name + '"'
+        if argument not in text:
+            continue
+        field = name + ': $' + name + ','
+        if text.count(argument) != 1 or text.count(field) != 1:
+            raise ValueError("upstream native evidence JSON boundary changed: " + name)
+        text = text.replace(argument, '--rawfile ' + name + ' "' + source + '"')
+        text = text.replace(field, name + ': ($' + name + ' | fromjson),')
+    path.write_text(text)
 
 def late(args):
     source = Path(__file__).resolve().parent

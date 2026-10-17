@@ -35,6 +35,14 @@ class NativePreparationTests(unittest.TestCase):
             'timed_phase protocol-suite bash "$HERE/scripts/run-protocol-e2e.sh"\n'
             + loop + loop + 'capture_service_log eez-proof-signer\nverify_real_proof_path\nwrite_result pass 0\n')
         (self.package / "run-ci.sh").write_text(self.driver)
+        (self.package / "scripts").mkdir()
+        self.evidence_script = self.package / "scripts/verify-static-counter-l2.sh"
+        self.evidence_script.write_text('set -euo pipefail\n'
+            'causal_tmp="$1"\nblob_evidence_file="$2"\n'
+            'causal_graph="$(jq -c . "$causal_tmp/output.json")"\n'
+            'blob_da="$(jq -c . "$blob_evidence_file")"\n'
+            'jq -n --argjson causal_graph "$causal_graph" --argjson blob_da "$blob_da" '
+            "'{causal_graph: $causal_graph, blob_da: $blob_da, claims: {receipts_revalidated: true}}'\n")
 
     def prepare(self):
         with patch.object(prepare, "revision", side_effect=["a" * 40, "b" * 40]):
@@ -55,6 +63,40 @@ class NativePreparationTests(unittest.TestCase):
         self.assertLess(recovery, commands.index('capture_service_log eez-proof-signer'))
         names = json.loads((self.root / "scenario-hooks.json").read_text())
         self.assertEqual(names, ["verify-eezl2-deployment", "verify-cross-chain-waves", "run-protocol-e2e"])
+
+    def test_native_large_evidence_avoids_os_argument_limits_without_changing_json(self):
+        self.prepare()
+        directory = self.root / "evidence with spaces"
+        directory.mkdir()
+        blob = directory / "blobs.json"
+        for size in (64, 256 * 1024):
+            with self.subTest(size=size):
+                causal = {"calls": ["quote\" dollar$ backtick` " + "a" * size], "success": True}
+                blobs = {"payload": "0x" + "ab" * size, "proofs": [], "entries": [{"index": 7, "return_data": "0x"}]}
+                (directory / "output.json").write_text(json.dumps(causal))
+                blob.write_text(json.dumps(blobs))
+
+                result = subprocess.run(["bash", str(self.evidence_script), str(directory), str(blob)],
+                    capture_output=True, text=True, timeout=10, check=True)
+
+                self.assertEqual(json.loads(result.stdout), {"causal_graph": causal, "blob_da": blobs, "claims": {"receipts_revalidated": True}})
+
+    def test_native_evidence_invalid_json_still_fails(self):
+        self.prepare()
+        blob = self.root / "blob.json"
+        causal = self.root / "output.json"
+        for changed in (blob, causal):
+            with self.subTest(file=changed.name):
+                for path in (blob, causal):
+                    path.write_text('{}' if path != changed else '{} {}')
+                result = subprocess.run(["bash", str(self.evidence_script), str(self.root), str(blob)],
+                    capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(result.returncode, 0, "multiple JSON documents cannot become valid evidence")
+
+    def test_changed_native_evidence_schema_fails_instead_of_rewriting_unknown_output(self):
+        self.evidence_script.write_text(self.evidence_script.read_text().replace('blob_da: $blob_da,', 'changed: $blob_da,'))
+        with self.assertRaisesRegex(ValueError, "native evidence JSON boundary changed: blob_da"):
+            self.prepare()
 
     def test_changed_native_scenario_boundary_fails_instead_of_skipping_coverage(self):
         original = (self.package / "main.star").read_text()
