@@ -41,6 +41,7 @@ public class ImporterTests
     [TearDown]
     public void TearDown()
     {
+        (_persistence as IDisposable)?.Dispose();
         _trieDb.Dispose();
         _columnsDb.Dispose();
     }
