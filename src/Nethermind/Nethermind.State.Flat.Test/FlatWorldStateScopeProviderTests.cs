@@ -2023,7 +2023,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void HintBal_WhenBatchSlotReadFails_DoesNotPublishPartialResults()
+    public async Task HintBal_WhenBatchSlotReadFails_DoesNotPublishPartialResults()
     {
         using WarmReadPool pool = new(1);
         using TestContext ctx = new(warmReadPool: pool);
@@ -2042,7 +2042,7 @@ public class FlatWorldStateScopeProviderTests
         ReadOnlyAccountChanges changes = new(address, [], keys, [], [], []);
         RecordingBalReaderSink sink = new();
 
-        Assert.That(Assert.ThrowsAsync<InvalidOperationException>(() => ctx.Scope.HintBal(CreateBal(changes), sink)),
+        Assert.That(await Assert.ThrowsAsync<InvalidOperationException>(() => ctx.Scope.HintBal(CreateBal(changes), sink)),
             Is.SameAs(failure), "the original reader error must reach the caller");
         Assert.That(reads, Is.EqualTo(2), "precondition: the batch wrote one result before its next read failed");
         Assert.That(sink.StorageReads, Is.Empty, "an incomplete batch must not publish its successful prefix");
