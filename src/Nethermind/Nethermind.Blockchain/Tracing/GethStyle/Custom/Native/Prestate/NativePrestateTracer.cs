@@ -41,6 +41,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
     private readonly bool _isEip5920Enabled;
     private readonly bool _isEip8298Enabled;
+    private readonly bool _isEip4758Enabled;
     private readonly bool _disableCode;
     private readonly bool _disableStorage;
 
@@ -65,6 +66,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _txHash = txHash;
         _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
         _isEip8298Enabled = releaseSpec?.IsEip8298Enabled == true;
+        _isEip4758Enabled = releaseSpec?.IsEip4758Enabled == true;
         UInt256 instructionMask = CaptureMask;
         if (_isEip5920Enabled) instructionMask |= UInt256.One << (int)Instruction.PAY;
         if (_isEip8298Enabled) instructionMask |= UInt256.One << (int)Instruction.SETCODEFROM;
@@ -226,7 +228,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     address = stack.PeekAddress(0);
                     LookupAccount(address);
-                    if (_diffMode && _op == Instruction.SELFDESTRUCT)
+                    if (_diffMode && _op == Instruction.SELFDESTRUCT && !_isEip4758Enabled)
                         _deletedAccounts.Add(address);
                 }
                 break;
