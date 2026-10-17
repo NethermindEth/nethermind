@@ -28,7 +28,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
 namespace Nethermind.Consensus.Processing;
@@ -72,11 +71,7 @@ public partial class BlockProcessor(
 
     /// <summary>Requests a fresh parent-state scope and ordinary sequential execution.</summary>
     public sealed class BlockAccessListSequentialRetryException(BlockHeader block, string message, Exception? innerException = null)
-        : InvalidBlockException(block, message, innerException)
-    {
-        internal BlockAccessListSequentialRetryException(BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException exception)
-            : this(exception.InvalidBlock, exception.Message, exception) { }
-    }
+        : InvalidBlockException(block, message, innerException);
 
     public event Action? TransactionsExecuted;
 
@@ -98,16 +93,6 @@ public partial class BlockProcessor(
             processed = true;
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
-        }
-        catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
-        {
-            throw new BlockAccessListSequentialRetryException(ex);
-        }
-        catch (BlockAccessListManager.ParallelExecutionException ex) when (
-            _balManager.ParallelExecutionEnabled &&
-            ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
-        {
-            throw new BlockAccessListSequentialRetryException(blockAccessListException);
         }
         finally
         {

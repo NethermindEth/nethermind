@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.BalRecorder.Test;
@@ -51,6 +52,37 @@ public class BalRecordingBranchProcessorTests
             Assert.That(block.BlockAccessList, Is.Null);
         Assert.That(result, Has.Length.EqualTo(1));
         Assert.That(result[0], Is.SameAs(block));
+    }
+
+    [Test]
+    public void Replayed_bal_failure_reprocesses_the_branch_without_the_replayed_bal([Values] bool wrappedInParallelFailure)
+    {
+        FakeRecordedBalStore store = new() { ReplayEnabled = true };
+        store.Seed(1, new ReadOnlyBlockAccessList());
+        BalRecorderSpecSwitch balSwitch = new();
+        StubBranchProcessor inner = new();
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        List<(bool HasBal, bool SwitchEnabled)> attempts = [];
+        inner.OnProcess = blocks =>
+        {
+            attempts.Add((blocks[0].BlockAccessList is not null, balSwitch.Enabled));
+            if (attempts.Count == 1)
+            {
+                BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(blocks[0].Header, "stale recording");
+                throw wrappedInParallelFailure ? new BlockAccessListManager.ParallelExecutionException(failure) : failure;
+            }
+        };
+
+        Block[] result = new BalRecordingBranchProcessor(inner, store, balSwitch)
+            .Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Is.EqualTo(new[] { (true, true), (false, false) }), "the retry must run without the replayed BAL or the EIP-7928 switch");
+            Assert.That(result, Is.EqualTo(new[] { block }));
+            Assert.That(block.BlockAccessList, Is.Null);
+            Assert.That(balSwitch.Enabled, Is.False);
+        }
     }
 
     [Test]
