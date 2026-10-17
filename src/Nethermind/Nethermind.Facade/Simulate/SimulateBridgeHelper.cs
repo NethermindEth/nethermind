@@ -30,7 +30,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         | ProcessingOptions.IgnoreParentNotOnMainChain
         | ProcessingOptions.StoreReceipts;
 
-    private void PrepareState(
+    /// <remarks>
+    /// Only the state overrides are written, with EIP-158 off so an override that leaves an account empty keeps it.
+    /// Senders and call targets are not created up front: like eth_call, an account the calls have not created yet must
+    /// still be missing for the EIP-7702 authority check and EIP-8037 NEW_ACCOUNT charging, and the transaction
+    /// processor creates a missing sender itself.
+    /// </remarks>
+    private static void PrepareState(
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
@@ -39,47 +45,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         releaseSpec = releaseSpec.WithoutEip158();
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
-
-        TransactionWithSourceDetails[]? calls = blockStateCall.Calls;
-        if (calls is not null)
-        {
-            if (calls.Length == 1)
-            {
-                Transaction transaction = calls[0].Transaction;
-                Address? sender = transaction.SenderAddress;
-                if (sender is not null)
-                {
-                    stateProvider.CreateAccountIfNotExists(sender, 0, 0);
-                }
-
-                Address? to = transaction.To;
-                if (to is not null && !Equals(sender, to))
-                {
-                    stateProvider.CreateAccountIfNotExists(to, 0, 0);
-                }
-            }
-            else
-            {
-                HashSet<Address> seenAddresses = new(calls.Length * 2, Address.EqualityComparer);
-                for (int i = 0; i < calls.Length; i++)
-                {
-                    Transaction transaction = calls[i].Transaction;
-                    CreateAccountIfNotExists(transaction.SenderAddress, stateProvider, seenAddresses);
-                    CreateAccountIfNotExists(transaction.To, stateProvider, seenAddresses);
-                }
-            }
-        }
-
         stateProvider.Commit(releaseSpec, commitRoots: true);
         stateProvider.CommitTree(blockNumber);
-    }
-
-    private static void CreateAccountIfNotExists(Address? address, IWorldState stateProvider, HashSet<Address> seenAddresses)
-    {
-        if (address is not null && seenAddresses.Add(address))
-        {
-            stateProvider.CreateAccountIfNotExists(address, 0, 0);
-        }
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
