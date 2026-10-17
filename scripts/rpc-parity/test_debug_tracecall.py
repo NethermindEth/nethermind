@@ -21,20 +21,24 @@ def load_corpus():
 
 class ParityRunnerTests(unittest.TestCase):
     def test_ssh_uses_short_private_socket_and_closes_it(self):
-        directory = Mock(name='/var/folders/jb/wzcwsm2j3pbcpv0l_v9sx__h0000gn/T/tracecall-ssh-abcdefgh')
-        directory.name = '/var/folders/jb/wzcwsm2j3pbcpv0l_v9sx__h0000gn/T/tracecall-ssh-abcdefgh'
-        args = Mock(ssh_key='key', known_hosts='hosts')
-        with patch.object(runner.tempfile, 'TemporaryDirectory', return_value=directory), patch.object(runner.subprocess, 'run') as execute:
-            execute.return_value.stdout = b'[{"jsonrpc":"2.0","id":1,"result":true}]'
-            client = runner.Client(None, 'root@host', args)
-            client.call([runner.request(1, 'eth_syncing', [])])
-            command = execute.call_args.args[0]
-            socket = next(v.removeprefix('ControlPath=') for v in command if v.startswith('ControlPath='))
-            self.assertLess(len(socket.encode()), 104)
-            self.assertNotIn('%', socket)
-            client.close()
-            self.assertEqual(execute.call_args.args[0], ['ssh', '-S', socket, '-O', 'exit', 'root@host'])
-            directory.cleanup.assert_called_once()
+        for host in ('root@host', '-oProxyCommand=not-a-command'):
+            with self.subTest(host=host):
+                directory = Mock()
+                directory.name = '/var/folders/jb/wzcwsm2j3pbcpv0l_v9sx__h0000gn/T/tracecall-ssh-abcdefgh'
+                args = Mock(ssh_key='key', known_hosts='hosts')
+                with patch.object(runner.tempfile, 'TemporaryDirectory', return_value=directory), patch.object(runner.subprocess, 'run') as execute:
+                    execute.return_value.stdout = b'[{"jsonrpc":"2.0","id":1,"result":true}]'
+                    client = runner.Client(None, host, args)
+                    client.call([runner.request(1, 'eth_syncing', [])])
+                    command = execute.call_args.args[0]
+                    socket = next(v.removeprefix('ControlPath=') for v in command if v.startswith('ControlPath='))
+                    self.assertLess(len(socket.encode()), 104)
+                    self.assertNotIn('%', socket)
+                    self.assertEqual(command[-3:-1], ['--', host])
+                    self.assertTrue(command[-1].endswith('http://127.0.0.1:8545'))
+                    client.close()
+                    self.assertEqual(execute.call_args.args[0], ['ssh', '-S', socket, '-O', 'exit', '--', host])
+                    directory.cleanup.assert_called_once()
 
     def test_reference_commit_is_required_and_separate_from_corpus_provenance(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -57,6 +61,25 @@ class ParityRunnerTests(unittest.TestCase):
                 self.assertEqual(evidence['referenceCommit'], reference)
                 self.assertEqual(evidence['corpusReferenceCommit'], runner.CORPUS_REFERENCE)
 
+    def test_failed_or_interrupted_runs_finish_evidence_and_close_clients(self):
+        for error in (Exception('ordinary failure'), KeyboardInterrupt('interrupted'), SystemExit('exit requested')):
+            with self.subTest(error=type(error).__name__), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / 'capture.json'
+                argv = ['runner', '--candidate-url', 'http://candidate', '--reference-url', 'http://reference',
+                        '--candidate-version', 'candidate-revision', '--reference-commit', 'f' * 40,
+                        '--output', str(output)]
+                clients = [Mock(), Mock()]
+                with patch.object(runner.sys, 'argv', argv), patch.object(runner, 'Client', side_effect=clients), patch.object(runner, 'metadata', side_effect=error):
+                    with self.assertRaises(type(error)) as raised:
+                        runner.main()
+                self.assertIs(raised.exception, error)
+                evidence = json.loads(output.read_text())
+                self.assertEqual(evidence['status'], 'failed')
+                self.assertEqual(evidence['failure'], str(error))
+                self.assertIn('finishedAt', evidence)
+                for client in clients:
+                    client.close.assert_called_once()
+
     def test_manifest_cardinality_and_ids(self):
         corpus = load_corpus()
         self.assertEqual(corpus['referenceCommit'], runner.CORPUS_REFERENCE)
@@ -65,6 +88,23 @@ class ParityRunnerTests(unittest.TestCase):
         for d in corpus['datasets']:
             self.assertEqual([c['id'] for c in d['cases']], [q['id'] for q in d['requests']])
             self.assertEqual(len({q['id'] for q in d['requests']}), len(d['requests']))
+        oracle_cases = (
+            ('14-state-selection', 'state-selection', range(1, 9), (
+                'number-plus-1-index-None', 'number-plus-1-index-0x0',
+                'number-plus-2-index-None', 'number-plus-2-index-0x0',
+                'index-0x0-override-False', 'index-0x0-override-True',
+                'index-0x1-override-False', 'index-0x1-override-True')),
+            ('2-caught-helpers', 'caught-helpers', (1, 2), ('caught-slice', 'caught-null')),
+            ('16-native', 'native-configurations', (6, 7, 12, 13, 14, 15, 16), (
+                'prefix-index-K', 'prefix-index-K-mux', 'callTracer-null', 'prestateTracer-null',
+                'flatCallTracer-null', 'mux-native-null', 'mux-native-empty')),
+        )
+        for group, name, identifiers, names in oracle_cases:
+            with self.subTest(group=group):
+                dataset = next(d for d in corpus['datasets'] if d['group'] == group)
+                self.assertEqual(dataset['name'], name)
+                self.assertEqual([(c['id'], c['name']) for c in dataset['cases'] if c['id'] in identifiers],
+                                 list(zip(identifiers, names, strict=True)))
 
     def test_response_ids_reject_missing_duplicate_and_transport(self):
         rows = [runner.request(i, 'unused', []) for i in (1, 2)]

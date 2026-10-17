@@ -1,6 +1,6 @@
 # `debug_traceCall` differential acceptance inventory
 
-A Python-standard-library runner for the retained **304-request** inventory. It does not build, deploy, reset, fork, or send transactions to either node. No workflow triggers or existing comparison settings are changed.
+A Python-standard-library runner for the retained **304-request** inventory, requiring **Python 3.10 or newer**. It does not build, deploy, reset, fork, or send transactions to either node.
 
 ## Run
 
@@ -17,7 +17,7 @@ python3 scripts/rpc-parity/debug_tracecall.py \
   --output /existing/evidence/directory/new-capture.json
 ```
 
-URLs can be locally forwarded RPC ports. Alternatively, use `--candidate-host root@HOST` and/or `--reference-host root@HOST` with `--ssh-key PATH --known-hosts PATH`; RPC is then invoked on remote loopback through SSH. Host keys are strictly verified. Do not expose a public debug endpoint merely to run this tool.
+URLs can be locally forwarded RPC ports. Alternatively, use `--candidate-host root@HOST` and/or `--reference-host root@HOST` with `--ssh-key PATH --known-hosts PATH`; SSH mode always invokes RPC at **`http://127.0.0.1:8545` on the remote host**. For a different node RPC port, use URL mode with an operator-managed local forward instead. Host keys are strictly verified. Do not expose a public debug endpoint merely to run this tool.
 
 The script selects a common recent block with two real prefix transactions and at least one prefix log. Use `--block 0xNUMBER` to choose an explicit retained block. It regenerates only block-number-dependent BLOCKHASH bytecode/overrides, selected hash selectors, and prefix-sender fixtures **before** either client receives the requests. Each materialized request is then identical on both clients. An unavailable fixture, transport error, missing state, missing/duplicate response, changed version, or changed block/state-root fails the run; no case is skipped or silently repinned.
 
@@ -31,10 +31,10 @@ The output records the selected reference SHA separately from the historical cor
 - Recompute BLOCKHASH, prefix-nonce/override, helper-catchability and native direct/mux equivalence oracles; do not trust stored pass labels.
 - Results must retain the expected result/error kind. State-unavailability errors are never a matched-error pass.
 
-The corpus retains its historical Geth provenance (`23408c2b17c3f4e094921d2ff305bfef018b1ace`); that is not the required reference for a new run. Retained case expectations/diagnostic allowances are not automatically rewritten for newer Geth: a changed contract fails the comparison and requires explicit investigation. Unit tests validate the runner, not live compatibility against the selected SHA.
+The output's `corpusReferenceCommit` records immutable corpus provenance, not the reference required for a new run. `referenceCommit` records that run's explicitly selected full SHA. Retained case expectations/diagnostic allowances are not automatically rewritten for newer Geth: a changed contract fails the comparison and requires explicit investigation. Corpus edits require coordinated oracle and unit-test updates. Unit tests validate the runner, not live compatibility against the selected SHA.
 
-The inventory was extracted from the preserved `e516f57a593cdb2283c0fafc74ff606ebd515ffc` candidate acceptance capture. That capture had **293 exact matches and 11 approved diagnostic differences**. Fresh captures can differ in source coordinates and selected state; do not describe them as byte-identical historical replays.
+## Coverage limits
 
-This finite inventory does not prove arbitrary-JavaScript or whole-method equivalence. It does not exercise the exact opcode byte-limit boundary matrix: the proposed counter-only buffered estimate can stop earlier than Geth, and that separately approved exception must not be reported as exact parity. The runner does not normalize or accept arbitrary truncated traces. Live retained-orphan selection is not covered. Historical fork cases use block/state overrides, not an archive-state reconstruction. Bare-root string serialization and post-commit streaming-timeout behavior are separate intentional exceptions, not accepted differences in this inventory. Transport/deadline recovery remains covered by the client regression tests and separately retained live evidence.
+This finite inventory does not prove arbitrary-JavaScript or whole-method equivalence. It does not exercise the exact opcode byte-limit boundary matrix or live retained-orphan selection. Historical fork cases use block/state overrides, not archive-state reconstruction. Do not infer coverage of bare-root string serialization, post-commit streaming-timeout behavior, or transport/deadline recovery from a successful capture. The runner does not normalize or accept arbitrary truncated traces.
 
-For future CI integration, invoke this runner only with explicitly provisioned/pinned endpoints and archive its JSON output regardless of exit status. This PR provides the runnable check, not an automatic provisioning/deployment workflow or permission to merge the tracing stack.
+Automated runs require explicitly provisioned/pinned endpoints and must archive the JSON output regardless of exit status. The runner does not provision or upgrade either node.
