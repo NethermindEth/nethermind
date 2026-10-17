@@ -2023,6 +2023,32 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void HintBal_WhenBatchSlotReadFails_DoesNotPublishPartialResults()
+    {
+        using WarmReadPool pool = new(1);
+        using TestContext ctx = new(warmReadPool: pool);
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(new Account(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString));
+        InvalidOperationException failure = new("slot batch failed after one result");
+        int reads = 0;
+        ctx.PersistenceReader.TryGetSlot(address, Arg.Any<UInt256>(), ref Arg.Any<UInt256>()).Returns(call =>
+        {
+            if (++reads == 2) throw failure;
+            call[2] = UInt256.One;
+            return true;
+        });
+        UInt256[] keys = new UInt256[128];
+        for (int i = 0; i < keys.Length; i++) keys[i] = (UInt256)(ulong)i;
+        ReadOnlyAccountChanges changes = new(address, [], keys, [], [], []);
+        RecordingBalReaderSink sink = new();
+
+        Assert.That(Assert.ThrowsAsync<InvalidOperationException>(() => ctx.Scope.HintBal(CreateBal(changes), sink)),
+            Is.SameAs(failure), "the original reader error must reach the caller");
+        Assert.That(reads, Is.EqualTo(2), "precondition: the batch wrote one result before its next read failed");
+        Assert.That(sink.StorageReads, Is.Empty, "an incomplete batch must not publish its successful prefix");
+    }
+
+    [Test]
     public async Task HintBal_EmptyBal_ResetsPreviousWriteSet()
     {
         using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);

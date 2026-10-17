@@ -84,12 +84,17 @@ public sealed partial class ReadOnlySnapshotBundle
         }
 
         using ArrayPoolListRef<StorageCell> inputs = new(misses.Count, misses.Count);
-        using ArrayPoolSpan<UInt256?> results = new(misses.Count);
         for (int i = 0; i < misses.Count; i++)
         {
             ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref requests[misses[i]];
             inputs[i] = new StorageCell(request.Address, in request.Slot);
         }
+        if (misses.Count == requests.Length)
+        {
+            persistenceReader.GetSlots(inputs.AsSpan(), values);
+            return;
+        }
+        using ArrayPoolSpan<UInt256?> results = new(misses.Count);
         persistenceReader.GetSlots(inputs.AsSpan(), results);
         for (int i = 0; i < misses.Count; i++) values[misses[i]] = results[i];
     }

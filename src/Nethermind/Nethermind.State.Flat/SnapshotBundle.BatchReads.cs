@@ -68,6 +68,11 @@ public sealed partial class SnapshotBundle
             return;
         }
 
+        if (misses.Count == requests.Length)
+        {
+            _readOnlySnapshotBundle.GetSlots(requests, values);
+            return;
+        }
         using ArrayPoolListRef<(Address Address, int SelfDestructIdx, UInt256 Slot)> inputs = new(misses.Count, misses.Count);
         using ArrayPoolSpan<UInt256?> results = new(misses.Count);
         for (int i = 0; i < misses.Count; i++) inputs[i] = requests[misses[i]];
