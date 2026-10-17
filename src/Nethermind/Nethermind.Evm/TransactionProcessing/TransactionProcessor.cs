@@ -938,8 +938,13 @@ namespace Nethermind.Evm.TransactionProcessing
             InvalidNonce,
             InvalidChainId,
             InvalidSignature,
-            InvalidAsCodeDeployed
+            InvalidAsCodeDeployed,
+            RejectedByPolicy
         }
+
+        /// <summary>Determines whether a valid authorization may access and update its authority.</summary>
+        /// <remarks>Called after signature validation and before the authority is warmed or read.</remarks>
+        protected virtual bool IsAuthorizationAllowed(Address authority, IReleaseSpec spec) => true;
 
         private AuthorizationTupleResult IsValidForExecution(
             AuthorizationTuple authorizationTuple,
@@ -968,6 +973,12 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, "Bad signature.");
                 return AuthorizationTupleResult.InvalidSignature;
+            }
+
+            if (!IsAuthorizationAllowed(authorizationTuple.Authority, spec))
+            {
+                if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, "Authorization rejected by policy.");
+                return AuthorizationTupleResult.RejectedByPolicy;
             }
 
             accessTracker.WarmUp(authorizationTuple.Authority);
