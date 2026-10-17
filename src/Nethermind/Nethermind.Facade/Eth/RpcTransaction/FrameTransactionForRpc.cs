@@ -19,7 +19,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     public override TxType? Type => TxType;
 
     /// <summary>EIP-8250 <c>nonce_keys</c>, sharing the sequence number reported as <c>nonce</c>.</summary>
-    /// <remarks>Absent for an envelope nonce, which is a different signing payload from the key set <c>[0]</c>.</remarks>
+    /// <remarks>Absent for an envelope nonce, which is a different signing payload from the empty key set.</remarks>
     public UInt256[]? NonceKeys { get; set; }
 
     /// <summary>EIP-8141 <c>frames</c>, in execution order; the field that discriminates this envelope.</summary>

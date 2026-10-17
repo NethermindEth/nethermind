@@ -185,7 +185,7 @@ public class FrameTxWidthFilterTests
     {
         yield return new TestCaseData(() => KeyedTx(nonceSeq: Baseline), true).SetName("keyed-nonce frame transaction is charged");
         yield return new TestCaseData(() => FrameTx(nonce: Baseline, nonceKeys: null), false).SetName("frame transaction on the account nonce is free");
-        yield return new TestCaseData(() => FrameTx(nonce: Baseline, nonceKeys: [UInt256.Zero]), false).SetName("frame transaction aliasing the account nonce is free");
+        yield return new TestCaseData(() => FrameTx(nonce: Baseline, nonceKeys: []), false).SetName("frame transaction with an empty key set is free");
         yield return new TestCaseData(() => Build.A.Transaction.WithNonce(Baseline).WithSenderAddress(Sender).TestObject, false).SetName("plain transaction is free");
     }
 
