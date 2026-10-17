@@ -18,7 +18,7 @@ public static class AbiCodec
             byte[] buffer = new byte[AbiSignature.MethodIdLength + valueSize];
             BinarySpanWriter w = new(buffer);
 
-            w.Write(signature.MethodId());
+            w.Write(signature.MethodId);
             signature.Abi.Write(ref w, arg);
 
             if (w.Written != buffer.Length) throw new AbiException();
@@ -38,7 +38,7 @@ public static class AbiCodec
             BinarySpanReader r = new(source);
 
             ReadOnlySpan<byte> id = r.ReadBytes(AbiSignature.MethodIdLength);
-            if (!Bytes.AreEqual(id, signature.MethodId())) throw new AbiException();
+            if (!Bytes.AreEqual(id, signature.MethodId)) throw new AbiException();
 
             T arg = signature.Abi.Read(ref r);
             if (r.Remaining != 0) throw new AbiException();
