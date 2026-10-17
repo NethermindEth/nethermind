@@ -362,6 +362,8 @@ public partial class EngineModuleTests
     [TestCase("0xff", "Error decoding block access list: Must be a complete RLP list")]
     [TestCase("0xc0c0", "Error decoding block access list: Must be a complete RLP list")]
     [TestCase("0xf6da940000000000000000000000000000000000000000c0c0c0c0c0da940000000000000000000000000000000000000000c0c0c0c0c0", "Error decoding block access list:")]
+    [TestCase("0xf83cdd940000000000000000000000000000000000000001c0c0c3c20101c0c0dd940000000000000000000000000000000000000001c0c0c3c20102c0c0", "Error decoding block access list: Account changes were in incorrect order.")]
+    [TestCase("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Error decoding block access list:")]
     public async Task NewPayloadV5_rejects_malformed_block_access_list(string encodedBlockAccessList, string expectedValidationError)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
