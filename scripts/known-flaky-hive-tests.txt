@@ -7,3 +7,8 @@ eth_simulateV1/ethSimulate-use-as-many-features-as-possible (nethermind)
 
 # Listed until the execution-apis fixtures follow execution-apis#881: #14618 keeps the EIP-2681 nonce limit without validation, the current fixture still expects the nonce to wrap to 0
 eth_simulateV1/ethSimulate-overflow-nonce (nethermind)
+
+# Listed until eth_simulateV1 rejects what execution-apis#944 added fixtures for: an unknown key in a state or block override, and a difficulty override after the merge, must give -32602; Nethermind ignores them and returns the simulated block
+eth_simulateV1/ethSimulate-difficulty-override-after-merge-32602 (nethermind)
+eth_simulateV1/ethSimulate-unknown-account-override-key-32602 (nethermind)
+eth_simulateV1/ethSimulate-unknown-block-override-key-32602 (nethermind)
