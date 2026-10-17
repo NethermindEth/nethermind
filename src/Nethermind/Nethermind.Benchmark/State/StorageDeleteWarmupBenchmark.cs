@@ -118,7 +118,7 @@ public class StorageDeleteWarmupBenchmark
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
             new NullTrieNodeCache(), log, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
-        using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), commitTarget, _config, new NoopTrieWarmer(), NullLogManager.Instance);
+        using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), commitTarget, _config, null, new NoopTrieWarmer(), NullLogManager.Instance);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {
@@ -157,7 +157,7 @@ public class StorageDeleteWarmupBenchmark
         SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
             new NullTrieNodeCache(), log, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        using FlatWorldStateScope scope = new(_baseStateId, bundle, new NullCodeDb(), new CapturingCommitTarget(), _config, new InlineTrieWarmer(WarmupMode.PathOnly), NullLogManager.Instance);
+        using FlatWorldStateScope scope = new(_baseStateId, bundle, new NullCodeDb(), new CapturingCommitTarget(), _config, null, new InlineTrieWarmer(WarmupMode.PathOnly), NullLogManager.Instance);
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(_address);
         for (int s = 0; s < 4_000; s++) storageTree.HintSet(Slot(s));
     }
@@ -171,7 +171,7 @@ public class StorageDeleteWarmupBenchmark
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
             new NullTrieNodeCache(), _log, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         InlineTrieWarmer warmer = new(Warmup);
-        _scope = new FlatWorldStateScope(_baseStateId, bundle, new NullCodeDb(), new CapturingCommitTarget(), _config, warmer, NullLogManager.Instance);
+        _scope = new FlatWorldStateScope(_baseStateId, bundle, new NullCodeDb(), new CapturingCommitTarget(), _config, null, warmer, NullLogManager.Instance);
 
         // Block processing hints each write as its transaction commits; the warmer then loads the trie paths.
         IWorldStateScopeProvider.IStorageTree storageTree = _scope.CreateStorageTree(_address);

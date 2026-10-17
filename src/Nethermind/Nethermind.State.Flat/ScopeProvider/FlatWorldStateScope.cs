@@ -169,6 +169,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ReleaseStorageTrees();
         _logRetain?.Dispose();
         _logPin?.Dispose();
+        _nativeStateStore?.Dispose();
         _warmer.OnExitScope();
     }
 
@@ -240,18 +241,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     /// <remarks>The root is current after every write batch.</remarks>
     public void UpdateRootHash() { }
+
     private void SetAccountsNatively(Dictionary<AddressAsKey, Account?> accounts)
     {
-        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
-        foreach ((AddressAsKey address, Account? account) in accounts)
-        {
-            KeccakCache.ComputeTo(address.Value.Bytes, out ValueHash256 key);
-            byte[]? encoded = account is null ? null
-                : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp.Bytes
-                : AccountDecoder.Instance.EncodeAsBytes(account);
-            entries.Add(new PatriciaTree.BulkSetEntry(in key, encoded));
-        }
-
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = StateTree.CreateAccountEntries(accounts);
         _nativeStateRoot = _nativeStateStore!.BulkSet(_nativeStateRoot, entries.AsSpan());
     }
 
@@ -461,8 +454,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
                 if (_nativeStateStore is not null) _snapshotBundle.WarmUpNative(_nativeStateStore, NativeTrieNodeLog, null, _initialStateRoot, address.ToAccountPath);
-                else
-                _snapshotBundle.WarmUp(null, _initialTrieRoot, address.ToAccountPath);
+                else _snapshotBundle.WarmUp(null, _initialTrieRoot, address.ToAccountPath);
 
                 return true;
             }
@@ -579,7 +571,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_trieless)
         {
             CommitStorageTrees();
-            if (_nativeStateStore is not null) _nativeStateStore.Publish();
+            if (_nativeStateStore is not null) _nativeStateStore.Publish(_nativeStateRoot);
             else _stateTrie!.Publish();
         }
 

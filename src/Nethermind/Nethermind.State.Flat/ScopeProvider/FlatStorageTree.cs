@@ -56,14 +56,24 @@ public sealed class FlatStorageTree(
 
     private sealed class EarlyTrie : IDisposable
     {
-        public readonly SnapshotBundle.BackgroundTrieSource Source;
+        public readonly SnapshotBundle.BackgroundTrieSource? Source;
+        public readonly SnapshotBundle.BackgroundNativeTrieSource? NativeSource;
         public readonly ConcurrentQueue<(UInt256 Slot, UInt256 Value)> Writes = new();
-        public readonly TrieNodeLog Log;
+        public readonly TrieNodeLog? Log;
         public readonly Dictionary<UInt256, UInt256> Applied = [];
+        public readonly Hash256 InitialRoot;
         public TrieRoot Root;
+        public NativeBulkSetState? NativeState;
 
-        public EarlyTrie(SnapshotBundle bundle, Hash256 address, Hash256 root)
+        public EarlyTrie(SnapshotBundle bundle, Hash256 address, Hash256 root, bool native)
         {
+            InitialRoot = root;
+            if (native)
+            {
+                NativeSource = bundle.CreateBackgroundNativeTrieSource(address);
+                return;
+            }
+
             Log = bundle.TrieNodeLog!;
             Source = bundle.CreateBackgroundTrieSource(address);
             try
@@ -77,7 +87,12 @@ public sealed class FlatStorageTree(
             }
         }
 
-        public void Dispose() => Source.Dispose();
+        public void Dispose()
+        {
+            NativeState?.Dispose();
+            Source?.Dispose();
+            NativeSource?.Dispose();
+        }
     }
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
@@ -148,7 +163,7 @@ public sealed class FlatStorageTree(
         if (!_scope.AppliesStorageWritesEarly || Volatile.Read(ref _earlyState) >= EarlyClaimed) return;
 
         OnEarlyHintAccepted?.Invoke();
-        EarlyTrie early = _earlyTrie ??= new EarlyTrie(_bundle, AddressHash, _rootBeforeTrie);
+        EarlyTrie early = _earlyTrie ??= new EarlyTrie(_bundle, AddressHash, RootHash, UsesNativeBulkSet);
         early.Writes.Enqueue((index, value));
         // Clearing this before draining makes a hint during a pass queue another pass.
         if (Volatile.Read(ref _earlyQueued) == 0 && Interlocked.Exchange(ref _earlyQueued, 1) == 0) _scope.EarlyApplier.Enqueue(this);
@@ -181,8 +196,16 @@ public sealed class FlatStorageTree(
             if (entries.Count > 0)
             {
                 OnEarlyPassDrained?.Invoke();
-                // Pool work would run at normal priority rather than this thread's idle priority.
-                early.Root = LogBulkSet.BulkSet(early.Log, early.Source, AddressHash, early.Root, entries, canParallelize: false);
+                if (UsesNativeBulkSet)
+                {
+                    NativeBulkSetState prepared = early.NativeState ??= NativeBulkSetState.Create(early.InitialRoot.ValueHash256, AddressHash);
+                    NativePatriciaBulkSet.Update(early.NativeSource!, prepared, _scope.NativeTrieNodeLog, early.NativeSource!.WarmedNodes, entries.AsSpan());
+                }
+                else
+                {
+                    // Pool work would run at normal priority rather than this thread's idle priority.
+                    early.Root = LogBulkSet.BulkSet(early.Log!, early.Source!, AddressHash, early.Root, entries, canParallelize: false);
+                }
                 _scope.CountEarlyApplied(entries.Count);
             }
         }
@@ -206,18 +229,18 @@ public sealed class FlatStorageTree(
     internal Action? OnEarlyPassDrained;
     internal Action? OnEarlyPassCompleted;
 
-    private Dictionary<UInt256, UInt256>? AdoptEarlyTrie(LoggedTrie trie)
+    internal NativeBulkSetState? EarlyNativeState => Volatile.Read(ref _earlyTrie)?.NativeState;
+
+    private EarlyTrie? TakeEarlyTrie()
     {
         int previous = ClaimEarlyTrie();
-        if (previous == EarlyApplying)
-        {
-            _scope.CountEarlyAbandoned();
-        }
-        return previous == EarlyIdle;
+        if (previous == EarlyApplying) _scope.CountEarlyAbandoned();
+        return previous == EarlyIdle ? Interlocked.Exchange(ref _earlyTrie, null) : null;
     }
 
-        if (previous != EarlyIdle) return null;
-        using EarlyTrie? early = Interlocked.Exchange(ref _earlyTrie, null);
+    private Dictionary<UInt256, UInt256>? AdoptEarlyTrie(LoggedTrie trie)
+    {
+        using EarlyTrie? early = TakeEarlyTrie();
         if (early is not { Applied.Count: > 0 }) return null;
         trie.Adopt(early.Root);
         return early.Applied;
@@ -275,9 +298,8 @@ public sealed class FlatStorageTree(
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
-                if (UsesNativeBulkSet) _bundle.WarmUpNative(NativeStore, _scope.NativeTrieNodeLog, AddressHash, _storageRoot, key);
-                else
-                _bundle.WarmUp(AddressHash, PreBlockRoot, key, forDelete: isDelete);
+                if (UsesNativeBulkSet) _bundle.WarmUpNative(NativeStore, _scope.NativeTrieNodeLog, AddressHash, _storageRoot, key, forDelete: isDelete);
+                else _bundle.WarmUp(AddressHash, PreBlockRoot, key, forDelete: isDelete);
                 return true;
             }
             finally
@@ -301,7 +323,7 @@ public sealed class FlatStorageTree(
         if (UsesNativeBulkSet)
         {
             _nativeRoot = Keccak.EmptyTreeHash;
-            _nativeStore?.Clear();
+            NativeStore.Clear();
             return;
         }
 
@@ -312,20 +334,33 @@ public sealed class FlatStorageTree(
 
     public void CommitTree()
     {
-        if (UsesNativeBulkSet) _nativeStore?.Publish();
+        if (UsesNativeBulkSet) _nativeStore?.Publish(_nativeRoot);
         else _trie?.Publish();
     }
 
     /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
     internal bool HasUncommittedNodes => UsesNativeBulkSet ? _nativeStore is { HasPending: true } : _trie is { HasUnpublishedNodes: true };
 
+    internal void DiscardEarlyWrites() => AbandonEarlyTrie();
+
     /// <summary>Abandons private early updates once the scope no longer uses this tree.</summary>
-    internal void ReleaseTrie() => AbandonEarlyTrie();
+    internal void ReleaseTrie()
+    {
+        AbandonEarlyTrie();
+        _nativeStore?.Dispose();
+    }
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
-        if (UsesNativeBulkSet) return new NativeStorageWriteBatch(this, estimatedEntries, onRootUpdated);
+        if (UsesNativeBulkSet)
+        {
+            using EarlyTrie? early = TakeEarlyTrie();
+            NativeBulkSetState? prepared = early?.NativeState;
+            Dictionary<UInt256, UInt256>? applied = prepared is null ? null : early!.Applied;
+            if (early is not null) early.NativeState = null;
+            return new NativeStorageWriteBatch(this, estimatedEntries, onRootUpdated, prepared, applied);
+        }
         LoggedTrie trie = Trie;
         return new LoggedStorageWriteBatch(this, trie, estimatedEntries, onRootUpdated, AdoptEarlyTrie(trie));
     }
@@ -462,7 +497,7 @@ public sealed class FlatStorageTree(
             storageTree._scope.CountEarlyReconciled(_reused, restored);
             if (prepared is not null) storageTree._nativeRoot = storageTree.NativeStore.Finish(prepared, entries.AsSpan());
             else if (entries.Count > 0) storageTree._nativeRoot = storageTree.NativeStore.BulkSet(storageTree._nativeRoot, entries.AsSpan());
-            if (!storageTree._config.DeferStorageTrieCommit) storageTree._nativeStore?.Publish();
+            if (!storageTree._config.DeferStorageTrieCommit) storageTree.CommitTree();
             if (prepared is not null || entries.Count > 0 || _hasSelfDestruct) onRootUpdated(storageTree._address, storageTree._nativeRoot);
         }
     }

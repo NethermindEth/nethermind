@@ -27,7 +27,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ISnapshotCompactor _snapshotCompactor;
     private readonly ISnapshotRepository _snapshotRepository;
     private readonly ITrieNodeCache _trieNodeCache;
-    private readonly TrieNodeLog _trieNodeLog;
+    private readonly TrieNodeLog? _trieNodeLog;
     private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private readonly IResourcePool _resourcePool;
 
@@ -66,8 +66,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IResourcePool resourcePool,
         IProcessExitSource processExitSource,
         ITrieNodeCache trieNodeCache,
-        TrieNodeLog trieNodeLog,
-        NativeTrieNodeLog? nativeTrieNodeLog,
+        TrieNodeLog? trieNodeLog,
         ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
@@ -75,7 +74,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IFlatDbConfig config,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
-        bool enableDetailedMetrics)
+        bool enableDetailedMetrics,
+        NativeTrieNodeLog? nativeTrieNodeLog = null)
     {
         _trieNodeCache = trieNodeCache;
         _trieNodeLog = trieNodeLog;
@@ -544,6 +544,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();
+        _nativeTrieNodeLog?.ClearCache();
 
         if (_logger.IsInfo) _logger.Info($"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
     }

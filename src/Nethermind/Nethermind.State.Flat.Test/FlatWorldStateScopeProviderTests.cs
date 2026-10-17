@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -207,6 +208,7 @@ public class FlatWorldStateScopeProviderTests
         public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null, Hash256? stateRoot = null)
         {
             config ??= new FlatDbConfig();
+            if (config.UseNativeBulkSet) Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
@@ -243,6 +245,7 @@ public class FlatWorldStateScopeProviderTests
                                 // then be returned a second time when that lease is released.
                                 try
                                 {
+                                    transientResource.PromoteNativeWarmedNodes();
                                     Container.Resolve<ITrieNodeCache>().Add(transientResource);
                                 }
                                 finally
@@ -284,19 +287,23 @@ public class FlatWorldStateScopeProviderTests
                 .WithParameter(TypedParameter.From(PersistedSnapshotStack.Empty()))
                 .ExternallyOwned();
 
-            ConfigureSnapshotBundle();
-            ConfigureFlatWorldStateScope(stateRoot ?? Keccak.EmptyTreeHash);
+            ConfigureSnapshotBundle(config.UseNativeBulkSet);
+            ConfigureFlatWorldStateScope(stateRoot ?? Keccak.EmptyTreeHash, config.UseNativeBulkSet);
         }
 
-        private void ConfigureSnapshotBundle() =>
+        private void ConfigureSnapshotBundle(bool useNativeBulkSet) =>
             _containerBuilder.RegisterType<SnapshotBundle>()
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(ResourcePool.Usage.MainBlockProcessing))
+                .WithParameter(new ResolvedParameter((p, _) => p.Name == "nativeTrieNodeLog",
+                    (_, context) => useNativeBulkSet ? context.Resolve<NativeTrieNodeLog>() : null))
                 .ExternallyOwned();
 
-        private void ConfigureFlatWorldStateScope(Hash256 stateRoot) => _containerBuilder.RegisterType<FlatWorldStateScope>()
+        private void ConfigureFlatWorldStateScope(Hash256 stateRoot, bool useNativeBulkSet) => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(new StateId(0, stateRoot)))
+                .WithParameter(new ResolvedParameter((p, _) => p.Name == "nativeTrieNodeLog",
+                    (_, context) => useNativeBulkSet ? context.Resolve<NativeTrieNodeLog>() : null))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
@@ -913,10 +920,13 @@ public class FlatWorldStateScopeProviderTests
 
     [Test]
     [NonParallelizable]
-    public void EarlyStorageApply_ReconcilesFinalWrites([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
+    public void EarlyStorageApply_ReconcilesFinalWrites([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit, [Values] bool useNativeBulkSet)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly, DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatDbConfig config = CreateConfig(useNativeBulkSet);
+        config.ApplyStorageWritesOnIdleThread = applyEarly;
+        config.DeferStorageTrieCommit = deferStorageTrieCommit;
+        using TestContext ctx = new(config: config);
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
@@ -943,6 +953,8 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(tree.RootHash, Is.EqualTo(preBlockRoot), "private updates must not change the owner root");
         }
 
+        NativeBulkSetState? prepared = tree.EarlyNativeState;
+        Assert.That(prepared is not null, Is.EqualTo(useNativeBulkSet && applyEarly));
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {
             using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, expected.Length);
@@ -955,6 +967,7 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
+        if (prepared is not null) Assert.That(prepared.IsClosed, Is.True);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.EarlyApplyCounts.Reused, Is.EqualTo(applyEarly && !clearAtBlockEnd ? expected.Length - 2 : 0));
@@ -967,20 +980,23 @@ public class FlatWorldStateScopeProviderTests
 
     [Test]
     [NonParallelizable]
-    public void EarlyStorageApply_AdoptsAllMatchingWritesAndPublishesNodes()
+    public void EarlyStorageApply_AdoptsAllMatchingWritesAndPublishesNodes([Values] bool useNativeBulkSet)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new();
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
         FlatStorageTree tree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
         ApplyEarlyHints(tree, () => tree.HintSet(1, 123));
 
+        NativeBulkSetState? prepared = tree.EarlyNativeState;
+        Assert.That(prepared is not null, Is.EqualTo(useNativeBulkSet));
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = ctx.Scope.StartWriteBatch(1))
         {
             using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, 1);
             storage.Set(1, 123);
         }
+        if (prepared is not null) Assert.That(prepared.IsClosed, Is.True);
         Assert.That(ctx.Scope.EarlyApplyCounts.Reused, Is.EqualTo(1));
         ctx.Scope.Commit(1);
         AssertStorageRoot(ctx, [0, 123]);
@@ -991,7 +1007,7 @@ public class FlatWorldStateScopeProviderTests
 
     [Test]
     [NonParallelizable]
-    public void EarlyStorageApply_UnfinishedPassOutlivesCommitOrDispose([Values] bool disposeScope, [Values] bool persistedRoot)
+    public void EarlyStorageApply_UnfinishedPassOutlivesCommitOrDispose([Values] bool disposeScope, [Values] bool persistedRoot, [Values] bool useNativeBulkSet)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
         Address address = TestItem.AddressA;
@@ -1012,7 +1028,9 @@ public class FlatWorldStateScopeProviderTests
             persistedNodes = CollectNodes(store.GetTrieStore(null), stateRoot).Rlps;
         }
 
-        using TestContext ctx = new(config: new FlatDbConfig { TrieCacheMemoryBudget = 0 }, stateRoot: stateRoot);
+        FlatDbConfig config = CreateConfig(useNativeBulkSet);
+        config.TrieCacheMemoryBudget = 0;
+        using TestContext ctx = new(config: config, stateRoot: stateRoot);
         ctx.PersistenceReader.GetAccount(address).Returns(account);
         int backgroundLoads = 0;
         ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
@@ -1033,7 +1051,7 @@ public class FlatWorldStateScopeProviderTests
             }
             scope.Commit(1);
             // The root predates the worker's active generation, so retaining only its new writes is insufficient.
-            for (int i = 0; i < 10; i++) ctx.TrieNodeLog.Reserve(64 * 1024, out _, out _);
+            if (!useNativeBulkSet) for (int i = 0; i < 10; i++) ctx.TrieNodeLog.Reserve(64 * 1024, out _, out _);
         }
 
         FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
@@ -1066,7 +1084,7 @@ public class FlatWorldStateScopeProviderTests
             });
             Assert.That(owner.Wait(5000), Is.True, "commit/dispose must not wait for an unfinished pass");
             ctx.PersistenceReader.DidNotReceive().Dispose();
-            for (int i = 0; i < 10; i++) ctx.TrieNodeLog.Reserve(64 * 1024, out _, out _);
+            if (!useNativeBulkSet) for (int i = 0; i < 10; i++) ctx.TrieNodeLog.Reserve(64 * 1024, out _, out _);
         }
         finally
         {
@@ -1083,10 +1101,10 @@ public class FlatWorldStateScopeProviderTests
 
     [Test]
     [NonParallelizable]
-    public void EarlyStorageApply_FailedPassIsNotAdopted([Values] bool raceNextHint)
+    public void EarlyStorageApply_FailedPassIsNotAdopted([Values] bool raceNextHint, [Values] bool useNativeBulkSet)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new();
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
         FlatStorageTree tree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
@@ -1136,10 +1154,10 @@ public class FlatWorldStateScopeProviderTests
 
     [Test]
     [NonParallelizable]
-    public void EarlyStorageApply_WithoutFinalStorageBatchDoesNotPublish()
+    public void EarlyStorageApply_WithoutFinalStorageBatchDoesNotPublish([Values] bool useNativeBulkSet)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
-        using TestContext ctx = new();
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         Address address = TestItem.AddressA;
         ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
         FlatStorageTree tree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
@@ -1340,10 +1358,12 @@ public class FlatWorldStateScopeProviderTests
         [Values] bool deferStorageTrieCommit,
         // 512 crosses the bulk set's parallel threshold.
         [Values(48, 512)] int slotsPerContract,
-        [Values] bool trieNodeCacheEnabled)
+        [Values] bool trieNodeCacheEnabled,
+        [Values] bool useNativeBulkSet)
     {
         const int contractCount = 8;
-        FlatDbConfig config = new() { DeferStorageTrieCommit = deferStorageTrieCommit };
+        FlatDbConfig config = CreateConfig(useNativeBulkSet);
+        config.DeferStorageTrieCommit = deferStorageTrieCommit;
         if (!trieNodeCacheEnabled) config.TrieCacheMemoryBudget = 0;
         Account baseAccount = new(1, 1);
 
@@ -1438,7 +1458,7 @@ public class FlatWorldStateScopeProviderTests
         {
             Assert.That(CollectNodes(new StateTrieStoreAdapter(ctx.SnapshotBundle), scope.RootHash).Nodes,
                 Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
-            Assert.That(trieNodeCache.Hits, trieNodeCacheEnabled ? Is.Positive : Is.Zero);
+            Assert.That(trieNodeCache.Hits, trieNodeCacheEnabled && !useNativeBulkSet ? Is.Positive : Is.Zero);
         }
     }
 

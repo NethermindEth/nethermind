@@ -14,6 +14,8 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
+using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -166,6 +168,96 @@ public class SnapshotTests
             entries.Add(new(key.ValueHash256, Enumerable.Repeat(value, 32).ToArray()));
             if (other is not null) entries.Add(new(other.ValueHash256, new byte[32]));
             return LogBulkSet.BulkSet(log, source, address, root, entries, canParallelize: false);
+        }
+    }
+
+    [Test]
+    public void NativeEnumerationIncludesOnlyReachableWritesSincePin([Values] bool storage)
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+        using NativeTrieNodeLog log = new(0);
+        using NativeTrieNodeLogPin originalPin = log.PinActiveGeneration();
+        Hash256? address = storage ? TestItem.KeccakA : null;
+        ValueHash256 firstKey = new Hash256("1000000000000000000000000000000000000000000000000000000000000000").ValueHash256;
+        ValueHash256 lastKey = new Hash256("f000000000000000000000000000000000000000000000000000000000000000").ValueHash256;
+        Hash256 original = FlatTestHelpers.WriteNative(log, address, Keccak.EmptyTreeHash,
+            new PatriciaTree.BulkSetEntry(firstKey, Enumerable.Repeat((byte)1, 32).ToArray()), new PatriciaTree.BulkSetEntry(lastKey, new byte[32]));
+        NativeTrieNodeLogPin updatePin = log.PinActiveGeneration();
+        Hash256 unrelated = FlatTestHelpers.WriteNative(log, address, Keccak.EmptyTreeHash, new PatriciaTree.BulkSetEntry(firstKey, Enumerable.Repeat((byte)3, 32).ToArray()));
+        Hash256 updated = FlatTestHelpers.WriteNative(log, address, original, new PatriciaTree.BulkSetEntry(lastKey, Enumerable.Repeat((byte)2, 32).ToArray()));
+        ulong pointer = log.ResolveRoot(address, updated.ValueHash256);
+        using Snapshot snapshot = new(new(1, original), new(2, updated), new SnapshotContent(), _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = updatePin };
+        if (storage) snapshot.Content.StorageRoots[address!] = pointer;
+        else
+        {
+            snapshot.Content.HasStateRoot = true;
+            snapshot.Content.StateRootPointer = pointer;
+        }
+
+        ulong[] writes = (storage ? snapshot.StorageNodes.Select(kv => kv.Value) : snapshot.StateNodes.Select(kv => kv.Value)).ToArray();
+        TreePath inheritedPath = TreePath.Empty.Append(1);
+        bool inheritedFound = storage
+            ? snapshot.TryGetStorageNode((address!, inheritedPath), out TrieNode? inherited)
+            : snapshot.TryGetStateNode(inheritedPath, out inherited);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pointer >> 32, Is.EqualTo(originalPin.Generation));
+            Assert.That(writes, Has.Length.EqualTo(2));
+            Assert.That(writes, Does.Not.Contain(log.ResolveRoot(address, unrelated.ValueHash256)));
+            Assert.That(writes.All(write => write >= updatePin.WriteBoundary), Is.True);
+            Assert.That(inheritedFound, Is.True, "inherited lookup copies under a native read session");
+            Assert.That(inherited!.FullRlp.IsNull, Is.False);
+            Assert.That(writes.Select(write => snapshot.GetRlp(write).Length), Has.All.GreaterThan(0));
+        }
+    }
+
+    [Test]
+    public void NativeUnchangedStateRootOmitsWritesAfterPin([Values] bool revert)
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+        using NativeTrieNodeLog log = new(0);
+        using NativeTrieNodeLogPin originalPin = log.PinActiveGeneration();
+        ValueHash256 key = TestItem.KeccakA.ValueHash256;
+        Hash256 root = FlatTestHelpers.WriteNative(log, null, Keccak.EmptyTreeHash, new PatriciaTree.BulkSetEntry(key, [1]));
+        NativeTrieNodeLogPin pin = log.PinActiveGeneration();
+        if (revert)
+        {
+            Hash256 changed = FlatTestHelpers.WriteNative(log, null, root, new PatriciaTree.BulkSetEntry(key, [2]));
+            Assert.That(FlatTestHelpers.WriteNative(log, null, changed, new PatriciaTree.BulkSetEntry(key, [1])), Is.EqualTo(root));
+        }
+        using Snapshot snapshot = new(new(1, root), new(2, root), new SnapshotContent(), _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = pin };
+        snapshot.Content.HasStateRoot = true;
+        snapshot.Content.StateRootPointer = log.ResolveRoot(null, root.ValueHash256);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.StateNodes, Is.Empty);
+            Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out TrieNode? node), Is.True);
+            Assert.That(node!.Keccak, Is.EqualTo(root));
+        }
+    }
+
+    [Test]
+    public void NativeStorageClearPublishesEmptyRootWithoutStaleWrites()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+        using NativeTrieNodeLog log = new(0);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), new NoopTrieNodeCache(), null, _pool,
+            ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: log);
+        using NativeTrieNodeStore store = new(bundle, TestItem.KeccakA, log);
+        NativeTrieNodeLogPin pin = log.PinActiveGeneration();
+        store.BulkSet(Keccak.EmptyTreeHash, [new(TestItem.KeccakB.ValueHash256, [1])]);
+        store.Clear();
+        store.Publish(Keccak.EmptyTreeHash);
+        (Snapshot? published, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis,
+            new(1, Keccak.EmptyTreeHash), null, logPin: pin);
+        using Snapshot snapshot = published!;
+        retired!.ReleaseLease();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.TryGetStorageRoot(TestItem.KeccakA, out ulong root), Is.True);
+            Assert.That(root, Is.Zero);
+            Assert.That(snapshot.StorageNodes, Is.Empty);
+            Assert.That(snapshot.TryGetStorageNode((TestItem.KeccakA, TreePath.Empty), out TrieNode? _), Is.False);
         }
     }
 

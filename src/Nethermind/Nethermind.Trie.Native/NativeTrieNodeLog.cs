@@ -21,7 +21,10 @@ namespace Nethermind.Trie.Native;
 /// </remarks>
 public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
 {
-    public NativeTrieNodeLog(ulong compressedMaxMemory) : base(IntPtr.Zero, ownsHandle: true) => SetHandle(nm_patricia_log_new(compressedMaxMemory));
+    public NativeTrieNodeLog(ulong compressedMaxMemory, ulong cacheMemoryBudget = 0) : base(IntPtr.Zero, ownsHandle: true) => SetHandle(nm_patricia_log_new(compressedMaxMemory, cacheMemoryBudget));
+
+    /// <summary>Clears the shared cache of persisted records without affecting block-owned warmed copies.</summary>
+    public void ClearCache() => nm_patricia_log_cache_clear(this);
 
     public override bool IsInvalid => handle == IntPtr.Zero;
 
@@ -39,20 +42,23 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
     {
         bool referenced = false;
         DangerousAddRef(ref referenced);
-        return new NativeTrieNodeLogPin(this, nm_patricia_log_retain_active(this));
+        ulong boundary;
+        ulong generation = nm_patricia_log_retain_active(this, &boundary);
+        return new NativeTrieNodeLogPin(this, generation, boundary);
     }
 
-    internal NativeTrieNodeLogPin Pin(ulong generation)
+    internal NativeTrieNodeLogPin Pin(ulong generation, ulong writeBoundary)
     {
         bool referenced = false;
         DangerousAddRef(ref referenced);
         nm_patricia_log_retain(this, generation);
-        return new NativeTrieNodeLogPin(this, generation);
+        return new NativeTrieNodeLogPin(this, generation, writeBoundary);
     }
 
     internal void Unpin(ulong generation)
     {
-        nm_patricia_log_release(this, generation);
+        // The pin's dangerous reference keeps this raw handle valid even after the owning SafeHandle is closed.
+        nm_patricia_log_release(handle, generation);
         DangerousRelease();
     }
 
@@ -73,19 +79,22 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
     }
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial nint nm_patricia_log_new(ulong compressedMaxMemory);
+    private static partial nint nm_patricia_log_new(ulong compressedMaxMemory, ulong cacheMemoryBudget);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial int nm_patricia_log_node(NativeTrieNodeLog log, ulong pointer, ValueHash256* hashOut, byte** rlpOut);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial ulong nm_patricia_log_retain_active(NativeTrieNodeLog log);
+    private static partial ulong nm_patricia_log_retain_active(NativeTrieNodeLog log, ulong* writeBoundary);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial void nm_patricia_log_retain(NativeTrieNodeLog log, ulong generation);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial void nm_patricia_log_release(NativeTrieNodeLog log, ulong generation);
+    private static partial void nm_patricia_log_release(nint log, ulong generation);
+
+    [LibraryImport(NativePatriciaBulkSet.LibraryName)]
+    private static partial void nm_patricia_log_cache_clear(NativeTrieNodeLog log);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial void nm_patricia_log_free(nint log);

@@ -216,7 +216,8 @@ public static unsafe partial class NativePatriciaBulkSet
     /// <paramref name="warmed"/>. Stops at the first node <paramref name="store"/> does not have.
     /// </summary>
     /// <remarks>Concurrent warm-ups and bulk sets may share <paramref name="warmed"/>.</remarks>
-    public static void WarmUp(INativeNodeStore store, NativeTrieNodeLog log, NativeWarmedNodes warmed, Hash256? address, in ValueHash256 root, in ValueHash256 key)
+    /// <param name="forDelete">Also warms the sibling needed when deleting a matching leaf collapses a two-child branch.</param>
+    public static void WarmUp(INativeNodeStore store, NativeTrieNodeLog log, NativeWarmedNodes warmed, Hash256? address, in ValueHash256 root, in ValueHash256 key, bool forDelete = false)
     {
         CallState state = new(store);
         GCHandle handle = GCHandle.Alloc(state);
@@ -227,7 +228,7 @@ public static unsafe partial class NativePatriciaBulkSet
             fixed (ValueHash256* rootPointer = &root)
             fixed (ValueHash256* keyPointer = &key)
             {
-                status = nm_patricia_warm_up(log, warmed, address is null ? null : &addressValue, rootPointer, keyPointer, &Fetch, (void*)GCHandle.ToIntPtr(handle));
+                status = nm_patricia_warm_up(log, warmed, address is null ? null : &addressValue, rootPointer, keyPointer, &Fetch, (void*)GCHandle.ToIntPtr(handle), forDelete);
             }
 
             if (state.Exception is not null) throw new InvalidOperationException("Native node store callback failed", state.Exception);
@@ -308,7 +309,8 @@ public static unsafe partial class NativePatriciaBulkSet
         ValueHash256* root,
         ValueHash256* key,
         delegate* unmanaged<void*, TreePath*, ValueHash256*, delegate* unmanaged<void*, byte*, int, void>, void*, int> fetch,
-        void* context);
+        void* context,
+        [MarshalAs(UnmanagedType.I1)] bool forDelete);
 
     private sealed class CallState(INativeNodeStore store)
     {

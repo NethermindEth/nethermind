@@ -125,7 +125,7 @@ pub struct InlineRlp {
 }
 
 impl InlineRlp {
-    fn new(rlp: &[u8]) -> InlineRlp {
+    pub(crate) fn new(rlp: &[u8]) -> InlineRlp {
         let mut result = InlineRlp {
             length: rlp.len() as u8,
             data: [0; 31],
@@ -417,12 +417,16 @@ impl<'a> LoggedNode<'a> {
         }
     }
 
-    fn hash_mask(&self) -> u16 {
+    pub(crate) fn record(&self) -> &'a [u8] {
+        self.record
+    }
+
+    pub(crate) fn hash_mask(&self) -> u16 {
         u16::from_le_bytes(self.record[2..4].try_into().unwrap())
     }
 
     /// The pointer of the child at `position` among those referenced by hash.
-    fn pointer(&self, position: usize) -> LogPointer {
+    pub(crate) fn pointer(&self, position: usize) -> LogPointer {
         let start = RECORD_HEADER_LENGTH + POINTER_LENGTH * position;
         u64::from_le_bytes(
             self.record[start..start + POINTER_LENGTH]

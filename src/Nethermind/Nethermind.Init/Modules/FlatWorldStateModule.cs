@@ -54,8 +54,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
                 ctx.Resolve<ITrieNodeCache>(),
-                ctx.Resolve<TrieNodeLog>(),
-                flatDbConfig.UseNativeBulkSet ? ctx.Resolve<NativeTrieNodeLog>() : null,
+                flatDbConfig.UseNativeBulkSet ? null : ctx.Resolve<TrieNodeLog>(),
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
@@ -63,7 +62,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IFlatDbConfig>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
+                nativeTrieNodeLog: flatDbConfig.UseNativeBulkSet ? ctx.Resolve<NativeTrieNodeLog>() : null))
             .AddSingleton<IResourcePool, ResourcePool>()
             // With UseNativeBulkSet the native trie node cache takes the memory budget instead.
             .AddSingleton<ITrieNodeCache>(flatDbConfig.UseNativeBulkSet
@@ -72,7 +72,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<TrieNodeCache>()
             .AddSingleton<TrieNodeLog, IFlatDbConfig>(c => new TrieNodeLog(c.CompressedTrieNodeLogMemoryBudget, TrieNodeLog.DefaultGenerationBytes))
             // Only created with UseNativeBulkSet, which needs libnethermind_patricia.
-            .AddSingleton<NativeTrieNodeLog, IFlatDbConfig>(config => new NativeTrieNodeLog(config.CompressedTrieNodeLogMemoryBudget))
+            .AddSingleton<NativeTrieNodeLog, IFlatDbConfig>(config => new NativeTrieNodeLog(config.CompressedTrieNodeLogMemoryBudget, config.TrieCacheMemoryBudget))
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()

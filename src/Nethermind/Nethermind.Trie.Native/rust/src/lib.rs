@@ -12,6 +12,7 @@ mod log;
 mod metrics;
 mod node;
 mod pending;
+mod traversal;
 mod warmed;
 
 use std::ffi::c_void;
@@ -197,6 +198,9 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
         } else {
             std::slice::from_raw_parts(values, values_length as usize)
         };
+        if let (Some(log), Some(warmed)) = (log.as_ref(), warmed.as_ref()) {
+            warmed.bind_cache(log.cache.clone());
+        }
         bulk_set(
             &CallbackStore { fetch, context },
             &*pending,
@@ -270,6 +274,9 @@ pub unsafe extern "C" fn nm_patricia_bulk_state_update(
     let result = catch_unwind(AssertUnwindSafe(|| {
         let log = log.as_ref().ok_or(Error::InvalidArgument)?;
         let (entries, values) = bulk_state_inputs(entries, entry_count, values, values_length)?;
+        if let Some(warmed) = warmed.as_ref() {
+            warmed.bind_cache(log.cache.clone());
+        }
         state.update(
             &CallbackStore { fetch, context },
             log,
@@ -314,6 +321,9 @@ pub unsafe extern "C" fn nm_patricia_bulk_state_finish(
             return Err(Error::InvalidArgument);
         }
         let (entries, values) = bulk_state_inputs(entries, entry_count, values, values_length)?;
+        if let Some(warmed) = warmed.as_ref() {
+            warmed.bind_cache(log.cache.clone());
+        }
         let root = state.finish(
             &CallbackStore { fetch, context },
             pending,
@@ -383,8 +393,8 @@ fn bulk_state_status(
 /// Creates a [`TrieNodeLog`] whose compacted generations take about `compressed_max_memory` bytes, to free with
 /// [`nm_patricia_log_free`].
 #[no_mangle]
-pub extern "C" fn nm_patricia_log_new(compressed_max_memory: u64) -> *mut TrieNodeLog {
-    Box::into_raw(TrieNodeLog::new(compressed_max_memory))
+pub extern "C" fn nm_patricia_log_new(compressed_max_memory: u64, cache_memory_budget: u64) -> *mut TrieNodeLog {
+    Box::into_raw(TrieNodeLog::with_cache(compressed_max_memory, cache_memory_budget))
 }
 
 /// # Safety
@@ -400,8 +410,10 @@ pub unsafe extern "C" fn nm_patricia_log_free(log: *mut TrieNodeLog) {
 /// # Safety
 /// `log` must come from [`nm_patricia_log_new`] and not be freed yet.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_retain_active(log: *const TrieNodeLog) -> u64 {
-    (*log).retain_active()
+pub unsafe extern "C" fn nm_patricia_log_retain_active(log: *const TrieNodeLog, boundary_out: *mut u64) -> u64 {
+    let (generation, boundary) = (*log).retain_active_boundary();
+    *boundary_out = boundary;
+    generation
 }
 
 /// Retains `generation` of `log` once more, until [`nm_patricia_log_release`].
@@ -439,8 +451,10 @@ pub unsafe extern "C" fn nm_patricia_warm_up(
     key: *const [u8; 32],
     fetch: FetchFn,
     context: *mut c_void,
+    for_delete: bool,
 ) -> i32 {
     match catch_unwind(AssertUnwindSafe(|| {
+        (*warmed).bind_cache((*log).cache.clone());
         warm_up(
             &CallbackStore { fetch, context },
             &*log,
@@ -448,6 +462,7 @@ pub unsafe extern "C" fn nm_patricia_warm_up(
             address.as_ref(),
             &*root,
             &*key,
+            for_delete,
         )
     })) {
         Ok(Ok(())) => 0,
@@ -476,6 +491,82 @@ pub unsafe extern "C" fn nm_patricia_warmed_free(warmed: *mut WarmedNodes) {
 #[no_mangle]
 pub unsafe extern "C" fn nm_patricia_warmed_reset(warmed: *const WarmedNodes) {
     (*warmed).reset();
+}
+
+/// Promotes warmed records to their shared cache; the caller must exclusively own `warmed`.
+///
+/// # Safety
+/// `warmed` must come from [`nm_patricia_warmed_new`] and not be reset or freed during the call.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_warmed_promote(warmed: *const WarmedNodes) {
+    (*warmed).promote();
+}
+
+/// Clears the shared persisted-record cache without affecting warmed block-owned copies.
+///
+/// # Safety
+/// `log` must come from [`nm_patricia_log_new`] and remain alive during the call.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_cache_clear(log: *const TrieNodeLog) {
+    (*log).cache.clear();
+}
+
+/// Resolves a trie root through a session that protects the root-index walk.
+///
+/// # Safety
+/// `log` must be live, `root` readable for 32 bytes, and `address` null or readable for 32 bytes.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_root(log: *const TrieNodeLog, address: *const [u8; 32], root: *const [u8; 32]) -> u64 {
+    (*log).pin().root(address.as_ref(), &*root)
+}
+
+/// Copies the exact-path node while its read session is alive. Returns its length, zero on a miss, or -1 on panic.
+/// A short output buffer is not written and the required length is returned.
+///
+/// # Safety
+/// `log` must be live and the root must have originated from it. `path` and `hash_out` must be valid;
+/// `out` must be writable for `capacity` bytes. No borrowed record escapes the session.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_find_node(log: *const TrieNodeLog, root: u64, path: *const TreePath, hash_out: *mut [u8; 32], out: *mut u8, capacity: usize) -> i32 {
+    match catch_unwind(AssertUnwindSafe(|| {
+        if (*path).length < 0 || (*path).length > 64 { return 0; }
+        let session = (*log).pin();
+        let Some(node) = session.find_node(root, &*path) else { return 0; };
+        *hash_out = *node.hash();
+        if capacity >= node.rlp().len() {
+            std::ptr::copy_nonoverlapping(node.rlp().as_ptr(), out, node.rlp().len());
+        }
+        node.rlp().len() as i32
+    })) { Ok(length) => length, Err(_) => -1 }
+}
+
+/// Creates a bounded cursor with its own generation retain.
+///
+/// # Safety
+/// `log` must outlive the cursor, and `boundary` must belong to a currently retained generation of it.
+/// `root` must be zero or a node pointer from the same log.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_cursor_new(log: *const TrieNodeLog, root: u64, boundary: u64) -> *mut c_void {
+    if log.is_null() || boundary >> 32 == 0 { return std::ptr::null_mut(); }
+    Box::into_raw(Box::new(traversal::SnapshotCursor::new(&*log, root, boundary))).cast()
+}
+
+/// # Safety
+/// `cursor` must be a live exclusively owned cursor; `path_out` and `pointer_out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_cursor_next(cursor: *mut c_void, path_out: *mut TreePath, pointer_out: *mut u64) -> i32 {
+    match catch_unwind(AssertUnwindSafe(|| (*cursor.cast::<traversal::SnapshotCursor<'static>>()).next())) {
+        Ok(Some((path, pointer))) => { *path_out = path; *pointer_out = pointer; 1 }
+        Ok(None) => 0,
+        Err(_) => -1,
+    }
+}
+
+/// # Safety
+/// `cursor` must be a cursor not previously freed, whose log is still alive.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_cursor_free(cursor: *mut c_void) {
+    drop(Box::from_raw(cursor.cast::<traversal::SnapshotCursor>()));
 }
 
 /// Writes to `hash_out` the hash of the node whose record is at `pointer` in `log`, points `rlp_out` at its RLP, valid

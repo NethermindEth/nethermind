@@ -78,7 +78,7 @@ public static class PersistedSnapshotBuilder
 
         internal PreparedSnapshot(Snapshot snapshot)
         {
-            _readScope = snapshot.LogRetain?.Log.BeginReadScope();
+            _readScope = snapshot.BeginNodeReadScope();
             try
             {
                 using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);

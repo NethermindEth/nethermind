@@ -89,7 +89,7 @@ public class FlatStorageTreeDeleteWarmupTests
                 new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
                 new TrieNodeCache(_config), NewLog(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget target = new(_snapshots);
-            using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), target, _config, new NoopTrieWarmer(), LimboLogs.Instance);
+            using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), target, _config, null, new NoopTrieWarmer(), LimboLogs.Instance);
 
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
             {
@@ -150,7 +150,7 @@ public class FlatStorageTreeDeleteWarmupTests
             SnapshotBundle bundle = new(
                 new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
                 new TrieNodeCache(_config), NewLog(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            FlatWorldStateScope scope = new(_baseState, bundle, new NullCodeDb(), new CapturingCommitTarget(_snapshots), _config, new InlineTrieWarmer(passDeleteFlag), LimboLogs.Instance);
+            FlatWorldStateScope scope = new(_baseState, bundle, new NullCodeDb(), new CapturingCommitTarget(_snapshots), _config, null, new InlineTrieWarmer(passDeleteFlag), LimboLogs.Instance);
             return (scope, reader);
         }
 

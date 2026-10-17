@@ -28,7 +28,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
     private readonly ITrieNodeCache _trieNodeCache;
-    private readonly TrieNodeLog _trieNodeLog;
+    private readonly TrieNodeLog? _trieNodeLog;
     private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private bool _isDisposed = false;
 
@@ -38,7 +38,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbConfig configuration,
         Lazy<NativeTrieNodeLog> nativeTrieNodeLog,
         ITrieNodeCache trieNodeCache,
-        TrieNodeLog trieNodeLog,
+        Lazy<TrieNodeLog> trieNodeLog,
         IResourcePool resourcePool,
         IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
@@ -48,7 +48,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
         _trieNodeCache = trieNodeCache;
-        _trieNodeLog = trieNodeLog;
+        _trieNodeLog = configuration.UseNativeBulkSet ? null : trieNodeLog.Value;
         _nativeTrieNodeLog = configuration.UseNativeBulkSet ? nativeTrieNodeLog.Value : null;
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
@@ -124,9 +124,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             _trieNodeLog,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
-            _nativeTrieNodeLog,
             snapshots,
-            filterInMemorySlotReads: true
+            filterInMemorySlotReads: true,
+            nativeTrieNodeLog: _nativeTrieNodeLog
         );
     }
 

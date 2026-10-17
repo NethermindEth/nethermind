@@ -4,15 +4,15 @@
 //! Decoded nodes the trie warmer loaded from the store, which bulk sets read in place.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use rustc_hash::FxBuildHasher;
 
 use crate::bulk_set::{matched_length, EMPTY_TREE_HASH};
-use crate::log::{LogPointer, TrieNodeLog};
+use crate::log::{LogPointer, LogSession, TrieNodeLog};
 use crate::node::{
     decode_rlp, nibble, record_length, write_record, ChildRef, LoggedNode, NodeKind, RecordPtr,
-    TreePath,
+    Nibbles, Node, TreePath,
 };
 use crate::{Error, NodeStore};
 
@@ -26,10 +26,51 @@ const INDEX_SHARDS: usize = 64;
 pub struct WarmedNodes {
     arena: Mutex<Arena>,
     index: Box<[Mutex<Index>]>,
+    cache: OnceLock<Arc<SharedCache>>,
 }
 
 /// The record of every warmed node by the account of its storage trie, zero for the state trie, and its path.
-type Index = HashMap<([u8; 32], TreePath), RecordPtr, FxBuildHasher>;
+type CacheKey = ([u8; 32], TreePath);
+type Index = HashMap<CacheKey, RecordPtr, FxBuildHasher>;
+
+/// Owned decoded persisted records shared across blocks. Each shard stays within its share of the budget.
+pub(crate) struct SharedCache {
+    shards: Box<[Mutex<CacheShard>]>,
+    shard_budget: usize,
+}
+
+#[derive(Default)]
+struct CacheShard {
+    records: HashMap<CacheKey, Box<[u8]>, FxBuildHasher>,
+    bytes: usize,
+}
+
+// Account for the key, owned buffer and hash table bookkeeping as well as record bytes.
+const CACHE_ENTRY_BYTES: usize = std::mem::size_of::<CacheKey>()
+    + std::mem::size_of::<Box<[u8]>>()
+    + 2 * std::mem::size_of::<usize>();
+
+impl SharedCache {
+    pub(crate) fn clear(&self) {
+        for shard in self.shards.iter() {
+            let mut shard = shard.lock().unwrap();
+            shard.records.clear();
+            shard.bytes = 0;
+        }
+    }
+
+    pub(crate) fn new(budget: u64) -> Self {
+        Self {
+            shards: (0..INDEX_SHARDS).map(|_| Mutex::default()).collect(),
+            shard_budget: (budget / INDEX_SHARDS as u64).min(usize::MAX as u64) as usize,
+        }
+    }
+}
+
+fn shard_index(key: &CacheKey) -> usize {
+    // Mixing in the account keeps the roots of storage tries off a single shard.
+    (key.1.path[0] ^ key.0[0]) as usize % INDEX_SHARDS
+}
 
 #[derive(Default)]
 struct Arena {
@@ -42,11 +83,57 @@ impl Default for WarmedNodes {
         WarmedNodes {
             arena: Mutex::default(),
             index: (0..INDEX_SHARDS).map(|_| Mutex::default()).collect(),
+            cache: OnceLock::new(),
         }
     }
 }
 
 impl WarmedNodes {
+    /// Binds the block's warmed records to their log's shared cache on first use.
+    pub(crate) fn bind_cache(&self, cache: Arc<SharedCache>) {
+        let _ = self.cache.set(cache);
+    }
+
+    /// Promotes all records, including cache hits, once no operation uses these warmed nodes.
+    pub(crate) fn promote(&self) {
+        let Some(cache) = self.cache.get().filter(|cache| cache.shard_budget != 0) else {
+            return;
+        };
+        for (index, warmed) in self.index.iter().enumerate() {
+            let warmed = warmed.lock().unwrap();
+            if warmed.is_empty() {
+                continue;
+            }
+            let mut shard = cache.shards[index].lock().unwrap();
+            let mut required = shard.bytes;
+            for (key, record) in warmed.iter() {
+                if let Some(previous) = shard.records.get(key) {
+                    required -= previous.len() + CACHE_ENTRY_BYTES;
+                }
+                required += record.node().record().len() + CACHE_ENTRY_BYTES;
+            }
+            // Replace only once, before replaying this whole batch. Cache hits warmed before the entry that
+            // filled the shard are thereby promoted again too, rather than lost when its old arena retires.
+            if required > cache.shard_budget {
+                shard.records.clear();
+                shard.bytes = 0;
+            }
+            for (key, record) in warmed.iter() {
+                let node = record.node();
+                if shard.records.get(key).is_some_and(|old| LoggedNode::new(old).hash() == node.hash()) {
+                    continue;
+                }
+                let bytes = node.record();
+                let previous = shard.records.get(key).map_or(0, |old| old.len() + CACHE_ENTRY_BYTES);
+                let required = shard.bytes - previous + bytes.len() + CACHE_ENTRY_BYTES;
+                if required <= cache.shard_budget {
+                    shard.records.insert(*key, bytes.into());
+                    shard.bytes = required;
+                }
+            }
+        }
+    }
+
     /// The record of the node at `path` in the trie of `address`, the state trie when `None`, if it is the one with
     /// hash `hash`.
     pub fn get(
@@ -56,8 +143,29 @@ impl WarmedNodes {
         hash: &[u8; 32],
     ) -> Option<RecordPtr> {
         let key = (address.copied().unwrap_or_default(), *path);
-        let record = *self.shard(&key).lock().unwrap().get(&key)?;
-        (record.node().hash() == hash).then_some(record)
+        if let Some(record) = self.shard(&key).lock().unwrap().get(&key).copied() {
+            if record.node().hash() == hash {
+                return Some(record);
+            }
+        }
+        let cache = self.cache.get().filter(|cache| cache.shard_budget != 0)?;
+        let record = {
+            let shard = cache.shards[shard_index(&key)].lock().unwrap();
+            let bytes = shard.records.get(&key)?;
+            if LoggedNode::new(bytes).hash() != hash {
+                return None;
+            }
+            // Copy while the cache shard is locked: eviction can never invalidate the returned block-owned record.
+            self.append(bytes.len(), |out| out.copy_from_slice(bytes))
+        };
+        let mut local = self.shard(&key).lock().unwrap();
+        match local.get(&key).copied() {
+            Some(existing) if existing.node().hash() == hash => Some(existing),
+            _ => {
+                local.insert(key, record);
+                Some(record)
+            }
+        }
     }
 
     /// Adds the node with hash `hash` and RLP `rlp` at `path` in the trie of `address`, the state trie when `None`,
@@ -86,6 +194,7 @@ impl WarmedNodes {
 
     /// Drops every record, keeping the first chunk.
     pub fn reset(&self) {
+        self.promote();
         for shard in self.index.iter() {
             shard.lock().unwrap().clear();
         }
@@ -94,9 +203,8 @@ impl WarmedNodes {
         arena.used = 0;
     }
 
-    fn shard(&self, key: &([u8; 32], TreePath)) -> &Mutex<Index> {
-        // Mixing in the account keeps the roots of storage tries off a single shard.
-        &self.index[(key.1.path[0] ^ key.0[0]) as usize % INDEX_SHARDS]
+    fn shard(&self, key: &CacheKey) -> &Mutex<Index> {
+        &self.index[shard_index(key)]
     }
 
     fn append(&self, length: usize, write: impl FnOnce(&mut [u8])) -> RecordPtr {
@@ -127,6 +235,7 @@ pub fn warm_up<S: NodeStore>(
     address: Option<&[u8; 32]>,
     root: &[u8; 32],
     key: &[u8; 32],
+    for_delete: bool,
 ) -> Result<(), Error> {
     if *root == EMPTY_TREE_HASH {
         return Ok(());
@@ -136,6 +245,7 @@ pub fn warm_up<S: NodeStore>(
     let mut path = TreePath::default();
     let mut hash = *root;
     let mut pointer = session.find_root(address, root);
+    let mut parent_branch: Option<RecordPtr> = None;
     loop {
         let record = match session.record(pointer) {
             Some(record) => RecordPtr::of(record),
@@ -149,7 +259,27 @@ pub fn warm_up<S: NodeStore>(
                 },
             },
         };
-        let Some((depth, child_hash, child_pointer)) = descend(record.node(), key, path.depth())
+        let node = record.node();
+        match node.kind() {
+            NodeKind::Leaf if for_delete => {
+                if let Some(branch) = parent_branch {
+                    warm_delete_sibling(store, &session, warmed, address, branch.node(), path, node.key(), key)?;
+                }
+            }
+            NodeKind::Extension => parent_branch = None,
+            NodeKind::Branch if for_delete => {
+                parent_branch = Some(record);
+                if let ChildRef::Inline(rlp) = node.child(nibble(key, path.depth())) {
+                    if let Node::Leaf { key: leaf_key, .. } = decode_rlp(rlp.as_slice())? {
+                        let mut leaf_path = path;
+                        leaf_path.push(nibble(key, path.depth()));
+                        warm_delete_sibling(store, &session, warmed, address, node, leaf_path, leaf_key, key)?;
+                    }
+                }
+            }
+            _ => {}
+        }
+        let Some((depth, child_hash, child_pointer)) = descend(node, key, path.depth())
         else {
             return Ok(());
         };
@@ -159,6 +289,46 @@ pub fn warm_up<S: NodeStore>(
         hash = child_hash;
         pointer = child_pointer;
     }
+}
+
+/// A deletion can collapse its immediate two-child branch; an intervening extension prevents that collapse.
+fn warm_delete_sibling<S: NodeStore>(
+    store: &S,
+    session: &LogSession<'_>,
+    warmed: &WarmedNodes,
+    address: Option<&[u8; 32]>,
+    branch: LoggedNode<'_>,
+    mut leaf_path: TreePath,
+    leaf_key: Nibbles,
+    key: &[u8; 32],
+) -> Result<(), Error> {
+    if leaf_key.len() != 64 - leaf_path.depth()
+        || matched_length(leaf_key.as_slice(), key, leaf_path.depth()) != leaf_key.len()
+    {
+        return Ok(());
+    }
+    let deleted = nibble(key, leaf_path.depth() - 1);
+    let mut sibling = None;
+    for index in 0..16 {
+        if index == deleted {
+            continue;
+        }
+        let child = branch.child(index);
+        if matches!(child, ChildRef::Empty) {
+            continue;
+        }
+        if sibling.is_some() {
+            return Ok(());
+        }
+        sibling = Some((index, child));
+    }
+    if let Some((index, ChildRef::Hash { hash, pointer })) = sibling {
+        leaf_path.set_last(index);
+        if session.record(pointer).is_none() && warmed.get(address, &leaf_path, &hash).is_none() {
+            store.fetch_rlp(&leaf_path, &hash, |rlp| warmed.insert(address, &leaf_path, &hash, rlp))?.transpose()?;
+        }
+    }
+    Ok(())
 }
 
 /// The depth, hash and log pointer of the child of `node`, at `depth`, on the path to `key`, or `None` when the path
@@ -218,6 +388,157 @@ mod tests {
         out
     }
 
+    fn cached_leaf(value: u8) -> (Vec<u8>, [u8; 32]) {
+        let bytes = rlp(&Node::Leaf {
+            key: Nibbles::from_slice(&[0; 60]),
+            value: vec![value; 40],
+        });
+        let hash = keccak(&bytes);
+        (bytes, hash)
+    }
+
+    fn cache_path(last: u8) -> TreePath {
+        TreePath::default().append(&[0, 0, 0, last])
+    }
+
+    #[test]
+    fn shared_cache_reuses_owned_records_after_reset_and_rejects_wrong_hash() {
+        let cache = Arc::new(SharedCache::new(64 * 1024));
+        let first = WarmedNodes::default();
+        let second = WarmedNodes::default();
+        first.bind_cache(cache.clone());
+        second.bind_cache(cache);
+        let (bytes, hash) = cached_leaf(0x42);
+        let address = [0x12; 32];
+        let path = cache_path(1);
+        first.insert(Some(&address), &path, &hash, &bytes).unwrap();
+        assert!(second.get(Some(&address), &path, &hash).is_none());
+        first.reset();
+        let copied = second.get(Some(&address), &path, &hash).unwrap();
+        assert_eq!(copied.node().rlp(), bytes);
+        assert!(second.get(Some(&address), &path, &[0x43; 32]).is_none());
+        assert!(second.get(None, &path, &hash).is_none());
+        first.insert(Some(&address), &path, &[0x44; 32], &bytes).unwrap();
+        first.reset();
+        assert_eq!(copied.node().rlp(), bytes, "another block's arena was returned");
+    }
+
+    #[test]
+    fn shared_cache_repromotes_earlier_hits_when_a_full_shard_is_replaced() {
+        let (bytes, hash) = cached_leaf(1);
+        let node = decode_rlp(&bytes).unwrap();
+        let entry_bytes = record_length(&node, bytes.len()) + CACHE_ENTRY_BYTES;
+        let cache = Arc::new(SharedCache::new((2 * entry_bytes * INDEX_SHARDS) as u64));
+        let first = WarmedNodes::default();
+        first.bind_cache(cache.clone());
+        first.insert(None, &cache_path(1), &hash, &bytes).unwrap();
+        first.insert(None, &cache_path(2), &hash, &bytes).unwrap();
+        first.promote();
+
+        let second = WarmedNodes::default();
+        second.bind_cache(cache.clone());
+        let earlier_hit = second.get(None, &cache_path(1), &hash).unwrap();
+        second.insert(None, &cache_path(3), &hash, &bytes).unwrap();
+        second.promote();
+        let third = WarmedNodes::default();
+        third.bind_cache(cache.clone());
+        assert!(third.get(None, &cache_path(1), &hash).is_some());
+        assert!(third.get(None, &cache_path(3), &hash).is_some());
+        assert!(third.get(None, &cache_path(2), &hash).is_none());
+        assert_eq!(earlier_hit.node().rlp(), bytes, "cache eviction invalidated a block record");
+        assert!(cache.shards.iter().all(|shard| shard.lock().unwrap().bytes <= cache.shard_budget));
+    }
+
+    #[test]
+    fn zero_or_insufficient_cache_budget_keeps_no_records() {
+        let (bytes, hash) = cached_leaf(1);
+        for budget in [0, INDEX_SHARDS as u64] {
+            let cache = Arc::new(SharedCache::new(budget));
+            let warmed = WarmedNodes::default();
+            warmed.bind_cache(cache.clone());
+            warmed.insert(None, &cache_path(1), &hash, &bytes).unwrap();
+            warmed.reset();
+            assert!(warmed.get(None, &cache_path(1), &hash).is_none());
+            assert!(cache.shards.iter().all(|shard| shard.lock().unwrap().records.is_empty()));
+        }
+    }
+
+    fn apply_items(
+        store: &MapStore,
+        pending: &crate::PendingNodes,
+        log: &TrieNodeLog,
+        warmed: Option<&WarmedNodes>,
+        root: &[u8; 32],
+        items: &[([u8; 32], Vec<u8>)],
+    ) -> [u8; 32] {
+        let mut values = Vec::new();
+        let mut entries: Vec<_> = items.iter().map(|(key, value)| {
+            let entry = crate::Entry { key: *key, offset: values.len() as i32, length: value.len() as i32 };
+            values.extend_from_slice(value);
+            entry
+        }).collect();
+        crate::bulk_set(store, pending, Some(log), warmed, None, root, &mut entries, &values).unwrap()
+    }
+
+    fn persisted_items(items: &[([u8; 32], Vec<u8>)]) -> (MapStore, [u8; 32]) {
+        let log = TrieNodeLog::minimal();
+        let pending = crate::PendingNodes::default();
+        let mut store = MapStore::default();
+        let root = apply_items(&store, &pending, &log, None, &EMPTY_TREE_HASH, items);
+        for shard in 0..pending.shard_count() {
+            pending.with_view(shard, |nodes, rlp| {
+                for node in nodes {
+                    store.nodes.insert((node.path, node.hash), rlp[node.rlp_offset as usize..][..node.rlp_length as usize].to_vec());
+                }
+            });
+        }
+        (store, root)
+    }
+
+    #[test]
+    fn delete_warming_fetches_only_the_sibling_needed_for_branch_collapse() {
+        let mut key_a = [0; 32]; key_a[0] = 0x10; key_a[31] = 1;
+        let mut key_b = key_a; key_b[31] = 2;
+        let mut key_c = [0; 32]; key_c[0] = 0x20;
+        let mut key_d = key_a; key_d[31] = 3;
+        for for_delete in [false, true] {
+            for three_children in [false, true] {
+                for inline in [false, true] {
+                    let mut items = vec![(key_a, if inline { vec![1] } else { vec![1; 40] }), (key_b, vec![2; 40]), (key_c, vec![3; 40])];
+                    if three_children { items.push((key_d, vec![4; 40])); }
+                    let (store, root) = persisted_items(&items);
+                    let log = TrieNodeLog::minimal();
+                    let warmed = WarmedNodes::default();
+                    warm_up(&store, &log, &warmed, None, &root, &key_a, for_delete).unwrap();
+                    let before = store.fetches.load(Ordering::Relaxed);
+                    assert_eq!(before, 3 + usize::from(!inline) + usize::from(for_delete && !three_children));
+                    let updated = apply_items(&store, &crate::PendingNodes::default(), &log, Some(&warmed), &root, &[(key_a, Vec::new())]);
+                    assert_eq!(store.fetches.load(Ordering::Relaxed) - before, usize::from(!for_delete && !three_children));
+                    items.retain(|(key, _)| *key != key_a);
+                    let (_, expected) = persisted_items(&items);
+                    assert_eq!(updated, expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn delete_warming_of_a_missing_key_does_not_load_an_off_path_sibling() {
+        let mut key_a = [0; 32]; key_a[0] = 0x10; key_a[31] = 1;
+        let mut key_b = [0; 32]; key_b[0] = 0x20; key_b[31] = 2;
+        for diverging_leaf in [false, true] {
+            let (store, root) = persisted_items(&[(key_a, vec![1; 40]), (key_b, vec![2; 40])]);
+            let mut missing = key_a;
+            missing[0] = if diverging_leaf { 0x10 } else { 0x30 };
+            missing[31] = 4;
+            let log = TrieNodeLog::minimal();
+            warm_up(&store, &log, &WarmedNodes::default(), None, &root, &missing, false).unwrap();
+            let ordinary = store.fetches.load(Ordering::Relaxed);
+            warm_up(&store, &log, &WarmedNodes::default(), None, &root, &missing, true).unwrap();
+            assert_eq!(store.fetches.load(Ordering::Relaxed), 2 * ordinary);
+        }
+    }
+
     #[test]
     fn warm_up_fetches_only_nodes_neither_logged_nor_warmed() {
         // A logged root branch whose child 1 is logged, and whose child 2, an extension over a leaf, is only in the store.
@@ -270,7 +591,7 @@ mod tests {
         };
         let warm = |address: Option<&[u8; 32]>, root: &[u8; 32], key: [u8; 32]| {
             let before = store.fetches.load(Ordering::Relaxed);
-            warm_up(&store, &log, &warmed, address, root, &key).unwrap();
+            warm_up(&store, &log, &warmed, address, root, &key, false).unwrap();
             store.fetches.load(Ordering::Relaxed) - before
         };
 

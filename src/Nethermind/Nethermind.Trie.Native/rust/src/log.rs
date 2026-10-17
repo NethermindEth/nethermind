@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use rustc_hash::{FxBuildHasher, FxHasher};
@@ -103,6 +103,7 @@ pub struct TrieNodeLog {
     temporary: bool,
     state_roots: RootTable,
     storage_roots: RootTable,
+    pub(crate) cache: Arc<crate::warmed::SharedCache>,
 }
 
 #[derive(Default)]
@@ -134,15 +135,21 @@ impl TrieNodeLog {
     /// Creates a log whose compacted generations take about `compressed_max_memory` bytes, exceeded only while sessions
     /// pin them. Boxed, as compaction reads it in the background, so it must not be moved out.
     pub fn new(compressed_max_memory: u64) -> Box<TrieNodeLog> {
+        Self::with_cache(compressed_max_memory, 0)
+    }
+
+    pub(crate) fn with_cache(compressed_max_memory: u64, cache_memory_budget: u64) -> Box<TrieNodeLog> {
         let storage_root_slots =
             (compressed_max_memory / MEMORY_PER_STORAGE_ROOT_SLOT).max(STATE_ROOT_SLOTS as u64);
-        TrieNodeLog::create(
+        let mut log = TrieNodeLog::create(
             GENERATION_BYTES,
             compressed_max_memory,
             false,
             RootTable::new(STATE_ROOT_SLOTS),
             RootTable::new((storage_root_slots as usize).next_power_of_two()),
-        )
+        );
+        log.cache = Arc::new(crate::warmed::SharedCache::new(cache_memory_budget));
+        log
     }
 
     /// A log of the smallest generations, which keeps nothing compacted.
@@ -205,6 +212,7 @@ impl TrieNodeLog {
             temporary,
             state_roots,
             storage_roots,
+            cache: Arc::new(crate::warmed::SharedCache::new(0)),
         });
         log.generation(1).start(generation_bytes, temporary);
         log
@@ -236,10 +244,17 @@ impl TrieNodeLog {
 
     /// Retains the active generation until [`TrieNodeLog::release`] and returns it.
     pub fn retain_active(&self) -> u64 {
+        self.retain_active_boundary().0
+    }
+
+    /// Retains the active generation and captures the first offset not yet reserved, under the rotation lock.
+    pub(crate) fn retain_active_boundary(&self) -> (u64, LogPointer) {
         let mut state = self.state.lock().unwrap();
         let active = self.active.load(Ordering::Acquire);
         state.retains[slot(active)] += 1;
-        active
+        let generation = self.generation(active);
+        let offset = generation.used.load(Ordering::Acquire).min(generation.length.load(Ordering::Relaxed));
+        (active, active << OFFSET_BITS | offset as u64)
     }
 
     /// Retains `generation` once more until [`TrieNodeLog::release`]. It must still be live, as it is while retained.
@@ -928,6 +943,19 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_cursor_releases_its_own_retain_when_abandoned() {
+        let log = TrieNodeLog::minimal();
+        let (generation, boundary) = log.retain_active_boundary();
+        let pointer = log.pin().append(&leaf(vec![1; 40]));
+        let mut cursor = crate::traversal::SnapshotCursor::new(&log, pointer, boundary);
+        assert_eq!(log.state.lock().unwrap().retains[slot(generation)], 2);
+        log.release(generation);
+        assert_eq!(cursor.next(), Some((TreePath::default(), pointer)));
+        drop(cursor);
+        assert_eq!(log.state.lock().unwrap().retains[slot(generation)], 0);
+    }
+
+    #[test]
     fn allocations_are_aligned_and_zeroed() {
         for length in [
             MIN_GENERATION_BYTES,
@@ -1154,6 +1182,10 @@ mod tests {
             writer.append_keyed(&leaf(vec![0xcc; 1000]), keys[2]);
         }
 
+        let mut children = empty_children();
+        children[1] = ChildRef::Hash { hash: *log.node(pointers[1]).hash(), pointer: pointers[1] };
+        let inherited_root = writer.append_keyed(&Node::Branch { children }, 0x12345678);
+
         // A session started once it is dropped cannot read it until compacted, but pins what compaction keeps.
         let reader = log.pin();
         assert!(reader.record(pointers[1]).is_none());
@@ -1165,6 +1197,7 @@ mod tests {
             .collect();
         assert_eq!(kept, [false, true, false, true]);
         assert_eq!(read(&reader, pointers[1]), rlp(&leaf(vec![1; 40])));
+        assert_eq!(reader.find_node(inherited_root, &TreePath::default().append(&[1])).unwrap().rlp(), rlp(&leaf(vec![1; 40])));
         assert_eq!(reader.root(Some(&address), &[0x44; 32]), pointers[3]);
         assert!(log.state.lock().unwrap().compressed_memory > 0);
 

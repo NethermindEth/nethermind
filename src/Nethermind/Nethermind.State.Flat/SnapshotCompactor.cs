@@ -206,7 +206,7 @@ public class SnapshotCompactor(
         NativeTrieNodeLogPin? oldest = null;
         foreach (Snapshot snapshot in snapshots)
         {
-            if (snapshot.LogPin is { } pin && (oldest is null || pin.Generation < oldest.Generation)) oldest = pin;
+            if (snapshot.LogPin is { } pin && (oldest is null || pin.WriteBoundary < oldest.WriteBoundary)) oldest = pin;
         }
         return oldest;
     }

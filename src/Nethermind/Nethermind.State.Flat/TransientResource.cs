@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
@@ -30,8 +31,29 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     private ResourcePool.Usage _returnUsage;
 
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
-    internal WarmedNodes WarmedNodes = new(size.NodesCacheSize);
+    private WarmedNodes? _warmedNodes;
+    internal WarmedNodes WarmedNodes => Volatile.Read(ref _warmedNodes) ?? CreateWarmedNodes();
     private int _nodesCacheSize = size.NodesCacheSize;
+    private NativeWarmedNodes? _nativeWarmedNodes;
+
+    internal NativeWarmedNodes NativeWarmedNodes => Volatile.Read(ref _nativeWarmedNodes) ?? CreateNativeWarmedNodes();
+
+    private WarmedNodes CreateWarmedNodes()
+    {
+        WarmedNodes created = new(_nodesCacheSize);
+        return Interlocked.CompareExchange(ref _warmedNodes, created, null) ?? created;
+    }
+
+    private NativeWarmedNodes CreateNativeWarmedNodes()
+    {
+        NativeWarmedNodes created = new();
+        NativeWarmedNodes? existing = Interlocked.CompareExchange(ref _nativeWarmedNodes, created, null);
+        if (existing is null) return created;
+        created.Dispose();
+        return existing;
+    }
+
+    internal void PromoteNativeWarmedNodes() => _nativeWarmedNodes?.PromoteToCache();
 
     internal void OnRented(IResourcePool pool, ResourcePool.Usage usage)
     {
@@ -82,14 +104,18 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public void Reset()
     {
-        if (WarmedNodes.Count > _nodesCacheSize)
+        _nativeWarmedNodes?.Reset();
+        if (_warmedNodes is { } warmed)
         {
-            _nodesCacheSize = WarmedNodes.Count;
-            WarmedNodes = new WarmedNodes(_nodesCacheSize);
-        }
-        else
-        {
-            WarmedNodes.Reset();
+            if (warmed.Count > _nodesCacheSize)
+            {
+                _nodesCacheSize = warmed.Count;
+                _warmedNodes = new WarmedNodes(_nodesCacheSize);
+            }
+            else
+            {
+                warmed.Reset();
+            }
         }
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
@@ -135,5 +161,10 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         return (ulong)SpanExtensions.FastHash64ForAddressAndSlot(ref address, ref Unsafe.As<UInt256, byte>(ref slotValue));
     }
 
-    public void Dispose() => PrewarmedAddresses.Dispose();
+    public void Dispose()
+    {
+        PrewarmedAddresses.Dispose();
+        _nativeWarmedNodes?.PromoteToCache();
+        _nativeWarmedNodes?.Dispose();
+    }
 }

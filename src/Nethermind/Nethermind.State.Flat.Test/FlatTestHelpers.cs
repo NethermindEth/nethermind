@@ -16,6 +16,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 using NSubstitute;
 
 namespace Nethermind.State.Flat.Test;
@@ -57,6 +58,17 @@ public static class FlatTestHelpers
         Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, log);
         populate(snapshot.Content);
         return snapshot;
+    }
+
+    internal static Hash256 WriteNative(NativeTrieNodeLog log, Hash256? address, Hash256 root, params PatriciaTree.BulkSetEntry[] entries)
+    {
+        using NativePendingNodes pending = NativePendingNodes.Rent(entries.Length);
+        return NativePatriciaBulkSet.BulkSet(new NativeLogOnlySource(), pending, log, null, address, root.ValueHash256, entries);
+    }
+
+    private sealed class NativeLogOnlySource : INativeNodeStore
+    {
+        public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) => false;
     }
 
     private static readonly ConditionalWeakTable<SnapshotContent, FixtureNodes> _fixtureNodes = [];

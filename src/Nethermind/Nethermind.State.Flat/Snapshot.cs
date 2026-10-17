@@ -121,21 +121,37 @@ public class Snapshot : RefCountingDisposable
 
     private IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> EnumerateStateNodes()
     {
-        if (!HasStateRoot || LogRetain is null || From.StateRoot == To.StateRoot) yield break;
-        foreach ((TreePath path, ulong pointer, _) in LogRetain.Log.EnumerateNodes(StateRootPointer, LogRetain.WriteBoundary))
+        if (!HasStateRoot || From.StateRoot == To.StateRoot) yield break;
+        foreach ((TreePath path, ulong pointer) in EnumerateNodes(StateRootPointer))
             yield return new(path, pointer);
     }
 
     private IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> EnumerateStorageNodes()
     {
-        if (LogRetain is null) yield break;
-        using IDisposable lease = LogRetain.Log.BeginReadScope();
+        using IDisposable? lease = BeginNodeReadScope();
         foreach ((Hash256 address, ulong root) in StorageRoots)
         {
-            foreach ((TreePath path, ulong pointer, _) in LogRetain.Log.EnumerateNodes(root, LogRetain.WriteBoundary))
+            foreach ((TreePath path, ulong pointer) in EnumerateNodes(root))
                 yield return new((address, path), pointer);
         }
     }
+
+    private IEnumerable<(TreePath Path, ulong Pointer)> EnumerateNodes(ulong root)
+    {
+        if (LogPin is { } pin)
+        {
+            foreach ((TreePath path, ulong pointer) in pin.Log.EnumerateNodes(root, pin.WriteBoundary))
+                yield return (path, pointer);
+        }
+        else if (LogRetain is { } retain)
+        {
+            foreach ((TreePath path, ulong pointer, _) in retain.Log.EnumerateNodes(root, retain.WriteBoundary))
+                yield return (path, pointer);
+        }
+    }
+
+    /// <summary>Protects buffered snapshot-write pointers until their last RLP read.</summary>
+    internal IDisposable? BeginNodeReadScope() => LogPin is { } pin ? pin.Copy() : LogRetain?.Log.BeginReadScope();
 
     /// <summary>The mutable content; only valid for snapshots created for commit (not compacted ones).</summary>
     public SnapshotContent Content => _mutable!;
@@ -180,39 +196,54 @@ public class Snapshot : RefCountingDisposable
         }
     }
 
-    /// <summary>The log pointer of the state node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> under a log read lease.</summary>
-    internal bool TryGetStateNode(HashedKey<TreePath> key, out ulong pointer)
-    {
-        pointer = 0;
-        return HasStateRoot && LogRetain is not null && LogRetain.Log.TryGetNodePointer(StateRootPointer, key.Key, out pointer);
-    }
+    /// <summary>The retained write pointer at <paramref name="key"/>; native inherited nodes are available through the copied-node overload.</summary>
+    internal bool TryGetStateNode(HashedKey<TreePath> key, out ulong pointer) =>
+        TryGetNodePointer(HasStateRoot ? StateRootPointer : 0, key.Key, out pointer);
 
-    public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
-    {
-        node = null;
-        return HasStateRoot && LogRetain is not null && LogRetain.Log.TryGetNode(StateRootPointer, key.Key, out node);
-    }
+    public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node) =>
+        TryGetNode(HasStateRoot ? StateRootPointer : 0, key.Key, out node);
 
-    /// <summary>The log pointer of the storage node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> under a log read lease.</summary>
+    /// <summary>The retained write pointer at <paramref name="key"/>; native inherited nodes are available through the copied-node overload.</summary>
     internal bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, out ulong pointer)
     {
         pointer = 0;
-        return LogRetain is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
-            && LogRetain.Log.TryGetNodePointer(root, key.Key.Item2, out pointer);
+        return TryGetStorageRoot(key.Key.Item1, out ulong root) && TryGetNodePointer(root, key.Key.Item2, out pointer);
     }
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
-        return LogRetain is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
-            && LogRetain.Log.TryGetNode(root, key.Key.Item2, out node);
+        return TryGetStorageRoot(key.Key.Item1, out ulong root) && TryGetNode(root, key.Key.Item2, out node);
     }
 
-    /// <summary>The record a node pointer refers to, borrowed from an active node enumerator or outer log read lease.</summary>
-    public NodeRecordRef GetNodeRecord(ulong pointer) => LogRetain!.Log.GetRecord(pointer);
+    private bool TryGetNode(ulong root, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
+    {
+        node = null;
+        return LogPin is { } pin
+            ? pin.Log.TryGetNode(root, path, out node)
+            : LogRetain is { } retain && retain.Log.TryGetNode(root, path, out node);
+    }
 
-    /// <summary>The RLP of a node pointer, borrowed from an active node enumerator or outer log read lease.</summary>
-    public ReadOnlySpan<byte> GetRlp(ulong pointer) => GetNodeRecord(pointer).Rlp;
+    private bool TryGetNodePointer(ulong root, in TreePath path, out ulong pointer)
+    {
+        pointer = 0;
+        if (LogPin is null) return LogRetain is { } retain && retain.Log.TryGetNodePointer(root, path, out pointer);
+
+        foreach ((TreePath nodePath, ulong nodePointer) in EnumerateNodes(root))
+        {
+            if (nodePath == path)
+            {
+                pointer = nodePointer;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>The RLP of a retained write pointer, borrowed until the snapshot's read scope is released.</summary>
+    public ReadOnlySpan<byte> GetRlp(ulong pointer) => LogPin is { } pin
+        ? pin.Log.GetNodeRlp(pointer, out _)
+        : LogRetain!.Log.GetRecord(pointer).Rlp;
 
     protected override void CleanUp()
     {

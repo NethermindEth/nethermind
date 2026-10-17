@@ -67,9 +67,9 @@ public sealed class SnapshotBundle : IDisposable
         TrieNodeLog? trieNodeLog,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
-        NativeTrieNodeLog? nativeTrieNodeLog,
         SnapshotPooledList? snapshots = null,
-        bool filterInMemorySlotReads = false)
+        bool filterInMemorySlotReads = false,
+        NativeTrieNodeLog? nativeTrieNodeLog = null)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
@@ -196,7 +196,7 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         if (_currentPooledContent.HasStateRoot
-            && _trieNodeLog!.TryGetNode(_currentPooledContent.StateRootPointer, path, out TrieNode? node)
+            && TryGetNode(_currentPooledContent.StateRootPointer, path, out TrieNode? node)
             && node.Keccak == hash)
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
@@ -213,24 +213,25 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>The nodes the native trie warmer decoded into the current transient resource, which this bundle's native bulk sets read.</summary>
-    internal NativeWarmedNodes WarmedNodes => _transientResource.WarmedNodes;
+    internal NativeWarmedNodes NativeWarmedNodes => _transientResource.NativeWarmedNodes;
 
     /// <summary>
     /// Warms the path to <paramref name="key"/> in the trie with root hash <paramref name="root"/> into the transient
     /// resource, see <see cref="NativePatriciaBulkSet.WarmUp"/>, unless the bundle is being torn down.
     /// </summary>
-    internal void WarmUpNative(INativeNodeStore store, NativeTrieNodeLog log, Hash256? address, Hash256 root, in ValueHash256 key)
+    internal void WarmUpNative(INativeNodeStore store, NativeTrieNodeLog log, Hash256? address, Hash256 root, in ValueHash256 key, bool forDelete = false)
     {
+        if (!TryLeaseReadOnlyBundle()) return;
         TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null) return;
-
         try
         {
-            NativePatriciaBulkSet.WarmUp(store, log, transientResource.WarmedNodes, address, root.ValueHash256, key);
+            if (transientResource is not null)
+                NativePatriciaBulkSet.WarmUp(store, log, transientResource.NativeWarmedNodes, address, root.ValueHash256, key, forDelete);
         }
         finally
         {
-            transientResource.ReleaseLease();
+            transientResource?.ReleaseLease();
+            ReleaseReadOnlyBundleLease();
         }
     }
 
@@ -265,6 +266,14 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
+    private bool TryGetNode(ulong root, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
+    {
+        node = null;
+        return _nativeTrieNodeLog is { } native
+            ? native.TryGetNode(root, path, out node)
+            : _trieNodeLog is { } log && log.TryGetNode(root, path, out node);
+    }
+
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         HashedKey<TreePath> key = new(path);
@@ -292,7 +301,7 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         if (_changedStorageRoots.TryGetValue(address, out ulong root) && root != 0
-            && _trieNodeLog!.TryGetNode(root, path, out TrieNode? node)
+            && TryGetNode(root, path, out TrieNode? node)
             && node.Keccak == hash)
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
@@ -346,6 +355,36 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
+    }
+
+    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadStateRlp{TArg}"/>
+    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        GuardDispose();
+        return _readOnlySnapshotBundle.TryLoadStateRlp(path, flags, action, arg);
+    }
+
+    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadStorageRlp{TArg}"/>
+    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        GuardDispose();
+        return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, flags, action, arg);
+    }
+
+    /// <summary>Publishes the native endpoint root, including an unchanged or empty trie.</summary>
+    internal void PublishNativeStateRoot(ulong pointer, in ValueHash256 hash)
+    {
+        GuardDispose();
+        _currentPooledContent.StateRootPointer = pointer;
+        _currentPooledContent.HasStateRoot = pointer != 0 || hash == ValueKeccak.EmptyTreeHash;
+    }
+
+    /// <summary>Publishes the final root of a changed native storage trie.</summary>
+    internal void PublishNativeStorageRoot(Hash256 address, ulong pointer, in ValueHash256 hash)
+    {
+        GuardDispose();
+        Debug.Assert(pointer != 0 || hash == ValueKeccak.EmptyTreeHash);
+        _changedStorageRoots[address] = pointer;
     }
 
     /// <summary>Makes the final state trie readable from this bundle.</summary>
@@ -434,6 +473,61 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
         return new BackgroundTrieSource(_readOnlySnapshotBundle, _trieNodeCache, _trieNodeLog!, _snapshots,
             _earlyWarmedNodes ??= new WarmedNodes(1024), address);
+    }
+
+    /// <summary>Captures native storage for an idle update that may outlive this bundle or its transient resource.</summary>
+    internal BackgroundNativeTrieSource CreateBackgroundNativeTrieSource(Hash256 address)
+    {
+        GuardDispose();
+        return new BackgroundNativeTrieSource(_readOnlySnapshotBundle, _nativeTrieNodeLog!, _snapshots, address);
+    }
+
+    internal sealed class BackgroundNativeTrieSource : INativeNodeStore, IDisposable
+    {
+        private readonly ReadOnlySnapshotBundle _readOnly;
+        private readonly Hash256 _address;
+        private readonly NativeTrieNodeLogPin _pin;
+        private readonly NativeTrieNodeLogPin? _snapshotPin;
+        private int _disposed;
+
+        internal NativeWarmedNodes WarmedNodes { get; } = new();
+
+        internal BackgroundNativeTrieSource(ReadOnlySnapshotBundle readOnly, NativeTrieNodeLog log, SnapshotPooledList snapshots, Hash256 address)
+        {
+            _readOnly = readOnly;
+            _address = address;
+            readOnly.AcquireLease();
+            try
+            {
+                _pin = log.PinActiveGeneration();
+                NativeTrieNodeLogPin? oldest = null;
+                foreach (Snapshot snapshot in snapshots)
+                {
+                    if (snapshot.LogPin is { } pin && (oldest is null || pin.WriteBoundary < oldest.WriteBoundary)) oldest = pin;
+                }
+                _snapshotPin = oldest?.Copy();
+            }
+            catch
+            {
+                WarmedNodes.Dispose();
+                _pin?.Dispose();
+                readOnly.Dispose();
+                throw;
+            }
+        }
+
+        public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) =>
+            _readOnly.TryLoadStorageRlp(_address, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            WarmedNodes.PromoteToCache();
+            WarmedNodes.Dispose();
+            _snapshotPin?.Dispose();
+            _pin.Dispose();
+            _readOnly.Dispose();
+        }
     }
 
     /// <summary>A leased immutable source with private warmed storage, independent of transient-resource retirement.</summary>

@@ -20,6 +20,9 @@ public sealed partial class NativeWarmedNodes : SafeHandle
     /// <summary>Drops every node.</summary>
     public void Reset() => nm_patricia_warmed_reset(this);
 
+    /// <summary>Promotes these records to the shared cache. Call only while exclusively owning this instance.</summary>
+    public void PromoteToCache() => nm_patricia_warmed_promote(this);
+
     protected override bool ReleaseHandle()
     {
         nm_patricia_warmed_free(handle);
@@ -31,6 +34,9 @@ public sealed partial class NativeWarmedNodes : SafeHandle
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial void nm_patricia_warmed_reset(NativeWarmedNodes warmed);
+
+    [LibraryImport(NativePatriciaBulkSet.LibraryName)]
+    private static partial void nm_patricia_warmed_promote(NativeWarmedNodes warmed);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial void nm_patricia_warmed_free(nint warmed);

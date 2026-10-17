@@ -80,7 +80,7 @@ public class WriteBatchBenchmark
                 PersistedSnapshotStack.Empty());
             NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
-                readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: _nativeTrieNodeLog);
             CapturingCommitTarget commitTarget = new();
             using FlatWorldStateScope scope = new(
                 currentStateId: _currentStateId,
@@ -153,6 +153,7 @@ public class WriteBatchBenchmark
     {
         IterationCleanup();
         foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
+        _nativeTrieNodeLog?.Dispose();
         _trieNodeLog.Dispose();
     }
 
@@ -171,7 +172,7 @@ public class WriteBatchBenchmark
             PersistedSnapshotStack.Empty());
         NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
-            readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: _nativeTrieNodeLog);
         CapturingCommitTarget commitTarget = new();
         _scope = new FlatWorldStateScope(
             currentStateId: _currentStateId,

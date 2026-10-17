@@ -424,6 +424,7 @@ public class NativePatriciaBulkSetTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(copy.Generation, Is.EqualTo(pin.Generation));
+            Assert.That(copy.WriteBoundary, Is.EqualTo(pin.WriteBoundary));
             Assert.That(missingWhilePinned, Is.False);
             Assert.That(pending.Count, Is.GreaterThan(0));
             Assert.That(unreadable, Is.Empty);
@@ -437,6 +438,121 @@ public class NativePatriciaBulkSetTests
             NativePatriciaBulkSet.WarmUp(store, log, warmed, TestItem.KeccakA, root.ValueHash256, items[0].key.ValueHash256);
             return store.Fetches != before;
         }
+    }
+
+    [Test]
+    public void Root_snapshot_enumeration_respects_same_generation_write_boundary([Values] bool storage)
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+        Hash256 address = storage ? TestItem.KeccakA : null;
+        List<(Hash256 key, byte[] value)> initial = PatriciaTreeBulkSetterTests.GenRandomOfLength(48, seed: 71);
+        CountingNodeStore store = new(new DictionaryNodeStore(new Dictionary<TreePath, byte[]>()));
+        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativePendingNodes pending = NativePendingNodes.Rent(initial.Count);
+        using NativeTrieNodeLogPin first = log.PinActiveGeneration();
+        Hash256 root = NativePatriciaBulkSet.BulkSet(store, pending, log, null, address, Keccak.EmptyTreeHash.ValueHash256, ToEntries(initial));
+        ulong oldRoot = log.ResolveRoot(address, root.ValueHash256);
+        pending.Clear();
+        using NativeTrieNodeLogPin second = log.PinActiveGeneration();
+        using NativeTrieNodeLogPin copy = second.Copy();
+        Hash256 updated = NativePatriciaBulkSet.BulkSet(store, pending, log, null, address, root.ValueHash256,
+            [new PatriciaTree.BulkSetEntry(initial[0].key.ValueHash256, new byte[40])]);
+        ulong pointer = log.ResolveRoot(address, updated.ValueHash256);
+        HashSet<ulong> pendingPointers = [];
+        for (int shard = 0; shard < pending.ShardCount; shard++)
+        {
+            NativePendingNodesView view = pending.GetView(shard);
+            for (int i = 0; i < view.Count; i++) pendingPointers.Add(view[i].LogPointer);
+        }
+        (TreePath Path, ulong Pointer)[] writes = log.EnumerateNodes(pointer, second.WriteBoundary).ToArray();
+        (TreePath Path, ulong Pointer)[] reachable = log.EnumerateNodes(pointer, first.WriteBoundary).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.Generation, Is.EqualTo(first.Generation));
+            Assert.That(second.WriteBoundary, Is.GreaterThan(first.WriteBoundary));
+            Assert.That(copy.WriteBoundary, Is.EqualTo(second.WriteBoundary));
+            Assert.That(writes.Select(node => node.Pointer), Is.EquivalentTo(pendingPointers));
+            Assert.That(reachable.Length, Is.GreaterThan(writes.Length), "inherited subtrees are omitted from the new write range");
+            Assert.That(log.EnumerateNodes(oldRoot, second.WriteBoundary), Is.Empty);
+            Assert.That(store.Fetches, Is.Zero);
+            foreach ((TreePath path, ulong record) in reachable)
+            {
+                Assert.That(log.TryGetNode(pointer, path, out TrieNode node), Is.True, $"node at {path}");
+                Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(log.GetNodeRlp(record, out _).ToArray()));
+            }
+        }
+    }
+
+    [Test]
+    public void Root_lookup_copies_large_rlp_and_returns_miss_for_unavailable_path()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+        DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
+        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLogPin pin = log.PinActiveGeneration();
+        using NativePendingNodes pending = NativePendingNodes.Rent(1);
+        Hash256 root = BulkSet(store, pending, log, Keccak.EmptyTreeHash, [(TestItem.KeccakA, new byte[3000])]);
+        ulong pointer = log.ResolveRoot(TestItem.KeccakA, root.ValueHash256);
+        Assert.That(log.TryGetNode(pointer, TreePath.Empty, out TrieNode node), Is.True);
+        byte[] expected = log.GetNodeRlp(pointer, out _).ToArray();
+        Assert.That(log.TryGetNode(pointer, TreePath.FromHexString("1"), out _), Is.False);
+        Assert.That(log.TryGetNode(0, TreePath.Empty, out _), Is.False);
+        pin.Dispose();
+        log.Dispose();
+        Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(expected), "managed node owns its RLP copy");
+    }
+
+    [Test]
+    public void Root_snapshot_cursor_keeps_log_alive_after_original_pin_and_owner_are_disposed()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLogPin pin = log.PinActiveGeneration();
+        using NativePendingNodes pending = NativePendingNodes.Rent(48);
+        Hash256 root = BulkSet(new DictionaryNodeStore(new Dictionary<TreePath, byte[]>()), pending, log, Keccak.EmptyTreeHash,
+            PatriciaTreeBulkSetterTests.GenRandomOfLength(48, seed: 72));
+        ulong pointer = log.ResolveRoot(TestItem.KeccakA, root.ValueHash256);
+        int expected = log.EnumerateNodes(pointer, pin.WriteBoundary).Count();
+        using IEnumerator<(TreePath Path, ulong Pointer)> cursor = log.EnumerateNodes(pointer, pin.WriteBoundary).GetEnumerator();
+        Assert.That(cursor.MoveNext(), Is.True);
+        pin.Dispose();
+        log.Dispose();
+        int found = 1;
+        while (cursor.MoveNext()) found++;
+        Assert.That(found, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Shared_native_cache_reuses_warmed_records_and_clear_preserves_block_owned_copies()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+        List<(Hash256 key, byte[] value)> initial = PatriciaTreeBulkSetterTests.GenRandomOfLength(48, seed: 73);
+        Dictionary<TreePath, byte[]> nodes = [];
+        using NativeTrieNodeLog writer = new(256 * 1024);
+        using NativePendingNodes pending = NativePendingNodes.Rent(initial.Count);
+        Hash256 root = BulkSet(new DictionaryNodeStore(nodes), pending, writer, Keccak.EmptyTreeHash, initial);
+        for (int shard = 0; shard < pending.ShardCount; shard++)
+        {
+            NativePendingNodesView view = pending.GetView(shard);
+            for (int i = 0; i < view.Count; i++) nodes[view[i].Path] = view.GetRlp(view[i]).ToArray();
+        }
+        using NativeTrieNodeLog log = new(256 * 1024, 1024 * 1024);
+        CountingNodeStore store = new(new DictionaryNodeStore(nodes));
+        using NativeWarmedNodes first = new();
+        using NativeWarmedNodes second = new();
+        using NativeWarmedNodes fresh = new();
+        ValueHash256 key = initial[0].key.ValueHash256;
+        NativePatriciaBulkSet.WarmUp(store, log, first, TestItem.KeccakA, root.ValueHash256, key);
+        Assert.That(store.Fetches, Is.Positive);
+        first.PromoteToCache();
+        int fetches = store.Fetches;
+        NativePatriciaBulkSet.WarmUp(store, log, second, TestItem.KeccakA, root.ValueHash256, key);
+        Assert.That(store.Fetches, Is.EqualTo(fetches), "next block reads the shared native cache");
+        log.ClearCache();
+        NativePatriciaBulkSet.WarmUp(store, log, second, TestItem.KeccakA, root.ValueHash256, key);
+        Assert.That(store.Fetches, Is.EqualTo(fetches), "clearing does not invalidate existing block-owned copies");
+        NativePatriciaBulkSet.WarmUp(store, log, fresh, TestItem.KeccakA, root.ValueHash256, key);
+        Assert.That(store.Fetches, Is.GreaterThan(fetches), "new block sees the cleared cache");
     }
 
     private static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog log, Hash256 root, List<(Hash256 key, byte[] value)> items)

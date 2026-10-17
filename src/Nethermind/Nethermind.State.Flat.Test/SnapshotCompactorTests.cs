@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -382,6 +383,31 @@ public class SnapshotCompactorTests
             Assert.That(first.LogRetain.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
             Assert.That(result.LogRetain!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
             Assert.That(result.StateNodes.Count(), Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_SelectsEarliestNativeWriteBoundaryWithinGeneration()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+        using NativeTrieNodeLog log = new(0);
+        NativeTrieNodeLogPin earliest = log.PinActiveGeneration();
+        Hash256 root = FlatTestHelpers.WriteNative(log, null, Keccak.EmptyTreeHash, new PatriciaTree.BulkSetEntry(TestItem.KeccakA.ValueHash256, [1]));
+        using Snapshot first = new(new(0, Keccak.EmptyTreeHash), new(1, root), new SnapshotContent(), _resourcePool,
+            ResourcePool.Usage.ReadOnlyProcessingEnv) { LogPin = log.PinActiveGeneration() };
+        using Snapshot final = new(first.To, new(2, root), new SnapshotContent(), _resourcePool,
+            ResourcePool.Usage.ReadOnlyProcessingEnv) { LogPin = earliest };
+        final.Content.HasStateRoot = true;
+        final.Content.StateRootPointer = log.ResolveRoot(null, root.ValueHash256);
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { first, final });
+        using Snapshot result = _compactor.CompactSnapshotBundle(new(1) { compacted });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.LogPin!.Generation, Is.EqualTo(earliest.Generation));
+            Assert.That(first.LogPin.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
+            Assert.That(result.LogPin!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
+            Assert.That(result.StateNodes.Count(), Is.EqualTo(1));
+            Assert.That(result.LogRetain, Is.Null);
         }
     }
 
