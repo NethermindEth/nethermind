@@ -16,7 +16,7 @@ foreach (int count in new[] { 1, 8, 64, 65, 512 })
 foreach (string shape in new[] { "state", "storage", "shared" })
 {
     using TriePrefetchFixture fixture = new(count, shape);
-    foreach (string cache in new[] { "warm-db", "warm-trie", "cold-db" })
+    foreach (string cache in new[] { "warm-db", "scalar-prewarmed", "retained-nodes", "cold-db" })
     {
         using (TriePrefetchFixture.Iteration iteration = fixture.Prepare(cache, probe: true)) iteration.Verify();
         Console.WriteLine($"Verified Count={count} Shape={shape} Cache={cache}");

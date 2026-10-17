@@ -31,6 +31,8 @@ elif mode == "results":
     rows = json.loads(Path(sys.argv[2]).read_text())
     expected = {(count, shape, "warm") for count in (1, 7, 8, 9, 63, 64, 65, 512) for shape in ("accounts", "slots", "one-account", "overlay-1", "overlay-7", "overlay-8", "cache")}
     expected |= {(count, shape, "cold") for count in (8, 64, 512) for shape in ("accounts", "slots")}
+    expected |= {(count, "one-account", "warm") for count in (127, 128, 129)}
+    expected |= {(count, "one-account-cache", "warm") for count in (63, 64, 65, 127, 128, 129)}
     assert len(rows) == len(expected) and {(r["count"], r["shape"], r["cache"]) for r in rows} == expected
     for row in rows:
         assert len(row["samples"]) == (12 if row["cache"] == "warm" else 8)
@@ -38,6 +40,6 @@ elif mode == "results":
             assert math.isfinite(sample["nanoseconds"]) and sample["nanoseconds"] > 0
             assert math.isfinite(sample["managedBytes"]) and sample["managedBytes"] >= 0
             assert sample["operations"] > 0
-    print("Verified all62 cases and every sample")
+    print("Verified all71 cases and every sample")
 else:
     raise SystemExit("Unknown validation mode")

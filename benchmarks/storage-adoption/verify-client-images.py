@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import re
+import platform
 import subprocess
 import sys
 
@@ -15,7 +16,7 @@ for argument in sys.argv[2:]:
                                      stderr=subprocess.STDOUT)
     match = re.search(r"^Commit:\s*([0-9a-fA-F]{40})\s*$", version, re.MULTILINE)
     assert match and match[1].lower() == expected, (reference, expected, version)
-    assert inspected["Architecture"] == "amd64"
+    assert inspected["Architecture"] == {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}[platform.machine()]
     records.append({"reference": reference, "id": inspected["Id"], "commit": expected, "version": version})
     print(reference, inspected["Id"], expected)
 output.parent.mkdir(parents=True, exist_ok=True)

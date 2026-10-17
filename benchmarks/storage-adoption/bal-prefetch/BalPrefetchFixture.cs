@@ -40,8 +40,9 @@ sealed class BalPrefetchFixture : IDisposable, IWorldStateScopeProvider.IAsyncBa
         _directory = Path.Combine(Environment.GetEnvironmentVariable("BAL_DATA")!, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_directory);
         _resources = new ResourcePool(new FlatDbConfig());
-        int accounts = shape == "one-account" ? 1 : count;
-        _slotsPerAccount = shape == "accounts" ? 0 : shape == "one-account" ? count : 8;
+        bool oneAccount = shape.StartsWith("one-account", StringComparison.Ordinal);
+        int accounts = oneAccount ? 1 : count;
+        _slotsPerAccount = shape == "accounts" ? 0 : oneAccount ? count : 8;
         _addresses = new Address[accounts];
         ReadOnlyAccountChanges[] changes = new ReadOnlyAccountChanges[accounts];
         for (int i = 0; i < accounts; i++)
@@ -81,7 +82,7 @@ sealed class BalPrefetchFixture : IDisposable, IWorldStateScopeProvider.IAsyncBa
     private void OpenScope()
     {
         IPersistence persistence = new RocksDbPersistence(_db, LimboLogs.Instance);
-        if (_shape == "cache") persistence = _cache = new CarryForwardCachingPersistence(persistence);
+        if (_shape is "cache" or "one-account-cache") persistence = _cache = new CarryForwardCachingPersistence(persistence);
         SnapshotPooledList snapshots = new(1);
         if (_shape.StartsWith("overlay-", StringComparison.Ordinal))
         {

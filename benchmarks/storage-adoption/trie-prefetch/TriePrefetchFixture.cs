@@ -79,21 +79,22 @@ sealed class TriePrefetchFixture : IDisposable
         }
         Action? verifyProbe = null;
         IColumnsDb<FlatDbColumns> columns = _db;
-#if BATCH_TRIE
+        BatchProbe? probeCounter = null;
         if (probe)
         {
-            BatchProbe counter = new();
+            BatchProbe counter = probeCounter = new();
             columns = new ProbeColumnsDb(_db, counter);
             verifyProbe = () =>
             {
-                if (_keys.Length >= 64 && cache != "warm-trie" && counter.NativeCalls == 0)
+#if BATCH_TRIE
+                if (_keys.Length >= 64 && (cache is "warm-db" or "cold-db") && counter.NativeCalls == 0)
                     throw new InvalidOperationException("Candidate preflight did not issue a native decoded MultiGet");
-                if (cache == "warm-trie" && counter.NativeCalls != 0)
-                    throw new InvalidOperationException("Warm-trie staging left native batch reads in the measured operation");
-                Console.WriteLine($"NativeProbe Count={_keys.Length} Cache={cache} Calls={counter.NativeCalls} MaxKeys={counter.MaxKeys}");
+#endif
+                if (cache == "retained-nodes" && (counter.NativeCalls != 0 || counter.ScalarCalls != 0))
+                    throw new InvalidOperationException("Retained-node control performed a persistence read");
+                Console.WriteLine($"NativeProbe Count={_keys.Length} Cache={cache} Calls={counter.NativeCalls} ScalarCalls={counter.ScalarCalls} MaxKeys={counter.MaxKeys}");
             };
         }
-#endif
         IPersistence persistence = new RocksDbPersistence(columns, LimboLogs.Instance);
         ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), persistence.CreateReader(ReaderFlags.Sync), false, PersistedSnapshotStack.Empty());
         SnapshotBundle bundle = new(readOnly, new EmptyTrieNodeCache(), _resources, ResourcePool.Usage.MainBlockProcessing);
@@ -103,9 +104,11 @@ sealed class TriePrefetchFixture : IDisposable
 #if BATCH_TRIE
         if (store is not IBatchTrieNodeResolver) throw new InvalidOperationException("Candidate warmer lacks batch resolver capability");
 #endif
+        if (cache == "retained-nodes") store = new RetainedNodeStore(store, checked(65 * _keys.Length + 1));
         PatriciaTree tree = new(store, LimboLogs.Instance) { RootHash = _root };
         Iteration iteration = new(bundle, tree, _keys, _updates, _expectedRoot, verifyProbe);
-        if (cache == "warm-trie") iteration.WarmScalar();
+        if (cache is "scalar-prewarmed" or "retained-nodes") iteration.WarmScalar();
+        probeCounter?.Reset();
         return iteration;
     }
 
@@ -224,11 +227,12 @@ sealed class TriePrefetchFixture : IDisposable
         public void Clear() { }
     }
 
-#if BATCH_TRIE
     private sealed class BatchProbe
     {
         public int NativeCalls;
+        public int ScalarCalls;
         public int MaxKeys;
+        public void Reset() { NativeCalls = 0; ScalarCalls = 0; MaxKeys = 0; }
     }
 
     private sealed class ProbeColumnsDb(IColumnsDb<FlatDbColumns> inner, BatchProbe counter) : IColumnsDb<FlatDbColumns>
@@ -253,11 +257,23 @@ sealed class TriePrefetchFixture : IDisposable
         public void Dispose() => inner.Dispose();
     }
 
-    private sealed class ProbeStore(IReadOnlyKeyValueStore inner, BatchProbe counter) : IReadOnlyKeyValueStore, IBatchReadOnlyDb
+    private sealed class ProbeStore(IReadOnlyKeyValueStore inner, BatchProbe counter) : IReadOnlyKeyValueStore
+#if BATCH_TRIE
+        , IBatchReadOnlyDb
+#endif
     {
-        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
-        public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.GetSpan(key, flags);
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            counter.ScalarCalls++;
+            return inner.Get(key, flags);
+        }
+        public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            counter.ScalarCalls++;
+            return inner.GetSpan(key, flags);
+        }
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => inner.DangerousReleaseMemory(in span);
+#if BATCH_TRIE
         public void GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder)
             where TDecoder : IValueDecoder<T>
         {
@@ -266,6 +282,32 @@ sealed class TriePrefetchFixture : IDisposable
             counter.MaxKeys = Math.Max(counter.MaxKeys, values.Length);
             native.GetMany(keys, keyLength, values, decoder);
         }
-    }
 #endif
+    }
+
+    private sealed class RetainedNodeStore(IScopedTrieStore inner, int capacity) : IScopedTrieStore
+#if BATCH_TRIE
+        , IBatchTrieNodeResolver
+#endif
+    {
+        private readonly Dictionary<(TreePath Path, Hash256 Hash), TrieNode> _nodes = new(capacity);
+        public INodeStorage.KeyScheme Scheme => inner.Scheme;
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+        {
+            if (_nodes.TryGetValue((path, hash), out TrieNode? node)) return node;
+            if (_nodes.Count == capacity) throw new InvalidOperationException("Retained-node bound exceeded");
+            node = inner.FindCachedOrUnknown(path, hash);
+            _nodes.Add((path, hash), node);
+            return node;
+        }
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => inner.TryLoadRlp(path, hash, flags);
+        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => inner.LoadRlp(path, hash, flags);
+        public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => inner.BeginCommit(root, writeFlags);
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
+            new RetainedNodeStore((IScopedTrieStore)inner.GetStorageTrieNodeResolver(address), capacity);
+#if BATCH_TRIE
+        public void LoadRlps(ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, Span<byte[]?> values) =>
+            ((IBatchTrieNodeResolver)inner).LoadRlps(requests, values);
+#endif
+    }
 }

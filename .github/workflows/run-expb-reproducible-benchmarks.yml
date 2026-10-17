@@ -3055,7 +3055,70 @@ jobs:
           CAMPAIGN_ROOT: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
         run: python3 benchmarks/storage-adoption/verify-client-images.py "$CAMPAIGN_ROOT/chain-image-revision.json" nethermind-rpcbench:chain-levels-701e562=701e562113a2ad8242af88c4f4c44db909ba0cca
 
+      - name: Checkout trie master source
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-frontier-6de9ed6')
+        uses: actions/checkout@v7
+        with:
+          ref: cd336c4ccce9526d5f775ea857851a94e13e60a9
+          path: trie-master-source
+          persist-credentials: false
+
+      - name: Checkout trie control source
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-frontier-6de9ed6')
+        uses: actions/checkout@v7
+        with:
+          ref: 000f069d5814ef631a92adb666c3b17586a802ee
+          path: trie-control-source
+          persist-credentials: false
+
+      - name: Checkout trie candidate source
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-frontier-6de9ed6')
+        uses: actions/checkout@v7
+        with:
+          ref: 6de9ed6cf4cb42ca7d5febcd6dc4ddc3781534a0
+          path: trie-candidate-source
+          persist-credentials: false
+
+      - name: Build pinned trie comparison images on runner
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-frontier-6de9ed6')
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_epoch="$(git -C trie-master-source log -1 --format=%ct)"
+          test "$(git -C trie-master-source rev-parse HEAD)" = cd336c4ccce9526d5f775ea857851a94e13e60a9
+          docker build trie-master-source -f trie-master-source/Dockerfile -t nethermind-rpcbench:trie-frontier-6de9ed6-master --build-arg BUILD_CONFIG=release --build-arg CI=true --build-arg COMMIT_HASH=cd336c4ccce9526d5f775ea857851a94e13e60a9 --build-arg SOURCE_DATE_EPOCH="$source_epoch"
+          test "$(git -C trie-control-source rev-parse HEAD)" = 000f069d5814ef631a92adb666c3b17586a802ee
+          docker build trie-control-source -f trie-control-source/Dockerfile -t nethermind-rpcbench:trie-frontier-6de9ed6-control --build-arg BUILD_CONFIG=release --build-arg CI=true --build-arg COMMIT_HASH=000f069d5814ef631a92adb666c3b17586a802ee --build-arg SOURCE_DATE_EPOCH="$source_epoch"
+          test "$(git -C trie-candidate-source rev-parse HEAD)" = 6de9ed6cf4cb42ca7d5febcd6dc4ddc3781534a0
+          docker build trie-candidate-source -f trie-candidate-source/Dockerfile -t nethermind-rpcbench:trie-frontier-6de9ed6-candidate --build-arg BUILD_CONFIG=release --build-arg CI=true --build-arg COMMIT_HASH=6de9ed6cf4cb42ca7d5febcd6dc4ddc3781534a0 --build-arg SOURCE_DATE_EPOCH="$source_epoch"
+          docker tag nethermind-rpcbench:trie-frontier-6de9ed6-master nethermind-rpcbench:trie-frontier-6de9ed6-1
+          docker tag nethermind-rpcbench:trie-frontier-6de9ed6-master nethermind-rpcbench:trie-frontier-6de9ed6-2
+          docker tag nethermind-rpcbench:trie-frontier-6de9ed6-control nethermind-rpcbench:trie-frontier-6de9ed6-3
+          docker tag nethermind-rpcbench:trie-frontier-6de9ed6-candidate nethermind-rpcbench:trie-frontier-6de9ed6-4
+          docker tag nethermind-rpcbench:trie-frontier-6de9ed6-candidate nethermind-rpcbench:trie-frontier-6de9ed6-5
+          docker tag nethermind-rpcbench:trie-frontier-6de9ed6-control nethermind-rpcbench:trie-frontier-6de9ed6-6
+          docker tag nethermind-rpcbench:trie-frontier-6de9ed6-master nethermind-rpcbench:trie-frontier-6de9ed6-7
+          docker tag nethermind-rpcbench:trie-frontier-6de9ed6-master nethermind-rpcbench:trie-frontier-6de9ed6-8
+
+      - name: Verify all trie comparison image revisions
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-frontier-6de9ed6')
+        env:
+          CAMPAIGN_ROOT: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 benchmarks/storage-adoption/verify-client-images.py "$CAMPAIGN_ROOT/trie-image-revisions.json" \
+            nethermind-rpcbench:trie-frontier-6de9ed6-1=cd336c4ccce9526d5f775ea857851a94e13e60a9 \
+            nethermind-rpcbench:trie-frontier-6de9ed6-2=cd336c4ccce9526d5f775ea857851a94e13e60a9 \
+            nethermind-rpcbench:trie-frontier-6de9ed6-3=000f069d5814ef631a92adb666c3b17586a802ee \
+            nethermind-rpcbench:trie-frontier-6de9ed6-4=6de9ed6cf4cb42ca7d5febcd6dc4ddc3781534a0 \
+            nethermind-rpcbench:trie-frontier-6de9ed6-5=6de9ed6cf4cb42ca7d5febcd6dc4ddc3781534a0 \
+            nethermind-rpcbench:trie-frontier-6de9ed6-6=000f069d5814ef631a92adb666c3b17586a802ee \
+            nethermind-rpcbench:trie-frontier-6de9ed6-7=cd336c4ccce9526d5f775ea857851a94e13e60a9 \
+            nethermind-rpcbench:trie-frontier-6de9ed6-8=cd336c4ccce9526d5f775ea857851a94e13e60a9
+
       - name: Verify storage comparison image revisions
+        if: ${{ !contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-frontier-6de9ed6') }}
         env:
           CAMPAIGN_ROOT: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
         run: python3 benchmarks/storage-adoption/verify-client-images.py "$CAMPAIGN_ROOT/storage-image-revisions.json" nethermindeth/nethermind:master-ce93457=ce93457f0abde6daa78877ab3756c0002e33208d nethermind-rpcbench:perf-decoded-blob-multiget=02d3ffde15fb6541efaff78899bd6fd667442501

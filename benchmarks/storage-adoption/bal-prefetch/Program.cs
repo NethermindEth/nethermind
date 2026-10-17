@@ -4,8 +4,13 @@ using System.Text.Json;
 bool verifyOnly = args.Contains("--verify", StringComparer.Ordinal);
 string output = Environment.GetEnvironmentVariable("BAL_OUTPUT") ?? "bal-results.json";
 List<object> rows = [];
+List<(int Count, string Shape)> cases = [];
 foreach (int count in new[] { 1, 7, 8, 9, 63, 64, 65, 512 })
 foreach (string shape in new[] { "accounts", "slots", "one-account", "overlay-1", "overlay-7", "overlay-8", "cache" })
+    cases.Add((count, shape));
+foreach (int count in new[] { 127, 128, 129 }) cases.Add((count, "one-account"));
+foreach (int count in new[] { 63, 64, 65, 127, 128, 129 }) cases.Add((count, "one-account-cache"));
+foreach ((int count, string shape) in cases)
 {
     using BalPrefetchFixture fixture = new(count, shape);
     fixture.Verify();
