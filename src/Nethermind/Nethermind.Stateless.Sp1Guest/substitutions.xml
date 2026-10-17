@@ -34,5 +34,9 @@
     <type fullname="Nethermind.Core.Extensions.StrictAlignmentFlag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
+    <!-- SP1 hands the guest its input in writable memory, which the witness keying reuses once the input is decoded. -->
+    <type fullname="Nethermind.Core.Crypto.Sp1ReusableInputFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
   </assembly>
 </linker>

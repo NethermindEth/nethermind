@@ -213,6 +213,31 @@ public sealed partial class KeccakHash
         public static nint Loaded;
     }
 
+    /// <summary>The part of the input <see cref="DonateConsumedInput"/> was given that no states occupy yet.</summary>
+    private static class FreeInput
+    {
+        public static unsafe byte* Start;
+        public static nuint Length;
+    }
+
+    /// <inheritdoc cref="KeccakHash.DonateConsumedInput" />
+    /// <remarks>Only on SP1, whose input lies in writable memory. SP1 charges for every word of memory a run touches,
+    /// far more than for the instructions writing it, and the input is touched already, so states kept in it are
+    /// nearly free while fresh memory for them is not.</remarks>
+    internal static partial void DonateConsumedInput(ReadOnlySpan<byte> consumed)
+    {
+        if (!Sp1ReusableInputFlag.IsActive) return;
+
+        unsafe
+        {
+            nuint start = (nuint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(consumed));
+            nuint aligned = (start + 7) & ~(nuint)7;
+            nuint end = start + (nuint)consumed.Length;
+            FreeInput.Start = (byte*)aligned;
+            FreeInput.Length = end > aligned ? end - aligned : 0;
+        }
+    }
+
     /// <inheritdoc cref="KeccakHash.ComputeHash256OfWitnessNodes" />
     /// <remarks>When the trie commit re-encodes a witness branch, the edited children leave every rate block before
     /// the first of them unchanged; on a mainnet block the blocks so repeated are most of the commit's repeated
@@ -226,7 +251,7 @@ public sealed partial class KeccakHash
             ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)count, (uint)Math.Min(nodes.Length, hashes.Length));
             // Native rather than a managed array, which the guest's allocator zeroes word by word. Left uninitialized: only
             // the states of a node's whole leading blocks are written, and ComputeHash256OfEdited reads no other.
-            ulong* states = (ulong*)NativeMemory.Alloc((nuint)count, RetainedLanes * sizeof(ulong));
+            ulong* states = AllocateStates((nuint)count);
             Debug.Assert(((nuint)states & 7) == 0);
             ref byte[] firstNode = ref MemoryMarshal.GetArrayDataReference(nodes);
             ref ValueHash256 firstHash = ref MemoryMarshal.GetReference(hashes);
@@ -263,8 +288,25 @@ public sealed partial class KeccakHash
             WitnessNodes.Nodes = nodes;
             WitnessNodes.Count = count;
             WitnessNodes.States = states;
+            // States in the input are freed too: the guest's bump heap frees nothing.
             NativeMemory.Free(released);
         }
+    }
+
+    /// <summary>Allocates the states of <paramref name="count"/> nodes, in the input <see cref="DonateConsumedInput"/>
+    /// was given while it has room for them.</summary>
+    /// <remarks>Out of line, so that the keying loop is compiled alike whether the guest reuses its input or not.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static unsafe ulong* AllocateStates(nuint count)
+    {
+        nuint size = count * (RetainedLanes * sizeof(ulong));
+        if (!Sp1ReusableInputFlag.IsActive || size > FreeInput.Length)
+            return (ulong*)NativeMemory.Alloc(size);
+
+        ulong* states = (ulong*)FreeInput.Start;
+        FreeInput.Start += size;
+        FreeInput.Length -= size;
+        return states;
     }
 
     /// <inheritdoc cref="KeccakHash.NoteWitnessNodeLoaded" />
