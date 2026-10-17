@@ -92,6 +92,7 @@ public class UserErrors
     private static IEnumerable<TestCaseData> NonCanonicalOffsetTestCases()
     {
         AbiSignature<(string, string)> twoStrings = new AbiSignature("f").With(AbiType.String, AbiType.String);
+        AbiSignature<string[]> fixedStrings = new AbiSignature("f").With(AbiType.Array(AbiType.String, 2));
 
         yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.Bytes)),
             "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the array
@@ -146,6 +147,23 @@ public class UserErrors
             "0000000000000000000000000000000000000000000000000000000000000001" + // Length of the shared element
             "6100000000000000000000000000000000000000000000000000000000000000"   // "a"
         ).SetName("string[] elements aliasing one tail inside tuple");
+        yield return MalformedInput(fixedStrings,
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the fixed array
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first element
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second element, aliasing the first
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of the shared element
+            "6100000000000000000000000000000000000000000000000000000000000000"   // "a"
+        ).SetName("string[2] elements aliasing one tail");
+        yield return MalformedInput(fixedStrings,
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the fixed array
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to first element, one word past the head
+            "00000000000000000000000000000000000000000000000000000000000000a0" + // Offset to second element
+            "0000000000000000000000000000000000000000000000000000000000000000" + // Gap
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of first element
+            "6100000000000000000000000000000000000000000000000000000000000000" + // "a"
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second element
+            "6200000000000000000000000000000000000000000000000000000000000000"   // "b"
+        ).SetName("gap before tail in string[2]");
     }
 
     private static IEnumerable<TestCaseData> TrailingDataTestCases()

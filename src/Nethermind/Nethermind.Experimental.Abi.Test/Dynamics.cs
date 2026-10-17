@@ -278,6 +278,96 @@ public class Dynamics
     }
 
     [Test]
+    public void DynamicFixedArray()
+    {
+        AbiSignature<string[]> signature = new AbiSignature("f")
+            .With(
+                AbiType.Array(AbiType.String, 2)
+            );
+
+        string[] arguments = ["a", "b"];
+        AssertRoundTrip(signature, "d72d3724", arguments,
+            "d72d3724" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the fixed array
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first element, relative to the fixed array
+            "0000000000000000000000000000000000000000000000000000000000000080" + // Offset to second element, relative to the fixed array
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of first element
+            "6100000000000000000000000000000000000000000000000000000000000000" + // "a"
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second element
+            "6200000000000000000000000000000000000000000000000000000000000000"); // "b"
+    }
+
+    [Test]
+    public void ArrayOfDynamicFixedArrays()
+    {
+        AbiSignature<string[][]> signature = new AbiSignature("f")
+            .With(
+                AbiType.Array(AbiType.Array(AbiType.String, 2))
+            );
+
+        string[][] arguments = [["a", "b"], ["c", "d"]];
+        AssertRoundTrip(signature, "10211b6b", arguments,
+            "10211b6b" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first element
+            "0000000000000000000000000000000000000000000000000000000000000100" + // Offset to second element
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first string of first element
+            "0000000000000000000000000000000000000000000000000000000000000080" + // Offset to second string of first element
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of first string of first element
+            "6100000000000000000000000000000000000000000000000000000000000000" + // "a"
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second string of first element
+            "6200000000000000000000000000000000000000000000000000000000000000" + // "b"
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first string of second element
+            "0000000000000000000000000000000000000000000000000000000000000080" + // Offset to second string of second element
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of first string of second element
+            "6300000000000000000000000000000000000000000000000000000000000000" + // "c"
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second string of second element
+            "6400000000000000000000000000000000000000000000000000000000000000"); // "d"
+    }
+
+    [Test]
+    public void DynamicFixedArrayInTuple()
+    {
+        AbiSignature<(UInt256, string[])> signature = new AbiSignature("f")
+            .With(
+                AbiType.Tuple(AbiType.UInt256, AbiType.Array(AbiType.String, 2))
+            );
+
+        (UInt256, string[]) arguments = (1, ["a", "b"]);
+        AssertRoundTrip(signature, "bfb8b830", arguments,
+            "bfb8b830" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the tuple
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First component of the tuple, `1`
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second component of the tuple
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first string of second component
+            "0000000000000000000000000000000000000000000000000000000000000080" + // Offset to second string of second component
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of first string of second component
+            "6100000000000000000000000000000000000000000000000000000000000000" + // "a"
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second string of second component
+            "6200000000000000000000000000000000000000000000000000000000000000"); // "b"
+    }
+
+    [Test]
+    public void ArrayOfStaticFixedArrays()
+    {
+        AbiSignature<UInt256[][]> signature = new AbiSignature("f")
+            .With(
+                AbiType.Array(AbiType.Array(AbiType.UInt256, 2))
+            );
+
+        UInt256[][] arguments = [[1, 2], [3, 4]];
+        AssertRoundTrip(signature, "047d9e3a", arguments,
+            "047d9e3a" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First element of first fixed array, `1`
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Second element of first fixed array, `2`
+            "0000000000000000000000000000000000000000000000000000000000000003" + // First element of second fixed array, `3`
+            "0000000000000000000000000000000000000000000000000000000000000004"); // Second element of second fixed array, `4`
+    }
+
+    [Test]
     public void DynamicTypeDeclaringWrongHeadSize()
     {
         Abi<string> wideString = new()
