@@ -65,7 +65,8 @@ public partial class DebugRpcModuleTests
                 string config = "{" + string.Join(',', members) + "}";
                 yield return new TestCaseData(field, config, expected).SetName($"Native_boolean_config_{field}_{values}");
             }
-            yield return new TestCaseData(field, $$$"""{"{{{field.ToUpperInvariant()}}}":true,"{{{field}}}":null,"unknown":{"nested":null}}""", true);
+            yield return new TestCaseData(field, $$$"""{"{{{field.ToUpperInvariant()}}}":true,"{{{field}}}":null,"unknown":{"nested":null}}""", true)
+                .SetName($"Native_boolean_config_{field}_case_insensitive");
         }
     }
 

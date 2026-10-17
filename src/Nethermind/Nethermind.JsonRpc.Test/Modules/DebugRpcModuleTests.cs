@@ -1128,6 +1128,7 @@ public partial class DebugRpcModuleTests
         new TestCaseData(false, false, false, false, false, """{"disableCode":false,"disableCode":null,"disableStorage":false,"disableStorage":null}""").SetName("Prestate_null_field_options_preserve_false"),
         new TestCaseData(false, true, true, false, false, """{"disableCode":false,"disableCode":null,"disableCode":true,"disableStorage":false,"disableStorage":null,"disableStorage":true}""").SetName("Prestate_field_options_last_true_wins"),
         new TestCaseData(false, false, false, false, false, """{"disableCode":true,"disableCode":null,"disableCode":false,"disableStorage":true,"disableStorage":null,"disableStorage":false}""").SetName("Prestate_field_options_last_false_wins"),
+        new TestCaseData(false, true, false, false, false, """{"disableCode":"true","disableCode":null,"disableStorage":"false","disableStorage":null}""").SetName("Prestate_null_string_disableCode_preserves_true_with_storage"),
         new TestCaseData(true, true, true, false, false, """{"diffMode":true,"disableCode":"true","disableCode":null,"disableStorage":"true","disableStorage":null}""").SetName("Prestate_diff_null_field_options_preserve_string_true"),
         new TestCaseData(true, false, false, false, false, """{"diffMode":true,"disableCode":"false","disableCode":null,"disableStorage":"false","disableStorage":null}""").SetName("Prestate_diff_null_field_options_preserve_string_false")
     ];

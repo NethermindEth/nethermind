@@ -29,6 +29,7 @@ public class GethTraceOptionsDeserializationTests
 
         NativeCallTracerConfig call = NativeCallTracerConfig.FromJson(json, options);
         NativePrestateTracerConfig prestate = NativePrestateTracerConfig.FromJson(json, options);
+        NativeCallTracerConfig defaultCall = NativeCallTracerConfig.FromJson(null, options);
 
         using (Assert.EnterMultipleScope())
         {
@@ -37,6 +38,11 @@ public class GethTraceOptionsDeserializationTests
             Assert.That(prestate.DiffMode, Is.EqualTo(caseInsensitive));
             Assert.That(prestate.DisableCode, Is.EqualTo(caseInsensitive));
             Assert.That(prestate.DisableStorage, Is.EqualTo(caseInsensitive));
+            Assert.That(defaultCall.OnlyTopCall, Is.False);
+            Assert.That(defaultCall.WithLog, Is.False);
+            Assert.That(NativeCallTracerConfig.FromJson(null, options), Is.SameAs(defaultCall));
+            Assert.That(NativeCallTracerConfig.FromJson(JsonSerializer.Deserialize<JsonElement>("null"), options), Is.SameAs(defaultCall));
+            Assert.That(NativeCallTracerConfig.FromJson(JsonSerializer.Deserialize<JsonElement>("{}"), options), Is.Not.SameAs(defaultCall));
         }
     }
 
