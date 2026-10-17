@@ -22,7 +22,6 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -280,7 +279,7 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, MainnetSpecProvider.Instance, [_recoveryStep], _stateReader, LimboLogs.Instance,
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, [_recoveryStep], _stateReader, LimboLogs.Instance,
                 new BlockchainProcessor.Options { BlockProcessingTimeoutMs = blockProcessingTimeoutMs, TimeProvider = timeProvider ?? TimeProvider.System }, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);

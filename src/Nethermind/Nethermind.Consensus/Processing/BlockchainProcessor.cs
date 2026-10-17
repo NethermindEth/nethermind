@@ -20,11 +20,8 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
-using Nethermind.Blockchain.Tracing.GethStyle;
-using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -52,7 +49,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public static bool IsMainProcessingThread => IsBlockProcessingThread;
 
     private readonly IBranchProcessor _branchProcessor;
-    private readonly ISpecProvider _specProvider;
     private readonly Options _options;
     private readonly ProcessingBranchBuilder _branchBuilder;
     private readonly IBlockTree _blockTree;
@@ -112,7 +108,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// </summary>
     /// <param name="blockTree"></param>
     /// <param name="branchProcessor"></param>
-    /// <param name="specProvider">Provider used to select fork rules while tracing invalid branches.</param>
     /// <param name="preprocessorSteps"></param>
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
@@ -123,7 +118,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
-        ISpecProvider specProvider,
         IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
         IStateReader stateReader,
         ILogManager logManager,
@@ -136,7 +130,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree = blockTree;
         _mutationLock = mutationLock;
         _branchProcessor = branchProcessor;
-        _specProvider = specProvider;
         _options = options;
         _branchBuilder = new ProcessingBranchBuilder(blockTree, stateReader, preprocessorSteps, logManager.GetClassLogger<ProcessingBranchBuilder>());
 
@@ -866,37 +859,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _processorTask?.IsCompleted == false && _recoveryTask?.IsCompleted == false &&
         (_pauseGate.IsPaused || maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow);
 
-    private void TraceFailingBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
-    {
-        if ((_options.DumpOptions & dumpType) != 0)
-        {
-            // A diagnostic replay of a block already judged invalid; the block's deadline must not cut it short.
-            CancellationTokenSource? deadline = _blockDeadline;
-            _blockDeadline = null;
-            try
-            {
-                _branchProcessor.Process(
-                    processingBranch.BaseBlock,
-                    processingBranch.BlocksToProcess,
-                    options,
-                    blockTracer);
-                BlockTraceDumper.LogDiagnosticTrace(blockTracer, processingBranch.BlocksToProcess, _logger);
-            }
-            catch (InvalidBlockException ex)
-            {
-                BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
-            }
-            catch (Exception ex)
-            {
-                BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.BaseBlock, ex, _logger);
-            }
-            finally
-            {
-                _blockDeadline = deadline;
-            }
-        }
-    }
-
     private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
@@ -937,28 +899,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     Metrics.BadBlocksByNethermindNodes++;
                 }
                 InvalidBlock?.Invoke(this, new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
-
-                BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
-                    (_options.DumpOptions & DumpOptions.Rlp) != 0,
-                    (_options.DumpOptions & DumpOptions.RlpLog) != 0);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new BlockReceiptsTracer(),
-                    DumpOptions.Receipts);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace, _specProvider),
-                    DumpOptions.Parity);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }, _specProvider),
-                    DumpOptions.Geth);
             }
 
             processedBlocks = null;
@@ -1001,8 +941,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         public static Options Default = new();
 
         public bool StoreReceiptsByDefault { get; set; } = true;
-
-        public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
 
         /// <summary>The logical processors block processing runs on, on an Intel hybrid CPU; see <see cref="PerformanceCores"/>.</summary>
         public ProcessingCores ProcessingCores { get; set; }
