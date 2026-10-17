@@ -1413,7 +1413,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void TryLoadTrieNodeRecord_reads_warmed_then_verified_persisted_then_in_memory_snapshot_nodes([Values] bool storage)
+    public void TryLoadTrieNodeRecord_reads_warmed_then_verified_persisted_and_skips_in_memory_snapshot_nodes([Values] bool storage)
     {
         ResourcePool pool = new(new FlatDbConfig());
         using TrieNodeLog log = FlatTestHelpers.NewTestLog();
@@ -1439,7 +1439,6 @@ public class FlatWorldStateScopeProviderTests
             pool,
             ResourcePool.Usage.MainBlockProcessing,
             FlatTestHelpers.SnapshotList(SnapshotWithNode(ownSnapshotPath, ownSnapshotRlp)));
-        long fallbackReadsBefore = Metrics.TrieNodeLogFallbackReads;
 
         byte[]? Load(TreePath path, byte[] rlp) =>
             bundle.TryLoadTrieNodeRecord(address, path, ValueKeccak.Compute(rlp), out NodeRecordRef record) ? record.Rlp.ToArray() : null;
@@ -1450,11 +1449,91 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(Load(persistedPath, persistedRlp), Is.EqualTo(persistedRlp), "warmed");
             Assert.That(reader.Loads, Is.EqualTo(1), "warmed node read again from persistence");
             Assert.That(Load(persistedPath, ownSnapshotRlp), Is.Null, "persisted RLP of another hash");
-            Assert.That(Load(readOnlySnapshotPath, readOnlySnapshotRlp), Is.EqualTo(readOnlySnapshotRlp), "read-only bundle snapshot");
-            Assert.That(Load(ownSnapshotPath, ownSnapshotRlp), Is.EqualTo(ownSnapshotRlp), "own snapshot");
+            Assert.That(Load(readOnlySnapshotPath, readOnlySnapshotRlp), Is.Null, "read-only bundle snapshot must be read through the log");
+            Assert.That(Load(ownSnapshotPath, ownSnapshotRlp), Is.Null, "own snapshot must be read through the log");
             Assert.That(Load(ownSnapshotPath, readOnlySnapshotRlp), Is.Null, "snapshot node of another hash");
-            Assert.That(Metrics.TrieNodeLogFallbackReads - fallbackReadsBefore, Is.EqualTo(2), "fallback reads");
         }
+    }
+
+    [Test]
+    public void Retained_snapshot_roots_are_read_and_updated_from_the_log_after_rotation(
+        [Values] bool storage, [Values] bool readOnlySnapshots)
+    {
+        const int keyCount = 48;
+        const int versionCount = 3;
+        ResourcePool pool = new(new FlatDbConfig());
+        using TrieNodeLog log = new(1024 * 1024, 64 * 1024);
+        Hash256? address = storage ? TestItem.KeccakA : null;
+        byte[] oldRlp = FlatTestHelpers.LeafRlp(0x01);
+        ulong oldPointer = log.AppendRecordFromRlp(address, TreePath.FromHexString("f"), ValueKeccak.Compute(oldRlp), oldRlp);
+        FlatTestHelpers.StartNewGeneration(log);
+
+        ValueHash256[] keys = new ValueHash256[keyCount];
+        for (int i = 0; i < keys.Length; i++) keys[i] = ValueKeccak.Compute($"snapshot-key-{i}");
+        TrieRoot[] roots = new TrieRoot[versionCount];
+        byte[][][] values = new byte[versionCount][][];
+        SnapshotPooledList snapshots = new(versionCount);
+        SinglePersistedNodeReader reader = new(TreePath.FromHexString("abcdef"), oldRlp);
+        using (SnapshotBundle writer = new(
+            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty()),
+            Substitute.For<ITrieNodeCache>(), log, pool, ResourcePool.Usage.MainBlockProcessing))
+        {
+            TrieRoot root = TrieRoot.Empty;
+            for (int version = 0; version < versionCount; version++)
+            {
+                TrieNodeLogRetain retain = log.RetainActive();
+                using LoggedTrie trie = new(writer, log, address, root);
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keyCount);
+                values[version] = version == 0 ? new byte[keyCount][] : (byte[][])values[version - 1].Clone();
+                for (int i = 0; i < (version == 0 ? keyCount : 1); i++)
+                {
+                    byte[] value = new byte[32];
+                    value.AsSpan().Fill((byte)(i + version + 1));
+                    values[version][i] = value;
+                    entries.Add(new PatriciaTree.BulkSetEntry(keys[i], value));
+                }
+
+                trie.BulkSet(entries, canParallelize: false);
+                root = roots[version] = trie.Root;
+                trie.Publish();
+                writer.CollectAndApplySnapshot(new StateId((ulong)version, Keccak.EmptyTreeHash), new StateId((ulong)version + 1, trie.RootHash), retain, returnSnapshot: false);
+                Snapshot snapshot = writer._snapshots[version];
+                snapshot.AcquireLease();
+                snapshots.Add(snapshot);
+                FlatTestHelpers.StartNewGeneration(log);
+            }
+        }
+
+        using SnapshotBundle bundle = new(
+            new ReadOnlySnapshotBundle(readOnlySnapshots ? snapshots : new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty()),
+            Substitute.For<ITrieNodeCache>(), log, pool, ResourcePool.Usage.MainBlockProcessing,
+            readOnlySnapshots ? null : snapshots);
+        for (int i = 0; i < 12; i++) FlatTestHelpers.StartNewGeneration(log);
+        Assert.That(() => log.FindBloom(oldPointer) is null, Is.True.After(10_000, 10), "the unretained generation is compacted while snapshots retain later generations");
+
+        using TrieNodeLogRetain writeRetain = log.RetainActive();
+        for (int version = 0; version < versionCount; version++)
+        {
+            Assert.That(LogBulkSet.ResolveRoot(log, address, roots[version].Hash).Pointer, Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
+            using LoggedTrie trie = new(bundle, log, address, LogBulkSet.ResolveRoot(log, address, roots[version].Hash));
+            using (Assert.EnterMultipleScope())
+            {
+                for (int i = 0; i < keys.Length; i++) Assert.That(trie.TryGet(keys[i]), Is.EqualTo(values[version][i]), $"version {version}, key {i}");
+            }
+
+            byte[] updated = new byte[32];
+            updated.AsSpan().Fill(0xff);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(1);
+            entries.Add(new PatriciaTree.BulkSetEntry(keys[^1], updated));
+            trie.BulkSet(entries, canParallelize: false);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trie.TryGet(keys[^1]), Is.EqualTo(updated), $"updated version {version}");
+                Assert.That(trie.TryGet(keys[0]), Is.EqualTo(values[version][0]), $"unchanged subtree of version {version}");
+            }
+        }
+
+        Assert.That(reader.Loads, Is.Zero, "in-memory nodes must resolve through the retained log, without source fetches");
     }
 
     /// <summary>The hash-referenced nodes of the state trie at <paramref name="root"/> and its storage tries, by address hash, path and RLP.</summary>

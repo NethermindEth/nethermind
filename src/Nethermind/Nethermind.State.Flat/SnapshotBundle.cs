@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
 
@@ -51,7 +50,6 @@ public sealed class SnapshotBundle : IDisposable
     private readonly TrieNodeLog? _trieNodeLog;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
-    private static int _fallbackReadWarned;
 
     internal ResourcePool.Usage _usage;
 
@@ -359,8 +357,7 @@ public sealed class SnapshotBundle : IDisposable
     /// <remarks>
     /// Tries the nodes warmed for this block, then the trie node cache, then persistence, whose node is verified against
     /// <paramref name="hash"/>; either is added to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
-    /// are in the log, which their retains keep readable, so they are looked up by path only as a last resort that counts
-    /// <see cref="Metrics.TrieNodeLogFallbackReads"/>.
+    /// are in the log, which their retains keep readable, so this source skips them and only fetches persisted nodes.
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     internal bool TryLoadTrieNodeRecord(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
@@ -368,21 +365,9 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         WarmedNodes warmed = _transientResource.WarmedNodes;
-        if (warmed.TryGet(address, path, hash, out record)
+        return warmed.TryGet(address, path, hash, out record)
             || TryWarmCachedRecord(warmed, address, path, hash, out record)
-            || TryInsertPersistedRecord(warmed, address, path, hash, out record)) return true;
-
-        if (!TryFindInMemoryRecord(_snapshots, address, path, hash, out record)
-            && !TryFindInMemoryRecord(_readOnlySnapshotBundle.InMemorySnapshots, address, path, hash, out record)) return false;
-
-        Metrics.IncrementTrieNodeLogFallbackReads();
-        if (Interlocked.Exchange(ref _fallbackReadWarned, 1) == 0)
-        {
-            ILogger logger = Static.LogManager.GetClassLogger<SnapshotBundle>();
-            if (logger.IsWarn) logger.Warn($"Trie node read by path from an in-memory snapshot instead of the trie node log. Address: {address}, path: {path}, hash: {hash}");
-        }
-
-        return true;
+            || TryInsertPersistedRecord(warmed, address, path, hash, out record);
     }
 
     /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node log does not hold, for this block's bulk sets.</summary>
@@ -429,21 +414,6 @@ public sealed class SnapshotBundle : IDisposable
         if (address is null) readOnly.TryLoadStateRlp(path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
         else readOnly.TryLoadStorageRlp(address, path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
         return inserted;
-    }
-
-    private static bool TryFindInMemoryRecord(SnapshotPooledList snapshots, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
-    {
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            Snapshot snapshot = snapshots[i];
-            bool found = address is null
-                ? snapshot.TryGetStateNode(path, out ulong pointer)
-                : snapshot.TryGetStorageNode((address, path), out pointer);
-            if (found && snapshot.LogRetain?.Log.TryLocate(pointer, out record) == true && record.Hash == hash) return true;
-        }
-
-        record = default;
-        return false;
     }
 
     /// <summary>Captures a source for private trie updates that may outlive this bundle.</summary>

@@ -63,8 +63,7 @@ public class SnapshotBundleWarmerTests
     private static (TrieRoot Root, Dictionary<TreePath, byte[]> Nodes) LeafTrie(byte[] rootRlp) =>
         (new TrieRoot(ValueKeccak.Compute(rootRlp), 0), new Dictionary<TreePath, byte[]> { [TreePath.Empty] = rootRlp });
 
-    // A warm-up reads persistence, never the bundle's recyclable snapshots: a node only the bundle's own committed snapshot
-    // holds stays unwarmed, though a bulk set still finds it there, while a persisted node is warmed.
+    // Committed snapshot nodes stay in the retained log; only persisted nodes enter the warmed source.
     [Test]
     public void Warm_up_reads_persistence_only_and_ignores_the_bundle_snapshots([Values] bool storage)
     {
@@ -75,7 +74,7 @@ public class SnapshotBundleWarmerTests
         using SnapshotBundle bundle = NewBundle(new NodeReader(persisted));
 
         TrieNodeLogRetain retain = _log.RetainActive();
-        PublishNode(bundle, address, TreePath.Empty, committedRlp);
+        committedRoot = new TrieRoot(committedRoot.Hash, PublishNode(bundle, address, TreePath.Empty, committedRlp));
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain, returnSnapshot: false);
 
         bundle.WarmUp(address, committedRoot, ValueKeccak.Zero);
@@ -89,7 +88,8 @@ public class SnapshotBundleWarmerTests
             {
                 Assert.That(retired!.WarmedNodes.TryGet(address, TreePath.Empty, persistedRoot.Hash, out _), Is.True, "persisted node warmed");
                 Assert.That(retired.WarmedNodes.TryGet(address, TreePath.Empty, committedRoot.Hash, out _), Is.False, "committed node warmed");
-                Assert.That(committedLoadable, Is.True, "committed node loadable by a bulk set");
+                Assert.That(committedLoadable, Is.False, "the source must skip committed snapshot nodes");
+                Assert.That(_log.GetRecord(committedRoot.Pointer).Rlp.ToArray(), Is.EqualTo(committedRlp), "committed node remains in the retained log");
             }
         }
         finally
@@ -473,12 +473,14 @@ public class SnapshotBundleWarmerTests
     }
 
     /// <summary>Publishes the node <paramref name="rlp"/> into <paramref name="bundle"/> as a bulk set writing it would.</summary>
-    private void PublishNode(SnapshotBundle bundle, Hash256? address, in TreePath path, byte[] rlp)
+    private ulong PublishNode(SnapshotBundle bundle, Hash256? address, in TreePath path, byte[] rlp)
     {
         using WrittenNodes written = new();
-        written.Add(path, _log.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp));
+        ulong pointer = _log.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp);
+        written.Add(path, pointer);
         if (address is null) bundle.PublishLoggedStateNodes(written);
         else bundle.PublishLoggedStorageNodes(bundle.GetStorageNodeDestination(address), written);
+        return pointer;
     }
 
     /// <summary>

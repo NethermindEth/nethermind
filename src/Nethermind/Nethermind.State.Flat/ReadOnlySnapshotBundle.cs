@@ -45,9 +45,6 @@ public sealed class ReadOnlySnapshotBundle(
     private readonly int _persistedSnapshotCount = persistedSnapshots.Count;
     public int SnapshotCount => _persistedSnapshotCount + snapshots.Count;
 
-    /// <summary>The in-memory snapshots, oldest first.</summary>
-    internal SnapshotPooledList InMemorySnapshots => snapshots;
-
     /// <summary>
     /// True when this bundle is backed by the finalized history index (trie-less): it serves account/storage values
     /// only and has no trie nodes, so post-block state-root recomputation must not traverse it.
