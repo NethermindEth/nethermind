@@ -18,10 +18,50 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
 
+[NonParallelizable]
 public class GethLikeNativeTracerFactoryTests
 {
     private readonly Block _block = Build.A.Block.TestObject;
     private readonly Transaction _tx = Build.A.Transaction.TestObject;
+    private readonly string _disposeTrackingTracerName = $"{nameof(GethLikeNativeTracerFactoryTests)}-{Guid.NewGuid():N}";
+    private DisposeTrackingTracer _createdTracer = null!;
+
+    [OneTimeSetUp]
+    public void RegisterDisposeTrackingTracer() => GethLikeNativeTracerFactory.RegisterTracer(
+        _disposeTrackingTracerName, (options, _, _, _) => _createdTracer = new DisposeTrackingTracer(options));
+
+    [TestCase("bad", true)]
+    [TestCase("5s", false)]
+    public void CreateTracer_DisposesOnlyWhenTimeoutValidationFails(string timeout, bool invalid)
+    {
+        GethTraceOptions options = new() { Tracer = _disposeTrackingTracerName, TimeoutText = timeout };
+        _createdTracer = null!;
+
+        if (invalid)
+        {
+            Assert.Throws<TraceDurationFormatException>(() => GethLikeNativeTracerFactory.CreateTracer(
+                options, _block, _tx, null!, Substitute.For<IReleaseSpec>()));
+            Assert.That(_createdTracer, Is.Not.Null, "tracer construction must precede timeout validation");
+        }
+        else
+        {
+            using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+                options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer, Is.SameAs(_createdTracer));
+                Assert.That(_createdTracer.DisposeCalls, Is.Zero);
+            }
+        }
+
+        Assert.That(_createdTracer.DisposeCalls, Is.EqualTo(1));
+    }
+
+    private sealed class DisposeTrackingTracer(GethTraceOptions options) : GethLikeNativeTxTracer(options)
+    {
+        public int DisposeCalls { get; private set; }
+        public override void Dispose() => DisposeCalls++;
+    }
 
     [TestCase(Native4ByteTracer.FourByteTracer, typeof(Native4ByteTracer))]
     [TestCase(NativeNoopTracer.NoopTracer, typeof(NativeNoopTracer))]

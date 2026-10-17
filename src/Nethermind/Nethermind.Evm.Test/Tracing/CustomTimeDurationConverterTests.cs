@@ -94,6 +94,16 @@ public class CustomTimeDurationConverterTests
         Assert.That(act, Throws.TypeOf<JsonException>());
     }
 
+    [Test]
+    public void read_oversized_multibyte_duration_reports_byte_limit()
+    {
+        string json = $"\"{new string('é', 33)}\"";
+
+        JsonException exception = Assert.Throws<JsonException>(() => Deserialize(json))!;
+
+        Assert.That(exception.Message, Does.Contain("64 bytes"));
+    }
+
     private static IEnumerable<TestCaseData> WriteCases() =>
     [
         new TestCaseData((TimeSpan?)TimeSpan.Zero, "\"0s\"").SetName("zero"),

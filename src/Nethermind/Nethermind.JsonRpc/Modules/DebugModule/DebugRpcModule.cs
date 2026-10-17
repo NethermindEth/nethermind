@@ -480,6 +480,20 @@ public class DebugRpcModule(
             }
 
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            bool hasTransactionToTrace = effective.TxHash is { } txHash
+                ? resolvedBlock.GetTransactionIndex(txHash.ValueHash256) >= 0
+                : resolvedBlock.Transactions.Length != 0;
+            if (hasTransactionToTrace)
+            {
+                try
+                {
+                    effective.ResolveTimeout();
+                }
+                catch (TraceDurationFormatException exception)
+                {
+                    return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
+                }
+            }
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
@@ -502,6 +516,10 @@ public class DebugRpcModule(
         catch (ArgumentNullException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.InvalidInput);
+        }
+        catch (TraceDurationFormatException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
     }
 

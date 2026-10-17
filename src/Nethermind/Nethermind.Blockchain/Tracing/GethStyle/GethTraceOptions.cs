@@ -42,8 +42,46 @@ public record GethTraceOptions
     [JsonConverter(typeof(LimitConverter))]
     public long Limit { get; init; }
 
+    private TimeSpan? _timeout;
+    private string? _timeoutText;
+    private string? _timeoutError;
+
+    internal string? TimeoutText
+    {
+        get => _timeoutText;
+        init
+        {
+            _timeoutText = value;
+            _timeout = null;
+            _timeoutError = null;
+            if (value is null) return;
+
+            try
+            {
+                _timeout = CustomTimeDurationConverter.Parse(value);
+            }
+            catch (TraceDurationFormatException exception)
+            {
+                _timeoutError = exception.Message;
+            }
+        }
+    }
+
     [JsonConverter(typeof(CustomTimeDurationConverter))]
-    public TimeSpan? Timeout { get; init; }
+    public TimeSpan? Timeout
+    {
+        get => _timeout;
+        init
+        {
+            _timeout = value;
+            _timeoutText = null;
+            _timeoutError = null;
+        }
+    }
+
+    internal TimeSpan? ResolveTimeout() => _timeoutError is null
+        ? _timeout
+        : throw new TraceDurationFormatException(_timeoutError);
 
     public string Tracer { get; init; }
 

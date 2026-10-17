@@ -49,6 +49,129 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [TestCase(false, "\"bad\"", "lookup")]
+    [TestCase(false, "\"5s\"", "lookup")]
+    [TestCase(true, "\"bad\"", "constructor")]
+    [TestCase(true, "\"5s\"", "constructor")]
+    [TestCase(false, "7", "type")]
+    public async Task Debug_traceBlockByNumber_orders_lookup_and_constructor_before_semantic_timeout(
+        bool retainedBlock, string timeoutJson, string expected)
+    {
+        using Context context = await Context.Create();
+        if (retainedBlock)
+            await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+
+        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number + (retainedBlock ? 0UL : 1UL);
+        JsonElement timeout = JsonSerializer.Deserialize<JsonElement>(timeoutJson);
+        string tracer = retainedBlock ? "unknownTracer" : NativeNoopTracer.NoopTracer;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", blockNumber,
+            new Dictionary<string, object> { ["tracer"] = tracer, ["timeout"] = timeout });
+        JToken json = JToken.Parse(response);
+
+        if (expected == "type")
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            return;
+        }
+
+        if (expected == "lookup")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("header not found"), response);
+            }
+            return;
+        }
+
+        Assert.That(json["error"], Is.Null, response);
+        JArray traces = (JArray)json["result"]!;
+        Assert.That(traces, Has.Count.EqualTo(context.Blockchain.BlockTree.Head!.Transactions.Length));
+        for (int i = 0; i < traces.Count; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(context.Blockchain.BlockTree.Head.Transactions[i].Hash!.ToString()));
+                Assert.That((string?)traces[i]["error"], Does.Contain("unknownTracer"));
+                Assert.That(traces[i]["result"], Is.Null);
+            }
+        }
+    }
+
+    [TestCase("valid")]
+    [TestCase("malformed")]
+    public async Task Debug_traceBlockByNumber_rejects_oversized_timeout_tokens_before_lookup(string kind)
+    {
+        using Context context = await Context.Create();
+        string timeout = kind == "valid" ? new string('0', 64) + "1s" : new string('x', 65);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            context.Blockchain.BlockTree.Head!.Number + 1, new { tracer = NativeNoopTracer.NoopTracer, timeout });
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [TestCase("native", false)]
+    [TestCase("opcode", false)]
+    [TestCase("opcode", true)]
+    [TestCase("javascript", false)]
+    [TestCase("empty-native", false)]
+    [TestCase("empty-opcode", true)]
+    [TestCase("empty-javascript", false)]
+    [TestCase("unmatched-opcode", false)]
+    [TestCase("unmatched-opcode", true)]
+    [TestCase("javascript-valid", false)]
+    public async Task Debug_traceBlockByNumber_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode)
+    {
+        using Context context = await Context.Create();
+        bool empty = scenario.StartsWith("empty", StringComparison.Ordinal);
+        bool unmatched = scenario.StartsWith("unmatched", StringComparison.Ordinal);
+        Block block = empty
+            ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        bool valid = scenario == "javascript-valid";
+        Dictionary<string, object> options = new()
+        {
+            ["timeout"] = valid ? "5s" : "bad",
+            ["streamMode"] = streamMode
+        };
+        if (unmatched) options["txHash"] = TestItem.KeccakD;
+        if (scenario.Contains("native", StringComparison.Ordinal)) options["tracer"] = NativeNoopTracer.NoopTracer;
+        if (scenario.Contains("javascript", StringComparison.Ordinal))
+            options["tracer"] = "{fault:function(){},result:function(){return {};}}";
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+        JToken json = JToken.Parse(response);
+        if (empty || unmatched)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((json["result"] as JArray)?.Count, Is.Zero, response);
+            }
+        }
+        else if (scenario == "javascript")
+        {
+            Assert.That(json["error"], Is.Null, response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
+            foreach (JToken trace in traces)
+                Assert.That((string?)trace["error"], Does.Contain("Cannot parse 'bad' as a duration"), response);
+        }
+        else if (valid)
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(block.Transactions.Length), response);
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot parse 'bad' as a duration"), response);
+            }
+        }
+    }
+
     [TestCase("result", 0)]
     [TestCase("result", 1)]
     [TestCase("result", 2)]
