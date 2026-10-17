@@ -3,7 +3,9 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Decoders;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -32,6 +34,12 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.BlobGasUsed = block.BlobGasUsed;
         executionPayload.ExcessBlobGas = block.ExcessBlobGas;
         executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
+        if (block.Header.RecursiveStark is { } recursiveStark)
+        {
+            executionPayload.RecursiveStarkProof = block.StarkProof ?? throw new System.InvalidOperationException("Missing block proof body");
+            executionPayload.RecursiveStarkBlockDepsHash = recursiveStark.BlockDepsHash.Bytes.ToArray();
+        }
+
         return executionPayload;
     }
 
@@ -50,7 +58,39 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
-        block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
+        if (InclusionLists is not null)
+        {
+            // ValidateParams has already checked each list's shape. Each list is decoded on its own, so its commitment stays
+            // with exactly its transactions.
+            CommitteeInclusionList[] lists = InclusionListV1.Decode(InclusionLists);
+            block.InclusionLists = lists;
+            block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);
+        }
+        else
+        {
+            block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
+        }
+        if (RecursiveStarkProof is null && RecursiveStarkBlockDepsHash is not null)
+        {
+            return Result<Block>.Fail($"Missing {nameof(RecursiveStarkProof)}");
+        }
+
+        if (RecursiveStarkProof is not null)
+        {
+            if (RecursiveStarkProof.Length > Eip8288Constants.MaxAggregateProofBytes)
+            {
+                return Result<Block>.Fail($"{nameof(RecursiveStarkProof)} exceeds the proof size limit");
+            }
+
+            if (RecursiveStarkBlockDepsHash is not { Length: Hash256.Size })
+            {
+                return Result<Block>.Fail($"Invalid {nameof(RecursiveStarkBlockDepsHash)}: expected {Hash256.Size} bytes, got {RecursiveStarkBlockDepsHash?.Length.ToString() ?? "none"}");
+            }
+
+            block.StarkProof = RecursiveStarkProof;
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(RecursiveStarkProof), new Hash256(RecursiveStarkBlockDepsHash));
+        }
+
         return baseResult;
     }
 
@@ -74,4 +114,14 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
     public sealed override ulong? ExcessBlobGas { get; set => field = Bind(value, PayloadFields.ExcessBlobGas); }
+
+    /// <summary>
+    /// EIP-8288 <c>recursive_stark</c> proof and its <c>block_deps_hash</c>, present on every block once
+    /// the fork is active, so payloads for forks without EIP-8288 are byte-identical.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? RecursiveStarkProof { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? RecursiveStarkBlockDepsHash { get; set; }
 }

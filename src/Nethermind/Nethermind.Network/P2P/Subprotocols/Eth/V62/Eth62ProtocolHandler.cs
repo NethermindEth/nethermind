@@ -438,6 +438,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         /// <remarks>The caller must not access the transaction after submission.</remarks>
         protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
+            // EIP-8437: a dependency-bearing transaction is admitted only with a fully validated covering wrapper. It is never
+            // broadcast or announced, and eth/73 routes envelope-recovery responses to the wrapper transport before this point.
+            if (Eip8288Dependencies.IsDependencyBearing(tx))
+            {
+                if (isTrace) Logger.Trace($"{Node:c} sent dependency-bearing {tx.Hash} outside a proof wrapper; ignored");
+                ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
+                return;
+            }
+
             tx.Timestamp = _timestamper.UnixTime.Seconds;
             if (tx.Hash is not null)
             {

@@ -207,6 +207,9 @@ public class BaseMergePluginModule : Module
                 .Bind<IInclusionListTxSource, InclusionListTxSource>()
                 .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
                 .AddSingleton<IHandler<Hash256?, InclusionListBytes>, GetInclusionListTransactionsHandler>()
+                .AddSingleton<IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>, VerifyInclusionListProofHandler>()
+                .AddSingleton<IHandler<GetInclusionListProofRequest, InclusionListProofV1?>, GetInclusionListProofHandler>()
+                .AddSingleton<IHandler<SubmitInclusionListProofRequest, InclusionListProofStatusV1>, SubmitInclusionListProofHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<IGCStrategy>(ctx => ctx.Resolve<IInitConfig>().DisableGcOnNewPayload

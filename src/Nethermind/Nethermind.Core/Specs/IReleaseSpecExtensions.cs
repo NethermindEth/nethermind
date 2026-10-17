@@ -66,6 +66,10 @@ public static partial class IReleaseSpecExtensions
 
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
         public bool InclusionListsEnabled => spec.IsEip7805Enabled;
+        /// <summary>Whether the Engine API carries each counted inclusion list with its EIP-8288 dependency proof.</summary>
+        /// <remarks>EIP-8288 FOCIL inclusion enforcement is per list, so its activating fork defines new payload validation and
+        /// building versions; earlier versions keep their flattened encoding.</remarks>
+        public bool PerListInclusionListsEnabled => spec.IsEip7805Enabled && spec.IsEip8288Enabled;
 
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;

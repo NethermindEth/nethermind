@@ -10,6 +10,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using System.Threading;
 using Nethermind.Merge.Plugin.Test;
 
@@ -54,7 +55,19 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         Assert.That(txs.Count, Is.EqualTo(20));
 
         // late block arrives, then next block should contain loaded transactions
-        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 2, lastPayload, true, null, 5);
+        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
+        lastPayload = payloads[^1];
+        parent = chain.BlockTree.Head!.Header;
+        await chain.WaitForCommitted(parent.Hash!);
+        Task improved = chain.WaitForImprovedBlock(parent.Hash, minTransactions: 20);
+        chain.PayloadPreparationService.StartPreparingPayload(parent, new PayloadAttributes
+        {
+            Timestamp = lastPayload.Timestamp + 5,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero
+        });
+        await improved;
+        payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, random: TestItem.KeccakA, slotLength: 5);
         lastPayload = payloads[^1];
         Block? b = lastPayload.TryGetBlock().Data;
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));

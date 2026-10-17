@@ -31,6 +31,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -121,7 +122,7 @@ public class Eip8253TransitionTests
 
         using IWitnessGeneratingBlockProcessingEnvScope witnessScope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
         using Witness witness = witnessScope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, fork);
-        StatelessBlockProcessingEnv stateless = new(witness, chain.SpecProvider, Always.Valid, LimboLogs.Instance);
+        StatelessBlockProcessingEnv stateless = new(witness, chain.SpecProvider, Always.Valid, LimboLogs.Instance, Substitute.For<ILeanProofVerifier>());
         using IDisposable stateScope = stateless.WorldState.BeginScope(parent);
         (Block processed, _) = stateless.BlockProcessor.ProcessOne(
             fork.WithReplacedHeader(fork.Header.Clone()), ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, chain.SpecProvider.GetSpec(fork.Header), CancellationToken.None);

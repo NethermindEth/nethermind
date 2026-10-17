@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -21,7 +22,6 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test;
-using Nethermind.Crypto;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -42,7 +42,8 @@ public class BlockValidatorTests
             headerValidator,
             Substitute.For<IUnclesValidator>(),
             Substitute.For<ISpecProvider>(),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<ILeanProofVerifier>());
     }
 
 
@@ -61,7 +62,8 @@ public class BlockValidatorTests
             new HeaderValidator(blockTree, Always.Valid, specProvider, LimboLogs.Instance),
             Always.Valid,
             specProvider,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         Block parent = Build.A.Block.WithDifficulty(1).TestObject;
         Block block = Build.A.Block.WithParent(parent).WithDifficulty(2).TestObject;
@@ -85,7 +87,7 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_WithdrawalsMissingAfterShanghai_IsRejected([Values] bool validateHashes)
     {
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Shanghai.Instance);
-        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).WithWithdrawals(null).TestObject;
 
@@ -104,6 +106,256 @@ public class BlockValidatorTests
         Assert.That(result, Is.True);
     }
 
+    [Test]
+    public void Eip8288_accepts_block_with_valid_recursive_stark()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        block.StarkProof = [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+
+        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(result, Is.True, error);
+    }
+
+    // EIP-8288 Test Case 11: with sufficient gas and a valid proof, no dependency-count or weighted budget limits a block.
+    [TestCase(4097, 0)]
+    [TestCase(257, 257)]
+    [TestCase(3857, 16)]
+    public void Eip8288_has_no_block_dependency_quota(int dependencies, int leanStark)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize)
+            .WithTransactions(DependencyTx(dependencies, leanStark)).TestObject;
+        block.StarkProof = [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        FixedLeanProofVerifier verifier = new(true);
+
+        bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(dependencies));
+            Assert.That(result, Is.True, error);
+            Assert.That(verifier.RecursiveCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Eip8288_rejects_block_without_recursive_stark()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+
+        CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(error, Is.EqualTo(BlockErrorMessages.MissingRecursiveStark));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Eip8288_rejects_missing_or_mismatched_body_before_verification(bool missing)
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        block.Header.RecursiveStark = new(Keccak.Compute(new byte[] { 1 }), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.StarkProof = missing ? null : [2];
+        FixedLeanProofVerifier verifier = new(true);
+        Assert.That(CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark));
+        Assert.That(verifier.RecursiveCalls, Is.Zero);
+    }
+
+    [Test]
+    public void Eip8288_rejects_block_with_mismatched_deps_hash()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        block.StarkProof = [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("wrong"));
+
+        CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(error, Does.StartWith("InvalidBlockDepsHash"));
+    }
+
+    [Test]
+    public void Eip8288_rejects_block_when_recursive_stark_fails_verification()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        block.StarkProof = [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+
+        CreateEip8288Validator(new FixedLeanProofVerifier(false)).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidRecursiveStark));
+    }
+
+    [Test]
+    public void Eip8288_full_block_with_dependency_frame_round_trips_through_rlp_and_validates()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+
+        byte[] depData = new byte[Eip8288Constants.DependencyTripleLength];
+        depData[31] = Eip8288Constants.LeanStarkScheme;
+        Transaction depTx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, Eip8288Constants.LeanStarkVerificationGas, UInt256.Zero, depData)],
+            FrameSignatures = [],
+        };
+        depTx.Hash = depTx.CalculateHash();
+
+        Block block = Build.A.Block.WithParent(parent).WithTransactions(depTx).TestObject;
+        block.StarkProof = [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.Header.Hash = block.Header.CalculateHash();
+
+        Block decoded = Rlp.Decode<Block>(Rlp.Encode(block).Bytes)!;
+
+        Assert.That(decoded.Header.RecursiveStark, Is.Not.Null);
+        Assert.That(decoded.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(block.Header.RecursiveStark!.BlockDepsHash));
+        Assert.That(Eip8288Dependencies.ForBlock(decoded, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
+        Assert.That(decoded.Header.CalculateHash(), Is.EqualTo(block.Header.Hash));
+
+        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(decoded, parent, out string? error);
+
+        Assert.That(result, Is.True, error);
+    }
+
+    [Test]
+    public void Eip8288_rejects_invalid_proof_size([Values(0, Eip8288Constants.MaxAggregateProofBytes + 1)] int length)
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        block.StarkProof = new byte[length];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        FixedLeanProofVerifier verifier = new(true);
+
+        bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(verifier.RecursiveCalls, Is.Zero, "rejected before proof decoding or verification");
+        }
+    }
+
+    // EIPs#12474: a proof at MAX_AGGREGATE_PROOF_BYTES passes the length check but still requires full verification.
+    [Test]
+    public void Eip8288_proof_at_the_aggregate_bound_is_still_verified([Values] bool verdict)
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        block.StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        FixedLeanProofVerifier verifier = new(verdict);
+
+        bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(verdict));
+            Assert.That(verifier.RecursiveCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Eip8288_empty_dependencies_require_empty_proof([Values] bool emptyProof)
+    {
+        (Block block, BlockHeader parent) = Eip8288Block(withDependency: false);
+        block.StarkProof = emptyProof ? [] : [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+
+        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(emptyProof), error);
+            Assert.That(error, Is.EqualTo(emptyProof ? null : BlockErrorMessages.InvalidRecursiveStark));
+        }
+    }
+
+    [Test]
+    public void Eip8288_rejects_recursive_stark_before_activation()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        block.StarkProof = [1];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.OfAnEmptyString);
+
+        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true), enabled: false)
+            .ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.RecursiveStarkNotEnabled));
+        }
+    }
+
+    private static (Block Block, BlockHeader Parent) Eip8288Block(bool withDependency = true)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockBuilder builder = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize);
+        if (withDependency) builder = builder.WithTransactions(DependencyTx());
+        return (builder.TestObject, parent);
+    }
+
+    private static Transaction DependencyTx(int dependencies, int leanStark)
+    {
+        FrameDependency[] all = new FrameDependency[dependencies];
+        for (int i = 0; i < dependencies; i++)
+            all[i] = new(i < leanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
+        Transaction depTx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = all.Chunk(Eip8288Constants.MaxDependenciesPerFrame)
+                .Select(static chunk => new TxFrame(FrameMode.DepVerify, 0, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(chunk))).ToArray(),
+            FrameSignatures = [],
+        };
+        depTx.Hash = depTx.CalculateHash();
+        return depTx;
+    }
+
+    private static Transaction DependencyTx()
+    {
+        byte[] depData = new byte[Eip8288Constants.DependencyTripleLength];
+        depData[31] = Eip8288Constants.LeanSphincsScheme;
+        Transaction depTx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, depData)],
+            FrameSignatures = [],
+        };
+        depTx.Hash = depTx.CalculateHash();
+        return depTx;
+    }
+
+    private static BlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8288Enabled.Returns(enabled);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        return new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, verifier);
+    }
+
+    private sealed class FixedLeanProofVerifier(bool result) : ILeanProofVerifier
+    {
+        public int RecursiveCalls { get; private set; }
+
+        public void EnsureAvailable() { }
+
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+        {
+            RecursiveCalls++;
+            return result;
+        }
+
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_more_uncles_than_allowed_returns_false()
     {
@@ -114,7 +366,7 @@ public class BlockValidatorTests
         };
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, releaseSpec));
 
-        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithParent(parent).TestObject, parent, out _);
         Assert.That(noiseRemoved, Is.True);
@@ -129,7 +381,7 @@ public class BlockValidatorTests
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = new TestSpecProvider(Frontier.Instance);
 
-        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Invalid, specProvider, LimboLogs.Instance);
+        BlockValidator blockValidator = new(txValidator, Always.Valid, Always.Invalid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block
@@ -163,6 +415,37 @@ public class BlockValidatorTests
         corrupt?.Invoke(block.Header);
 
         return _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body);
+    }
+
+    [TestCase(false, null, true)]
+    [TestCase(false, new byte[0], false)]
+    [TestCase(true, null, false)]
+    [TestCase(true, new byte[0], false)]
+    [TestCase(true, new byte[] { 2 }, false)]
+    [TestCase(true, new byte[] { 1 }, true)]
+    public void ValidateBodyAgainstHeader_binds_proof_presence_and_hash(bool commitmentPresent, byte[]? proof, bool expected)
+    {
+        Block block = Build.A.Block.TestObject;
+        block.Header.RecursiveStark = commitmentPresent ? new(Keccak.Compute(new byte[] { 1 }), Keccak.OfAnEmptyString) : null;
+        block.StarkProof = proof;
+
+        bool valid = _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(expected));
+            Assert.That(error, expected ? Is.Null : Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void ValidateBodyAgainstHeader_accepts_committed_empty_proof()
+    {
+        Block block = Build.A.Block.TestObject;
+        block.Header.RecursiveStark = new(Keccak.OfAnEmptyString, Keccak.OfAnEmptyString);
+        block.StarkProof = [];
+
+        Assert.That(_blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error), Is.True, error);
     }
 
     [TestCase(false, ExpectedResult = true, TestName = "ValidateProcessedBlock_HashesAreTheSame_ReturnsTrue")]
@@ -220,7 +503,7 @@ public class BlockValidatorTests
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        return new BlockValidator(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        return new BlockValidator(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
     }
 
     private static IEnumerable<TestCaseData> BadSuggestedBlocks()
@@ -308,7 +591,7 @@ public class BlockValidatorTests
     public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, BlockHeader parent, ISpecProvider specProvider, string expectedError)
     {
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance, Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
 
         sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
@@ -638,7 +921,7 @@ public class BlockValidatorTests
 
     private static BlockValidator AmsterdamSut(ITxValidator? tx = null) =>
         new(tx ?? new TxValidator(TestBlockchainIds.ChainId), Always.Valid, Always.Valid,
-            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance, Substitute.For<ILeanProofVerifier>());
 
     private static void AssertValidation(bool expected, bool actual, string? error, string failPrefix)
     {

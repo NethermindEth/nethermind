@@ -1,0 +1,177 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
+using NUnit.Framework;
+
+namespace Nethermind.Core.Test;
+
+public class LeanProofStoreTests
+{
+    [Test]
+    public void One_sender_cannot_exhaust_witness_record_capacity()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Address sender = Sender(1);
+        int admitted = 0;
+        byte[] witness = new byte[6208];
+        for (int batch = 0; batch < 64; batch++)
+        {
+            FrameDependency[] dependencies = Enumerable.Range(batch * 16, 16).Select(Dependency).ToArray();
+            store.AddVerified(dependencies, dependencies.Select(_ => witness).ToArray(), null);
+            if (store.PinPending(Transaction(dependencies, sender, batch))) admitted++;
+        }
+        Assert.That(admitted, Is.EqualTo(LeanProofStore.MaxSenderPinnedRecords / 16));
+        FrameDependency honest = Dependency(2000);
+        store.AddVerified([honest], [witness], null);
+        Assert.That(store.PinPending(Transaction([honest], Sender(2), 0)), Is.True);
+    }
+
+    // A direct witness that took over a pinned transaction's recursive coverage can be evicted; the pinned recursive record
+    // then covers the dependency again.
+    [Test]
+    public void Evicted_direct_witness_falls_back_to_pinned_recursive_coverage()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency dependency = Dependency(1);
+        store.AddVerified([dependency], null, [1, 2, 3]);
+        Transaction pending = Transaction([dependency], Sender(1), 0);
+        Assert.That(store.PinPending(pending), Is.True);
+        store.AddVerified([dependency], [[4]], null);
+        Assert.That(store.TryGetInput([dependency], out AggregationInput upgraded) && upgraded.Deps.Count == 1, Is.True,
+            "the direct witness covers the dependency");
+        byte[] witness = new byte[64 * 1024];
+        for (int i = 0; i < 1100; i++) store.AddVerified([Dependency(10_000 + i)], [witness], null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Covers(pending), Is.True);
+            Assert.That(store.TryGetInput([dependency], out AggregationInput input), Is.True);
+            Assert.That(input.RecursiveProofs, Has.Count.EqualTo(1), "the evicted witness gave way to the pinned recursive proof");
+        }
+    }
+
+    [Test]
+    public void Record_slots_accommodate_the_default_pool_transaction_capacity()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        byte[] witness = new byte[6208];
+        for (int index = 0; index < 2048; index++)
+        {
+            FrameDependency dependency = Dependency(index);
+            store.AddVerified([dependency], [witness], null);
+            Assert.That(store.PinPending(Transaction([dependency], Sender(index + 1), 0)), Is.True, $"transaction {index}");
+        }
+    }
+
+    [Test]
+    public void Shared_records_charge_once_and_release_only_after_the_last_transaction()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Address sender = Sender(1);
+        FrameDependency[] dependencies = Enumerable.Range(0, LeanProofStore.MaxSenderPinnedRecords).Select(Dependency).ToArray();
+        store.AddVerified(dependencies, dependencies.Select(_ => new byte[] { 1 }).ToArray(), null);
+        Transaction first = Transaction(dependencies, sender, 0), second = Transaction(dependencies, sender, 1);
+        Assert.That(store.PinPending(first), Is.True);
+        Assert.That(store.PinPending(second), Is.True);
+        FrameDependency extra = Dependency(2000);
+        store.AddVerified([extra], [[1]], null);
+        Transaction next = Transaction([extra], sender, 2);
+        Assert.That(store.PinPending(next), Is.False);
+        store.UnpinPending(first.Hash!.ValueHash256);
+        Assert.That(store.PinPending(next), Is.False);
+        store.UnpinPending(second.Hash!.ValueHash256);
+        Assert.That(store.PinPending(next), Is.True);
+    }
+
+    [Test]
+    public void Rejected_cache_removal_preserves_newer_entries_and_required_witnesses()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency dependency = Dependency(1), unrelated = Dependency(2);
+        store.AddVerified([dependency], [[1]], null);
+        store.AddCachedRecursive([dependency], [2]);
+        store.AddCachedRecursive([unrelated], [3]);
+        Assert.That(store.TryGetRecursiveProof([dependency], out byte[]? rejected), Is.True);
+        Assert.That(store.RemoveCachedRecursive([dependency], rejected!), Is.True);
+        store.AddCachedRecursive([dependency], [4]);
+
+        Assert.That(store.RemoveCachedRecursive([dependency], rejected!), Is.False);
+        Assert.That(store.TryGetRecursiveProof([dependency], out byte[]? replacement), Is.True);
+        byte[] expectedReplacement = [4];
+        Assert.That(replacement, Is.EqualTo(expectedReplacement));
+        Assert.That(store.TryGetRecursiveProof([unrelated], out byte[]? other), Is.True);
+        byte[] expectedOther = [3];
+        Assert.That(other, Is.EqualTo(expectedOther));
+        Assert.That(store.TryGetInput([dependency], out AggregationInput input), Is.True);
+        Assert.That(input.Deps, Has.Count.EqualTo(1));
+        byte[] expectedWitness = [1];
+        Assert.That(input.Witnesses[0].Span.ToArray(), Is.EqualTo(expectedWitness));
+    }
+
+    [Test]
+    public void Direct_witness_replaces_pinned_recursive_coverage_and_is_never_replaced_by_it()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency shared = Dependency(1);
+        byte[] proof = [7];
+        Assert.That(store.TryBeginAdmission([shared], null, proof, out IDisposable? recursiveAdmission), Is.True);
+        using (recursiveAdmission) store.CommitAdmission([shared]);
+        Transaction pending = Transaction([shared], Sender(1), 0);
+        Assert.That(store.PinPending(pending), Is.True);
+        Assert.That(store.TryGetInput([shared], out AggregationInput recursive), Is.True);
+        Assert.That(recursive.RecursiveProofs, Has.Count.EqualTo(1));
+
+        Assert.That(store.TryBeginAdmission([shared], [[1]], null, out IDisposable? directAdmission), Is.True);
+        using (directAdmission) store.CommitAdmission([shared]);
+        Assert.That(store.TryBeginAdmission([shared], null, proof, out IDisposable? laterRecursive), Is.True);
+        using (laterRecursive) store.CommitAdmission([shared]);
+
+        Assert.That(store.TryGetInput([shared], out AggregationInput direct), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(direct.RecursiveProofs, Is.Empty, "a direct witness folds without a recursive merge");
+            Assert.That(direct.Deps, Is.EqualTo(new[] { shared }));
+            Assert.That(store.Covers(pending), Is.True);
+        }
+    }
+
+    [Test]
+    public void Proven_overlaps_rank_shared_dependencies_and_then_fewer_discards()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency a = Dependency(1), b = Dependency(2), c = Dependency(3), d = Dependency(4), x = Dependency(5), y = Dependency(6);
+        FrameDependency[] smaller = [.. Eip8288Dependencies.Canonicalize([a, b, x])];
+        FrameDependency[] larger = [.. Eip8288Dependencies.Canonicalize([a, b, x, y])];
+        FrameDependency[] best = [.. Eip8288Dependencies.Canonicalize([a, b, c, y])];
+        store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([a, x]), [1]);
+        store.AddCachedRecursive(larger, [2]);
+        store.AddCachedRecursive(smaller, [3]);
+        store.AddCachedRecursive(best, [4]);
+
+        List<RecursiveProofInput> overlaps = store.ProvenOverlaps(new HashSet<FrameDependency> { a, b, c, d }, 2);
+
+        Assert.That(overlaps.Select(static parent => parent.InnerDeps), Is.EqualTo(new[] { best, smaller }),
+            "a set sharing one dependency is never worth a merge, and among equal overlaps the one with fewer discards wins");
+    }
+
+    private static FrameDependency Dependency(int index) => new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(index.ToString()), default);
+
+    private static Address Sender(int index)
+    {
+        byte[] bytes = new byte[20];
+        BitConverter.TryWriteBytes(bytes.AsSpan(), index);
+        return new Address(bytes);
+    }
+
+    private static Transaction Transaction(FrameDependency[] dependencies, Address sender, int nonce) => new()
+    {
+        Type = TxType.FrameTx,
+        SenderAddress = sender,
+        Hash = new Hash256(ValueKeccak.Compute($"{sender}:{nonce}")),
+        Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, 0, Eip8288Dependencies.Serialize(dependencies))]
+    };
+}

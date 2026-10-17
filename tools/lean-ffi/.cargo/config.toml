@@ -1,0 +1,8 @@
+# The backend is built on and for its host (BuildLeanFfi rejects other RIDs), so it targets the
+# host CPU: leanVM's GF(2^64) arithmetic needs carry-less multiply (x86_64 pclmulqdq, aarch64
+# aes/PMULL) and is about 68x slower without it. An environment RUSTFLAGS or
+# CARGO_ENCODED_RUSTFLAGS replaces these flags rather than adding to them; src/lib.rs then fails
+# the build if carry-less multiply is no longer enabled. Cargo reads this file only when invoked
+# from this directory or below.
+[target.'cfg(all())']
+rustflags = ["-C", "target-cpu=native"]

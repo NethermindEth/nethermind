@@ -74,11 +74,11 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
 
             if (item.SourceTransactions is { } sourceTransactions)
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, sourceTransactions, item.Withdrawals);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, sourceTransactions, item.Withdrawals, recursiveStarkProof: item.RecursiveStarkProof);
                 return;
             }
 
-            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, item.EncodedTransactions, item.Withdrawals);
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, item.EncodedTransactions, item.Withdrawals, recursiveStarkProof: item.RecursiveStarkProof);
         }
     }
 
@@ -104,8 +104,8 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
 
         public ExecutionPayloadBodyV1Result ToResult()
         {
-            (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
-            ExecutionPayloadBodyV1Result result = new([], withdrawals);
+            (byte[][] transactions, Withdrawal[]? withdrawals, byte[]? proof) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
+            ExecutionPayloadBodyV1Result result = new([], withdrawals, proof);
             result.Transactions = transactions;
             return result;
         }
@@ -135,11 +135,12 @@ internal static class PayloadBodiesDirectResponseWriter
         byte[][] transactions,
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList = null,
-        bool includeBlockAccessList = false)
+        bool includeBlockAccessList = false,
+        byte[]? recursiveStarkProof = null)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
-        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList, recursiveStarkProof);
     }
 
     public static void WritePayloadBody(
@@ -147,11 +148,12 @@ internal static class PayloadBodiesDirectResponseWriter
         Transaction[] transactions,
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList = null,
-        bool includeBlockAccessList = false)
+        bool includeBlockAccessList = false,
+        byte[]? recursiveStarkProof = null)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
-        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList, recursiveStarkProof);
     }
 
     public static void WritePayloadBody(
@@ -171,6 +173,12 @@ internal static class PayloadBodiesDirectResponseWriter
         ctx.SkipItem(); // uncles
         writer.Write(",\"withdrawals\":"u8);
         WriteWithdrawalsFromBlockRlp(writer, ref ctx, blockEnd);
+        if (ctx.Position < blockEnd)
+        {
+            ReadOnlySpan<byte> proof = ctx.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.StarkProof)));
+            WriteRecursiveStarkProof(writer, proof);
+        }
+        ctx.Check(blockEnd);
 
         WriteBlockAccessList(writer, blockAccessList, includeBlockAccessList);
         writer.Write("}"u8);
@@ -180,12 +188,20 @@ internal static class PayloadBodiesDirectResponseWriter
         IBufferWriter<byte> writer,
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList,
-        bool includeBlockAccessList)
+        bool includeBlockAccessList,
+        byte[]? recursiveStarkProof)
     {
         writer.Write(",\"withdrawals\":"u8);
         WriteWithdrawals(writer, withdrawals);
+        if (recursiveStarkProof is not null) WriteRecursiveStarkProof(writer, recursiveStarkProof);
         WriteBlockAccessList(writer, blockAccessList, includeBlockAccessList);
         writer.Write("}"u8);
+    }
+
+    private static void WriteRecursiveStarkProof(IBufferWriter<byte> writer, ReadOnlySpan<byte> proof)
+    {
+        writer.Write(",\"recursiveStarkProof\":"u8);
+        HexWriter.WriteHexString(writer, proof, chunked: true);
     }
 
     /// <summary>V2 bodies always carry the key (literal <c>null</c> when absent); V1 bodies omit it.</summary>
@@ -248,15 +264,18 @@ internal static class PayloadBodiesDirectResponseWriter
         ArrayPool<byte>.Shared.Return(buffer);
     }
 
-    public static (byte[][] Transactions, Withdrawal[]? Withdrawals) DecodePayloadBody(byte[] blockRlp)
+    public static (byte[][] Transactions, Withdrawal[]? Withdrawals, byte[]? RecursiveStarkProof) DecodePayloadBody(byte[] blockRlp)
     {
         RlpReader ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
         ctx.SkipItem(); // header
         byte[][] transactions = GetTransactionsFromBlockRlp(ref ctx);
         ctx.SkipItem(); // uncles
-        Withdrawal[]? withdrawals = ctx.Position != blockEnd ? WithdrawalDecoder.DecodeNonNullArray(ref ctx) : null;
-        return (transactions, withdrawals);
+        Withdrawal[]? withdrawals = ctx.Position < blockEnd && ctx.PeekByte() >= Rlp.EmptyListByte ? WithdrawalDecoder.DecodeNonNullArray(ref ctx) : null;
+        byte[]? proof = ctx.Position < blockEnd
+            ? ctx.DecodeByteArray(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.StarkProof))) : null;
+        ctx.Check(blockEnd);
+        return (transactions, withdrawals, proof);
     }
 
     public static byte[][] GetTransactionsFromBlockRlp(byte[] blockRlp)
@@ -347,7 +366,7 @@ internal static class PayloadBodiesDirectResponseWriter
 
     private static void WriteWithdrawalsFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx, int blockEnd)
     {
-        if (ctx.Position == blockEnd)
+        if (ctx.Position == blockEnd || ctx.PeekByte() < Rlp.EmptyListByte)
         {
             writer.Write("null"u8);
             return;

@@ -16,4 +16,7 @@ public static class EthVersions
     public const byte Eth70 = 70;
     public const byte Eth71 = 71;
     public const byte Eth72 = 72;
+
+    /// <summary>EIP-8437 proof wrapper propagation; a provisional version that activates with EIP-8288.</summary>
+    public const byte Eth73 = 73;
 }

@@ -228,6 +228,7 @@ namespace Nethermind.AuRa.Test
                 new ExecutionRequestsProcessor(transactionProcessor),
                 balManager,
                 auRaValidator: null,
+                leanProofVerifier: Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>(),
                 txFilter,
                 contractRewriter: contractRewriter);
 

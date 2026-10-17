@@ -105,6 +105,9 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
             Eip7Transition = config.HomesteadBlock ?? 0,
 
+            Eip8288AggregatedVkTransitionTimestamp = config.Eip8288AggregatedVkTimestamp,
+            Eip8288AggregatedVk = config.Eip8288AggregatedVk,
+
             // MaxCodeSize (EIP-170) is standard on all networks since Spurious Dragon
             MaxCodeSize = 0x6000,
             MaxCodeSizeTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,

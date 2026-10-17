@@ -123,5 +123,26 @@ namespace Nethermind.Network
         [CounterMetric]
         [Description("Number of incoming transactions skipped before RLP decoding for exceeding the configured size limit.")]
         public static long OversizedTransactionsSkipped;
+
+        [CounterMetric]
+        [Description("EIP-8437 eth/73 proof wrapper transport events.")]
+        [KeyIsLabel("event")]
+        public static NonBlocking.ConcurrentDictionary<string, long> ProofWrapperEvents { get; } = new();
+
+        [GaugeMetric]
+        [Description("Number of eth/73 peers exchanging proof wrappers.")]
+        public static long ProofWrapperPeers { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of validated proof wrappers offered to peers.")]
+        public static long ProofWrapperStoredObjects { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of announced proof wrappers being fetched or validated.")]
+        public static long ProofWrapperFetches { get; set; }
+
+        [GaugeMetric]
+        [Description("Bytes charged to proof wrapper responses, received wrappers and recovered envelopes.")]
+        public static long ProofWrapperChargedBytes { get; set; }
     }
 }

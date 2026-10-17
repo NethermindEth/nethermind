@@ -29,6 +29,8 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using NSubstitute;
@@ -1187,6 +1189,20 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         return (int)BlockValidationTasksField!.FieldType
             .GetProperty("Count", BindingFlags.Instance | BindingFlags.Public)!
             .GetValue(BlockValidationTasksField.GetValue(handler)!)!;
+    }
+
+    [Test]
+    public async Task Payload_missing_committed_proof_is_invalid_without_network_recovery()
+    {
+        Block block = PostMergeBlock();
+        block.StarkProof = [1, 2, 3];
+        block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof), new Hash256(ValueKeccak.Compute("deps"u8)));
+        block.Header.Hash = block.Header.CalculateHash();
+        ExecutionPayload payload = ExecutionPayload.Create(block);
+        using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.Added, wasProcessed: false, validateSuggestedBlock: true,
+            specProvider: new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance));
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
     }
 
     private static object[] GetQueuedCopies(NewPayloadHandler handler, Hash256 blockHash)

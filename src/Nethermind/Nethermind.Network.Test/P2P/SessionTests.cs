@@ -666,6 +666,27 @@ public class SessionTests
         Assert.That(message.WasDisposed, Is.True);
     }
 
+    // eth/73 wrapper messages are bounded by this client's caps on their advertised uncompressed size, before decompression;
+    // PooledTransactions (0x0a), which carries recovered envelopes, keeps its eth limits.
+    [TestCase(73, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes, false)]
+    [TestCase(73, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes + 1, true)]
+    [TestCase(73, 0x17, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxRequestBytes + 1, true)]
+    [TestCase(73, 0x16, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxRequestBytes, false)]
+    [TestCase(73, 0x0a, 16 * 1024 * 1024, false)]
+    [TestCase(73, 0x15, 16 * 1024 * 1024, false)]
+    [TestCase(72, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes + 1, false)]
+    public void Eth73_wrapper_messages_are_bounded_before_decompression(int version, int code, int length, bool exceeds)
+    {
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        session.AddProtocolHandler(BuildHandler("p2p", 16));
+        IProtocolHandler eth = BuildHandler("eth", Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MessageIdSpaceSize);
+        eth.ProtocolVersion.Returns((byte)version);
+        session.AddProtocolHandler(eth);
+        Assert.That(((IMessageLimitSession)session).ExceedsMessageLimit(16 + code, length), Is.EqualTo(exceeds));
+    }
+
     [Test]
     public void Can_receive_messages()
     {

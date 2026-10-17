@@ -84,6 +84,15 @@ namespace Nethermind.Serialization.Rlp
             if (position != headerCheck) blockHeader.SlotNumber = rlp.DecodeULong(ref position);
 
             decoderContext.Position = position;
+            if (position != headerCheck)
+            {
+                int recursiveStarkCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+                Hash256 starkProofHash = decoderContext.DecodeKeccak() ?? throw new RlpException("Missing EIP-8288 proof hash.");
+                Hash256 blockDepsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
+                decoderContext.Check(recursiveStarkCheck);
+                blockHeader.RecursiveStark = new RecursiveStarkCommitment(starkProofHash, blockDepsHash);
+                position = decoderContext.Position;
+            }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
@@ -164,7 +173,7 @@ namespace Nethermind.Serialization.Rlp
                 EncodeSeal(ref writer, header);
             }
 
-            Span<bool> requiredItems = stackalloc bool[8];
+            Span<bool> requiredItems = stackalloc bool[9];
             SetRequiredItems(header, requiredItems);
 
             if (requiredItems[0]) writer.Encode(header.BaseFeePerGas);
@@ -175,6 +184,13 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[5]) writer.Encode(header.RequestsHash);
             if (requiredItems[6]) writer.Encode(header.BlockAccessListHash);
             if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
+            if (requiredItems[8])
+            {
+                RecursiveStarkCommitment recursiveStark = header.RecursiveStark!;
+                writer.StartSequence(Rlp.LengthOf(recursiveStark.StarkProofHash) + Rlp.LengthOf(recursiveStark.BlockDepsHash));
+                writer.Encode(recursiveStark.StarkProofHash);
+                writer.Encode(recursiveStark.BlockDepsHash);
+            }
         }
 
         public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -219,7 +235,7 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += GetSealLength(item);
             }
 
-            Span<bool> requiredItems = stackalloc bool[8];
+            Span<bool> requiredItems = stackalloc bool[9];
             SetRequiredItems(item, requiredItems);
 
             if (requiredItems[0]) contentLength += Rlp.LengthOf(item.BaseFeePerGas);
@@ -230,6 +246,11 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[5]) contentLength += Rlp.LengthOf(item.RequestsHash);
             if (requiredItems[6]) contentLength += Rlp.LengthOf(item.BlockAccessListHash);
             if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
+            if (requiredItems[8])
+            {
+                RecursiveStarkCommitment recursiveStark = item.RecursiveStark!;
+                contentLength += Rlp.LengthOfSequence(Rlp.LengthOf(recursiveStark.StarkProofHash) + Rlp.LengthOf(recursiveStark.BlockDepsHash));
+            }
 
             return contentLength;
         }
@@ -245,6 +266,7 @@ namespace Nethermind.Serialization.Rlp
             requiredItems[5] = header.RequestsHash is not null;
             requiredItems[6] = header.BlockAccessListHash is not null;
             requiredItems[7] = header.SlotNumber is not null;
+            requiredItems[8] = header.RecursiveStark is not null;
 
             for (int i = requiredItems.Length - 2; i >= 0; i--)
             {
@@ -254,5 +276,9 @@ namespace Nethermind.Serialization.Rlp
 
         public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
             => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+
+        [DoesNotReturn]
+        private static Hash256 ThrowMissingBlockDepsHash() =>
+            throw new RlpException($"Missing {nameof(RecursiveStark.BlockDepsHash)} in {nameof(BlockHeader.RecursiveStark)}");
     }
 }

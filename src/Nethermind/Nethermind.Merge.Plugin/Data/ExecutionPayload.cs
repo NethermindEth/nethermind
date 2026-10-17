@@ -15,6 +15,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -185,6 +186,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     [JsonIgnore]
     public virtual byte[][]? InclusionListTransactions { get; set; }
+
+    /// <summary>The counted inclusion lists with their EIP-8288 commitments, from <c>engine_newPayloadV7</c>.</summary>
+    [JsonIgnore]
+    public InclusionListV1[]? InclusionLists { get; set; }
 
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 

@@ -13,6 +13,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -198,7 +199,8 @@ public class XdcModule : Module
                 new MinGasPriceFilter(chainHeadInfoProvider, specProvider, logManager)
             ],
             true,
-            frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>());
+            frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+            leanProofStore: ctx.Resolve<LeanProofStore>());
     }
 
     private IMasternodeVotingContract CreateVotingContract(

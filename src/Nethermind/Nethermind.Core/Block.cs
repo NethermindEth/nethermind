@@ -48,11 +48,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList);
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList);
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
 
     public BlockHeader Header { get; }
 
@@ -69,6 +69,9 @@ public class Block
     public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals; // do not add setter here
+
+    /// <summary>The recursive proof carried in the EIP-8288 block body.</summary>
+    public byte[]? StarkProof { get => Body.StarkProof; set => Body.StarkProof = value; }
 
     public Hash256? Hash => Header.Hash; // do not add setter here
 
@@ -138,6 +141,11 @@ public class Block
 
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
+
+    /// <summary>The counted inclusion lists with their EIP-8288 commitments, when the Engine API supplied them per list.</summary>
+    /// <remarks>Their transactions are also flattened into <see cref="InclusionListTransactions"/>.</remarks>
+    [JsonIgnore]
+    public IReadOnlyList<CommitteeInclusionList>? InclusionLists { get; set; }
 
     // Set after the post-execution check: false means the block is valid and executable but did not
     // honour its inclusion list (EIP-7805).

@@ -21,6 +21,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
@@ -680,6 +681,43 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Assert.That(replacement, Is.Not.Null);
             using InboundTransactionBudget.Reservation? excess = budget.TryReserve(1);
             Assert.That(excess, Is.Null);
+        }
+
+        // EIP-8437: below eth/73 dependency-bearing transactions are answered as unavailable, and none is admitted from
+        // PooledTransactions without a validated covering wrapper.
+        [Test]
+        public void Dependency_bearing_transactions_are_neither_served_nor_admitted()
+        {
+            Transaction ordinary = Build.A.Transaction.Signed(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
+            Transaction dependent = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = 1,
+                SenderAddress = TestItem.AddressB,
+                NonceKeys = [UInt256.Zero],
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero,
+                    Eip8288Dependencies.Serialize([new FrameDependency(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)]))]
+            };
+            dependent.Hash = dependent.CalculateHash();
+            _transactionPool.TryGetPendingTransaction(dependent.Hash.ValueHash256, out Arg.Any<Transaction?>())
+                .Returns(call => { call[1] = dependent; return true; });
+            Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage? served = null;
+            _session.When(s => s.DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>()))
+                .Do(call => served = call.Arg<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>());
+            HandleIncomingStatusMessage();
+            using GetPooledTransactionsMessage66 request = new(new[] { dependent.Hash.ValueHash256 }.ToPooledList());
+            HandleZeroMessage(request, Eth66MessageCode.GetPooledTransactions);
+
+            using PooledTransactionsMessage msg65 = new(new ArrayPoolList<Transaction>(2) { ordinary, dependent });
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(RequestTransaction(ordinary), msg65);
+            HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(served?.EthMessage.Transactions.Count, Is.Zero);
+                _transactionPool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == ordinary.Hash), Arg.Any<TxHandlingOptions>());
+                _transactionPool.DidNotReceive().SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == dependent.Hash), Arg.Any<TxHandlingOptions>());
+            }
         }
 
         [Test]

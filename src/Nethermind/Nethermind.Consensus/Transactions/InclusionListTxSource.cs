@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -17,7 +19,8 @@ namespace Nethermind.Consensus.Transactions;
 public class InclusionListTxSource(
     IEthereumEcdsa ecdsa,
     ISpecProvider specProvider,
-    ILogManager logManager) : IInclusionListTxSource
+    ILogManager logManager,
+    InclusionListProofService? inclusionListProofs = null) : IInclusionListTxSource
 {
     // Lazy<T> defaults to ExecutionAndPublication: constructed once even under racing FCUs.
     private readonly Lazy<InclusionListDecoder> _decoder = new(() => new InclusionListDecoder(ecdsa, specProvider, logManager));
@@ -25,13 +28,13 @@ public class InclusionListTxSource(
 
     // Keyed by the build's PayloadAttributes array so a concurrent FCU can't leak another build's IL;
     // weak keys collect with the build.
-    private readonly ConditionalWeakTable<byte[][], Lazy<Transaction[]>> _decodedByAttributes = [];
+    private readonly ConditionalWeakTable<byte[][], BuildInclusionList> _decodedByAttributes = [];
 
     // gasLimit is ignored: the downstream tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
-        if (payloadAttributes?.InclusionListTransactions is not { Length: > 0 } il) return [];
-        if (!_decodedByAttributes.TryGetValue(il, out Lazy<Transaction[]>? decoded))
+        if (payloadAttributes?.CombinedInclusionListTransactions is not { Length: > 0 } il) return [];
+        if (!_decodedByAttributes.TryGetValue(il, out BuildInclusionList? decoded))
         {
             // A miss means Set was never called for these attributes, e.g. an oversized IL that
             // engine_forkchoiceUpdatedV5 already warned about; debug-level as this runs once per improvement.
@@ -39,24 +42,121 @@ public class InclusionListTxSource(
             return [];
         }
 
+        if (decoded.DependenciesEnabled != specProvider.GetSpec(targetBlock).IsEip8288Enabled
+            || !decoded.MatchesLists(payloadAttributes.InclusionLists)) return [];
+        return decoded.Prepared.Value.Eligible;
+    }
+
+    /// <inheritdoc/>
+    public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
+        => Set(inclusionListTransactions, spec, null);
+
+    /// <inheritdoc/>
+    /// <remarks>Inputs are snapshotted within the IL byte bounds. Decoding, sender recovery and proof
+    /// verification are deferred until the first <see cref="GetTransactions"/> call.</remarks>
+    public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec, IReadOnlyList<InclusionListV1>? lists)
+    {
+        if (inclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions) return;
+        long bytes = 0;
+        foreach (byte[] transaction in inclusionListTransactions)
+        {
+            bytes += transaction?.Length ?? 0;
+            if (bytes > Eip7805Constants.MaxAggregateInclusionListBytes) return;
+        }
+        if (lists is not null && InclusionListV1.Validate([.. lists]) is not null) return;
+        if (_decodedByAttributes.TryGetValue(inclusionListTransactions, out BuildInclusionList? existing)
+            && ReferenceEquals(existing.Spec, spec)
+            && existing.MatchesInput(inclusionListTransactions, lists)) return;
+        byte[][] snapshot = new byte[inclusionListTransactions.Length][];
+        for (int i = 0; i < snapshot.Length; i++) snapshot[i] = inclusionListTransactions[i] is { } entry ? entry.AsSpan().ToArray() : null!;
+        InclusionListV1[]? listSnapshot = lists is null ? null : InclusionListV1.Snapshot(lists);
+        _decodedByAttributes.AddOrUpdate(inclusionListTransactions, new BuildInclusionList(spec, snapshot,
+            listSnapshot, new Lazy<PreparedInclusionList>(() => PrepareSafely(snapshot, listSnapshot, spec))));
+    }
+
+    private PreparedInclusionList PrepareSafely(byte[][] snapshot, InclusionListV1[]? lists, IReleaseSpec spec)
+    {
         try
         {
-            return decoded.Value;
+            return Prepare(snapshot, lists, spec);
         }
         catch (Exception ex) when (ex is RlpException or ArgumentException)
         {
-            // Lazy caches the failure, so a malformed list is reported once per build, not per improvement.
-            if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}); building without it.");
-            return [];
+            if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}).");
+            return PreparedInclusionList.Empty;
         }
     }
 
     /// <inheritdoc/>
-    /// <remarks>Decoding and sender recovery are deferred to the first <see cref="GetTransactions"/> call, so
-    /// a forkchoice update that never starts a build pays nothing.</remarks>
-    public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
-        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions,
-            new Lazy<Transaction[]>(() => OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec)))));
+    public void ApplyInclusionList(BlockToProduce block, PayloadAttributes? attributes)
+    {
+        if (attributes?.CombinedInclusionListTransactions is not { } input
+            || !_decodedByAttributes.TryGetValue(input, out BuildInclusionList? decoded)
+            || decoded.DependenciesEnabled != specProvider.GetSpec(block.Header).IsEip8288Enabled
+            || !decoded.MatchesLists(attributes.InclusionLists)) return;
+        PreparedInclusionList prepared = decoded.Prepared.Value;
+        block.InclusionListTransactions = prepared.All;
+        block.InclusionLists = prepared.Lists;
+        block.InclusionListProofInput = prepared.ProofInput;
+    }
+
+    private PreparedInclusionList Prepare(byte[][] snapshot, InclusionListV1[]? lists, IReleaseSpec spec)
+    {
+        CommitteeInclusionList[]? decodedLists = null;
+        Transaction[] transactions;
+        if (lists is null) transactions = _decoder.Value.DecodeAndRecover(snapshot, spec);
+        else
+        {
+            decodedLists = new CommitteeInclusionList[lists.Length];
+            for (int i = 0; i < lists.Length; i++)
+                decodedLists[i] = new CommitteeInclusionList(lists[i].CommitteeIndex,
+                    _decoder.Value.DecodeAndRecover(lists[i].Transactions!, spec), lists[i].RecursiveStark?.ToCommitment());
+            transactions = CommitteeInclusionList.Flatten(decodedLists);
+        }
+        Transaction[] eligible = transactions;
+        AggregationInput? proofInput = null;
+        if (spec.IsEip8288Enabled)
+        {
+            // A commitment this node holds no valid proof for is treated as null: the list then obligates only its
+            // dependency-free transactions (EIPs#12475).
+            inclusionListProofs?.ResolveObligations(decodedLists, spec);
+            eligible = InclusionListProofValidator.SelectEligible(transactions, decodedLists, spec);
+            // Committed proofs are usually mempool wrapper proofs covering a superset of the list; the block aggregation discards
+            // whatever the block does not need, so the block proof stays exact.
+            List<RecursiveProofInput> proven = inclusionListProofs?.ProvenInputs(decodedLists ?? [], spec) ?? [];
+            if (_logger.IsDebug)
+                foreach (CommitteeInclusionList list in decodedLists ?? [])
+                    if (list.IsCommitted && !list.HoldsValidProof)
+                        _logger.Debug($"Inclusion list {list.CommitteeIndex} commits to a proof this node does not hold; treating its commitment as null.");
+            if (proven.Count > 0) proofInput = new AggregationInput { RecursiveProofs = proven };
+        }
+        Transaction[] ordered = OrderForProduction(FilterBlobs((Transaction[])eligible.Clone()));
+        return new(transactions, decodedLists, System.Array.AsReadOnly(ordered), proofInput);
+    }
+
+    private sealed record PreparedInclusionList(Transaction[] All, CommitteeInclusionList[]? Lists, IReadOnlyList<Transaction> Eligible,
+        AggregationInput? ProofInput)
+    {
+        public static readonly PreparedInclusionList Empty = new([], null, [], null);
+    }
+
+    private sealed record BuildInclusionList(IReleaseSpec Spec, byte[][] EncodedTransactions, InclusionListV1[]? Lists,
+        Lazy<PreparedInclusionList> Prepared)
+    {
+        public bool DependenciesEnabled => Spec.IsEip8288Enabled;
+
+        public bool MatchesInput(byte[][] transactions, IReadOnlyList<InclusionListV1>? lists)
+        {
+            if (transactions.Length != EncodedTransactions.Length || !InclusionListV1.AreEqual(Lists, lists)) return false;
+            for (int i = 0; i < transactions.Length; i++)
+                if (!transactions[i].AsSpan().SequenceEqual(EncodedTransactions[i])) return false;
+            return true;
+        }
+
+        /// <summary>Whether a build's lists still have the registered positions and commitments; the transactions are identified
+        /// by the flattened array instance the build is keyed by, and this snapshot owns their bytes.</summary>
+        public bool MatchesLists(IReadOnlyList<InclusionListV1>? lists) => InclusionListV1.AreEqual(Lists, lists, compareTransactions: false);
+    }
 
     // The producer offers each IL tx once, so a shuffled IL would skip a nonce that arrives after its
     // dependent. Ordering by first-appearance rather than address avoids favouring low-address senders.

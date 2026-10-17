@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -13,6 +15,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
@@ -22,7 +25,8 @@ namespace Nethermind.Consensus.Processing
         public class BlockProductionTransactionPicker(
             ISpecProvider specProvider,
             long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes,
-            bool ignoreEip3607 = false)
+            bool ignoreEip3607 = false,
+            LeanProofStore? leanProofStore = null)
             : IBlockProductionTransactionPicker
         {
             private readonly long _maxTxLengthBytes = maxTxLengthKilobytes.KiB;
@@ -129,6 +133,25 @@ namespace Nethermind.Consensus.Processing
                     {
                         return args;
                     }
+                }
+
+                if (spec.IsEip8288Enabled && Eip8288Dependencies.RecursiveStarkGas(currentTx) != 0)
+                {
+                    List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx, FrameTxSigHash.ComputeValue);
+                    BlockToProduce? producing = block as BlockToProduce;
+                    if (producing?.LeanDependencyLimit is { } limit)
+                        foreach (FrameDependency dependency in required)
+                            if (!limit.Contains(dependency)) return args.Set(TxAction.Skip, "Dependency proof not ready");
+                    LeanProofBudget budget = producing?.LeanProofBudget ?? new();
+                    List<FrameDependency> missing = budget.Missing(required);
+                    AggregationInput candidateInput = new();
+                    if (missing.Count != 0 && !budget.TryUseInclusionList(producing?.InclusionListProofInput, missing, out candidateInput)
+                        && (leanProofStore is null || !leanProofStore.TryGetInput(missing, out candidateInput)))
+                        return args.Set(TxAction.Skip, "Missing verified dependency witnesses");
+                    if (!budget.TryPrepare(candidateInput, required, out AggregationInput contribution, out string? proofError))
+                        return args.Set(TxAction.Skip, proofError!);
+                    args.LeanProofInput = contribution;
+                    args.LeanDependencies = required;
                 }
 
                 OnAddingTransaction(args);

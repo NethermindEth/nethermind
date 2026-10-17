@@ -21,6 +21,8 @@ using Nethermind.Logging;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Taiko.ZkGas;
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Taiko;
 
 /// <summary>
@@ -43,6 +45,7 @@ public class TaikoBlockProcessor(
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
+    ILeanProofVerifier leanProofVerifier,
     ZkGasMeterHolder? zkGasMeterHolder = null)
     : BlockProcessor(
         specProvider,
@@ -56,7 +59,8 @@ public class TaikoBlockProcessor(
         logManager,
         withdrawalProcessor,
         executionRequestsProcessor,
-        balManager)
+        balManager,
+        leanProofVerifier)
 {
     private readonly ZkGasMeterHolder? _zkGasMeterHolder = zkGasMeterHolder;
 

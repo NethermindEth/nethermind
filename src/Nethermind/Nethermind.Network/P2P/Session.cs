@@ -32,7 +32,14 @@ namespace Nethermind.Network.P2P
         void OnSessionDisconnected(Session session, DisconnectEventArgs args);
     }
 
-    public class Session : ISession
+    internal interface IMessageLimitSession
+    {
+        /// <summary>Whether a packet exceeds its protocol's message-data ceiling, checked against the advertised uncompressed
+        /// size before decompression.</summary>
+        bool ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength);
+    }
+
+    public class Session : ISession, IMessageLimitSession
     {
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
         private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new(concurrencyLevel: 1, capacity: 4);
@@ -277,6 +284,17 @@ namespace Nethermind.Network.P2P
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this}");
+        }
+
+        /// <remarks>This client's own caps on the <c>eth/73</c> wrapper messages: NewProofWrapperHashes and GetProofWrappers by
+        /// their largest valid encodings, ProofWrappers by a whole wrapper of <c>MAX_WRAPPER_BYTES</c> under the soft response
+        /// limit.</remarks>
+        bool IMessageLimitSession.ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength)
+        {
+            if (uncompressedLength <= Subprotocols.Eth.V73.Eth73Protocol.LocalMaxRequestBytes || _resolver is null) return false;
+            (string? protocol, int messageId) = _resolver.ResolveProtocol(adaptivePacketType);
+            return protocol == Protocol.Eth && _protocols.TryGetValue(Protocol.Eth, out IProtocolHandler? eth)
+                && eth.ProtocolVersion >= EthVersions.Eth73 && Subprotocols.Eth.V73.Eth73Protocol.ExceedsMessageLimit(messageId, uncompressedLength);
         }
 
         public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);

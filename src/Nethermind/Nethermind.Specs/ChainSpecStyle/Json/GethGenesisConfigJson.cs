@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
@@ -65,6 +66,14 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8141 frame transactions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>EIP-8288 prototype activation in Unix timestamp seconds; null leaves it unscheduled.</summary>
+    public ulong? Eip8288PrototypeTime { get => GetTime(); set => SetTime(value); }
+
+    /// <summary>Activation time of <see cref="Eip8288AggregatedVk"/>, a fork that changes the EIP-8288 aggregate verifier.</summary>
+    public ulong? Eip8288AggregatedVkTimestamp { get; set; }
+
+    /// <summary>The EIP-8288 <c>AGGREGATED_VK</c> from <see cref="Eip8288AggregatedVkTimestamp"/>.</summary>
+    public Hash256? Eip8288AggregatedVk { get; set; }
     /// <summary>Activation time for EIP-8250 keyed nonces, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     public ulong? Eip8250PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8272 recent roots, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>

@@ -12,6 +12,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -25,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -69,7 +71,7 @@ public class Eip7709BlockTests
 
         using IWitnessGeneratingBlockProcessingEnvScope witnessScope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
         using Witness witness = witnessScope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
-        StatelessBlockProcessingEnv stateless = new(witness, chain.SpecProvider, Always.Valid, LimboLogs.Instance);
+        StatelessBlockProcessingEnv stateless = new(witness, chain.SpecProvider, Always.Valid, LimboLogs.Instance, Substitute.For<ILeanProofVerifier>());
         using IDisposable stateScope = stateless.WorldState.BeginScope(parent);
         (Block processed, _) = stateless.BlockProcessor.ProcessOne(
             block.WithReplacedHeader(block.Header.Clone()), ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, chain.SpecProvider.GetSpec(block.Header), CancellationToken.None);

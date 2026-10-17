@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Blockchain.Test" />
+    <InternalsVisibleTo Include="Nethermind.Network" />
+    <InternalsVisibleTo Include="Nethermind.Consensus.Test" />
     <PackageReference Include="Collections.Pooled" />
   </ItemGroup>
 

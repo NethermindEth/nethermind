@@ -312,5 +312,17 @@ namespace Nethermind.TxPool
 
         [Description("Number of transactions reorganized during chain reorg.")]
         public static long TransactionsReorged { get; internal set; }
+
+        [CounterMetric]
+        [Description("Number of EIP-8288 target-fork verifier changes applied to the proof wrapper mempool.")]
+        public static long Eip8288VerifierChanges { get; set; }
+
+        [CounterMetric]
+        [Description("Number of EIP-8288 proofs dropped by the verifier upgrade rule.")]
+        public static long Eip8288UpgradeDroppedProofs { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending transactions evicted by the EIP-8288 verifier upgrade rule for lack of proof coverage.")]
+        public static long Eip8288UpgradeEvictedTransactions { get; set; }
     }
 }

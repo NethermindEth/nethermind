@@ -326,6 +326,12 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip8141Enabled { get; }
 
+        /// <summary>EIP-8288: dependency frames and recursive proof aggregation.</summary>
+        bool IsEip8288Enabled { get; }
+
+        /// <summary>EIP-8288 <c>AGGREGATED_VK</c> of this fork, which verifies every recursive aggregate proof.</summary>
+        Crypto.ValueHash256 Eip8288AggregatedVk => Eip8288Verifier.PinnedAggregatedVk;
+
         /// <summary>
         /// EIP-8250: keyed nonces for frame transactions.
         /// </summary>

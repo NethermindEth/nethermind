@@ -5,8 +5,11 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nethermind.Network.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.Crypto.LeanFfi.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Discovery")]
 [assembly: InternalsVisibleTo("Nethermind.Network.Discovery.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Xdc.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Bootnode")]
 [assembly: InternalsVisibleTo("Nethermind.Bootnode.Test")]
+
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]

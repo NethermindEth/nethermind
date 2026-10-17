@@ -1857,6 +1857,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private AcceptTxResult SubmitTransaction(ISparseBlobPoolPeer? peer, Transaction transaction)
     {
+        // EIP-8437: a dependency-bearing transaction is admitted only through a validated proof wrapper.
+        if (Eip8288Dependencies.IsDependencyBearing(transaction)) return AcceptTxResult.MissingDependencyProof;
         transaction.Timestamp = Timestamper.Default.UnixTime.Seconds;
         AcceptTxResult result = _txPool.SubmitTx(transaction, TxHandlingOptions.None);
         if (_logger.IsTrace)

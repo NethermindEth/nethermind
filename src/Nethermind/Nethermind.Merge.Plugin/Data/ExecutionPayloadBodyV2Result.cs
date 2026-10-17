@@ -12,13 +12,14 @@ public class ExecutionPayloadBodyV2Result
     private Transaction[]? _sourceTransactions;
     private byte[][]? _transactions;
 
-    public ExecutionPayloadBodyV2Result(Transaction[] transactions, Withdrawal[]? withdrawals, byte[]? blockAccessList)
+    public ExecutionPayloadBodyV2Result(Transaction[] transactions, Withdrawal[]? withdrawals, byte[]? blockAccessList, byte[]? recursiveStarkProof = null)
     {
         ArgumentNullException.ThrowIfNull(transactions);
 
         _sourceTransactions = transactions;
         Withdrawals = withdrawals;
         BlockAccessList = blockAccessList;
+        RecursiveStarkProof = recursiveStarkProof;
     }
 
     internal byte[][] EncodedTransactions => _transactions ??= PayloadBodiesDirectResponseWriter.EncodeTransactions(_sourceTransactions!);
@@ -37,6 +38,9 @@ public class ExecutionPayloadBodyV2Result
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Withdrawal[]? Withdrawals { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? RecursiveStarkProof { get; set; }
 
     // Engine API: key must be present, literal null when absent.
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]

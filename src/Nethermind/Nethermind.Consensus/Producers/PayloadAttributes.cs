@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -27,6 +28,28 @@ public class PayloadAttributes
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
     public byte[][]? InclusionListTransactions { get; set; }
+
+    /// <summary><c>PayloadAttributesV6</c>: each counted inclusion list with its EIP-8288 commitment, in place of
+    /// <see cref="InclusionListTransactions"/>.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public InclusionListV1[]? InclusionLists
+    {
+        get;
+        set
+        {
+            field = value;
+            _combinedInclusionListTransactions = null;
+        }
+    }
+
+    private byte[][]? _combinedInclusionListTransactions;
+
+    /// <summary>The build's flattened inclusion list: <see cref="InclusionListTransactions"/>, or every list of
+    /// <see cref="InclusionLists"/> concatenated.</summary>
+    /// <remarks>The same array instance is returned on every call, so it identifies the build.</remarks>
+    [JsonIgnore]
+    public byte[][]? CombinedInclusionListTransactions => InclusionListTransactions
+        ?? (InclusionLists is { } lists ? _combinedInclusionListTransactions ??= InclusionListV1.Flatten(lists) : null);
 
     public ulong? SlotNumber { get; set; }
 
@@ -95,7 +118,8 @@ public class PayloadAttributes
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
         + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
         + (TargetGasLimit is null ? 0 : sizeof(ulong)) // target gas limit
-        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list digest
+        + (InclusionListTransactions is null ? 0 : Keccak.Size) // inclusion list digest
+        + (InclusionLists is null ? 0 : Keccak.Size); // per-list inclusion list digest
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -147,6 +171,12 @@ public class PayloadAttributes
         if (InclusionListTransactions is not null)
         {
             ComputeInclusionListDigest(InclusionListTransactions).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
+        if (InclusionLists is not null)
+        {
+            InclusionListV1.ComputeDigest(InclusionLists).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }
 
@@ -286,6 +316,15 @@ public class PayloadAttributes
                 : PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
+        if (result == PayloadAttributesValidationResult.Success && InclusionLists is not null
+            && (InclusionListTransactions is not null
+                ? $"{nameof(InclusionListTransactions)} must not be set with {nameof(InclusionLists)}"
+                : InclusionListV1.Validate(InclusionLists)) is { } listError)
+        {
+            error = listError;
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
         return result;
     }
 
@@ -303,7 +342,9 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
             // bogota.md PayloadAttributesV5 appends this field unconditionally; an empty array is valid,
             // an absent one is not.
-            >= PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
+            PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
+            // PayloadAttributesV6 replaces the flattened list with each counted list and its EIP-8288 commitment.
+            >= PayloadAttributesVersions.V6 when InclusionLists is null => $"{nameof(InclusionLists)} must be provided",
             _ => null
         };
     }
@@ -316,6 +357,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
+            { InclusionLists: not null } => PayloadAttributesVersions.V6,
             { InclusionListTransactions: not null } => PayloadAttributesVersions.V5,
             { SlotNumber: not null } or { TargetGasLimit: not null } => PayloadAttributesVersions.V4,
             { ParentBeaconBlockRoot: not null } => PayloadAttributesVersions.V3,
@@ -326,6 +368,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
+            { IsEip7805Enabled: true, IsEip8288Enabled: true } => PayloadAttributesVersions.V6,
             { IsEip7805Enabled: true } => PayloadAttributesVersions.V5,
             { IsEip7843Enabled: true } => PayloadAttributesVersions.V4,
             { IsEip4844Enabled: true } => PayloadAttributesVersions.V3,
@@ -341,4 +384,5 @@ public static class PayloadAttributesVersions
     public const int V3 = 3; // Cancun/Prague/Osaka
     public const int V4 = 4; // Amsterdam
     public const int V5 = 5; // Bogota
+    public const int V6 = 6; // Bogota with EIP-8288 per-list inclusion lists
 }

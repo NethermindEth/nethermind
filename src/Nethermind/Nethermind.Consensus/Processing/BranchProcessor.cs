@@ -239,8 +239,13 @@ public class BranchProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             processingException = ex;
-            // Cancelling the token is reported by whoever cancelled it: a processing timeout or shutdown.
-            if (_logger.IsWarn && !(ex is OperationCanceledException && token.IsCancellationRequested)) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            // A production body waiting for its dependency proof is an expected outcome, and cancelling the token is reported by
+            // whoever cancelled it: a processing timeout or shutdown.
+            if (ex is ProofAggregation.LeanProofNotReadyException || ex is OperationCanceledException && token.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block processing stopped: {ex.Message}");
+            }
+            else if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             DrainAndClear(ref prewarming);
 

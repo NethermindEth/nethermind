@@ -102,7 +102,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // eth_call and the other estimation/tracing entry points reach the processor with validation
         // skipped, so the whole structural constraint set is enforced here and not only in TxValidator.
-        if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out string? malformed))
+        if (!FrameTxValidation.IsWellFormed(tx, spec, out string? malformed))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(malformed!);
         }
@@ -275,6 +275,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
                 batchTracker = accessTracker;
                 batchTracker.TakeSnapshot();
+            }
+
+            if (frame.Mode == FrameMode.DepVerify)
+            {
+                frameContext.MarkFrameSucceeded(i);
+                frameContext.RecordFrameReceipt(i, frame.ExecutionGasLimit, 0);
+                frameReceipts[i] = new TxFrameReceipt(TxFrameReceipt.StatusSuccess, frame.ExecutionGasLimit, 0, []);
+                totalFrameGasUsed += frame.ExecutionGasLimit;
+                inBatch = false;
+                continue;
             }
 
             bool isSender = frame.Mode == FrameMode.Sender;
@@ -642,6 +652,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 TxFrame frame = frames[i];
                 bool isDeployFrame = OpensDeployPrefix(frames, i);
+                if (frame.Mode == FrameMode.DepVerify)
+                {
+                    // EIP-8288 declarations stay paid but perform no EVM verification work.
+                    frameContext.CurrentFrameIndex = i;
+                    frameContext.MarkFrameSucceeded(i);
+                    frameContext.RecordFrameReceipt(i, frame.ExecutionGasLimit, 0);
+                    continue;
+                }
 
                 // EIP-8141 § Validation Prefix: the shortest prefix that sets a payer, so a non-VERIFY frame
                 // ends it. An opening deploy frame is the sole non-VERIFY frame the prefix admits.
@@ -791,11 +809,22 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <summary>Whether frame <paramref name="i"/> is a <c>deploy</c> frame opening the validation prefix.</summary>
     /// <remarks>Positional, as RecognizedPrefixLength reaches a deploy frame only past the optional protocol verifier frames.
     /// Spells the same prologue rule as <see cref="FrameTxValidation.ApprovalSearchStart"/>; a grammar change touches both.</remarks>
-    private static bool OpensDeployPrefix(TxFrame[] frames, int i) =>
-        i == FrameTxValidation.ProtocolVerifierFrameCount(frames)
-        && i + 1 < frames.Length
-        && FrameTxValidation.IsDeployFrame(frames[i])
-        && frames[i + 1].Mode == FrameMode.Verify;
+    private static bool OpensDeployPrefix(TxFrame[] frames, int i)
+    {
+        // EIP-8288 dependency frames carry no approval scope and may sit between the protocol verifier frames.
+        int first = SkipDependencies(frames, 0);
+        if (first < frames.Length && FrameTxValidation.IsExpiryVerifyFrame(frames[first])) first = SkipDependencies(frames, first + 1);
+        if (first < frames.Length && FrameTxValidation.IsRecentRootVerifyFrame(frames[first])) first = SkipDependencies(frames, first + 1);
+        if (i != first || !FrameTxValidation.IsDeployFrame(frames[i])) return false;
+        int next = SkipDependencies(frames, i + 1);
+        return next < frames.Length && frames[next].Mode == FrameMode.Verify;
+
+        static int SkipDependencies(TxFrame[] frames, int index)
+        {
+            while (index < frames.Length && frames[index].Mode == FrameMode.DepVerify) index++;
+            return index;
+        }
+    }
 
     private TransactionSubstate ExecuteFrame<TTracing>(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
         where TTracing : struct, IFlag
