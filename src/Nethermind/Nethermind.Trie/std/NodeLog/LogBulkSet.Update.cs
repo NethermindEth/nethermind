@@ -348,7 +348,7 @@ internal static partial class LogBulkSet
             return childrenStart;
         }
 
-        /// <summary>The root node, read in place from the log by its pointer while that resolves, otherwise like <see cref="Load"/> with the pointer the log indexes for it.</summary>
+        /// <summary>The root node, read by its supplied log or source-owned pointer, otherwise through the log's root index and source position.</summary>
         /// <exception cref="MissingTrieNodeException">The node is in neither the log nor the source.</exception>
         public Source LoadRoot(in TrieRoot root)
         {
@@ -357,6 +357,12 @@ internal static partial class LogBulkSet
             if (_log.TryLocate(root.Pointer, out NodeRecordRef record))
             {
                 _arena.NodesFromLog++;
+                return Source.ForRecord(record, 0);
+            }
+
+            if (NodeRecord.IsTransient(root.Pointer) && _source.TryLoad(root.Pointer, TreePath.Empty, root.Hash, out record))
+            {
+                _arena.NodesFromSource++;
                 return Source.ForRecord(record, 0);
             }
 
@@ -382,7 +388,7 @@ internal static partial class LogBulkSet
                 return Source.ForRecord(record, 0);
             }
 
-            if (_source.TryLoad(path, child.Data, out record))
+            if (_source.TryLoad(child.Pointer, path, child.Data, out record))
             {
                 _arena.NodesFromSource++;
                 return Source.ForRecord(record, 0);

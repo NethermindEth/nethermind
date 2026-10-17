@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeLog;
 
-/// <summary>A trie's root hash with the log pointer of its root record, 0 when unknown.</summary>
+/// <summary>A trie's root hash with the pointer of its root record, 0 when unknown.</summary>
 internal readonly struct TrieRoot(in ValueHash256 hash, ulong pointer)
 {
     public static TrieRoot Empty => new(ValueKeccak.EmptyTreeHash, 0);

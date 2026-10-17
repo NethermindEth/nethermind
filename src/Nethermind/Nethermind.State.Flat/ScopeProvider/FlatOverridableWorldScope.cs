@@ -27,7 +27,6 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IResourcePool _resourcePool;
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
-    private readonly ITrieNodeCache _trieNodeCache;
     private readonly TrieNodeLog? _trieNodeLog;
     private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private bool _isDisposed = false;
@@ -37,7 +36,6 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
         Lazy<NativeTrieNodeLog> nativeTrieNodeLog,
-        ITrieNodeCache trieNodeCache,
         Lazy<TrieNodeLog> trieNodeLog,
         IResourcePool resourcePool,
         IStateHeaderProvider stateHeaderProvider,
@@ -47,7 +45,6 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _codeDbOverlay = new ReadOnlyDb(codeDb, true);
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
-        _trieNodeCache = trieNodeCache;
         _trieNodeLog = configuration.UseNativeBulkSet ? null : trieNodeLog.Value;
         _nativeTrieNodeLog = configuration.UseNativeBulkSet ? nativeTrieNodeLog.Value : null;
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
@@ -120,7 +117,6 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         // snapshots' negative filter.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
-            _trieNodeCache,
             _trieNodeLog,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,

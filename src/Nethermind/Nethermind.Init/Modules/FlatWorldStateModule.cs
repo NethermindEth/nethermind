@@ -53,7 +53,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
-                ctx.Resolve<ITrieNodeCache>(),
                 flatDbConfig.UseNativeBulkSet ? null : ctx.Resolve<TrieNodeLog>(),
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
@@ -65,14 +64,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
                 nativeTrieNodeLog: flatDbConfig.UseNativeBulkSet ? ctx.Resolve<NativeTrieNodeLog>() : null))
             .AddSingleton<IResourcePool, ResourcePool>()
-            // With UseNativeBulkSet the native trie node cache takes the memory budget instead.
-            .AddSingleton<ITrieNodeCache>(flatDbConfig.UseNativeBulkSet
-                ? _ => new NoopTrieNodeCache()
-                : ctx => ctx.Resolve<TrieNodeCache>())
-            .AddSingleton<TrieNodeCache>()
             .AddSingleton<TrieNodeLog, IFlatDbConfig>(c => new TrieNodeLog(c.CompressedTrieNodeLogMemoryBudget, TrieNodeLog.DefaultGenerationBytes))
             // Only created with UseNativeBulkSet, which needs libnethermind_patricia.
-            .AddSingleton<NativeTrieNodeLog, IFlatDbConfig>(config => new NativeTrieNodeLog(config.CompressedTrieNodeLogMemoryBudget, config.TrieCacheMemoryBudget))
+            .AddSingleton<NativeTrieNodeLog, IFlatDbConfig>(config => new NativeTrieNodeLog(config.CompressedTrieNodeLogMemoryBudget))
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()

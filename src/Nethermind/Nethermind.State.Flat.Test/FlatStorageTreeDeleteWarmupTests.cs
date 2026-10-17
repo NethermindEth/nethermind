@@ -87,7 +87,7 @@ public class FlatStorageTreeDeleteWarmupTests
             _resourcePool = new ResourcePool(_config);
             SnapshotBundle bundle = new(
                 new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
-                new TrieNodeCache(_config), NewLog(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                NewLog(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget target = new(_snapshots);
             using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), target, _config, null, new NoopTrieWarmer(), LimboLogs.Instance);
 
@@ -149,7 +149,7 @@ public class FlatStorageTreeDeleteWarmupTests
             CountingReader reader = new(_persistence.CreateReader());
             SnapshotBundle bundle = new(
                 new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
-                new TrieNodeCache(_config), NewLog(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                NewLog(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
             FlatWorldStateScope scope = new(_baseState, bundle, new NullCodeDb(), new CapturingCommitTarget(_snapshots), _config, null, new InlineTrieWarmer(passDeleteFlag), LimboLogs.Instance);
             return (scope, reader);
         }

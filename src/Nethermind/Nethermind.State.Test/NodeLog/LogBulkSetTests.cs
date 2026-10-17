@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -89,12 +90,14 @@ internal class LogBulkSetTests
         int generationBytes = smallGenerations ? SmallGenerationBytes : TrieNodeLog.DefaultGenerationBytes;
         using TrieNodeLog existingLog = new(0, generationBytes);
         using TrieNodeLogRetain existingRetain = existingLog.RetainActive();
-        DictionaryNodeSource source = new(existingNodes, new WarmedNodes(existingNodes.Count), null);
+        WarmedNodes warmed = new(existingNodes.Count);
+        DictionaryNodeSource source = new(existingNodes, warmed, null);
         TrieRoot existingRoot = BulkSet(existingLog, source, null, TrieRoot.Empty, existingItems, canParallelize);
         // From the source, the existing trie stands for one persisted before this log was created.
         using TrieNodeLog log = fromSource ? new(0, generationBytes) : existingLog;
         using TrieNodeLogRetain retain = log.RetainActive();
-        TrieRoot root = BulkSet(log, source, null, fromSource ? new TrieRoot(expectedExistingRoot.ValueHash256, 0) : existingRoot, items, canParallelize);
+        ulong temporaryRootPointer = fromSource ? InsertLinkedRecords(warmed, existingNodes) : 0;
+        TrieRoot root = BulkSet(log, source, null, fromSource ? new TrieRoot(expectedExistingRoot.ValueHash256, temporaryRootPointer) : existingRoot, items, canParallelize);
         int fetchCount = source.FetchCount;
 
         Dictionary<Hash256, byte[]> expectedValues = [];
@@ -113,6 +116,8 @@ internal class LogBulkSetTests
         {
             Assert.That(existingRoot.Hash, Is.EqualTo(expectedExistingRoot.ValueHash256), "existing root");
             Assert.That(root.Hash, Is.EqualTo(tree.RootHash.ValueHash256), "root");
+            Assert.That(NodeRecord.IsTransient(root.Pointer), Is.False, "returned root");
+            Assert.That(LogBulkSet.ResolveRoot(log, null, root.Hash).Pointer, Is.EqualTo(root.Pointer), "indexed root");
             Assert.That(InvalidRecords(existingLog, existingRoot).Concat(InvalidRecords(log, root)), Is.Empty, "reachable records hash to their hash and parse");
             Assert.That(Rlps(log, root), Is.EquivalentTo(expectedLogNodes), "reachable nodes");
             if (!fromSource) Assert.That(fetchCount, Is.Zero, "nodes the first bulk set wrote are read from the log");
@@ -187,6 +192,125 @@ internal class LogBulkSetTests
     }
 
     [Test]
+    public void No_op_batches_clear_temporary_root_pointers_without_writing([Values] bool emptyBatch)
+    {
+        Hash256 key = TestItem.KeccakA;
+        using TrieNodeLog original = new(0, SmallGenerationBytes);
+        using TrieNodeLogRetain originalRetain = original.RetainActive();
+        using TrieNodeLog log = new(0, SmallGenerationBytes);
+        using TrieNodeLogRetain retain = log.RetainActive();
+        WarmedNodes warmed = new(1);
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
+        TrieRoot root = BulkSet(original, source, null, TrieRoot.Empty, [(key, ExistingValue)], false);
+        byte[] rlp = original.GetRecord(root.Pointer).Rlp.ToArray();
+        warmed.TryInsert(null, TreePath.Empty, root.Hash, rlp, out _, out ulong pointer);
+        byte[] otherRlp = TrieNodeLogTests.Leaf(1, 8);
+        warmed.TryInsert(null, TreePath.Empty, ValueKeccak.Compute(otherRlp), otherRlp, out _);
+        TrieRoot temporaryRoot = new(root.Hash, pointer);
+        Assert.That(LogBulkSet.TryGet(log, source, null, temporaryRoot, key.ValueHash256), Is.EqualTo(ExistingValue), "point reads use the displaced root's pointer");
+
+        ulong before = log.Reserve(0, out _, out _);
+        TrieRoot after = BulkSet(log, source, null, temporaryRoot, emptyBatch ? [] : [(key, ExistingValue)], false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after.Hash, Is.EqualTo(root.Hash));
+            Assert.That(after.Pointer, Is.Zero);
+            Assert.That(log.Reserve(0, out _, out _), Is.EqualTo(before), "no log bytes reserved");
+            Assert.That(source.FetchCount, Is.Zero, "root loading resolves the supplied temporary pointer");
+        }
+    }
+
+    [Test]
+    public void Source_pointer_misses_fall_back_to_verified_persistence([Values] bool foreignResource)
+    {
+        byte[] rlp = TrieNodeLogTests.Leaf(0, 8);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        WarmedNodes original = new(1);
+        original.TryInsert(null, TreePath.Empty, hash, rlp, out _, out ulong pointer);
+        WarmedNodes warmed = foreignResource ? new WarmedNodes(1) : original;
+        if (!foreignResource) warmed.Reset();
+        byte[] otherRlp = TrieNodeLogTests.Leaf(1, 8);
+        ValueHash256 otherHash = ValueKeccak.Compute(otherRlp);
+        warmed.TryInsert(null, TreePath.Empty, otherHash, otherRlp, out _, out ulong currentPointer);
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]> { [TreePath.Empty] = rlp }, warmed, null);
+
+        bool loaded = source.TryLoad(pointer, TreePath.Empty, hash, out NodeRecordRef record);
+        int fetches = source.FetchCount;
+        bool loadedDespiteWrongHash = source.TryLoad(currentPointer, TreePath.Empty, hash, out NodeRecordRef correctRecord);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loaded, Is.True);
+            Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp));
+            Assert.That(fetches, Is.EqualTo(1), "foreign and pre-reset pointers fall back to persistence");
+            Assert.That(loadedDespiteWrongHash, Is.True);
+            Assert.That(correctRecord.Rlp.ToArray(), Is.EqualTo(rlp), "a current pointer with the wrong hash falls back to the path index");
+            Assert.That(source.FetchCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Commit_clears_only_temporary_children_and_remains_readable_after_reset([Values] bool compact)
+    {
+        Hash256 keyA = new("1000000000000000000000000000000000000000000000000000000000000000");
+        Hash256 keyB = new("2000000000000000000000000000000000000000000000000000000000000000");
+        Hash256 keyC = new("3000000000000000000000000000000000000000000000000000000000000000");
+        List<(Hash256 key, byte[] value)> items = [(keyA, ExistingValue), (keyB, ExistingValue), (keyC, ExistingValue)];
+        using TrieNodeLog log = new(1UL << 20, SmallGenerationBytes);
+        using TrieNodeLogRetain retain = log.RetainActive();
+        WarmedNodes warmed = new(16);
+        DictionaryNodeSource empty = new(new Dictionary<TreePath, byte[]>(), warmed, null);
+        TrieRoot root = BulkSet(log, empty, null, TrieRoot.Empty, items, false);
+        Dictionary<TreePath, byte[]> nodes = Rlps(log, root);
+        ulong realChildPointer = log.GetRecord(root.Pointer).View.Child(1).Pointer;
+        ValueHash256 unchangedHash = log.GetRecord(root.Pointer).View.Child(2).Data;
+        byte[] rootRlp = nodes[TreePath.Empty];
+        NodeRecord.TryMeasure(rootRlp, out NodeRecordKind kind, out ushort mask);
+        Span<ulong> childPointers = stackalloc ulong[16];
+        for (int nibble = 1; nibble <= 3; nibble++)
+        {
+            TreePath path = TreePath.Empty.Append(nibble);
+            byte[] rlp = nodes[path];
+            warmed.TryInsert(null, path, ValueKeccak.Compute(rlp), rlp, out _, out ulong pointer);
+            childPointers[nibble] = nibble == 1 ? realChildPointer : pointer;
+        }
+        warmed.TryInsertVerified(null, TreePath.Empty, root.Hash, rootRlp, kind, mask, childPointers, out _, out ulong temporaryRootPointer);
+        byte[] displacedRlp = TrieNodeLogTests.Leaf(1, 8);
+        warmed.TryInsert(null, TreePath.Empty.Append(3), ValueKeccak.Compute(displacedRlp), displacedRlp, out _);
+        DictionaryNodeSource source = new(nodes, warmed, null);
+
+        TrieRoot after = BulkSet(log, source, null, new TrieRoot(root.Hash, temporaryRootPointer), [(keyC, NewValue)], false);
+        ChildRef realChild = log.GetRecord(after.Pointer).View.Child(1);
+        ChildRef transientChild = log.GetRecord(after.Pointer).View.Child(2);
+        PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        foreach ((Hash256 key, byte[] value) in items) expected.Set(key.Bytes, key == keyC ? NewValue : value);
+        expected.UpdateRootHash();
+        warmed.Reset();
+        if (compact)
+        {
+            retain.Dispose();
+            for (int i = 0; i < TrieNodeLogTests.LiveGenerations + 2; i++) log.Reserve(SmallGenerationBytes, out _, out _);
+            Assert.That(() => log.FindBloom(after.Pointer) is null && TrieNodeLogTests.IsLocatable(log, after.Pointer),
+                Is.True.After(TrieNodeLogTests.CompactionTimeoutMilliseconds, TrieNodeLogTests.PollingMilliseconds), "normalized output survives compaction");
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after.Hash, Is.EqualTo(expected.RootHash.ValueHash256));
+            Assert.That(realChild.Pointer, Is.EqualTo(realChildPointer), "real pointers remain unchanged");
+            Assert.That(transientChild.Pointer, Is.Zero, "unchanged temporary child is not promoted");
+            Assert.That(transientChild.Data, Is.EqualTo(unchangedHash), "its hash remains unchanged");
+            Assert.That(InvalidRecords(log, after), Is.Empty);
+            Assert.That(LogBulkSet.ResolveRoot(log, null, after.Hash).Pointer, Is.EqualTo(after.Pointer));
+            Assert.That(LogBulkSet.TryGet(log, source, null, after, keyA.ValueHash256), Is.EqualTo(ExistingValue));
+            Assert.That(LogBulkSet.TryGet(log, source, null, after, keyB.ValueHash256), Is.EqualTo(ExistingValue));
+            Assert.That(LogBulkSet.TryGet(log, source, null, after, keyC.ValueHash256), Is.EqualTo(NewValue));
+            Assert.That(source.FetchCount, Is.EqualTo(1), "only the cleared temporary pointer falls back after reset");
+        }
+    }
+
+    [Test]
     public void WarmUp_fetches_only_nodes_outside_the_log_and_bulk_set_then_reads_them_without_fetching()
     {
         Hash256 address = TestItem.KeccakA;
@@ -226,9 +350,71 @@ internal class LogBulkSetTests
         int WarmUp(TrieNodeLog walkedLog, TrieRoot walkedRoot, Hash256 key)
         {
             int before = source.FetchCount;
-            LogBulkSet.WarmUp(walkedLog, source, address, walkedRoot, key.ValueHash256);
+            source.WarmUp(walkedLog, walkedRoot, key.ValueHash256);
             return source.FetchCount - before;
         }
+    }
+
+    [Test]
+    public void Warm_up_publishes_a_linked_verified_prefix_only_after_descent([Values(0, 1, 2)] int missingLeaf)
+    {
+        Hash256 keyA = new("1000000000000000000000000000000000000000000000000000000000000001");
+        Hash256 keyB = new("1000000000000000000000000000000000000000000000000000000000000002");
+        Hash256 keyC = new("2000000000000000000000000000000000000000000000000000000000000000");
+        using TrieNodeLog original = new(0, SmallGenerationBytes);
+        using TrieNodeLogRetain retain = original.RetainActive();
+        TrieRoot root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), null),
+            null, TrieRoot.Empty, [(keyA, ExistingValue), (keyB, ExistingValue), (keyC, ExistingValue)], false);
+        Dictionary<TreePath, byte[]> nodes = Rlps(original, root);
+        TreePath leafPath = TreePath.FromPath(keyA.Bytes);
+        if (missingLeaf == 1) nodes.Remove(leafPath);
+        if (missingLeaf == 2) nodes[leafPath] = TrieNodeLogTests.Leaf(9, 8);
+        WarmedNodes warmed = new(16);
+        int reads = 0;
+        byte[] Load(in TreePath path, in ValueHash256 hash)
+        {
+            Assert.That(warmed.Count, Is.Zero, "descent must not publish zero-linked ancestors");
+            reads++;
+            return nodes.GetValueOrDefault(path);
+        }
+        using TrieNodeLog log = new(0, SmallGenerationBytes);
+
+        LogBulkSet.WarmUp(log, warmed, Load, null, new TrieRoot(root.Hash, 0), keyA.ValueHash256);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reads, Is.EqualTo(4));
+            Assert.That(warmed.Count, Is.EqualTo(missingLeaf == 0 ? 4 : 3));
+        }
+        TreePath currentPath = TreePath.Empty;
+        ValueHash256 currentHash = root.Hash;
+        int linked = 0;
+        Span<byte> extensionKey = stackalloc byte[64];
+        while (warmed.TryGet(null, currentPath, currentHash, out NodeRecordRef record, out ulong pointer))
+        {
+            linked++;
+            Assert.That(ValueKeccak.Compute(record.Rlp), Is.EqualTo(record.Hash));
+            Assert.That(NodeRecord.IsTransient(pointer), Is.True);
+            if (record.Kind == NodeRecordKind.Leaf) break;
+            int slot = record.Kind == NodeRecordKind.Extension ? 0 : leafPath[currentPath.Length];
+            ChildRef child = record.View.Child(slot);
+            if (currentPath.Length == 0) Assert.That(record.View.Child(2).Pointer, Is.Zero, "off-path subtrees remain unknown");
+            if (child.Pointer == 0)
+            {
+                Assert.That(missingLeaf, Is.Not.Zero, "a complete warmed path must link every hashed child");
+                break;
+            }
+            Assert.That(warmed.TryGet(child.Pointer, child.Data, out _), Is.True);
+            Assert.That(child.Pointer, Is.LessThan(pointer), "the child's bytes were published first");
+            if (record.Kind == NodeRecordKind.Extension)
+            {
+                record.View.CopyKey(0, extensionKey);
+                currentPath.AppendMut(extensionKey[..record.View.KeyLength(0)]);
+            }
+            else currentPath.AppendMut(slot);
+            currentHash = child.Data;
+        }
+        Assert.That(linked, Is.EqualTo(warmed.Count));
     }
 
     [Test]
@@ -243,12 +429,20 @@ internal class LogBulkSetTests
         using TrieNodeLog original = new(0, SmallGenerationBytes);
         using TrieNodeLogRetain retain = original.RetainActive();
         TrieRoot root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), null), null, TrieRoot.Empty, items, false);
-        DictionaryNodeSource source = new(Rlps(original, root), new WarmedNodes(1024), null);
+        Dictionary<TreePath, byte[]> persisted = Rlps(original, root);
+        WarmedNodes warmed = new(1024);
+        DictionaryNodeSource source = new(persisted, warmed, null);
         using TrieNodeLog log = new(0, SmallGenerationBytes);
         using TrieNodeLogRetain newRetain = log.RetainActive();
         TrieRoot persistedRoot = new(root.Hash, 0);
 
-        LogBulkSet.WarmUp(log, source, null, persistedRoot, keyA.ValueHash256, forDelete);
+        source.WarmUp(log, persistedRoot, keyA.ValueHash256, forDelete);
+        TreePath branchPath = TreePath.FromPath(keyA.Bytes);
+        branchPath.TruncateOne();
+        Assert.That(warmed.TryGet(null, branchPath, ValueKeccak.Compute(persisted[branchPath]), out NodeRecordRef warmedBranch), Is.True);
+        ChildRef warmedSibling = warmedBranch.View.Child(2);
+        Assert.That(warmedSibling.Pointer, forDelete && !threeChildren ? Is.Not.Zero : Is.Zero, "only a required collapse sibling is linked");
+        if (warmedSibling.Pointer != 0) Assert.That(warmed.TryGet(warmedSibling.Pointer, warmedSibling.Data, out _), Is.True);
         int before = source.FetchCount;
         TrieRoot updated = BulkSet(log, source, null, persistedRoot, [(keyA, null)], false);
         PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
@@ -280,8 +474,8 @@ internal class LogBulkSetTests
         using TrieNodeLog log = new(0, SmallGenerationBytes);
         TrieRoot persistedRoot = new(root.Hash, 0);
 
-        LogBulkSet.WarmUp(log, pathSource, null, persistedRoot, missing.ValueHash256);
-        LogBulkSet.WarmUp(log, deleteSource, null, persistedRoot, missing.ValueHash256, forDelete: true);
+        pathSource.WarmUp(log, persistedRoot, missing.ValueHash256);
+        deleteSource.WarmUp(log, persistedRoot, missing.ValueHash256, forDelete: true);
 
         Assert.That(deleteSource.FetchCount, Is.EqualTo(pathSource.FetchCount));
     }
@@ -736,6 +930,39 @@ internal class LogBulkSetTests
         }
     }
 
+    private static ulong InsertLinkedRecords(WarmedNodes warmed, Dictionary<TreePath, byte[]> nodes)
+    {
+        Dictionary<TreePath, ulong> pointers = [];
+        Span<byte> extensionKey = stackalloc byte[64];
+        Span<ulong> childPointers = stackalloc ulong[16];
+        foreach ((TreePath path, byte[] rlp) in nodes.OrderByDescending(node => node.Key.Length))
+        {
+            NodeRecord.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask);
+            byte[] bytes = new byte[NodeRecord.Length(BitOperations.PopCount(hashMask), rlp.Length)];
+            NodeRecord.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), NodeRecord.NodeKey(null, path), bytes);
+            RecordView view = new(bytes);
+            childPointers.Clear();
+            for (int slot = 0; slot < 16; slot++)
+            {
+                if ((hashMask & (1 << slot)) == 0) continue;
+                TreePath childPath;
+                if (kind == NodeRecordKind.Extension)
+                {
+                    view.CopyKey(0, extensionKey);
+                    childPath = path.Append(extensionKey[..view.KeyLength(0)]);
+                }
+                else childPath = path.Append(slot);
+
+                childPointers[slot] = pointers[childPath];
+            }
+
+            warmed.TryInsertVerified(null, path, ValueKeccak.Compute(rlp), rlp, kind, hashMask, childPointers, out _, out ulong pointer);
+            pointers[path] = pointer;
+        }
+
+        return pointers.GetValueOrDefault(TreePath.Empty);
+    }
+
     private static TrieRoot BulkSet(TrieNodeLog log, INodeRecordSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = Entries(items);
@@ -764,12 +991,18 @@ internal class LogBulkSetTests
     private static IEnumerable<string> InvalidRecords(TrieNodeLog log, TrieRoot root)
     {
         List<string> invalid = [];
-        foreach ((TreePath path, _, NodeRecordRef record) in log.EnumerateNodes(root.Pointer))
+        foreach ((TreePath path, ulong pointer, NodeRecordRef record) in log.EnumerateNodes(root.Pointer))
         {
             byte[] rlp = record.Rlp.ToArray();
             bool parses = NodeRecord.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask);
+            bool transientPointer = NodeRecord.IsTransient(pointer);
+            for (int i = 0; i < BitOperations.PopCount(hashMask); i++)
+            {
+                transientPointer |= NodeRecord.IsTransient(BinaryPrimitives.ReadUInt64LittleEndian(record.Span[(NodeRecord.HeaderLength + i * NodeRecord.PointerLength)..]));
+            }
+
             if (ValueKeccak.Compute(rlp) != record.Hash || !parses || kind != record.Kind || hashMask != record.View.HashMask
-                || record.View.NodeKey != NodeRecord.NodeKey(null, path))
+                || record.View.NodeKey != NodeRecord.NodeKey(null, path) || transientPointer)
             {
                 invalid.Add(path.ToString());
             }

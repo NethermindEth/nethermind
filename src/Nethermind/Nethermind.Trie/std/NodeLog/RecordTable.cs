@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Threading;
@@ -12,15 +11,13 @@ namespace Nethermind.Trie.NodeLog;
 
 /// <summary>A lock-free map from a node position to one node record, over an arena of record copies.</summary>
 /// <remarks>
-/// The table is direct-mapped by <see cref="NodeRecord.NodeKey"/>: the low key bits pick the slot, and a slot entry packs
-/// <c>signature:32 | chunk:15 | offset/8:17</c>, where the signature is the high 32 key bits with bit 0 set so that 0 means empty.
+/// The table is direct-mapped by the low bits of <see cref="NodeRecord.NodeKey"/> and checks the full address and path.
 /// An add that collides with another position replaces it. The arena is a list of 1 MiB chunks that never move.
-/// Adds run under a lock and publish a record with a release write of its slot after copying it, so readers need no lock.
-/// The address and path of every copied record are kept beside it for <see cref="CopyAllTo"/>.
+/// Adds run under a lock and publish an immutable entry after copying its record, so readers need no lock.
+/// Pointers encode a resource/reset generation and an arena position, independent of the replaceable index entries.
 /// </remarks>
 /// <param name="slotCount">A power of two.</param>
-/// <param name="maxArenaBytes">The arena budget; an add that does not fit fails.</param>
-internal sealed class RecordTable(int slotCount, long maxArenaBytes)
+internal sealed class RecordTable(int slotCount)
 {
     private const int ChunkBytes = 1 << 20;
     private const int MaxChunks = 1 << 15;
@@ -28,89 +25,115 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
     private const uint OffsetMask = (1u << OffsetBits) - 1;
     private const int AlignmentBits = 3;
 
+    private static long _epochCounter;
+
     private readonly Lock _lock = new();
-    private readonly ulong[] _slots = BitOperations.IsPow2(slotCount)
-        ? new ulong[slotCount]
+    private readonly Entry?[] _slots = BitOperations.IsPow2(slotCount)
+        ? new Entry?[slotCount]
         : throw new ArgumentException("The slot count must be a power of two.", nameof(slotCount));
     private readonly ulong _slotMask = (ulong)slotCount - 1;
-    private readonly long _maxArenaBytes = Math.Min(maxArenaBytes, (long)MaxChunks * ChunkBytes);
-    private readonly List<(Hash256? Address, TreePath Path, uint Position)> _addedRecords = [];
+    private int _count;
+    private uint _generation = NodeRecord.NextTransientGeneration(ref _epochCounter);
     private byte[][] _chunks = [];
     private int _chunkCount;
     private int _chunkUsed;
     private long _arenaBytes;
 
     /// <summary>Number of records copied into the arena since the last <see cref="Reset"/>, including replaced ones.</summary>
-    public int Count
-    {
-        get
-        {
-            lock (_lock) return _addedRecords.Count;
-        }
-    }
+    public int Count => Volatile.Read(ref _count);
 
     /// <summary>Bytes allocated by the arena.</summary>
     public long ArenaBytes => Volatile.Read(ref _arenaBytes);
 
     /// <returns>True when the slot of the position holds a record of <paramref name="hash"/> at that position.</returns>
-    public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
+    public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
+        TryGet(address, path, hash, out record, out _);
+
+    /// <inheritdoc cref="TryGet(Hash256, in TreePath, in ValueHash256, out NodeRecordRef)"/>
+    /// <param name="pointer">The transient pointer to the matching record, or zero on a miss.</param>
+    public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record, out ulong pointer)
     {
         ulong nodeKey = NodeRecord.NodeKey(address, path);
-        ulong entry = Volatile.Read(ref _slots[nodeKey & _slotMask]);
-        if (entry >> 32 == Signature(nodeKey))
+        Entry? entry = Volatile.Read(ref _slots[nodeKey & _slotMask]);
+        if (entry is not null && entry.Address == address && entry.Path == path)
         {
-            record = RecordAt((uint)entry);
-            if (Matches(record.View, nodeKey, hash)) return true;
+            record = RecordAt(entry.Position);
+            if (record.Hash == hash)
+            {
+                pointer = PointerAt(entry.Position);
+                return true;
+            }
+        }
+
+        record = default;
+        pointer = 0;
+        return false;
+    }
+
+    /// <summary>Resolves a pointer in this resource's current generation, independent of the position index.</summary>
+    public bool TryGet(ulong pointer, in ValueHash256 hash, out NodeRecordRef record)
+    {
+        if (pointer >> TrieNodeLog.OffsetBits == Volatile.Read(ref _generation))
+        {
+            uint position = (uint)pointer;
+            int chunk = (int)(position >> OffsetBits);
+            int offset = OffsetOf(position);
+            int chunkCount = Volatile.Read(ref _chunkCount);
+            if (chunk < chunkCount)
+            {
+                byte[] bytes = Volatile.Read(ref _chunks)[chunk];
+                if (offset <= bytes.Length - NodeRecord.HeaderLength)
+                {
+                    record = new NodeRecordRef(bytes, offset);
+                    if (record.Hash == hash) return true;
+                }
+            }
         }
 
         record = default;
         return false;
     }
 
-    /// <summary>Copies <paramref name="record"/> into the arena and maps its node key to the copy.</summary>
+    /// <summary>Copies <paramref name="record"/> into the arena and maps its node position to the copy.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="path">The path of the node in its trie.</param>
     /// <param name="record">A whole record of the node at <paramref name="path"/>; its node key picks the slot.</param>
-    /// <param name="added">The copy, or the record already mapped when it has the same node key and hash.</param>
+    /// <param name="added">The copy, or the record already mapped when it has the same position and hash.</param>
+    /// <param name="pointer">The transient pointer to the added or existing record, or zero when the arena is full.</param>
     /// <returns>False when the arena is full.</returns>
-    public bool TryAdd(Hash256? address, in TreePath path, ReadOnlySpan<byte> record, out NodeRecordRef added)
+    public bool TryAdd(Hash256? address, in TreePath path, ReadOnlySpan<byte> record, out NodeRecordRef added, out ulong pointer)
     {
         RecordView view = new(record);
         ulong nodeKey = view.NodeKey;
         Debug.Assert(nodeKey == NodeRecord.NodeKey(address, path), "The record is not of the node at the path.");
-        ref ulong slot = ref _slots[nodeKey & _slotMask];
+        ref Entry? slot = ref _slots[nodeKey & _slotMask];
         lock (_lock)
         {
-            if (slot >> 32 == Signature(nodeKey))
+            if (slot is { } existing && existing.Address == address && existing.Path == path)
             {
-                added = RecordAt((uint)slot);
-                if (Matches(added.View, nodeKey, view.Hash)) return true;
+                added = RecordAt(existing.Position);
+                if (added.Hash == view.Hash)
+                {
+                    pointer = PointerAt(existing.Position);
+                    return true;
+                }
             }
 
             int alignedLength = NodeRecord.AlignedLength(record.Length);
             if (!TryReserve(alignedLength, out uint position))
             {
                 added = default;
+                pointer = 0;
                 return false;
             }
 
             record.CopyTo(_chunks[position >> OffsetBits].AsSpan(OffsetOf(position)));
-            _addedRecords.Add((address, path, position));
-            Volatile.Write(ref slot, Signature(nodeKey) << 32 | position);
+            Entry entry = new(address, path, position);
+            Volatile.Write(ref slot, entry);
+            Volatile.Write(ref _count, _count + 1);
             added = RecordAt(position);
+            pointer = PointerAt(position);
             return true;
-        }
-    }
-
-    /// <summary>Appends every record in the arena, in arena order, with the address and path it was added for, to <paramref name="records"/>.</summary>
-    public void CopyAllTo(ICollection<(Hash256? Address, TreePath Path, NodeRecordRef Record)> records)
-    {
-        lock (_lock)
-        {
-            foreach ((Hash256? address, TreePath path, uint position) in _addedRecords)
-            {
-                records.Add((address, path, RecordAt(position)));
-            }
         }
     }
 
@@ -120,12 +143,10 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
     {
         lock (_lock)
         {
-            foreach ((_, _, uint position) in _addedRecords)
-            {
-                _slots[RecordAt(position).View.NodeKey & _slotMask] = 0;
-            }
-
-            _addedRecords.Clear();
+            uint generation = NodeRecord.NextTransientGeneration(ref _epochCounter);
+            Array.Clear(_slots);
+            Volatile.Write(ref _generation, generation);
+            Volatile.Write(ref _count, 0);
             if (_chunkCount == 0) return;
 
             Array.Clear(_chunks, 1, _chunkCount - 1);
@@ -135,11 +156,9 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
         }
     }
 
-    private static ulong Signature(ulong nodeKey) => nodeKey >> 32 | 1;
+    private ulong PointerAt(uint position) => (ulong)_generation << TrieNodeLog.OffsetBits | position;
 
     private static int OffsetOf(uint position) => (int)(position & OffsetMask) << AlignmentBits;
-
-    private static bool Matches(in RecordView view, ulong nodeKey, in ValueHash256 hash) => view.NodeKey == nodeKey && view.Hash == hash;
 
     private NodeRecordRef RecordAt(uint position) => new(Volatile.Read(ref _chunks)[position >> OffsetBits], OffsetOf(position));
 
@@ -147,14 +166,13 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
     {
         if (_chunkCount == 0 || _chunkUsed + alignedLength > _chunks[_chunkCount - 1].Length)
         {
-            int chunkLength = (int)Math.Min(ChunkBytes, _maxArenaBytes - _arenaBytes) & -NodeRecord.RecordAlignment;
-            if (chunkLength < alignedLength)
+            if (_chunkCount == MaxChunks || alignedLength > ChunkBytes)
             {
                 position = 0;
                 return false;
             }
 
-            AddChunk(chunkLength);
+            AddChunk(ChunkBytes);
         }
 
         position = (uint)(_chunkCount - 1) << OffsetBits | (uint)_chunkUsed >> AlignmentBits;
@@ -171,8 +189,16 @@ internal sealed class RecordTable(int slotCount, long maxArenaBytes)
             Volatile.Write(ref _chunks, grown);
         }
 
-        _chunks[_chunkCount++] = new byte[length];
+        _chunks[_chunkCount] = new byte[length];
         _chunkUsed = 0;
+        Volatile.Write(ref _chunkCount, _chunkCount + 1);
         Volatile.Write(ref _arenaBytes, _arenaBytes + length);
+    }
+
+    private sealed class Entry(Hash256? address, in TreePath path, uint position)
+    {
+        public readonly Hash256? Address = address;
+        public readonly TreePath Path = path;
+        public readonly uint Position = position;
     }
 }

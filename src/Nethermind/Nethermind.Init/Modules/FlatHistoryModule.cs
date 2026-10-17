@@ -48,7 +48,6 @@ public class FlatHistoryModule : Module
                 inner,
                 ctx.Resolve<IPersistenceManager>(),
                 ctx.Resolve<HistoryReader>(),
-                ctx.Resolve<ITrieNodeCache>(),
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
                 ctx.Resolve<HistoryScopeGate>(),

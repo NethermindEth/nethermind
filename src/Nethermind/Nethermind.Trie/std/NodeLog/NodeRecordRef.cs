@@ -9,8 +9,8 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeLog;
 
-/// <summary>A trie node record held in place inside a buffer of the trie node log, warmed nodes or a record cache.</summary>
-/// <remarks>Log records borrow native storage for the lifetime of their log operation or generation retain. Managed warmed/cache records remain valid until their owning record table is reset.</remarks>
+/// <summary>A trie node record held in place inside a buffer of the trie node log or warmed nodes.</summary>
+/// <remarks>Log records borrow native storage for the lifetime of their log operation or generation retain. Managed warmed records remain valid until their owning record table is reset.</remarks>
 public readonly struct NodeRecordRef
 {
     private readonly ReadOnlyMemory<byte> _buffer;

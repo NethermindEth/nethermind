@@ -28,7 +28,6 @@ public class FlatDbManagerTests
 {
     private IResourcePool _resourcePool = null!;
     private IProcessExitSource _processExitSource = null!;
-    private ITrieNodeCache _trieNodeCache = null!;
     private ISnapshotCompactor _snapshotCompactor = null!;
     private ISnapshotRepository _snapshotRepository = null!;
     private IPersistenceManager _persistenceManager = null!;
@@ -56,7 +55,6 @@ public class FlatDbManagerTests
         _log = FlatTestHelpers.NewTestLog();
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
-        _trieNodeCache = Substitute.For<ITrieNodeCache>();
         _snapshotCompactor = Substitute.For<ISnapshotCompactor>();
         _snapshotRepository = Substitute.For<ISnapshotRepository>();
         _persistenceManager = Substitute.For<IPersistenceManager>();
@@ -88,7 +86,6 @@ public class FlatDbManagerTests
     private FlatDbManager CreateManager() => new(
         _resourcePool,
         _processExitSource,
-        _trieNodeCache,
         _log,
         _snapshotCompactor,
         _snapshotRepository,
@@ -677,7 +674,6 @@ public class FlatDbManagerTests
         inner,
         _persistenceManager,
         _historyReader,
-        _trieNodeCache,
         _resourcePool,
         enableDetailedMetrics: false,
         new HistoryScopeGate(),

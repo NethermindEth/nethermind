@@ -523,7 +523,7 @@ public class NativePatriciaBulkSetTests
     }
 
     [Test]
-    public void Shared_native_cache_reuses_warmed_records_and_clear_preserves_block_owned_copies()
+    public void Warmed_records_are_local_to_their_resource_and_reset()
     {
         Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
         List<(Hash256 key, byte[] value)> initial = PatriciaTreeBulkSetterTests.GenRandomOfLength(48, seed: 73);
@@ -536,23 +536,24 @@ public class NativePatriciaBulkSetTests
             NativePendingNodesView view = pending.GetView(shard);
             for (int i = 0; i < view.Count; i++) nodes[view[i].Path] = view.GetRlp(view[i]).ToArray();
         }
-        using NativeTrieNodeLog log = new(256 * 1024, 1024 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024);
         CountingNodeStore store = new(new DictionaryNodeStore(nodes));
         using NativeWarmedNodes first = new();
         using NativeWarmedNodes second = new();
-        using NativeWarmedNodes fresh = new();
         ValueHash256 key = initial[0].key.ValueHash256;
         NativePatriciaBulkSet.WarmUp(store, log, first, TestItem.KeccakA, root.ValueHash256, key);
         Assert.That(store.Fetches, Is.Positive);
-        first.PromoteToCache();
         int fetches = store.Fetches;
+        NativePatriciaBulkSet.WarmUp(store, log, first, TestItem.KeccakA, root.ValueHash256, key);
+        Assert.That(store.Fetches, Is.EqualTo(fetches), "a resource reuses its warmed path");
         NativePatriciaBulkSet.WarmUp(store, log, second, TestItem.KeccakA, root.ValueHash256, key);
-        Assert.That(store.Fetches, Is.EqualTo(fetches), "next block reads the shared native cache");
-        log.ClearCache();
+        Assert.That(store.Fetches, Is.GreaterThan(fetches), "a separate resource fetches its own records");
+        fetches = store.Fetches;
+        first.Reset();
         NativePatriciaBulkSet.WarmUp(store, log, second, TestItem.KeccakA, root.ValueHash256, key);
-        Assert.That(store.Fetches, Is.EqualTo(fetches), "clearing does not invalidate existing block-owned copies");
-        NativePatriciaBulkSet.WarmUp(store, log, fresh, TestItem.KeccakA, root.ValueHash256, key);
-        Assert.That(store.Fetches, Is.GreaterThan(fetches), "new block sees the cleared cache");
+        Assert.That(store.Fetches, Is.EqualTo(fetches), "reset does not invalidate another resource's warmed path");
+        NativePatriciaBulkSet.WarmUp(store, log, first, TestItem.KeccakA, root.ValueHash256, key);
+        Assert.That(store.Fetches, Is.GreaterThan(fetches), "reset discards warmed records instead of promoting them");
     }
 
     private static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog log, Hash256 root, List<(Hash256 key, byte[] value)> items)

@@ -211,6 +211,8 @@ const INLINE_BRANCH: u8 = 3;
 /// kind: u8, zero: u8, hash mask: u16, RLP length: u32, node hash: [u8; 32], key: u64, see [`crate::log::node_key`].
 pub const RECORD_HEADER_LENGTH: usize = 48;
 const POINTER_LENGTH: usize = 8;
+/// High-bit tagged pointers are resource-local warmed records, never persistent log addresses.
+pub const TRANSIENT_POINTER: u64 = 1 << 63;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NodeKind {
@@ -255,6 +257,15 @@ pub fn record_length_of(header: &[u8]) -> usize {
 /// A record is its header, the log pointer of every child referenced by hash, in child order, then the RLP, which
 /// [`LoggedNode`] decodes in place.
 pub fn write_record(node: &Node, key: u64, hash: &[u8; 32], rlp: &[u8], out: &mut [u8]) {
+    write_record_inner(node, key, hash, rlp, out, false);
+}
+
+/// Writes a block-owned record, preserving its resource-local child links.
+pub fn write_warmed_record(node: &Node, hash: &[u8; 32], rlp: &[u8], out: &mut [u8]) {
+    write_record_inner(node, 0, hash, rlp, out, true);
+}
+
+fn write_record_inner(node: &Node, key: u64, hash: &[u8; 32], rlp: &[u8], out: &mut [u8], transient: bool) {
     let mask = hash_mask(node);
     out[0] = match node {
         Node::Leaf { .. } => LEAF,
@@ -277,6 +288,8 @@ pub fn write_record(node: &Node, key: u64, hash: &[u8; 32], rlp: &[u8], out: &mu
     for child in children(node) {
         match child {
             ChildRef::Hash { pointer, .. } => {
+                // A logged node can outlive or be compacted after the warmed resource is reset.
+                let pointer = if !transient && pointer & TRANSIENT_POINTER != 0 { 0 } else { *pointer };
                 out[offset..offset + POINTER_LENGTH].copy_from_slice(&pointer.to_le_bytes());
                 offset += POINTER_LENGTH;
             }
@@ -415,10 +428,6 @@ impl<'a> LoggedNode<'a> {
                 Node::Branch { children }
             }
         }
-    }
-
-    pub(crate) fn record(&self) -> &'a [u8] {
-        self.record
     }
 
     pub(crate) fn hash_mask(&self) -> u16 {

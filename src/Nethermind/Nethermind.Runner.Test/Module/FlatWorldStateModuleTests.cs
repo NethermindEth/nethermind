@@ -10,7 +10,8 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.State.Flat;
+using Nethermind.Trie.Native;
+using Nethermind.Trie.NodeLog;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Module;
@@ -41,15 +42,16 @@ public class FlatWorldStateModuleTests
     }
 
     [Test]
-    public void Managed_trie_node_cache_is_replaced_by_noop_with_native_bulk_set([Values] bool useNativeBulkSet)
+    public void Trie_node_log_backend_can_be_resolved([Values] bool useNativeBulkSet)
     {
-        FlatDbConfig config = new() { UseNativeBulkSet = useNativeBulkSet, TrieCacheMemoryBudget = 1024 * 1024 };
+        if (useNativeBulkSet) Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+        FlatDbConfig config = new() { UseNativeBulkSet = useNativeBulkSet };
         using IContainer container = new ContainerBuilder()
             .AddModule(new FlatWorldStateModule(config))
             .AddSingleton<IFlatDbConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
 
-        Assert.That(container.Resolve<ITrieNodeCache>(), useNativeBulkSet ? Is.TypeOf<NoopTrieNodeCache>() : Is.TypeOf<TrieNodeCache>());
+        Assert.That(useNativeBulkSet ? (object)container.Resolve<NativeTrieNodeLog>() : container.Resolve<TrieNodeLog>(), Is.Not.Null);
     }
 }

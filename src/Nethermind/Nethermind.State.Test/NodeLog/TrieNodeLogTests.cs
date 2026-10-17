@@ -27,6 +27,43 @@ internal class TrieNodeLogTests
     internal const int PollingMilliseconds = 10;
 
     [Test]
+    public void Generation_ids_stop_before_the_transient_namespace()
+    {
+        ulong last = TrieNodeLog.NextGeneration(NodeRecord.TransientGenerationMask - 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(last, Is.EqualTo(0x7fffffffUL));
+            Assert.That(() => TrieNodeLog.NextGeneration(last), Throws.TypeOf<TrieException>());
+            Assert.That(() => TrieNodeLog.NextGeneration(ulong.MaxValue), Throws.TypeOf<TrieException>(), "cannot wrap");
+        }
+    }
+
+    [Test]
+    public void Real_log_rejects_transient_pointers()
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        byte[] rlp = Leaf(1, 8);
+        ulong realPointer = Append(log, rlp);
+        WarmedNodes warmed = new(1);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        warmed.TryInsert(null, TreePath.Empty, hash, rlp, out _, out ulong temporaryPointer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.TryLocate(temporaryPointer, out _), Is.False);
+            Assert.That(log.TryLocate(realPointer | NodeRecord.TransientPointerMask, out _), Is.False);
+            Assert.That(log.TryLocate(realPointer, out _), Is.True);
+            Assert.That(log.TryGetNode(temporaryPointer, TreePath.Empty, out _), Is.False);
+            Assert.That(log.TryGetNodePointer(realPointer | NodeRecord.TransientPointerMask, TreePath.Empty, out _), Is.False);
+            Assert.That(log.EnumerateNodes(temporaryPointer), Is.Empty);
+            Assert.That(log.EnumerateNodes(realPointer | NodeRecord.TransientPointerMask), Is.Empty);
+            Assert.That(warmed.TryGet(realPointer, hash, out _), Is.False);
+            Assert.That(NodeRecord.PersistentPointer(temporaryPointer), Is.Zero);
+            Assert.That(NodeRecord.PersistentPointer(realPointer), Is.EqualTo(realPointer));
+        }
+    }
+
+    [Test]
     public void Log_buffers_are_zero_filled([Values(0, 1, GenerationBytes, 2 * 1024 * 1024 - 1, 2 * 1024 * 1024, 2 * 1024 * 1024 + 1)] int length)
     {
         using LogBuffer buffer = LogBuffer.Allocate(length);

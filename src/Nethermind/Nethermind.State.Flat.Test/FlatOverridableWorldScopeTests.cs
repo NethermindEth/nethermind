@@ -81,7 +81,6 @@ public class FlatOverridableWorldScopeTests
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IFlatDbConfig>(config)
                 .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)
-                .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
                 .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
 
             // Register keyed IDb for code database

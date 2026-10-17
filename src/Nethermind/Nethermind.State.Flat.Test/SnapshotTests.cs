@@ -241,7 +241,7 @@ public class SnapshotTests
     {
         Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
         using NativeTrieNodeLog log = new(0);
-        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), new NoopTrieNodeCache(), null, _pool,
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), null, _pool,
             ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: log);
         using NativeTrieNodeStore store = new(bundle, TestItem.KeccakA, log);
         NativeTrieNodeLogPin pin = log.PinActiveGeneration();
@@ -439,7 +439,7 @@ public class SnapshotTests
     public void StateRootPublicationDistinguishesUnresolvedAndEmptyRoots([Values] PublishedRootKind kind)
     {
         using TrieNodeLog log = FlatTestHelpers.NewTestLog();
-        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), Substitute.For<ITrieNodeCache>(), log, _pool, ResourcePool.Usage.MainBlockProcessing);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), log, _pool, ResourcePool.Usage.MainBlockProcessing);
         TrieNodeLogRetain retain = log.RetainActive();
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
@@ -477,7 +477,7 @@ public class SnapshotTests
         ReadOnlySnapshotBundle readOnly = new(
             FlatTestHelpers.SnapshotList(NodeSnapshot(expectedRlp, targetPath), NodeSnapshot(FlatTestHelpers.LeafRlp(2), newerPath)),
             Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty());
-        using SnapshotBundle bundle = new(readOnly, Substitute.For<ITrieNodeCache>(), log, _pool, ResourcePool.Usage.MainBlockProcessing,
+        using SnapshotBundle bundle = new(readOnly, log, _pool, ResourcePool.Usage.MainBlockProcessing,
             tier == ReaderTier.ReadOnly ? null : FlatTestHelpers.SnapshotList(NodeSnapshot(FlatTestHelpers.LeafRlp(3), newerPath)));
         if (tier == ReaderTier.Current)
         {
@@ -531,7 +531,6 @@ public class SnapshotTests
     {
         using SnapshotBundle bundle = new(
             FlatTestHelpers.MakeBundle(_pool),
-            Substitute.For<ITrieNodeCache>(),
             null,
             _pool,
             ResourcePool.Usage.MainBlockProcessing,

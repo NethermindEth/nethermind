@@ -40,7 +40,7 @@ internal static partial class LogBulkSet
         in ArrayPoolListRef<BulkSetEntry> entries, bool canParallelize)
     {
         using TrieNodeLog.ReadLease lease = log.BeginRead();
-        if (entries.Count == 0) return root;
+        if (entries.Count == 0) return new TrieRoot(root.Hash, NodeRecord.PersistentPointer(root.Pointer));
 
         using ParallelUnbalancedWork.WorkerScope? workers = canParallelize && !RuntimeInformation.IsSingleProcessor
             && entries.Count >= PatriciaTree.MinEntriesToParallelizeThreshold
@@ -69,7 +69,7 @@ internal static partial class LogBulkSet
                 updated = context.Update(entries.AsSpan(), sortBuffer.AsSpan(), flipped: false, ref path, rootNode);
             }
 
-            if (!updated.Changed) return root;
+            if (!updated.Changed) return new TrieRoot(root.Hash, NodeRecord.PersistentPointer(root.Pointer));
             if (updated.PendingIndex < 0) return TrieRoot.Empty;
 
             ChildRef top = context.Commit(updated.PendingIndex, TreePath.Empty, isRoot: true);
@@ -86,23 +86,13 @@ internal static partial class LogBulkSet
     public static TrieRoot ResolveRoot(TrieNodeLog log, Hash256? address, in ValueHash256 rootHash) =>
         new(rootHash, rootHash == ValueKeccak.EmptyTreeHash ? 0 : log.FindRoot(address, rootHash));
 
-    /// <summary>Loads the nodes on the path to <paramref name="key"/> that the log does not hold from <paramref name="source"/>.</summary>
-    /// <remarks>Stops silently where the path ends or the source misses.</remarks>
-    /// <param name="root">Its pointer is used as given, as <see cref="ResolveRoot"/> returns it.</param>
-    /// <param name="forDelete">Also loads the sibling a two-child branch collapses into when its matching leaf is deleted.</param>
-    public static void WarmUp(TrieNodeLog log, INodeRecordSource source, Hash256? address, TrieRoot root, in ValueHash256 key, bool forDelete = false)
-    {
-        using TrieNodeLog.ReadLease lease = log.BeginRead();
-        Walk(log, source, address, root, key, throwOnMissing: false, out _, forDelete);
-    }
-
     /// <param name="root">Its pointer is used as given, as <see cref="ResolveRoot"/> returns it.</param>
     /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the log nor the source.</exception>
     public static byte[]? TryGet(TrieNodeLog log, INodeRecordSource source, Hash256? address, TrieRoot root, in ValueHash256 key)
     {
         using TrieNodeLog.ReadLease lease = log.BeginRead();
-        Source leaf = Walk(log, source, address, root, key, throwOnMissing: true, out int depth);
+        Source leaf = Walk(log, source, address, root, key, out int depth);
         if (leaf.Kind == SourceKind.None) return null;
 
         Span<byte> keyNibbles = stackalloc byte[MaxKeyNibbles];
@@ -112,10 +102,9 @@ internal static partial class LogBulkSet
         return leafKey[..leafKeyLength].SequenceEqual(keyNibbles[depth..]) ? leaf.LeafValue().Span.ToArray() : null;
     }
 
-    /// <returns>The leaf on the path to <paramref name="key"/>, at <paramref name="depth"/>, or none when the path ends before one or a node is missing.</returns>
-    private static Source Walk(TrieNodeLog log, INodeRecordSource source, Hash256? address, in TrieRoot root, in ValueHash256 key, bool throwOnMissing, out int depth, bool forDelete = false)
+    /// <returns>The leaf on the path to <paramref name="key"/>, at <paramref name="depth"/>, or none when the path ends before one.</returns>
+    private static Source Walk(TrieNodeLog log, INodeRecordSource source, Hash256? address, in TrieRoot root, in ValueHash256 key, out int depth)
     {
-        NodeRecordRef parentBranch = default;
         TreePath path = TreePath.Empty;
         ChildRef child = root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(root.Hash, root.Pointer);
         Span<byte> keyNibbles = stackalloc byte[MaxKeyNibbles];
@@ -129,23 +118,19 @@ internal static partial class LogBulkSet
                 case ChildRefKind.Empty:
                     return default;
                 case ChildRefKind.Inline:
-                    Source inlineLeaf = Source.ForInline(child);
-                    if (forDelete) WarmUpDeleteSibling(log, source, parentBranch, path, inlineLeaf, keyNibbles);
-                    return inlineLeaf;
+                    return Source.ForInline(child);
             }
 
-            if (!log.TryLocate(child.Pointer, out NodeRecordRef record) && !source.TryLoad(path, child.Data, out record))
+            if (!log.TryLocate(child.Pointer, out NodeRecordRef record) && !source.TryLoad(child.Pointer, path, child.Data, out record))
             {
-                return throwOnMissing ? ThrowMissingNode(address, path, child.Data) : default;
+                return ThrowMissingNode(address, path, child.Data);
             }
 
             RecordView view = record.View;
             switch (view.Kind)
             {
                 case NodeRecordKind.Leaf:
-                    Source leaf = Source.ForRecord(record, 0);
-                    if (forDelete) WarmUpDeleteSibling(log, source, parentBranch, path, leaf, keyNibbles);
-                    return leaf;
+                    return Source.ForRecord(record, 0);
                 case NodeRecordKind.Extension:
                     int keyLength = view.KeyLength(0);
                     view.CopyKey(0, extensionKey);
@@ -153,43 +138,13 @@ internal static partial class LogBulkSet
 
                     path.AppendMut(extensionKey[..keyLength]);
                     child = view.Child(0);
-                    parentBranch = default;
                     break;
                 default:
-                    parentBranch = record;
                     path.AppendMut(keyNibbles[depth]);
                     child = view.Child(keyNibbles[depth]);
                     break;
             }
         }
-    }
-
-    // A single delete can collapse its immediate branch into an off-path sibling; an extension between them cannot.
-    private static void WarmUpDeleteSibling(TrieNodeLog log, INodeRecordSource source, NodeRecordRef branch, TreePath leafPath, Source leaf, ReadOnlySpan<byte> key)
-    {
-        if (branch.IsNull) return;
-        Span<byte> leafKey = stackalloc byte[MaxKeyNibbles];
-        int keyLength = leaf.CopyKey(leafKey);
-        if (!leafKey[..keyLength].SequenceEqual(key[leafPath.Length..])) return;
-
-        int deletedNibble = key[leafPath.Length - 1];
-        int siblingNibble = -1;
-        ChildRef sibling = default;
-        RecordView view = branch.View;
-        for (int nibble = 0; nibble < BranchChildCount; nibble++)
-        {
-            if (nibble == deletedNibble) continue;
-            ChildRef child = view.Child(nibble);
-            if (child.Kind == ChildRefKind.Empty) continue;
-            if (siblingNibble >= 0) return;
-            siblingNibble = nibble;
-            sibling = child;
-        }
-
-        if (sibling.Kind != ChildRefKind.Hash || log.TryLocate(sibling.Pointer, out _)) return;
-        leafPath.TruncateOne();
-        leafPath.AppendMut(siblingNibble);
-        source.TryLoad(leafPath, sibling.Data, out _);
     }
 
     private static void ReturnArena(BulkSetArena arena)

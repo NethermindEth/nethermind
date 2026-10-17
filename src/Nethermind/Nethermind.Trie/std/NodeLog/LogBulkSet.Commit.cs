@@ -179,7 +179,7 @@ internal static partial class LogBulkSet
                 if (children[i].Kind != ChildRefKind.Hash) continue;
 
                 hashMask |= (ushort)(1 << i);
-                BinaryPrimitives.WriteUInt64LittleEndian(record[pointerOffset..], children[i].Pointer);
+                BinaryPrimitives.WriteUInt64LittleEndian(record[pointerOffset..], NodeRecord.PersistentPointer(children[i].Pointer));
                 pointerOffset += NodeRecord.PointerLength;
             }
 

@@ -66,7 +66,6 @@ public class StorageRootCommitBenchmark
         FlatWorldStateBenchmarkHarness.RequireTieredCompilationDisabled();
 
         _config = new FlatDbConfig { UseNativeBulkSet = UseNativeBulkSet };
-        // Disabled, like the NullTrieNodeCache the managed tries get.
         _nativeTrieNodeLog = UseNativeBulkSet ? new NativeTrieNodeLog(0) : null;
         _resourcePool = new ResourcePool(_config);
         _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
@@ -79,9 +78,8 @@ public class StorageRootCommitBenchmark
         ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty());
-        NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
-            readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: _nativeTrieNodeLog);
+            readOnly, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: _nativeTrieNodeLog);
         CapturingCommitTarget commitTarget = new();
         using FlatWorldStateScope scope = new(
             currentStateId: initialStateId,
@@ -136,9 +134,8 @@ public class StorageRootCommitBenchmark
         ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty());
-        NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
-            readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: _nativeTrieNodeLog);
+            readOnly, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: _nativeTrieNodeLog);
         _commitTarget = new CapturingCommitTarget();
         _scope = new FlatWorldStateScope(
             currentStateId: _baseStateId,

@@ -32,7 +32,6 @@ public class FlatHistoryModuleTests
             .AddSingleton<ISyncConfig>(new SyncConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IPersistenceManager>(_ => Substitute.For<IPersistenceManager>())
-            .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
             .AddSingleton<IResourcePool>(_ => Substitute.For<IResourcePool>())
             .AddSingleton<IMetricsConfig>(_ => Substitute.For<IMetricsConfig>())
             .Build();

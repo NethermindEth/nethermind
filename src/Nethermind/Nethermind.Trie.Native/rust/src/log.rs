@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Condvar, Mutex, OnceLock};
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use rustc_hash::{FxBuildHasher, FxHasher};
@@ -103,7 +103,6 @@ pub struct TrieNodeLog {
     temporary: bool,
     state_roots: RootTable,
     storage_roots: RootTable,
-    pub(crate) cache: Arc<crate::warmed::SharedCache>,
 }
 
 #[derive(Default)]
@@ -135,21 +134,15 @@ impl TrieNodeLog {
     /// Creates a log whose compacted generations take about `compressed_max_memory` bytes, exceeded only while sessions
     /// pin them. Boxed, as compaction reads it in the background, so it must not be moved out.
     pub fn new(compressed_max_memory: u64) -> Box<TrieNodeLog> {
-        Self::with_cache(compressed_max_memory, 0)
-    }
-
-    pub(crate) fn with_cache(compressed_max_memory: u64, cache_memory_budget: u64) -> Box<TrieNodeLog> {
         let storage_root_slots =
             (compressed_max_memory / MEMORY_PER_STORAGE_ROOT_SLOT).max(STATE_ROOT_SLOTS as u64);
-        let mut log = TrieNodeLog::create(
+        TrieNodeLog::create(
             GENERATION_BYTES,
             compressed_max_memory,
             false,
             RootTable::new(STATE_ROOT_SLOTS),
             RootTable::new((storage_root_slots as usize).next_power_of_two()),
-        );
-        log.cache = Arc::new(crate::warmed::SharedCache::new(cache_memory_budget));
-        log
+        )
     }
 
     /// A log of the smallest generations, which keeps nothing compacted.
@@ -212,7 +205,6 @@ impl TrieNodeLog {
             temporary,
             state_roots,
             storage_roots,
-            cache: Arc::new(crate::warmed::SharedCache::new(0)),
         });
         log.generation(1).start(generation_bytes, temporary);
         log
@@ -723,6 +715,7 @@ impl LogSession<'_> {
     /// Where the record at `pointer` starts, if this session can read it, in its generation while not older than the
     /// floor, and otherwise in what compaction kept of it.
     fn locate(&self, pointer: LogPointer) -> Option<*const u8> {
+        if pointer & crate::node::TRANSIENT_POINTER != 0 { return None; }
         let id = pointer >> OFFSET_BITS;
         if id >= self.floor {
             return Some(self.log.bytes(pointer, 0).as_ptr());
@@ -1156,6 +1149,42 @@ mod tests {
         assert!(active_length(&temporary) > MIN_GENERATION_BYTES);
         session.set_root(None, &[0x44; 32], first);
         assert_eq!(session.root(None, &[0x44; 32]), 0);
+    }
+
+    #[test]
+    fn compaction_preserves_real_child_links_but_never_transient_links() {
+        let log = TrieNodeLog::create(
+            MIN_GENERATION_BYTES,
+            0,
+            false,
+            RootTable::new(1),
+            RootTable::new(1),
+        );
+        let writer = log.pin();
+        let child = leaf(vec![0x11; 40]);
+        let child_hash = crate::keccak::keccak(&rlp(&child));
+        let child_pointer = writer.append_keyed(&child, 1);
+        let transient = crate::node::TRANSIENT_POINTER | 1 << 32;
+        assert!(writer.record(transient).is_none());
+        let mut children = empty_children();
+        children[1] = ChildRef::Hash { hash: child_hash, pointer: child_pointer };
+        children[2] = ChildRef::Hash { hash: [0x22; 32], pointer: transient };
+        let branch = Node::Branch { children };
+        let branch_hash = crate::keccak::keccak(&rlp(&branch));
+        let root_pointer = writer.append_keyed(&branch, 2);
+        writer.set_root(None, &branch_hash, root_pointer);
+        while log.active.load(Ordering::Relaxed) <= LIVE_GENERATIONS + 1 {
+            writer.append_keyed(&leaf(vec![0xcc; 1000]), 3);
+        }
+        let reader = log.pin();
+        drop(writer);
+        wait_for_compaction(&log);
+        let record = LoggedNode::new(reader.record(root_pointer).unwrap());
+        assert_eq!(record.hash(), &branch_hash);
+        assert!(matches!(record.child(1), ChildRef::Hash { pointer, hash } if pointer == child_pointer && hash == child_hash));
+        assert!(matches!(record.child(2), ChildRef::Hash { pointer: 0, hash } if hash == [0x22; 32]));
+        assert_eq!(reader.find_node(root_pointer, &TreePath::default().append(&[1])).unwrap().rlp(), rlp(&child));
+        assert_eq!(reader.find_root(None, &branch_hash), root_pointer);
     }
 
     #[test]

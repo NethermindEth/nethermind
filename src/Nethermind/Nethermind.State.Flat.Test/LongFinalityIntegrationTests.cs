@@ -317,7 +317,6 @@ public class LongFinalityIntegrationTests
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
             _processExitSource,
-            Substitute.For<ITrieNodeCache>(),
             _log,
             Substitute.For<ISnapshotCompactor>(),
             repo,

@@ -135,8 +135,8 @@ fn validate_entries(entries: &[Entry], values: &[u8]) -> Result<(), Error> {
 /// An owned trie whose changed nodes remain unhashed until [`BulkSetState::finish`]. A failed update or finish
 /// invalidates it; finishing consumes its contents, but the caller still owns the allocation.
 ///
-/// Retained hash references contain numeric log pointers only. Each call resolves them under a fresh session, so the
-/// caller must preserve the base trie's nodes through its normal generation retention or node store.
+/// Retained hash references contain numeric log or transient pointers, never borrowed records. Each call resolves
+/// them under a fresh session and warmed-resource identity; expired links fall back to the retained trie or store.
 pub struct BulkSetState {
     address: Option<[u8; 32]>,
     root: Option<ChildRef>,
@@ -925,7 +925,8 @@ impl<S: NodeStore> Context<'_, S> {
                 if pending.is_none() {
                     if let Some(record) = self
                         .warmed
-                        .and_then(|warmed| warmed.get(self.address, path, hash))
+                        .and_then(|warmed| warmed.get_pointer(*pointer, self.address, path, hash)
+                            .or_else(|| warmed.get(self.address, path, hash)))
                     {
                         return Ok(Some(Source::Logged { record, skip: 0 }));
                     }
@@ -937,7 +938,16 @@ impl<S: NodeStore> Context<'_, S> {
                     }
                     None => {
                         self.node_reads.fetched();
-                        self.store.fetch(path, hash)?.ok_or(Error::MissingNode)?
+                        if pointer & crate::node::TRANSIENT_POINTER != 0 {
+                            self.store.fetch_rlp(path, hash, |rlp| {
+                                if crate::keccak::keccak(rlp) != *hash {
+                                    return Err(Error::CorruptNode);
+                                }
+                                decode_rlp(rlp)
+                            })?.transpose()?.ok_or(Error::MissingNode)?
+                        } else {
+                            self.store.fetch(path, hash)?.ok_or(Error::MissingNode)?
+                        }
                     }
                 };
                 Ok(Some(Source::Decoded(node)))

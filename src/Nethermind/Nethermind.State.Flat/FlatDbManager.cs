@@ -26,7 +26,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly IPersistenceManager _persistenceManager;
     private readonly ISnapshotCompactor _snapshotCompactor;
     private readonly ISnapshotRepository _snapshotRepository;
-    private readonly ITrieNodeCache _trieNodeCache;
     private readonly TrieNodeLog? _trieNodeLog;
     private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private readonly IResourcePool _resourcePool;
@@ -37,10 +36,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private readonly Task _compactorTask;
     private readonly Channel<StateId> _compactorJobs;
-
-    // The node cache is kinda important for performance, so we want it populated as quickly as possible.
-    private readonly Task _populateTrieNodeCacheTask;
-    private readonly Channel<TransientResource> _populateTrieNodeCacheJobs;
 
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
@@ -65,7 +60,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public FlatDbManager(
         IResourcePool resourcePool,
         IProcessExitSource processExitSource,
-        ITrieNodeCache trieNodeCache,
         TrieNodeLog? trieNodeLog,
         ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
@@ -77,7 +71,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         bool enableDetailedMetrics,
         NativeTrieNodeLog? nativeTrieNodeLog = null)
     {
-        _trieNodeCache = trieNodeCache;
         _trieNodeLog = trieNodeLog;
         _nativeTrieNodeLog = nativeTrieNodeLog;
         _snapshotCompactor = snapshotCompactor;
@@ -109,11 +102,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _cancelTokenSource = new();
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
-        _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
         _persistenceJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
 
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
-        _populateTrieNodeCacheTask = RunTrieCachePopulator(_cancelTokenSource.Token);
         _persistenceTask = RunPersistence(_cancelTokenSource.Token);
         _clearBundleCacheTask = RunClearBundleCache(_cancelTokenSource.Token);
     }
@@ -143,12 +134,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         {
             _compactorJobs.Writer.TryComplete();
         }
-    }
-
-    private async Task RunCompactJobSync(StateId stateId, TransientResource transientResource, CancellationToken cancellationToken)
-    {
-        PopulateTrieNodeCache(transientResource);
-        await RunCompactJob(stateId, cancellationToken);
     }
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
@@ -204,46 +189,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
-    private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await foreach (TransientResource cachedResource in _populateTrieNodeCacheJobs.Reader.ReadAllAsync(cancellationToken))
-            {
-                await NotifyWhenSlow("Populating trie node cache", () =>
-                {
-                    PopulateTrieNodeCache(cachedResource);
-                    return Task.CompletedTask;
-                });
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            _cancelTokenSource.Cancel();
-        }
-        catch
-        {
-            _cancelTokenSource.Cancel();
-            throw;
-        }
-        finally
-        {
-            _populateTrieNodeCacheJobs.Writer.TryComplete();
-        }
-    }
-
-    private void PopulateTrieNodeCache(TransientResource transientResource)
-    {
-        try
-        {
-            _trieNodeCache.Add(transientResource);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
     private async Task NotifyWhenSlow(string name, Func<Task> closure)
     {
         TimeSpan slowTime = TimeSpan.FromSeconds(2);
@@ -293,7 +238,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
         return new SnapshotBundle(
             GatherReadOnlySnapshotBundle(baseBlock),
-            _trieNodeCache,
             _trieNodeLog,
             _resourcePool,
             usage: usage,
@@ -448,18 +392,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // The latest block the main processing scope committed; used as the head for forced persists.
         _snapshotRepository.SetLastCommittedStateId(endBlock);
 
+        transientResource.ReleaseLease();
         if (_inlineCompaction)
         {
-            RunCompactJobSync(endBlock, transientResource, _processExitToken).Wait();
+            RunCompactJob(endBlock, _processExitToken).Wait();
         }
         else
         {
-            if (!_populateTrieNodeCacheJobs.Writer.TryWrite(transientResource))
-            {
-                // Queue full, return to pool instead of leaking
-                transientResource.ReleaseLease();
-            }
-
             if (!_compactorJobs.Writer.TryWrite(endBlock))
             {
                 if (_processExitToken.IsCancellationRequested) return; // When cancelled the queue stop
@@ -543,8 +482,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (persistedState == StateId.PreGenesis) return;
 
         ClearReadOnlyBundleCache();
-        _trieNodeCache.Clear();
-        _nativeTrieNodeLog?.ClearCache();
 
         if (_logger.IsInfo) _logger.Info($"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
     }
@@ -590,7 +527,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         {
             _compactorJobs.Writer.TryComplete();
             _persistenceJobs.Writer.TryComplete();
-            _populateTrieNodeCacheJobs.Writer.TryComplete();
             _cancelTokenSource.Cancel();
 
             try
@@ -598,13 +534,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 await Task.WhenAll(
                     _compactorTask,
                     _persistenceTask,
-                    _populateTrieNodeCacheTask,
                     _clearBundleCacheTask);
             }
             finally
             {
-                while (_populateTrieNodeCacheJobs.Reader.TryRead(out TransientResource? cachedResource))
-                    cachedResource.ReleaseLease();
                 _cancelTokenSource.Dispose();
             }
         }

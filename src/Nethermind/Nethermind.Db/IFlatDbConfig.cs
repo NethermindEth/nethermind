@@ -130,9 +130,6 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 
-    [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
-    ulong TrieCacheMemoryBudget { get; set; }
-
     [ConfigItem(Description = "Memory budget, in bytes, for the compacted generations of the trie node log; the oldest are freed beyond it. It also sizes the log's storage root index.", DefaultValue = "524288000")]
     ulong CompressedTrieNodeLogMemoryBudget { get; set; }
 

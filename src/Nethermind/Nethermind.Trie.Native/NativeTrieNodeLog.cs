@@ -21,10 +21,7 @@ namespace Nethermind.Trie.Native;
 /// </remarks>
 public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
 {
-    public NativeTrieNodeLog(ulong compressedMaxMemory, ulong cacheMemoryBudget = 0) : base(IntPtr.Zero, ownsHandle: true) => SetHandle(nm_patricia_log_new(compressedMaxMemory, cacheMemoryBudget));
-
-    /// <summary>Clears the shared cache of persisted records without affecting block-owned warmed copies.</summary>
-    public void ClearCache() => nm_patricia_log_cache_clear(this);
+    public NativeTrieNodeLog(ulong compressedMaxMemory) : base(IntPtr.Zero, ownsHandle: true) => SetHandle(nm_patricia_log_new(compressedMaxMemory));
 
     public override bool IsInvalid => handle == IntPtr.Zero;
 
@@ -79,7 +76,7 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
     }
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial nint nm_patricia_log_new(ulong compressedMaxMemory, ulong cacheMemoryBudget);
+    private static partial nint nm_patricia_log_new(ulong compressedMaxMemory);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial int nm_patricia_log_node(NativeTrieNodeLog log, ulong pointer, ValueHash256* hashOut, byte** rlpOut);
@@ -92,9 +89,6 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial void nm_patricia_log_release(nint log, ulong generation);
-
-    [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial void nm_patricia_log_cache_clear(NativeTrieNodeLog log);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial void nm_patricia_log_free(nint log);
