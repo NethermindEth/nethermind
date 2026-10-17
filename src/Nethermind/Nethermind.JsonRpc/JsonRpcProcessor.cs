@@ -604,10 +604,13 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         // Deferred so an empty batch can be answered as a single Invalid Request rather than an empty array.
         bool batchStarted = false;
         BatchRequestJsonLifetime batchRequestJsonLifetime = new();
+        int concurrency = Math.Min(_jsonRpcConfig.BatchProcessingConcurrency, requestCount);
+        BatchExecutionWindow? window = null;
 
         try
         {
-            while (source.TryGetNext(out JsonRpcRequest? request, out Exception? decodeException))
+            bool hasNext = source.TryGetNext(out JsonRpcRequest? request, out Exception? decodeException);
+            while (hasNext || window?.Count > 0)
             {
                 if (!batchStarted)
                 {
@@ -615,7 +618,35 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     batchStarted = true;
                 }
 
+                while (hasNext
+                    && request is not null
+                    && !isStopped
+                    && concurrency > 1
+                    && CanExecuteConcurrently(request)
+                    && !(window ??= new BatchExecutionWindow(concurrency)).IsFull)
+                {
+                    batchRequestJsonLifetime.TrackUntilBatchEnd(request);
+                    window.Add(request, ExecuteInBackground(request, context));
+                    hasNext = source.TryGetNext(out request, out decodeException);
+                }
+
                 requestIndex++;
+                if (window?.Count > 0)
+                {
+                    Task<JsonRpcResult.Entry> execution = window.Take(out JsonRpcRequest executed);
+                    JsonRpcResult.Entry executedResponse = await execution;
+                    if (isStopped)
+                    {
+                        // Already executed alongside the item that stopped the batch, so it is answered as if it never ran.
+                        executedResponse.Dispose();
+                        executedResponse = CreateBatchResponseLimitEntry(executed);
+                    }
+
+                    await WriteBatchResponseAsync(executed, executedResponse, requestIndex, requestCount, sink, cancellationToken);
+                    isStopped |= sink.StopRequested;
+                    continue;
+                }
+
                 if (request is null)
                 {
                     if (decodeException is not null) LogInvalidBatchItem(decodeException);
@@ -623,6 +654,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     // The entry still counts against the response body: skipping this read would let the next
                     // valid element be dispatched in full after the sink already asked to stop.
                     isStopped |= sink.StopRequested;
+                    hasNext = source.TryGetNext(out request, out decodeException);
                     continue;
                 }
 
@@ -632,14 +664,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     ? CreateBatchResponseLimitEntry(request)
                     : await HandleSingleRequest(request, context);
 
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"  {requestIndex}/{requestCount} JSON RPC request - {request} handled after {response.Report.HandlingTimeMicroseconds}");
-                    _diagnostics.TraceResult(response);
-                }
-
-                await WriteBatchEntryAsync(response, sink, cancellationToken);
+                await WriteBatchResponseAsync(request, response, requestIndex, requestCount, sink, cancellationToken);
                 isStopped |= sink.StopRequested;
+                hasNext = source.TryGetNext(out request, out decodeException);
             }
 
             // JSON-RPC 2.0: an empty batch is itself an Invalid Request, answered with one error object rather
@@ -655,8 +682,34 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         finally
         {
+            // Started items still read their params, which the lifetime below disposes.
+            if (window is not null) await window.DrainAsync(_logger);
             batchRequestJsonLifetime.Dispose();
         }
+    }
+
+    /// <summary>Whether a batch item may execute alongside its neighbours: it only reads state and runs the EVM.</summary>
+    private static bool CanExecuteConcurrently(JsonRpcRequest request) =>
+        request.Method is "eth_call" or "eth_estimateGas" or "eth_createAccessList";
+
+    private Task<JsonRpcResult.Entry> ExecuteInBackground(JsonRpcRequest request, JsonRpcContext context) =>
+        Task.Run(() => HandleSingleRequest(request, context).AsTask());
+
+    private ValueTask WriteBatchResponseAsync(
+        JsonRpcRequest request,
+        JsonRpcResult.Entry response,
+        int requestIndex,
+        int requestCount,
+        IJsonRpcResponseSink sink,
+        CancellationToken cancellationToken)
+    {
+        if (_logger.IsTrace)
+        {
+            _logger.Trace($"  {requestIndex}/{requestCount} JSON RPC request - {request} handled after {response.Report.HandlingTimeMicroseconds}");
+            _diagnostics.TraceResult(response);
+        }
+
+        return WriteBatchEntryAsync(response, sink, cancellationToken);
     }
 
     private void LogInvalidBatchItem(Exception exception)
@@ -955,6 +1008,53 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
 
         public void Dispose() => _pendingSingleDocument?.Dispose();
+    }
+
+    /// <summary>The batch items executing in the background, in request order.</summary>
+    private sealed class BatchExecutionWindow(int capacity)
+    {
+        private readonly JsonRpcRequest[] _requests = new JsonRpcRequest[capacity];
+        private readonly Task<JsonRpcResult.Entry>[] _executions = new Task<JsonRpcResult.Entry>[capacity];
+        private int _head;
+
+        public int Count { get; private set; }
+
+        public bool IsFull => Count == _requests.Length;
+
+        public void Add(JsonRpcRequest request, Task<JsonRpcResult.Entry> execution)
+        {
+            int index = (_head + Count) % _requests.Length;
+            _requests[index] = request;
+            _executions[index] = execution;
+            Count++;
+        }
+
+        public Task<JsonRpcResult.Entry> Take(out JsonRpcRequest request)
+        {
+            request = _requests[_head];
+            Task<JsonRpcResult.Entry> execution = _executions[_head];
+            _requests[_head] = null!;
+            _executions[_head] = null!;
+            _head = (_head + 1) % _requests.Length;
+            Count--;
+            return execution;
+        }
+
+        /// <summary>Waits for the executions nobody will write and releases their responses.</summary>
+        public async ValueTask DrainAsync(ILogger logger)
+        {
+            while (Count > 0)
+            {
+                try
+                {
+                    (await Take(out _)).Dispose();
+                }
+                catch (Exception exception)
+                {
+                    if (logger.IsDebug) logger.Debug($"Batch item failed after its batch was abandoned.{Environment.NewLine}{exception}");
+                }
+            }
+        }
     }
 
     private sealed class BatchRequestJsonLifetime : IDisposable
