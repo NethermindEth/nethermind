@@ -434,10 +434,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     /// <summary>Answers an already-committed block's inclusion-list compliance without re-executing it.</summary>
     /// <remarks>
-    /// EIP-7805 appendability is judged against the state the block committed, which for a canonical block
-    /// is readable at its own state root, so the only work left is recovering the list's senders.
-    /// Null when EIP-8037 leaves the answer undecidable from state alone: only execution records the gas
-    /// dimensions appendability is judged on, so the caller must fall through to it rather than guess.
+    /// EIP-7805 appendability is judged against the state right after the block's transactions, rebuilt from
+    /// the block's access list over its parent's state.
+    /// Null when the access list or the parent's state is not available, or when EIP-8037 leaves the answer
+    /// undecidable from state alone: only execution records the gas dimensions appendability is judged on,
+    /// so the caller must fall through to it rather than guess.
     /// After cache loss or restart, even resending the current head can therefore answer SYNCING.
     /// </remarks>
     private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block)

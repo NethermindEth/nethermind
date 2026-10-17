@@ -189,9 +189,8 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task NewPayloadV6_judges_the_inclusion_list_before_the_post_execution_system_calls(bool fundedBySystemCall)
+    [Test]
+    public async Task NewPayloadV6_judges_the_inclusion_list_before_the_post_execution_system_calls([Values] bool fundedBySystemCall)
     {
         Transaction inclusionListTx = Build.A.Transaction
             .WithNonce(0)
