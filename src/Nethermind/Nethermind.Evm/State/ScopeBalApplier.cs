@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.ExceptionServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -22,20 +21,23 @@ public static class ScopeBalApplier
 {
     /// <inheritdoc cref="IWorldStateScopeProvider.IScope.ApplyBal"/>
     /// <param name="scope">The scope to write into.</param>
-    /// <param name="logManager">Reports adopted code whose bytecode cannot be found.</param>
+    /// <param name="logManager">Reports adopted code whose bytecode cannot be found, and disposal failures swallowed after a failed apply.</param>
     public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal, ILogManager logManager)
     {
+        ILogger logger = logManager.GetClassLogger(typeof(ScopeBalApplier));
         IWorldStateScopeProvider.ICodeSetter? codeSetter = null;
         // Clones deploying the same code in one block would otherwise all write it: ContainsCode only sees persisted code.
         ArrayPoolList<ValueHash256>? writtenCodeHashes = null;
+        bool failed = false;
         try
         {
             try
             {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(bal.AccountChanges.Count);
-                StorageBatches storageBatches = new();
+                IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(bal.AccountChanges.Count);
                 try
                 {
+                    // Disposed at the end of this block, so unclaimed storage batches are disposed before the parent.
+                    using StorageBatches storageBatches = new(logger);
                     foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                     {
                         if (!accountChanges.HasStateChanges) continue;
@@ -61,7 +63,7 @@ public static class ScopeBalApplier
                             }
                             else
                             {
-                                ReportMissingCode(logManager, address, codeChange.CodeHash);
+                                ReportMissingCode(logger, address, codeChange.CodeHash);
                             }
                         }
 
@@ -72,16 +74,25 @@ public static class ScopeBalApplier
                     }
                     storageBatches.Apply();
                 }
-                catch (Exception exception)
+                catch
                 {
-                    storageBatches.Dispose(exception);
+                    failed = true;
                     throw;
                 }
-                storageBatches.Dispose();
+                finally
+                {
+                    Dispose(writeBatch, failed, logger);
+                }
+            }
+            catch
+            {
+                // Also covers the parent batch's own disposal failing, which the code setter's disposal must not replace.
+                failed = true;
+                throw;
             }
             finally
             {
-                codeSetter?.Dispose();
+                Dispose(codeSetter, failed, logger);
             }
 
             if (writtenCodeHashes is null) return;
@@ -98,20 +109,39 @@ public static class ScopeBalApplier
     }
 
     /// <remarks>
+    /// After a failure, a second fault while disposing must not replace the original exception, so it is logged and
+    /// swallowed. Disposal commits writes, so on success its failure propagates.
+    /// </remarks>
+    private static void Dispose(IDisposable? disposable, bool failed, in ILogger logger)
+    {
+        if (!failed)
+        {
+            disposable?.Dispose();
+            return;
+        }
+
+        try { disposable?.Dispose(); }
+        catch (Exception e)
+        {
+            if (logger.IsWarn) logger.Warn($"Swallowed disposal failure of {disposable!.GetType().Name} after a failed BAL apply: {e}");
+        }
+    }
+
+    /// <remarks>
     /// EIP-8298: the account still takes the adopted hash, as execution would; reads of the code then rely on the
     /// code database being healed.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ReportMissingCode(ILogManager logManager, Address address, in ValueHash256 codeHash)
+    private static void ReportMissingCode(in ILogger logger, Address address, in ValueHash256 codeHash)
     {
         Metrics.IncrementBalAdoptedCodeMissing();
-        ILogger logger = logManager.GetClassLogger(typeof(ScopeBalApplier));
         if (logger.IsWarn) logger.Warn($"Block access list adopts code {codeHash} for {address}, but its bytecode is neither in the code database nor deposited in the block.");
     }
 
-    private sealed class StorageBatches : IDisposable
+    private sealed class StorageBatches(ILogger logger) : IDisposable
     {
         private const int MinParallelBatches = 3;
+        private bool _applied;
         private readonly ArrayPoolList<(IWorldStateScopeProvider.IStorageWriteBatch? Batch, BalAccountDelta Delta)> _batches = new(0);
 
         public void Add(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, in BalAccountDelta delta, bool existed)
@@ -132,42 +162,50 @@ public static class ScopeBalApplier
             if (_batches.Count < MinParallelBatches)
             {
                 for (int i = 0; i < _batches.Count; i++) Apply(i);
-                return;
             }
-
-            _batches.AsSpan().Sort(static (a, b) => b.Delta.Changes.StorageChanges.Length.CompareTo(a.Delta.Changes.StorageChanges.Length));
-            ParallelUnbalancedWork.For(0, _batches.Count, this, static (i, state) =>
+            else
             {
-                state.Apply(i);
-                return state;
-            });
+                _batches.AsSpan().Sort(static (a, b) => b.Delta.Changes.StorageChanges.Length.CompareTo(a.Delta.Changes.StorageChanges.Length));
+                ParallelUnbalancedWork.For(0, _batches.Count, this, static (i, state) =>
+                {
+                    state.Apply(i);
+                    return state;
+                });
+            }
+            _applied = true;
         }
 
         private void Apply(int index)
         {
             ref (IWorldStateScopeProvider.IStorageWriteBatch? Batch, BalAccountDelta Delta) work = ref _batches.GetRef(index);
-            using IWorldStateScopeProvider.IStorageWriteBatch batch = work.Batch!;
-            work.Batch = null;
+            IWorldStateScopeProvider.IStorageWriteBatch batch = work.Batch!;
             foreach (ReadOnlySlotChanges changes in work.Delta.Changes.StorageChanges)
             {
                 if (work.Delta.TryGetFinalValue(changes, out UInt256 value)) batch.Set(changes.Key, value);
             }
+            // Claimed only once its writes succeed: a failed batch is left to Dispose, so its own disposal cannot mask the failure.
+            work.Batch = null;
+            batch.Dispose();
         }
 
-        public void Dispose() => Dispose(null);
-
-        public void Dispose(Exception? applyFailure)
+        /// <remarks>
+        /// A completed <see cref="Apply()"/> claims and disposes every batch, so batches remain only after a failure and
+        /// their disposal failures are swallowed. Should one remain after a completed apply, its failure propagates.
+        /// </remarks>
+        public void Dispose()
         {
-            ExceptionDispatchInfo? failure = null;
-            // The parallel loop joins before returning or throwing; only unclaimed batches remain owned here.
-            foreach ((IWorldStateScopeProvider.IStorageWriteBatch? batch, _) in _batches.AsSpan())
+            try
             {
-                try { batch?.Dispose(); }
-                catch (Exception exception) { failure ??= ExceptionDispatchInfo.Capture(exception); }
+                // The parallel loop joins before returning or throwing; only unclaimed batches remain owned here.
+                foreach ((IWorldStateScopeProvider.IStorageWriteBatch? batch, _) in _batches.AsSpan())
+                {
+                    if (batch is not null) ScopeBalApplier.Dispose(batch, failed: !_applied, logger);
+                }
             }
-            _batches.Dispose();
-            if (failure is not null && applyFailure is not null) throw new AggregateException(applyFailure, failure.SourceException);
-            failure?.Throw();
+            finally
+            {
+                _batches.Dispose();
+            }
         }
     }
 }
