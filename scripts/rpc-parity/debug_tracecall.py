@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the retained 304-case traceCall inventory against a pinned Geth reference."""
+"""Run the retained 304-case traceCall inventory against an explicitly selected Geth reference."""
 import argparse
 import copy
 from datetime import datetime, timezone
@@ -13,7 +13,7 @@ import tempfile
 from typing import Any
 import urllib.request
 
-REFERENCE = "23408c2b17c3f4e094921d2ff305bfef018b1ace"
+CORPUS_REFERENCE = "23408c2b17c3f4e094921d2ff305bfef018b1ace"
 STATE_ERROR = re.compile(r"missing trie node|historical state|pruned|no state available|state (?:is )?(?:not available|unavailable|not found)", re.I)
 RESERVED = {"0x" + format(value, "040x") for value in range(0x1001, 0x1005)}
 
@@ -188,13 +188,13 @@ def common_block(clients, metadata_before, explicit):
 def run(args, evidence):
     corpus_path = Path(__file__).with_name("debug-tracecall-corpus.json")
     corpus = json.loads(corpus_path.read_text())
-    require(corpus["schema"] == 1 and corpus["referenceCommit"] == REFERENCE, "Wrong corpus/reference")
+    require(corpus["schema"] == 1 and corpus["referenceCommit"] == CORPUS_REFERENCE, "Wrong corpus provenance")
     require(sum(len(d["cases"]) for d in corpus["datasets"]) == corpus["expectedRequests"] == 304, "Wrong corpus cardinality")
     require(sum("diagnosticAllowance" in c for d in corpus["datasets"] for c in d["cases"]) == corpus["expectedDiagnosticAllowances"] == 11, "Wrong allowance cardinality")
     evidence["corpusSha256"] = hashlib.sha256(corpus_path.read_bytes()).hexdigest()
     clients = {"nethermind": Client(args.candidate_url, args.candidate_host, args), "geth": Client(args.reference_url, args.reference_host, args)}
     try:
-        versions = {"nethermind": args.candidate_version, "geth": REFERENCE[:8]}
+        versions = {"nethermind": args.candidate_version, "geth": args.reference_commit[:8]}
         evidence["metadataBefore"] = {name: metadata(client, versions[name]) for name, client in clients.items()}
         block, evidence["selectedHeaders"], evidence["prefixReceipts"] = common_block(clients, evidence["metadataBefore"], args.block)
         evidence["selectedBlock"] = block
@@ -239,14 +239,16 @@ def main():
     parser.add_argument("--ssh-key", type=Path)
     parser.add_argument("--known-hosts", type=Path)
     parser.add_argument("--candidate-version", required=True, help="Required deployed revision substring")
+    parser.add_argument("--reference-commit", required=True, help="Full Geth commit SHA; resolve latest upstream HEAD before a new parity run")
     parser.add_argument("--block", help="Explicit common block number; otherwise select a recent retained fixture")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     require(args.candidate_version.strip(), "Candidate revision must not be empty")
+    require(re.fullmatch(r"[0-9a-f]{40}", args.reference_commit) is not None, "Reference commit must be a full lowercase hexadecimal SHA")
     if args.candidate_host or args.reference_host:
         require(args.ssh_key and args.ssh_key.is_file() and args.known_hosts and args.known_hosts.is_file(), "SSH requires an existing key and verified known_hosts")
     require(not args.output.exists(), "Output already exists; preserve earlier evidence")
-    evidence = {"startedAt": datetime.now(timezone.utc).isoformat(), "status": "running", "referenceCommit": REFERENCE, "candidateVersionRequired": args.candidate_version}
+    evidence = {"startedAt": datetime.now(timezone.utc).isoformat(), "status": "running", "referenceCommit": args.reference_commit, "corpusReferenceCommit": CORPUS_REFERENCE, "candidateVersionRequired": args.candidate_version}
     with args.output.open("x") as stream:
         stream.write(json.dumps(evidence) + "\n")
     try:

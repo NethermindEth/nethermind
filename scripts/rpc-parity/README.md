@@ -1,17 +1,19 @@
-# Pinned-Geth `debug_traceCall` acceptance inventory
+# `debug_traceCall` differential acceptance inventory
 
 A Python-standard-library runner for the retained **304-request** inventory. It does not build, deploy, reset, fork, or send transactions to either node. No workflow triggers or existing comparison settings are changed.
 
 ## Run
 
-Both nodes must be synced mainnet nodes with recent execution state. The reference must be official Geth commit `23408c2b17c3f4e094921d2ff305bfef018b1ace`; do not silently substitute a newer build. `web3_clientVersion` exposes the commit prefix, which is checked before and after capture. Separately verify the reference image/source provenance when provisioning it.
+Both nodes must be synced mainnet nodes with recent execution state. Before a new parity run, resolve latest upstream Geth HEAD and verify that the reference node is built from that exact commit. Pass its full SHA through required `--reference-commit`; it is frozen for the capture, not silently advanced mid-run. `web3_clientVersion` exposes the commit prefix, which is checked before and after capture; separately verify full image/source provenance. Resolving a SHA does not build or upgrade either node. Historical reproduction can explicitly select its historical SHA, but must not be reported as latest-Geth parity.
 
 ```sh
 python3 scripts/rpc-parity/test_debug_tracecall.py
+GETH_COMMIT=$(gh api repos/ethereum/go-ethereum/commits/HEAD --jq .sha)
 python3 scripts/rpc-parity/debug_tracecall.py \
   --candidate-url http://127.0.0.1:18545 \
   --reference-url http://127.0.0.1:28545 \
   --candidate-version YOUR_DEPLOYED_REVISION_PREFIX \
+  --reference-commit "$GETH_COMMIT" \
   --output /existing/evidence/directory/new-capture.json
 ```
 
@@ -19,7 +21,7 @@ URLs can be locally forwarded RPC ports. Alternatively, use `--candidate-host ro
 
 The script selects a common recent block with two real prefix transactions and at least one prefix log. Use `--block 0xNUMBER` to choose an explicit retained block. It regenerates only block-number-dependent BLOCKHASH bytecode/overrides, selected hash selectors, and prefix-sender fixtures **before** either client receives the requests. Each materialized request is then identical on both clients. An unavailable fixture, transport error, missing state, missing/duplicate response, changed version, or changed block/state-root fails the run; no case is skipped or silently repinned.
 
-The output includes materialized requests, raw responses, block/hash/state-root brackets, versions, prefix receipts, classifications and corpus SHA-256. Existing output files are never overwritten. Failure also leaves partial evidence with `status: failed`; only `status: completed` and all 304 accepted requests constitute a successful run. Exit status is nonzero on failure.
+The output records the selected reference SHA separately from the historical corpus reference SHA, and includes materialized requests, raw responses, block/hash/state-root brackets, versions, prefix receipts, classifications and corpus SHA-256. Existing output files are never overwritten. Failure also leaves partial evidence with `status: failed`; only `status: completed` and all 304 accepted requests constitute a successful run. Exit status is nonzero on failure.
 
 ## Acceptance policy
 
@@ -28,6 +30,8 @@ The output includes materialized requests, raw responses, block/hash/state-root 
 - Only expired JavaScript timeout cases 22–24 (`-1s`, `0`, `1ns`) allow the observed Geth initialization/step alternatives: bare `execution timeout`, that cause with a server-side `step` annotation and optional `step (<eval>:line:column(pc))` frame, or `execution timeout at Integer (bigInt:line:column(pc))`. Both codes remain `-32000` and the candidate message remains exactly `execution timeout`. Other callbacks, source names, library functions and extra text are rejected; the eight bounds-error allowances remain unchanged.
 - Recompute BLOCKHASH, prefix-nonce/override, helper-catchability and native direct/mux equivalence oracles; do not trust stored pass labels.
 - Results must retain the expected result/error kind. State-unavailability errors are never a matched-error pass.
+
+The corpus retains its historical Geth provenance (`23408c2b17c3f4e094921d2ff305bfef018b1ace`); that is not the required reference for a new run. Retained case expectations/diagnostic allowances are not automatically rewritten for newer Geth: a changed contract fails the comparison and requires explicit investigation. Unit tests validate the runner, not live compatibility against the selected SHA.
 
 The inventory was extracted from the preserved `e516f57a593cdb2283c0fafc74ff606ebd515ffc` candidate acceptance capture. That capture had **293 exact matches and 11 approved diagnostic differences**. Fresh captures can differ in source coordinates and selected state; do not describe them as byte-identical historical replays.
 

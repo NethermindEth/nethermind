@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 from typing import Any
@@ -35,9 +36,30 @@ class ParityRunnerTests(unittest.TestCase):
             self.assertEqual(execute.call_args.args[0], ['ssh', '-S', socket, '-O', 'exit', 'root@host'])
             directory.cleanup.assert_called_once()
 
+    def test_reference_commit_is_required_and_separate_from_corpus_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'capture.json'
+            argv = ['runner', '--candidate-url', 'http://candidate', '--reference-url', 'http://reference',
+                    '--candidate-version', 'candidate-revision', '--output', str(output)]
+            with patch.object(runner.sys, 'argv', argv), patch.object(runner.argparse.ArgumentParser, 'error', side_effect=ValueError) as error:
+                with self.assertRaises(ValueError):
+                    runner.main()
+                self.assertIn('--reference-commit', error.call_args.args[0])
+            with patch.object(runner.sys, 'argv', argv + ['--reference-commit', 'short']):
+                with self.assertRaisesRegex(ValueError, 'Reference commit must be'):
+                    runner.main()
+            self.assertFalse(output.exists())
+            reference = 'f' * 40
+            with patch.object(runner.sys, 'argv', argv + ['--reference-commit', reference]), patch.object(runner, 'run') as execute:
+                runner.main()
+                self.assertEqual(execute.call_args.args[0].reference_commit, reference)
+                evidence = json.loads(output.read_text())
+                self.assertEqual(evidence['referenceCommit'], reference)
+                self.assertEqual(evidence['corpusReferenceCommit'], runner.CORPUS_REFERENCE)
+
     def test_manifest_cardinality_and_ids(self):
         corpus = load_corpus()
-        self.assertEqual(corpus['referenceCommit'], runner.REFERENCE)
+        self.assertEqual(corpus['referenceCommit'], runner.CORPUS_REFERENCE)
         self.assertEqual(sum(len(d['requests']) for d in corpus['datasets']), 304)
         self.assertEqual(sum('diagnosticAllowance' in c for d in corpus['datasets'] for c in d['cases']), 11)
         for d in corpus['datasets']:
