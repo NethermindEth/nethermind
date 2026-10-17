@@ -1,0 +1,9 @@
+{
+  "L1Transaction": "0x9637ee00bfd583dc21c824a1a885aea8c9289e86b57ca2095f7d5f362c9de84a",
+  "BlobSha256": "42069dc9f1215de25cc970304c28cb8e238c1cc6a319c41f9ea13ef9c129d3c7",
+  "Scenarios": [
+    "topLevelStaticReentrantCounter"
+  ],
+  "SystemTransactions": [],
+  "UserTransactions": []
+}
