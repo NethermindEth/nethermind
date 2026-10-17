@@ -29,7 +29,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private TraceMemory _memoryTrace;
     private Instruction _op;
     private Address? _executingAccount;
-    private EvmExceptionType? _error;
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = [];
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
@@ -163,16 +162,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         base.StartOperation(pc, opcode, gas, env);
 
-        // Everything after an operation error is ignored, so stop pulling stack and memory for the
-        // frames that keep running; leaving the flags set would also freeze _op and _executingAccount
-        // at the failing operation.
-        if (_error is not null)
-        {
-            IsTracingMemory = false;
-            IsTracingStack = false;
-            return;
-        }
-
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
 
@@ -187,7 +176,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     public override void ReportPrecompileAccountRead(Address address)
     {
         base.ReportPrecompileAccountRead(address);
-        if (_error is null) LookupAccount(address);
+        LookupAccount(address);
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -199,9 +188,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
-
-        // A wrapping tracer may keep asking for the stack after the flags were cleared above.
-        if (_error is not null) return;
 
         int stackLen = stack.Count;
         Address address;
@@ -269,8 +255,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     catch
                     {
                         /*
-                         * This operation error will be recorded in ReportOperationError and all
-                         * subsequent operations will be ignored from the prestate trace
+                         * The operation fails and its error is reported through ReportOperationError;
+                         * it touches no account here
                          */
                     }
                 }
@@ -283,12 +269,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     _createdAccounts.Add(address);
                 break;
         }
-    }
-
-    public override void ReportOperationError(EvmExceptionType error)
-    {
-        base.ReportOperationError(error);
-        _error = error;
     }
 
     protected void LookupAccount(Address addr)
