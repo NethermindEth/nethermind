@@ -10,10 +10,10 @@ public partial class DbOnTheRocks
 {
     /// <inheritdoc/>
     void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder) =>
-        GetManyWithColumnFamily(keys, keyLength, values, decoder, null);
+        ((IBatchReadOnlyDb)_reader).GetMany(keys, keyLength, values, decoder);
 
     internal void GetManyWithColumnFamily<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values,
-        TDecoder decoder, IColumnFamilyHandle? family, ReadOptions? readOptions = null) where TDecoder : IValueDecoder<T>
+        TDecoder decoder, IColumnFamilyHandle? family, ReadOptions readOptions) where TDecoder : IValueDecoder<T>
     {
         ThrowIfDisposing();
         if (decoder is null) throw new ArgumentNullException(nameof(decoder));
