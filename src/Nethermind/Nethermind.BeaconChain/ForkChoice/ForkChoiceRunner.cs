@@ -86,7 +86,6 @@ public sealed class ForkChoiceRunner
     private ulong? _deferredBuildSlot;
 
     /// <summary>The root and post-state of the block <see cref="OnBlock"/> last registered, which its own body votes and later checkpoint advances read.</summary>
-    /// <remarks>A caller may advance that state in place afterwards; every reader checks what it reads against the state's own roots or the root.</remarks>
     private (Hash256 Root, ForkedBeaconState State)? _lastBlock;
 
     private readonly Dictionary<Hash256, BlockTimeliness> _blockTimeliness = [];
@@ -533,6 +532,8 @@ public sealed class ForkChoiceRunner
     /// for a head or target block this node never saw) is tolerated or fatal is the caller's policy;
     /// the block itself is in the tree either way. A caller that skips the replay loses LMD votes
     /// and equivocation discounts silently: <see cref="GetHead"/> keeps answering, from fewer votes.
+    /// The runner keeps <paramref name="postState"/> as this block's <c>store.block_states</c> entry, so the caller must not mutate it
+    /// afterwards; a child block is applied to a copy.
     /// </remarks>
     /// <param name="executionStatus">The execution layer's verdict on the block's payload, usually <see cref="ExecutionStatus.Optimistic"/> until <c>newPayload</c> completes.</param>
     /// <param name="dataColumns">
@@ -596,6 +597,7 @@ public sealed class ForkChoiceRunner
     /// There is no availability argument because the Gloas <c>on_block</c> no longer calls
     /// <c>is_data_available</c>. The body replay contract is the one the Fulu overload documents, through
     /// <see cref="OnBodyAttestation(AttestationGloas, Hash256)"/> and <see cref="OnAttesterSlashing(AttesterSlashingGloas, bool, ForkedBeaconState)"/>.
+    /// As there, the runner keeps <paramref name="postState"/> as this block's <c>store.block_states</c> entry, so the caller must not mutate it afterwards.
     /// A block that builds on its parent's full payload (<see cref="IsParentNodeFull"/>) is refused until
     /// that payload is recorded through <see cref="OnExecutionPayloadVerified"/>; the refusal leaves the store untouched.
     /// The body's payload attestations are applied here, as the spec's <c>notify_ptc_messages</c> does, not by the caller:
@@ -1988,8 +1990,7 @@ public sealed class ForkChoiceRunner
 
         if (HasShufflingOf(includingBlock, target))
         {
-            // The caller may have advanced the last block's state in place since; a state at another slot is not that block's.
-            return held is null && _lastBlock is { } last && last.Root == includingBlock && last.State.Slot == blockSlot
+            return held is null && _lastBlock is { } last && last.Root == includingBlock
                 ? (last.State, false, true)
                 : (held, false, false);
         }

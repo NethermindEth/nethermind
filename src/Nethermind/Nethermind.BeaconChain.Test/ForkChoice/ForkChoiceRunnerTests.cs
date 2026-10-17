@@ -368,16 +368,13 @@ public class ForkChoiceRunnerTests
     }
 
     [Test]
-    public void Body_vote_reads_the_last_block_state_only_while_it_is_that_blocks_own([Values] bool advancedInPlace)
+    public void Body_vote_of_a_block_imported_before_the_last_one_does_not_read_the_last_block_state()
     {
         const ulong targetEpoch = 2;
         (UnsignedChain chain, ForkChoiceRunner runner, BuildCounter builds) = CountedRunnerAt((targetEpoch + 1) * Presets.SlotsPerEpoch);
         UnsignedChain.ChainBlock target = ImportLine(chain, runner, chain.AnchorRoot, 40)[0];
         UnsignedChain.ChainBlock including = ImportLine(chain, runner, target.Root, 70)[0];
-        if (advancedInPlace)
-            SlotProcessing.ProcessSlots(including.PostState, (targetEpoch + 1) * Presets.SlotsPerEpoch + 4, new EpochCache());
-        else
-            ImportWithBodyReplay(runner, chain.Extend(target.Root, 70, payloadHashByte: 0x71));
+        ImportWithBodyReplay(runner, chain.Extend(target.Root, 70, payloadHashByte: 0x71));
 
         runner.OnBodyAttestation(BodyVote(chain, target, targetEpoch), including.Root);
 
