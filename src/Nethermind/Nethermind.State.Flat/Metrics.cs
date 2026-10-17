@@ -80,6 +80,9 @@ public static class Metrics
     [Description("Total estimated snapshot memory in bytes")]
     public static long TotalSnapshotMemory { get; set; }
 
+    [DetailedMetricOnFlag]
+    public static bool DetailedMetricsEnabled { get; set; }
+
     [DetailedMetric]
     [Description("Active pooled resources by category and type")]
     [KeyIsLabel("category", "resource_type")]
