@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -76,6 +77,7 @@ public partial class EthRpcModuleTests
         await test.AddBlock(transactions);
         ulong blockNumber = test.BlockTree.Head!.Number;
         await test.AddBlock();
+        test.Container.Resolve<IDeferredBlockDataWriter>().Drain();
         return blockNumber;
     }
 
