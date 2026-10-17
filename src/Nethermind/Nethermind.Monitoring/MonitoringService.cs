@@ -33,6 +33,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 
     private Task _monitoringTimerTask = Task.CompletedTask;
     private MetricPusher _metricPusher;
+    private NethermindKestrelMetricServer _metricServer;
     private HttpClient _pusherHttpClient;
     private int _isDisposed = 0;
 
@@ -116,7 +117,8 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 
         if (_exposePort is not null)
         {
-            new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
+            _metricServer = new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value);
+            _metricServer.Start();
         }
 
         _monitoringTimerTask = Task.Run(async () =>
@@ -165,6 +167,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         await _timerCancellationSource.CancelAsync();
         await _monitoringTimerTask;
         _timerCancellationSource.Dispose();
+        if (_metricServer is not null) await _metricServer.StopAsync();
         if (_metricPusher is not null) await _metricPusher.StopAsync();
         _pusherHttpClient?.Dispose();
     }
