@@ -87,6 +87,40 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
+    [Test]
+    public async Task CachedSlotProbe_DoesNotReadPersistence_AndPreservesMissingAndZero([Values] bool found, [Values] bool zero)
+    {
+        UInt256? expected = found ? zero ? UInt256.Zero : UInt256.MaxValue : null;
+        FakePersistence inner = new() { SlotValue = _ => expected };
+        await using CarryForwardCachingPersistence cache = new(inner);
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        IBatchPersistenceReader batch = (IBatchPersistenceReader)reader;
+        UInt256 slot = UInt256.One;
+        Assert.That(batch.TryGetCachedSlot(Address, in slot, out _), Is.False);
+        Assert.That(inner.SlotReads, Is.Zero, "a cache probe must never start a persistence read");
+        UInt256 value = default;
+        reader.TryGetSlot(Address, in slot, ref value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.TryGetCachedSlot(Address, in slot, out UInt256? cached), Is.True);
+            Assert.That(cached, Is.EqualTo(expected));
+            Assert.That(inner.SlotReads, Is.EqualTo(1), "cached missing and zero values must also avoid persistence");
+        }
+        using (IPersistence.IWriteBatch write = cache.CreateWriteBatch(Basis0, Basis1)) write.SelfDestruct(Address);
+        inner.ReaderState = Basis1;
+        UInt256? replacement = found ? null : UInt256.One;
+        inner.SlotValue = _ => replacement;
+        using IPersistence.IPersistenceReader currentReader = cache.CreateReader();
+        currentReader.TryGetSlot(Address, in slot, ref value);
+        IBatchPersistenceReader currentBatch = (IBatchPersistenceReader)currentReader;
+        Assert.That(currentBatch.TryGetCachedSlot(Address, in slot, out UInt256? current), Is.True);
+        Assert.That(current, Is.EqualTo(replacement));
+        int readsBeforeOldProbe = inner.SlotReads;
+        Assert.That(batch.TryGetCachedSlot(Address, in slot, out _), Is.False, "an old reader must not probe the populated new cache generation");
+        Assert.That(inner.SlotReads, Is.EqualTo(readsBeforeOldProbe));
+    }
+
     [TestCase(1, TestName = "BatchReads_OneCacheMiss_PreservesOrderAndFillsCache")]
     [TestCase(7, TestName = "BatchReads_SevenCacheMisses_PreservesOrderAndFillsCache")]
     [TestCase(8, TestName = "BatchReads_EightCacheMisses_PreservesOrderAndFillsCache")]

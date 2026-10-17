@@ -8,6 +8,11 @@ namespace Nethermind.State.Flat.Persistence;
 
 public interface IBatchPersistenceReader
 {
+    bool TryGetCachedSlot(Address address, in UInt256 slot, out UInt256? value)
+    {
+        value = null;
+        return false;
+    }
 
     void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values);
 }

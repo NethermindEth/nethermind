@@ -292,6 +292,21 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return found;
         }
 
+        public bool TryGetCachedSlot(Address address, in UInt256 slot, out UInt256? value)
+        {
+            ulong hash = CarryForwardSlotTable.Hash(address, in slot);
+            if (parent.IsCurrent(generation)
+                && parent._slots.TryGet(hash, address, in slot, out bool found, out UInt256 cached)
+                && parent.IsCurrent(generation))
+            {
+                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
+                value = found ? cached : null;
+                return true;
+            }
+            value = null;
+            return false;
+        }
+
         public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, cells.Length, nameof(values));

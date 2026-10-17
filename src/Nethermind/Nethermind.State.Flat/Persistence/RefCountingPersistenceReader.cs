@@ -41,6 +41,13 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);
 
+    public bool TryGetCachedSlot(Address address, in UInt256 slot, out UInt256? value)
+    {
+        if (_innerReader is IBatchPersistenceReader batch) return batch.TryGetCachedSlot(address, in slot, out value);
+        value = null;
+        return false;
+    }
+
     public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values) =>
         _innerReader.GetSlots(cells, values);
 

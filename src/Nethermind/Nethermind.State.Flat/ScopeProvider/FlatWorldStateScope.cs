@@ -416,7 +416,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 (Address address, int selfDestructIdx, UInt256 slot) = jobs[first + i];
                 StorageCell cell = new(address, in slot);
-                if (sink.StillNeeded(in cell)) requests.Add((address, selfDestructIdx, slot));
+                if (!sink.StillNeeded(in cell)) continue;
+                if (_snapshotBundle.TryGetCachedSlot(address, in slot, selfDestructIdx, out UInt256? value))
+                {
+                    if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;
+                    sink.OnStorageRead(in cell, value.GetValueOrDefault());
+                }
+                else
+                {
+                    requests.Add((address, selfDestructIdx, slot));
+                }
             }
             if (requests.Count == 0) return;
 

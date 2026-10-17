@@ -49,6 +49,13 @@ public sealed partial class SnapshotBundle
         for (int i = 0; i < misses.Count; i++) values[misses[i]] = results[i];
     }
 
+    internal bool TryGetCachedSlot(Address address, in UInt256 slot, int selfDestructIdx, out UInt256? value)
+    {
+        GuardDispose();
+        return TryGetSlotFromCurrentSnapshots(address, in slot, selfDestructIdx, out value)
+            || _readOnlySnapshotBundle.TryGetCachedSlot(address, in slot, selfDestructIdx, out value);
+    }
+
     private bool TryGetSlotFromCurrentSnapshots(Address address, in UInt256 slot, int selfDestructIdx, out UInt256? value)
     {
         HashedKey<(Address, UInt256)> key = new((address, slot));

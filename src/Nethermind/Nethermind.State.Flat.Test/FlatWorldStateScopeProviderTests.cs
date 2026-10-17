@@ -2023,6 +2023,30 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public async Task HintBal_WithCachedPrefix_DeliversItBeforePersistenceMisses()
+    {
+        using WarmReadPool pool = new(1);
+        using TestContext ctx = new(warmReadPool: pool);
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(new Account(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString));
+        UInt256[] keys = new UInt256[128];
+        for (int i = 0; i < keys.Length; i++) keys[i] = (UInt256)(ulong)i;
+        ctx.SnapshotBundle.SetChangedSlot(address, keys[0], UInt256.MaxValue);
+        ctx.SnapshotBundle.SetChangedSlot(address, keys[64], UInt256.MaxValue);
+        RecordingBalReaderSink sink = new();
+        InvalidOperationException failure = new("persistence unavailable");
+        ctx.PersistenceReader.TryGetSlot(address, Arg.Any<UInt256>(), ref Arg.Any<UInt256>()).Returns(_ =>
+        {
+            Assert.That(sink.StorageReads, Has.Length.EqualTo(1), "the current group's cached prefix must arrive before its first persistence read");
+            throw failure;
+        });
+        ReadOnlyAccountChanges changes = new(address, [], keys, [], [], []);
+
+        Assert.That(await Assert.ThrowsAsync<InvalidOperationException>(() => ctx.Scope.HintBal(CreateBal(changes), sink)), Is.SameAs(failure));
+        Assert.That(sink.StorageReads[0].Value, Is.EqualTo(UInt256.MaxValue));
+    }
+
+    [Test]
     public async Task HintBal_WhenBatchSlotReadFails_DoesNotPublishPartialResults()
     {
         using WarmReadPool pool = new(1);
