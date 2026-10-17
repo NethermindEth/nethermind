@@ -36,19 +36,20 @@ public class UserErrors
 
     private static IEnumerable<TestCaseData> ArrayKTestCases()
     {
-        yield return new TestCaseData(3, new[] { 1u, 2u }).SetName("expected 3, got 2");
-        yield return new TestCaseData(2, new[] { 1u, 2u, 3u }).SetName("expected 2, got 3");
-        yield return new TestCaseData(4, Array.Empty<uint>()).SetName("expected 4, got 0");
-        yield return new TestCaseData(1, new[] { 42u, 43u }).SetName("expected 1, got 2");
-        yield return new TestCaseData(0, new[] { 99u }).SetName("expected 0, got 1");
+        yield return new TestCaseData(AbiType.UInt32, 3, new[] { 1u, 2u }).SetName("expected 3, got 2");
+        yield return new TestCaseData(AbiType.UInt32, 2, new[] { 1u, 2u, 3u }).SetName("expected 2, got 3");
+        yield return new TestCaseData(AbiType.UInt32, 4, Array.Empty<uint>()).SetName("expected 4, got 0");
+        yield return new TestCaseData(AbiType.UInt32, 1, new[] { 42u, 43u }).SetName("expected 1, got 2");
+        yield return new TestCaseData(AbiType.UInt32, 0, new[] { 99u }).SetName("expected 0, got 1");
+        yield return new TestCaseData(AbiType.String, 2, new[] { "a", "b", "c" }).SetName("dynamic elements, expected 2, got 3");
     }
 
     [TestCaseSource(nameof(ArrayKTestCases))]
-    public void ArrayK_EncodeWrongLength(int length, UInt32[] elements)
+    public void ArrayK_EncodeWrongLength<T>(Abi<T> element, int length, T[] elements)
     {
-        AbiSignature<uint[]> signature = new AbiSignature("f")
+        AbiSignature<T[]> signature = new AbiSignature("f")
             .With(
-                AbiType.Array(AbiType.UInt32, length)
+                AbiType.Array(element, length)
             );
 
         Assert.Throws<AbiException>(() => AbiCodec.Encode(signature, elements));
