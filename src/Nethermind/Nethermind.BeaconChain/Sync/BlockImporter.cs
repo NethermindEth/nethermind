@@ -432,6 +432,15 @@ public sealed class BlockImporter : IBlockImporter
         IDataAvailabilityRule availability = verifySignatures ? _availability : ReplayedBlockAvailability.Instance;
         if (!availability.IsDataAvailable(block, blockRoot, _spec))
         {
+            // Honest columns carry the honest signature, so a requested copy with altered signature bytes would never become available.
+            // Gossip verified the signature before import (phase0/p2p-interface.md beacon_block).
+            if (_importing != RequestedImport.None && VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) == false)
+            {
+                RejectGossip = true;
+                if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: invalid proposer signature");
+                return BlockImportResult.Invalid;
+            }
+
             if (_logger.IsDebug) _logger.Debug($"Deferring block {blockRoot} at slot {block.Slot}: blob data is not yet available");
             return BlockImportResult.DataUnavailable;
         }
@@ -704,6 +713,13 @@ public sealed class BlockImporter : IBlockImporter
         return BlockImportResult.Imported;
     }
 
+    /// <summary>Runs phase0/beacon-chain.md verify_block_signature with the cached key of <paramref name="proposerIndex"/>, which no later state changes.</summary>
+    /// <returns>Null when the domain or that key is not known, so the signature cannot be judged.</returns>
+    private bool? VerifyCachedProposerSignature(Hash256 blockRoot, ulong proposerIndex, BlsSignature signature, Hash256? domain) =>
+        domain is null || proposerIndex >= (ulong)_pubkeys.Count || !_pubkeys.TryGetValidPublicKey((int)proposerIndex, out G1Affine key)
+            ? null
+            : BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
+
     /// <summary>Allows untrusted state regeneration only after proposer-signature verification, subject to source budgets.</summary>
     /// <remarks>Gossip must be the first signed (slot, proposer) proposal and fit <see cref="MaxUntrustedRegenerationsPerSlot"/> per wall slot.
     /// Range sync bypasses that budget; by-root fetches use <see cref="MaxByRootRegenerationsPerSlot"/> separately.
@@ -715,13 +731,14 @@ public sealed class BlockImporter : IBlockImporter
     /// <returns>Null to allow regeneration; otherwise the block's refusal result.</returns>
     private BlockImportResult? RefuseRegeneration(Hash256 blockRoot, ulong slot, ulong proposerIndex, BlsSignature signature, Hash256? domain)
     {
-        if (domain is null || proposerIndex >= (ulong)_pubkeys.Count || !_pubkeys.TryGetValidPublicKey((int)proposerIndex, out G1Affine key))
+        bool? valid = VerifyCachedProposerSignature(blockRoot, proposerIndex, signature, domain);
+        if (valid is null)
         {
             if (_logger.IsDebug) _logger.Debug($"Not regenerating a state for block {blockRoot} at slot {slot}: its proposer {proposerIndex} has no cached key");
             return BlockImportResult.UnknownParent;
         }
 
-        if (!BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes))
+        if (valid == false)
         {
             // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The proposer signature is valid".
             RejectGossip = true;

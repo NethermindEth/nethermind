@@ -137,6 +137,26 @@ public class BlockImporterTests
         Assert.That(warnings.Messages, Has.None.Contains("blob data is not yet available"), "a block trailing its columns is routine at the head, not a warning");
     }
 
+    public enum ProposerSignature { Valid, Altered, UncachedProposer }
+
+    // phase0/beacon-chain.md verify_block_signature: honest columns carry the honest signature, so a requested copy with altered bytes never becomes available.
+    [Test]
+    public void Blob_block_missing_columns_is_rejected_only_when_requested_with_a_signature_that_fails_its_cached_proposer_key(
+        [Values] bool requested, [Values] ProposerSignature signature)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        SignedBeaconBlock block = new() { Message = chain.Block.Message, Signature = signature == ProposerSignature.Valid ? chain.Block.Signature : ImportableBlobBlock.Altered(chain.Block.Signature) };
+        if (signature == ProposerSignature.UncachedProposer) block.Message!.ProposerIndex = (ulong)chain.Pubkeys.Count;
+        Hash256 root = SszRoots.HashTreeRoot(block.Message!);
+        BlockImporter importer = CreateImporter(chain, BaseCustody(), new DataColumnSidecarPool());
+        ForkedSignedBeaconBlock forked = new ForkedSignedBeaconBlock.OfFulu(block);
+
+        BlockImportResult result = requested ? importer.ImportRequested(forked, root) : importer.Import(forked, root, verifySignatures: true);
+
+        Assert.That(result, Is.EqualTo(requested && signature == ProposerSignature.Altered ? BlockImportResult.Invalid : BlockImportResult.DataUnavailable),
+            "a requested copy is rejected only when its signature provably fails; a valid or unjudgeable one keeps waiting for columns, and gossip verified it before import");
+    }
+
     [Test]
     public void Blob_block_is_deferred_while_the_node_identity_is_unknown()
     {

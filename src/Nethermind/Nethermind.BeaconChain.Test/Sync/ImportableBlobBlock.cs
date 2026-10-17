@@ -159,6 +159,14 @@ internal sealed class ImportableBlobBlock
 
     internal static BlsSignature SignAs(ulong validatorIndex, Hash256 objectRoot, Hash256 domain) => Sign(GloasTestFixtures.DeriveKey((int)validatorIndex), objectRoot, domain);
 
+    /// <summary>Returns <paramref name="signature"/> with its last byte flipped, a copy that no longer verifies but leaves the block root unchanged.</summary>
+    internal static BlsSignature Altered(BlsSignature signature)
+    {
+        byte[] bytes = signature.Bytes.ToArray();
+        bytes[^1] ^= 0xFF;
+        return new BlsSignature(bytes);
+    }
+
     internal static Hash256 EpochRoot(ulong epoch)
     {
         byte[] root = new byte[32];

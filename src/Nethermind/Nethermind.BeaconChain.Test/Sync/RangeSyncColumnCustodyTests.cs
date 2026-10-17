@@ -377,7 +377,7 @@ public class RangeSyncColumnCustodyTests
     {
         await using Fixture fixture = Fixture.Create();
         SignedBeaconBlock block = alteredOnBlock
-            ? new SignedBeaconBlock { Message = fixture.Chain.Block.Message, Signature = Altered(fixture.Chain.Block.Signature) }
+            ? new SignedBeaconBlock { Message = fixture.Chain.Block.Message, Signature = ImportableBlobBlock.Altered(fixture.Chain.Block.Signature) }
             : fixture.Chain.Block;
         List<ulong> served = [];
         DataColumnSidecar[] Serve(ulong[] columns)
@@ -391,7 +391,7 @@ public class RangeSyncColumnCustodyTests
                 }
 
                 DataColumnSidecar forged = CopySidecar(genuine);
-                forged.SignedBlockHeader = new SignedBeaconBlockHeader { Message = genuine.SignedBlockHeader!.Message, Signature = Altered(genuine.SignedBlockHeader.Signature) };
+                forged.SignedBlockHeader = new SignedBeaconBlockHeader { Message = genuine.SignedBlockHeader!.Message, Signature = ImportableBlobBlock.Altered(genuine.SignedBlockHeader.Signature) };
                 return forged;
             })];
         }
@@ -417,13 +417,6 @@ public class RangeSyncColumnCustodyTests
         Assert.That(served, Is.Not.Empty, "fixture: the custodian served columns");
         Assert.That(served, Is.All.Matches<ulong>(column => !fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, column, out _)), "no column under a signature other than the block's is pooled or served");
         Assert.That(custodian.Reports, Is.Empty, "the block's signature is unverified, so a custodian serving genuine columns of it is not blamed");
-
-        static BlsSignature Altered(BlsSignature signature)
-        {
-            byte[] bytes = signature.Bytes.ToArray();
-            bytes[^1] ^= 0xFF;
-            return new BlsSignature(bytes);
-        }
     }
 
     [Test]

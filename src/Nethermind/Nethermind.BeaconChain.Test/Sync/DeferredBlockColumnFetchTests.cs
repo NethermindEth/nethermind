@@ -284,6 +284,42 @@ public class DeferredBlockColumnFetchTests
         Assert.That(custodians.Select(static p => p.Failures), Is.All.EqualTo(1), "each failed request penalizes its peer");
     }
 
+    // phase0/beacon-chain.md verify_block_signature: genuine columns carry the genuine signature, so a range copy with altered bytes would wait for data forever.
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_range_block_with_an_altered_signature_charges_its_supplier_and_the_genuine_copy_then_imports(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        SignedBeaconBlock forgedBlock = new() { Message = fixture.Chain.Block.Message, Signature = ImportableBlobBlock.Altered(fixture.Chain.Block.Signature) };
+        StubPeer forger = ServingPeer("forger", forgedBlock);
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        fixture.Peers.Add(forger);
+
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+        await orchestrator.ProcessQueuedAsync(token);
+        bool forgedImported = fixture.Importer.IsKnown(fixture.Chain.BlockRoot);
+        fixture.Peers.Remove(forger);
+        StubPeer honest = ServingPeer("honest", fixture.Chain.Block);
+        fixture.Peers.Add(honest);
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+        await orchestrator.ProcessQueuedAsync(token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(forgedImported, Is.False);
+        Assert.That(forger.Reports, Does.Contain(PeerFailureReason.ProtocolViolation), "the peer that altered the block is charged, not left to stall the chain until the retry expires");
+        Assert.That(honest.Reports, Is.Empty);
+        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the rejected copy holds nothing, so the genuine copy imports in the next round");
+        Assert.That(orchestrator.SyncTip, Is.EqualTo((fixture.Chain.BlockRoot, fixture.Chain.Block.Message!.Slot)));
+
+        StubPeer ServingPeer(string id, SignedBeaconBlock block) => new(
+            id,
+            fixture.Clock.CurrentSlot,
+            (start, count) => block.Message!.Slot >= start && block.Message.Slot < start + count ? [new ForkedSignedBeaconBlock.OfFulu(block)] : [],
+            (_, _, columns) => [.. columns.Select(c => fixture.Chain.Columns[(int)c])],
+            custody: StubPeer.AllColumns,
+            rootHandler: identifiers => [.. identifiers.Single().Columns!.Select(c => fixture.Chain.Columns[(int)c])]);
+    }
+
     [Test]
     [CancelAfter(30_000)]
     public async Task A_stuck_head_block_is_not_refetched_by_later_rounds_and_imports_once_a_custodian_joins(CancellationToken token)
