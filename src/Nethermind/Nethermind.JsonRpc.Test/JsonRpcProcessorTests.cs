@@ -18,6 +18,7 @@ using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Test;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 using NSubstitute;
@@ -435,7 +436,7 @@ public class JsonRpcProcessorTests
             return new JsonRpcSuccessResponse { Id = request.Id };
         });
 
-        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4 }),
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4 }),
             CreateBatchRequest(
                 CreateRequest("1", "eth_call"), CreateRequest("2", "eth_estimateGas"), CreateRequest("3", "eth_createAccessList"),
                 CreateRequest("4", "eth_sendRawTransaction"),
@@ -456,7 +457,7 @@ public class JsonRpcProcessorTests
         IJsonRpcService service = CreateEchoService();
         CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = 1 };
 
-        await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4 }),
+        await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4 }),
             CreateBatchRequest(CreateRequest("1", "eth_call"), CreateRequest("2", "eth_call"), CreateRequest("3", "eth_call"), CreateRequest("4", "eth_call"), CreateRequest("5", "eth_call")),
             CreateHttpContext(),
             sink);
@@ -485,12 +486,44 @@ public class JsonRpcProcessorTests
         });
         CollectingJsonRpcResponseSink sink = new() { OnBatchItemWrite = static _ => throw new InvalidOperationException("write failed") };
 
-        Assert.That(async () => await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4 }),
+        Assert.That(async () => await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4 }),
                 CreateBatchRequest(CreateRequest("1", "eth_call", "[1]"), CreateRequest("2", "eth_call", "[2]"), CreateRequest("3", "eth_call", "[3]")),
                 CreateHttpContext(),
                 sink),
             Throws.InvalidOperationException);
         Assert.That(completed, Is.EqualTo(3));
+    }
+
+    [TestCase(4, 4, false, 4, TestName = "Batch window fills up to its concurrency")]
+    [TestCase(4, 2, false, 2, TestName = "Batch window is capped at the override environment pool")]
+    [TestCase(1, 4, false, 1, TestName = "Batch concurrency of 1 executes sequentially")]
+    [TestCase(4, 4, true, 2, TestName = "Batch window refills after an undecodable item")]
+    public async Task Batch_bounds_concurrent_calls(int batchConcurrency, int ethModuleConcurrentInstances, bool undecodableItemInMiddle, int expectedMaxInFlight)
+    {
+        int inFlight = 0;
+        int maxInFlight = 0;
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            InterlockedEx.Max(ref maxInFlight, Interlocked.Increment(ref inFlight));
+            await Task.Delay(100);
+            Interlocked.Decrement(ref inFlight);
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        string[] items = undecodableItemInMiddle
+            ? [CreateRequest("1", "eth_call"), CreateRequest("2", "eth_call"), "42", CreateRequest("3", "eth_call"), CreateRequest("4", "eth_call")]
+            : [CreateRequest("1", "eth_call"), CreateRequest("2", "eth_call"), CreateRequest("3", "eth_call"), CreateRequest("4", "eth_call")];
+        string[] expectedIds = undecodableItemInMiddle ? ["1", "2", "<missing>", "3", "4"] : ["1", "2", "3", "4"];
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(
+            CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = batchConcurrency, EthModuleConcurrentInstances = ethModuleConcurrentInstances }),
+            CreateBatchRequest(items),
+            CreateHttpContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AssertOnlyResult(responses).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(expectedIds));
+            Assert.That(maxInFlight, Is.EqualTo(expectedMaxInFlight));
+        }
     }
 
     [Test]

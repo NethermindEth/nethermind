@@ -604,7 +604,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         // Deferred so an empty batch can be answered as a single Invalid Request rather than an empty array.
         bool batchStarted = false;
         BatchRequestJsonLifetime batchRequestJsonLifetime = new();
-        int concurrency = Math.Min(_jsonRpcConfig.BatchProcessingConcurrency, requestCount);
+        // Override calls rent from an environment pool of this size, which rejects rather than queues.
+        int concurrency = Math.Min(Math.Min(_jsonRpcConfig.BatchProcessingConcurrency, _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount), requestCount);
         BatchExecutionWindow? window = null;
 
         try
@@ -623,18 +624,18 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     && !isStopped
                     && concurrency > 1
                     && CanExecuteConcurrently(request)
-                    && !(window ??= new BatchExecutionWindow(concurrency)).IsFull)
+                    && !(window ??= new BatchExecutionWindow(concurrency, this, context)).IsFull)
                 {
                     batchRequestJsonLifetime.TrackUntilBatchEnd(request);
-                    window.Add(request, ExecuteInBackground(request, context));
+                    window.Add(request);
                     hasNext = source.TryGetNext(out request, out decodeException);
                 }
 
                 requestIndex++;
                 if (window?.Count > 0)
                 {
-                    Task<JsonRpcResult.Entry> execution = window.Take(out JsonRpcRequest executed);
-                    JsonRpcResult.Entry executedResponse = await execution;
+                    Task<JsonRpcResult.Entry>? execution = window.Take(out JsonRpcRequest executed);
+                    JsonRpcResult.Entry executedResponse = execution is null ? await HandleSingleRequest(executed, context) : await execution;
                     if (isStopped)
                     {
                         // Already executed alongside the item that stopped the batch, so it is answered as if it never ran.
@@ -1011,30 +1012,32 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     }
 
     /// <summary>The batch items executing in the background, in request order.</summary>
-    private sealed class BatchExecutionWindow(int capacity)
+    /// <remarks>An item added to an empty window starts only once a second one joins it, so a run of one executes inline.</remarks>
+    private sealed class BatchExecutionWindow(int capacity, JsonRpcProcessor processor, JsonRpcContext context)
     {
         private readonly JsonRpcRequest[] _requests = new JsonRpcRequest[capacity];
-        private readonly Task<JsonRpcResult.Entry>[] _executions = new Task<JsonRpcResult.Entry>[capacity];
+        private readonly Task<JsonRpcResult.Entry>?[] _executions = new Task<JsonRpcResult.Entry>?[capacity];
         private int _head;
 
         public int Count { get; private set; }
 
         public bool IsFull => Count == _requests.Length;
 
-        public void Add(JsonRpcRequest request, Task<JsonRpcResult.Entry> execution)
+        public void Add(JsonRpcRequest request)
         {
+            if (Count == 1) _executions[_head] ??= processor.ExecuteInBackground(_requests[_head], context);
             int index = (_head + Count) % _requests.Length;
             _requests[index] = request;
-            _executions[index] = execution;
+            _executions[index] = Count == 0 ? null : processor.ExecuteInBackground(request, context);
             Count++;
         }
 
-        public Task<JsonRpcResult.Entry> Take(out JsonRpcRequest request)
+        public Task<JsonRpcResult.Entry>? Take(out JsonRpcRequest request)
         {
             request = _requests[_head];
-            Task<JsonRpcResult.Entry> execution = _executions[_head];
+            Task<JsonRpcResult.Entry>? execution = _executions[_head];
             _requests[_head] = null!;
-            _executions[_head] = null!;
+            _executions[_head] = null;
             _head = (_head + 1) % _requests.Length;
             Count--;
             return execution;
@@ -1047,7 +1050,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             {
                 try
                 {
-                    (await Take(out _)).Dispose();
+                    Task<JsonRpcResult.Entry>? execution = Take(out _);
+                    if (execution is not null) (await execution).Dispose();
                 }
                 catch (Exception exception)
                 {
