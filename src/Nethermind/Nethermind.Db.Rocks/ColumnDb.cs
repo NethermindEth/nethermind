@@ -46,7 +46,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     /// <inheritdoc/>
     void IBatchReadOnlyDb.GetMany<T, TDecoder>(ReadOnlySpan<byte> keys, int keyLength, Span<T> values, TDecoder decoder) =>
-        _mainDb.GetManyWithColumnFamily(keys, keyLength, values, decoder, _columnFamily);
+        ((IBatchReadOnlyDb)_reader).GetMany(keys, keyLength, values, decoder);
 
     byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags) => _reader.Get(key, flags);
 
