@@ -14,7 +14,9 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -33,6 +35,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private PatriciaTree? _warmupStateTree;
     private readonly Hash256 _initialStateRoot;
     private StateTree? _stateTree;
+    // Set with UseNativeBulkSet, which then maintains the state trie instead of _stateTree.
+    private readonly NativeTrieNodeStore? _nativeStateStore;
+    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
+    // With _nativeStateStore, the pin of the block being processed, handed to its snapshot on commit.
+    private NativeTrieNodeLogPin? _logPin;
+    private Hash256 _nativeStateRoot;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
@@ -69,12 +77,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
     internal bool Trieless => _trieless;
 
+    // Provided whenever UseNativeBulkSet is set.
+    internal NativeTrieNodeLog NativeTrieNodeLog => _nativeTrieNodeLog!;
+
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
         IWorldStateScopeProvider.ICodeDb codeDb,
         IFlatCommitTarget commitTarget,
         IFlatDbConfig configuration,
+        NativeTrieNodeLog? nativeTrieNodeLog,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
@@ -86,8 +98,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _commitTarget = commitTarget;
 
         _initialStateRoot = currentStateId.StateRoot.ToCommitment();
+        _nativeStateRoot = _initialStateRoot;
 
         _configuration = configuration;
+        _nativeTrieNodeLog = nativeTrieNodeLog;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
@@ -96,6 +110,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+        if (configuration.UseNativeBulkSet && !_trieless)
+        {
+            _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null, NativeTrieNodeLog);
+            _logPin = NativeTrieNodeLog.PinActiveGeneration();
+        }
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
             && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
@@ -130,12 +149,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
-        _earlyApplyClosed = true;
+        DiscardEarlyWrites();
         // Nothing reads the warmed paths after this, so queued jobs skip their walk and the wait covers only walks in flight.
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
+        _logPin?.Dispose();
         _warmer.OnExitScope();
     }
 
@@ -214,11 +234,27 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return Interlocked.CompareExchange(ref _stateTree, tree, null) ?? tree;
     }
 
-    public Hash256 RootHash => Volatile.Read(ref _stateTree)?.RootHash ?? _initialStateRoot;
+    public Hash256 RootHash => _nativeStateStore is not null ? _nativeStateRoot : Volatile.Read(ref _stateTree)?.RootHash ?? _initialStateRoot;
 
+    /// <remarks>The native bulk set leaves the root up to date after every write batch.</remarks>
     public void UpdateRootHash()
     {
-        if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();
+        if (!_trieless && _nativeStateStore is null) Volatile.Read(ref _stateTree)?.UpdateRootHash();
+    }
+
+    private void SetAccountsNatively(Dictionary<AddressAsKey, Account?> accounts)
+    {
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
+        foreach ((AddressAsKey address, Account? account) in accounts)
+        {
+            KeccakCache.ComputeTo(address.Value.Bytes, out ValueHash256 key);
+            byte[]? encoded = account is null ? null
+                : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp.Bytes
+                : AccountDecoder.Instance.EncodeAsBytes(account);
+            entries.Add(new PatriciaTree.BulkSetEntry(in key, encoded));
+        }
+
+        _nativeStateRoot = _nativeStateStore!.BulkSet(_nativeStateRoot, entries.AsSpan());
     }
 
     public Account? Get(Address address)
@@ -435,7 +471,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
-                (Volatile.Read(ref _warmupStateTree) ?? CreateWarmupStateTree()).WarmUpPath(address.ToAccountPath.Bytes);
+                ValueHash256 key = address.ToAccountPath;
+                if (_nativeStateStore is null)
+                {
+                    (Volatile.Read(ref _warmupStateTree) ?? CreateWarmupStateTree()).WarmUpPath(key.Bytes);
+                }
+                else
+                {
+                    _snapshotBundle.WarmUpNative(_nativeStateStore, NativeTrieNodeLog, null, _initialStateRoot, key);
+                }
 
                 return true;
             }
@@ -531,9 +575,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
+    private void DiscardEarlyWrites()
+    {
+        _earlyApplyClosed = true;
+        _earlyApplyGeneration++;
+        foreach (FlatStorageTree storage in _storages.Values) storage.DiscardEarlyWrites();
+        if (_hintWarmStorages is { } hinted)
+        {
+            foreach (KeyValuePair<AddressAsKey, FlatStorageTree?> storage in hinted) storage.Value?.DiscardEarlyWrites();
+        }
+    }
+
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        DiscardEarlyWrites();
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
@@ -541,7 +597,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_trieless)
         {
             CommitStorageTrees();
-            Volatile.Read(ref _stateTree)?.Commit();
+            if (_nativeStateStore is not null) _nativeStateStore.Publish();
+            else Volatile.Read(ref _stateTree)?.Commit();
         }
 
         _storages.Clear();
@@ -549,7 +606,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
+        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _logPin, shouldAddSnapshot);
+        _logPin = _nativeStateStore is null ? null : NativeTrieNodeLog.PinActiveGeneration();
 
         if (shouldAddSnapshot)
         {
@@ -580,7 +638,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (logger.IsDebug) logger.Debug($"Early storage apply block={blockNumber} applied={applied} reused={reused} restored={restored} abandoned={abandoned}");
 
         _earlyApplier!.BlockCommitted();
-        _earlyApplyGeneration++;
         _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
     }
 
@@ -687,7 +744,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
-                    if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
+                    if (scope._nativeStateStore is not null)
+                    {
+                        scope.SetAccountsNatively(_dirtyAccounts);
+                    }
+                    else if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
                     {
                         scope.StateTree.SetAccounts(_dirtyAccounts);
                     }

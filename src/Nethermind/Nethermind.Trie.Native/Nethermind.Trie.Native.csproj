@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
+  </ItemGroup>
+
+  <!-- Built manually by running cargo build in release mode in rust/ -->
+  <ItemGroup Condition="Exists('rust/target/release/libnethermind_patricia.so')">
+    <None Include="rust/target/release/libnethermind_patricia.so" Link="libnethermind_patricia.so" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

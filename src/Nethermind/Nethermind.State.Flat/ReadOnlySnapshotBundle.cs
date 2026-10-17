@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -271,7 +272,7 @@ public sealed class ReadOnlySnapshotBundle(
         return false;
     }
 
-    public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadStateRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags)
     {
         GuardDispose();
 
@@ -286,7 +287,7 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags)
     {
         GuardDispose();
 
@@ -299,6 +300,44 @@ public sealed class ReadOnlySnapshotBundle(
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
         return value;
+    }
+
+    /// <inheritdoc cref="IPersistence.IPersistenceReader.TryLoadStateRlp{TArg}(in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
+    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        GuardDispose();
+
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStateRlp(in path, out byte[]? persistedRlp))
+        {
+            action(persistedRlp, arg);
+            return true;
+        }
+
+        Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        bool found = persistenceReader.TryLoadStateRlp(path, flags, action, arg);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
+
+        return found;
+    }
+
+    /// <inheritdoc cref="IPersistence.IPersistenceReader.TryLoadStorageRlp{TArg}(Hash256, in TreePath, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)"/>
+    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        GuardDispose();
+
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStorageRlp(address, in path, out byte[]? persistedRlp))
+        {
+            action(persistedRlp, arg);
+            return true;
+        }
+
+        Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        bool found = persistenceReader.TryLoadStorageRlp(address, path, flags, action, arg);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
+
+        return found;
     }
 
     // Only the reader that moves the state out of NotBuilt builds. It holds a lease on this bundle, so neither the

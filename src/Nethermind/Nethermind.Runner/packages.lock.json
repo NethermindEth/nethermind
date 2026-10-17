@@ -1179,6 +1179,7 @@
           "Nethermind.State": "[2.2.0-preview, )",
           "Nethermind.Synchronization": "[2.2.0-preview, )",
           "Nethermind.Trie": "[2.2.0-preview, )",
+          "Nethermind.Trie.Native": "[2.2.0-preview, )",
           "System.IO.Hashing": "[10.0.13, )"
         }
       },
@@ -1248,6 +1249,12 @@
           "Nethermind.Db": "[2.2.0-preview, )",
           "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
           "NonBlocking": "[2.1.2, )"
+        }
+      },
+      "nethermind.trie.native": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Trie": "[2.2.0-preview, )"
         }
       },
       "nethermind.txpool": {

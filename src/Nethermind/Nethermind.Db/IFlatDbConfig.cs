@@ -133,6 +133,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
     ulong TrieCacheMemoryBudget { get; set; }
 
+    [ConfigItem(Description = "With UseNativeBulkSet, memory budget, in bytes, for the compacted generations of the native trie node log. The oldest are freed beyond it.", DefaultValue = "524288000")]
+    ulong CompressedTrieNodeLogMemoryBudget { get; set; }
+
     [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
@@ -147,6 +150,9 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
     bool ApplyStorageWritesOnIdleThread { get; set; }
+
+    [ConfigItem(Description = "Experimental. Update and hash the state and storage tries with the native bulk set in `libnethermind_patricia`, which must be present. Cannot be combined with VerifyWithTrie.", DefaultValue = "false")]
+    bool UseNativeBulkSet { get; set; }
 
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }

@@ -42,6 +42,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool VerifyWithTrie { get; set; } = false;
     public bool DeferStorageTrieCommit { get; set; } = true;
     public bool ApplyStorageWritesOnIdleThread { get; set; } = true;
+    public bool UseNativeBulkSet { get; set; } = false;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
@@ -55,6 +56,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;
     public ulong TrieCacheMemoryBudget { get; set; } = 512UL.MiB;
+    public ulong CompressedTrieNodeLogMemoryBudget { get; set; } = 500UL.MiB;
     public bool EnableLongFinality { get; set; } = true;
     public ulong LongFinalityMaxReorgDepth { get; set; } = 90000;
     public int MaxInMemoryBaseSnapshotCount { get; set; } = 160;

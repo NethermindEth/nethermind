@@ -194,6 +194,7 @@ public class FlatWorldStateScopeHistoricalRootTests
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new MemDb()),
             Substitute.For<IFlatCommitTarget>(),
             new FlatDbConfig { CompactSize = 2, VerifyWithTrie = verifyWithTrie },
+            null,
             new NoopTrieWarmer(),
             LimboLogs.Instance);
     }
@@ -217,6 +218,7 @@ public class FlatWorldStateScopeHistoricalRootTests
             readOnlyBundle,
             Substitute.For<ITrieNodeCache>(),
             _pool,
-            ResourcePool.Usage.MainBlockProcessing);
+            ResourcePool.Usage.MainBlockProcessing,
+            nativeTrieNodeLog: null);
     }
 }

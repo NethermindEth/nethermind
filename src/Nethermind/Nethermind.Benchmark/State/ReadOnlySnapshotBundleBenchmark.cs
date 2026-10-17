@@ -100,7 +100,7 @@ public class ReadOnlySnapshotBundleBenchmark
                 PersistedSnapshotStack.Empty());
             NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
-                readOnly, cache, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                readOnly, cache, resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
             CapturingCommitTarget commitTarget = new();
             FlatWorldStateScope scope = new(
                 currentStateId: currentStateId,
@@ -108,6 +108,7 @@ public class ReadOnlySnapshotBundleBenchmark
                 codeDb: new NullCodeDb(),
                 commitTarget: commitTarget,
                 configuration: config,
+                nativeTrieNodeLog: null,
                 trieCacheWarmer: new NoopTrieWarmer(),
                 logManager: NullLogManager.Instance);
 
@@ -216,7 +217,7 @@ public class ReadOnlySnapshotBundleBenchmark
         {
             if (shortPaths.Count < ArraySize || longPaths.Count < ArraySize)
             {
-                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
+                foreach (KeyValuePair<HashedKey<TreePath>, SnapshotTrieNode> kv in snapshot.StateNodes)
                 {
                     if (shortPaths.Count < ArraySize && kv.Key.Key.Length <= 15)
                         shortPaths.Add(kv.Key.Key);
@@ -229,7 +230,7 @@ public class ReadOnlySnapshotBundleBenchmark
 
             if (storageNodesList.Count < ArraySize)
             {
-                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode> kv in snapshot.StorageNodes)
                 {
                     storageNodesList.Add((kv.Key.Key.Item1, kv.Key.Key.Item2));
                     if (storageNodesList.Count >= ArraySize)
@@ -252,7 +253,7 @@ public class ReadOnlySnapshotBundleBenchmark
         List<(Hash256, TreePath)> sameAccountNodesList = new(ArraySize);
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode> kv in snapshot.StorageNodes)
             {
                 if (kv.Key.Key.Item1 == sameAddrHash)
                 {

@@ -87,15 +87,14 @@ public static class PersistedSnapshotBuilder
                 NativeMemoryList<TreePath> top = new(0);
                 NativeMemoryList<TreePath> compact = new(snapshot.StateNodesCount);
                 NativeMemoryList<TreePath> fallback = new(0);
-                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
+                foreach (KeyValuePair<HashedKey<TreePath>, SnapshotTrieNode> kv in snapshot.StateNodes)
                 {
                     if (kv.Value.IsHashOnlyPlaceholder()) continue;
                     TreePath path = kv.Key;
                     if (path.Length <= TopPathThreshold) top.Add(path);
                     else if (path.Length <= CompactPathThreshold) compact.Add(path);
                     else fallback.Add(path);
-                    kv.Value.IsPersisted = true;
-                    kv.Value.PrunePersistedRecursively(1);
+                    kv.Value.MarkPersisted();
                 }
                 ParallelUnbalancedWork.For(0, 3, i =>
                     (i switch { 0 => top, 1 => compact, _ => fallback }).Sort(StateNodeComparer));
@@ -106,7 +105,7 @@ public static class PersistedSnapshotBuilder
                 NativeMemoryList<(ValueHash256, TreePath)> top = new(0);
                 NativeMemoryList<(ValueHash256, TreePath)> compact = new(snapshot.StorageNodesCount);
                 NativeMemoryList<(ValueHash256, TreePath)> fallback = new(0);
-                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode> kv in snapshot.StorageNodes)
                 {
                     if (kv.Value.IsHashOnlyPlaceholder()) continue;
                     (Hash256 addr, TreePath path) = kv.Key.Key;
@@ -114,8 +113,7 @@ public static class PersistedSnapshotBuilder
                     if (path.Length <= TopPathThreshold) top.Add((addrHash, path));
                     else if (path.Length <= CompactPathThreshold) compact.Add((addrHash, path));
                     else fallback.Add((addrHash, path));
-                    kv.Value.IsPersisted = true;
-                    kv.Value.PrunePersistedRecursively(1);
+                    kv.Value.MarkPersisted();
                 }
                 ParallelUnbalancedWork.For(0, 3, i =>
                     (i switch { 0 => top, 1 => compact, _ => fallback }).Sort(StorageNodeComparer));
@@ -278,9 +276,9 @@ public static class PersistedSnapshotBuilder
         for (int i = 0; i < keys.Count; i++)
         {
             TreePath path = keys[i];
-            if (!snapshot.TryGetStateNode(path, out TrieNode? node) || node is null)
+            if (!snapshot.TryGetStateNode(path, out SnapshotTrieNode node))
                 throw new InvalidOperationException($"State node {path} disappeared between extraction and persist.");
-            NodeRef nr = blobWriter.WriteRlp(node.FullRlp.AsSpan());
+            NodeRef nr = blobWriter.WriteRlp(snapshot.GetRlp(node));
             int len = PersistedSnapshotKey.WriteStateNodeKey(keyBuf, in path);
             table.Add(keyBuf[..len], MemoryMarshal.AsBytes(new Span<NodeRef>(ref nr)));
             bloom.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
@@ -329,9 +327,9 @@ public static class PersistedSnapshotBuilder
                 cachedHash = addressHash;
                 cachedRef = new Hash256(in addressHash);
             }
-            if (!snapshot.TryGetStorageNode((cachedRef, path), out TrieNode? node) || node is null)
+            if (!snapshot.TryGetStorageNode((cachedRef, path), out SnapshotTrieNode node))
                 throw new InvalidOperationException($"Storage node {addressHash}:{path} disappeared between extraction and persist.");
-            NodeRef nr = blobWriter.WriteRlp(node.FullRlp.AsSpan());
+            NodeRef nr = blobWriter.WriteRlp(snapshot.GetRlp(node));
             int len = PersistedSnapshotKey.WriteStorageNodeKey(keyBuf, addressHash.Bytes, in path);
             table.Add(keyBuf[..len], MemoryMarshal.AsBytes(new Span<NodeRef>(ref nr)));
             bloom.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));

@@ -84,9 +84,9 @@ public class FlatStorageTreeDeleteWarmupTests
             _resourcePool = new ResourcePool(_config);
             SnapshotBundle bundle = new(
                 new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
-                new TrieNodeCache(_config, LimboLogs.Instance), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                new TrieNodeCache(_config, LimboLogs.Instance), _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
             CapturingCommitTarget target = new();
-            using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), target, _config, new NoopTrieWarmer(), LimboLogs.Instance);
+            using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), target, _config, null, new NoopTrieWarmer(), LimboLogs.Instance);
 
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
             {
@@ -146,8 +146,8 @@ public class FlatStorageTreeDeleteWarmupTests
             CountingReader reader = new(_persistence.CreateReader());
             SnapshotBundle bundle = new(
                 new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
-                new TrieNodeCache(_config, LimboLogs.Instance), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            FlatWorldStateScope scope = new(_baseState, bundle, new NullCodeDb(), new CapturingCommitTarget(), _config, new InlineTrieWarmer(passDeleteFlag), LimboLogs.Instance);
+                new TrieNodeCache(_config, LimboLogs.Instance), _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
+            FlatWorldStateScope scope = new(_baseState, bundle, new NullCodeDb(), new CapturingCommitTarget(), _config, null, new InlineTrieWarmer(passDeleteFlag), LimboLogs.Instance);
             return (scope, reader);
         }
 
@@ -176,8 +176,8 @@ public class FlatStorageTreeDeleteWarmupTests
             using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To, WriteFlags.None);
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) batch.SetAccount(kv.Key.Key, kv.Value);
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages) batch.SetStorage(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value);
-            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes) batch.SetStateTrieNode(kv.Key.Key, kv.Value.FullRlp.AsSpan());
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes) batch.SetStorageTrieNode(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value.FullRlp.AsSpan());
+            foreach (KeyValuePair<HashedKey<TreePath>, SnapshotTrieNode> kv in snapshot.StateNodes) batch.SetStateTrieNode(kv.Key.Key, kv.Value.GetRlp(null));
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode> kv in snapshot.StorageNodes) batch.SetStorageTrieNode(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value.GetRlp(null));
         }
 
         public void Dispose() => _persistence.Clear();

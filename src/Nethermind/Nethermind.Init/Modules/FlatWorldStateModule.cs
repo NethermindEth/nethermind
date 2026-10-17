@@ -28,6 +28,7 @@ using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.Init.Modules;
 
@@ -52,6 +53,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
                 ctx.Resolve<ITrieNodeCache>(),
+                flatDbConfig.UseNativeBulkSet ? ctx.Resolve<NativeTrieNodeLog>() : null,
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
@@ -61,7 +63,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
-            .AddSingleton<ITrieNodeCache, TrieNodeCache>()
+            // With UseNativeBulkSet the native trie node cache takes the memory budget instead.
+            .AddSingleton<ITrieNodeCache>(flatDbConfig.UseNativeBulkSet
+                ? _ => new NoopTrieNodeCache()
+                : ctx => ctx.Resolve<TrieNodeCache>())
+            .AddSingleton<TrieNodeCache>()
+            // Only created with UseNativeBulkSet, which needs libnethermind_patricia.
+            .AddSingleton<NativeTrieNodeLog, IFlatDbConfig>(config => new NativeTrieNodeLog(config.CompressedTrieNodeLogMemoryBudget))
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
@@ -186,6 +194,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 $"FlatDb.HistoryRetentionSinceBlock is set to {flatDbConfig.HistoryRetentionSinceBlock} but " +
                 $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}. Set FlatDb.HistoryRetention=SinceBlock " +
                 "to start history there, or unset the block.", -1);
+        }
+
+        if (flatDbConfig.Enabled && flatDbConfig.UseNativeBulkSet)
+        {
+            if (!NativePatriciaBulkSet.IsAvailable)
+                throw new InvalidConfigurationException("FlatDb.UseNativeBulkSet is set but libnethermind_patricia could not be loaded.", -1);
+            if (flatDbConfig.VerifyWithTrie)
+                throw new InvalidConfigurationException("FlatDb.UseNativeBulkSet cannot be combined with FlatDb.VerifyWithTrie, which reads the managed tries.", -1);
         }
 
         if (flatDbConfig.HistoryEnabled)

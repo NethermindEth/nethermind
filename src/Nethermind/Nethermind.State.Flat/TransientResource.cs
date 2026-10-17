@@ -12,6 +12,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
+using Nethermind.Trie.Native;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
@@ -33,6 +34,21 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
     public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
+    // Created on first use, so the native library is only loaded with the native bulk set.
+    private NativeWarmedNodes? _warmedNodes;
+
+    /// <summary>The nodes the native trie warmer decoded, which the native bulk set reads in place.</summary>
+    internal NativeWarmedNodes WarmedNodes => Volatile.Read(ref _warmedNodes) ?? CreateWarmedNodes();
+
+    private NativeWarmedNodes CreateWarmedNodes()
+    {
+        NativeWarmedNodes created = new();
+        NativeWarmedNodes? existing = Interlocked.CompareExchange(ref _warmedNodes, created, null);
+        if (existing is null) return created;
+
+        created.Dispose();
+        return existing;
+    }
 
     internal void OnRented(IResourcePool pool, ResourcePool.Usage usage)
     {
@@ -86,6 +102,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public void Reset()
     {
         Nodes.Reset();
+        _warmedNodes?.Reset();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
         {
@@ -130,15 +147,19 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         return (ulong)SpanExtensions.FastHash64ForAddressAndSlot(ref address, ref Unsafe.As<UInt256, byte>(ref slotValue));
     }
 
-    public void Dispose() => PrewarmedAddresses.Dispose();
+    public void Dispose()
+    {
+        PrewarmedAddresses.Dispose();
+        _warmedNodes?.Dispose();
+    }
 
-    public bool TryGetStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(null, path, hash, out node);
+    public bool TryGetStateNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(null, path, hash, out node);
 
     public TrieNode GetOrAddStateNode(in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(null, path, trieNode);
 
     public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
 
-    public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
+    public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
 
     public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
 

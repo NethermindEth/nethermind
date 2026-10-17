@@ -8,6 +8,7 @@ using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.SnapServer;
+using Nethermind.Trie.Native;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -15,6 +16,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public class FlatWorldStateManager(
     IFlatDbManager flatDbManager,
     IFlatDbConfig configuration,
+    Lazy<NativeTrieNodeLog> nativeTrieNodeLog,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
@@ -29,6 +31,7 @@ public class FlatWorldStateManager(
         codeDb,
         flatDbManager,
         configuration,
+        configuration.UseNativeBulkSet ? nativeTrieNodeLog.Value : null,
         trieWarmer,
         ResourcePool.Usage.MainBlockProcessing,
         stateHeaderProvider,
@@ -54,6 +57,7 @@ public class FlatWorldStateManager(
             codeDb,
             flatDbManager,
             configuration,
+            configuration.UseNativeBulkSet ? nativeTrieNodeLog.Value : null,
             new NoopTrieWarmer(),
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             stateHeaderProvider,

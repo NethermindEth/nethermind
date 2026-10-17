@@ -143,6 +143,7 @@ public abstract class BlockchainTestBase
         IConfigProvider configProvider = new ConfigProvider();
         IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
         flatDbConfig.Enabled = UseFlatDb;
+        flatDbConfig.UseNativeBulkSet = TestStateBackend.UseNativeBulkSet;
         // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the run,
         // and a fire-and-forget background convert from one test can race another test's files. Long finality is
         // irrelevant at EF-test chain lengths, so keep the on-disk tier off.

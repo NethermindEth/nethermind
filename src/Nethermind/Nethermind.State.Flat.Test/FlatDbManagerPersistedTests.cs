@@ -99,6 +99,7 @@ public class FlatDbManagerPersistedTests
             Substitute.For<IResourcePool>(),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
+            nativeTrieNodeLog: null,
             Substitute.For<ISnapshotCompactor>(),
             repo,
             persistenceManager,
@@ -132,6 +133,7 @@ public class FlatDbManagerPersistedTests
             Substitute.For<IResourcePool>(),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
+            nativeTrieNodeLog: null,
             Substitute.For<ISnapshotCompactor>(),
             repo,
             Substitute.For<IPersistenceManager>(),
@@ -175,7 +177,7 @@ public class FlatDbManagerPersistedTests
             return false;
         });
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
-            Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
+            Substitute.For<ITrieNodeCache>(), nativeTrieNodeLog: null, compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
 
         Task? disposal = null;
@@ -231,7 +233,7 @@ public class FlatDbManagerPersistedTests
         ISnapshotCompactor compactor = Substitute.For<ISnapshotCompactor>();
         compactor.DoCompactSnapshot(failing).Returns(_ => throw new IOException("compaction failed"));
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
-            Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
+            Substitute.For<ITrieNodeCache>(), nativeTrieNodeLog: null, compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
 
         Commit(manager, tier.ResourcePool, new StateId(0, Keccak.EmptyTreeHash), failing, 1);
@@ -272,6 +274,7 @@ public class FlatDbManagerPersistedTests
             tier.ResourcePool,
             _processExitSource,
             tier.Resolve<ITrieNodeCache>(),
+            nativeTrieNodeLog: null,
             tier.Resolve<ISnapshotCompactor>(),
             tier.Repository,
             persistenceManager,

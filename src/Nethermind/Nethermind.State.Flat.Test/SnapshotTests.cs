@@ -141,10 +141,10 @@ public class SnapshotTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(snapshot.Content.StorageNodes.Count, Is.EqualTo(2));
-            Assert.That(snapshot.Content.StorageNodes.TryGetValue(new((addressA, pathA)), out TrieNode? foundA), Is.True);
-            Assert.That(foundA, Is.SameAs(replacement));
-            Assert.That(snapshot.Content.StorageNodes.TryGetValue(new((addressB, pathB)), out TrieNode? foundB), Is.True);
-            Assert.That(foundB, Is.SameAs(otherAddress));
+            Assert.That(snapshot.Content.StorageNodes.TryGetValue(new((addressA, pathA)), out SnapshotTrieNode foundA), Is.True);
+            Assert.That(foundA.Node, Is.SameAs(replacement));
+            Assert.That(snapshot.Content.StorageNodes.TryGetValue(new((addressB, pathB)), out SnapshotTrieNode foundB), Is.True);
+            Assert.That(foundB.Node, Is.SameAs(otherAddress));
             Assert.That(snapshot.StorageNodesCount, Is.EqualTo(2));
         }
     }
@@ -188,7 +188,7 @@ public class SnapshotTests
 
         storageNodes.NoLockClear();
         AddressStorageNodeDictionary.AddressNodes second = storageNodes.GetOrAddAddress(addressB);
-        Dictionary<HashedKey<TreePath>, TrieNode> beforeBatch = second.Nodes;
+        Dictionary<HashedKey<TreePath>, SnapshotTrieNode> beforeBatch = second.Nodes;
         second.EnsureAdditionalCapacity(LargeBatch);
 
         using (Assert.EnterMultipleScope())
@@ -243,7 +243,8 @@ public class SnapshotTests
             FlatTestHelpers.MakeBundle(_pool),
             Substitute.For<ITrieNodeCache>(),
             _pool,
-            ResourcePool.Usage.MainBlockProcessing);
+            ResourcePool.Usage.MainBlockProcessing,
+            nativeTrieNodeLog: null);
         TreePath statePath = TreePath.FromHexString("12");
         TreePath storagePath = TreePath.FromHexString("34");
         Hash256 address = TestItem.AddressA.ToAccountPath.ToCommitment();
@@ -282,16 +283,17 @@ public class SnapshotTests
             FlatTestHelpers.MakeBundle(_pool),
             Substitute.For<ITrieNodeCache>(),
             _pool,
-            ResourcePool.Usage.MainBlockProcessing);
+            ResourcePool.Usage.MainBlockProcessing,
+            nativeTrieNodeLog: null);
         Account accountA = new(1, 100);
         Account accountB = new(2, 200);
 
         bundle.SetAccount(TestItem.AddressA, accountA);
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null, returnSnapshot: false);
 
         bundle.SetAccount(TestItem.AddressB, accountB);
         (Snapshot? second, TransientResource? transientResource) =
-            bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakB));
+            bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakB), null);
         using Snapshot? snapshotLease = second;
         transientResource?.Dispose();
 

@@ -82,7 +82,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
         return (shardIdx, hashCode);
     }
 
-    public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         (int shardIdx, int hashCode) = GetShardAndHashCode(address, in path);
         int bucketIdx = hashCode & _bucketMask;
@@ -271,7 +271,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             _count = 0;
         }
 
-        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+        public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
             (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;

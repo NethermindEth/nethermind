@@ -330,22 +330,22 @@ public class SnapshotCompactorTests
 
         // Written strictly before the first clear: always removed.
         Assert.That(compacted.TryGetStorage((a, new UInt256(1)), out _), Is.False);
-        Assert.That(compacted.TryGetStorageNode((aHash, pBefore), out _), Is.False);
+        Assert.That(compacted.TryGetStorageNode((aHash, pBefore), out SnapshotTrieNode _), Is.False);
 
         // Written after the last clear: always kept.
         Assert.That(compacted.TryGetStorage((a, new UInt256(3)), out UInt256? slotAfter), Is.True);
         AssertSlotValueEqual(Slot(0xA3), slotAfter);
-        Assert.That(compacted.TryGetStorageNode((aHash, pAfter), out _), Is.True);
+        Assert.That(compacted.TryGetStorageNode((aHash, pAfter), out SnapshotTrieNode _), Is.True);
 
         // Written in the first-clear block: kept unless a later clear raises the boundary past it.
         bool slotSameKept = !selfDestructAgainInLastSnapshot;
         Assert.That(compacted.TryGetStorage((a, new UInt256(2)), out _), Is.EqualTo(slotSameKept));
-        Assert.That(compacted.TryGetStorageNode((aHash, pSame), out _), Is.EqualTo(slotSameKept));
+        Assert.That(compacted.TryGetStorageNode((aHash, pSame), out SnapshotTrieNode _), Is.EqualTo(slotSameKept));
 
         // Unrelated address is never touched by another address's self-destruct.
         Assert.That(compacted.TryGetStorage((b, new UInt256(1)), out UInt256? slotB), Is.True);
         AssertSlotValueEqual(Slot(0xBB), slotB);
-        Assert.That(compacted.TryGetStorageNode((bHash, pB), out _), Is.True);
+        Assert.That(compacted.TryGetStorageNode((bHash, pB), out SnapshotTrieNode _), Is.True);
     }
 
     [Test]

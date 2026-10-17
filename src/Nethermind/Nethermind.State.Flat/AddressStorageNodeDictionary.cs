@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat;
 /// The per-address dictionaries are not thread-safe: each address must have at most one writer, and reads must not
 /// overlap writes to that address. Enumeration and <see cref="Count"/> require all addresses to be quiescent.
 /// </remarks>
-public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>>
+public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode>>
 {
     private const int MaxPooledNodeDictionaries = 1_024;
     private const int PooledNodeCapacity = 4_096;
@@ -51,7 +51,7 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
         }
     }
 
-    public TrieNode this[HashedKey<(Hash256, TreePath)> key]
+    public SnapshotTrieNode this[HashedKey<(Hash256, TreePath)> key]
     {
         set => GetOrAddAddress(key.Key.Item1).Set(key.Key.Item2, value);
     }
@@ -66,14 +66,14 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
         return nodes;
     }
 
-    public bool TryGetValue(HashedKey<(Hash256, TreePath)> key, out TrieNode node)
+    public bool TryGetValue(HashedKey<(Hash256, TreePath)> key, out SnapshotTrieNode node)
     {
         if (_byAddress.TryGetValue(key.Key.Item1, out AddressNodes? nodes))
         {
-            return nodes.Nodes.TryGetValue(key.Key.Item2, out node!);
+            return nodes.Nodes.TryGetValue(key.Key.Item2, out node);
         }
 
-        node = null!;
+        node = default;
         return false;
     }
 
@@ -98,7 +98,7 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 
     public Enumerator GetEnumerator() => new(this, RentAddressEnumerator());
 
-    IEnumerator<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>>.GetEnumerator() =>
+    IEnumerator<KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode>> IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode>>.GetEnumerator() =>
         GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
@@ -117,9 +117,9 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 
     internal sealed class AddressNodes
     {
-        private Dictionary<HashedKey<TreePath>, TrieNode>? _spare;
+        private Dictionary<HashedKey<TreePath>, SnapshotTrieNode>? _spare;
 
-        internal Dictionary<HashedKey<TreePath>, TrieNode> Nodes { get; private set; } = [];
+        internal Dictionary<HashedKey<TreePath>, SnapshotTrieNode> Nodes { get; private set; } = [];
 
         internal void EnsureAdditionalCapacity(int additionalCapacity)
         {
@@ -128,7 +128,7 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 
             // An empty dictionary about to take a large batch swaps in a retained large one instead of growing.
             if (Nodes.Count == 0 && required > PooledNodeCapacity
-                && LargeNodeDictionaryPool.TryRent(required, out Dictionary<HashedKey<TreePath>, TrieNode>? large))
+                && LargeNodeDictionaryPool.TryRent(required, out Dictionary<HashedKey<TreePath>, SnapshotTrieNode>? large))
             {
                 _spare = Nodes;
                 Nodes = large;
@@ -138,13 +138,13 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
             Nodes.EnsureCapacity(required);
         }
 
-        internal void Set(in TreePath path, TrieNode node) => Nodes[path] = node;
+        internal void Set(in TreePath path, SnapshotTrieNode node) => Nodes[path] = node;
 
         internal void ResetForPooling()
         {
             if (Nodes.Capacity > PooledNodeCapacity)
             {
-                Dictionary<HashedKey<TreePath>, TrieNode> large = Nodes;
+                Dictionary<HashedKey<TreePath>, SnapshotTrieNode> large = Nodes;
                 // Keep a small spare when one exists; otherwise use an empty fallback while the large batch returns to the shared pool.
                 Nodes = _spare ?? [];
                 _spare = null;
@@ -159,11 +159,11 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
     private static class LargeNodeDictionaryPool
     {
         private static readonly Lock Lock = new();
-        private static readonly List<Dictionary<HashedKey<TreePath>, TrieNode>> Retained = [];
+        private static readonly List<Dictionary<HashedKey<TreePath>, SnapshotTrieNode>> Retained = [];
         private static long _retainedEntries;
 
         /// <summary>Takes the smallest retained dictionary with at least <paramref name="minCapacity"/> entries of capacity.</summary>
-        public static bool TryRent(int minCapacity, [NotNullWhen(true)] out Dictionary<HashedKey<TreePath>, TrieNode>? dictionary)
+        public static bool TryRent(int minCapacity, [NotNullWhen(true)] out Dictionary<HashedKey<TreePath>, SnapshotTrieNode>? dictionary)
         {
             lock (Lock)
             {
@@ -188,7 +188,7 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
         }
 
         /// <summary>Retains a cleared dictionary while the total retained capacity stays within budget; otherwise it is dropped.</summary>
-        public static void Return(Dictionary<HashedKey<TreePath>, TrieNode> dictionary)
+        public static void Return(Dictionary<HashedKey<TreePath>, SnapshotTrieNode> dictionary)
         {
             lock (Lock)
             {
@@ -229,11 +229,11 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
         }
     }
 
-    public struct Enumerator : IEnumerator<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>>
+    public struct Enumerator : IEnumerator<KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode>>
     {
         private AddressStorageNodeDictionary? _owner;
         private IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>>? _addresses;
-        private Dictionary<HashedKey<TreePath>, TrieNode>.Enumerator _nodes;
+        private Dictionary<HashedKey<TreePath>, SnapshotTrieNode>.Enumerator _nodes;
         private Hash256 _address;
         private bool _hasNodes;
 
@@ -248,11 +248,11 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
             _hasNodes = false;
         }
 
-        public readonly KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> Current
+        public readonly KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode> Current
         {
             get
             {
-                KeyValuePair<HashedKey<TreePath>, TrieNode> node = _nodes.Current;
+                KeyValuePair<HashedKey<TreePath>, SnapshotTrieNode> node = _nodes.Current;
                 return new((_address, node.Key.Key), node.Value);
             }
         }

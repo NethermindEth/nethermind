@@ -1,0 +1,18 @@
+[package]
+name = "nethermind_patricia"
+version = "0.1.0"
+edition = "2021"
+license = "LGPL-3.0-only"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rayon = "1.10"
+sha3 = "0.10"
+mimalloc = { version = "0.1.52", default-features = false }
+rustc-hash = "2.1"
+
+[profile.release]
+lto = true
+codegen-units = 1

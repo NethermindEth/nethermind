@@ -15,6 +15,7 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie.Native;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
@@ -29,6 +30,7 @@ public class WriteBatchBenchmark
     private const int SnapshotCount = 1;
 
     private FlatDbConfig _config = null!;
+    private NativeTrieNodeLog _nativeTrieNodeLog;
     private ResourcePool _resourcePool = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _currentStateId;
@@ -42,10 +44,15 @@ public class WriteBatchBenchmark
     [Params(100, 1000, 3000)]
     public int StorageSlotsPerAccount { get; set; }
 
+    [Params(false, true)]
+    public bool UseNativeBulkSet { get; set; }
+
     [GlobalSetup]
     public void GlobalSetup()
     {
-        _config = new FlatDbConfig();
+        _config = new FlatDbConfig { UseNativeBulkSet = UseNativeBulkSet };
+        // Disabled, like the NullTrieNodeCache the managed tries get.
+        _nativeTrieNodeLog = UseNativeBulkSet ? new NativeTrieNodeLog(0) : null;
         _resourcePool = new ResourcePool(_config);
         _baseSnapshots = new List<FlatSnapshot>(SnapshotCount);
         _currentStateId = new StateId(0, Keccak.EmptyTreeHash);
@@ -70,7 +77,7 @@ public class WriteBatchBenchmark
                 PersistedSnapshotStack.Empty());
             NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
-                readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
             CapturingCommitTarget commitTarget = new();
             FlatWorldStateScope scope = new(
                 currentStateId: _currentStateId,
@@ -78,6 +85,7 @@ public class WriteBatchBenchmark
                 codeDb: new NullCodeDb(),
                 commitTarget: commitTarget,
                 configuration: _config,
+                nativeTrieNodeLog: _nativeTrieNodeLog,
                 trieCacheWarmer: new NoopTrieWarmer(),
                 logManager: NullLogManager.Instance);
 
@@ -152,7 +160,7 @@ public class WriteBatchBenchmark
             PersistedSnapshotStack.Empty());
         NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
-            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
         CapturingCommitTarget commitTarget = new();
         _scope = new FlatWorldStateScope(
             currentStateId: _currentStateId,
@@ -160,6 +168,7 @@ public class WriteBatchBenchmark
             codeDb: new NullCodeDb(),
             commitTarget: commitTarget,
             configuration: _config,
+            nativeTrieNodeLog: _nativeTrieNodeLog,
             trieCacheWarmer: new NoopTrieWarmer(),
             logManager: NullLogManager.Instance);
     }

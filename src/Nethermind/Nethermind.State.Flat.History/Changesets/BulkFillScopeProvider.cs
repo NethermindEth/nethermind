@@ -47,11 +47,11 @@ public sealed class BulkFillScopeProvider(
         }
 
         ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), isHistorical: true);
-        SnapshotBundle bundle = new(readOnly, trieCache, resources, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        SnapshotBundle bundle = new(readOnly, trieCache, resources, ResourcePool.Usage.ReadOnlyProcessingEnv, nativeTrieNodeLog: null);
         try
         {
             scope = new Scope(new FlatWorldStateScope(session.CurrentState, bundle, session,
-                RejectCommit.Instance, config, new NoopTrieWarmer(), logs, isReadOnly: true), session);
+                RejectCommit.Instance, config, null, new NoopTrieWarmer(), logs, isReadOnly: true), session);
             return true;
         }
         catch

@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.Collections;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
+using Nethermind.Trie.Native;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
@@ -84,13 +85,24 @@ public class Snapshot : RefCountingDisposable
 
     public bool IsSorted => _isSorted;
 
+    /// <summary>
+    /// With the native bulk set, the pin on the trie node log generation this snapshot's first block started writing
+    /// to, released with the snapshot.
+    /// </summary>
+    /// <remarks>
+    /// While held, native bulk sets read every trie node of this snapshot from the log, so they never look nodes up in
+    /// the in-memory snapshots, see <c>NativeTrieNodeStore</c>, and the nodes this snapshot holds as log pointers are
+    /// read through it.
+    /// </remarks>
+    internal NativeTrieNodeLogPin? LogPin { get; init; }
+
     public StateId From => _from;
     public StateId To => _to;
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _sorted!.Accounts : _mutable!.Accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
-    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => _isSorted ? _sorted!.StorageNodes : _mutable!.StorageNodes;
-    public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => _isSorted ? _sorted!.StateNodes : _mutable!.StateNodes;
+    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode>> StorageNodes => _isSorted ? _sorted!.StorageNodes : _mutable!.StorageNodes;
+    public IEnumerable<KeyValuePair<HashedKey<TreePath>, SnapshotTrieNode>> StateNodes => _isSorted ? _sorted!.StateNodes : _mutable!.StateNodes;
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
     public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
     public int StateNodesCount => _isSorted ? _sorted!.StateNodesCount : Counts.StateNodes;
@@ -140,15 +152,33 @@ public class Snapshot : RefCountingDisposable
     }
 
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
-        => _isSorted ? _sorted!.TryGetStateNode(key, out node) : _mutable!.StateNodes.TryGetValue(key, out node!);
+    {
+        node = TryGetStateNode(key, out SnapshotTrieNode found) ? ToTrieNode(found) : null;
+        return node is not null;
+    }
+
+    public bool TryGetStateNode(HashedKey<TreePath> key, out SnapshotTrieNode node)
+        => _isSorted ? _sorted!.TryGetStateNode(key, out node) : _mutable!.StateNodes.TryGetValue(key, out node);
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
-        => _isSorted ? _sorted!.TryGetStorageNode(key, out node) : _mutable!.StorageNodes.TryGetValue(key, out node!);
+    {
+        node = TryGetStorageNode(key, out SnapshotTrieNode found) ? ToTrieNode(found) : null;
+        return node is not null;
+    }
+
+    public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, out SnapshotTrieNode node)
+        => _isSorted ? _sorted!.TryGetStorageNode(key, out node) : _mutable!.StorageNodes.TryGetValue(key, out node);
+
+    /// <summary>The RLP of a node of this snapshot, valid while the snapshot is.</summary>
+    public ReadOnlySpan<byte> GetRlp(in SnapshotTrieNode node) => node.GetRlp(LogPin?.Log);
+
+    private TrieNode ToTrieNode(in SnapshotTrieNode node) => node.ToTrieNode(LogPin?.Log);
 
     protected override void CleanUp()
     {
         if (_isSorted) _resourcePool.ReturnSortedSnapshotContent(_usage, _sorted!);
         else _resourcePool.ReturnSnapshotContent(_usage, _mutable!);
+        LogPin?.Dispose();
     }
 
     public bool TryAcquire() => TryAcquireLease();
@@ -169,7 +199,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    public readonly Dictionary<HashedKey<TreePath>, TrieNode> StateNodes = [];
+    public readonly Dictionary<HashedKey<TreePath>, SnapshotTrieNode> StateNodes = [];
     public readonly AddressStorageNodeDictionary StorageNodes = new();
 
     /// <summary>Accounts the block only read, cached for its later reads.</summary>
@@ -181,8 +211,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
 
     public void Reset()
     {
-        foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in StateNodes) kvp.Value.PrunePersistedRecursively(1);
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in StorageNodes) kvp.Value.PrunePersistedRecursively(1);
+        foreach (KeyValuePair<HashedKey<TreePath>, SnapshotTrieNode> kvp in StateNodes) kvp.Value.Node?.PrunePersistedRecursively(1);
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode> kvp in StorageNodes) kvp.Value.Node?.PrunePersistedRecursively(1);
 
         // Reset runs at a quiescent pool-return boundary (final snapshot lease released, or the
         // bundle returning its current content on disposal), so no writer can hold a stripe;

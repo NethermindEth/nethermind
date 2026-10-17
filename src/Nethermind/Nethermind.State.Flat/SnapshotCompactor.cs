@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Collections;
 using Nethermind.Trie;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat;
 
@@ -174,7 +175,19 @@ public class SnapshotCompactor(
             throw;
         }
 
-        return new Snapshot(from, to, content, _resourcePool, usage);
+        // The oldest pin covers every snapshot merged, whose pins may be released before the compacted snapshot.
+        return new Snapshot(from, to, content, _resourcePool, usage) { LogPin = OldestLogPin(snapshots)?.Copy() };
+    }
+
+    private static NativeTrieNodeLogPin? OldestLogPin(SnapshotPooledList snapshots)
+    {
+        NativeTrieNodeLogPin? oldest = null;
+        foreach (Snapshot snapshot in snapshots)
+        {
+            if (snapshot.LogPin is { } pin && (oldest is null || pin.Generation < oldest.Generation)) oldest = pin;
+        }
+
+        return oldest;
     }
 
     private static void MergeInto<TKey, TValue, TComparer>(

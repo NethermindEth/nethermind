@@ -56,7 +56,7 @@ public sealed class HistoricalFlatDbManager(
         ReadOnlySnapshotBundle bundle = BuildHistoricalBundle(baseBlock, mode);
         try
         {
-            return new SnapshotBundle(bundle, trieNodeCache, resourcePool, usage);
+            return new SnapshotBundle(bundle, trieNodeCache, resourcePool, usage, nativeTrieNodeLog: null);
         }
         catch
         {

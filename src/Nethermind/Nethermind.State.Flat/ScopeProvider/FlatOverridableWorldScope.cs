@@ -10,6 +10,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Native;
 using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -26,12 +27,14 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
     private readonly ITrieNodeCache _trieNodeCache;
+    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
+        Lazy<NativeTrieNodeLog> nativeTrieNodeLog,
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
         IStateHeaderProvider stateHeaderProvider,
@@ -42,9 +45,11 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
         _trieNodeCache = trieNodeCache;
+        _nativeTrieNodeLog = configuration.UseNativeBulkSet ? nativeTrieNodeLog.Value : null;
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
+            _nativeTrieNodeLog,
             new NoopTrieWarmer(),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
             headerProvider,
@@ -114,6 +119,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             _trieNodeCache,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
+            _nativeTrieNodeLog,
             snapshots,
             filterInMemorySlotReads: true
         );
@@ -132,6 +138,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private class OverridableFlatScopeProvider(
         FlatOverridableWorldScope flatOverrideScope,
         IFlatDbConfig configuration,
+        NativeTrieNodeLog? nativeTrieNodeLog,
         ITrieWarmer trieWarmer,
         IWorldStateScopeProvider.ICodeDb codeDb,
         IStateHeaderProvider stateHeaderProvider,
@@ -167,6 +174,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 codeDb,
                 flatOverrideScope,
                 configuration,
+                nativeTrieNodeLog,
                 trieWarmer,
                 logManager);
             return true;
