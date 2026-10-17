@@ -380,7 +380,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     ///
     /// </summary>
     /// <param name="gas"></param>
-    /// <param name="output"></param>
+    /// <param name="output">Never mutated afterwards, so a tracer may keep a whole underlying array without copying it.</param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output);
 
@@ -388,7 +388,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     ///
     /// </summary>
     /// <param name="gasLeft"></param>
-    /// <param name="output"></param>
+    /// <param name="output">Never mutated afterwards, so a tracer may keep a whole underlying array without copying it.</param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output);
 
@@ -446,7 +446,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="gas"></param>
     /// <param name="deploymentAddress"></param>
-    /// <param name="deployedCode"></param>
+    /// <param name="deployedCode">Never mutated afterwards, so a tracer may keep a whole underlying array without copying it.</param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode);
 
