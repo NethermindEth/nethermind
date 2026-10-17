@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 
@@ -11,15 +12,32 @@ namespace Nethermind.Core.ServiceStopper;
 
 public class ServiceStopper(ILogManager logManager) : IServiceStopper
 {
-    private HashSet<IStoppableService> _stoppables = [];
-    private ILogger _logger = logManager.GetClassLogger<ServiceStopper>();
+    private readonly HashSet<IStoppableService> _stoppables = [];
+    // Init steps run in parallel, so registrations can arrive from several threads at once.
+    private readonly Lock _stoppablesLock = new();
+    private readonly ILogger _logger = logManager.GetClassLogger<ServiceStopper>();
 
 
-    public Task StopAllServices() => Task.WhenAll(_stoppables.Select(async (stoppable) =>
-        await Task.Run( // Task run in the middle so that the log look nice.
-            async () => await Stop(stoppable))));
+    public Task StopAllServices()
+    {
+        IStoppableService[] stoppables;
+        lock (_stoppablesLock)
+        {
+            stoppables = [.. _stoppables];
+        }
 
-    void IServiceStopper.AddStoppable(IStoppableService stoppableService) => _stoppables.Add(stoppableService);
+        return Task.WhenAll(stoppables.Select(async (stoppable) =>
+            await Task.Run( // Task run in the middle so that the log look nice.
+                async () => await Stop(stoppable))));
+    }
+
+    void IServiceStopper.AddStoppable(IStoppableService stoppableService)
+    {
+        lock (_stoppablesLock)
+        {
+            _stoppables.Add(stoppableService);
+        }
+    }
 
     private async Task Stop(IStoppableService stoppableService)
     {
