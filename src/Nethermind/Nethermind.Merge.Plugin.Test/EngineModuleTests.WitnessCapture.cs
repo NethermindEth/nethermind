@@ -25,6 +25,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -540,11 +541,11 @@ public partial class EngineModuleTests
         foreach (byte[] node in witness.State)
         {
             Assert.That(node, Is.Not.Empty, "every state node must be a non-empty RLP blob");
-            Assert.That(node.Length, Is.LessThanOrEqualTo(1_048_576),
-                "each state element must not exceed MAX_WITNESS_ITEM_BYTES");
+            Assert.That(node.Length, Is.LessThanOrEqualTo(SszRestLimits.MaxBytesPerWitnessNode),
+                "each state element must not exceed MAX_BYTES_PER_WITNESS_NODE");
         }
 
-        Assert.That(witness.State.Count, Is.LessThanOrEqualTo(1_048_576),
+        Assert.That(witness.State.Count, Is.LessThanOrEqualTo(SszRestLimits.MaxWitnessItems),
             "State list must not exceed MAX_WITNESS_ITEMS");
     }
 
@@ -763,8 +764,8 @@ public partial class EngineModuleTests
         foreach (byte[] header in witness.Headers)
         {
             Assert.That(header, Is.Not.Empty, "each header entry must be an RLP-encoded block header");
-            Assert.That(header.Length, Is.LessThanOrEqualTo(1_048_576),
-                "each header must fit within MAX_WITNESS_ITEM_BYTES per execution-apis#773");
+            Assert.That(header.Length, Is.LessThanOrEqualTo(SszRestLimits.MaxBytesPerHeader),
+                "each header must fit within MAX_BYTES_PER_HEADER");
         }
     }
 

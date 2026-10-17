@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
@@ -90,16 +91,25 @@ public static class SszCodec
     {
         return new ExecutionWitnessV1Wire
         {
-            State = ToWitnessItems(witness.State),
-            Codes = ToWitnessItems(witness.Codes),
-            Headers = ToWitnessItems(witness.Headers)
+            State = ToWitnessItems(witness.State, SszRestLimits.MaxWitnessItems, SszRestLimits.MaxBytesPerWitnessNode, static bytes => new SszWitnessNode { Bytes = bytes }),
+            Codes = ToWitnessItems(witness.Codes, SszRestLimits.MaxWitnessItems, SszRestLimits.MaxBytesPerCode, static bytes => new SszWitnessCode { Bytes = bytes }),
+            Headers = ToWitnessItems(witness.Headers, SszRestLimits.MaxWitnessHeaders, SszRestLimits.MaxBytesPerHeader, static bytes => new SszWitnessHeader { Bytes = bytes })
         };
 
-        static SszWitnessItem[] ToWitnessItems(IOwnedReadOnlyList<byte[]> items)
+        // Checked before encoding so the overflow surfaces as a server error: the encoder's own
+        // InvalidDataException is what the middleware maps to a client-side ssz-decode-error.
+        static T[] ToWitnessItems<T>(IOwnedReadOnlyList<byte[]> items, int maxCount, int maxItemBytes, Func<byte[], T> wrap)
         {
-            SszWitnessItem[] result = new SszWitnessItem[items.Count];
+            if (items.Count > maxCount)
+                throw new InvalidOperationException($"Witness has {items.Count} {typeof(T).Name} items, above the SSZ bound of {maxCount}");
+
+            T[] result = new T[items.Count];
             for (int i = 0; i < items.Count; i++)
-                result[i] = new SszWitnessItem { Bytes = items[i] };
+            {
+                if (items[i].Length > maxItemBytes)
+                    throw new InvalidOperationException($"Witness {typeof(T).Name} item of {items[i].Length} bytes is above the SSZ bound of {maxItemBytes}");
+                result[i] = wrap(items[i]);
+            }
             return result;
         }
     }
