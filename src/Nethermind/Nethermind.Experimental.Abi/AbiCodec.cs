@@ -11,17 +11,24 @@ public static class AbiCodec
 {
     public static byte[] Encode<T>(AbiSignature<T> signature, T arg)
     {
-        int valueSize = signature.Abi.Size(arg);
+        try
+        {
+            int valueSize = signature.Abi.Size(arg);
 
-        byte[] buffer = new byte[AbiSignature.MethodIdLength + valueSize];
-        BinarySpanWriter w = new(buffer);
+            byte[] buffer = new byte[AbiSignature.MethodIdLength + valueSize];
+            BinarySpanWriter w = new(buffer);
 
-        w.Write(signature.MethodId());
-        signature.Abi.Write(ref w, arg);
+            w.Write(signature.MethodId());
+            signature.Abi.Write(ref w, arg);
 
-        if (w.Written != buffer.Length) throw new AbiException();
+            if (w.Written != buffer.Length) throw new AbiException();
 
-        return buffer;
+            return buffer;
+        }
+        catch (Exception e) when (e is not AbiException)
+        {
+            throw new AbiException(e);
+        }
     }
 
     public static T Decode<T>(AbiSignature<T> signature, ReadOnlySpan<byte> source)

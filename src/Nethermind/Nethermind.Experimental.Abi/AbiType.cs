@@ -152,6 +152,8 @@ public static partial class AbiType
         HeadSize = Math.PadTo32(length)
     };
 
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     public static Abi<String> String => new()
     {
         Name = "string",
@@ -159,23 +161,23 @@ public static partial class AbiType
         {
             int length = (int)UInt256.Read(ref r);
             ReadOnlySpan<byte> bytes = r.ReadBytesPadded(length);
-            return Encoding.UTF8.GetString(bytes);
+            return StrictUtf8.GetString(bytes);
         },
         Write = (ref BinarySpanWriter w, String v) =>
         {
-            int byteCount = Encoding.UTF8.GetByteCount(v);
+            int byteCount = StrictUtf8.GetByteCount(v);
             int byteSize = Math.PadTo32(byteCount);
 
             UInt256.Write(ref w, (UInt256)byteCount);
 
             Span<byte> buffer = w.Take(byteSize);
-            Encoding.UTF8.GetBytes(v, buffer);
+            StrictUtf8.GetBytes(v, buffer);
             buffer[byteCount..].Clear();
         },
         TailSize = v =>
         {
             const int lengthSize = 32;
-            int byteCount = Encoding.UTF8.GetByteCount(v);
+            int byteCount = StrictUtf8.GetByteCount(v);
             int byteSize = Math.PadTo32(byteCount);
 
             return lengthSize + byteSize;
