@@ -1373,14 +1373,16 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     /// <param name="configure">Registrations made after the production ones, as a plugin's would be.</param>
     protected void Initialize(bool handoff, Action<ContainerBuilder>? configure = null)
     {
+        BlocksConfig blocksConfig = new()
+        {
+            PreWarming = PreWarmMode.Block,
+            PreWarmStateConcurrency = 3,
+            ProcessingCores = ProcessingCores.All,
+            PreWarmHandoff = handoff
+        };
+        ConfigureBlocks(blocksConfig);
         ContainerBuilder builder = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new BlocksConfig
-            {
-                PreWarming = PreWarmMode.Block,
-                PreWarmStateConcurrency = 3,
-                ProcessingCores = ProcessingCores.All,
-                PreWarmHandoff = handoff
-            }))
+            .AddModule(new TestNethermindModule(blocksConfig))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Spec))
             .AddSingleton<IStateHeaderProvider>(new Parents(_headers));
         configure?.Invoke(builder);
@@ -1388,7 +1390,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
 
         IMainProcessingModule[] mainModules = _container.Resolve<IMainProcessingModule[]>();
         IWorldStateManager worldStateManager = _container.Resolve<IWorldStateManager>();
-        IWorldStateScopeProvider scopeProvider = worldStateManager.GlobalWorldState;
+        IWorldStateScopeProvider scopeProvider = WrapMainScopeProvider(worldStateManager.GlobalWorldState);
         ProcessingScope = _container.BeginLifetimeScope(b =>
         {
             b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
@@ -1434,6 +1436,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);
             worldState.Set(new StorageCell(Child, ChildSlot), 0x4e4d);
+            DeployGenesis(worldState);
             worldState.Commit(Spec);
             worldState.CommitTree(0);
             genesisRoot = worldState.StateRoot;
@@ -1455,6 +1458,18 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         }
     }
 
+    /// <summary>Adjusts the blocks config the fixture's container is built with.</summary>
+    protected virtual void ConfigureBlocks(BlocksConfig config) { }
+
+    /// <summary>Deploys a fixture's own accounts into the genesis state, before it is committed.</summary>
+    protected virtual void DeployGenesis(IWorldState worldState) { }
+
+    /// <summary>Decorates the scope provider block processing reads through, under the pre-block caches.</summary>
+    protected virtual IWorldStateScopeProvider WrapMainScopeProvider(IWorldStateScopeProvider provider) => provider;
+
+    /// <summary>The state reader of the fixture's container, which reads past every cache.</summary>
+    protected IStateReader StateReader => _container.Resolve<IWorldStateManager>().GlobalStateReader;
+
     [TearDown]
     public void TearDown()
     {
@@ -1465,14 +1480,57 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected sealed record Run(Hash256 StateRoot, TxReceipt[] Receipts, TransactionResult[] Results, (int Replayed, int Rejected, int Missing) Tally);
 
     /// <summary>Processes the block by execution, then warmed and handed off, and requires the same results, root and receipts.</summary>
-    protected Run Handoff(Block block, IBlockTracer? otherTracer = null) => Handoff(block, PreWarmer, ProductionAdapter, otherTracer);
+    protected Run Handoff(Block block, IBlockTracer? otherTracer = null, Action<IWorldState>? beforeTransactions = null) =>
+        Handoff(block, PreWarmer, ProductionAdapter, otherTracer, beforeTransactions);
 
-    protected Run Handoff(Block block, BlockCachePreWarmer preWarmer, PrewarmerTxAdapter adapter, IBlockTracer? otherTracer = null)
+    protected Run Handoff(Block block, BlockCachePreWarmer preWarmer, PrewarmerTxAdapter adapter, IBlockTracer? otherTracer = null,
+        Action<IWorldState>? beforeTransactions = null)
     {
-        Run executed = Process(block, adapter: null);
+        Run executed = Process(block, adapter: null, beforeTransactions: beforeTransactions);
         RunPreWarmCaches(preWarmer, block);
-        Run run = Process(block, adapter, otherTracer: otherTracer);
+        Run run = Process(block, adapter, otherTracer: otherTracer, beforeTransactions: beforeTransactions);
 
+        AssertSameRun(run, executed);
+        return run;
+    }
+
+    /// <summary>
+    /// Processes the block by execution, then with its prewarming session open while the production adapter processes
+    /// it, as block processing does, and requires the same results, root and receipts.
+    /// </summary>
+    /// <param name="afterSession">Run once the transactions are executed and the session has ended, before the block is committed.</param>
+    protected Run HandoffWhileWarming(Block block, Action? afterSession = null, Action<IWorldState>? beforeTransactions = null)
+    {
+        Run executed = Process(block, adapter: null, beforeTransactions: beforeTransactions);
+        Run run = ProcessWithSession(block, afterSession, beforeTransactions);
+        AssertSameRun(run, executed);
+        return run;
+    }
+
+    /// <summary>Processes the block with its prewarming session open, ending the session once the transactions are executed.</summary>
+    protected Run ProcessWithSession(Block block, Action? afterSession = null, Action<IWorldState>? beforeTransactions = null)
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            IDisposable? session = PreWarmer.PreWarmCaches(block, Parent, Spec);
+            try
+            {
+                return ProcessInScope(block, ProductionAdapter, beforeTransactions: beforeTransactions, transactionsExecuted: () =>
+                {
+                    Interlocked.Exchange(ref session, null)?.Dispose();
+                    afterSession?.Invoke();
+                });
+            }
+            finally
+            {
+                session?.Dispose();
+            }
+        }
+    }
+
+    protected static void AssertSameRun(Run run, Run executed)
+    {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(run.Results, Is.EqualTo(executed.Results));
@@ -1480,7 +1538,6 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         }
 
         AssertSameReceipts(run.Receipts, executed.Receipts);
-        return run;
     }
 
     // Sync on purpose: the scope is closed on the thread that opened it.
@@ -1495,10 +1552,11 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     }
 
     /// <param name="adapter">The adapter that hands off; without one the block is executed.</param>
-    protected Run Process(Block block, PrewarmerTxAdapter? adapter, BlockHeader? parent = null, IBlockTracer? otherTracer = null)
+    protected Run Process(Block block, PrewarmerTxAdapter? adapter, BlockHeader? parent = null, IBlockTracer? otherTracer = null,
+        Action<IWorldState>? beforeTransactions = null)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
-        using (worldState.BeginScope(parent ?? Parent)) return ProcessInScope(block, adapter, otherTracer);
+        using (worldState.BeginScope(parent ?? Parent)) return ProcessInScope(block, adapter, otherTracer, beforeTransactions: beforeTransactions);
     }
 
     /// <summary>
@@ -1521,12 +1579,13 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     }
 
     private Run ProcessInScope(Block block, PrewarmerTxAdapter? adapter, IBlockTracer? otherTracer = null,
-        Action<int>? beforeTransaction = null, Action? transactionsExecuted = null)
+        Action<int>? beforeTransaction = null, Action? transactionsExecuted = null, Action<IWorldState>? beforeTransactions = null)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
         Block processing = new(block.Header.CloneForProcessing(), block.Body);
         (int Replayed, int Rejected, int Missing) before = adapter?.Tally ?? default;
         ITransactionProcessorAdapter transactions = (ITransactionProcessorAdapter?)adapter ?? new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>());
+        beforeTransactions?.Invoke(worldState);
         BlockReceiptsTracer tracer = new();
         tracer.SetOtherTracer(otherTracer ?? NullBlockTracer.Instance);
         tracer.StartNewBlockTrace(processing);
@@ -1597,6 +1656,75 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         _headers.Add(header);
         return header;
     }
+
+    /// <summary>The cache entries whose value is not the parent state's, read past every cache.</summary>
+    protected List<string> EntriesNotAtTheParent()
+    {
+        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
+        IStateReader reader = StateReader;
+        List<string> wrong = [];
+        foreach ((AddressAsKey key, Account? account) in caches.StateCache.SnapshotForTests())
+        {
+            bool exists = reader.TryGetAccount(Parent, key.Value, out AccountStruct parent);
+            if (account is null ? exists : !exists || !account.ToStruct().Equals(parent))
+            {
+                wrong.Add($"account {key.Value}: {Describe(account?.ToStruct())} cached, {Describe(exists ? parent : null)} at the parent");
+            }
+        }
+
+        foreach ((StorageCell cell, UInt256 value) in caches.StorageCache.SnapshotForTests())
+        {
+            reader.GetStorage(Parent, cell.Address, in cell.Index, out UInt256 parent);
+            if (value != parent) wrong.Add($"slot {cell}: {value} cached, {parent} at the parent");
+        }
+
+        return wrong;
+    }
+
+    private static string Describe(AccountStruct? account) => account is { } a
+        ? $"nonce {a.Nonce} balance {a.Balance} storage {a.StorageRoot} code {a.CodeHash}"
+        : "none";
+
+    /// <summary>A block of the cold tail's shapes, from <paramref name="rng"/>; <paramref name="heavyGas"/> splits a sender's claims.</summary>
+    protected Block RandomColdTailBlock(Random rng, ulong heavyGas = 2_100_000)
+    {
+        PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD];
+        ulong[] nonces = new ulong[senders.Length];
+        int count = rng.Next(3, 11);
+        Transaction[] transactions = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            int s = rng.Next(senders.Length);
+            PrivateKey sender = senders[s];
+            ulong nonce = nonces[s]++;
+            transactions[i] = rng.Next(12) switch
+            {
+                0 or 1 => BatchClaim(sender, nonce, rng.Next(1, 10), rng.Next(2) == 0 ? 400_000ul : heavyGas),
+                2 => Claim(sender, nonce, rng.Next(1, 6), (ulong)rng.Next(0, 4) * 16),
+                3 => Call(sender, nonce, ColdTailContracts.Deleter, 200_000),
+                4 => Call(sender, nonce, ColdTailContracts.Deleter, 200_000, data: [1]),
+                5 => Walk(sender, nonce, rng.Next(2) == 0 ? 0x4e4dul : (ulong)rng.Next(0x100, 0x140), rng.Next(1, 12)),
+                6 => Call(sender, nonce, ColdTailContracts.Chain, 500_000),
+                7 => Call(sender, nonce, ColdTailContracts.Brancher),
+                8 => Transfer(sender, nonce, ColdTailContracts.Gate, 1.Wei),
+                9 => Call(sender, nonce, rng.Next(2) == 0 ? ColdTailContracts.SwapThenCheck : ColdTailContracts.CheckThenSwap,
+                    data: rng.Next(2) == 0 ? Array.Empty<byte>() : new byte[] { 2 }),
+                10 => Call(sender, nonce, rng.Next(2) == 0 ? Caller : Reverter),
+                _ => Call(sender, nonce, Counter),
+            };
+        }
+
+        return BuildBlock(transactions);
+    }
+
+    protected static Transaction BatchClaim(PrivateKey sender, ulong nonce, int count, ulong gasLimit) =>
+        Call(sender, nonce, ColdTailContracts.Batch, gasLimit, ColdTailContracts.Word((ulong)count));
+
+    protected static Transaction Claim(PrivateKey sender, ulong nonce, int proxies, ulong firstSalt) =>
+        Call(sender, nonce, ColdTailContracts.Claimer, 1_500_000, ColdTailContracts.Words((ulong)proxies, firstSalt));
+
+    protected static Transaction Walk(PrivateKey sender, ulong nonce, ulong start, int count) =>
+        Call(sender, nonce, ColdTailContracts.Walker, 400_000, ColdTailContracts.Words(start, (ulong)count));
 
     protected static Transaction Call(PrivateKey sender, ulong nonce, Address to, ulong gasLimit = 100_000, byte[]? data = null) =>
         Build.A.Transaction.WithType(TxType.EIP1559).WithNonce(nonce).WithTo(to).WithValue(UInt256.Zero).WithGasLimit(gasLimit).WithData(data ?? [])

@@ -25,6 +25,7 @@ public class PreBlockCaches
     private readonly PrecompileCaches _precompileCaches;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
     private volatile CodePrefetcher? _codePrefetcher;
+    private IConsumerColdReadObserver? _coldReadObserver;
     private int _consumerScopes;
 
     private readonly Lock _reconcileLock = new();
@@ -101,6 +102,24 @@ public class PreBlockCaches
         get => _codePrefetcher;
         set => _codePrefetcher = value;
     }
+
+    /// <summary>
+    /// Told about every read a consumer scope makes past the account and storage caches, before it goes to the backing
+    /// store; null when nothing listens. The driver sets it while a block's pre-warming session runs.
+    /// </summary>
+    public IConsumerColdReadObserver? ColdReadObserver
+    {
+        get => Volatile.Read(ref _coldReadObserver);
+        set => Volatile.Write(ref _coldReadObserver, value);
+    }
+
+    /// <summary>Clears <see cref="ColdReadObserver"/> if it is still <paramref name="observer"/>.</summary>
+    public void ClearColdReadObserver(IConsumerColdReadObserver observer) =>
+        Interlocked.CompareExchange(ref _coldReadObserver, null, observer);
+
+    /// <summary>For a consumer scope: reports one read past the account and storage caches, before it is made.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReportConsumerColdRead() => _coldReadObserver?.OnColdRead();
 
     /// <summary>
     /// Whether a consumer scope is open: from <see cref="BeginConsumerScope"/> until <see cref="EndConsumerScope"/>,
@@ -587,6 +606,8 @@ public class PreBlockCaches
         private readonly PooledSet<StorageCell> _cells;
         private readonly int _ownerThreadId = Environment.CurrentManagedThreadId;
         private readonly StrongBox<int> _remainingCells;
+        private PooledSet<StorageCell>? _reads;
+        private int _maxReads;
         private bool _disposed;
 
         internal StorageReadCapture(PreBlockCaches owner, StrongBox<int> remainingCells)
@@ -604,6 +625,33 @@ public class PreBlockCaches
         /// <summary>Distinct cells encountered while backing reads were skipped.</summary>
         /// <remarks>Exposed as the concrete pooled set so consumers enumerate without boxing; treat as read-only.</remarks>
         public PooledSet<StorageCell> Cells => _cells;
+
+        /// <summary>
+        /// Distinct cells read from the cache rather than skipped, once <see cref="RecordReads"/> asked for them; null
+        /// otherwise. With <see cref="Cells"/>, every cell the run read.
+        /// </summary>
+        public PooledSet<StorageCell>? Reads => _reads;
+
+        /// <summary>Also records the cells read from the cache, up to <paramref name="maxReads"/> of them.</summary>
+        public void RecordReads(int maxReads)
+        {
+            _maxReads = maxReads;
+            _reads ??= new PooledSet<StorageCell>(Math.Clamp(maxReads, 0, InitialCellCapacity));
+        }
+
+        /// <summary>Records a cell read from the cache, if <see cref="RecordReads"/> asked for them.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void RecordRead(in StorageCell storageCell)
+        {
+            PooledSet<StorageCell>? reads = _reads;
+            if (reads is null || reads.Count >= _maxReads) return;
+            if (Environment.CurrentManagedThreadId != _ownerThreadId)
+            {
+                throw new InvalidOperationException("A capture must only record on the thread that created it.");
+            }
+
+            reads.Add(storageCell);
+        }
 
         /// <summary>Records a missed storage cell while the shared cell budget lasts.</summary>
         /// <remarks>
@@ -647,6 +695,7 @@ public class PreBlockCaches
             }
 
             _cells.Dispose();
+            _reads?.Dispose();
         }
     }
 }
