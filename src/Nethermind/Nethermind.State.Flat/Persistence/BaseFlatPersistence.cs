@@ -5,9 +5,11 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -153,6 +155,14 @@ public static class BaseFlatPersistence
             return state.Get(key, outBuffer);
         }
 
+        public void GetSlots(ReadOnlySpan<(ValueHash256 Address, ValueHash256 Slot)> cells, Span<UInt256?> values)
+        {
+            using ArrayPoolSpan<byte> keys = new(checked(cells.Length * StorageKeyLength));
+            for (int i = 0; i < cells.Length; i++)
+                EncodeStorageKey(keys.Slice(i * StorageKeyLength, StorageKeyLength), in cells[i].Address, in cells[i].Slot, fullAddressStorageKey);
+            storage.GetMany<UInt256?, SlotValueDecoder>(keys, StorageKeyLength, values, new(rlpWrapSlots));
+        }
+
         [SkipLocalsInit]
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue)
         {
@@ -207,6 +217,21 @@ public static class BaseFlatPersistence
                 StorageAddressSuffix(accountKey, fullAddressStorageKey).ToArray(),
                 StoragePrefixLength(fullAddressStorageKey),
                 rlpWrapSlots);
+        }
+    }
+
+    private readonly struct SlotValueDecoder(bool rlpWrapSlots) : IValueDecoder<UInt256?>
+    {
+        public UInt256? Decode(ReadOnlySpan<byte> value)
+        {
+            if (value.IsEmpty) return null;
+            if (rlpWrapSlots)
+            {
+                RlpReader reader = new(value);
+                value = reader.DecodeByteArraySpan();
+            }
+            if (value.Length > StorageValueSize) ThrowSlotValueTooLong(value.Length, rlpWrapSlots);
+            return new UInt256(value, isBigEndian: true);
         }
     }
 

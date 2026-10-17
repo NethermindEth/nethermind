@@ -52,6 +52,148 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
+    public async Task BatchReads_AfterGenerationChange_DoNotServeOrFillNewCache([Values] bool found, [Values] bool afterCacheMiss)
+    {
+        const int count = 16;
+        FakePersistence inner = new() { SlotExists = found };
+        await using CarryForwardCachingPersistence cache = new(inner);
+        using IPersistence.IPersistenceReader oldReader = cache.CreateReader();
+        StorageCell[] cells = new StorageCell[count];
+        for (int i = 0; i < count; i++)
+        {
+            cells[i] = new StorageCell(Address, (UInt256)(ulong)i);
+        }
+        UInt256?[] slots = new UInt256?[count];
+        if (afterCacheMiss) oldReader.GetSlotsAfterCacheMiss(cells, slots);
+        else oldReader.GetSlots(cells, slots);
+        oldReader.GetSlots(cells, slots);
+        Assert.That(inner.SlotBatchReads, Is.EqualTo(1), "same-generation slots must be served from the cache on the second batch");
+
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1)) batch.SelfDestruct(Address);
+        inner.ReaderState = Basis1;
+        inner.SlotExists = !found;
+        using IPersistence.IPersistenceReader currentReader = cache.CreateReader();
+        currentReader.GetSlots(cells, slots);
+        Assert.That(slots[0].HasValue, Is.EqualTo(!found), "precondition: the current generation caches the replacement slot state");
+
+        inner.SlotExists = found;
+        if (afterCacheMiss) oldReader.GetSlotsAfterCacheMiss(cells, slots);
+        else oldReader.GetSlots(cells, slots);
+        Assert.That(slots, Has.All.EqualTo(found ? (UInt256?)17 : null), "an old reader must bypass current slot entries, including cached misses");
+        currentReader.GetSlots(cells, slots);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.SlotBatchReads, Is.EqualTo(3), "old readers must neither use nor replace the current slot cache");
+            Assert.That(slots, Has.All.EqualTo(found ? null : (UInt256?)17), "old slot results must not enter the current cache");
+        }
+    }
+
+    [Test]
+    public async Task CachedSlotProbe_DoesNotReadPersistence_AndPreservesMissingAndZero([Values] bool found, [Values] bool zero)
+    {
+        UInt256? expected = found ? zero ? UInt256.Zero : UInt256.MaxValue : null;
+        FakePersistence inner = new() { SlotValue = _ => expected };
+        await using CarryForwardCachingPersistence cache = new(inner);
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        IBatchPersistenceReader batch = (IBatchPersistenceReader)reader;
+        UInt256 slot = UInt256.One;
+        Assert.That(batch.TryGetCachedSlot(Address, in slot, out _), Is.False);
+        Assert.That(inner.SlotReads, Is.Zero, "a cache probe must never start a persistence read");
+        UInt256 value = default;
+        reader.TryGetSlot(Address, in slot, ref value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.TryGetCachedSlot(Address, in slot, out UInt256? cached), Is.True);
+            Assert.That(cached, Is.EqualTo(expected));
+            Assert.That(inner.SlotReads, Is.EqualTo(1), "cached missing and zero values must also avoid persistence");
+        }
+        using (IPersistence.IWriteBatch write = cache.CreateWriteBatch(Basis0, Basis1)) write.SelfDestruct(Address);
+        inner.ReaderState = Basis1;
+        UInt256? replacement = found ? null : UInt256.One;
+        inner.SlotValue = _ => replacement;
+        using IPersistence.IPersistenceReader currentReader = cache.CreateReader();
+        currentReader.TryGetSlot(Address, in slot, ref value);
+        IBatchPersistenceReader currentBatch = (IBatchPersistenceReader)currentReader;
+        Assert.That(currentBatch.TryGetCachedSlot(Address, in slot, out UInt256? current), Is.True);
+        Assert.That(current, Is.EqualTo(replacement));
+        int readsBeforeOldProbe = inner.SlotReads;
+        Assert.That(batch.TryGetCachedSlot(Address, in slot, out _), Is.False, "an old reader must not probe the populated new cache generation");
+        Assert.That(inner.SlotReads, Is.EqualTo(readsBeforeOldProbe));
+    }
+
+    [TestCase(1, TestName = "BatchReads_OneCacheMiss_PreservesOrderAndFillsCache")]
+    [TestCase(7, TestName = "BatchReads_SevenCacheMisses_PreservesOrderAndFillsCache")]
+    [TestCase(8, TestName = "BatchReads_EightCacheMisses_PreservesOrderAndFillsCache")]
+    [TestCase(15, TestName = "BatchReads_FifteenCacheMisses_PreservesOrderAndFillsCache")]
+    [TestCase(16, TestName = "BatchReads_AllCacheMisses_PreservesOrderAndFillsCache")]
+    public async Task BatchReads_WithMixedCacheHitsAndMisses_PreserveOrderAndFillCache(int misses)
+    {
+        const int count = 16;
+        StorageCell[] cells = new StorageCell[count];
+        UInt256?[] expectedSlots = new UInt256?[count];
+        static UInt256? SlotValue(in UInt256 slot) => slot.u0 % 5 == 0 ? null : slot.u0 % 7 == 0 ? UInt256.Zero : Pattern((int)slot.u0, 123);
+        FakePersistence inner = new()
+        {
+            SlotValue = cell => SlotValue(in cell.Index)
+        };
+        await using CarryForwardCachingPersistence cache = new(inner);
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        for (int i = 0; i < count; i++)
+        {
+            int key = count - i - 1;
+            cells[i] = new StorageCell(Address, (UInt256)(ulong)key);
+            expectedSlots[i] = SlotValue(in cells[i].Index);
+            if ((i * 5 + 3) % count < misses) continue;
+            UInt256 value = default;
+            reader.TryGetSlot(Address, in cells[i].Index, ref value);
+        }
+        UInt256?[] slots = new UInt256?[count];
+        if (misses == count) reader.GetSlotsAfterCacheMiss(cells, slots);
+        else reader.GetSlots(cells, slots);
+        Assert.That(slots, Is.EqualTo(expectedSlots), "miss compaction must preserve distinct values, present zero and missing slots");
+        for (int i = 0; i < count; i++)
+        {
+            UInt256 value = default;
+            bool found = reader.TryGetSlot(Address, in cells[i].Index, ref value);
+            Assert.That(found ? value : (UInt256?)null, Is.EqualTo(expectedSlots[i]), "each batch slot result must fill the matching cache key");
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.SlotReads, Is.EqualTo(count), "each slot miss must reach persistence once and then be cached");
+            Assert.That(inner.SlotBatchReads, Is.EqualTo(misses >= 8 ? 1 : 0), "only a sufficiently large compacted slot miss set should use a batch");
+        }
+    }
+
+    [Test]
+    public async Task GetSlotsAfterCacheMiss_WithCurrentGeneration_RecordsMissesBeforeReading(
+        [Values] bool detailedMetrics, [Values] bool readerFails)
+    {
+        bool previous = Db.Metrics.DetailedMetricsEnabled;
+        try
+        {
+            Db.Metrics.DetailedMetricsEnabled = detailedMetrics;
+            FakePersistence inner = new();
+            if (readerFails) inner.SlotValue = _ => throw new InvalidOperationException("read failed");
+            await using CarryForwardCachingPersistence cache = new(inner);
+            using IPersistence.IPersistenceReader reader = cache.CreateReader();
+            StorageCell[] cells = new StorageCell[8];
+            for (int i = 0; i < cells.Length; i++) cells[i] = new(Address, (UInt256)(ulong)i);
+            UInt256?[] values = new UInt256?[cells.Length];
+            long before = Metrics.CarryForwardSlotMisses;
+            if (readerFails)
+                Assert.That(() => reader.GetSlotsAfterCacheMiss(cells, values), Throws.TypeOf<InvalidOperationException>());
+            else reader.GetSlotsAfterCacheMiss(cells, values);
+            Assert.That(Metrics.CarryForwardSlotMisses - before, Is.EqualTo(detailedMetrics ? cells.Length : 0),
+                "known cache misses must retain their counter even when persistence fails");
+        }
+        finally
+        {
+            Db.Metrics.DetailedMetricsEnabled = previous;
+        }
+    }
+
+    [Test]
     public async Task GetAccount_SecondReadAtSameBasis_ServedFromCache()
     {
         FakePersistence inner = new();
@@ -1007,6 +1149,8 @@ public class CarryForwardCachingPersistenceTests
         public StateId ReaderState = Basis0;
         public int AccountReads;
         public int SlotReads;
+        public int SlotBatchReads;
+        public Func<StorageCell, UInt256?>? SlotValue;
         public bool AccountExists = true;
         public bool SlotExists = true;
         public bool ThrowOnReaderDispose;
@@ -1016,8 +1160,19 @@ public class CarryForwardCachingPersistenceTests
         public void Flush() { }
         public void Clear() { }
 
-        private sealed class Reader(FakePersistence parent) : IPersistence.IPersistenceReader
+        private sealed class Reader(FakePersistence parent) : IPersistence.IPersistenceReader, IBatchPersistenceReader
         {
+
+            public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+            {
+                parent.SlotBatchReads++;
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    UInt256 value = default;
+                    values[i] = TryGetSlot(cells[i].Address, in cells[i].Index, ref value) ? value : null;
+                }
+            }
+
             public Account? GetAccount(Address address)
             {
                 parent.AccountReads++;
@@ -1027,6 +1182,13 @@ public class CarryForwardCachingPersistenceTests
             public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
             {
                 parent.SlotReads++;
+                if (parent.SlotValue is not null)
+                {
+                    UInt256? result = parent.SlotValue(new StorageCell(address, in slot));
+                    if (!result.HasValue) return false;
+                    outValue = result.Value;
+                    return true;
+                }
                 if (!parent.SlotExists) return false;
                 outValue = BaseFlatPersistence.DecodeSlotValue([0x11]);
                 return true;

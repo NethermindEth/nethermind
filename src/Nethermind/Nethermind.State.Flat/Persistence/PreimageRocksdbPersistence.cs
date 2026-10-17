@@ -227,6 +227,20 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             return TryGetSlotRaw(fakeHash, fakeSlotHash, ref outValue);
         }
 
+        public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+        {
+            using ArrayPoolSpan<(ValueHash256 Address, ValueHash256 Slot)> hashes = new(cells.Length);
+            for (int i = 0; i < cells.Length; i++)
+            {
+                ValueHash256 address = default;
+                cells[i].Address.Bytes.CopyTo(address.BytesAsSpan);
+                ValueHash256 slot = default;
+                cells[i].Index.ToBigEndian(slot.BytesAsSpan);
+                hashes[i] = (address, slot);
+            }
+            _flatReader.GetSlots(hashes, values);
+        }
+
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             throw new InvalidOperationException("Raw operation not available in preimage mode");
 

@@ -285,6 +285,17 @@ public static class BasePersistence
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue);
+
+        /// <summary>Reads slots in input order, with a scalar fallback for backends without batch support.</summary>
+        void GetSlots(ReadOnlySpan<(ValueHash256 Address, ValueHash256 Slot)> cells, Span<UInt256?> values)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, cells.Length, nameof(values));
+            for (int i = 0; i < cells.Length; i++)
+            {
+                UInt256 value = default;
+                values[i] = TryGetStorage(in cells[i].Address, in cells[i].Slot, ref value) ? value : null;
+            }
+        }
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
@@ -312,6 +323,17 @@ public static class BasePersistence
     {
         public Account? GetAccount(Address address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
+
+        /// <summary>Reads slots in input order, with a scalar fallback for backends without batch support.</summary>
+        void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, cells.Length, nameof(values));
+            for (int i = 0; i < cells.Length; i++)
+            {
+                UInt256 value = default;
+                values[i] = TryGetSlot(cells[i].Address, in cells[i].Index, ref value) ? value : null;
+            }
+        }
         public byte[]? GetAccountRaw(in ValueHash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref UInt256 outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
@@ -429,6 +451,18 @@ public static class BasePersistence
             return TryGetSlotRaw(address.ToAccountPath, slotHash, ref outValue);
         }
 
+        public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+        {
+            using ArrayPoolSpan<(ValueHash256 Address, ValueHash256 Slot)> hashes = new(cells.Length);
+            for (int i = 0; i < cells.Length; i++)
+            {
+                ValueHash256 slotHash = default;
+                StorageTree.ComputeKeyWithLookup(in cells[i].Index, ref slotHash);
+                hashes[i] = (cells[i].Address.ToAccountPath, slotHash);
+            }
+            _flatReader.GetSlots(hashes, values);
+        }
+
         public byte[]? GetAccountRaw(in ValueHash256 addrHash)
         {
             Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
@@ -453,7 +487,7 @@ public static class BasePersistence
         TTrieReader trieReader,
         StateId currentState,
         IDisposable disposer)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IBatchPersistenceReader
         where TFlatReader : struct, IFlatReader
         where TTrieReader : struct, ITrieReader
     {
@@ -469,6 +503,9 @@ public static class BasePersistence
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
+
+        public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values) =>
+            _flatReader.GetSlots(cells, values);
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStateRlp(path, flags);

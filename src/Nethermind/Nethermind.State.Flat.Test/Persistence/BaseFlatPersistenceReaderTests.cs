@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -69,6 +70,58 @@ public class BaseFlatPersistenceReaderTests
 
         Assert.That(found, Is.True);
         Assert.That(result.ToBigEndian(), Is.EqualTo(payload));
+    }
+
+    [TestCase(false, TestName = "BatchSlots_LegacyFlatReader_UsesScalarFallback")]
+    [TestCase(true, TestName = "BatchSlots_LegacyHashedReader_UsesScalarFallback")]
+    public void BatchSlots_WithoutBatchImplementation_PreservesScalarResults(bool hashed)
+    {
+        UInt256?[] values = new UInt256?[4];
+        if (hashed)
+        {
+            BasePersistence.IHashedFlatReader reader = new ScalarHashedReader();
+            (ValueHash256 Address, ValueHash256 Slot)[] cells =
+                [(default, default), (default, ValueKeccak.OfAnEmptyString), (default, ValueKeccak.EmptyTreeHash), (default, default)];
+            reader.GetSlots(cells, values);
+        }
+        else
+        {
+            BasePersistence.IFlatReader reader = new ScalarReader();
+            StorageCell[] cells =
+                [new(Address.Zero, UInt256.Zero), new(Address.Zero, UInt256.One), new(Address.Zero, UInt256.MaxValue), new(Address.Zero, UInt256.Zero)];
+            reader.GetSlots(cells, values);
+        }
+
+        Assert.That(values, Is.EqualTo(new UInt256?[] { UInt256.Zero, null, UInt256.MaxValue, UInt256.Zero }),
+            "a scalar-only backend must compile and retain batch order, missing values, zero and all 32 value bytes");
+    }
+
+    private readonly struct ScalarReader : BasePersistence.IFlatReader
+    {
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
+        {
+            outValue = slot;
+            return slot != UInt256.One;
+        }
+        public Account? GetAccount(Address address) => throw new NotSupportedException();
+        public byte[]? GetAccountRaw(in ValueHash256 address) => throw new NotSupportedException();
+        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
+    }
+
+    private readonly struct ScalarHashedReader : BasePersistence.IHashedFlatReader
+    {
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue)
+        {
+            outValue = slot == default ? UInt256.Zero : UInt256.MaxValue;
+            return slot != ValueKeccak.OfAnEmptyString;
+        }
+        public int GetAccount(in ValueHash256 address, Span<byte> buffer) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
     }
 
     /// <summary>Returns the same value for any key; enough to exercise <c>TryGetStorage</c>'s decode path.</summary>

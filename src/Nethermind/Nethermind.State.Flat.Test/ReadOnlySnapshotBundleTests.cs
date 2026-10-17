@@ -887,6 +887,19 @@ public class ReadOnlySnapshotBundleFilterTests
 
     private static void CheckReadOnlyBundle(LayerStack stack, ReadOnlySnapshotBundle bundle, FilterMode mode, List<string> errors)
     {
+        (Address Address, int SelfDestructIdx, UInt256 Slot)[] requests = ProbeKeys()
+            .SelectMany(key => Enumerable.Range(-1, bundle.SnapshotCount + 2).Select(d => (key.Item1, d, key.Item2))).ToArray();
+        UInt256?[] values = new UInt256?[requests.Length];
+        bundle.GetSlots(requests, values);
+        for (int i = 0; i < requests.Length; i++)
+        {
+            (Address address, int cutoff, UInt256 slot) = requests[i];
+            UInt256? expected = Oracle.Slot(stack.Layers, stack.PersistenceSlots, (address, slot), cutoff);
+            if (values[i] != expected) errors.Add($"{mode}: batch slot ({cutoff}, {address}, {slot}) = {values[i]}, oracle {expected}");
+            if (!bundle.TryGetCachedSlot(new((address, slot)), cutoff, out UInt256? cached) || cached != expected)
+                errors.Add($"{mode}: cached slot ({cutoff}, {address}, {slot}) = {cached}, oracle {expected}");
+        }
+
         foreach (Address address in Addresses.Concat(AbsentAddresses))
         {
             int expectedIdx = Oracle.SelfDestructIdx(stack.Layers, address);
@@ -967,6 +980,22 @@ public class ReadOnlySnapshotBundleFilterTests
             }
 
             int total = readOnly.SnapshotCount + ownCount;
+            (Address Address, int SelfDestructIdx, UInt256 Slot)[] requests = ProbeKeys()
+                .SelectMany(key => Enumerable.Range(-1, total + 2).Select(d => (key.Item1, d, key.Item2))).ToArray();
+            foreach (SnapshotBundle bundle in bundles)
+            {
+                UInt256?[] values = new UInt256?[requests.Length];
+                bundle.GetSlots(requests, values);
+                for (int i = 0; i < requests.Length; i++)
+                {
+                    (Address address, int cutoff, UInt256 slot) = requests[i];
+                    UInt256? expected = Oracle.Slot(layers, stack.PersistenceSlots, (address, slot), cutoff);
+                    if (values[i] != expected) errors.Add($"{mode} bundle: batch slot ({cutoff}, {address}, {slot}) = {values[i]}, oracle {expected}");
+                    if (!bundle.TryGetCachedSlot(address, in slot, cutoff, out UInt256? cached) || cached != expected)
+                        errors.Add($"{mode} bundle: cached slot ({cutoff}, {address}, {slot}) = {cached}, oracle {expected}");
+                }
+            }
+
             foreach (Address address in Addresses.Concat(AbsentAddresses))
             {
                 int expectedIdx = Oracle.SelfDestructIdx(layers, address);
@@ -1216,7 +1245,7 @@ public class ReadOnlySnapshotBundleFilterTests
     private sealed class DictionaryReader(
         Dictionary<(Address, UInt256), UInt256> slots,
         Dictionary<Address, Account> accounts,
-        StateId currentState) : IPersistence.IPersistenceReader
+        StateId currentState) : IPersistence.IPersistenceReader, IBatchPersistenceReader
     {
         private int _slotReads;
         public int SlotReads => Volatile.Read(ref _slotReads);
@@ -1229,6 +1258,21 @@ public class ReadOnlySnapshotBundleFilterTests
             if (!slots.TryGetValue((address, slot), out UInt256 value)) return false;
             outValue = value;
             return true;
+        }
+
+        public bool TryGetCachedSlot(Address address, in UInt256 slot, out UInt256? value)
+        {
+            value = slots.TryGetValue((address, slot), out UInt256 stored) ? stored : null;
+            return true;
+        }
+
+        public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+        {
+            for (int i = 0; i < cells.Length; i++)
+            {
+                UInt256 value = default;
+                values[i] = TryGetSlot(cells[i].Address, in cells[i].Index, ref value) ? value : null;
+            }
         }
 
         public StateId CurrentState => currentState;

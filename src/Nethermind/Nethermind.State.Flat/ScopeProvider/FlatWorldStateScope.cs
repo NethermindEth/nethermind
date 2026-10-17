@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -290,6 +291,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     int storageChangeCount = storageChanges.Length;
 
                     Account? account = _snapshotBundle.GetAccount(address);
+                    if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
                     if (sink is not null && sink.StillNeeded(address, out _))
                         sink.OnAccountRead(address, account);
@@ -342,7 +344,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ParallelUnbalancedWork.For(0, accountCount, parallelOptions, WarmAccount);
                 }
 
-                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
+                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions, snapshot);
             }
             catch (OperationCanceledException) { }
             finally
@@ -357,7 +359,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         Account?[] accounts,
         int[] selfDestructIdxs,
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
-        ParallelOptions parallelOptions)
+        ParallelOptions parallelOptions,
+        int sequenceId)
     {
         // Read-only providers have no pool; sinks are only passed on the writable block-processing path.
         if (_warmReadPool is null) return;
@@ -391,19 +394,60 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         WarmReadPool pool = _warmReadPool.Value;
         int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
 
-        pool.Run(idx, workers, j =>
+        if (idx < 2 * BatchPersistenceReaderExtensions.BatchSize)
         {
-            if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+            pool.Run(idx, workers, j =>
+            {
+                if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+                ReadSlotToSink(sink, address, in slot, selfDestructIdx, sequenceId);
+            }, parallelOptions.CancellationToken);
+            return;
+        }
+
+        int batches = (idx - 1) / BatchPersistenceReaderExtensions.BatchSize + 1;
+        pool.Run(batches, workers, batch =>
+        {
+            if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;
+            int first = batch * BatchPersistenceReaderExtensions.BatchSize;
+            int count = Math.Min(BatchPersistenceReaderExtensions.BatchSize, idx - first);
+            using ArrayPoolListRef<(Address Address, int SelfDestructIdx, UInt256 Slot)> requests = new(0);
+            for (int i = 0; i < count; i++)
+            {
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[first + i];
+                StorageCell cell = new(address, in slot);
+                if (!sink.StillNeeded(in cell)) continue;
+                if (_snapshotBundle.TryGetCachedSlot(address, in slot, selfDestructIdx, out UInt256? value))
+                {
+                    if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;
+                    sink.OnStorageRead(in cell, value.GetValueOrDefault());
+                }
+                else
+                {
+                    requests.Add((address, selfDestructIdx, slot));
+                }
+            }
+            if (requests.Count == 0) return;
+
+            if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;
+            using ArrayPoolSpan<UInt256?> results = new(requests.Count);
+            _snapshotBundle.GetSlotsAfterCacheMiss(requests.AsSpan(), results);
+            for (int i = 0; i < requests.Count; i++)
+            {
+                if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;
+                (Address address, int _, UInt256 slot) = requests[i];
+                StorageCell cell = new(address, in slot);
+                if (sink.StillNeeded(in cell)) sink.OnStorageRead(in cell, results[i].GetValueOrDefault());
+            }
         }, parallelOptions.CancellationToken);
     }
 
-    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
+    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx, int sequenceId)
     {
         StorageCell cell = new(address, in slot);
         if (!sink.StillNeeded(in cell)) return;
         _snapshotBundle.GetSlot(address, in slot, selfDestructIdx, out UInt256? value);
+        if (_pausePrewarmer || _hintSequenceId != sequenceId) return;
         sink.OnStorageRead(in cell, value.GetValueOrDefault());
     }
 

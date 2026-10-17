@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -239,7 +240,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IBatchPersistenceReader
     {
         // A reader is shared by every thread reading its state, so enabled counters must support concurrent updates.
         // DetailedMetricsEnabled is captured once per reader after normal startup registration to avoid its hot-path
@@ -289,6 +290,102 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool found = inner.TryGetSlot(address, slot, ref outValue);
             if (current) parent.TryCacheSlot(hash, address, slot, found, outValue, generation);
             return found;
+        }
+
+        public bool TryGetCachedSlot(Address address, in UInt256 slot, out UInt256? value)
+        {
+            ulong hash = CarryForwardSlotTable.Hash(address, in slot);
+            if (parent.IsCurrent(generation)
+                && parent._slots.TryGet(hash, address, in slot, out bool found, out UInt256 cached)
+                && parent.IsCurrent(generation))
+            {
+                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
+                value = found ? cached : null;
+                return true;
+            }
+            value = null;
+            return false;
+        }
+
+        public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, cells.Length, nameof(values));
+            using ArrayPoolListRef<(int Index, ulong Hash)> misses = new(0);
+            for (int i = 0; i < cells.Length; i++)
+            {
+                ref readonly StorageCell cell = ref cells[i];
+                ulong hash = CarryForwardSlotTable.Hash(cell.Address, in cell.Index);
+                bool current = parent.IsCurrent(generation);
+                if (current && parent._slots.TryGet(hash, cell.Address, in cell.Index, out bool found, out UInt256 cached))
+                {
+                    if (parent.IsCurrent(generation))
+                    {
+                        if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
+                        values[i] = found ? cached : null;
+                        continue;
+                    }
+                    current = false;
+                }
+                if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardSlotMisses();
+                misses.Add((i, hash));
+            }
+            if (misses.Count < BatchPersistenceReaderExtensions.MinBatchSize)
+            {
+                for (int i = 0; i < misses.Count; i++)
+                {
+                    (int index, ulong hash) = misses[i];
+                    ref readonly StorageCell cell = ref cells[index];
+                    UInt256 value = default;
+                    bool found = inner.TryGetSlot(cell.Address, in cell.Index, ref value);
+                    values[index] = found ? value : null;
+                    if (parent.IsCurrent(generation)) parent.TryCacheSlot(hash, cell.Address, in cell.Index, found, value, generation);
+                }
+                return;
+            }
+
+            if (misses.Count == cells.Length)
+            {
+                inner.GetSlots(cells, values);
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    UInt256? result = values[i];
+                    ref readonly StorageCell cell = ref cells[i];
+                    if (parent.IsCurrent(generation)) parent.TryCacheSlot(misses[i].Hash, cell.Address, in cell.Index,
+                        result.HasValue, result.GetValueOrDefault(), generation);
+                }
+                return;
+            }
+
+            using ArrayPoolListRef<StorageCell> inputs = new(misses.Count, misses.Count);
+            using ArrayPoolSpan<UInt256?> results = new(misses.Count);
+            for (int i = 0; i < misses.Count; i++) inputs[i] = cells[misses[i].Index];
+            inner.GetSlots(inputs.AsSpan(), results);
+            for (int i = 0; i < misses.Count; i++)
+            {
+                (int index, ulong hash) = misses[i];
+                UInt256? result = results[i];
+                values[index] = result;
+                ref readonly StorageCell cell = ref cells[index];
+                if (parent.IsCurrent(generation)) parent.TryCacheSlot(hash, cell.Address, in cell.Index, result.HasValue,
+                    result.GetValueOrDefault(), generation);
+            }
+        }
+
+        public void GetSlotsAfterCacheMiss(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, cells.Length, nameof(values));
+            if (_recordDetailedMetrics)
+                for (int i = 0; i < cells.Length; i++)
+                    if (parent.IsCurrent(generation)) Metrics.IncrementCarryForwardSlotMisses();
+            inner.GetSlotsAfterCacheMiss(cells, values);
+            for (int i = 0; i < cells.Length; i++)
+            {
+                if (!parent.IsCurrent(generation)) break;
+                ref readonly StorageCell cell = ref cells[i];
+                UInt256? result = values[i];
+                parent.TryCacheSlot(CarryForwardSlotTable.Hash(cell.Address, in cell.Index), cell.Address, in cell.Index,
+                    result.HasValue, result.GetValueOrDefault(), generation);
+            }
         }
 
         public StateId CurrentState => inner.CurrentState;
