@@ -91,7 +91,7 @@ public class ReceiptScanBenchmarks
         Open();
         if (Shape != "missing") _db.PutSpan(_key, Shape == "empty" ? [] : encoded);
         _root.Flush();
-        FilterLog[] owned = ReadLogs().ToArray();
+        FilterLog[] owned = ReadOwnedLogs().ToArray();
         _root.Dispose();
         Verify(owned, sparse);
         Open();
@@ -127,7 +127,9 @@ public class ReceiptScanBenchmarks
     }
 
     [Benchmark]
-    public IEnumerable<FilterLog> ReadLogs()
+    public int ReadLogs() => ((IReadOnlyCollection<FilterLog>)ReadOwnedLogs()).Count;
+
+    private IEnumerable<FilterLog> ReadOwnedLogs()
     {
 #if DECODED_RECEIPTS
         IEnumerable<FilterLog>? result = null;
