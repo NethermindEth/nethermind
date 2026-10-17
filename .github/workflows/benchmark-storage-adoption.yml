@@ -22,7 +22,7 @@ on:
         description: Components to measure
         required: true
         type: choice
-        options: [blob, history, both, chain, receipt, native, bal]
+        options: [blob, history, both, chain, receipt, native, bal, trie]
         default: both
       control_ref:
         description: Exact shared-master decoded API control SHA for chain measurements
@@ -45,7 +45,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    if: inputs.components != 'chain' && inputs.components != 'receipt' && inputs.components != 'native' && inputs.components != 'bal'
+    if: inputs.components != 'chain' && inputs.components != 'receipt' && inputs.components != 'native' && inputs.components != 'bal' && inputs.components != 'trie'
     strategy:
       fail-fast: false
       matrix:
@@ -520,4 +520,100 @@ jobs:
         if: always()
         with:
           name: bal-prefetch-${{ matrix.os }}
+          path: results
+
+  trie:
+    if: inputs.components == 'trie'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref }}
+      CONTROL_REF: ${{ inputs.control_ref }}
+      CANDIDATE_REF: ${{ inputs.multiget_ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: proof
+      - name: Validate commit inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for sha in "$BASELINE_REF" "$CONTROL_REF" "$CANDIDATE_REF"; do
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          done
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.baseline_ref }}
+          path: baseline
+          fetch-depth: 16
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.control_ref }}
+          path: control
+          fetch-depth: 16
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.multiget_ref }}
+          path: candidate
+          fetch-depth: 16
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: baseline/global.json
+      - name: Verify sources and prepare identical harnesses
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir results
+          dotnet --info > results/dotnet.txt
+          lscpu > results/cpu.txt
+          echo "SOURCE_DATE_EPOCH=$(git -C baseline log -1 --format=%ct)" >> "$GITHUB_ENV"
+          echo "TRIE_DATA=$RUNNER_TEMP/trie-prefetch" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/trie-prefetch"
+          python3 proof/benchmarks/storage-adoption/validate-trie.py sources
+          for source in baseline control candidate; do
+            mkdir -p "$source/benchmarks/trie-prefetch"
+            cp proof/benchmarks/storage-adoption/trie-prefetch/* "$source/benchmarks/trie-prefetch/"
+          done
+          sha256sum proof/benchmarks/storage-adoption/trie-prefetch/* > results/harness-sha256.txt
+      - name: Build, verify results and run candidate tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for source in baseline control candidate; do
+            flags=()
+            if [[ "$source" == candidate ]]; then flags=(-p:BatchTrie=true); fi
+            dotnet build "$source/benchmarks/trie-prefetch/TriePrefetch.csproj" -c Release "${flags[@]}"
+            mode=scalar
+            if [[ "$source" == candidate ]]; then mode=batch; fi
+            TRIE_MODE="$mode" dotnet run --project "$source/benchmarks/trie-prefetch/TriePrefetch.csproj" -c Release --no-build -- --verify | tee "results/$source-preflight.log"
+          done
+          python3 proof/benchmarks/storage-adoption/validate-chain.py packages
+          dotnet build candidate/src/Nethermind/Nethermind.State.Flat.Test/Nethermind.State.Flat.Test.csproj -c Release -p:EnforceCodeStyleInBuild=true
+          dotnet candidate/src/Nethermind/artifacts/bin/Nethermind.State.Flat.Test/release/Nethermind.State.Flat.Test.dll | tee results/candidate-State.Flat.Test.log
+          python3 proof/benchmarks/storage-adoption/validate-tests.py results/candidate-State.Flat.Test.log
+      - name: Measure trie warmup and update with baseline controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -n /bin/sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
+          python3 -c 'import json; from pathlib import Path; Path("results/measurement-order.json").write_text(json.dumps({"trie":["baseline","baseline","control","candidate","candidate","control","baseline","baseline"]},indent=2)+"\n")'
+          round=0
+          for source in baseline baseline control candidate candidate control baseline baseline; do
+            round=$((round + 1))
+            output="$GITHUB_WORKSPACE/results/trie/$round-$source"
+            mkdir -p "$output"
+            mode=scalar
+            if [[ "$source" == candidate ]]; then mode=batch; fi
+            TRIE_MODE="$mode" TRIE_OUTPUT="$output/results.json" dotnet run --project "$source/benchmarks/trie-prefetch/TriePrefetch.csproj" -c Release --no-build | tee "$output/measurement.log"
+            python3 proof/benchmarks/storage-adoption/validate-trie.py results "$output/results.json"
+          done
+          python3 proof/benchmarks/storage-adoption/analyze-trie.py results
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: trie-prefetch-${{ matrix.os }}
           path: results
