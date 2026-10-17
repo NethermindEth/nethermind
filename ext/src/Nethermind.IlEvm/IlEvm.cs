@@ -234,6 +234,14 @@ public static class IlEvmSettings
     /// </summary>
     public static bool LegacyEntry { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_OPT_ENTRY") == "1";
 
+    /// <summary>
+    /// Let a segment that only the segment before it enters - the fall-through of a JUMPI, or the rest of a straight run cut
+    /// in two - start with that segment's constants, flags, vector locals and aliases as they are, instead of having them
+    /// written to their stack slots at the edge and read back; whatever leaves the chunk, hands back or fails writes them out
+    /// first. Off unless <c>NETHERMIND_ILEVM_OPT_EDGES=1</c>, an experiment arm.
+    /// </summary>
+    public static bool CarryAcrossEdges { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_OPT_EDGES") == "1";
+
     /// <summary>Let the JIT inline the bodies compiled code runs directly (CALLDATALOAD and the like) rather than call them out of line.</summary>
     public static bool InlineBodies { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_INLINE_BODIES") != "0";
 
@@ -490,6 +498,9 @@ public static class IlEvmDiagnostics
     /// <summary>Frames run on the interpreter with the compiler off.</summary>
     public static long PlainFrames;
     public static long PlainTicks;
+    /// <summary>Segment edges compiled with the virtual values carried across, and the values carried (<see cref="IlEvmSettings.CarryAcrossEdges"/>).</summary>
+    public static long CarriedEdges;
+    public static long CarriedValues;
 
     /// <summary>Per-code totals of frames, opcodes and time, on the interpreter and on compiled code.</summary>
     public sealed class ContractStats
@@ -566,7 +577,8 @@ public static class IlEvmDiagnostics
         $"content hashes {ContentHashes} ({ContentHashBytes / Math.Max(1, ContentHashes)} B avg, {Us(ContentHashTicks) / Math.Max(1, ContentHashes):F2} us avg, {Us(ContentHashTicks) / 1000:F1} ms total), " +
         $"requests {Requests}, runs {Runs} ({Us(RunTicks) / 1000:F1} ms), chunk calls {ChunkCalls}, entry deopts {EntryDeopts}, " +
         $"deopts {Deopts} ({Us(DeoptTicks) / 1000:F1} ms after), failed segments {FailedSegments}, " +
-        $"interpreted frames {InterpretedFrames} ({Us(InterpretedTicks) / 1000:F1} ms), plain frames {PlainFrames} ({Us(PlainTicks) / 1000:F1} ms)";
+        $"interpreted frames {InterpretedFrames} ({Us(InterpretedTicks) / 1000:F1} ms), plain frames {PlainFrames} ({Us(PlainTicks) / 1000:F1} ms)" +
+        (CarriedEdges > 0 ? $", carried edges {CarriedEdges} ({CarriedValues} values)" : "");
 }
 
 /// <summary>The EVM bytecode-to-IL compiler: compiled contracts, their runtime helpers and the code generator.</summary>
@@ -705,6 +717,8 @@ public static unsafe partial class IlEvm
         /// <summary>The size of the compiled methods, and how long the JIT took over them, for diagnostics.</summary>
         public int IlBytes;
         public TimeSpan JitTime;
+        /// <summary>Segment edges whose virtual values the next segment takes as they are, and those values (<see cref="IlEvmSettings.CarryAcrossEdges"/>).</summary>
+        public int CarriedEdges, CarriedValues;
         /// <summary>Whether compiled code has proved faster than the interpreter on this contract's frames.</summary>
         public readonly IlSelfCheck Check = new();
         /// <summary>Chunks queued or compiled so far: a frame during which this moved waited on the JIT, and its time says nothing of the code.</summary>
@@ -1585,6 +1599,10 @@ public static unsafe partial class IlEvm
 
     /// <summary>Whether <paramref name="codeInfo"/> has a compiled contract, for tests and diagnostics.</summary>
     public static bool IsCompiled(CodeInfo codeInfo) => CompiledOf(codeInfo) is not null;
+
+    /// <summary>The segment edges <paramref name="codeInfo"/>'s compiled contract carries virtual values across, and the values carried; for tests.</summary>
+    internal static (int Edges, int Values)? CarriedOf(CodeInfo codeInfo) =>
+        CompiledOf(codeInfo) is { } contract ? (contract.CarriedEdges, contract.CarriedValues) : null;
 
     /// <summary>The Legacy rules' contract of the code's state, else what an Adaptive runner runs it on.</summary>
     private static IlContract? CompiledOf(CodeInfo codeInfo) => IlEvmFrameRunner.CodeSlot(codeInfo) switch
@@ -2881,8 +2899,9 @@ public static unsafe partial class IlEvm
                     inputs.ToArray(), growths.ToArray(), dynamic.ToArray(), opaque.ToArray(), chunks.Count, name) { TableBytes = tableBytes };
                 string? tooLarge = null;
                 InlineBudget bodyBudget = new();
+                HashSet<IlUnit>?[] carryTargets = CarryTargets(units, unitsByPc, chunks, entryChunk);
                 for (int c = 0; c < chunks.Count && tooLarge is null; c++)
-                    contract.Prepared[c] = EmitChunk(contract, c, chunks[c], unitsByPc, bodyBudget, out tooLarge)!;
+                    contract.Prepared[c] = EmitChunk(contract, c, chunks[c], unitsByPc, bodyBudget, carryTargets[c], out tooLarge)!;
 
                 if (tooLarge is not null)
                 {
@@ -2901,7 +2920,12 @@ public static unsafe partial class IlEvm
                 }
 
                 if (IlEvmDiagnostics.Enabled)
-                    Console.WriteLine($"il-evm laid out {name}: {code.Length} B of code, {units.Count} units, {copies} copies, {chunks.Count} chunks, {contract.IlBytes / 1024} KiB IL");
+                {
+                    Console.WriteLine($"il-evm laid out {name}: {code.Length} B of code, {units.Count} units, {copies} copies, {chunks.Count} chunks, {contract.IlBytes / 1024} KiB IL" +
+                        (IlEvmSettings.CarryAcrossEdges ? $", {contract.CarriedEdges} edges carrying {contract.CarriedValues} values" : ""));
+                    Interlocked.Add(ref IlEvmDiagnostics.CarriedEdges, contract.CarriedEdges);
+                    Interlocked.Add(ref IlEvmDiagnostics.CarriedValues, contract.CarriedValues);
+                }
                 if (contract.IlBytes > IlEvmSettings.MaxContractIlBytes)
                 {
                     // Nothing was JIT-compiled yet; the emitted methods are dropped with the contract.
@@ -2919,9 +2943,11 @@ public static unsafe partial class IlEvm
         }
 
         /// <summary>Emits one chunk of a laid-out contract and binds it, leaving the JIT to the first frames that reach it.</summary>
+        /// <param name="carryInto">The units of the chunk that take the virtual values of the segment falling into them (<see cref="CarryTargets"/>), or null for none.</param>
         /// <returns>The chunk's runner, or null with <paramref name="failure"/> when the chunk is too large for the JIT to optimize.</returns>
         [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "IlEvmSettings.Enabled is false without dynamic code, so nothing reaches the compiler.")]
-        private static IlRunner? EmitChunk(IlContract contract, int index, List<IlUnit> units, Dictionary<int, IlUnit> unitsByPc, InlineBudget inlineBudget, out string? failure)
+        private static IlRunner? EmitChunk(IlContract contract, int index, List<IlUnit> units, Dictionary<int, IlUnit> unitsByPc, InlineBudget inlineBudget,
+            HashSet<IlUnit>? carryInto, out string? failure)
         {
             // Visibility checks skipped for the plugin's own private helpers, and for the direct calls of checked bodies'
             // Execute (IlEvmSettings.InlineBodies), whose types the core does not make public; every core member the IL
@@ -2939,7 +2965,7 @@ public static unsafe partial class IlEvm
             IlWriter generator = new(method.GetILGenerator()) { MethodName = method.Name };
             List<IlSegmentInfo> segments = [];
             List<IlSite> sites = [];
-            Emitter emitter = new(generator, units, unitsByPc, contract.Code.Length, segments, sites, inlineBudget);
+            Emitter emitter = new(generator, units, unitsByPc, contract.Code.Length, segments, sites, inlineBudget, carryInto);
             emitter.Emit();
             // Past these the JIT compiles the method without optimizations, or takes very long to optimize it.
             if (generator.ILOffset > MaxIlBytes || emitter.Labels > MaxLabels || generator.Instructions > MaxIlInstructions ||
@@ -2952,6 +2978,8 @@ public static unsafe partial class IlEvm
             IlChunk chunk = new(contract, contract.JumpCases[index], contract.JumpBases[index], segments.ToArray(), sites.ToArray());
             IlRunner runner = (IlRunner)method.CreateDelegate(typeof(IlRunner), chunk);
             contract.IlBytes += generator.ILOffset;
+            contract.CarriedEdges += emitter.CarriedEdges;
+            contract.CarriedValues += emitter.CarriedValues;
             contract.ChunkIlBytes[index] = generator.ILOffset;
             contract.SetCallees(index, generator.Callees);
             failure = null;
@@ -2990,6 +3018,76 @@ public static unsafe partial class IlEvm
                 IlKind.Stop or IlKind.Jump or IlKind.TerminatingBody => false,
                 _ => true,
             };
+
+        /// <summary>
+        /// Per chunk, the segments that start with the virtual values of the segment falling into them, or null for none
+        /// (<see cref="IlEvmSettings.CarryAcrossEdges"/>): segments nothing else in the chunk enters.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A segment that starts no JUMPDEST a jump may land on is entered only by falling in from the segment before it,
+        /// by a body that runs the instruction before it as well (EXTCODESIZE's peephole: such a segment is left out), or
+        /// through its chunk's entry. No frame starts or resumes there, since the unit before it is a segment, so frames
+        /// enter there only from a chunk that compiles the segment before it but not this one, and continues to its home.
+        /// </para>
+        /// <para>
+        /// The entry of a segment that takes carried values hands the frame to the interpreter, which runs it from the stack
+        /// in memory, so any entry stays correct. To keep such entries off the fast path, the segment's home takes carried
+        /// values into it only when every chunk compiling the segment before it compiles this one too; a copy in another
+        /// chunk is never entered.
+        /// </para>
+        /// </remarks>
+        private static HashSet<IlUnit>?[] CarryTargets(List<IlUnit> units, Dictionary<int, IlUnit> unitsByPc, List<List<IlUnit>> chunks, int[] entryChunk)
+        {
+            HashSet<IlUnit>?[] targets = new HashSet<IlUnit>?[chunks.Count];
+            if (!IlEvmSettings.CarryAcrossEdges)
+                return targets;
+
+            // Where an EXTCODESIZE body that ran the comparison after it goes on (EmitSingle).
+            HashSet<int> fusedInto = [];
+            foreach (IlUnit unit in units)
+            {
+                IlInstruction first = unit.Instructions[0];
+                if (!unit.IsSegment && first.MayFuseNext && unitsByPc.TryGetValue(first.Pc + first.Size, out IlUnit? fused))
+                    fusedInto.Add(fused.StartPc + fused.Instructions[0].Size);
+            }
+
+            HashSet<IlUnit>[] members = new HashSet<IlUnit>[chunks.Count];
+            Dictionary<IlUnit, List<int>> chunksOf = [];
+            for (int c = 0; c < chunks.Count; c++)
+            {
+                members[c] = [.. chunks[c]];
+                foreach (IlUnit unit in chunks[c])
+                {
+                    if (!chunksOf.TryGetValue(unit, out List<int>? of))
+                        chunksOf[unit] = of = [];
+                    of.Add(c);
+                }
+            }
+
+            for (int i = 1; i < units.Count; i++)
+            {
+                IlUnit next = units[i];
+                IlUnit before = units[i - 1];
+                IlInstruction last = before.Instructions[^1];
+                if (!next.IsSegment || next.IsJumpDest || !before.IsSegment || !FallsThrough(before) ||
+                    last.Pc + last.Size != next.StartPc || fusedInto.Contains(next.StartPc) ||
+                    !chunksOf.TryGetValue(before, out List<int>? withBefore))
+                    continue;
+
+                bool together = true;
+                foreach (int c in withBefore)
+                    together &= members[c].Contains(next);
+
+                foreach (int c in withBefore)
+                {
+                    if (members[c].Contains(next) && (together || entryChunk[next.StartPc] != c))
+                        (targets[c] ??= []).Add(next);
+                }
+            }
+
+            return targets;
+        }
 
         /// <summary>Where a unit leads, for region forming.</summary>
         private sealed class IlEdges
@@ -3776,7 +3874,8 @@ public static unsafe partial class IlEvm
             public int Remaining = IlEvmSettings.InlineBodyBudget;
         }
 
-        private sealed class Emitter(IlWriter il, List<IlUnit> units, Dictionary<int, IlUnit> allUnits, int codeLength, List<IlSegmentInfo> segments, List<IlSite> sites, InlineBudget inlineBudget)
+        private sealed class Emitter(IlWriter il, List<IlUnit> units, Dictionary<int, IlUnit> allUnits, int codeLength, List<IlSegmentInfo> segments, List<IlSite> sites, InlineBudget inlineBudget,
+            HashSet<IlUnit>? carryInto)
         {
             /// <summary>The units this chunk compiles; a jump to any other unit leaves the chunk for that unit's home.</summary>
             private readonly HashSet<IlUnit> _members = [.. units];
@@ -3881,7 +3980,7 @@ public static unsafe partial class IlEvm
                 {
                     IlUnit unit = units[i];
                     if (unit.IsSegment)
-                        EmitSegment(unit);
+                        EmitSegment(unit, CarryTo(i));
                     else
                         EmitSingle(unit);
 
@@ -4010,9 +4109,12 @@ public static unsafe partial class IlEvm
                 // The chain's opcode count and poll mark stay in the run state, in memory: as locals live through every
                 // segment, the JIT moved them between registers and the stack at nearly every block boundary.
 
+                // A segment that starts with the values the segment before it left virtual has nothing to start from on
+                // entry: a frame entering there goes to the interpreter, as one entering inside a unit does.
+                Label handBack = carryInto is null ? default : NewLabel();
                 Label[] entries = new Label[units.Count];
                 for (int i = 0; i < units.Count; i++)
-                    entries[i] = LabelOf(units[i]);
+                    entries[i] = carryInto is not null && carryInto.Contains(units[i]) ? handBack : LabelOf(units[i]);
 
                 il.Emit(OpCodes.Ldarg_S, ArgChunk);
                 il.Emit(OpCodes.Ldfld, EntryIndexField);
@@ -4020,8 +4122,19 @@ public static unsafe partial class IlEvm
                 il.Emit(OpCodes.Ldelem_I4);
                 il.Emit(OpCodes.Switch, entries);
                 // No unit starts here (the frame resumed inside one): the interpreter takes it from this offset.
+                if (carryInto is not null)
+                    il.MarkLabel(handBack);
                 il.Emit(OpCodes.Ldc_I4, (int)IlDeopt);
                 il.Emit(OpCodes.Ret);
+            }
+
+            /// <summary>The segment after the <paramref name="index"/>th unit when it takes the unit's virtual values (<see cref="CarryTargets"/>), else null.</summary>
+            private IlUnit? CarryTo(int index)
+            {
+                if (carryInto is null || index + 1 >= units.Count || !carryInto.Contains(units[index + 1]))
+                    return null;
+                IlInstruction last = units[index].Instructions[^1];
+                return units[index].IsSegment && last.Pc + last.Size == units[index + 1].StartPc ? units[index + 1] : null;
             }
 
             /// <summary>An arithmetic, comparison or shift helper, inlined or called as <see cref="IlEvmSettings.InlineArithmetic"/> says.</summary>
@@ -4030,12 +4143,15 @@ public static unsafe partial class IlEvm
             /// <summary>A memory or calldata helper, inlined or called as <see cref="IlEvmSettings.InlineMemory"/> says.</summary>
             private static MethodInfo Memory(MethodInfo helper) => IlEvmSettings.InlineMemory ? helper : IlCalledTwin(helper);
 
-            private void EmitSegment(IlUnit segment)
+            /// <param name="carryTo">The segment after this one when it starts with this one's virtual values (<see cref="CarryInto"/>), else null.</param>
+            private void EmitSegment(IlUnit segment, IlUnit? carryTo)
             {
                 Label deopt = NewLabel();
                 il.MarkLabel(LabelOf(segment));
                 il.Pc = segment.StartPc;
                 il.Category = "segment checks";
+                // What the segment before left virtual for this one, which a failed precondition writes out.
+                (int Position, VVal Value)[] carried = _virtual.Count > 0 ? Snapshot(int.MaxValue) : [];
 
                 bool checks = segment.Gas > 0 || segment.MinHeight > 0 || segment.MaxPeak > 0;
                 if (segment.Gas > 0)
@@ -4087,14 +4203,7 @@ public static unsafe partial class IlEvm
                 }
 
                 AddOps(segment.Instructions.Count);
-
-                // frame = base + head * 32
-                il.Emit(OpCodes.Ldloc, _base);
-                il.Emit(OpCodes.Ldloc, _head);
-                il.Emit(OpCodes.Ldc_I4_5);
-                il.Emit(OpCodes.Shl);
-                il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Stloc, _frame);
+                SetFrame();
 
                 if (checks)
                 {
@@ -4104,6 +4213,14 @@ public static unsafe partial class IlEvm
                     AddOutOfLine(() =>
                     {
                         il.MarkLabel(deopt);
+                        if (carried.Length > 0)
+                        {
+                            // The walk, and the interpreter from the segment's start, read the stack in memory.
+                            SetFrame();
+                            foreach ((int position, VVal value) in carried)
+                                EmitStore(position, value);
+                        }
+
                         il.Emit(OpCodes.Ldc_I4, segmentId);
                         il.Emit(OpCodes.Stloc, _failSegment);
                         il.Emit(OpCodes.Br, _sharedFail);
@@ -4304,8 +4421,11 @@ public static unsafe partial class IlEvm
                             EndSegment();
                             return;
                         case IlKind.JumpIf:
-                            EmitJumpIf(instruction, delta, fusedPush: PrecededByPush2(segment, i, instruction));
-                            EndSegment();
+                            EmitJumpIf(instruction, delta, fusedPush: PrecededByPush2(segment, i, instruction), carryTo);
+                            if (carryTo is not null)
+                                CarryInto(delta - 2);
+                            else
+                                EndSegment();
                             return;
                         default:
                             throw new InvalidOperationException($"{op.Kind} in a segment");
@@ -4313,10 +4433,78 @@ public static unsafe partial class IlEvm
                 }
 
                 il.Category = "segment end";
+                if (carryTo is not null)
+                {
+                    // What the next segment never reaches is written out here; the rest goes on virtual.
+                    MaterializeBelow(delta - carryTo.MinHeight);
+                    CarryInto(delta);
+                    MoveHead(delta);
+                    return;
+                }
+
                 MaterializeBelow(delta);
                 EndSegment();
                 MoveHead(delta);
             }
+
+            /// <summary>frame = base + head * 32, the segment's starting slot.</summary>
+            private void SetFrame()
+            {
+                il.Emit(OpCodes.Ldloc, _base);
+                il.Emit(OpCodes.Ldloc, _head);
+                il.Emit(OpCodes.Ldc_I4_5);
+                il.Emit(OpCodes.Shl);
+                il.Emit(OpCodes.Add);
+                il.Emit(OpCodes.Stloc, _frame);
+            }
+
+            /// <summary>
+            /// Ends the segment in the one after it, which only it enters (<see cref="CarryTargets"/>): the virtual values below
+            /// <paramref name="height"/>, the stack left for it, stay virtual, renumbered from where the next segment starts,
+            /// and keep the flags they hold.
+            /// </summary>
+            /// <remarks>
+            /// A vector local stays taken while a position's value holds it, and an alias names a slot that holds its own
+            /// position's word until something writes it, which resolves the alias first: both hold across the edge as within
+            /// a segment. The next segment's paths that leave it - its failed precondition, a body's hand-back, a jump - write
+            /// out what is still virtual then, as they do for its own values.
+            /// </remarks>
+            private void CarryInto(int height)
+            {
+                Dictionary<VVal, VVal> renumbered = [];
+                List<(int Position, VVal Value)> carried = [];
+                foreach ((int position, VVal value) in _virtual)
+                {
+                    if (position >= height)
+                        continue;
+                    if (!renumbered.TryGetValue(value, out VVal? moved))
+                        renumbered[value] = moved = value.Kind == VKind.Alias ? VVal.AliasOf(value.Source - height) : value;
+                    carried.Add((position - height, moved));
+                }
+
+                _virtual.Clear();
+                HashSet<LocalBuilder> flags = [];
+                foreach ((int position, VVal value) in carried)
+                {
+                    _virtual[position] = value;
+                    if (value.Kind == VKind.Bool)
+                        flags.Add(value.Flag!);
+                }
+
+                foreach (LocalBuilder flag in _segmentFlags)
+                {
+                    if (!flags.Contains(flag))
+                        _freeFlags.Push(flag);
+                }
+
+                _segmentFlags.Clear();
+                _segmentFlags.AddRange(flags);
+                CarriedEdges++;
+                CarriedValues += carried.Count;
+            }
+
+            /// <summary>Edges this chunk carries virtual values across (<see cref="CarryInto"/>), and the values carried.</summary>
+            public int CarriedEdges, CarriedValues;
 
             /// <summary>A value the compiled segment knows without it being in its stack slot yet.</summary>
             private enum VKind : byte
@@ -5986,7 +6174,8 @@ public static unsafe partial class IlEvm
             }
 
             /// <param name="fusedPush">Whether a PUSH2 comes just before, so the dispatch loop runs the two as one (<see cref="PrecededByPush2"/>).</param>
-            private void EmitJumpIf(IlInstruction jumpIf, int delta, bool fusedPush)
+            /// <param name="carryTo">The segment the JUMPI falls into when it takes the values left virtual (<see cref="CarryInto"/>), else null.</param>
+            private void EmitJumpIf(IlInstruction jumpIf, int delta, bool fusedPush, IlUnit? carryTo)
             {
                 int destination = delta - 1;
                 int condition = delta - 2;
@@ -6000,13 +6189,23 @@ public static unsafe partial class IlEvm
                     vd = null;
                 }
 
-                // Everything under the condition stays on the stack on both paths.
-                MaterializeBelow(condition);
+                // Everything under the condition stays on the stack on both paths. A segment that falls into one carrying its
+                // values writes out here only what that one never reaches, and the rest on the taken path.
+                (int Position, VVal Value)[] taken = [];
+                if (carryTo is null)
+                {
+                    MaterializeBelow(condition);
+                }
+                else
+                {
+                    MaterializeBelow(condition - carryTo.MinHeight);
+                    taken = Snapshot(condition);
+                }
 
                 if (vc is { Kind: VKind.Const })
                 {
                     if (!vc.IsZero)
-                        EmitTaken(jumpIf, vd, destination, delta, fusedPush);
+                        EmitTaken(jumpIf, vd, destination, delta, fusedPush, taken);
                     else
                         MoveHead(delta - 2);
                     return;
@@ -6032,13 +6231,14 @@ public static unsafe partial class IlEvm
                     il.Emit(OpCodes.Brtrue, notTaken);
                 }
 
-                EmitTaken(jumpIf, vd, destination, delta, fusedPush);
+                EmitTaken(jumpIf, vd, destination, delta, fusedPush, taken);
                 il.MarkLabel(notTaken);
                 MoveHead(delta - 2);
             }
 
             /// <summary>The taken side of a JUMPI: to a constant JUMPDEST directly, otherwise through the jump table.</summary>
-            private void EmitTaken(IlInstruction jumpIf, VVal? vd, int destination, int delta, bool fusedPush)
+            /// <param name="carried">Values under the condition still virtual, which the not-taken side carries on: written out first.</param>
+            private void EmitTaken(IlInstruction jumpIf, VVal? vd, int destination, int delta, bool fusedPush, (int Position, VVal Value)[] carried)
             {
                 // A JUMPI run with its PUSH2 counts the JUMPDEST it lands on before its check, as a JUMP does; one run alone
                 // leaves it out of the poll count (Poll).
@@ -6047,6 +6247,8 @@ public static unsafe partial class IlEvm
                 {
                     if (TryTarget(vd, out IlUnit? target))
                     {
+                        foreach ((int position, VVal value) in carried)
+                            EmitStore(position, value);
                         MoveHead(delta - 2);
                         Poll(landedJumpDest: landed);
                         GoTo(target);
@@ -6059,6 +6261,8 @@ public static unsafe partial class IlEvm
                     return;
                 }
 
+                foreach ((int position, VVal value) in carried)
+                    EmitStore(position, value);
                 Label invalid = NewLabel();
                 Label foreign = NewLabel();
                 LoadTarget(destination, invalid, foreign);
