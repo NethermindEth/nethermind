@@ -393,10 +393,7 @@ public partial class VirtualMachine<TGasPolicy>(
                     }
                     else
                     {
-                        // The frame halts without running, so its gas is untouched. Report it to keep
-                        // the contract that ReportActionError is preceded by this frame's gas — otherwise
-                        // a tracer would attribute the caller's gas to it.
-                        if (IsTracingActions) _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(in _currentState.Gas));
+                        // The frame halts without running; HandleException reports it with no gas left.
                         callResult = new(EvmExceptionType.InvalidCode);
                     }
 
@@ -809,6 +806,8 @@ public partial class VirtualMachine<TGasPolicy>(
 
             if (IsTracingActions)
             {
+                // The deposit failure consumed the gas the frame returned, so it ends with none left.
+                _txTracer.ReportActionRemainingGas(0);
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
@@ -1091,9 +1090,11 @@ public partial class VirtualMachine<TGasPolicy>(
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
 
-        // Report the error for action-level tracing if enabled.
+        // Report the error for action-level tracing if enabled. An exceptional halt consumes all the
+        // frame's gas, as in HandleFailure, so none is left whatever the frame held when it halted.
         if (IsTracingActions)
         {
+            txTracer.ReportActionRemainingGas(0);
             txTracer.ReportActionError(callResult.ExceptionType);
         }
 
@@ -1375,9 +1376,11 @@ public partial class VirtualMachine<TGasPolicy>(
             // If available gas is insufficient to cover the code deposit cost...
             if (!hasEnoughGasForCodeDeposit)
             {
-                // When the spec mandates charging for top-level creation, report an out-of-gas error.
+                // When the spec mandates charging for top-level creation, report an out-of-gas error,
+                // which consumes all the frame's gas.
                 if (spec.ChargeForTopLevelCreate)
                 {
+                    _txTracer.ReportActionRemainingGas(0);
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 // Otherwise, report a successful action end with the remaining gas.
@@ -1389,6 +1392,7 @@ public partial class VirtualMachine<TGasPolicy>(
             // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
             else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
             {
+                _txTracer.ReportActionRemainingGas(0);
                 _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
             // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
@@ -1793,7 +1797,6 @@ public partial class VirtualMachine<TGasPolicy>(
     private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
         if (_tracerFlags.IsTracingInstructions) EndInstructionTrace(gasAvailable, exceptionType);
-        if (IsTracingActions) _txTracer.ReportActionRemainingGas(gasAvailable);
 
         return exceptionType switch
         {

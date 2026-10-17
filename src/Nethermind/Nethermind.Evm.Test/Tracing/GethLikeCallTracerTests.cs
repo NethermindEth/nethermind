@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -101,67 +102,168 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
-    public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
-
-    [Test]
-    public void Action_gas_matches_instruction_gas([Values] GasCheckpointCase scenario)
-    {
-        byte[] childCode = scenario switch
-        {
-            GasCheckpointCase.InvalidOpcode => Prepare.EvmCode.Op(Instruction.INVALID).Done,
-            GasCheckpointCase.StackUnderflow => Prepare.EvmCode.Op(Instruction.POP).Done,
-            GasCheckpointCase.OutOfGas => Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done,
-            GasCheckpointCase.Revert => Prepare.EvmCode.Revert(0, 0).Done,
-            GasCheckpointCase.InvalidDeposit => Prepare.EvmCode.ForInitOf([0xEF]).Done,
-            GasCheckpointCase.DepositOutOfGas => Prepare.EvmCode.ForInitOf(new byte[1024]).Done,
-            _ => []
-        };
-        TestState.CreateAccount(TestItem.AddressC, 0);
-        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
-        byte[] code = scenario switch
-        {
-            GasCheckpointCase.InvalidDeposit or GasCheckpointCase.DepositOutOfGas => Prepare.EvmCode.Create(childCode, 0).STOP().Done,
-            GasCheckpointCase.PrecompileFailure => Prepare.EvmCode.Call(new Address("0x0000000000000000000000000000000000000009"), 50000).STOP().Done,
-            _ => Prepare.EvmCode.Call(TestItem.AddressC, 10000).STOP().Done
-        };
-        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
-        using NativeCallTracer native = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
-        using CancellationTxTracer optimized = new(native);
-        _processor.CallAndRestore(tx, block.Header, optimized);
-        using GethLikeTxTrace actual = native.BuildResult();
-
-        using NativeCallTracer tracedNative = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
-        GasCheckpointTracer checkpoints = new();
-        using CompositeTxTracer traced = new(tracedNative, checkpoints);
-        _processor.CallAndRestore(tx, block.Header, traced);
-        using GethLikeTxTrace expected = tracedNative.BuildResult();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(JsonSerializer.Serialize(actual.CustomTracerResult?.Value, SerializerOptions),
-                Is.EqualTo(JsonSerializer.Serialize(expected.CustomTracerResult?.Value, SerializerOptions)));
-            Assert.That(checkpoints.GasMatches, Is.True);
-            Assert.That(checkpoints.Errors, Is.EqualTo(scenario == GasCheckpointCase.Revert ? 0 : 1));
-        }
-    }
-
+    /// <summary>Forces the traced dispatch and checks that every action error is preceded by a report of no gas left.</summary>
     private sealed class GasCheckpointTracer : TxTracer
     {
-        private ulong _instructionGas;
-        private ulong _actionGas;
+        private ulong _actionGas = ulong.MaxValue;
         public override bool IsTracingInstructions => true;
         public override bool IsTracingActions => true;
-        public bool GasMatches { get; private set; } = true;
+        public bool HaltsLeftNoGas { get; private set; } = true;
         public int Errors { get; private set; }
-        public override void ReportOperationRemainingGas(ulong gas) => _instructionGas = gas;
-        public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) => _instructionGas = gasAvailable;
         public override void ReportActionRemainingGas(ulong gas) => _actionGas = gas;
 
         public override void ReportActionError(EvmExceptionType evmExceptionType)
         {
-            GasMatches &= _instructionGas == _actionGas;
+            HaltsLeftNoGas &= _actionGas == 0;
+            _actionGas = ulong.MaxValue;
             Errors++;
         }
+    }
+
+    public enum ChildOutcome { StackUnderflow, InvalidInstruction, InvalidJumpDestination, StackOverflow, StaticCallViolation, PrecompileFailure, OutOfGas, Revert }
+
+    public enum FailedCreate { StackUnderflow, InvalidInstruction, DepositOutOfGas, InvalidDeposit, Revert }
+
+    public enum TraceDispatch { Untraced, Cancelable, Traced }
+
+    private const ulong ChildGas = 10000;
+    private const ulong RevertGas = 6; // PUSH1 0, PUSH1 0, REVERT
+
+    [Test(Description = "Like geth, a call frame that halts on anything but REVERT reports all its gas as used, while the root reports the transaction's gasUsed")]
+    public void Failed_child_frame_reports_gas_used([Values] ChildOutcome outcome, [Values(1, 2)] int depth, [Values] TraceDispatch dispatch)
+    {
+        Address child = outcome == ChildOutcome.PrecompileFailure ? new Address("0x0000000000000000000000000000000000000009") : TestItem.AddressC;
+        // The 1025th push overflows the 1024-item stack.
+        byte[] pushes = new byte[1025];
+        pushes.AsSpan().Fill((byte)Instruction.PUSH0);
+        byte[] childCode = outcome switch
+        {
+            ChildOutcome.StackUnderflow => [(byte)Instruction.ADD],
+            ChildOutcome.InvalidInstruction => [(byte)Instruction.INVALID],
+            ChildOutcome.InvalidJumpDestination => Prepare.EvmCode.PushData(0).Op(Instruction.JUMP).Done,
+            ChildOutcome.StackOverflow => pushes,
+            ChildOutcome.StaticCallViolation => Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done,
+            ChildOutcome.OutOfGas => Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done,
+            ChildOutcome.Revert => Prepare.EvmCode.Revert(0, 0).Done,
+            _ => [] // blake2f rejects an input that is not 213 bytes long
+        };
+        if (childCode.Length != 0)
+        {
+            TestState.CreateAccount(child, 0);
+            TestState.InsertCode(child, childCode, Spec);
+        }
+
+        Prepare callChild = outcome == ChildOutcome.StaticCallViolation
+            ? Prepare.EvmCode.StaticCall(child, (long)ChildGas)
+            : Prepare.EvmCode.Call(child, (long)ChildGas);
+        byte[] code = callChild.Op(Instruction.POP).STOP().Done;
+        if (depth == 2)
+        {
+            TestState.CreateAccount(TestItem.AddressD, 0);
+            TestState.InsertCode(TestItem.AddressD, code, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressD, 50000).Op(Instruction.POP).STOP().Done;
+        }
+
+        using GethLikeTxTrace trace = TraceFailedFrame(code, dispatch, outcome == ChildOutcome.Revert ? 0 : 1, out ulong spentGas);
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame frame = depth == 1 ? root.Calls.AssertSingle() : root.Calls.AssertSingle().Calls.AssertSingle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.To, Is.EqualTo(child), "to");
+            Assert.That(frame.Gas, Is.EqualTo(ChildGas), "gas");
+            Assert.That(frame.GasUsed, Is.EqualTo(outcome == ChildOutcome.Revert ? RevertGas : ChildGas), "gasUsed");
+            Assert.That(frame.Error, Is.Not.Null, "error");
+            if (outcome == ChildOutcome.Revert)
+            {
+                Assert.That(frame.Error, Is.EqualTo("execution reverted"), "revert error");
+            }
+
+            if (depth == 2)
+            {
+                Assert.That(root.Calls[0].Error, Is.Null, "the middle frame survives its child's failure");
+            }
+
+            Assert.That(root.GasUsed, Is.EqualTo(spentGas), "the root reports the transaction's gasUsed");
+        }
+    }
+
+    [Test(Description = "Like geth, a CREATE frame that halts or fails its code deposit reports all its gas as used")]
+    public void Failed_create_frame_reports_gas_used([Values] FailedCreate outcome, [Values] TraceDispatch dispatch)
+    {
+        byte[] initCode = outcome switch
+        {
+            FailedCreate.StackUnderflow => [(byte)Instruction.ADD],
+            FailedCreate.InvalidInstruction => [(byte)Instruction.INVALID],
+            FailedCreate.DepositOutOfGas => Prepare.EvmCode.ForInitOf(new byte[1024]).Done,
+            FailedCreate.InvalidDeposit => Prepare.EvmCode.ForInitOf([0xEF]).Done,
+            _ => Prepare.EvmCode.Revert(0, 0).Done
+        };
+        byte[] code = Prepare.EvmCode.Create(initCode, 0).Op(Instruction.POP).STOP().Done;
+
+        using GethLikeTxTrace trace = TraceFailedFrame(code, dispatch, outcome == FailedCreate.Revert ? 0 : 1, out ulong spentGas);
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame frame = root.Calls.AssertSingle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Type, Is.EqualTo(Instruction.CREATE), "type");
+            Assert.That(frame.GasUsed, Is.EqualTo(outcome == FailedCreate.Revert ? RevertGas : frame.Gas), "gasUsed");
+            Assert.That(frame.Error, Is.Not.Null, "error");
+            if (outcome == FailedCreate.Revert)
+            {
+                Assert.That(frame.Error, Is.EqualTo("execution reverted"), "revert error");
+            }
+
+            Assert.That(root.GasUsed, Is.EqualTo(spentGas), "the root reports the transaction's gasUsed");
+        }
+    }
+
+    /// <summary>Traces <paramref name="code"/> with the callTracer through the chosen dispatch, and measures the gas
+    /// the transaction spends with no tracer observing it.</summary>
+    /// <remarks>The traced dispatch runs beside a <see cref="GasCheckpointTracer"/>, which checks the action errors.</remarks>
+    private GethLikeTxTrace TraceFailedFrame(byte[] code, TraceDispatch dispatch, int expectedErrors, out ulong spentGas)
+    {
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+
+        GasSpentTracer receipt = new();
+        _processor.CallAndRestore(tx, block.Header, receipt);
+        spentGas = receipt.SpentGas;
+
+        NativeCallTracer native = new(tx, CancunSpec, GetGethTraceOptions(null));
+        GasCheckpointTracer checkpoints = new();
+        // Disposing a wrapper disposes the callTracer too, so the result is built first.
+        using ITxTracer tracer = dispatch switch
+        {
+            TraceDispatch.Untraced => native,
+            TraceDispatch.Cancelable => new CancellationTxTracer(native),
+            _ => new CompositeTxTracer(native, checkpoints)
+        };
+        _processor.CallAndRestore(tx, block.Header, tracer);
+
+        if (dispatch == TraceDispatch.Traced)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checkpoints.Errors, Is.EqualTo(expectedErrors), "action errors");
+                Assert.That(checkpoints.HaltsLeftNoGas, Is.True, "every action error follows a report of no gas left");
+            }
+        }
+
+        return native.BuildResult();
+    }
+
+    /// <summary>Records the gas the transaction spends, which the receipt carries, without tracing any action.</summary>
+    private sealed class GasSpentTracer : TxTracer
+    {
+        public ulong SpentGas { get; private set; }
+        public override bool IsTracingReceipt => true;
+
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
+            SpentGas = gasSpent.SpentGas;
+
+        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) =>
+            SpentGas = gasSpent.SpentGas;
     }
 
     [Test]
@@ -810,6 +912,22 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
             Assert.That(frame.Error, Is.Not.Null, "expected error description on a halted CREATE");
             Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
+        }
+    }
+
+    [Test(Description = "A top-level CREATE whose code deposit fails reports no gas left before its error")]
+    public void Top_level_create_deposit_failure_reports_no_gas_left([Values] bool invalidCode)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(invalidCode ? new byte[] { 0xEF } : new byte[1024]).Done;
+        (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
+        GasCheckpointTracer checkpoints = new();
+
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), checkpoints);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checkpoints.Errors, Is.EqualTo(1), "action errors");
+            Assert.That(checkpoints.HaltsLeftNoGas, Is.True, "every action error follows a report of no gas left");
         }
     }
 
