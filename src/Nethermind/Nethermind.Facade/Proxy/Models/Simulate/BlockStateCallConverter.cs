@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -34,11 +34,12 @@ public sealed class BlockStateCallConverterFactory : JsonConverterFactory
 /// spec requires. Keys match fields case-insensitively. <c>eth_call</c> and the other methods that take overrides keep
 /// ignoring unknown keys.
 /// </summary>
-/// <remarks>The keys are checked on a copy of the reader, so the block is read and deserialized in one pass.</remarks>
+/// <remarks>The keys are compared as UTF-8 bytes on a copy of the reader, so the block is read and deserialized in one
+/// pass, and nothing is allocated unless a key is rejected.</remarks>
 public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>>
 {
-    private static readonly FrozenDictionary<string, string> BlockOverrideFields = GetFields<BlockOverride>();
-    private static readonly FrozenDictionary<string, string> AccountOverrideFields = GetFields<AccountOverride>();
+    private static readonly OverrideFields BlockOverrideFields = OverrideFields.Of<BlockOverride>();
+    private static readonly OverrideFields AccountOverrideFields = OverrideFields.Of<AccountOverride>();
 
     public override BlockStateCall<T>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -51,24 +52,26 @@ public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>
         BlockStateCall<T> result = new();
         while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
         {
-            string? name = reader.GetString();
-            reader.Read();
-            if (IsName(name, nameof(BlockStateCall<T>.BlockOverrides)))
+            if (IsName(reader, "blockOverrides"u8))
             {
-                CheckKeys(reader, BlockOverrideFields, "block override");
+                reader.Read();
+                CheckKeys(reader, BlockOverrideFields, owner: default, hasOwner: false);
                 result.BlockOverrides = TypeInfoJsonSerializer.Deserialize<BlockOverride>(ref reader, options);
             }
-            else if (IsName(name, nameof(BlockStateCall<T>.StateOverrides)))
+            else if (IsName(reader, "stateOverrides"u8))
             {
+                reader.Read();
                 CheckAccountKeys(reader);
                 result.StateOverrides = TypeInfoJsonSerializer.Deserialize<Dictionary<Address, AccountOverride>>(ref reader, options);
             }
-            else if (IsName(name, nameof(BlockStateCall<T>.Calls)))
+            else if (IsName(reader, "calls"u8))
             {
+                reader.Read();
                 result.Calls = TypeInfoJsonSerializer.Deserialize<T[]>(ref reader, options);
             }
             else
             {
+                reader.Read();
                 reader.Skip();
             }
         }
@@ -94,8 +97,10 @@ public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>
         TypeInfoJsonSerializer.Serialize(writer, value, options);
     }
 
-    private static bool IsName(string? name, string expected) =>
-        string.Equals(name, expected, StringComparison.OrdinalIgnoreCase);
+    private static bool IsName(in Utf8JsonReader reader, ReadOnlySpan<byte> expected) =>
+        reader.ValueIsEscaped || reader.HasValueSequence
+            ? string.Equals(reader.GetString(), Encoding.UTF8.GetString(expected), StringComparison.OrdinalIgnoreCase)
+            : OverrideFields.EqualsIgnoreCase(reader.ValueSpan, expected, out _);
 
     /// <summary>Checks the keys of each account of a <c>stateOverrides</c> object. Takes a copy of the reader.</summary>
     private static void CheckAccountKeys(Utf8JsonReader reader)
@@ -104,43 +109,121 @@ public sealed class BlockStateCallConverter<T> : JsonConverter<BlockStateCall<T>
 
         while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
         {
-            string? address = reader.GetString();
+            Utf8JsonReader address = reader;
             reader.Read();
-            CheckKeys(reader, AccountOverrideFields, $"state override for {address}");
+            CheckKeys(reader, AccountOverrideFields, address, hasOwner: true);
             reader.Skip();
         }
     }
 
-    /// <summary>Checks the keys of an override object. Takes a copy of the reader.</summary>
-    private static void CheckKeys(Utf8JsonReader reader, FrozenDictionary<string, string> fields, string what)
+    /// <summary>Checks the keys of an override object. Takes a copy of the reader; <paramref name="owner"/> is
+    /// positioned at the account address, read only to name it in an error.</summary>
+    private static void CheckKeys(Utf8JsonReader reader, OverrideFields fields, Utf8JsonReader owner, bool hasOwner)
     {
         if (reader.TokenType != JsonTokenType.StartObject) return;
 
-        Dictionary<string, string>? seen = null;
+        ulong seen = 0;
+        Span<ulong> upperCase = stackalloc ulong[fields.Count];
         while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
         {
-            string key = reader.GetString()!;
-            if (!fields.TryGetValue(key, out string? field))
+            int field = fields.Find(reader, out ulong keyUpperCase);
+            if (field < 0)
             {
-                throw new JsonException($"unknown field \"{key}\" in {what}");
+                throw new JsonException($"unknown field \"{reader.GetString()}\" in {Describe(owner, hasOwner)}");
             }
 
-            seen ??= new Dictionary<string, string>(StringComparer.Ordinal);
-            if (seen.TryGetValue(field, out string? previous) && !string.Equals(previous, key, StringComparison.Ordinal))
+            // The same spelling twice is one key given twice; only another spelling names the field again.
+            ulong bit = 1UL << field;
+            if ((seen & bit) != 0 && upperCase[field] != keyUpperCase)
             {
-                throw new JsonException($"keys \"{previous}\" and \"{key}\" in {what} name the same field");
+                throw new JsonException($"keys \"{fields.Spell(field, upperCase[field])}\" and \"{reader.GetString()}\" in {Describe(owner, hasOwner)} name the same field");
             }
 
-            seen[field] = key;
+            seen |= bit;
+            upperCase[field] = keyUpperCase;
             reader.Read();
             reader.Skip();
         }
     }
 
-    private static FrozenDictionary<string, string> GetFields<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] TOverride>() =>
-        typeof(TOverride)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(static property => property.SetMethod?.IsPublic == true && property.GetCustomAttribute<JsonIgnoreAttribute>() is null)
-            .Select(static property => property.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name ?? property.Name)
-            .ToFrozenDictionary(static name => name, static name => name, StringComparer.OrdinalIgnoreCase);
+    private static string Describe(Utf8JsonReader owner, bool hasOwner) =>
+        hasOwner ? $"state override for {owner.GetString()}" : "block override";
+
+    /// <summary>The JSON names of an override type's settable properties, compared ASCII case-insensitively.</summary>
+    private sealed class OverrideFields
+    {
+        private readonly byte[][] _names;
+
+        private OverrideFields(byte[][] names) => _names = names;
+
+        public int Count => _names.Length;
+
+        public static OverrideFields Of<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] TOverride>()
+        {
+            byte[][] names = typeof(TOverride)
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(static property => property.SetMethod?.IsPublic == true && property.GetCustomAttribute<JsonIgnoreAttribute>() is null)
+                .Select(static property => Encoding.UTF8.GetBytes(property.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name ?? property.Name))
+                .ToArray();
+            // One bit per field and per letter of a name.
+            if (names.Length > 64 || names.Any(static name => name.Length > 64 || name.Any(static b => b >= 0x80)))
+                throw new InvalidOperationException($"The override fields of {typeof(TOverride).Name} do not fit the key check.");
+            return new OverrideFields(names);
+        }
+
+        /// <summary>The field the key at <paramref name="reader"/> names, or -1; <paramref name="upperCase"/> marks the
+        /// positions of the key's upper-case letters, which tell its spellings apart.</summary>
+        public int Find(in Utf8JsonReader reader, out ulong upperCase)
+        {
+            if (reader.ValueIsEscaped || reader.HasValueSequence)
+            {
+                return Find(Encoding.UTF8.GetBytes(reader.GetString()!), out upperCase);
+            }
+
+            return Find(reader.ValueSpan, out upperCase);
+        }
+
+        private int Find(ReadOnlySpan<byte> key, out ulong upperCase)
+        {
+            for (int i = 0; i < _names.Length; i++)
+            {
+                if (EqualsIgnoreCase(key, _names[i], out upperCase)) return i;
+            }
+
+            upperCase = 0;
+            return -1;
+        }
+
+        /// <summary>Spells field <paramref name="field"/> with the upper-case letters <paramref name="upperCase"/> marks.</summary>
+        public string Spell(int field, ulong upperCase)
+        {
+            byte[] name = _names[field];
+            char[] chars = new char[name.Length];
+            for (int i = 0; i < name.Length; i++)
+            {
+                char c = (char)name[i];
+                chars[i] = (upperCase & (1UL << i)) != 0 ? char.ToUpperInvariant(c) : char.ToLowerInvariant(c);
+            }
+
+            return new string(chars);
+        }
+
+        /// <summary>ASCII case-insensitive equality; <paramref name="upperCase"/> marks the upper-case letters of
+        /// <paramref name="key"/>.</summary>
+        public static bool EqualsIgnoreCase(ReadOnlySpan<byte> key, ReadOnlySpan<byte> name, out ulong upperCase)
+        {
+            upperCase = 0;
+            if (key.Length != name.Length) return false;
+
+            for (int i = 0; i < key.Length; i++)
+            {
+                byte k = key[i];
+                bool upper = k is >= (byte)'A' and <= (byte)'Z';
+                if ((upper ? (byte)(k | 0x20) : k) != (byte)(name[i] | (name[i] is >= (byte)'A' and <= (byte)'Z' ? 0x20 : 0))) return false;
+                if (upper) upperCase |= 1UL << i;
+            }
+
+            return true;
+        }
+    }
 }
