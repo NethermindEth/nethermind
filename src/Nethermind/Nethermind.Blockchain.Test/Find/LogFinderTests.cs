@@ -185,9 +185,8 @@ public class LogFinderTests
         Assert.That(LogFinder.IsParallelScanSlotHeld, Is.EqualTo(before), "building an unenumerated parallel getLogs result must not acquire the process-wide parallel slot");
     }
 
-    // Everything the receipt path lets escape must survive the PLINQ wrapping: several partitions faulting at
-    // once arrive as one AggregateException, and the RPC layer maps the bare types onto error codes. A
-    // single-block range takes the sequential path and cannot cover this.
+    // Everything the receipt path lets escape must leave the parallel scan unwrapped: the RPC layer maps the bare
+    // types onto error codes. A single-block range takes the sequential path and cannot cover this.
     [Test]
     [MaxTime(Timeout.MaxTestTime)]
     [NonParallelizable]
@@ -203,7 +202,40 @@ public class LogFinderTests
         Assert.That(() => logFinder.FindLogs(AllBlockFilter().Build()).ToArray(),
             Throws.TypeOf(exceptionType));
         Assert.That(throwing.SawParallelScanSlotHeld, Is.True,
-            "the scan must have taken the parallel path, or this test cannot cover the AggregateException unwrap");
+            "the scan must have taken the parallel path, or this test cannot cover the unwrap");
+    }
+
+    [Test]
+    [MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
+    public void Parallel_scan_yields_logs_in_block_order_and_stops_when_abandoned([Values(int.MaxValue, 1)] int logsTaken)
+    {
+        const int chainLength = 600;
+        _receiptStorage = new InMemoryReceiptStorage();
+        _blockTree = Build.A.BlockTree()
+            .WithTransactions(_receiptStorage, static (_, _) => [Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject])
+            .OfChainLength(chainLength)
+            .TestObject;
+        LogFinder blockByBlock = CreateLogFinder();
+        (ulong, Hash256)[] expected = Enumerable.Range(0, chainLength)
+            .SelectMany(n => blockByBlock.FindLogs(FilterBuilder.New().FromBlock((ulong)n).ToBlock((ulong)n).Build()))
+            .Select(static l => (l.BlockNumber, l.TransactionHash))
+            .ToArray();
+        CountingReceiptFinder counting = new(_receiptStorage);
+        LogFinder logFinder = new(_blockTree, counting, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, MainnetSpecProvider.Instance);
+
+        FilterLog[] logs = logFinder.FindLogs(AllBlockFilter().Build()).Take(logsTaken).ToArray();
+        int callsAfterDispose = counting.Calls;
+        Thread.Sleep(50);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counting.SawParallelScanSlotHeld, Is.True, "the scan must have taken the parallel path");
+            Assert.That(LogFinder.IsParallelScanSlotHeld, Is.False);
+            Assert.That(logs.Select(static l => (l.BlockNumber, l.TransactionHash)), Is.EqualTo(expected.Take(logsTaken)));
+            Assert.That(counting.Calls, Is.EqualTo(callsAfterDispose), "no worker may keep scanning once the result is disposed");
+            if (logsTaken == 1) Assert.That(callsAfterDispose, Is.LessThan(expected.Length / 2));
+        }
     }
 
     [Test]
@@ -362,9 +394,7 @@ public class LogFinderTests
         if (cancelBeforeEnumeration)
         {
             Assert.That(action, Throws
-                .Exception.InstanceOf<OperationCanceledException>()
-                .Or.InnerException.InstanceOf<OperationCanceledException>() // PLINQ can wrap into AggregateException
-            );
+                .Exception.InstanceOf<OperationCanceledException>());
         }
         else
         {
@@ -707,13 +737,33 @@ public class LogFinderTests
 
         public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
-            // Recorded from inside a worker: proves the enumeration really went through the PLINQ path rather than
+            // Recorded from inside a worker: proves the enumeration really went through the parallel path rather than
             // silently degrading to sequential (where the bare exception propagates without any unwrap).
             SawParallelScanSlotHeld |= LogFinder.IsParallelScanSlotHeld;
             throw Create();
         }
 
         private Exception Create() => (Exception)Activator.CreateInstance(exceptionType, "receipts path failure")!;
+    }
+
+    private sealed class CountingReceiptFinder(IReceiptFinder inner) : IReceiptFinder
+    {
+        private int _calls;
+
+        public int Calls => Volatile.Read(ref _calls);
+        public bool SawParallelScanSlotHeld { get; private set; }
+
+        public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => inner.Get(block, recover, recoverSender);
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => inner.Get(blockHash, recover);
+        public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
+
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        {
+            SawParallelScanSlotHeld |= LogFinder.IsParallelScanSlotHeld;
+            Interlocked.Increment(ref _calls);
+            return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        }
     }
 
     private sealed class LegacyReceiptFinder(byte[] receiptsData, IReceiptRefDecoder? decoder = null,
