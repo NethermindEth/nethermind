@@ -1051,8 +1051,7 @@ public partial class EthRpcModuleTests
             yield return ($"range {range} exceeds limit {tooLow} -> rejected", tooLow, wholeChain, true);
             yield return ($"range {range} within limit {range} -> allowed", range, wholeChain, false);
             yield return ("limit disabled -> allowed", 0, wholeChain, false);
-            yield return ($"fromBlock omitted -> Earliest, range {range} exceeds limit {tooLow} -> rejected", tooLow, fromOmitted, true);
-            yield return ($"fromBlock omitted -> Earliest, range {range} within limit {range} -> allowed", range, fromOmitted, false);
+            yield return ("fromBlock omitted -> Latest, range 1 within limit 1 -> allowed", 1, fromOmitted, false);
             yield return ($"toBlock omitted -> Latest, range {range} exceeds limit {tooLow} -> rejected", tooLow, toOmitted, true);
             yield return ($"toBlock omitted -> Latest, range {range} within limit {range} -> allowed", range, toOmitted, false);
         }
