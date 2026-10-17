@@ -198,13 +198,13 @@ internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId,
         if (call.RevertEnd == 0) return;
         if (_region is not null) throw NativeCallTree.Invalid("overlapping active revert regions");
         Entry? host = call.Parent < 0 ? null : call.Encoded.SourceRollupId == rollupId ? _active : _l1Active;
-        _region = new Region(call.RevertEnd, call.Encoded.SourceRollupId, host, host?.Cursor ?? 0, host?.Hash ?? default,
+        _region = new Region(call.RevertEnd, call.Parent, call.Encoded.SourceRollupId, host, host?.Cursor ?? 0, host?.Hash ?? default,
             l1?.PendingEvents.Count ?? 0);
     }
 
     private void CloseRegion(int index)
     {
-        if (_region is not { } region || tree.Calls[index].SubtreeEnd < region.End) return;
+        if (_region is not { } region || tree.Calls[index].Parent != region.Parent || tree.Calls[index].SubtreeEnd < region.End) return;
         if (tree.Calls[index].SubtreeEnd != region.End) throw NativeCallTree.Invalid("revert region crosses a subtree boundary");
         if (l1 is not null) l1.PendingEvents.RemoveRange(region.Events, l1.PendingEvents.Count - region.Events);
         if (region.Entry is { } entry)
@@ -292,7 +292,7 @@ internal sealed class NativeExecutionTables(NativeCallTree tree, ulong rollupId,
         public ValueHash256 RevertedHash { get; set; }
     }
 
-    private sealed record Region(int End, ulong Host, Entry? Entry, int Cursor, ValueHash256 Hash, int Events)
+    private sealed record Region(int End, int Parent, ulong Host, Entry? Entry, int Cursor, ValueHash256 Hash, int Events)
     {
         public Dictionary<List<CrossChainCall>, int> FirstCalls { get; } = [];
     }

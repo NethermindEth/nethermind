@@ -27,6 +27,18 @@ public class RollupXSettlementVerifierTests
         Assert.That(Verify(fixture), Is.Empty, "mutable nested execution needs no synthetic observation");
     }
 
+    [Test]
+    public void Materialize_NestedRevertWithReturningChild_ClosesAtEnclosingCallForFollower()
+    {
+        Fixture fixture = NestedInbound(true);
+        int index = 1;
+        NativeCallTree tree = NativeCallTree.Read(fixture.Stream.Messages, ref index, 0, 1);
+        L2ExecutionEntry[] entries = new NativeExecutionTables(tree, 1).Inbound();
+
+        Assert.That(EezCalldata.EncodeExecuteIncomingCrossChainCall(new IncomingCrossChainCall(entries, [])),
+            Is.EqualTo(fixture.Result.Block.Transactions[1].Data.ToArray()), "the default follower must retain the independently assembled rollback hash");
+    }
+
     [TestCase("delta", TestName = "Verify_ChangedNestedInboundDelta_Rejects")]
     [TestCase("funding", TestName = "Verify_ChangedNestedInboundFunding_Rejects")]
     [TestCase("calldata", TestName = "Verify_ChangedNestedInboundCalldata_Rejects")]
