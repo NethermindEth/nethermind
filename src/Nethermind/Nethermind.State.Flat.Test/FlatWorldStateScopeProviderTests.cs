@@ -198,7 +198,7 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null, WarmReadPool? warmReadPool = null)
         {
             config ??= new FlatDbConfig();
 
@@ -270,7 +270,7 @@ public class FlatWorldStateScopeProviderTests
                 .ExternallyOwned();
 
             ConfigureSnapshotBundle();
-            ConfigureFlatWorldStateScope();
+            ConfigureFlatWorldStateScope(warmReadPool);
         }
 
         private void ConfigureSnapshotBundle() =>
@@ -279,9 +279,10 @@ public class FlatWorldStateScopeProviderTests
                 .WithParameter(TypedParameter.From(ResourcePool.Usage.MainBlockProcessing))
                 .ExternallyOwned();
 
-        private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
+        private void ConfigureFlatWorldStateScope(WarmReadPool? warmReadPool) => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
+                .WithParameter(TypedParameter.From(warmReadPool is null ? null : new Lazy<WarmReadPool>(() => warmReadPool)))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
@@ -1928,6 +1929,68 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
     }
 
+    [TestCase(1, TestName = "HintBal_OneAccount_DeliversScalarReads")]
+    [TestCase(8, TestName = "HintBal_EightAccounts_DeliversBatchReads")]
+    [TestCase(65, TestName = "HintBal_MultipleChunks_DeliversAllReads")]
+    public async Task HintBal_WithMixedAccountAndSlotPresence_DeliversExpectedValues(int count)
+    {
+        using WarmReadPool pool = new(1);
+        using TestContext ctx = new(warmReadPool: pool);
+        FlatWorldStateScope scope = ctx.Scope;
+        ReadOnlyAccountChanges[] changes = new ReadOnlyAccountChanges[count];
+        List<(Address Address, Account? Account)> expectedAccounts = [];
+        List<(StorageCell Cell, UInt256 Value)> expectedSlots = [];
+        for (int i = 0; i < count; i++)
+        {
+            Address address = TestItem.Addresses[i];
+            changes[i] = new(address, storageChanges: [], storageReads: [(UInt256)1, (UInt256)2, (UInt256)3],
+                balanceChanges: [], nonceChanges: [], codeChanges: []);
+            Account? account = i % 3 != 1 ? new Account((ulong)i, (UInt256)(ulong)(77 + i), TestItem.KeccakA, Keccak.OfAnEmptyString) : null;
+            expectedAccounts.Add((address, account));
+            bool found = account is not null;
+            ctx.PersistenceReader.GetAccount(address).Returns(account);
+            if (!found) continue;
+            for (int slot = 1; slot <= 3; slot++)
+            {
+                UInt256 index = (UInt256)(ulong)slot;
+                UInt256 value = slot == 1 ? UInt256.MaxValue : UInt256.Zero;
+                ctx.PersistenceReader.TryGetSlot(address, index, ref Arg.Any<UInt256>()).Returns(call =>
+                {
+                    call[2] = value;
+                    return index != (UInt256)3;
+                });
+                expectedSlots.Add((new StorageCell(address, in index), value));
+            }
+        }
+        RecordingBalReaderSink sink = new();
+        await scope.HintBal(CreateBal(changes), sink);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.AccountValues, Is.EquivalentTo(expectedAccounts), "every BAL account must reach the sink with the matching distinct value, including missing accounts");
+            Assert.That(sink.StorageReads, Is.EquivalentTo(expectedSlots), "only existing accounts with storage roots need slots; missing and present-zero slots both deliver zero");
+        }
+    }
+
+    [Test]
+    public async Task HintBal_WhenPausedDuringAccountRead_DoesNotPublishBatchResults()
+    {
+        using WarmReadPool pool = new(1);
+        using TestContext ctx = new(warmReadPool: pool);
+        FlatWorldStateScope scope = ctx.Scope;
+        ReadOnlyAccountChanges[] changes = new ReadOnlyAccountChanges[8];
+        for (int i = 0; i < changes.Length; i++) changes[i] = ReadOnlyAccount(TestItem.Addresses[i]);
+        ctx.PersistenceReader.GetAccount(TestItem.Addresses[0]).Returns(_ =>
+        {
+            scope._pausePrewarmer = true;
+            return new Account(1, 1);
+        });
+        RecordingBalReaderSink sink = new();
+        await scope.HintBal(CreateBal(changes), sink);
+
+        Assert.That(sink.AccountReads, Is.Empty, "pausing after a batch starts must suppress publication of its results");
+    }
+
     [Test]
     public async Task HintBal_EmptyBal_ResetsPreviousWriteSet()
     {
@@ -2028,6 +2091,24 @@ public class FlatWorldStateScopeProviderTests
     {
         private readonly Lock _lock = new();
         private readonly List<Address> _accountReads = [];
+        private readonly List<(Address Address, Account? Account)> _accountValues = [];
+        private readonly List<(StorageCell Cell, UInt256 Value)> _storageReads = [];
+
+        public (StorageCell Cell, UInt256 Value)[] StorageReads
+        {
+            get
+            {
+                lock (_lock) return _storageReads.ToArray();
+            }
+        }
+
+        public (Address Address, Account? Account)[] AccountValues
+        {
+            get
+            {
+                lock (_lock) return _accountValues.ToArray();
+            }
+        }
 
         public Address[] AccountReads
         {
@@ -2039,10 +2120,17 @@ public class FlatWorldStateScopeProviderTests
 
         public void OnAccountRead(Address address, Account? account)
         {
-            lock (_lock) _accountReads.Add(address);
+            lock (_lock)
+            {
+                _accountReads.Add(address);
+                _accountValues.Add((address, account));
+            }
         }
 
-        public void OnStorageRead(in StorageCell storageCell, in UInt256 value) { }
+        public void OnStorageRead(in StorageCell storageCell, in UInt256 value)
+        {
+            lock (_lock) _storageReads.Add((storageCell, value));
+        }
 
         public bool StillNeeded(Address address, out Account? account)
         {

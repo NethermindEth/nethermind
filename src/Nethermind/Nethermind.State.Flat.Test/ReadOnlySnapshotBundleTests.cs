@@ -61,6 +61,39 @@ public class ReadOnlySnapshotBundleTests
     }
 
     [Test]
+    public void GetAccounts_WithCurrentWritesAndReadHints_PreservesLatestAccountValues()
+    {
+        Account old = new(1, 10);
+        Account changed = new(2, 20);
+        Account hinted = new(3, 30);
+        ReadOnlySnapshotBundle readOnly = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot(content =>
+        {
+            content.Accounts[TestItem.AddressA] = old;
+            content.Accounts[TestItem.AddressB] = old;
+            content.Accounts[TestItem.AddressC] = old;
+        })));
+        using SnapshotBundle bundle = new(readOnly, Substitute.For<ITrieNodeCache>(), _pool,
+            ResourcePool.Usage.MainBlockProcessing,
+            FlatTestHelpers.SnapshotList(MakeSnapshot(content =>
+            {
+                content.Accounts[TestItem.AddressA] = old;
+                content.Accounts[TestItem.AddressB] = old;
+                content.Accounts[TestItem.AddressC] = old;
+            })));
+        bundle.PromoteAccount(TestItem.AddressA, hinted);
+        bundle.SetAccount(TestItem.AddressA, changed);
+        bundle.SetAccount(TestItem.AddressB, null);
+        bundle.PromoteAccount(TestItem.AddressC, hinted);
+        Address[] addresses = [TestItem.AddressC, TestItem.AddressB, TestItem.AddressA, TestItem.AddressA,
+            TestItem.AddressB, TestItem.AddressC, TestItem.AddressB, TestItem.AddressA];
+        Account?[] values = new Account?[addresses.Length];
+        bundle.GetAccounts(addresses, values);
+
+        Assert.That(values, Is.EqualTo(new Account?[] { hinted, null, changed, changed, null, hinted, null, changed }),
+            "current writes must override read hints and all snapshots; a current deletion must hide older accounts");
+    }
+
+    [Test]
     public void GetAccount_FallsBackToPersistence([Values] bool detailedMetrics)
     {
         Address address = TestItem.AddressA;
@@ -887,6 +920,26 @@ public class ReadOnlySnapshotBundleFilterTests
 
     private static void CheckReadOnlyBundle(LayerStack stack, ReadOnlySnapshotBundle bundle, FilterMode mode, List<string> errors)
     {
+        Address[] addresses = Addresses.Concat(AbsentAddresses).ToArray();
+        Account?[] accounts = new Account?[addresses.Length];
+        bundle.GetAccounts(addresses, accounts);
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            string expected = Oracle.Describe(Oracle.Account(stack.Layers, stack.PersistenceAccounts, addresses[i]));
+            if (Oracle.Describe(accounts[i]) != expected) errors.Add($"{mode}: batch account {addresses[i]} differs from oracle {expected}");
+        }
+
+        (Address Address, int SelfDestructIdx, UInt256 Slot)[] requests = ProbeKeys()
+            .SelectMany(key => Enumerable.Range(-1, bundle.SnapshotCount + 2).Select(d => (key.Item1, d, key.Item2))).ToArray();
+        UInt256?[] values = new UInt256?[requests.Length];
+        bundle.GetSlots(requests, values);
+        for (int i = 0; i < requests.Length; i++)
+        {
+            (Address address, int cutoff, UInt256 slot) = requests[i];
+            UInt256? expected = Oracle.Slot(stack.Layers, stack.PersistenceSlots, (address, slot), cutoff);
+            if (values[i] != expected) errors.Add($"{mode}: batch slot ({cutoff}, {address}, {slot}) = {values[i]}, oracle {expected}");
+        }
+
         foreach (Address address in Addresses.Concat(AbsentAddresses))
         {
             int expectedIdx = Oracle.SelfDestructIdx(stack.Layers, address);
@@ -967,6 +1020,29 @@ public class ReadOnlySnapshotBundleFilterTests
             }
 
             int total = readOnly.SnapshotCount + ownCount;
+            Address[] addresses = Addresses.Concat(AbsentAddresses).ToArray();
+            (Address Address, int SelfDestructIdx, UInt256 Slot)[] requests = ProbeKeys()
+                .SelectMany(key => Enumerable.Range(-1, total + 2).Select(d => (key.Item1, d, key.Item2))).ToArray();
+            foreach (SnapshotBundle bundle in bundles)
+            {
+                Account?[] accounts = new Account?[addresses.Length];
+                bundle.GetAccounts(addresses, accounts);
+                for (int i = 0; i < addresses.Length; i++)
+                {
+                    string expected = Oracle.Describe(Oracle.Account(layers, stack.PersistenceAccounts, addresses[i]));
+                    if (Oracle.Describe(accounts[i]) != expected) errors.Add($"{mode} bundle: batch account {addresses[i]} differs from oracle {expected}");
+                }
+
+                UInt256?[] values = new UInt256?[requests.Length];
+                bundle.GetSlots(requests, values);
+                for (int i = 0; i < requests.Length; i++)
+                {
+                    (Address address, int cutoff, UInt256 slot) = requests[i];
+                    UInt256? expected = Oracle.Slot(layers, stack.PersistenceSlots, (address, slot), cutoff);
+                    if (values[i] != expected) errors.Add($"{mode} bundle: batch slot ({cutoff}, {address}, {slot}) = {values[i]}, oracle {expected}");
+                }
+            }
+
             foreach (Address address in Addresses.Concat(AbsentAddresses))
             {
                 int expectedIdx = Oracle.SelfDestructIdx(layers, address);

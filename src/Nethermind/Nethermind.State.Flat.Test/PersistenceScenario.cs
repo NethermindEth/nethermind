@@ -90,6 +90,54 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         _tmpDirectory.Dispose();
     }
 
+    [TestCase(1, TestName = "BatchReads_SingleKey_PreservePinnedState")]
+    [TestCase(8, TestName = "BatchReads_SmallBatch_PreservePinnedState")]
+    [TestCase(64, TestName = "BatchReads_BalChunk_PreservePinnedState")]
+    [TestCase(257, TestName = "BatchReads_PooledNativeScratch_PreservePinnedState")]
+    public void BatchReads_AfterLiveChanges_PreservePinnedState(int count)
+    {
+        Address[] addresses = new Address[count];
+        StorageCell[] cells = new StorageCell[count];
+        Account?[] expectedAccounts = new Account?[count];
+        UInt256?[] expectedSlots = new UInt256?[count];
+        Account account = new(7, UInt256.MaxValue, TestItem.KeccakA, TestItem.KeccakB);
+        UInt256 stored = new(0x0123456789abcdef, 0xfedcba9876543210, 0x1122334455667788, 0x8877665544332211);
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+        {
+            writer.SetAccount(TestItem.AddressA, account);
+            writer.SetStorage(TestItem.AddressA, UInt256.MaxValue, stored);
+        }
+        using IPersistence.IPersistenceReader snapshot = _persistence.CreateReader(ReaderFlags.Sync);
+        Assert.That(snapshot.GetAccount(TestItem.AddressA), Is.EqualTo(account), "precondition: the snapshot contains the original account");
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+        {
+            writer.SetAccount(TestItem.AddressA, null);
+            writer.SetStorage(TestItem.AddressA, UInt256.MaxValue, null);
+            writer.SetAccount(TestItem.AddressB, new Account(9, 123));
+            writer.SetStorage(TestItem.AddressB, UInt256.MaxValue, (UInt256?)456);
+        }
+        for (int i = 0; i < count; i++)
+        {
+            Address address = i % 3 == 0 ? TestItem.AddressA : i % 3 == 1 ? TestItem.AddressB : TestItem.AddressC;
+            UInt256 slot = i % 4 == 0 ? UInt256.MaxValue : (UInt256)(ulong)(i % 4);
+            addresses[i] = address;
+            cells[i] = new StorageCell(address, in slot);
+            expectedAccounts[i] = address == TestItem.AddressA ? account : null;
+            expectedSlots[i] = address == TestItem.AddressA && slot == UInt256.MaxValue ? stored : null;
+        }
+        Account?[] accounts = new Account?[count];
+        UInt256?[] slots = new UInt256?[count];
+        snapshot.GetAccounts(addresses, accounts);
+        snapshot.GetSlots(cells, slots);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts, Is.EqualTo(expectedAccounts), "batch account reads must use the pinned snapshot and preserve duplicate/missing keys");
+            Assert.That(slots, Is.EqualTo(expectedSlots), "batch slot reads must preserve all 32 bytes and ignore later live changes");
+        }
+    }
+
     [Test]
     public void TestCanWriteAccount()
     {

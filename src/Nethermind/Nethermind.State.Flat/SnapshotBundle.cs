@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// A mutable bundle wrapping a <see cref="ReadOnlySnapshotBundle"/> with a write buffer backed by <see cref="SnapshotContent"/>.
 /// </summary>
-public sealed class SnapshotBundle : IDisposable
+public sealed partial class SnapshotBundle : IDisposable
 {
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
 

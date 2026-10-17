@@ -51,6 +51,112 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.SlotReads, Is.EqualTo(expectedSlotReads));
     }
 
+    [TestCase(true, TestName = "BatchReads_PresentValues_CacheAndBypassOldGenerations")]
+    [TestCase(false, TestName = "BatchReads_MissingValues_CacheAndBypassOldGenerations")]
+    public async Task BatchReads_AfterGenerationChange_DoNotServeOrFillNewCache(bool found)
+    {
+        const int count = 16;
+        FakePersistence inner = new() { AccountExists = found, SlotExists = found };
+        await using CarryForwardCachingPersistence cache = new(inner);
+        using IPersistence.IPersistenceReader oldReader = cache.CreateReader();
+        Address[] addresses = new Address[count];
+        StorageCell[] cells = new StorageCell[count];
+        for (int i = 0; i < count; i++)
+        {
+            addresses[i] = TestItem.Addresses[i];
+            cells[i] = new StorageCell(Address, (UInt256)(ulong)i);
+        }
+        Account?[] accounts = new Account?[count];
+        UInt256?[] slots = new UInt256?[count];
+        oldReader.GetAccounts(addresses, accounts);
+        oldReader.GetSlots(cells, slots);
+        oldReader.GetAccounts(addresses, accounts);
+        oldReader.GetSlots(cells, slots);
+        Assert.That(inner.AccountBatchReads, Is.EqualTo(1), "same-generation accounts must be served from the cache on the second batch");
+        Assert.That(inner.SlotBatchReads, Is.EqualTo(1), "same-generation slots must be served from the cache on the second batch");
+
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1)) batch.SelfDestruct(Address);
+        inner.ReaderState = Basis1;
+        inner.AccountExists = !found;
+        inner.SlotExists = !found;
+        using IPersistence.IPersistenceReader currentReader = cache.CreateReader();
+        currentReader.GetAccounts(addresses, accounts);
+        currentReader.GetSlots(cells, slots);
+        Assert.That(accounts[0] is not null, Is.EqualTo(!found), "precondition: the current generation caches the replacement account state");
+        Assert.That(slots[0].HasValue, Is.EqualTo(!found), "precondition: the current generation caches the replacement slot state");
+
+        inner.AccountExists = found;
+        inner.SlotExists = found;
+        oldReader.GetAccounts(addresses, accounts);
+        oldReader.GetSlots(cells, slots);
+        Assert.That(accounts, Has.All.EqualTo(found ? new Account(1, 100) : null), "an old reader must bypass entries from the current generation");
+        Assert.That(slots, Has.All.EqualTo(found ? (UInt256?)17 : null), "an old reader must bypass current slot entries, including cached misses");
+        currentReader.GetAccounts(addresses, accounts);
+        currentReader.GetSlots(cells, slots);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.AccountBatchReads, Is.EqualTo(3), "old readers must neither use nor replace the current account cache");
+            Assert.That(inner.SlotBatchReads, Is.EqualTo(3), "old readers must neither use nor replace the current slot cache");
+            Assert.That(accounts, Has.All.EqualTo(found ? null : new Account(1, 100)), "old account results must not enter the current cache");
+            Assert.That(slots, Has.All.EqualTo(found ? null : (UInt256?)17), "old slot results must not enter the current cache");
+        }
+    }
+
+    [TestCase(1, TestName = "BatchReads_OneCacheMiss_PreservesOrderAndFillsCache")]
+    [TestCase(7, TestName = "BatchReads_SevenCacheMisses_PreservesOrderAndFillsCache")]
+    [TestCase(8, TestName = "BatchReads_EightCacheMisses_PreservesOrderAndFillsCache")]
+    [TestCase(15, TestName = "BatchReads_FifteenCacheMisses_PreservesOrderAndFillsCache")]
+    public async Task BatchReads_WithMixedCacheHitsAndMisses_PreserveOrderAndFillCache(int misses)
+    {
+        const int count = 16;
+        Dictionary<Address, Account?> accountData = [];
+        Address[] addresses = new Address[count];
+        StorageCell[] cells = new StorageCell[count];
+        Account?[] expectedAccounts = new Account?[count];
+        UInt256?[] expectedSlots = new UInt256?[count];
+        static UInt256? SlotValue(in UInt256 slot) => slot.u0 % 5 == 0 ? null : slot.u0 % 7 == 0 ? UInt256.Zero : Pattern((int)slot.u0, 123);
+        for (int i = 0; i < count; i++) accountData[TestItem.Addresses[i]] = i % 5 == 0 ? null : new Account((ulong)i, Pattern(i, 456));
+        FakePersistence inner = new()
+        {
+            AccountValue = address => accountData[address],
+            SlotValue = cell => SlotValue(in cell.Index)
+        };
+        await using CarryForwardCachingPersistence cache = new(inner);
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        for (int i = 0; i < count; i++)
+        {
+            int key = count - i - 1;
+            addresses[i] = TestItem.Addresses[key];
+            cells[i] = new StorageCell(Address, (UInt256)(ulong)key);
+            expectedAccounts[i] = accountData[addresses[i]];
+            expectedSlots[i] = SlotValue(in cells[i].Index);
+            if ((i * 5 + 3) % count < misses) continue;
+            reader.GetAccount(addresses[i]);
+            UInt256 value = default;
+            reader.TryGetSlot(Address, in cells[i].Index, ref value);
+        }
+        Account?[] accounts = new Account?[count];
+        UInt256?[] slots = new UInt256?[count];
+        reader.GetAccounts(addresses, accounts);
+        reader.GetSlots(cells, slots);
+        Assert.That(accounts, Is.EqualTo(expectedAccounts), "miss compaction and cache hits must preserve the original account order");
+        Assert.That(slots, Is.EqualTo(expectedSlots), "miss compaction must preserve distinct values, present zero and missing slots");
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(reader.GetAccount(addresses[i]), Is.EqualTo(expectedAccounts[i]), "each batch account result must fill the matching cache key");
+            UInt256 value = default;
+            bool found = reader.TryGetSlot(Address, in cells[i].Index, ref value);
+            Assert.That(found ? value : (UInt256?)null, Is.EqualTo(expectedSlots[i]), "each batch slot result must fill the matching cache key");
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.AccountReads, Is.EqualTo(count), "each account miss must reach persistence once and then be cached");
+            Assert.That(inner.SlotReads, Is.EqualTo(count), "each slot miss must reach persistence once and then be cached");
+            Assert.That(inner.AccountBatchReads, Is.EqualTo(misses >= 8 ? 1 : 0), "only a sufficiently large compacted account miss set should use a batch");
+            Assert.That(inner.SlotBatchReads, Is.EqualTo(misses >= 8 ? 1 : 0), "only a sufficiently large compacted slot miss set should use a batch");
+        }
+    }
+
     [Test]
     public async Task GetAccount_SecondReadAtSameBasis_ServedFromCache()
     {
@@ -1007,6 +1113,10 @@ public class CarryForwardCachingPersistenceTests
         public StateId ReaderState = Basis0;
         public int AccountReads;
         public int SlotReads;
+        public int AccountBatchReads;
+        public int SlotBatchReads;
+        public Func<Address, Account?>? AccountValue;
+        public Func<StorageCell, UInt256?>? SlotValue;
         public bool AccountExists = true;
         public bool SlotExists = true;
         public bool ThrowOnReaderDispose;
@@ -1016,17 +1126,40 @@ public class CarryForwardCachingPersistenceTests
         public void Flush() { }
         public void Clear() { }
 
-        private sealed class Reader(FakePersistence parent) : IPersistence.IPersistenceReader
+        private sealed class Reader(FakePersistence parent) : IPersistence.IPersistenceReader, IBatchPersistenceReader
         {
+            public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> values)
+            {
+                parent.AccountBatchReads++;
+                for (int i = 0; i < addresses.Length; i++) values[i] = GetAccount(addresses[i]);
+            }
+
+            public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+            {
+                parent.SlotBatchReads++;
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    UInt256 value = default;
+                    values[i] = TryGetSlot(cells[i].Address, in cells[i].Index, ref value) ? value : null;
+                }
+            }
+
             public Account? GetAccount(Address address)
             {
                 parent.AccountReads++;
-                return parent.AccountExists ? new Account(1, 100) : null;
+                return parent.AccountValue is not null ? parent.AccountValue(address) : parent.AccountExists ? new Account(1, 100) : null;
             }
 
             public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
             {
                 parent.SlotReads++;
+                if (parent.SlotValue is not null)
+                {
+                    UInt256? result = parent.SlotValue(new StorageCell(address, in slot));
+                    if (!result.HasValue) return false;
+                    outValue = result.Value;
+                    return true;
+                }
                 if (!parent.SlotExists) return false;
                 outValue = BaseFlatPersistence.DecodeSlotValue([0x11]);
                 return true;

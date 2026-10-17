@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -273,23 +274,52 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
-                void WarmAccount(int i)
+                bool IsWarmupCancelled() => token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer;
+
+                void QueueAccountWarmup(ReadOnlyAccountChanges account)
                 {
-                    if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
-
-                    ReadOnlyAccountChanges ac = accountChanges[i];
-                    Address address = ac.Address;
-
-                    if (ac.HasStateChanges && _snapshotBundle.ShouldQueuePrewarm(address))
+                    if (account.HasStateChanges && _snapshotBundle.ShouldQueuePrewarm(account.Address))
                     {
                         Interlocked.Increment(ref _outstandingWarmups);
-                        if (!_warmer.PushAddressJob(this, address, snapshot)) CompleteWarmup();
+                        if (!_warmer.PushAddressJob(this, account.Address, snapshot)) CompleteWarmup();
                     }
+                }
 
+                void WarmAccount(int i)
+                {
+                    if (IsWarmupCancelled()) return;
+                    ReadOnlyAccountChanges account = accountChanges[i];
+                    QueueAccountWarmup(account);
+                    WarmAccountReads(i, account, _snapshotBundle.GetAccount(account.Address));
+                }
+
+                void WarmAccountBatch(int batch)
+                {
+                    if (IsWarmupCancelled()) return;
+                    int first = batch * BatchPersistenceReaderExtensions.BatchSize;
+                    int count = Math.Min(BatchPersistenceReaderExtensions.BatchSize, accountCount - first);
+                    using ArrayPoolListRef<Address> inputs = new(count, count);
+                    using ArrayPoolListRef<Account?> results = new(count, count);
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (IsWarmupCancelled()) return;
+                        ReadOnlyAccountChanges account = accountChanges[first + i];
+                        inputs[i] = account.Address;
+                        QueueAccountWarmup(account);
+                    }
+                    _snapshotBundle.GetAccounts(inputs.AsSpan(), results.AsSpan());
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (IsWarmupCancelled()) return;
+                        WarmAccountReads(first + i, accountChanges[first + i], results[i]);
+                    }
+                }
+
+                void WarmAccountReads(int i, ReadOnlyAccountChanges ac, Account? account)
+                {
+                    Address address = ac.Address;
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
-
-                    Account? account = _snapshotBundle.GetAccount(address);
 
                     if (sink is not null && sink.StillNeeded(address, out _))
                         sink.OnAccountRead(address, account);
@@ -334,7 +364,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     WarmReadPool pool = _warmReadPool.Value;
                     int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, accountCount / 64));
-                    pool.Run(accountCount, workers, WarmAccount, token);
+                    if (accountCount >= BatchPersistenceReaderExtensions.MinBatchSize)
+                    {
+                        int batches = (accountCount - 1) / BatchPersistenceReaderExtensions.BatchSize + 1;
+                        pool.Run(batches, workers, WarmAccountBatch, token);
+                    }
+                    else
+                    {
+                        pool.Run(accountCount, workers, WarmAccount, token);
+                    }
                 }
                 else
                 {
@@ -342,7 +380,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ParallelUnbalancedWork.For(0, accountCount, parallelOptions, WarmAccount);
                 }
 
-                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
+                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions, snapshot);
             }
             catch (OperationCanceledException) { }
             finally
@@ -357,7 +395,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         Account?[] accounts,
         int[] selfDestructIdxs,
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
-        ParallelOptions parallelOptions)
+        ParallelOptions parallelOptions,
+        int sequenceId)
     {
         // Read-only providers have no pool; sinks are only passed on the writable block-processing path.
         if (_warmReadPool is null) return;
@@ -391,11 +430,41 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         WarmReadPool pool = _warmReadPool.Value;
         int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
 
-        pool.Run(idx, workers, j =>
+        if (idx < BatchPersistenceReaderExtensions.MinBatchSize)
         {
-            if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+            pool.Run(idx, workers, j =>
+            {
+                if (_pausePrewarmer) return;
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+                ReadSlotToSink(sink, address, in slot, selfDestructIdx);
+            }, parallelOptions.CancellationToken);
+            return;
+        }
+
+        int batches = (idx - 1) / BatchPersistenceReaderExtensions.BatchSize + 1;
+        pool.Run(batches, workers, batch =>
+        {
+            if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;
+            int first = batch * BatchPersistenceReaderExtensions.BatchSize;
+            int count = Math.Min(BatchPersistenceReaderExtensions.BatchSize, idx - first);
+            using ArrayPoolListRef<(Address Address, int SelfDestructIdx, UInt256 Slot)> requests = new(0);
+            for (int i = 0; i < count; i++)
+            {
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[first + i];
+                StorageCell cell = new(address, in slot);
+                if (sink.StillNeeded(in cell)) requests.Add((address, selfDestructIdx, slot));
+            }
+            if (requests.Count == 0) return;
+
+            using ArrayPoolSpan<UInt256?> results = new(requests.Count);
+            _snapshotBundle.GetSlots(requests.AsSpan(), results);
+            for (int i = 0; i < requests.Count; i++)
+            {
+                if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;
+                (Address address, int _, UInt256 slot) = requests[i];
+                StorageCell cell = new(address, in slot);
+                if (sink.StillNeeded(in cell)) sink.OnStorageRead(in cell, results[i].GetValueOrDefault());
+            }
         }, parallelOptions.CancellationToken);
     }
 
