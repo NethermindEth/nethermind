@@ -38,6 +38,19 @@ public partial class ParallelUnbalancedWork
         private partial void Initialize();
         internal partial WorkerScope Enter();
         internal partial void Queue(IThreadPoolWorkItem work);
+
+        /// <summary>
+        /// For up to <paramref name="hold"/>, or until <see cref="ReleaseRunners"/>, a runner that finds no work in the
+        /// group waits for more instead of returning its thread to the pool.
+        /// </summary>
+        /// <remarks>
+        /// For a stage that forks one parallel step after another: between steps every runner would otherwise leave, and
+        /// the pool wakes threads for the next step one at a time, each woken thread waking the next.
+        /// </remarks>
+        internal partial void KeepRunners(TimeSpan hold);
+
+        /// <summary>Ends <see cref="KeepRunners"/>: waiting runners leave once they find no work.</summary>
+        internal partial void ReleaseRunners();
     }
 
     /// <summary>Shares a worker budget between parallel operations on the calling thread and their nested work.</summary>
