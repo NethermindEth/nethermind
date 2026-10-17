@@ -25,30 +25,55 @@ foreach (string shape in new[] { "state", "storage", "shared" })
         : ["warm-db", "scalar-prewarmed", "retained-nodes", "cold-db"];
     foreach (string cache in cacheStates)
     {
-        using (TriePrefetchFixture.Iteration iteration = fixture.Prepare(cache, probe: true)) iteration.Verify();
-        Console.WriteLine($"Verified Count={count} Shape={shape} Cache={cache}");
-        if (verifyOnly) continue;
-        List<object> samples = [];
-        int sampleCount = cache == "cold-db" ? 8 : 12;
-        for (int sample = 0; sample < sampleCount; sample++)
-        {
-            double totalNanoseconds = 0;
-            long totalBytes = 0;
-            int operations = 0;
-            Stopwatch wall = Stopwatch.StartNew();
-            do
-            {
-                using TriePrefetchFixture.Iteration iteration = fixture.Prepare(cache);
-                long bytes = GC.GetTotalAllocatedBytes(precise: true);
-                long start = Stopwatch.GetTimestamp();
-                iteration.Run();
-                totalNanoseconds += Stopwatch.GetElapsedTime(start).TotalNanoseconds;
-                totalBytes += GC.GetTotalAllocatedBytes(precise: true) - bytes;
-                operations++;
-            } while (cache != "cold-db" && wall.Elapsed.TotalSeconds < 0.3);
-            samples.Add(new { nanoseconds = totalNanoseconds / operations, managedBytes = (double)totalBytes / operations, operations });
-        }
-        rows.Add(new { count, shape, cache, detailedMetrics, samples });
-        File.WriteAllText(output, JsonSerializer.Serialize(rows, new JsonSerializerOptions { WriteIndented = true }));
+        Measure(count, shape, cache, () => fixture.Prepare(cache, probe: true), () => fixture.Prepare(cache));
     }
+}
+foreach (int count in new[] { 1, 8, 64, 512 })
+foreach (int contracts in new[] { 1, 8, 64 })
+{
+    if (contracts > count) continue;
+    using TrieCohortFixture fixture = new(count, contracts);
+    foreach (string cache in new[] { "warm-db", "dedup-hints", "cold-db" })
+        Measure(count, $"cohort-{contracts}", cache, () => fixture.Prepare(cache, probe: true), () => fixture.Prepare(cache));
+}
+
+void Measure(int count, string shape, string cache, Func<IMeasuredIteration> verify, Func<IMeasuredIteration> prepare)
+{
+    using (IMeasuredIteration iteration = verify()) iteration.Verify();
+    Console.WriteLine($"Verified Count={count} Shape={shape} Cache={cache}");
+    if (verifyOnly) return;
+    if (cache != "cold-db")
+        for (int i = 0; i < 3; i++)
+        {
+            using IMeasuredIteration iteration = prepare();
+            iteration.Run();
+        }
+    List<object> samples = [];
+    int sampleCount = cache == "cold-db" ? 8 : 12;
+    for (int sample = 0; sample < sampleCount; sample++)
+    {
+        double totalNanoseconds = 0;
+        long totalBytes = 0;
+        int operations = 0;
+        Stopwatch wall = Stopwatch.StartNew();
+        do
+        {
+            using IMeasuredIteration iteration = prepare();
+            long bytes = GC.GetTotalAllocatedBytes(precise: true);
+            long start = Stopwatch.GetTimestamp();
+            iteration.Run();
+            totalNanoseconds += Stopwatch.GetElapsedTime(start).TotalNanoseconds;
+            totalBytes += GC.GetTotalAllocatedBytes(precise: true) - bytes;
+            operations++;
+        } while (cache != "cold-db" && wall.Elapsed.TotalSeconds < 0.3);
+        samples.Add(new { nanoseconds = totalNanoseconds / operations, managedBytes = (double)totalBytes / operations, operations });
+    }
+    rows.Add(new { count, shape, cache, detailedMetrics, samples });
+    File.WriteAllText(output, JsonSerializer.Serialize(rows, new JsonSerializerOptions { WriteIndented = true }));
+}
+
+interface IMeasuredIteration : IDisposable
+{
+    void Run();
+    void Verify();
 }

@@ -4,6 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <DefineConstants Condition="'$(MixedTrie)' == 'true'">$(DefineConstants);MIXED_TRIE</DefineConstants>
     <DefineConstants Condition="'$(BatchTrie)' == 'true'">$(DefineConstants);BATCH_TRIE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>

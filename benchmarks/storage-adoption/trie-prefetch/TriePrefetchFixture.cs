@@ -139,7 +139,7 @@ sealed class TriePrefetchFixture : IDisposable
         Directory.Delete(_directory, recursive: true);
     }
 
-    public sealed class Iteration : IDisposable
+    public sealed class Iteration : IMeasuredIteration
     {
         private readonly SnapshotBundle _bundle;
         private readonly PatriciaTree _tree;
@@ -194,7 +194,7 @@ sealed class TriePrefetchFixture : IDisposable
         public void Dispose() => _bundle.Dispose();
     }
 
-    private sealed class SeedStore(IPersistence.IWriteBatch writer, Hash256? address) : AbstractMinimalTrieStore
+    internal sealed class SeedStore(IPersistence.IWriteBatch writer, Hash256? address) : AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => throw new InvalidOperationException("Seed must not read");
@@ -216,13 +216,13 @@ sealed class TriePrefetchFixture : IDisposable
         }
     }
 
-    private sealed class HardwareInfo : IHardwareInfo
+    internal sealed class HardwareInfo : IHardwareInfo
     {
         public long AvailableMemoryBytes => 1L << 30;
         public int? MaxOpenFilesLimit => null;
     }
 
-    private sealed class EmptyTrieNodeCache : ITrieNodeCache
+    internal sealed class EmptyTrieNodeCache : ITrieNodeCache
     {
         public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
@@ -233,15 +233,28 @@ sealed class TriePrefetchFixture : IDisposable
         public void Clear() { }
     }
 
-    private sealed class BatchProbe
+    internal sealed class BatchProbe
     {
         public int NativeCalls;
         public int ScalarCalls;
         public int MaxKeys;
-        public void Reset() { NativeCalls = 0; ScalarCalls = 0; MaxKeys = 0; }
+        public int MaxStoragePrefixes;
+        public void ObserveNative(ReadOnlySpan<byte> keys, int keyLength, int count, bool storage)
+        {
+            lock (this)
+            {
+                NativeCalls++;
+                MaxKeys = Math.Max(MaxKeys, count);
+                if (!storage) return;
+                HashSet<uint> prefixes = [];
+                for (int i = 0; i < count; i++) prefixes.Add(BinaryPrimitives.ReadUInt32BigEndian(keys.Slice(i * keyLength, 4)));
+                MaxStoragePrefixes = Math.Max(MaxStoragePrefixes, prefixes.Count);
+            }
+        }
+        public void Reset() { NativeCalls = 0; ScalarCalls = 0; MaxKeys = 0; MaxStoragePrefixes = 0; }
     }
 
-    private sealed class ProbeColumnsDb(IColumnsDb<FlatDbColumns> inner, BatchProbe counter) : IColumnsDb<FlatDbColumns>
+    internal sealed class ProbeColumnsDb(IColumnsDb<FlatDbColumns> inner, BatchProbe counter) : IColumnsDb<FlatDbColumns>
     {
         public IDb GetColumnDb(FlatDbColumns key) => inner.GetColumnDb(key);
         public IEnumerable<FlatDbColumns> ColumnKeys => inner.ColumnKeys;
@@ -258,24 +271,24 @@ sealed class TriePrefetchFixture : IDisposable
         {
             IReadOnlyKeyValueStore column = inner.GetColumn(key);
             return key is FlatDbColumns.StateTopNodes or FlatDbColumns.StateNodes or FlatDbColumns.StorageNodes or FlatDbColumns.FallbackNodes
-                ? new ProbeStore(column, counter) : column;
+                ? new ProbeStore(column, counter, key == FlatDbColumns.StorageNodes) : column;
         }
         public void Dispose() => inner.Dispose();
     }
 
-    private sealed class ProbeStore(IReadOnlyKeyValueStore inner, BatchProbe counter) : IReadOnlyKeyValueStore
+    private sealed class ProbeStore(IReadOnlyKeyValueStore inner, BatchProbe counter, bool storage) : IReadOnlyKeyValueStore
 #if BATCH_TRIE
         , IBatchReadOnlyDb
 #endif
     {
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            counter.ScalarCalls++;
+            Interlocked.Increment(ref counter.ScalarCalls);
             return inner.Get(key, flags);
         }
         public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            counter.ScalarCalls++;
+            Interlocked.Increment(ref counter.ScalarCalls);
             return inner.GetSpan(key, flags);
         }
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => inner.DangerousReleaseMemory(in span);
@@ -284,8 +297,7 @@ sealed class TriePrefetchFixture : IDisposable
             where TDecoder : IValueDecoder<T>
         {
             if (inner is not IBatchReadOnlyDb native) throw new InvalidOperationException("Snapshot column lacks native MultiGet");
-            counter.NativeCalls++;
-            counter.MaxKeys = Math.Max(counter.MaxKeys, values.Length);
+            counter.ObserveNative(keys, keyLength, values.Length, storage);
             native.GetMany(keys, keyLength, values, decoder);
         }
 #endif

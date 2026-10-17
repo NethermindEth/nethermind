@@ -599,6 +599,7 @@ jobs:
           for source in baseline control candidate; do
             flags=()
             if [[ -f "$source/src/Nethermind/Nethermind.Trie/PatriciaTree.WarmUp.cs" ]]; then flags=(-p:BatchTrie=true); fi
+            if grep -q 'GetCohortWarmupTree' "$source/src/Nethermind/Nethermind.State.Flat/ScopeProvider/FlatStorageTree.TrieWarmup.cs" 2>/dev/null; then flags+=(-p:MixedTrie=true); fi
             dotnet build "$source/benchmarks/trie-prefetch/TriePrefetch.csproj" -c Release "${flags[@]}"
             mode=scalar
             if [[ -f "$source/src/Nethermind/Nethermind.Trie/PatriciaTree.WarmUp.cs" ]]; then mode=batch; fi
@@ -630,6 +631,63 @@ jobs:
         with:
           name: trie-prefetch-${{ matrix.os }}
           path: results
+  trie-delete-check:
+    if: inputs.components == 'trie'
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [baseline, control, candidate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_REF: ${{ matrix.source == 'baseline' && inputs.baseline_ref || matrix.source == 'control' && inputs.control_ref || inputs.multiget_ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_REF }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Verify source and compile targeted regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir results
+          [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_REF"
+          git diff --exit-code
+          git rev-parse HEAD > results/source-sha.txt
+          sha256sum src/Nethermind/Nethermind.State.Flat.Test/FlatStorageTreeDeleteWarmupTests.cs > results/test-source-sha256.txt
+          dotnet --info > results/dotnet.txt
+          lscpu > results/cpu.txt
+          dotnet build src/Nethermind/Nethermind.State.Flat.Test/Nethermind.State.Flat.Test.csproj -c Release
+      - name: Repeat the unchanged delete-warmup regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..10}; do
+            status=0
+            dotnet src/Nethermind/artifacts/bin/Nethermind.State.Flat.Test/release/Nethermind.State.Flat.Test.dll --filter 'FullyQualifiedName~FlatStorageTreeDeleteWarmupTests' > "results/delete-warmup-$attempt.log" 2>&1 || status=$?
+            cat "results/delete-warmup-$attempt.log"
+            printf '%s\n' "$status" > "results/delete-warmup-$attempt.exit-code"
+          done
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import re
+          for log in sorted(Path("results").glob("delete-warmup-*.log")):
+              text = re.sub(r"\x1b\[[0-9;]*m", "", log.read_text())
+              assert log.with_suffix(".exit-code").read_text().strip() == "0", log
+              assert "Test run summary: Passed!" in text, log
+              assert re.search(r"failed:\s*0\b", text), log
+              assert re.search(r"succeeded:\s*3\b", text), log
+          PYTHON
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: trie-delete-check-${{ matrix.source }}
+          path: results
+
   trie-profile-report:
     if: inputs.components == 'trie-profile-report'
     runs-on: windows-latest

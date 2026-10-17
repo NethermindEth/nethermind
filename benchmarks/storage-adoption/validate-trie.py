@@ -36,6 +36,7 @@ elif mode == "results":
     rows = json.loads(Path(sys.argv[2]).read_text())
     expected = {(count, shape, cache) for count in (1, 8, 64, 65, 512) for shape in ("state", "storage", "shared") for cache in ("warm-db", "scalar-prewarmed", "retained-nodes", "cold-db")}
     expected |= {(64, shape, f"retained-prefix-{prefix}") for shape in ("state", "storage", "shared") for prefix in (0, 1, 56, 57, 63)}
+    expected |= {(count, f"cohort-{contracts}", cache) for count in (1, 8, 64, 512) for contracts in (1, 8, 64) if contracts <= count for cache in ("warm-db", "dedup-hints", "cold-db")}
     assert len(rows) == len(expected) and {(r["count"], r["shape"], r["cache"]) for r in rows} == expected
     for row in rows:
         assert row["detailedMetrics"] == (os.environ.get("DETAILED_METRICS") == "1"), row
@@ -44,6 +45,6 @@ elif mode == "results":
             assert math.isfinite(sample["nanoseconds"]) and sample["nanoseconds"] > 0
             assert math.isfinite(sample["managedBytes"]) and sample["managedBytes"] >= 0
             assert sample["operations"] > 0
-    print("Verified all75 cases and every sample")
+    print(f"Verified all{len(expected)} cases and every sample")
 else:
     raise SystemExit("Unknown validation mode")
