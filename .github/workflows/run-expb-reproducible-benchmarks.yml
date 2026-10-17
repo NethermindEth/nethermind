@@ -3056,7 +3056,7 @@ jobs:
         run: python3 benchmarks/storage-adoption/verify-client-images.py "$CAMPAIGN_ROOT/chain-image-revision.json" nethermind-rpcbench:chain-levels-701e562=701e562113a2ad8242af88c4f4c44db909ba0cca
 
       - name: Checkout trie master source
-        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-cohort-69d60bc')
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-continuation-c33c54a')
         uses: actions/checkout@v7
         with:
           ref: 3f9d83c4654aa35c4faecf1ea9b5700d865abf3d
@@ -3064,68 +3064,68 @@ jobs:
           persist-credentials: false
 
       - name: Checkout trie control source
-        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-cohort-69d60bc')
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-continuation-c33c54a')
         uses: actions/checkout@v7
         with:
-          ref: fb7ab5ae744970e86bf5f6e380bff200a270e75c
+          ref: 69d60bc3ad3c12a21a7cde2eb2b9f792138e9b7e
           path: trie-control-source
           persist-credentials: false
 
       - name: Checkout trie candidate source
-        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-cohort-69d60bc')
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-continuation-c33c54a')
         uses: actions/checkout@v7
         with:
-          ref: 69d60bc3ad3c12a21a7cde2eb2b9f792138e9b7e
+          ref: c33c54a005023c88dbd1473a59470d97b28d5c6a
           path: trie-candidate-source
           persist-credentials: false
 
       - name: Build pinned trie comparison images on runner
-        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-cohort-69d60bc')
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-continuation-c33c54a')
         shell: bash
         run: |
           set -euo pipefail
           source_epoch="$(git -C trie-master-source log -1 --format=%ct)"
           test "$(git -C trie-master-source rev-parse HEAD)" = 3f9d83c4654aa35c4faecf1ea9b5700d865abf3d
-          docker build trie-master-source -f trie-master-source/Dockerfile -t nethermind-rpcbench:trie-cohort-69d60bc-master --build-arg BUILD_CONFIG=release --build-arg CI=true --build-arg COMMIT_HASH=3f9d83c4654aa35c4faecf1ea9b5700d865abf3d --build-arg SOURCE_DATE_EPOCH="$source_epoch"
-          test "$(git -C trie-control-source rev-parse HEAD)" = fb7ab5ae744970e86bf5f6e380bff200a270e75c
-          docker build trie-control-source -f trie-control-source/Dockerfile -t nethermind-rpcbench:trie-cohort-69d60bc-control --build-arg BUILD_CONFIG=release --build-arg CI=true --build-arg COMMIT_HASH=fb7ab5ae744970e86bf5f6e380bff200a270e75c --build-arg SOURCE_DATE_EPOCH="$source_epoch"
-          test "$(git -C trie-candidate-source rev-parse HEAD)" = 69d60bc3ad3c12a21a7cde2eb2b9f792138e9b7e
-          docker build trie-candidate-source -f trie-candidate-source/Dockerfile -t nethermind-rpcbench:trie-cohort-69d60bc-candidate --build-arg BUILD_CONFIG=release --build-arg CI=true --build-arg COMMIT_HASH=69d60bc3ad3c12a21a7cde2eb2b9f792138e9b7e --build-arg SOURCE_DATE_EPOCH="$source_epoch"
-          docker tag nethermind-rpcbench:trie-cohort-69d60bc-master nethermind-rpcbench:trie-cohort-69d60bc-1
-          docker tag nethermind-rpcbench:trie-cohort-69d60bc-master nethermind-rpcbench:trie-cohort-69d60bc-2
-          docker tag nethermind-rpcbench:trie-cohort-69d60bc-control nethermind-rpcbench:trie-cohort-69d60bc-3
-          docker tag nethermind-rpcbench:trie-cohort-69d60bc-candidate nethermind-rpcbench:trie-cohort-69d60bc-4
-          docker tag nethermind-rpcbench:trie-cohort-69d60bc-candidate nethermind-rpcbench:trie-cohort-69d60bc-5
-          docker tag nethermind-rpcbench:trie-cohort-69d60bc-control nethermind-rpcbench:trie-cohort-69d60bc-6
-          docker tag nethermind-rpcbench:trie-cohort-69d60bc-master nethermind-rpcbench:trie-cohort-69d60bc-7
-          docker tag nethermind-rpcbench:trie-cohort-69d60bc-master nethermind-rpcbench:trie-cohort-69d60bc-8
+          docker build trie-master-source -f trie-master-source/Dockerfile -t nethermind-rpcbench:trie-continuation-c33c54a-master --build-arg BUILD_CONFIG=release --build-arg CI=true --build-arg COMMIT_HASH=3f9d83c4654aa35c4faecf1ea9b5700d865abf3d --build-arg SOURCE_DATE_EPOCH="$source_epoch"
+          test "$(git -C trie-control-source rev-parse HEAD)" = 69d60bc3ad3c12a21a7cde2eb2b9f792138e9b7e
+          docker build trie-control-source -f trie-control-source/Dockerfile -t nethermind-rpcbench:trie-continuation-c33c54a-control --build-arg BUILD_CONFIG=release --build-arg CI=true --build-arg COMMIT_HASH=69d60bc3ad3c12a21a7cde2eb2b9f792138e9b7e --build-arg SOURCE_DATE_EPOCH="$source_epoch"
+          test "$(git -C trie-candidate-source rev-parse HEAD)" = c33c54a005023c88dbd1473a59470d97b28d5c6a
+          docker build trie-candidate-source -f trie-candidate-source/Dockerfile -t nethermind-rpcbench:trie-continuation-c33c54a-candidate --build-arg BUILD_CONFIG=release --build-arg CI=true --build-arg COMMIT_HASH=c33c54a005023c88dbd1473a59470d97b28d5c6a --build-arg SOURCE_DATE_EPOCH="$source_epoch"
+          docker tag nethermind-rpcbench:trie-continuation-c33c54a-master nethermind-rpcbench:trie-continuation-c33c54a-1
+          docker tag nethermind-rpcbench:trie-continuation-c33c54a-master nethermind-rpcbench:trie-continuation-c33c54a-2
+          docker tag nethermind-rpcbench:trie-continuation-c33c54a-control nethermind-rpcbench:trie-continuation-c33c54a-3
+          docker tag nethermind-rpcbench:trie-continuation-c33c54a-candidate nethermind-rpcbench:trie-continuation-c33c54a-4
+          docker tag nethermind-rpcbench:trie-continuation-c33c54a-candidate nethermind-rpcbench:trie-continuation-c33c54a-5
+          docker tag nethermind-rpcbench:trie-continuation-c33c54a-control nethermind-rpcbench:trie-continuation-c33c54a-6
+          docker tag nethermind-rpcbench:trie-continuation-c33c54a-master nethermind-rpcbench:trie-continuation-c33c54a-7
+          docker tag nethermind-rpcbench:trie-continuation-c33c54a-master nethermind-rpcbench:trie-continuation-c33c54a-8
 
       - name: Verify all trie comparison image revisions
-        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-cohort-69d60bc')
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-continuation-c33c54a')
         env:
           CAMPAIGN_ROOT: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
         shell: bash
         run: |
           set -euo pipefail
           python3 benchmarks/storage-adoption/verify-client-images.py "$CAMPAIGN_ROOT/trie-image-revisions.json" \
-            nethermind-rpcbench:trie-cohort-69d60bc-1=3f9d83c4654aa35c4faecf1ea9b5700d865abf3d \
-            nethermind-rpcbench:trie-cohort-69d60bc-2=3f9d83c4654aa35c4faecf1ea9b5700d865abf3d \
-            nethermind-rpcbench:trie-cohort-69d60bc-3=fb7ab5ae744970e86bf5f6e380bff200a270e75c \
-            nethermind-rpcbench:trie-cohort-69d60bc-4=69d60bc3ad3c12a21a7cde2eb2b9f792138e9b7e \
-            nethermind-rpcbench:trie-cohort-69d60bc-5=69d60bc3ad3c12a21a7cde2eb2b9f792138e9b7e \
-            nethermind-rpcbench:trie-cohort-69d60bc-6=fb7ab5ae744970e86bf5f6e380bff200a270e75c \
-            nethermind-rpcbench:trie-cohort-69d60bc-7=3f9d83c4654aa35c4faecf1ea9b5700d865abf3d \
-            nethermind-rpcbench:trie-cohort-69d60bc-8=3f9d83c4654aa35c4faecf1ea9b5700d865abf3d
+            nethermind-rpcbench:trie-continuation-c33c54a-1=3f9d83c4654aa35c4faecf1ea9b5700d865abf3d \
+            nethermind-rpcbench:trie-continuation-c33c54a-2=3f9d83c4654aa35c4faecf1ea9b5700d865abf3d \
+            nethermind-rpcbench:trie-continuation-c33c54a-3=69d60bc3ad3c12a21a7cde2eb2b9f792138e9b7e \
+            nethermind-rpcbench:trie-continuation-c33c54a-4=c33c54a005023c88dbd1473a59470d97b28d5c6a \
+            nethermind-rpcbench:trie-continuation-c33c54a-5=c33c54a005023c88dbd1473a59470d97b28d5c6a \
+            nethermind-rpcbench:trie-continuation-c33c54a-6=69d60bc3ad3c12a21a7cde2eb2b9f792138e9b7e \
+            nethermind-rpcbench:trie-continuation-c33c54a-7=3f9d83c4654aa35c4faecf1ea9b5700d865abf3d \
+            nethermind-rpcbench:trie-continuation-c33c54a-8=3f9d83c4654aa35c4faecf1ea9b5700d865abf3d
 
       - name: Verify storage comparison image revisions
-        if: ${{ !contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-cohort-69d60bc') }}
+        if: ${{ !contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-continuation-c33c54a') }}
         env:
           CAMPAIGN_ROOT: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
         run: python3 benchmarks/storage-adoption/verify-client-images.py "$CAMPAIGN_ROOT/storage-image-revisions.json" nethermindeth/nethermind:master-ce93457=ce93457f0abde6daa78877ab3756c0002e33208d nethermind-rpcbench:perf-decoded-blob-multiget=02d3ffde15fb6541efaff78899bd6fd667442501
 
       - name: Prepare trie comparison metric setting
         id: trie-metrics-template
-        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-cohort-69d60bc') && (contains(needs.resolve.outputs.additional_extra_flags, '--Metrics.EnableDetailedMetric=false') || contains(needs.resolve.outputs.additional_extra_flags, '--Metrics.EnableDetailedMetric=true'))
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-continuation-c33c54a') && (contains(needs.resolve.outputs.additional_extra_flags, '--Metrics.EnableDetailedMetric=false') || contains(needs.resolve.outputs.additional_extra_flags, '--Metrics.EnableDetailedMetric=true'))
         env:
           ORIGINAL_TEMPLATE: ${{ needs.resolve.outputs.expb_data_dir }}/${{ needs.resolve.outputs.config_file }}
           YQ_BIN: ${{ runner.temp }}/yq
