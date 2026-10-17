@@ -42,7 +42,12 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 {
     protected override void Load(ContainerBuilder builder)
     {
-        FlatArchiveMode.Apply(configProvider.GetConfig<IFlatDbConfig>(), configProvider.GetConfig<IPruningConfig>());
+        FlatArchiveMode.Apply(
+            configProvider.GetConfig<IFlatDbConfig>(),
+            configProvider.GetConfig<IPruningConfig>(),
+            configProvider.GetConfig<ISyncConfig>(),
+            configProvider,
+            logManager.GetClassLogger(typeof(FlatArchiveMode)));
 
         builder
             .AddServiceStopper()

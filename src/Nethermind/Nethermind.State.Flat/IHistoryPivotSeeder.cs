@@ -15,14 +15,19 @@ public interface IHistoryPivotSeeder
     /// Seeds the history floor/watermark at <paramref name="pivotBlock"/>/<paramref name="pivotStateRoot"/>. Must
     /// be called before any block processing runs on top of the pivot. A no-op when history capture is not configured.
     /// </summary>
-    /// <param name="accounts">Every account of the pivot state with its full hashed path, which an unwindowed history
-    /// needs as explicit rows; the flat account column keys a truncated path and cannot provide it.</param>
-    void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot, IPivotAccountSource? accounts = null);
+    /// <remarks>Constant time: an unwindowed history only records that the pivot's state is to be written as history
+    /// rows. The rows are written in the background, and the flat persist is held back until they are, see
+    /// <see cref="IFlatPersistenceCaptureHook.HoldsFlatPersist"/>.</remarks>
+    void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot);
 }
 
-/// <summary>Enumerates the accounts of the pivot state.</summary>
-public interface IPivotAccountSource
+/// <summary>Reads the accounts of the persisted flat state.</summary>
+public interface IPivotStateSource
 {
-    /// <summary>Calls <paramref name="sink"/> once per account; calls may come from several threads at once.</summary>
-    void ForEachAccount(Action<ValueHash256, Account> sink, CancellationToken cancellationToken);
+    /// <summary>The state the flat columns hold.</summary>
+    StateId PersistedState { get; }
+
+    /// <summary>Calls <paramref name="sink"/> once per account of the state at <paramref name="stateRoot"/> whose
+    /// hashed address starts with the byte <paramref name="partition"/>, on the calling thread.</summary>
+    void ForEachAccount(in ValueHash256 stateRoot, byte partition, Action<ValueHash256, Account> sink, CancellationToken cancellationToken);
 }

@@ -1568,6 +1568,98 @@ public class PersistenceManagerTests
         }
     }
 
+    [Test]
+    public async Task AddToPersistence_WhileTheCaptureHookHoldsTheFlatPersist_PersistsNothingUntilReleased()
+    {
+        RecordingCaptureHook hook = new();
+        using PersistenceManager manager = CreateManager(hook);
+
+        StateId to = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _ = CreateSnapshot(Block0, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        hook.Hold();
+        await manager.AddToPersistence(latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+            Assert.That(hook.CapturedUpTo, Is.Null);
+        }
+
+        hook.Release();
+        await manager.AddToPersistence(latest);
+
+        Assert.That(hook.CapturedUpTo, Is.EqualTo(to));
+    }
+
+    [Test]
+    public async Task AddToPersistence_HeldPastTheBackstop_WaitsForTheReleaseInsteadOfForcingAPersist()
+    {
+        RecordingCaptureHook hook = new();
+        using PersistenceManager manager = CreateManager(hook);
+
+        StateId latest = CreateStateId(95000);
+        StateId tierTip = CreateStateId(_config.CompactSize);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+        _ = CreateSnapshot(Block0, tierTip, compacted: false);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        hook.Hold();
+        Task persist = manager.AddToPersistence(latest);
+        await Task.Delay(100);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persist.IsCompleted, Is.False, "block processing must wait while the hold keeps the flat state in place");
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+        }
+
+        hook.Release();
+        await persist.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(hook.CapturedUpTo, Is.EqualTo(tierTip), "the forced persist runs once the hold is released");
+    }
+
+    [Test]
+    public void FlushToPersistence_WhileTheCaptureHookHoldsTheFlatPersist_KeepsThePersistedState()
+    {
+        RecordingCaptureHook hook = new();
+        using PersistenceManager manager = CreateManager(hook);
+
+        StateId to = CreateStateId(16);
+        _ = CreateSnapshot(Block0, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        hook.Hold();
+        StateId flushed = manager.FlushToPersistence(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flushed, Is.EqualTo(Block0));
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+            Assert.That(hook.CapturedUpTo, Is.Null);
+        }
+    }
+
+    private PersistenceManager CreateManager(IFlatPersistenceCaptureHook hook) => new(
+        _config,
+        ScheduleHelper.CreateWithOffset(_config, 0),
+        _finalizedStateProvider,
+        _persistence,
+        _snapshotRepository,
+        NullStatePersistenceBarrier.Instance,
+        LimboLogs.Instance,
+        _persistedSnapshotCompactor,
+        _tier.Loader,
+        Substitute.For<IProcessExitSource>(),
+        hook);
+
     // The flush path (genesis-loader / shutdown) must uphold the same capture-before-persist invariant.
     [Test]
     public void FlushToPersistence_WhenCaptureHookThrows_DoesNotPersist()
@@ -1990,14 +2082,38 @@ public class PersistenceManagerTests
 
     private sealed class RecordingCaptureHook : IFlatPersistenceCaptureHook
     {
+        private TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public RecordingCaptureHook() => _released.SetResult();
+
         public StateId? CapturedUpTo { get; private set; }
+
+        public bool HoldsFlatPersist { get; private set; }
+
+        public Task FlatPersistReleased => _released.Task;
 
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
             CapturedUpTo = persistedHead;
+
+        public void Hold()
+        {
+            _released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            HoldsFlatPersist = true;
+        }
+
+        public void Release()
+        {
+            HoldsFlatPersist = false;
+            _released.TrySetResult();
+        }
     }
 
     private sealed class FlakyCaptureHook(int failures) : IFlatPersistenceCaptureHook
     {
+        public bool HoldsFlatPersist => false;
+
+        public Task FlatPersistReleased => Task.CompletedTask;
+
         private int _remainingFailures = failures;
 
         public StateId? CapturedUpTo { get; private set; }
@@ -2011,6 +2127,10 @@ public class PersistenceManagerTests
 
     private sealed class BarrierObservingCaptureHook(System.Func<StateId> readBarrier) : IFlatPersistenceCaptureHook
     {
+        public bool HoldsFlatPersist => false;
+
+        public Task FlatPersistReleased => Task.CompletedTask;
+
         public StateId BarrierAtCapture { get; private set; }
 
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
