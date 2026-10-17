@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
@@ -12,19 +13,36 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
+/// <param name="readOnlyQueryModules">The <see cref="ReadOnlyQueryKind.Trace"/> modules among them configure the
+/// environments of every module instance and of the parallel block tracer.</param>
+[method: Experimental("NMEVM0001")]
 public class DebugModuleFactory(
     ITraceEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope,
     IBlockValidationModule[] validationBlockProcessingModules,
     IPrefixStateSeedSource prefixSeeds,
     ParallelTraceBudgets parallelBudgets,
-    ILogManager logManager
+    ILogManager logManager,
+    IReadOnlyQueryModule[] readOnlyQueryModules
 ) : IRpcModuleFactory<IDebugRpcModule>
 {
-    private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
-        builder => ConfigureTracerContainer(builder, validationBlockProcessingModules));
+    /// <summary>A factory whose environments load no read-only query modules.</summary>
+    public DebugModuleFactory(
+        ITraceEnvFactory envFactory,
+        ILifetimeScope rootLifetimeScope,
+        IBlockValidationModule[] validationBlockProcessingModules,
+        IPrefixStateSeedSource prefixSeeds,
+        ParallelTraceBudgets parallelBudgets,
+        ILogManager logManager)
+        : this(envFactory, rootLifetimeScope, validationBlockProcessingModules, prefixSeeds, parallelBudgets, logManager, [])
+    {
+    }
 
-    private static ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder, IBlockValidationModule[] validationBlockProcessingModules) =>
+    private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
+        builder => ConfigureTracerContainer(builder, validationBlockProcessingModules, readOnlyQueryModules));
+
+    private static ContainerBuilder ConfigureTracerContainer(
+        ContainerBuilder builder, IBlockValidationModule[] validationBlockProcessingModules, IReadOnlyQueryModule[] readOnlyQueryModules) =>
         builder
             // Standard configuration
             // Note: Not overriding `IReceiptStorage` to null.
@@ -37,7 +55,10 @@ public class DebugModuleFactory(
             // The EIP-7928 BAL pool builds its per-worker adapters from this factory; route them through the
             // same ChangeableTransactionProcessorAdapter so they honour the tracer's runtime Execute↔Trace swap.
             .AddScoped<TransactionProcessorAdapterFactory, ChangeableTransactionProcessorAdapter>(
-                static changeable => changeable.ForProcessor);
+                static changeable => changeable.ForProcessor)
+
+            // The debug_* replays and traced calls, and the parallel tracer's workers, run in containers built here.
+            .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace);
 
     public IDebugRpcModule Create()
     {
@@ -46,7 +67,7 @@ public class DebugModuleFactory(
 
         ILifetimeScope tracerLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
-            ConfigureTracerContainer(builder, validationBlockProcessingModules).AddModule(env);
+            ConfigureTracerContainer(builder, validationBlockProcessingModules, readOnlyQueryModules).AddModule(env);
             if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
         });
 

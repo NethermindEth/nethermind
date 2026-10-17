@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
@@ -15,25 +16,45 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
+/// <param name="readOnlyQueryModules">The <see cref="ReadOnlyQueryKind.Trace"/> modules among them configure the call
+/// and replay environments of every module instance and those of the parallel block tracer.</param>
+[method: Experimental("NMEVM0001")]
 public class TraceModuleFactory(
     ITraceEnvFactory overridableEnvFactory,
     ILifetimeScope rootLifetimeScope,
     IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules,
     IPrefixStateSeedSource prefixSeeds,
     ParallelTraceBudgets parallelBudgets,
-    ILogManager logManager
+    ILogManager logManager,
+    IReadOnlyQueryModule[] readOnlyQueryModules
 ) : ModuleFactoryBase<ITraceRpcModule>
 {
-    private readonly SharedParallelBlockTracer _parallelTracer = new(overridableEnvFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
-        builder => ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules));
+    /// <summary>A factory whose environments load no read-only query modules.</summary>
+    public TraceModuleFactory(
+        ITraceEnvFactory overridableEnvFactory,
+        ILifetimeScope rootLifetimeScope,
+        IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules,
+        IPrefixStateSeedSource prefixSeeds,
+        ParallelTraceBudgets parallelBudgets,
+        ILogManager logManager)
+        : this(overridableEnvFactory, rootLifetimeScope, validationBlockProcessingModules, prefixSeeds, parallelBudgets, logManager, [])
+    {
+    }
 
-    private static ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory, IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules) =>
+    private readonly SharedParallelBlockTracer _parallelTracer = new(overridableEnvFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
+        builder => ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules, readOnlyQueryModules));
+
+    private static ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory,
+        IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules, IReadOnlyQueryModule[] readOnlyQueryModules) =>
         builder
             .AddModule(validationBlockProcessingModules)
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
 
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
-            .AddScoped<IBlockValidator>(Always.Valid); // Why?
+            .AddScoped<IBlockValidator>(Always.Valid) // Why?
+
+            // The trace_* calls and replays, and the parallel tracer's workers, run in containers built here.
+            .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace);
 
     public override ITraceRpcModule Create()
     {
@@ -42,11 +63,11 @@ public class TraceModuleFactory(
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing(builder, static p => new UnpricedCallTraceAdapter(p), validationBlockProcessingModules)
+            ConfigureCommonBlockProcessing(builder, static p => new UnpricedCallTraceAdapter(p), validationBlockProcessingModules, readOnlyQueryModules)
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, UnpricedBlobFeeCalculator>()
                 .AddModule(env));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules)
+            ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules, readOnlyQueryModules)
                 .AddModule(env));
 
         ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
