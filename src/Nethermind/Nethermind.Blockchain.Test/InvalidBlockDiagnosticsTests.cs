@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -13,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Init;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
@@ -23,7 +23,7 @@ public class InvalidBlockDiagnosticsTests
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
 
     [Test]
-    public async Task Rejection_does_not_wait_for_the_diagnostics_of_the_invalid_block()
+    public async Task Invalid_block_is_rejected_without_waiting_for_its_diagnostics([Values] bool shutDownMidDump)
     {
         using ManualResetEventSlim replayEntered = new();
         using ManualResetEventSlim releaseReplay = new();
@@ -31,26 +31,43 @@ public class InvalidBlockDiagnosticsTests
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .Intercept<IInitConfig>(static initConfig => initConfig.AutoDump = DumpOptions.Receipts)
             .AddDecorator<IOverridableEnvFactory>((_, inner) => gatedFactory = new GatedEnvFactory(inner, replayEntered, releaseReplay)));
-        Block produced = await chain.AddBlock();
-        Block invalid = Build.A.Block.WithHeader(produced.Header.Clone()).WithStateRoot(Keccak.Zero)
-            .WithTransactions(produced.Transactions).TestObject;
+        Block head = await chain.AddBlock();
+        Block invalid = Build.A.Block.WithParent(head).WithGasLimit(head.GasLimit).WithBaseFeePerGas(head.BaseFeePerGas)
+            .WithStateRoot(Keccak.Zero).TestObject;
         string receiptsDump = Path.Combine(Path.GetTempPath(), $"receipts_{invalid.Hash}_failed.txt");
         File.Delete(receiptsDump);
+
+        using ManualResetEventSlim rejected = new();
+        chain.MainProcessingContext.BlockProcessingQueue.BlockRemoved += (_, e) =>
+        {
+            if (e.BlockHash == invalid.Hash && e.ProcessingResult != ProcessingResult.Success) rejected.Set();
+        };
 
         try
         {
             gatedFactory!.Armed = true;
-            Task rejection = Task.Run(() => RaiseInvalidBlock(chain.MainProcessingContext.BlockProcessingQueue, invalid));
+            chain.BlockTree.SuggestBlock(invalid);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(replayEntered.Wait(Wait), Is.True, "the replay should start");
-                Assert.That(rejection.Wait(Wait), Is.True, "the rejection should not wait for the blocked replay");
+                Assert.That(rejected.Wait(Wait), Is.True, "the rejection should not wait for the blocked replay");
                 Assert.That(File.Exists(receiptsDump), Is.False);
             }
 
-            releaseReplay.Set();
-            Assert.That(() => IsWritten(receiptsDump), Is.True.After((int)Wait.TotalMilliseconds, 50));
+            if (shutDownMidDump)
+            {
+                Task shutdown = Task.Run(chain.Container.Resolve<InvalidBlockDiagnostics>().Dispose);
+                Assert.That(shutdown.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "shutdown should let the dump finish");
+                releaseReplay.Set();
+                Assert.That(shutdown.Wait(Wait), Is.True);
+                Assert.That(IsWritten(receiptsDump), Is.True);
+            }
+            else
+            {
+                releaseReplay.Set();
+                Assert.That(() => IsWritten(receiptsDump), Is.True.After((int)Wait.TotalMilliseconds, 50));
+            }
         }
         finally
         {
@@ -70,14 +87,6 @@ public class InvalidBlockDiagnosticsTests
         {
             return false;
         }
-    }
-
-    private static void RaiseInvalidBlock(IBlockProcessingQueue processingQueue, Block invalid)
-    {
-        FieldInfo field = processingQueue.GetType().GetField(nameof(IBlockProcessingQueue.InvalidBlock), BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"InvalidBlock event field not found on {processingQueue.GetType().FullName}");
-        EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? handler = (EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>?)field.GetValue(processingQueue);
-        handler?.Invoke(processingQueue, new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = invalid });
     }
 
     /// <summary>Holds the first env created once armed until released, standing in for a long replay.</summary>

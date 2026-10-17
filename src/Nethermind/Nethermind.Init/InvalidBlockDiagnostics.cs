@@ -30,10 +30,11 @@ namespace Nethermind.Init;
 /// Writes the diagnostics <see cref="IInitConfig.AutoDump"/> asks for of a block the processing queue rejected.
 /// </summary>
 /// <remarks>
-/// The work runs off the processing pipeline, on a thread of its own below normal priority, so neither the verdict on
-/// the rejected block nor the next queued block waits for it. The block is re-executed on a world state of its own,
+/// The work runs off the processing pipeline, on a thread of its own (below normal priority where the OS honours it), so
+/// neither the verdict on the rejected block nor the next queued block waits for it. The block is re-executed on a world state of its own,
 /// opened at its parent, once for all the requested traces. At most one dump runs at a time: a block rejected meanwhile
 /// is dropped, so invalid blocks sent back to back cannot queue up work, and each block is dumped once.
+/// Disposal lets a running dump finish, so the files of the block a node exits on are still written.
 /// </remarks>
 public sealed class InvalidBlockDiagnostics(
     IInitConfig initConfig,
@@ -46,7 +47,8 @@ public sealed class InvalidBlockDiagnostics(
 {
     private const int DumpedBlocksCacheSize = 64;
     private const ProcessingOptions ReplayOptions = ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain;
-    private static readonly TimeSpan DisposeWait = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan CompletionWait = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan CancellationWait = TimeSpan.FromSeconds(5);
 
     private readonly ILogger _logger = logManager.GetClassLogger<InvalidBlockDiagnostics>();
     private readonly LruKeyCache<Hash256AsKey> _dumpedBlocks = new(DumpedBlocksCacheSize, nameof(InvalidBlockDiagnostics));
@@ -78,7 +80,8 @@ public sealed class InvalidBlockDiagnostics(
 
     private void Dump(Block block, DumpOptions dumpOptions)
     {
-        Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+        // Assume the default Linux policy (SCHED_OTHER), where priority changes only add native calls.
+        if (!OperatingSystem.IsLinux()) Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
         try
         {
             BlockTraceDumper.LogDiagnosticRlp(block, _logger,
@@ -169,8 +172,8 @@ public sealed class InvalidBlockDiagnostics(
             running = _running;
         }
 
-        _cancellation.Cancel();
-        if (!running.Wait(DisposeWait))
+        if (!running.Wait(CompletionWait)) _cancellation.Cancel();
+        if (!running.Wait(CancellationWait))
         {
             // Still replaying on the env, so it is left to the process exit rather than disposed under the replay.
             if (_logger.IsWarn) _logger.Warn("Diagnostics of an invalid block did not stop in time.");
