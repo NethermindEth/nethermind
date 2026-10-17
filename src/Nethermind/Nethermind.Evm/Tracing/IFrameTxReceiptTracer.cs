@@ -25,7 +25,7 @@ public interface IFrameTxReceiptTracer
     /// <summary>Reports that the frames from <paramref name="fromFrameIndex"/> up to the failed frame at
     /// <paramref name="toFrameIndex"/> had their state and logs rolled back, by an atomic batch unroll or a failed
     /// <c>ASSERT</c> frame.</summary>
-    /// <remarks>The rolled-back frames keep their success status, and where a <c>ASSERT</c> rollback starts
+    /// <remarks>The rolled-back frames keep their success status, and where an <c>ASSERT</c> rollback starts
     /// depends on when the payer was approved, so the receipts alone do not say which frames were discarded.</remarks>
     /// <param name="fromFrameIndex">The first rolled-back frame.</param>
     /// <param name="toFrameIndex">The frame whose failure caused the rollback, which already reported its end.</param>

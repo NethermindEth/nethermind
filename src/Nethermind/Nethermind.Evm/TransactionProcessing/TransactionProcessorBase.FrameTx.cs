@@ -23,7 +23,7 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// EVM call, applying APPROVE effects, enforcing the payer gate and producing per-frame receipts.</summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
-    /// <summary>EIP-7906: starts the slice the assertion opcodes read, for an ASSERT transaction on a
+    /// <summary>EIP-7906: starts the slice the assertion opcodes read, for a transaction with ASSERT frames on a
     /// path that is not already recording one. Returns the recorder so the caller can stop it.</summary>
     /// <remarks>Recording starts before the transaction touches state, so the prestate is its own baseline.
     /// The EIP-7928 condition mirrors block processing in both directions: without it, simulation could

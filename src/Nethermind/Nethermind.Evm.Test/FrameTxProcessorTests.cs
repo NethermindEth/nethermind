@@ -5142,7 +5142,7 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    /// <summary>A <c>ASSERT</c> frame failing before dispatch reverts the transaction without the VM
+    /// <summary>An <c>ASSERT</c> frame failing before dispatch reverts the transaction without the VM
     /// reporting any error, so the root's <c>error</c> has to come from the processor's reason.</summary>
     [Test]
     public void Execute_AssertFrameFailingBeforeDispatch_TracesTheTransactionAsFailed()
@@ -5203,7 +5203,7 @@ public partial class FrameTxProcessorTests
     }
 
 
-    /// <summary>EIP-7906 keeps everything up to the validation prefix when a <c>ASSERT</c> frame reverts, so
+    /// <summary>EIP-7906 keeps everything up to the validation prefix when an <c>ASSERT</c> frame reverts, so
     /// the prefix's logs stay in the receipt and a trace clearing the whole tree contradicts it.</summary>
     [Test]
     public void Execute_AssertFrameRevertsOverALoggingPrefix_TracesTheLogsTheReceiptKeeps()
