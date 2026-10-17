@@ -23,7 +23,7 @@ public class Examples
                 AbiType.Array(AbiType.BytesM(3), length: 2));
 
         byte[] expectedMethodId = Bytes.FromHexString("0xfce353f6");
-        Assert.That(signature.MethodId(), Is.EqualTo(expectedMethodId));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
 
         byte[] encoded = AbiCodec.Encode(signature, [[(byte)'a', (byte)'b', (byte)'c'], [(byte)'d', (byte)'e', (byte)'f']]);
 
@@ -46,7 +46,7 @@ public class Examples
                 AbiType.Bool);
 
         byte[] expectedMethodId = Bytes.FromHexString("0xcdcd77c0");
-        Assert.That(signature.MethodId(), Is.EqualTo(expectedMethodId));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
 
         byte[] encoded = AbiCodec.Encode(signature, (69u, true));
 
@@ -70,7 +70,7 @@ public class Examples
                 AbiType.Array(AbiType.UInt));
 
         byte[] expectedMethodId = Bytes.FromHexString("0xa5643bf2");
-        Assert.That(signature.MethodId(), Is.EqualTo(expectedMethodId));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
 
         byte[] encoded = AbiCodec.Encode(signature, ("dave"u8.ToArray(), true, [1, 2, 3]));
 
@@ -102,7 +102,7 @@ public class Examples
                 AbiType.Bytes);
 
         byte[] expectedMethodId = Bytes.FromHexString("0x8be65246");
-        Assert.That(signature.MethodId(), Is.EqualTo(expectedMethodId));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
 
         (UInt256, uint[], byte[], byte[]) arguments = (0x123, [0x456, 0x789], "1234567890"u8.ToArray(), "Hello, world!"u8.ToArray());
         byte[] encoded = AbiCodec.Encode(signature, arguments);
@@ -132,7 +132,7 @@ public class Examples
                 AbiType.Array(AbiType.String));
 
         byte[] expectedMethodId = Bytes.FromHexString("0x2289b18c");
-        Assert.That(signature.MethodId(), Is.EqualTo(expectedMethodId));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
 
         (UInt256[][], string[]) arguments = ([[1, 2], [3]], ["one", "two", "three"]);
         byte[] encoded = AbiCodec.Encode(signature, arguments);

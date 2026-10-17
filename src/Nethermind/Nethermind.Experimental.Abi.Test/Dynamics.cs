@@ -19,7 +19,7 @@ public class Dynamics
             );
 
         byte[] expectedMethodId = Bytes.FromHexString("91e145ef");
-        Assert.That(signature.MethodId(), Is.EqualTo(expectedMethodId));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
 
         byte[] encoded = AbiCodec.Encode(signature, "hello");
 
@@ -45,7 +45,7 @@ public class Dynamics
             );
 
         byte[] expectedMethodId = Bytes.FromHexString("0x18159cfb");
-        Assert.That(signature.MethodId(), Is.EqualTo(expectedMethodId));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
 
         byte[] encoded = AbiCodec.Encode(signature, ("hello", "world"));
 
@@ -75,7 +75,7 @@ public class Dynamics
             );
 
         byte[] expectedMethodId = Bytes.FromHexString("e18744f7");
-        Assert.That(signature.MethodId(), Is.EqualTo(expectedMethodId));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
 
         byte[] encoded = AbiCodec.Encode(signature, ("hello", "my", "friends"));
 
@@ -106,7 +106,7 @@ public class Dynamics
             );
 
         byte[] expectedMethodId = Bytes.FromHexString("da095a04");
-        Assert.That(signature.MethodId(), Is.EqualTo(expectedMethodId));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
 
         byte[] encoded = AbiCodec.Encode(signature, [true, false, true]);
 
@@ -133,7 +133,7 @@ public class Dynamics
             );
 
         byte[] expectedMethodId = Bytes.FromHexString("e9cc8780");
-        Assert.That(signature.MethodId(), Is.EqualTo(expectedMethodId));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
 
         byte[] encoded = AbiCodec.Encode(signature, ["hello", "my", "friends"]);
 
@@ -395,7 +395,7 @@ public class Dynamics
 
     private static void AssertRoundTrip<T>(AbiSignature<T> signature, string expectedMethodId, T value, string expectedEncoding)
     {
-        Assert.That(signature.MethodId(), Is.EqualTo(Bytes.FromHexString(expectedMethodId)));
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedMethodId)));
 
         byte[] encoded = AbiCodec.Encode(signature, value);
         Assert.That(encoded, Is.EqualTo(Bytes.FromHexString(expectedEncoding)));

@@ -91,7 +91,7 @@ public class UserErrors
         AbiSignature<UInt256> uint256 = new AbiSignature("f").With(AbiType.UInt256);
         AbiSignature<string> str = new AbiSignature("f").With(AbiType.String);
 
-        yield return new TestCaseData(uint256, uint256.MethodId()[..2]).SetName("shorter than method id");
+        yield return new TestCaseData(uint256, uint256.MethodId[..2].ToArray()).SetName("shorter than method id");
         yield return MalformedInput(uint256, "0102030405").SetName("truncated uint256");
         yield return MalformedInput(str,
             "000000000000000000000000000000000000000000000000000000000000ffff").SetName("string offset beyond input");
@@ -244,7 +244,7 @@ public class UserErrors
     }
 
     private static TestCaseData MalformedInput<T>(AbiSignature<T> signature, string body) =>
-        new(signature, Bytes.Concat(signature.MethodId(), Bytes.FromHexString(body)));
+        new(signature, Bytes.Concat(signature.MethodId, Bytes.FromHexString(body)));
 
     [TestCaseSource(nameof(MalformedInputTestCases))]
     [TestCaseSource(nameof(NonCanonicalOffsetTestCases))]
