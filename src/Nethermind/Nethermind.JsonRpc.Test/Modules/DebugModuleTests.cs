@@ -84,9 +84,11 @@ public class DebugModuleTests
     [Test]
     public void DebugTraceBlockByNumber_DoesNotMapHostFormatFailureToInvalidInput()
     {
-        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
         _blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         FormatException failure = new("host state format failure");
         _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
