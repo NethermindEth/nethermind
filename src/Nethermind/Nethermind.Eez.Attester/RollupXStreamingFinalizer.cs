@@ -5,6 +5,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
+using Google.Protobuf;
+using Nethermind.Eez.Prove;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -45,15 +47,37 @@ internal sealed class RollupXStreamingFinalizer
         cancellation.ThrowIfCancellationRequested();
         Finalize selection = operation.Finalize ?? throw new InvalidOperationException("not a finalization operation");
         ValidateSupportedSettlement(selection.Settlement);
-        RollupXSettlementInput input = RollupXSettlementInput.Decode(selection.Settlement, _context, _l1Specs, cancellation);
-        RollupXAuthorization authorization = await _authorizer.Authorize(operation.Predecessor!, selection.Settlement.PostingContext, cancellation).ConfigureAwait(false);
+        using AdmittedWindow window = StreamingFinalizer.ToWindow(operation, selection);
+        ValueHash256 publicInputs = await ValidateAndRecheck(window, selection.Settlement, operation.Predecessor!, null, cancellation).ConfigureAwait(false);
+        return operation.SignCurrent(_signer, publicInputs, cancellation);
+    }
+
+    internal async Task<ProveResponse> Prove(AdmittedWindow window, SettlementInput settlement, Begin predecessor,
+        ParentProvenance provenance, CancellationToken cancellation)
+    {
+        ValueHash256 publicInputs = await ValidateAndRecheck(window, settlement, predecessor, provenance, cancellation).ConfigureAwait(false);
+        cancellation.ThrowIfCancellationRequested();
+        return new ProveResponse
+        {
+            PublicInputsHash = ByteString.CopyFrom(publicInputs.Bytes),
+            Signature = ByteString.CopyFrom(_signer.Sign(publicInputs)),
+        };
+    }
+
+    private async Task<ValueHash256> ValidateAndRecheck(AdmittedWindow window, SettlementInput settlement, Begin predecessor,
+        ParentProvenance? provenance, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        ValidateSupportedSettlement(settlement);
+        RollupXSettlementInput input = RollupXSettlementInput.Decode(settlement, _context, _l1Specs, cancellation);
+        RollupXAuthorization authorization = await _authorizer.Authorize(predecessor, settlement.PostingContext, cancellation, provenance).ConfigureAwait(false);
         if (authorization.Context != _context || authorization.Signer != _signer.Address ||
             authorization.Target != input.Target || authorization.L1ParentNumber != input.L1ParentNumber)
             throw RollupXAuthorizationEvidence.Rejected();
-        using AdmittedWindow window = StreamingFinalizer.ToWindow(operation, selection);
         ValueHash256 publicInputs = await Task.Run(() => Validate(window, input, authorization, cancellation), CancellationToken.None).ConfigureAwait(false);
         await _authorizer.Recheck(authorization, cancellation).ConfigureAwait(false);
-        return operation.SignCurrent(_signer, publicInputs, cancellation);
+        cancellation.ThrowIfCancellationRequested();
+        return publicInputs;
     }
 
     internal static void ValidateSupportedSettlement(SettlementInput? settlement)

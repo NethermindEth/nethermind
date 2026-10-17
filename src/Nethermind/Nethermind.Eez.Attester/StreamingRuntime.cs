@@ -28,13 +28,14 @@ internal sealed class StreamingRuntime : IDisposable
     private readonly StreamingBlockExecutor _executor;
     private readonly Func<SessionOperation, CancellationToken, Task<Proof>> _finalize;
     private readonly ulong _rollupId;
+    private readonly NativeProver? _native;
     private int _disposed;
     internal StreamingOptions Options { get; }
     internal StreamingIdentity Identity { get; }
     internal StreamingSessionRegistry Registry { get; }
 
     private StreamingRuntime(StreamingOptions options, X509Certificate2 certificate, StreamingIdentity identity,
-        HttpClient? l1, HttpClient? l2, StreamingSessionRegistry registry, StreamingBlockExecutor executor, Func<SessionOperation, CancellationToken, Task<Proof>> finalize, ulong rollupId)
+        HttpClient? l1, HttpClient? l2, StreamingSessionRegistry registry, StreamingBlockExecutor executor, Func<SessionOperation, CancellationToken, Task<Proof>> finalize, ulong rollupId, NativeProver? native)
     {
         Options = options;
         _certificate = certificate;
@@ -45,6 +46,7 @@ internal sealed class StreamingRuntime : IDisposable
         _executor = executor;
         _finalize = finalize;
         _rollupId = rollupId;
+        _native = native;
     }
 
     internal static StreamingRuntime Load(AttesterOptions options, ISpecProvider specs, AttestationPipeline pipeline,
@@ -77,6 +79,7 @@ internal sealed class StreamingRuntime : IDisposable
             }
             finally { foreach (X509Certificate2? pin in pins) pin?.Dispose(); }
             registry = new StreamingSessionRegistry(settings.RegistryLimits, settings.SessionLimits, TimeProvider.System, settings.Profile);
+            NativeProver? native = null;
             EezChainRules rules;
             Func<SessionOperation, CancellationToken, Task<Proof>> finalize;
             if (settings.Profile != StreamingSettlementProfile.Rollup0Conditional)
@@ -93,7 +96,9 @@ internal sealed class StreamingRuntime : IDisposable
                 RollupXParentAuthorizer authorizer = new(new SettlementRpcReader(l1!, TimeSpan.FromSeconds(5)),
                     new SettlementRpcReader(l2!, TimeSpan.FromSeconds(5)), settings.Registry!, settings.Manager!,
                     pipeline.Context, signer.Address, rules.Schedule, settings.L2GenesisHash!);
-                finalize = new RollupXStreamingFinalizer(l1Specs, specs, rules, pipeline.Context, signer, authorizer, logs).Finalize;
+                RollupXStreamingFinalizer nativeFinalizer = new(l1Specs, specs, rules, pipeline.Context, signer, authorizer, logs);
+                finalize = nativeFinalizer.Finalize;
+                native = new NativeProver(nativeFinalizer, NativeProver.ValidationIdentity(options, settings, pipeline.Context));
             }
             else
             {
@@ -112,7 +117,7 @@ internal sealed class StreamingRuntime : IDisposable
                 }
             }
             return new StreamingRuntime(settings, certificate, identity, l1, l2, registry,
-                new StreamingBlockExecutor(specs, rules, logs), finalize, pipeline.Context.RollupId);
+                new StreamingBlockExecutor(specs, rules, logs), finalize, pipeline.Context.RollupId, native);
         }
         catch (Exception exception)
         {
@@ -124,6 +129,10 @@ internal sealed class StreamingRuntime : IDisposable
             throw;
         }
     }
+
+    internal ProverService CreateProver(AttestationPipeline pipeline, AttesterOptions options, BackendAdmission admission, ILogger<ProverService> logger) =>
+        _native is null ? new ProverService(pipeline, options, admission, logger) :
+            new ProverService(_rollupId, _native.Prove, options, admission, logger, _native);
 
     internal StreamingTransport CreateTransport(BackendAdmission admission, ILogger<StreamingTransport> logger) =>
         new(Registry, admission, _executor, Options.TransportLimits, _rollupId, logger, finalize: _finalize);

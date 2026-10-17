@@ -178,6 +178,42 @@ public class AttesterTests
         }
     }
 
+    [TestCase("identity", TestName = "Prove_Rollup0NativeIdentity_Rejects")]
+    [TestCase("provenance", TestName = "Prove_Rollup0NativeProvenance_Rejects")]
+    [TestCase("blobs", TestName = "Prove_Rollup0NativeBlobs_Rejects")]
+    [TestCase("posting", TestName = "Prove_Rollup0NativePostingContext_Rejects")]
+    public async Task Prove_Rollup0NativeFields_RejectsBeforeSigning(string field)
+    {
+        await using AttesterServer server = await AttesterServer.Start(AnchorWindow);
+        List<ProveChunk> chunks = Window(AnchorWindow, 79, 84);
+        switch (field)
+        {
+            case "identity": chunks[0].Header.ExpectedValidationIdentity = ByteString.CopyFrom(new byte[32]); break;
+            case "provenance": chunks[0].Header.ParentProvenance = new ParentProvenance(); break;
+            case "blobs": chunks[0].Header.PostBatch.Blobs.Add(ByteString.CopyFrom(new byte[32])); break;
+            case "posting": chunks[0].Header.PostBatch.PostingContext = new L1PostingContext(); break;
+        }
+
+        RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => server.Prove(chunks)))!;
+
+        Assert.That(exception.StatusCode, Is.EqualTo(StatusCode.InvalidArgument), "native metadata must never be silently ignored by Rollup0");
+    }
+
+    [Test]
+    public void CanonicalSize_UnknownFields_ChargesEveryDecodedByte()
+    {
+        ProveChunk chunk = Window(AnchorWindow, 79, 84)[0];
+        byte[] encoded = chunk.ToByteArray();
+        byte[] appended = new byte[encoded.Length + 3];
+        encoded.CopyTo(appended, 0);
+        appended[^3] = 0xA2;
+        appended[^2] = 0x06;
+        appended[^1] = 0;
+
+        Assert.That(WindowAssembler.CanonicalSize(ProveChunk.Parser.ParseFrom(appended)), Is.EqualTo(appended.Length),
+            "unknown protobuf fields cannot bypass native window byte quotas");
+    }
+
     [Test]
     public void KeyStore_ImportedKey_UnlocksAsTheAttester()
     {

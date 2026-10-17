@@ -39,7 +39,7 @@ internal sealed class WindowAssembler
     public ulong RollupId => _header.RollupId;
 
     /// <exception cref="RpcException">The first chunk is not an admissible header.</exception>
-    public static WindowAssembler Start(WindowLimits limits, ProveChunk first)
+    public static WindowAssembler Start(WindowLimits limits, ProveChunk first, ByteString? nativeIdentity = null)
     {
         long bytes = Charge(0, CanonicalSize(first), limits.MaxBytes);
         ProveHeader header = first.KindCase switch
@@ -52,6 +52,22 @@ internal sealed class WindowAssembler
         if (header.PostBatch is null)
         {
             throw Invalid("header carries no post_batch");
+        }
+
+        if (nativeIdentity is null)
+        {
+            if (header.ExpectedValidationIdentity.Length != 0 || header.ParentProvenance is not null ||
+                header.PostBatch.Blobs.Count != 0 || header.PostBatch.PostingContext is not null)
+                throw Invalid("native fields are not supported by the Rollup0 profile");
+        }
+        else
+        {
+            if (header.ExpectedValidationIdentity != nativeIdentity)
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "native validation identity differs"));
+            if (header.ParentProvenance is null || header.ParentProvenance.ParentHeaderRlp.Length == 0 ||
+                header.PostBatch.Blobs.Count == 0 || header.PostBatch.PostingContext is null || header.PostBatch.PublicInputsHash.Length != 0)
+                throw Invalid("native provenance, blobs and posting context are required without legacy claims");
+            NativeProver.Predecessor(header);
         }
 
         if (header.PostBatch.L1BlockHash.Length != 0)
@@ -70,7 +86,7 @@ internal sealed class WindowAssembler
             throw Quota($"window {header.FromBlock}..={header.ToBlock} spans {span} blocks, limit is {limits.MaxBlocks}");
         }
 
-        return new WindowAssembler(limits, header, (int)span, bytes);
+        return new WindowAssembler(limits, header.Clone(), (int)span, bytes);
     }
 
     /// <exception cref="RpcException">The chunk is not the next admissible block.</exception>
@@ -81,6 +97,7 @@ internal sealed class WindowAssembler
         {
             ProveChunk.KindOneofCase.Block => chunk.Block,
             ProveChunk.KindOneofCase.Header => throw Invalid("duplicate header chunk"),
+            ProveChunk.KindOneofCase.CachedRange => throw new RpcException(new Status(StatusCode.Unimplemented, "cached ordinary ranges are not supported")),
             _ => throw Invalid($"chunk at index {1 + _blocks.Count} carries no kind"),
         };
 
@@ -133,7 +150,8 @@ internal sealed class WindowAssembler
             throw Invalid($"window {_header.FromBlock}..={_header.ToBlock} expects {_declared} blocks, stream ended after {_blocks.Count}");
         }
 
-        return new AdmittedWindow(_header.FromBlock, _header.ToBlock, _header.PostBatch.AbiCalldata.ToByteArray(), _blocks.ToArray(), _claims.ToArray());
+        return new AdmittedWindow(_header.FromBlock, _header.ToBlock, _header.PostBatch.AbiCalldata.ToByteArray(), _blocks.ToArray(), _claims.ToArray())
+        { NativeHeader = _header.ParentProvenance is null ? null : _header };
     }
 
     public void Abandon()
@@ -173,38 +191,5 @@ internal sealed class WindowAssembler
         return list;
     }
 
-    /// <summary>The canonical protobuf size of the chunk's known fields, which is what the quota counts.</summary>
-    internal static long CanonicalSize(ProveChunk chunk) => chunk.KindCase switch
-    {
-        ProveChunk.KindOneofCase.Header => Field(1, Size(chunk.Header)),
-        ProveChunk.KindOneofCase.Block => Field(2, Size(chunk.Block)),
-        _ => 0,
-    };
-
-    private static long Size(ProveHeader header) =>
-        UInt64(1, header.RollupId) + UInt64(2, header.FromBlock) + UInt64(3, header.ToBlock) + (header.PostBatch is null ? 0 : Field(4, Size(header.PostBatch)));
-
-    private static long Size(PostBatch batch) => Bytes(1, batch.AbiCalldata) + Bytes(2, batch.PublicInputsHash) + Bytes(3, batch.L1BlockHash);
-
-    private static long Size(BlockWitness block) =>
-        UInt64(1, block.Number) + Bytes(2, block.Hash) + Bytes(3, block.ParentHash) + Bytes(4, block.Rlp) + (block.Witness is null ? 0 : Field(5, Size(block.Witness)));
-
-    private static long Size(ExecutionWitness witness) => Repeated(1, witness.State) + Repeated(2, witness.Codes) + Repeated(3, witness.Keys) + Repeated(4, witness.Headers);
-
-    private static long UInt64(int field, ulong value) => value == 0 ? 0 : CodedOutputStream.ComputeTagSize(field) + CodedOutputStream.ComputeUInt64Size(value);
-
-    private static long Bytes(int field, ByteString value) => value.Length == 0 ? 0 : Field(field, value.Length);
-
-    private static long Repeated(int field, IReadOnlyList<ByteString> values)
-    {
-        long size = 0;
-        foreach (ByteString value in values)
-        {
-            size += Field(field, value.Length);
-        }
-
-        return size;
-    }
-
-    private static long Field(int field, long length) => CodedOutputStream.ComputeTagSize(field) + CodedOutputStream.ComputeLengthSize(checked((int)length)) + length;
+    internal static long CanonicalSize(ProveChunk chunk) => chunk.CalculateSize();
 }

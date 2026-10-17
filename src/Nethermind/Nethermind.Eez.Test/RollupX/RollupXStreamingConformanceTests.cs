@@ -33,7 +33,7 @@ using PostBatch = Nethermind.Eez.Execution.Settlement.PostBatch;
 
 namespace Nethermind.Eez.Test.RollupX;
 
-public class RollupXStreamingConformanceTests
+public partial class RollupXStreamingConformanceTests
 {
     private static string DirectoryPath => RollupXRecordedExecutionTests.SelectDirectory(
         Environment.GetEnvironmentVariable("EEZ_ROLLUPX_EXECUTION_VECTOR_DIR"), Environment.GetEnvironmentVariable("EEZ_REQUIRE_UPSTREAM_VECTORS") == "true");
@@ -64,7 +64,7 @@ public class RollupXStreamingConformanceTests
     }
 
     [Test]
-    public async Task RollupXProfile_V1IsUnavailable([Values] bool tls)
+    public async Task RollupXProfile_V1EmptyStream_UsesItsOwnListener([Values] bool tls)
     {
         using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
         await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
@@ -74,7 +74,7 @@ public class RollupXStreamingConformanceTests
         try { await call.RequestStream.CompleteAsync(); }
         catch (RpcException) { }
         RpcException exception = (await Assert.ThrowsAsync<RpcException>(async () => await call.ResponseAsync))!;
-        Assert.That(exception.StatusCode, Is.EqualTo(StatusCode.Unimplemented), "the native profile must never sign a Rollup0 proof through v1");
+        Assert.That(exception.StatusCode, Is.EqualTo(tls ? StatusCode.Unimplemented : StatusCode.InvalidArgument), "native v1 uses loopback; the v2 TLS listener never exposes it");
     }
 
     [TestCase("reorg", StatusCode.Aborted, false, TestName = "Finalize_CanonicalReorg_DoesNotReturnProof")]

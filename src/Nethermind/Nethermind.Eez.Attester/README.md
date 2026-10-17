@@ -71,6 +71,22 @@ validation. This differs from the common spec's proofless-input wording. The
 `rollup0-calldata` and `rollupx-native` profiles keep their existing proofless and
 independent L1 authorization rules.
 
+The `rollupx-native` profile also serves native inline-window `prove.v1` on
+the loopback listener. It requires physical blobs, an L1 posting context,
+canonical parent provenance and the exact local validation identity returned
+by `Capabilities`. Legacy Rollup0 hash claims and cached range references are
+rejected. Both wire versions use the same native execution, DA, settlement,
+authorization and final canonical recheck before fresh signing.
+
+`Capabilities` advertises zero preparation/cache capacity. `PrepareOrdinary`
+and `RetainOrdinaryRanges` return `Unimplemented`. The validation identity binds
+our validator modules, trusted chain documents and deployment in our own
+namespace. It is not the upstream implementation's cache fingerprint.
+The published native composer currently requires nonzero preparation/cache
+capacity and its own implementation-specific identity, including its lockfile.
+This inline support does not establish compatibility with that composer or
+live L1 acceptance of proofs from our native prover. Those remain separate gates.
+
 The `rollupx-native` profile selects its streaming wire rules at startup. It
 retains the published RollupX status and bound-control response behavior while
 Rollup0 retains its existing behavior. A bound cursor is returned only for the

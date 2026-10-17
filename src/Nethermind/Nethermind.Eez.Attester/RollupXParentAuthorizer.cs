@@ -11,7 +11,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Prove;
 using Nethermind.Eez.Prove.V2;
+using L1PostingContext = Nethermind.Eez.Prove.V2.L1PostingContext;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Eez.Attester;
@@ -49,22 +51,23 @@ internal sealed class RollupXParentAuthorizer
         _time = time ?? TimeProvider.System;
     }
 
-    internal async Task<RollupXAuthorization> Authorize(Begin predecessor, L1PostingContext posting, CancellationToken cancellation)
+    internal async Task<RollupXAuthorization> Authorize(Begin predecessor, L1PostingContext posting, CancellationToken cancellation, ParentProvenance? provenance = null)
     {
         cancellation.ThrowIfCancellationRequested();
         Begin selected = predecessor.Clone();
         L1PostingContext target = posting.Clone();
+        ParentProvenance? supplied = provenance?.Clone();
         if (selected.RollupId != _deployment.Context.RollupId || selected.AnchorHash.Length != 32 || selected.AnchorStateRoot.Length != 32 ||
             target.ChainId != _schedule.L1Reference.ChainId || target.ParentHash.Length != 32 ||
             target.ParentNumber < _schedule.L1Reference.Number || target.ParentNumber == ulong.MaxValue ||
             !target.ParentHash.Span.ContainsAnyExcept((byte)0)) throw RollupXAuthorizationEvidence.Rejected();
         using CancellationTokenSource deadline = new(_timeout, _time);
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, deadline.Token);
-        try { return await AuthorizeSelected(selected, target, linked.Token).ConfigureAwait(false); }
+        try { return await AuthorizeSelected(selected, target, supplied, linked.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { throw SettlementRpcReader.Unavailable(); }
     }
 
-    private async Task<RollupXAuthorization> AuthorizeSelected(Begin selected, L1PostingContext target, CancellationToken cancellation)
+    private async Task<RollupXAuthorization> AuthorizeSelected(Begin selected, L1PostingContext target, ParentProvenance? provenance, CancellationToken cancellation)
     {
         await _evidence.CheckChains(_schedule.L1Reference.ChainId, _deployment.Context.ChainId, cancellation).ConfigureAwait(false);
         CanonicalL1Header reference = await _evidence.Reference(_schedule.L1Reference, cancellation).ConfigureAwait(false);
@@ -78,6 +81,9 @@ internal sealed class RollupXParentAuthorizer
         if (parent.Number != selected.AnchorNumber || !parent.StateRoot!.Bytes.SequenceEqual(selected.AnchorStateRoot.Span) ||
             parent.Timestamp != _schedule.Timestamp(parent.Number)) throw RollupXAuthorizationEvidence.Rejected();
 
+        if (provenance is not null && !Rlp.Encode(parent).Bytes.AsSpan().SequenceEqual(provenance.ParentHeaderRlp.Span))
+            throw RollupXAuthorizationEvidence.Rejected();
+        List<ByteString> endpointHeaders = [];
         CanonicalL1Header? accepted = null;
         CanonicalL1Header? liveSlot = null;
         Hash256 seed = parent.MixHash!;
@@ -94,12 +100,33 @@ internal sealed class RollupXParentAuthorizer
             {
                 BlockHeader endpoint = await _evidence.L2Header(hash, cancellation).ConfigureAwait(false);
                 ValidateEndpoint(endpoint);
+                if (provenance is not null) endpointHeaders.Add(ByteString.CopyFrom(Rlp.Encode(endpoint).Bytes));
                 RollupXAnchorKind kind = _schedule.AnchorKind(endpoint.Number, liveSlot!.Timestamp) ?? throw RollupXAuthorizationEvidence.Rejected();
                 if (endpoint.Number == parent.Number && kind == RollupXAnchorKind.Live) seed = liveSlot.MixHash;
             }
-            if (liveSlot is not null && Contains(liveEndpoints, parent.Hash!)) accepted = liveSlot;
+            if (provenance is not null)
+            {
+                if (provenance.AcceptedL1Number < reference.Number || provenance.AcceptedL1Number > l1Parent.Number || provenance.AcceptedL1Number == 0)
+                    throw RollupXAuthorizationEvidence.Rejected();
+                if (liveSlot is not null && provenance.AcceptedL1Number == liveSlot.Number && Contains(liveEndpoints, parent.Hash!)) accepted = liveSlot;
+                else
+                {
+                    accepted = await _evidence.HeaderAt(provenance.AcceptedL1Number, cancellation).ConfigureAwait(false);
+                    if (!Contains(await _evidence.Endpoints(accepted, cancellation).ConfigureAwait(false), parent.Hash!))
+                        throw RollupXAuthorizationEvidence.Rejected();
+                }
+            }
+            else if (liveSlot is not null && Contains(liveEndpoints, parent.Hash!)) accepted = liveSlot;
             else accepted = await Acceptance(parent.Hash!, l1Parent, cancellation).ConfigureAwait(false);
             _ = _schedule.AnchorKind(parent.Number, accepted.Timestamp) ?? throw RollupXAuthorizationEvidence.Rejected();
+        }
+
+        if (provenance is not null)
+        {
+            if (provenance.AcceptedL1Number != (accepted?.Number ?? 0) || provenance.LiveSlotEndpointHeadersRlp.Count != endpointHeaders.Count)
+                throw RollupXAuthorizationEvidence.Rejected();
+            for (int i = 0; i < endpointHeaders.Count; i++)
+                if (endpointHeaders[i] != provenance.LiveSlotEndpointHeadersRlp[i]) throw RollupXAuthorizationEvidence.Rejected();
         }
 
         if (accepted is not null) RecordSnapshot(snapshots, accepted);

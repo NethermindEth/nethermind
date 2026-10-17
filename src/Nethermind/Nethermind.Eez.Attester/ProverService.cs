@@ -19,6 +19,7 @@ internal sealed class ProverService : Prover.ProverBase
 {
     private const string DeadlineExceeded = "Prove request deadline exceeded";
     private readonly ulong _rollupId;
+    private readonly NativeProver? _native;
     private readonly Func<AdmittedWindow, CancellationToken, Task<ProveResponse>> _execute;
     private readonly AttesterOptions _options;
     private readonly BackendAdmission _admission;
@@ -30,14 +31,18 @@ internal sealed class ProverService : Prover.ProverBase
     { }
 
     internal ProverService(ulong rollupId, Func<AdmittedWindow, CancellationToken, Task<ProveResponse>> execute,
-        AttesterOptions options, BackendAdmission admission, ILogger<ProverService> logger)
+        AttesterOptions options, BackendAdmission admission, ILogger<ProverService> logger, NativeProver? native = null)
     {
+        _native = native;
         _rollupId = rollupId;
         _execute = execute;
         _options = options;
         _admission = admission;
         _logger = logger;
     }
+
+    public override Task<CapabilitiesResponse> Capabilities(CapabilitiesRequest request, ServerCallContext context) =>
+        _native is null ? base.Capabilities(request, context) : Task.FromResult(_native.Capabilities(_options));
 
     public override async Task<ProveResponse> Prove(IAsyncStreamReader<ProveChunk> requestStream, ServerCallContext context)
     {
@@ -117,7 +122,7 @@ internal sealed class ProverService : Prover.ProverBase
     private async Task<AdmittedWindow> ReadWindow(IAsyncStreamReader<ProveChunk> stream, CancellationToken aborted, CancellationToken deadline)
     {
         ProveChunk first = await Next(stream, aborted, deadline) ?? throw WindowAssembler.Invalid("empty Prove stream");
-        WindowAssembler assembler = WindowAssembler.Start(_options.Limits, first);
+        WindowAssembler assembler = WindowAssembler.Start(_options.Limits, first, _native?.Identity);
         if (assembler.RollupId != _rollupId)
         {
             throw new RpcException(new Status(StatusCode.FailedPrecondition, "window rollup identity rejected"));

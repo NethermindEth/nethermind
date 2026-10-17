@@ -12,6 +12,8 @@ namespace Nethermind.Eez.Attester;
 internal sealed record AdmittedWindow(ulong FromBlock, ulong ToBlock, byte[] PostBatchCalldata, EezStatelessBlock[] Blocks, (Hash256 Hash, Hash256 ParentHash)[] Claims)
     : IDisposable
 {
+    internal Prove.ProveHeader? NativeHeader { get; init; }
+
     public void Dispose()
     {
         foreach (EezStatelessBlock block in Blocks)

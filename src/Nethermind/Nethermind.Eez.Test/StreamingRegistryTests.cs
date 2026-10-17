@@ -9,6 +9,7 @@ using Grpc.Core;
 using Nethermind.Eez.Attester;
 using Nethermind.Eez.Prove;
 using Nethermind.Eez.Prove.V2;
+using L1PostingContext = Nethermind.Eez.Prove.V2.L1PostingContext;
 using NUnit.Framework;
 
 namespace Nethermind.Eez.Test;

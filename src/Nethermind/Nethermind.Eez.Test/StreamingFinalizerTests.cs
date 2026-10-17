@@ -23,6 +23,7 @@ using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Prove;
 using Nethermind.Eez.Prove.V2;
+using L1PostingContext = Nethermind.Eez.Prove.V2.L1PostingContext;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;

@@ -450,6 +450,85 @@ public class RollupXParentAuthorizerTests
             "the global candidate budget applies across pages and different canonical blocks");
     }
 
+    [TestCase(false, TestName = "Authorize_V1LiveParent_ValidatesExactProvenance")]
+    [TestCase(true, TestName = "Authorize_V1LaterAcceptance_ValidatesCanonicalAlternative")]
+    public async Task Authorize_V1Provenance_AuthenticatesAcceptanceAndOrderedEndpoints(bool later)
+    {
+        if (later) _source.AddBatch(104, 0, _source.Parent.Hash!);
+        Nethermind.Eez.Prove.ParentProvenance provenance = new()
+        {
+            ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(_source.Parent).Bytes),
+            AcceptedL1Number = later ? 104UL : 101UL,
+            LiveSlotEndpointHeadersRlp = { ByteString.CopyFrom(Rlp.Encode(_source.Parent).Bytes) },
+        };
+
+        RollupXAuthorization result = await Authorizer().Authorize(_source.Begin(), _source.Target(), CancellationToken.None, provenance);
+
+        Assert.That(result.CanonicalEvidence.Any(header => header.Number == provenance.AcceptedL1Number), Is.True,
+            "the explicitly selected canonical acceptance remains part of the final signing recheck");
+        Assert.That(result.DescendantSeed, Is.EqualTo(_source.Blocks[101].MixHash), "later acceptance does not replace the original live-slot seed");
+    }
+
+    [TestCase("parent", TestName = "Authorize_V1DifferentParentRlp_Rejects")]
+    [TestCase("acceptance", TestName = "Authorize_V1UnacceptedParent_Rejects")]
+    [TestCase("future", TestName = "Authorize_V1FutureAcceptance_Rejects")]
+    [TestCase("missing", TestName = "Authorize_V1MissingLiveEndpoint_Rejects")]
+    [TestCase("duplicate", TestName = "Authorize_V1DuplicateLiveEndpoint_Rejects")]
+    [TestCase("order", TestName = "Authorize_V1ReorderedLiveEndpoints_Rejects")]
+    public async Task Authorize_V1ChangedProvenance_Rejects(string mutation)
+    {
+        BlockHeader next = Evidence.Header(5, 1005, TestItem.KeccakA, [0xBB]);
+        _source.Headers[next.Hash!] = next;
+        _source.AddBatch(101, 0, _source.Parent.Hash!, next.Hash!);
+        Nethermind.Eez.Prove.ParentProvenance provenance = new()
+        {
+            ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(_source.Parent).Bytes),
+            AcceptedL1Number = 101,
+            LiveSlotEndpointHeadersRlp = { ByteString.CopyFrom(Rlp.Encode(next).Bytes) },
+        };
+        // One native batch contributes its final endpoint. A second accepted
+        // batch makes endpoint ordering independently observable.
+        _source.AddBatch(101, 1, _source.Parent.Hash!);
+        provenance.LiveSlotEndpointHeadersRlp.Add(provenance.ParentHeaderRlp);
+        RollupXAuthorization unchanged = await Authorizer().Authorize(_source.Begin(), _source.Target(), CancellationToken.None, provenance);
+        Assert.That(unchanged.ParentHeader, Is.EqualTo(provenance.ParentHeaderRlp), "precondition: complete unmodified two-endpoint provenance is accepted");
+        switch (mutation)
+        {
+            case "parent": provenance.ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(next).Bytes); break;
+            case "acceptance": provenance.AcceptedL1Number = 102; break;
+            case "future": provenance.AcceptedL1Number = 106; break;
+            case "missing": provenance.LiveSlotEndpointHeadersRlp.RemoveAt(0); break;
+            case "duplicate": provenance.LiveSlotEndpointHeadersRlp.Add(provenance.ParentHeaderRlp); break;
+            case "order":
+                ByteString first = provenance.LiveSlotEndpointHeadersRlp[0];
+                provenance.LiveSlotEndpointHeadersRlp[0] = provenance.LiveSlotEndpointHeadersRlp[1];
+                provenance.LiveSlotEndpointHeadersRlp[1] = first;
+                break;
+        }
+
+        RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => Authorizer().Authorize(_source.Begin(), _source.Target(), CancellationToken.None, provenance)))!;
+
+        Assert.That(exception.StatusCode, Is.EqualTo(StatusCode.FailedPrecondition), "untrusted provenance never substitutes for canonical acceptance and its complete endpoint set");
+    }
+
+    [Test]
+    public async Task Authorize_V1ExplicitCatchUpAcceptance_UsesExactBlockOutsideSearchHorizon()
+    {
+        _source.ClearBatch(101);
+        _source.AddBatch(102, 0, _source.Parent.Hash!);
+        Nethermind.Eez.Prove.ParentProvenance provenance = new()
+        {
+            ParentHeaderRlp = ByteString.CopyFrom(Rlp.Encode(_source.Parent).Bytes),
+            AcceptedL1Number = 102,
+        };
+
+        RollupXAuthorization result = await Authorizer(historyBlocks: 1).Authorize(_source.Begin(), _source.Target(), CancellationToken.None, provenance);
+
+        Assert.That(result.CanonicalEvidence.Any(static header => header.Number == 102), Is.True,
+            "the exact supplied acceptance is authenticated directly instead of depending on a history scan");
+        Assert.That(_source.RangeReads, Is.Zero, "explicit provenance avoids an unrelated bounded acceptance search");
+    }
+
     private RollupXParentAuthorizer Authorizer(int historyBlocks = 4096, TimeProvider? time = null) =>
         new(new SettlementRpcReader(_l1, TimeSpan.FromSeconds(5)), new SettlementRpcReader(_l2, TimeSpan.FromSeconds(5)),
             TestItem.AddressA, TestItem.AddressB, _source.Context, TestItem.AddressC, _source.Schedule, _source.Genesis.Hash!, historyBlocks, time: time);

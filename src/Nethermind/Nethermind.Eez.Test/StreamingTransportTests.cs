@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Eez.Attester;
 using Nethermind.Eez.Prove;
 using Nethermind.Eez.Prove.V2;
+using L1PostingContext = Nethermind.Eez.Prove.V2.L1PostingContext;
 using NUnit.Framework;
 using StreamBlock = Nethermind.Eez.Prove.V2.Block;
 using Block = Nethermind.Core.Block;

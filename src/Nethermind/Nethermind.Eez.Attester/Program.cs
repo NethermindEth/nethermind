@@ -65,7 +65,9 @@ public static class Program
         builder.Services.AddSingleton(pipeline);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<BackendAdmission>();
-        builder.Services.AddSingleton<ProverService>();
+        builder.Services.AddSingleton(services => streaming is null
+            ? new ProverService(pipeline, options, services.GetRequiredService<BackendAdmission>(), services.GetRequiredService<ILogger<ProverService>>())
+            : streaming.CreateProver(pipeline, options, services.GetRequiredService<BackendAdmission>(), services.GetRequiredService<ILogger<ProverService>>()));
         if (streaming is not null)
         {
             streaming.ConfigureListeners(builder.WebHost, options);
@@ -92,12 +94,9 @@ public static class Program
             });
             app.MapGrpcService<StreamingProverService>();
         }
-        if (streaming?.Options.Profile != StreamingSettlementProfile.RollupXNative)
-        {
-            app.MapGrpcService<ProverService>();
-            ProverService prover = app.Services.GetRequiredService<ProverService>();
-            if (streaming is null) app.Lifetime.ApplicationStopping.Register(() => prover.WaitUntilIdle().GetAwaiter().GetResult());
-        }
+        app.MapGrpcService<ProverService>();
+        ProverService prover = app.Services.GetRequiredService<ProverService>();
+        if (streaming is null) app.Lifetime.ApplicationStopping.Register(() => prover.WaitUntilIdle().GetAwaiter().GetResult());
         return app;
     }
 
