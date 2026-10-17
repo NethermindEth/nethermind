@@ -8,14 +8,19 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Messages;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -162,29 +167,156 @@ public class BlockchainBridgeTests
             receipt: receipts[index])));
     }
 
-    [Test]
-    public void GetTxReceiptInfo_takes_a_single_receipt_without_reading_the_block_receipts()
+    private static IEnumerable<TestCaseData> StoredTransactionCases()
     {
-        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
-        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithHash(TestItem.KeccakC).TestObject, tx).TestObject;
-        TxReceipt receipt = Build.A.Receipt.WithIndex(1).WithTransactionHash(TestItem.KeccakA).TestObject;
-        _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
-        _receiptStorage.TryGetReceipt(block, 1, out Arg.Any<TxReceipt?>(), out Arg.Any<int>()).Returns(call =>
+        foreach (bool cachedBlock in new[] { false, true })
         {
-            call[2] = receipt;
-            call[3] = 3;
-            return true;
-        });
+            string suffix = cachedBlock ? " in the block cache" : " in the database";
+            yield return new TestCaseData(Build.A.Transaction.WithTo(null).WithCode([0x60, 0x00]), StatusCode.Success, cachedBlock).SetName("Contract creation" + suffix);
+            yield return new TestCaseData(Build.A.Transaction, StatusCode.Failure, cachedBlock).SetName("Failed legacy" + suffix);
+            yield return new TestCaseData(Build.A.Transaction.WithType(TxType.AccessList).WithChainId(BlockchainIds.Mainnet)
+                .WithAccessList(new AccessList.Builder().AddAddress(TestItem.AddressC).AddStorage(1).Build()), StatusCode.Success, cachedBlock).SetName("Access list" + suffix);
+            yield return new TestCaseData(Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(BlockchainIds.Mainnet).WithMaxFeePerGas(20).WithData([1, 2, 3]),
+                StatusCode.Success, cachedBlock).SetName("EIP-1559" + suffix);
+            yield return new TestCaseData(Build.A.Transaction.WithChainId(BlockchainIds.Mainnet).WithMaxFeePerGas(20).WithShardBlobTxTypeAndFields(2, isMempoolTx: false),
+                StatusCode.Success, cachedBlock).SetName("Blob" + suffix);
+            yield return new TestCaseData(Build.A.Transaction.WithType(TxType.SetCode).WithChainId(BlockchainIds.Mainnet).WithMaxFeePerGas(20)
+                .WithAuthorizationCode(new AuthorizationTuple(BlockchainIds.Mainnet, TestItem.AddressC, 7, new Signature(new byte[64], 0))),
+                StatusCode.Success, cachedBlock).SetName("Set code" + suffix);
+        }
+    }
 
-        (TxReceipt? found, _, _, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(TestItem.KeccakA);
+    [TestCaseSource(nameof(StoredTransactionCases))]
+    public void Transaction_lookup_from_the_stored_block_matches_the_full_block_lookup(TransactionBuilder<Transaction> target, byte status, bool cachedBlock)
+    {
+        using StoredChain chain = new();
+        Transaction tx = target.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = chain.Add(tx, status, cachedBlock);
+
+        // The first lookup reads the receipt from the database, the last one from the receipts cache the full lookup fills.
+        (TxReceipt? storedReceipt, ulong storedTimestamp, TxGasInfo? storedGasInfo, int storedLogIndexStart) = chain.Bridge.GetTxReceiptInfo(tx.Hash!);
+        Assert.That(storedReceipt, Is.Not.Null);
+        chain.BlockTree.DidNotReceive().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
+
+        chain.LookUpFullBlocks(true);
+        (TxReceipt? fullReceipt, ulong fullTimestamp, TxGasInfo? fullGasInfo, int fullLogIndexStart) = chain.Bridge.GetTxReceiptInfo(tx.Hash!);
+        Assert.That(fullReceipt, Is.Not.Null);
+        Assert.That(chain.Bridge.TryGetTransaction(tx.Hash!, out TransactionLookupResult? full, checkTxnPool: false), Is.True);
+        chain.BlockTree.Received().FindBlock(block.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
+
+        chain.LookUpFullBlocks(false);
+        Assert.That(chain.Bridge.TryGetTransaction(tx.Hash!, out TransactionLookupResult? stored, checkTxnPool: false), Is.True);
+        chain.BlockTree.DidNotReceive().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
+
+        Transaction storedTx = stored!.Value.Transaction!;
+        Transaction fullTx = full!.Value.Transaction!;
+        TransactionForRpcContext storedContext = stored.Value.ExtraData;
+        TransactionForRpcContext fullContext = full.Value.ExtraData;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storedTx.Hash, Is.EqualTo(tx.Hash));
+            Assert.That(storedTx.Type, Is.EqualTo(tx.Type));
+            Assert.That(storedTx.SenderAddress, Is.EqualTo(TestItem.AddressB));
+            Assert.That(TxDecoder.Instance.Encode(storedTx).Bytes, Is.EqualTo(TxDecoder.Instance.Encode(fullTx).Bytes));
+            Assert.That(storedContext.BlockHash, Is.EqualTo(fullContext.BlockHash));
+            Assert.That(storedContext.BlockNumber, Is.EqualTo(fullContext.BlockNumber));
+            Assert.That(storedContext.TxIndex, Is.EqualTo(1));
+            Assert.That(storedContext.BlockTimestamp, Is.EqualTo(fullContext.BlockTimestamp));
+            Assert.That(storedContext.BaseFee, Is.EqualTo(fullContext.BaseFee));
+            Assert.That(storedTimestamp, Is.EqualTo(fullTimestamp));
+            Assert.That(storedGasInfo, Is.EqualTo(fullGasInfo));
+            Assert.That(storedLogIndexStart, Is.EqualTo(fullLogIndexStart));
+        }
+
+        storedContext.Receipt.AssertEquivalentTo(fullContext.Receipt);
+        storedReceipt.AssertEquivalentTo(fullReceipt);
+    }
+
+    [Test]
+    public void Transaction_lookup_fails_when_the_block_body_was_pruned()
+    {
+        using StoredChain chain = new();
+        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = chain.Add(tx, StatusCode.Success, cachedBlock: false);
+        chain.BlockStore.Delete(block.Number, block.Hash!);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(found, Is.SameAs(receipt));
-            Assert.That(logIndexStart, Is.EqualTo(3));
+            Assert.That(chain.Bridge.TryGetTransaction(tx.Hash!, out _, checkTxnPool: false), Is.False);
+            Assert.That(chain.Bridge.GetTxReceiptInfo(tx.Hash!).Receipt, Is.Null);
         }
-        _receiptStorage.DidNotReceive().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>());
+    }
+
+    /// <summary>A bridge over real block and receipt stores, whose blocks hold a filler transaction before the one looked up.</summary>
+    private sealed class StoredChain : IDisposable
+    {
+        private readonly ISpecProvider _specProvider = new TestSpecProvider(Prague.Instance);
+        private readonly IContainer _container;
+        private BlockHeader? _header;
+        private readonly IReceiptStorage _writer;
+        private bool _fullBlocks;
+
+        public StoredChain()
+        {
+            BlockStore = new BlockStore(new MemDb());
+            BlockTree = Substitute.For<IBlockTree>();
+            BlockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+                .Returns(call => !_fullBlocks && _header?.Hash == call.Arg<Hash256>() ? _header : null);
+            BlockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+                .Returns(call => _header?.Hash == call.Arg<Hash256>() ? BlockStore.Get(_header!.Number, _header.Hash!) : null);
+            BlockTree.FindBlockHash(Arg.Any<ulong>()).Returns(call => _header?.Number == call.Arg<ulong>() ? _header.Hash : null);
+            TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
+            _writer = CreateReceiptStorage(receiptsDb);
+            // Reads through another instance, whose receipts cache the writes did not fill.
+            IReceiptStorage receiptStorage = CreateReceiptStorage(receiptsDb);
+            _container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton(_specProvider)
+                .AddSingleton(BlockTree)
+                .AddSingleton<IBlockStore>(BlockStore)
+                .AddSingleton<IReceiptFinder>(receiptStorage)
+                .AddSingleton(Substitute.For<ILogFinder>())
+                .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
+                .AddSingleton(Substitute.For<IStateReader>())
+                .Build();
+            Bridge = _container.Resolve<IBlockchainBridge>();
+        }
+
+        public BlockStore BlockStore { get; }
+        public IBlockTree BlockTree { get; }
+        public IBlockchainBridge Bridge { get; }
+
+        public Block Add(Transaction tx, byte status, bool cachedBlock)
+        {
+            Transaction filler = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(7).WithExcessBlobGas(0).WithBlobGasUsed(0)
+                .WithReceiptsRoot(TestItem.KeccakA).WithTransactions(filler, tx).TestObject;
+            LogEntry log = new(TestItem.AddressC, [1], [TestItem.KeccakC]);
+            TxReceipt[] receipts =
+            [
+                Build.A.Receipt.WithTransactionHash(filler.Hash).WithSender(TestItem.AddressB).WithLogs(log, log).WithGasUsedTotal(21_000).TestObject,
+                Build.A.Receipt.WithTransactionHash(tx.Hash).WithSender(TestItem.AddressB).WithStatusCode(status)
+                    .WithLogs(status == StatusCode.Success ? new[] { log } : Array.Empty<LogEntry>()).WithGasUsedTotal(70_000).TestObject,
+            ];
+
+            BlockStore.Insert(block);
+            if (cachedBlock) BlockStore.Cache(block);
+            _writer.Insert(block, receipts);
+            _header = block.Header;
+            return block;
+        }
+
+        /// <summary>Whether lookups take the whole block from the block tree instead of the stored block.</summary>
+        public void LookUpFullBlocks(bool fullBlocks)
+        {
+            _fullBlocks = fullBlocks;
+            BlockTree.ClearReceivedCalls();
+        }
+
+        private PersistentReceiptStorage CreateReceiptStorage(TestMemColumnsDb<ReceiptsColumns> receiptsDb) =>
+            new(receiptsDb, _specProvider, new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId), _specProvider), BlockTree, BlockStore, new ReceiptConfig());
+
+        public void Dispose() => _container.Dispose();
     }
 
     [Test]

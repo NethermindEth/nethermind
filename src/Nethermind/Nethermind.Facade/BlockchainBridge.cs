@@ -7,6 +7,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -52,6 +53,7 @@ namespace Nethermind.Facade
         SimulateReadOnlyBlocksProcessingEnvPool simulateEnvPool,
         Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessGeneratingBlockProcessingEnvFactory,
         IBlockTree blockTree,
+        IBlockStore blockStore,
         IStateReader stateReader,
         ITxPool txPool,
         [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptStorage,
@@ -82,30 +84,34 @@ namespace Nethermind.Facade
             Hash256 txHash,
             [NotNullWhen(true)] out Transaction? transaction,
             [NotNullWhen(true)] out TxReceipt? receipt,
-            [NotNullWhen(true)] out Block? block,
+            [NotNullWhen(true)] out BlockHeader? header,
             out int logIndexStart)
         {
             Hash256 blockHash = receiptStorage.FindBlockHash(txHash);
             if (blockHash is not null)
             {
-                block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+                header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical);
+                if (header is not null && TryGetFromStoredBlock(header, txHash, out transaction, out receipt, out logIndexStart))
+                {
+                    return true;
+                }
+
+                Block? block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
                 if (block is not null)
                 {
                     int txIndex = block.GetTransactionIndex(txHash.ValueHash256);
                     if (txIndex != -1)
                     {
                         transaction = block.Transactions[txIndex];
-                        if (!receiptStorage.TryGetReceipt(block, txIndex, out receipt, out logIndexStart))
-                        {
-                            TxReceipt[] receipts = receiptStorage.Get(block);
-                            receipt = receipts.Length > txIndex ? receipts[txIndex] : null;
-                            logIndexStart = receipts.GetBlockLogFirstIndex(txIndex);
-                        }
+                        TxReceipt[] receipts = receiptStorage.Get(block);
+                        receipt = receipts.Length > txIndex ? receipts[txIndex] : null;
+                        logIndexStart = receipts.GetBlockLogFirstIndex(txIndex);
 
                         if (receipt is not null && receipt.TxHash == txHash)
                         {
                             // A block decoded outside the block cache has no senders even when its receipts come from cache.
                             transaction.SenderAddress ??= receipt.Sender;
+                            header = block.Header;
                             return true;
                         }
                     }
@@ -114,19 +120,52 @@ namespace Nethermind.Facade
 
             transaction = null;
             receipt = null;
-            block = null;
+            header = null;
             logIndexStart = 0;
             return false;
         }
 
+        /// <summary>Takes the transaction and its receipt from the stored block and receipts, decoding no other transaction or receipt.</summary>
+        private bool TryGetFromStoredBlock(
+            BlockHeader header,
+            Hash256 txHash,
+            [NotNullWhen(true)] out Transaction? transaction,
+            [NotNullWhen(true)] out TxReceipt? receipt,
+            out int logIndexStart)
+        {
+            transaction = null;
+            if (blockStore.GetReceiptRecoveryBlock(header.Number, header.Hash!) is not { } block)
+            {
+                receipt = null;
+                logIndexStart = 0;
+                return false;
+            }
+
+            try
+            {
+                if (!receiptStorage.TryGetReceipt(block, txHash, out receipt, out int txIndex, out logIndexStart) || receipt.TxHash != txHash)
+                {
+                    return false;
+                }
+
+                transaction = block.GetTransaction(txIndex);
+                transaction.SenderAddress ??= receipt.Sender;
+                return true;
+            }
+            finally
+            {
+                block.Dispose();
+            }
+        }
+
         public (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash)
         {
-            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out int blockLogIndexStart))
+            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out BlockHeader? header, out int blockLogIndexStart))
             {
-                IReleaseSpec spec = specProvider.GetSpec(block.Header);
+                IReleaseSpec spec = specProvider.GetSpec(header);
                 // EIP-8116: logIndex counts within the receipt.
                 int logIndexStart = spec.IsEip8116Enabled ? 0 : blockLogIndexStart;
-                return (txReceipt, block.Timestamp, tx.GetGasInfo(spec, block.Header), logIndexStart);
+                return (txReceipt, header.Timestamp, tx.GetGasInfo(spec, header), logIndexStart);
             }
 
             return (null, 0, null, 0);
@@ -134,15 +173,15 @@ namespace Nethermind.Facade
 
         public bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true)
         {
-            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out int _))
+            if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out BlockHeader? header, out int _))
             {
                 TransactionForRpcContext extraData = new(
                     chainId: specProvider.ChainId,
-                    blockHash: block.Hash,
-                    blockNumber: block.Number,
+                    blockHash: header.Hash,
+                    blockNumber: header.Number,
                     txIndex: txReceipt!.Index,
-                    blockTimestamp: block.Timestamp,
-                    baseFee: block.BaseFeePerGas,
+                    blockTimestamp: header.Timestamp,
+                    baseFee: header.BaseFeePerGas,
                     receipt: txReceipt);
 
 

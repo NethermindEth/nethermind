@@ -9,6 +9,7 @@ using System.IO;
 using System.Threading;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
@@ -466,35 +467,43 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <inheritdoc/>
         /// <remarks>
-        /// Serves compact receipts read from the database and leaves the receipts cache untouched. Cached and pending
-        /// receipts are already decoded, so <see cref="Get(Block, bool, bool)"/> serves them without a decode.
+        /// Serves cached and pending receipts, and compact receipts read from the database that store their
+        /// transaction hashes, which give the transaction index without hashing the block's transactions.
         /// </remarks>
-        public bool TryGetReceipt(Block block, int txIndex, [NotNullWhen(true)] out TxReceipt? receipt, out int logIndexStart)
+        public bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
         {
             receipt = null;
+            txIndex = -1;
             logIndexStart = 0;
-            Hash256 blockHash = block.Hash!;
-            if (_defaultReceiptsRecovery is null
-                || (uint)txIndex >= (uint)block.Transactions.Length
-                || block.ReceiptsRoot == Keccak.EmptyTreeHash
-                || _receiptsCache.Contains(blockHash)
-                || (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out _))
-                // A repeat lookup in one block, e.g. a backfill of all its transactions, is cheaper from the receipts cache Get fills.
-                || !_singleReceiptBlocks.Set(blockHash))
+            BlockHeader header = block.Header;
+            Hash256 blockHash = header.Hash!;
+            if (header.ReceiptsRoot == Keccak.EmptyTreeHash) return false;
+
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? cached))
             {
-                return false;
+                return TryFind(cached, block.TransactionCount, txHash, out receipt, out txIndex, out logIndexStart);
             }
 
-            Span<byte> receiptsData = GetReceiptData(block.Number, blockHash);
+            if (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out (TxReceipt[] Receipts, RlpBehaviors Behaviors) pending))
+            {
+                return TryFind(pending.Receipts, block.TransactionCount, txHash, out receipt, out txIndex, out logIndexStart);
+            }
+
+            // A repeat lookup in one block, e.g. a backfill of all its transactions, is cheaper from the receipts cache Get fills.
+            if (_defaultReceiptsRecovery is null || !_singleReceiptBlocks.Set(blockHash)) return false;
+
+            Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
             try
             {
-                if (!ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData)) return false;
-
                 RlpReader reader = new(receiptsData);
-                ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out _);
+                if (!ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes)) return false;
+
+                int index = MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+                if (index < 0) return false;
+
                 int end = reader.ReadSequenceLength() + reader.Position;
                 RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes
-                    | (_eip7668EverEnabled && _specProvider.GetSpec(block.Header).IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
+                    | (_eip7668EverEnabled && _specProvider.GetSpec(header).IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None);
                 CompactReceiptStorageDecoder decoder = CompactReceiptStorageDecoder.Instance;
                 TxReceipt? found = null;
                 ulong gasUsedBefore = 0;
@@ -505,7 +514,7 @@ namespace Nethermind.Blockchain.Receipts
                     // Get keeps only the receipts before an empty item, which then cannot be recovered.
                     if (reader.IsNextItemEmptyList()) return false;
 
-                    if (count < txIndex)
+                    if (count < index)
                     {
                         decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef previous);
                         gasUsedBefore = previous.GasUsedTotal;
@@ -513,7 +522,7 @@ namespace Nethermind.Blockchain.Receipts
                         logs.SkipLength();
                         logsBefore += logs.PeekNumberOfItemsRemaining();
                     }
-                    else if (count == txIndex)
+                    else if (count == index)
                     {
                         found = decoder.Decode(ref reader, behaviors);
                     }
@@ -524,10 +533,11 @@ namespace Nethermind.Blockchain.Receipts
                 }
 
                 // Get recovers receipts only when there is one for every transaction.
-                if (found is null || count != block.Transactions.Length) return false;
+                if (found is null || count != block.TransactionCount) return false;
 
-                _defaultReceiptsRecovery.RecoverReceiptData(block, txIndex, gasUsedBefore, found);
+                _defaultReceiptsRecovery.RecoverReceiptData(block, index, gasUsedBefore, found);
                 receipt = found;
+                txIndex = index;
                 logIndexStart = logsBefore;
                 return true;
             }
@@ -535,6 +545,26 @@ namespace Nethermind.Blockchain.Receipts
             {
                 _receiptsDb.DangerousReleaseMemory(receiptsData);
             }
+        }
+
+        private static bool TryFind(TxReceipt[] receipts, int transactionCount, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
+        {
+            int count = Math.Min(receipts.Length, transactionCount);
+            for (int i = 0; i < count; i++)
+            {
+                if (receipts[i].TxHash == txHash)
+                {
+                    receipt = receipts[i];
+                    txIndex = i;
+                    logIndexStart = receipts.GetBlockLogFirstIndex(i);
+                    return true;
+                }
+            }
+
+            receipt = null;
+            txIndex = -1;
+            logIndexStart = 0;
+            return false;
         }
 
         TxReceipt?[] IReceiptMigrationStore.GetForMigration(ulong blockNumber, Hash256 blockHash)

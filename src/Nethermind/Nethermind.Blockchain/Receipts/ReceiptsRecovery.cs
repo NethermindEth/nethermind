@@ -54,12 +54,12 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <summary>Recovers one receipt of <paramref name="block"/> as <see cref="TryRecover"/> recovers it with the rest of the block's receipts.</summary>
         /// <param name="gasUsedBefore">The cumulative gas used by the transactions preceding <paramref name="txIndex"/>.</param>
-        internal void RecoverReceiptData(Block block, int txIndex, ulong gasUsedBefore, TxReceipt receipt)
+        /// <remarks>Leaves <paramref name="block"/> undisposed: its memory stays owned by the caller.</remarks>
+        internal void RecoverReceiptData(ReceiptRecoveryBlock block, int txIndex, ulong gasUsedBefore, TxReceipt receipt)
         {
-            ReceiptRecoveryBlock recoveryBlock = new(block);
-            for (int i = 0; i < txIndex; i++) recoveryBlock.SkipNextTransaction();
+            for (int i = 0; i < txIndex; i++) block.SkipNextTransaction();
 
-            using RecoveryContext context = new(_specProvider.GetSpec(block.Header), recoveryBlock, forceRecoverSender: true, _ecdsa, txIndex, gasUsedBefore);
+            RecoveryContext context = new(_specProvider.GetSpec(block.Header), block, forceRecoverSender: true, _ecdsa, txIndex, gasUsedBefore);
             context.RecoverReceiptData(receipt);
         }
 

@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -25,15 +26,17 @@ namespace Nethermind.Blockchain.Receipts
         bool CanGetReceiptsByHash(ulong blockNumber);
         bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator);
 
-        /// <summary>Gets the recovered receipt of one transaction without decoding the other receipts of its block.</summary>
-        /// <param name="block">The block containing the transaction.</param>
-        /// <param name="txIndex">The index of the transaction in <paramref name="block"/>.</param>
+        /// <summary>Gets the recovered receipt of one transaction without decoding the other receipts or transactions of its block.</summary>
+        /// <param name="block">The block containing the transaction. Its memory stays owned by the caller.</param>
+        /// <param name="txHash">The hash of the transaction.</param>
         /// <param name="receipt">The receipt, recovered as <see cref="Get(Block, bool, bool)"/> recovers it.</param>
+        /// <param name="txIndex">The index of the transaction in <paramref name="block"/>.</param>
         /// <param name="logIndexStart">The number of logs emitted by the transactions preceding it in the block.</param>
         /// <returns><c>false</c> when the finder cannot serve a single receipt, so the caller has to use <see cref="Get(Block, bool, bool)"/>.</returns>
-        bool TryGetReceipt(Block block, int txIndex, [NotNullWhen(true)] out TxReceipt? receipt, out int logIndexStart)
+        bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
         {
             receipt = null;
+            txIndex = -1;
             logIndexStart = 0;
             return false;
         }
