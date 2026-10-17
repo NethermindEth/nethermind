@@ -38,6 +38,12 @@ public static class BlockErrorMessages
     public const string WithdrawalsNotEnabled =
         "WithdrawalsNotEnabled: Block body cannot have withdrawals.";
 
+    public const string MissingWithdrawalsRoot =
+        "MissingWithdrawalsRoot: Must be set in header.";
+
+    public const string WithdrawalsRootNotEnabled =
+        "WithdrawalsRootNotEnabled: Block header cannot have withdrawals root.";
+
     public static string InvalidReceiptsRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidReceiptsRoot: Receipts root in header does not match. Expected {expected}, got {actual}";
 
