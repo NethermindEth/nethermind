@@ -856,27 +856,27 @@ public partial class DebugRpcModuleTests
 
     private static IEnumerable<TestCaseData> UnsupportedBlockOverrides()
     {
-        (string Json, string? Field)[] cases =
+        (string Json, string? Error, int? Code)[] cases =
         [
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", "beaconRoot"),
-            ("{\"withdrawals\":[]}", "withdrawals"),
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", "beaconRoot"),
-            ("{\"beaconRoot\":null,\"withdrawals\":null}", null)
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", "block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput),
+            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"beaconRoot\":null,\"withdrawals\":null}", null, null)
         ];
-        foreach ((string json, string? field) in cases)
+        foreach ((string json, string? error, int? code) in cases)
             foreach (string? tracer in new string?[] { null, "callTracer" })
-                yield return new TestCaseData(json, field, tracer);
+                yield return new TestCaseData(json, error, code, tracer);
     }
 
     [TestCaseSource(nameof(UnsupportedBlockOverrides))]
-    public async Task Debug_traceCall_validates_unsupported_block_overrides(string overrides, string? rejectedField, string? tracer)
+    public async Task Debug_traceCall_validates_unsupported_block_overrides(string overrides, string? expectedError, int? expectedCode, string? tracer)
     {
         using Context ctx = await Context.Create();
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
             new { tracer, blockOverrides = JsonSerializer.Deserialize<JsonElement>(overrides) });
         JToken json = JToken.Parse(response);
-        if (rejectedField is null)
+        if (expectedError is null)
         {
             using (Assert.EnterMultipleScope())
             {
@@ -888,9 +888,8 @@ public partial class DebugRpcModuleTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(json["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
-                Assert.That(json["error"]?["message"]?.Value<string>(),
-                    Is.EqualTo($"block override \"{rejectedField}\" is not supported for this RPC method"));
+                Assert.That(json["error"]?["code"]?.Value<int>(), Is.EqualTo(expectedCode));
+                Assert.That(json["error"]?["message"]?.Value<string>(), Is.EqualTo(expectedError));
             }
         }
     }
@@ -1186,11 +1185,11 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_selects_block_and_state_before_conflicting_storage(
-        [Values("pending", "missing", "unavailable", "unavailable-parent")] string selection, [Values] bool streaming)
+        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals")] string selection, [Values] bool streaming)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
-        if (selection == "unavailable") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
+        if (selection is "unavailable" or "unavailable-with-withdrawals") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
         if (selection == "unavailable-parent")
         {
             Block parent = chain.BlockTree.Head!;
@@ -1208,10 +1207,12 @@ public partial class DebugRpcModuleTests
             new
             {
                 txIndex = selection == "unavailable-parent" ? "0x0" : null,
+                blockOverrides = selection == "unavailable-with-withdrawals" ? new { withdrawals = Array.Empty<object>() } : null,
                 stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { state = new { }, stateDiff = new { } } }
             });
         (int code, string message) = selection switch
         {
+            "unavailable-with-withdrawals" => (ErrorCodes.InvalidParams, BlockOverride.WithdrawalsNotSupported),
             "pending" => (ErrorCodes.InvalidInput, "tracing on top of pending is not supported"),
             "missing" => (ErrorCodes.ResourceNotFound, "header not found"),
             _ => (ErrorCodes.ResourceUnavailable, "No state available")
