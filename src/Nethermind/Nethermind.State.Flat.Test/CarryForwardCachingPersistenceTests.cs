@@ -125,6 +125,7 @@ public class CarryForwardCachingPersistenceTests
     [TestCase(7, TestName = "BatchReads_SevenCacheMisses_PreservesOrderAndFillsCache")]
     [TestCase(8, TestName = "BatchReads_EightCacheMisses_PreservesOrderAndFillsCache")]
     [TestCase(15, TestName = "BatchReads_FifteenCacheMisses_PreservesOrderAndFillsCache")]
+    [TestCase(16, TestName = "BatchReads_AllCacheMisses_PreservesOrderAndFillsCache")]
     public async Task BatchReads_WithMixedCacheHitsAndMisses_PreserveOrderAndFillCache(int misses)
     {
         const int count = 16;

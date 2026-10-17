@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
@@ -12,54 +14,63 @@ namespace Nethermind.State.Flat;
 public sealed partial class ReadOnlySnapshotBundle
 {
 
+    private static readonly StringLabel _readStorageBatchLabel = new("storage_batch");
+
+    [SkipLocalsInit]
     internal void GetSlots(ReadOnlySpan<(Address Address, int SelfDestructIdx, UInt256 Slot)> requests, Span<UInt256?> values)
     {
         GuardDispose();
         ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, requests.Length, nameof(values));
-        if (recordDetailedMetrics)
+        const int batchSize = 64;
+        Span<int> indexes = stackalloc int[batchSize];
+        Span<UInt256?> results = stackalloc UInt256?[batchSize];
+        for (int start = 0; start < requests.Length; start += batchSize)
         {
-            for (int i = 0; i < requests.Length; i++)
+            int count = Math.Min(batchSize, requests.Length - start);
+            ReadOnlySpan<(Address Address, int SelfDestructIdx, UInt256 Slot)> chunk = requests.Slice(start, count);
+            Span<UInt256?> output = values.Slice(start, count);
+            int misses = 0;
+            for (int i = 0; i < chunk.Length; i++)
             {
-                ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref requests[i];
-                GetSlot(request.Address, in request.Slot, request.SelfDestructIdx, out values[i]);
+                ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref chunk[i];
+                if (TryGetSlotFromSnapshots(request.Address, in request.Slot, request.SelfDestructIdx, out UInt256? value,
+                        recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0))
+                    output[i] = value;
+                else
+                    indexes[misses++] = i;
             }
-            return;
-        }
-
-        using ArrayPoolListRef<int> misses = new(0);
-        for (int i = 0; i < requests.Length; i++)
-        {
-            ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref requests[i];
-            if (TryGetSlotFromSnapshots(request.Address, in request.Slot, request.SelfDestructIdx, out UInt256? value))
-                values[i] = value;
-            else
-                misses.Add(i);
-        }
-        if (misses.Count < BatchPersistenceReaderExtensions.MinBatchSize)
-        {
-            for (int i = 0; i < misses.Count; i++)
+            if (misses < BatchPersistenceReaderExtensions.MinBatchSize)
             {
-                ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref requests[misses[i]];
-                UInt256 value = default;
-                values[misses[i]] = persistenceReader.TryGetSlot(request.Address, in request.Slot, ref value) ? value : null;
+                for (int i = 0; i < misses; i++)
+                {
+                    ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref chunk[indexes[i]];
+                    UInt256 value = default;
+                    long readStart = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+                    output[indexes[i]] = persistenceReader.TryGetSlot(request.Address, in request.Slot, ref value) ? value : null;
+                    if (recordDetailedMetrics)
+                        Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - readStart,
+                            value.IsZero ? _readStoragePersistenceNullLabel : _readStoragePersistenceLabel);
+                }
+                continue;
             }
-            return;
-        }
 
-        using ArrayPoolListRef<StorageCell> inputs = new(misses.Count, misses.Count);
-        for (int i = 0; i < misses.Count; i++)
-        {
-            ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref requests[misses[i]];
-            inputs[i] = new StorageCell(request.Address, in request.Slot);
+            using ArrayPoolListRef<StorageCell> inputs = new(misses, misses);
+            for (int i = 0; i < misses; i++)
+            {
+                ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref chunk[indexes[i]];
+                inputs[i] = new StorageCell(request.Address, in request.Slot);
+            }
+            Span<UInt256?> batchValues = misses == chunk.Length ? output : results[..misses];
+            long batchStart = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+            persistenceReader.GetSlots(inputs.AsSpan(), batchValues);
+            if (recordDetailedMetrics)
+            {
+                Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - batchStart, _readStorageBatchLabel);
+                Metrics.ReadOnlySnapshotBundleReadBatchSize.Observe(misses, _readStorageBatchLabel);
+            }
+            if (misses != chunk.Length)
+                for (int i = 0; i < misses; i++) output[indexes[i]] = batchValues[i];
         }
-        if (misses.Count == requests.Length)
-        {
-            persistenceReader.GetSlots(inputs.AsSpan(), values);
-            return;
-        }
-        using ArrayPoolSpan<UInt256?> results = new(misses.Count);
-        persistenceReader.GetSlots(inputs.AsSpan(), results);
-        for (int i = 0; i < misses.Count; i++) values[misses[i]] = results[i];
     }
 
     internal bool TryGetCachedSlot(Address address, in UInt256 slot, int selfDestructIdx, out UInt256? value)

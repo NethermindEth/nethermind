@@ -343,6 +343,19 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 return;
             }
 
+            if (misses.Count == cells.Length)
+            {
+                inner.GetSlots(cells, values);
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    UInt256? result = values[i];
+                    ref readonly StorageCell cell = ref cells[i];
+                    if (parent.IsCurrent(generation)) parent.TryCacheSlot(misses[i].Hash, cell.Address, in cell.Index,
+                        result.HasValue, result.GetValueOrDefault(), generation);
+                }
+                return;
+            }
+
             using ArrayPoolListRef<StorageCell> inputs = new(misses.Count, misses.Count);
             using ArrayPoolSpan<UInt256?> results = new(misses.Count);
             for (int i = 0; i < misses.Count; i++) inputs[i] = cells[misses[i].Index];
