@@ -52,7 +52,7 @@ public interface IMergeConfig : IConfig
     public GcCompaction CompactMemory { get; set; }
 
     [ConfigItem(Description = """
-            The number of eligible newPayload calls between compacting collections that release process memory. Decommit waits for at least three seconds after payload completion (or PostBlockGcDelayMs, if longer); a new payload cancels the wait without clearing the count.
+            The number of eligible newPayload calls between compacting collections that release process memory. Once due, the decommit runs only while the memory load is at or above `DecommitMemoryLoadPercent`, or once `CollectionsPerUnconditionalDecommit` calls have been counted; until then it is checked again after every call. Decommit waits for at least three seconds after payload completion (or PostBlockGcDelayMs, if longer); a new payload cancels the wait without clearing the count.
 
             Allowed values:
 
@@ -63,6 +63,30 @@ public interface IMergeConfig : IConfig
 
             """, DefaultValue = "25")]
     public int CollectionsPerDecommit { get; set; }
+
+    [ConfigItem(Description = """
+            The memory load, in percent of physical memory or of the container's memory limit, at or above which a due decommit (see `CollectionsPerDecommit`) runs. The load is the one the runtime recorded at its last collection. Below it, the decommit waits for `CollectionsPerUnconditionalDecommit`.
+
+            Allowed values:
+
+            - `0`: Decommits whenever due, whatever the memory load.
+            - A number from 1 to 100: Decommits when due and the memory load is at least that percentage.
+
+
+            """, DefaultValue = "70")]
+    public int DecommitMemoryLoadPercent { get; set; }
+
+    [ConfigItem(Description = """
+            The number of eligible newPayload calls after which a due decommit (see `CollectionsPerDecommit`) runs even below `DecommitMemoryLoadPercent`.
+
+            Allowed values:
+
+            - `-1`: Decommits only at or above `DecommitMemoryLoadPercent`.
+            - A positive number: Decommits after that many eligible newPayload calls since the last decommit. A number below `CollectionsPerDecommit` decommits whenever due.
+
+
+            """, DefaultValue = "300")]
+    public int CollectionsPerUnconditionalDecommit { get; set; }
 
     [ConfigItem(Description = "The timeout, in milliseconds, for the `engine_newPayload` method.", DefaultValue = "7000", HiddenFromDocs = true)]
     public int NewPayloadBlockProcessingTimeout { get; set; }
