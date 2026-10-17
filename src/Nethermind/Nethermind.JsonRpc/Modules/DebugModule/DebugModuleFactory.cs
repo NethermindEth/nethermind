@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;
@@ -50,11 +51,11 @@ public class DebugModuleFactory(
             if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
         });
 
-        // Pass only `IGethStyleTracer` into the debug rpc lifetime.
-        // This is to prevent leaking processor or world state accidentally.
-        // `GethStyleTracer` must be very careful to always dispose overridable env.
+        // Forward the tracer's repository for read-only preflight; this exposes the full repository contract.
+        // Stateful repository operations must stay inside the tracer's overridable env scope.
         ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>()));
+            .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>())
+            .AddScoped<IOverridableCodeInfoRepository>(tracerLifecycle.Resolve<IOverridableCodeInfoRepository>()));
 
         debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecycle);
         rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);

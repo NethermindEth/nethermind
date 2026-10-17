@@ -86,6 +86,15 @@ public static class StateOverridesExtensions
         }
     }
 
+    /// <summary>
+    /// Checks a precompile move's source before checking whether its destination is overridden.
+    /// The caller must resolve source dispatch through its repository.
+    /// </summary>
+    public static string? GetPrecompileMoveError(Address source, Address destination, bool isPrecompile, Dictionary<Address, AccountOverride> overrides) =>
+        !isPrecompile ? $"Account {source} is not a precompile"
+        : overrides.ContainsKey(destination) ? $"account {destination} is already overridden"
+        : null;
+
     private static void UpdateCode(
         this IWorldState stateProvider,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
@@ -96,16 +105,9 @@ public static class StateOverridesExtensions
     {
         if (accountOverride.MovePrecompileToAddress is not null)
         {
-            if (!overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile)
-            {
-                throw new ArgumentException($"Account {address} is not a precompile");
-            }
-
-            // As in geth, a precompile cannot be moved onto an account that is overridden itself.
-            if (overrides.ContainsKey(accountOverride.MovePrecompileToAddress))
-            {
-                throw new ArgumentException($"account {accountOverride.MovePrecompileToAddress} is already overridden");
-            }
+            string? error = GetPrecompileMoveError(address, accountOverride.MovePrecompileToAddress,
+                overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile, overrides);
+            if (error is not null) throw new ArgumentException(error);
 
             overridableCodeInfoRepository.MovePrecompile(
                 currentSpec,
