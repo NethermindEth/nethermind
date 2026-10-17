@@ -26,17 +26,22 @@ public class FrameTxValidationTests
         Assert.That(error, Is.EqualTo(expectedError));
     }
 
-    [TestCase(true, null)]
-    [TestCase(false, FrameTxValidation.PostTxNotEnabled)]
-    public void IsWellFormed_PostTxFrameGatedByItsFork_ReturnsExpectedError(bool postTxEnabled, string? expectedError)
+    [TestCase(FrameMode.PostTx, FrameFlags.None, true, null)]
+    [TestCase(FrameMode.PostTx, FrameFlags.None, false, FrameTxValidation.PostTxNotEnabled)]
+    [TestCase(FrameMode.Sender, FrameFlags.PostTxExempt, true, null)]
+    [TestCase(FrameMode.Sender, FrameFlags.PostTxExempt, false, FrameTxValidation.InvalidFlags)]
+    public void IsWellFormed_PostTxFrameGatedByItsFork_ReturnsExpectedError(FrameMode mode, FrameFlags flags, bool postTxEnabled, string? expectedError)
     {
-        Transaction tx = CreateValidFrameTx(static tx =>
-            tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx)]);
+        Transaction tx = CreateValidFrameTx(tx =>
+            tx.Frames = [SelfVerifyFrame(), Frame(mode: mode, flags: flags)]);
 
         bool wellFormed = FrameTxValidation.IsWellFormed(tx, postTxEnabled, out string? error);
 
-        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
-        Assert.That(error, Is.EqualTo(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
     }
 
     private static IEnumerable<TestCaseData> ConstraintCases()
@@ -74,9 +79,63 @@ public class FrameTxValidationTests
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx, flags: FrameFlags.ApprovePayment)],
             null);
 
-        // assert frame.flags < 8
-        yield return Case("FrameFlagsEight_InvalidFlags",
-            static tx => tx.Frames = [Frame(flags: (FrameFlags)8)], FrameTxValidation.InvalidFlags);
+        yield return Case("FrameFlagsSixteen_InvalidFlags",
+            static tx => tx.Frames = [Frame(flags: (FrameFlags)16)], FrameTxValidation.InvalidFlags);
+
+        yield return Case("ExemptSenderFrame_Valid",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.PostTx)],
+            null);
+        yield return Case("ExemptDefaultFrame_Valid",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.PostTx)],
+            null);
+        yield return Case("ExemptVerifyFrame_PostTxExemptWrongMode",
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, flags: FrameFlags.ApproveExecutionAndPayment | FrameFlags.PostTxExempt), Frame(mode: FrameMode.PostTx)],
+            FrameTxValidation.PostTxExemptWrongMode);
+        yield return Case("ExemptPostTxFrame_PostTxExemptWrongMode",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx, flags: FrameFlags.PostTxExempt)],
+            FrameTxValidation.PostTxExemptWrongMode);
+
+        yield return Case("ExemptBatchWithExemptTerminator_Valid",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch | FrameFlags.PostTxExempt), Frame(flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.PostTx)],
+            null);
+        yield return Case("ExemptBatchWithNonExemptTerminator_PostTxExemptSplitsAtomicBatch",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch | FrameFlags.PostTxExempt), DefaultModeFrame(), Frame(mode: FrameMode.PostTx)],
+            FrameTxValidation.PostTxExemptSplitsAtomicBatch);
+        yield return Case("ExemptTerminatorOfNonExemptBatch_PostTxExemptSplitsAtomicBatch",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch), Frame(flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.PostTx)],
+            FrameTxValidation.PostTxExemptSplitsAtomicBatch);
+
+        yield return Case("ExemptAfterNonExemptSender_PostTxExemptAfterNonExemptFrame",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Sender), Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.PostTx)],
+            FrameTxValidation.PostTxExemptAfterNonExemptFrame);
+        yield return Case("ExemptAfterNonExemptDefault_PostTxExemptAfterNonExemptFrame",
+            static tx => tx.Frames = [SelfVerifyFrame(), DefaultModeFrame(), Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.PostTx)],
+            FrameTxValidation.PostTxExemptAfterNonExemptFrame);
+        yield return Case("ExemptAfterNonExemptBehindASponsor_PostTxExemptAfterNonExemptFrame",
+            static tx => tx.Frames =
+            [
+                Frame(mode: FrameMode.Verify, flags: FrameFlags.ApproveExecution),
+                Frame(mode: FrameMode.Verify, flags: FrameFlags.ApprovePayment, target: TestItem.AddressB),
+                Frame(mode: FrameMode.Sender),
+                Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt),
+                Frame(mode: FrameMode.PostTx),
+            ],
+            FrameTxValidation.PostTxExemptAfterNonExemptFrame);
+        yield return Case("ExemptBehindANonExemptPrefixFrame_Valid",
+            static tx => tx.Frames = [DefaultModeFrame(), SelfVerifyFrame(), Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.PostTx)],
+            null);
+        yield return Case("ExemptRunFollowedByNonExempt_Valid",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.Sender), Frame(mode: FrameMode.PostTx)],
+            null);
+        yield return Case("ExemptBehindANonApprovingVerifyAfterPayment_Valid",
+            static tx => tx.Frames =
+            [
+                Frame(mode: FrameMode.Verify, flags: FrameFlags.ApproveExecutionAndPayment),
+                Frame(mode: FrameMode.Verify, target: TestItem.AddressB),
+                Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt),
+                Frame(mode: FrameMode.PostTx),
+            ],
+            null);
 
         // assert frame.mode == SENDER or frame.value == 0
         yield return Case("ValueOnDefaultFrame_ValueOutsideSenderMode",
