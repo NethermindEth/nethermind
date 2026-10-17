@@ -80,6 +80,39 @@ public class ResourcePoolTests
     }
 
     [Test]
+    public void Test_ReturnSnapshotContent_ReusedContentStartsEmpty_WhetherOrNotStorageNodesWereWritten()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.ReadOnlyProcessingEnv;
+        Address address = new("0x1234567890123456789012345678901234567890");
+        SnapshotContent? first = null;
+
+        for (int round = 0; round < 3; round++)
+        {
+            SnapshotContent content = _resourcePool.GetSnapshotContent(usage);
+            first ??= content;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(content, Is.SameAs(first));
+                Assert.That(content.Accounts, Is.Empty);
+                Assert.That(content.ReadAccounts, Is.Empty);
+                Assert.That(content.Storages, Is.Empty);
+                Assert.That(content.SelfDestructedStorageAddresses, Is.Empty);
+                Assert.That(content.StateNodes, Is.Empty);
+                Assert.That(content.StorageNodes, Is.Empty);
+            }
+
+            content.Accounts[address] = new Account(1, 2);
+            content.ReadAccounts[address] = new Account(3, 4);
+            content.Storages[(address, UInt256.One)] = UInt256.One;
+            content.SelfDestructedStorageAddresses[address] = true;
+            content.StateNodes[TreePath.Empty] = new TrieNode(NodeType.Unknown, TestItem.KeccakA);
+            if (round != 1) content.StorageNodes[(TestItem.KeccakA, TreePath.Empty)] = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
+
+            _resourcePool.ReturnSnapshotContent(usage, content);
+        }
+    }
+
+    [Test]
     public void Test_SnapshotContentPool_RespectsCapacity()
     {
         // For MainBlockProcessing: capacity = config.CompactSize + 8 = 2 + 8 = 10
