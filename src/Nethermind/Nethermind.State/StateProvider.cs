@@ -62,6 +62,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private readonly List<Change> _changes = new(Resettable.StartCapacity);
     // Positions in _changes where each transaction still in the journal started; GetOriginalBalance reads below the top one.
     private readonly Stack<int> _transactionChangesSnapshots = new();
+    // Changes at or below the newest snapshot or restore point are observable by a later restore and must not be rewritten.
+    private int _protectedPosition = Resettable.EmptyPosition;
     internal IWorldStateScopeProvider.IScope? _tree;
 
     private bool _needsStateRootUpdate;
@@ -242,7 +244,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             if (_logger.IsTrace) TraceUpdate(address, codeHash, account);
             Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
 
-            PushUpdate(address, changedAccount);
+            // Not coalesced: InsertCode anchors the staged code to the fresh position this change takes.
+            Push(address, changedAccount, ChangeType.Update);
         }
         else if (spec.IsEip158Enabled && !isGenesis)
         {
@@ -438,6 +441,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     public int TakeSnapshot(bool newTransactionStart)
     {
         int currentPosition = _changes.Count - 1;
+        _protectedPosition = currentPosition;
         if (_logger.IsTrace) Trace(currentPosition);
         if (newTransactionStart && currentPosition != Resettable.EmptyPosition)
         {
@@ -456,7 +460,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// while preserving lightweight cache-only entries.
     /// </summary>
     /// <param name="snapshot">Zero-based index representing the position in the change log to restore to.
-    /// Must be between 0 and the current last change index.</param>
+    /// Must be a position returned by <see cref="TakeSnapshot"/> or the current last change index: updates after the
+    /// newest snapshot are coalesced, so any other position can fall inside a rewritten change.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown if <paramref name="snapshot"/> is beyond the current position,
     /// or if internal consistency checks fail during rollback.</exception>
@@ -464,6 +469,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     {
         int lastIndex = _changes.Count - 1;
         if (snapshot > lastIndex) ThrowCannotRestore(lastIndex, snapshot);
+        Debug.Assert(snapshot <= _protectedPosition || snapshot == lastIndex, "Restoring to a position no snapshot protects");
         if (_logger.IsTrace) Trace(snapshot);
         // Ahead of the no-op check: an unanchored re-stage sits one past the log, so it is unwound
         // even by a restore to the current position.
@@ -472,6 +478,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             _transactionChangesSnapshots.Pop();
         }
+        _protectedPosition = snapshot;
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
         InvalidateFrontCache();
@@ -671,6 +678,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         InvalidateFrontCache();
         _changes.Clear();
         _transactionChangesSnapshots.Clear();
+        _protectedPosition = Resettable.EmptyPosition;
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
         _intraTxCache.ClearAndTrim();
@@ -1071,7 +1079,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         => Push(address, account, ChangeType.JustCache);
 
     private void PushUpdate(Address address, Account account)
-        => Push(address, account, ChangeType.Update);
+        => Push(address, account, ChangeType.Update, coalesce: true);
 
     private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
     {
@@ -1085,13 +1093,28 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private void PushNew(Address address, Account account)
         => Push(address, account, ChangeType.New);
 
-    private void Push(Address address, Account? touchedAccount, ChangeType changeType)
+    /// <param name="coalesce">
+    /// Whether an update may rewrite the account's head update in place when no snapshot can observe the value it replaces.
+    /// </param>
+    private void Push(Address address, Account? touchedAccount, ChangeType changeType, bool coalesce = false)
     {
         ref int head = ref _intraTxCache.GetValueRefOrAddDefault(address, out bool exists);
         if (changeType == ChangeType.Touch
             && exists && _changes[head].ChangeType == ChangeType.Touch)
         {
             return;
+        }
+
+        if (coalesce && exists && head > _protectedPosition)
+        {
+            ref Change last = ref CollectionsMarshal.AsSpan(_changes)[head];
+            if (last.ChangeType == ChangeType.Update)
+            {
+                last = new Change(address, touchedAccount, ChangeType.Update, last.PrevIdx);
+                if (IsFrontCacheHit(address))
+                    _cachedAccount = touchedAccount;
+                return;
+            }
         }
 
         // Only a change rewrites the account's leaf at commit, so only a change is worth warming its trie path
@@ -1170,6 +1193,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         InvalidateFrontCache();
         _changes.Clear();
         _transactionChangesSnapshots.Clear();
+        _protectedPosition = Resettable.EmptyPosition;
         _needsStateRootUpdate = false;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
