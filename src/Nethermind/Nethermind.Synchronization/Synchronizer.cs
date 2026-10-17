@@ -13,7 +13,6 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -446,10 +445,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         builder
             .AddDecorator<ISyncConfig>((ctx, syncConfig) =>
             {
-                // Move to clique plugin?
-                if (ctx.ResolveOptional<ChainSpec>()?.SealEngineType == SealEngineType.Clique)
-                    syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
-
                 ILogManager logManager = ctx.Resolve<ILogManager>();
                 ILogger logger = logManager.GetClassLogger<SynchronizerModule>();
 

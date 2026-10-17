@@ -52,7 +52,6 @@
     <ProjectReference Include="..\Nethermind.CensorshipDetector.Plugin\Nethermind.CensorshipDetector.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Flashbots\Nethermind.Flashbots.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
-    <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />

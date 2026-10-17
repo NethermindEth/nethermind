@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.HealthChecks;
@@ -29,7 +28,6 @@ public class PluginLoaderTests
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin),
-            typeof(CliquePlugin),
             typeof(EthashPlugin),
             typeof(NethDevPlugin),
             typeof(HivePlugin),
@@ -39,7 +37,6 @@ public class PluginLoaderTests
         List<Type> expected =
         [
             typeof(AuRaPlugin),
-            typeof(CliquePlugin),
             typeof(EthashPlugin),
             typeof(HivePlugin),
             typeof(NethDevPlugin),
@@ -54,14 +51,13 @@ public class PluginLoaderTests
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin),
-            typeof(CliquePlugin),
             typeof(EthashPlugin),
             typeof(NethDevPlugin),
             typeof(HivePlugin),
             typeof(TestPlugin));
         loader.Load();
         IPluginConfig pluginConfig =
-            new PluginConfig { PluginOrder = ["Hive", "Test", "NethDev", "Ethash", "Clique", "Aura"] };
+            new PluginConfig { PluginOrder = ["Hive", "Test", "NethDev", "Ethash", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
         List<Type> expected =
@@ -70,7 +66,6 @@ public class PluginLoaderTests
             typeof(TestPlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
-            typeof(CliquePlugin),
             typeof(AuRaPlugin),
         ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
@@ -86,7 +81,6 @@ public class PluginLoaderTests
             new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin),
             typeof(AnotherAura),
-            typeof(CliquePlugin),
             typeof(EthashPlugin),
             typeof(NethDevPlugin),
             typeof(HivePlugin),
@@ -106,7 +100,7 @@ public class PluginLoaderTests
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
-            typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
+            typeof(AuRaPlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
         loader.Load();
         IPluginConfig pluginConfig =
             new PluginConfig() { PluginOrder = ["Hive", "NethDev", "Ethash"] };
@@ -118,7 +112,6 @@ public class PluginLoaderTests
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(AuRaPlugin),
-            typeof(CliquePlugin),
             typeof(TestPlugin)
         ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
