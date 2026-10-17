@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -100,6 +101,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     ctx.Resolve<IBlocksConfig>(),
                     ctx.Resolve<IWithdrawalProcessorFactory>(),
                     ctx.Resolve<BalTxProcessorFactory>(),
+                    ctx.Resolve<ExecutionRequestsOptions>(),
                     zeroNonceStorageAccountsTransition: ctx.Resolve<ZeroNonceStorageAccountsTransition>()));
             if (recordsTransactionDiffs)
             {

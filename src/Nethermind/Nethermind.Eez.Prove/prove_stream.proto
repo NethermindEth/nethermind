@@ -1,0 +1,162 @@
+// Copied from eez-association/eez-rollup0 at efcbb9a10086c94c9a79c8187faaef5cdbeffd32, licensed MIT OR Apache-2.0.
+syntax = "proto3";
+
+package prove.v2;
+
+option csharp_namespace = "Nethermind.Eez.Prove.V2";
+
+import "prove.proto";
+
+service Prover {
+
+
+  rpc ProveStream(stream ClientFrame) returns (stream ServerFrame);
+}
+
+message ClientFrame {
+
+
+  bytes session_id = 1;
+
+
+  uint64 request_id = 2;
+
+
+  uint64 epoch = 3;
+  oneof kind {
+    Begin begin = 4;
+    Resume resume = 5;
+    Rewind rewind = 6;
+    Block block = 7;
+    Finalize finalize = 8;
+    Cancel cancel = 9;
+  }
+}
+
+message Begin {
+  uint64 rollup_id = 1;
+
+
+
+  uint64 anchor_number = 2;
+  bytes anchor_hash = 3;
+  bytes anchor_state_root = 4;
+}
+
+
+
+message Resume {}
+
+message Rewind {
+
+
+
+  bytes ancestor_hash = 1;
+}
+
+message Block {
+
+
+
+  prove.v1.BlockWitness data = 1;
+}
+
+message Finalize {
+
+
+
+  uint64 from_block = 1;
+
+  uint64 to_block = 2;
+  bytes terminal_hash = 3;
+
+  SettlementInput settlement = 4;
+}
+
+
+
+message SettlementInput {
+
+
+  bytes abi_calldata = 1;
+
+
+
+  repeated bytes blobs = 2;
+
+
+
+
+  L1PostingContext posting_context = 3;
+}
+
+
+message L1PostingContext {
+  uint64 chain_id = 1;
+  uint64 target_timestamp = 2;
+  uint64 parent_number = 3;
+  bytes parent_hash = 4;
+}
+
+
+
+message Cancel {}
+
+message ServerFrame {
+
+
+  bytes session_id = 1;
+
+  uint64 request_id = 2;
+
+
+
+  uint64 epoch = 3;
+  oneof kind {
+    Ready ready = 4;
+    Validated validated = 5;
+    Proof proof = 6;
+    Cancelled cancelled = 7;
+    Rejected rejected = 8;
+  }
+}
+
+message Ready {
+
+  uint64 validated_through = 1;
+  bytes validated_hash = 2;
+}
+
+message Validated {
+  uint64 number = 1;
+  bytes hash = 2;
+  bytes post_state_root = 3;
+
+
+  bool reused = 4;
+}
+
+message Proof {
+
+
+
+  bytes public_inputs_hash = 1;
+  bytes proof = 2;
+}
+
+message Cancelled {}
+
+message Rejected {
+
+
+
+  int32 code = 1;
+  string message = 2;
+
+  bytes details = 3;
+
+
+
+  uint64 validated_through = 4;
+  bytes validated_hash = 5;
+}

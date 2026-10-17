@@ -1,0 +1,13 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG SKIP_CONSENSUS_LAYER_CALLS
+ENV EEZ_SKIP_CONSENSUS_LAYER_CALLS=${SKIP_CONSENSUS_LAYER_CALLS}
+ENV EEZ_CI_STREAMING=true
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends haproxy openssl jq && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0555 start-streaming.sh /attester/start-streaming.sh
+COPY --chmod=0555 start-prover.sh /attester/eez-proof-signer
+RUN mkdir -p /data && chown app:app /data
+ENV PATH="/attester:${PATH}"
+USER app
+ENTRYPOINT ["/attester/eez-proof-signer"]

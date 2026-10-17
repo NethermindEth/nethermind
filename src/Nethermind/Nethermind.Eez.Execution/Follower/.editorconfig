@@ -1,0 +1,5 @@
+[{L1Batch,L1Settlement,SettlementAttribution}.cs]
+dotnet_diagnostic.IDE0130.severity = none
+
+[RollupX/CarrierAttribution.cs]
+dotnet_diagnostic.IDE0130.severity = none
