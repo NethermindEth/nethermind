@@ -28,7 +28,7 @@ namespace Nethermind.State.Flat.Test;
 /// A block that deletes slots of a storage trie held in persistence: the slots are hinted as the block writes them,
 /// the warmer runs, and the block-end commit should then find every trie node it needs already loaded.
 /// </summary>
-public class FlatStorageTreeDeleteWarmupTests
+public partial class FlatStorageTreeDeleteWarmupTests
 {
     private const int TrieSlots = 2_000;
     private const int DeletedSlots = 64;

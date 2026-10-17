@@ -16,7 +16,7 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.Test;
 
 [TestFixture]
-public class ReadOnlySnapshotBundlePersistedTests
+public partial class ReadOnlySnapshotBundlePersistedTests
 {
     private ResourcePool _pool = null!;
     private ArenaManager _memArena = null!;

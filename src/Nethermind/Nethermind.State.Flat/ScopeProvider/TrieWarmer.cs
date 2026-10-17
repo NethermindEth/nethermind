@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -120,7 +121,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             {
                 while (TryDequeue(out Job job))
                 {
-                    HandleJob(in job);
+                    HandleJobs(in job);
                 }
 
                 processor.ClearScheduled();
@@ -180,6 +181,59 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         catch (ObjectDisposedException) { }
         // Scope disposal can null pooled snapshot maps while a queued warmup is already inside trie traversal.
         catch (NullReferenceException) when (IsDisposedJobTarget(in job)) { }
+    }
+
+    private void HandleJobs(in Job first)
+    {
+        const int batchSize = 64;
+        if (PendingHint() < 7 || first.scopeOrStorageTree is not (FlatWorldStateScope or FlatStorageTree))
+        {
+            HandleJob(in first);
+            return;
+        }
+
+        Span<PatriciaTree.WarmUpEntry> entries = stackalloc PatriciaTree.WarmUpEntry[batchSize];
+        int count = 1;
+        Job next = default;
+        bool hasNext = false;
+        try
+        {
+            if (first.scopeOrStorageTree is FlatWorldStateScope stateScope && stateScope.IsWarmupStopped(first.sequenceId)
+                || first.scopeOrStorageTree is FlatStorageTree storageTree && storageTree.IsWarmupStopped(first.sequenceId)) return;
+            entries[0] = ToWarmUpEntry(in first);
+            while (count < entries.Length && TryDequeue(out next))
+            {
+                if (!ReferenceEquals(first.scopeOrStorageTree, next.scopeOrStorageTree) || first.sequenceId != next.sequenceId)
+                {
+                    hasNext = true;
+                    break;
+                }
+                count++;
+                entries[count - 1] = ToWarmUpEntry(in next);
+            }
+            if (first.scopeOrStorageTree is FlatWorldStateScope scope)
+                scope.WarmUpStateTrieBatch(entries[..count], first.sequenceId);
+            else
+                ((FlatStorageTree)first.scopeOrStorageTree).WarmUpStorageTrieBatch(entries[..count], first.sequenceId);
+        }
+        catch (TrieNodeException) { }
+        catch (NodeHashMismatchException) { }
+        catch (ObjectDisposedException) { }
+        catch (NullReferenceException) when (IsDisposedJobTarget(in first)) { }
+        finally
+        {
+            if (first.scopeOrStorageTree is FlatWorldStateScope scope) scope.CompleteWarmups(count);
+            else ((FlatStorageTree)first.scopeOrStorageTree).CompleteWarmups(count);
+            if (hasNext) HandleJob(in next);
+        }
+    }
+
+    private static PatriciaTree.WarmUpEntry ToWarmUpEntry(in Job job)
+    {
+        if (job.scopeOrStorageTree is FlatWorldStateScope) return new(job.path!.ToAccountPath);
+        ValueHash256 key = default;
+        StorageTree.ComputeKeyWithLookup(job.index, ref key);
+        return new(key, job.isDelete);
     }
 
     private static bool IsDisposedJobTarget(in Job job) =>

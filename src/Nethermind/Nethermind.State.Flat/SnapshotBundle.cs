@@ -407,6 +407,18 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
     }
 
+    internal void LoadStateRlps(ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, Span<byte[]?> values)
+    {
+        GuardDispose();
+        _readOnlySnapshotBundle.LoadStateRlps(requests, values);
+    }
+
+    internal void LoadStorageRlps(Hash256 address, ReadOnlySpan<(TreePath Path, Hash256 Hash)> requests, Span<byte[]?> values)
+    {
+        GuardDispose();
+        _readOnlySnapshotBundle.LoadStorageRlps(address, requests, values);
+    }
+
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
