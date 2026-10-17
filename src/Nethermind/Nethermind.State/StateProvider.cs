@@ -460,7 +460,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// while preserving lightweight cache-only entries.
     /// </summary>
     /// <param name="snapshot">Zero-based index representing the position in the change log to restore to.
-    /// Must be between 0 and the current last change index.</param>
+    /// Must be a position returned by <see cref="TakeSnapshot"/> or the current last change index: updates after the
+    /// newest snapshot are coalesced, so any other position can fall inside a rewritten change.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown if <paramref name="snapshot"/> is beyond the current position,
     /// or if internal consistency checks fail during rollback.</exception>
@@ -468,6 +469,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     {
         int lastIndex = _changes.Count - 1;
         if (snapshot > lastIndex) ThrowCannotRestore(lastIndex, snapshot);
+        Debug.Assert(snapshot <= _protectedPosition || snapshot == lastIndex, "Restoring to a position no snapshot protects");
         if (_logger.IsTrace) Trace(snapshot);
         // Ahead of the no-op check: an unanchored re-stage sits one past the log, so it is unwound
         // even by a restore to the current position.

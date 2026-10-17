@@ -584,6 +584,34 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Balance_coalesced_into_a_code_update_is_restored_with_the_code()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x03, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+        provider.CreateAccount(_address1, 100);
+        provider.Commit(spec);
+
+        Snapshot txStart = provider.TakeSnapshot(newTransactionStart: true);
+        provider.InsertCode(_address1, code, spec);
+        provider.AddToBalance(_address1, 5, spec);
+
+        // The cold read takes position 0 and the balance update joins the code change at 1.
+        Assert.That(provider.TakeSnapshot().StateSnapshot, Is.EqualTo(1));
+
+        provider.Restore(txStart);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)100));
+            Assert.That(provider.GetCodeHash(_address1), Is.EqualTo(Keccak.OfAnEmptyString));
+            Assert.That(CodeBatchContains((WorldState)provider, codeHash), Is.False);
+        }
+    }
+
+    [Test]
     public void Coalesced_account_updates_trace_the_state_before_the_transaction()
     {
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
