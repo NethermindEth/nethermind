@@ -896,7 +896,7 @@ public class ReadOnlySnapshotBundleFilterTests
             (Address address, int cutoff, UInt256 slot) = requests[i];
             UInt256? expected = Oracle.Slot(stack.Layers, stack.PersistenceSlots, (address, slot), cutoff);
             if (values[i] != expected) errors.Add($"{mode}: batch slot ({cutoff}, {address}, {slot}) = {values[i]}, oracle {expected}");
-            if (!bundle.TryGetCachedSlot(address, in slot, cutoff, out UInt256? cached) || cached != expected)
+            if (!bundle.TryGetCachedSlot(new((address, slot)), cutoff, out UInt256? cached) || cached != expected)
                 errors.Add($"{mode}: cached slot ({cutoff}, {address}, {slot}) = {cached}, oracle {expected}");
         }
 

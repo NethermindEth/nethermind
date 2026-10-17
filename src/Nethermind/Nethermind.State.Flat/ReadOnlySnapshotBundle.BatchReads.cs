@@ -33,7 +33,8 @@ public sealed partial class ReadOnlySnapshotBundle
             for (int i = 0; i < chunk.Length; i++)
             {
                 ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref chunk[i];
-                if (TryGetSlotFromSnapshots(request.Address, in request.Slot, request.SelfDestructIdx, out UInt256? value,
+                HashedKey<(Address, UInt256)> key = new((request.Address, request.Slot));
+                if (TryGetSlotFromSnapshots(in key, request.SelfDestructIdx, out UInt256? value,
                         recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0))
                     output[i] = value;
                 else
@@ -73,12 +74,13 @@ public sealed partial class ReadOnlySnapshotBundle
         }
     }
 
-    internal bool TryGetCachedSlot(Address address, in UInt256 slot, int selfDestructIdx, out UInt256? value)
+    internal bool TryGetCachedSlot(in HashedKey<(Address, UInt256)> key, int selfDestructIdx, out UInt256? value)
     {
         GuardDispose();
-        if (TryGetSlotFromSnapshots(address, in slot, selfDestructIdx, out value,
+        if (TryGetSlotFromSnapshots(in key, selfDestructIdx, out value,
                 recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0)) return true;
         long start = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        (Address address, UInt256 slot) = key.Key;
         if (persistenceReader is not IBatchPersistenceReader batch || !batch.TryGetCachedSlot(address, in slot, out value)) return false;
         if (recordDetailedMetrics)
             Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start,
@@ -86,9 +88,8 @@ public sealed partial class ReadOnlySnapshotBundle
         return true;
     }
 
-    private bool TryGetSlotFromSnapshots(Address address, in UInt256 slot, int selfDestructIdx, out UInt256? value, long start = 0)
+    private bool TryGetSlotFromSnapshots(in HashedKey<(Address, UInt256)> key, int selfDestructIdx, out UInt256? value, long start = 0)
     {
-        HashedKey<(Address, UInt256)> key = new((address, slot));
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             if (snapshots[i].TryGetStorage(key, out value))
@@ -102,7 +103,11 @@ public sealed partial class ReadOnlySnapshotBundle
                 return true;
             }
         }
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in slot, selfDestructIdx, start, out value)) return true;
+        if (_persistedSnapshotCount > 0)
+        {
+            (Address address, UInt256 slot) = key.Key;
+            if (persistedSnapshots.TryGetSlot(address, in slot, selfDestructIdx, start, out value)) return true;
+        }
         value = null;
         return false;
     }

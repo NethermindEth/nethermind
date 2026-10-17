@@ -19,7 +19,8 @@ public sealed partial class SnapshotBundle
         for (int i = 0; i < requests.Length; i++)
         {
             ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref requests[i];
-            if (TryGetSlotFromCurrentSnapshots(request.Address, in request.Slot, request.SelfDestructIdx, out UInt256? value))
+            HashedKey<(Address, UInt256)> key = new((request.Address, request.Slot));
+            if (TryGetSlotFromCurrentSnapshots(in key, request.SelfDestructIdx, out UInt256? value))
                 values[i] = value;
             else
                 misses.Add(i);
@@ -52,13 +53,13 @@ public sealed partial class SnapshotBundle
     internal bool TryGetCachedSlot(Address address, in UInt256 slot, int selfDestructIdx, out UInt256? value)
     {
         GuardDispose();
-        return TryGetSlotFromCurrentSnapshots(address, in slot, selfDestructIdx, out value)
-            || _readOnlySnapshotBundle.TryGetCachedSlot(address, in slot, selfDestructIdx, out value);
+        HashedKey<(Address, UInt256)> key = new((address, slot));
+        return TryGetSlotFromCurrentSnapshots(in key, selfDestructIdx, out value)
+            || _readOnlySnapshotBundle.TryGetCachedSlot(in key, selfDestructIdx, out value);
     }
 
-    private bool TryGetSlotFromCurrentSnapshots(Address address, in UInt256 slot, int selfDestructIdx, out UInt256? value)
+    private bool TryGetSlotFromCurrentSnapshots(in HashedKey<(Address, UInt256)> key, int selfDestructIdx, out UInt256? value)
     {
-        HashedKey<(Address, UInt256)> key = new((address, slot));
         if (_changedSlots.TryGetValue(key, out value)) return true;
         if (selfDestructIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
         {
