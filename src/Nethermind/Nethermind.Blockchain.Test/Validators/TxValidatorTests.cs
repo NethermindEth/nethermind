@@ -1495,8 +1495,8 @@ public class TxValidatorTests
 [TestFixture]
 public class FrameTxAssertFrameModeGateTests
 {
-    [TestCase(false, ExpectedResult = true, TestName = "AssertFrame frame is admitted once EIP-7906 is enabled")]
-    [TestCase(true, ExpectedResult = false, TestName = "AssertFrame frame is rejected before EIP-7906")]
+    [TestCase(false, ExpectedResult = true, TestName = "ASSERT frame is admitted once EIP-7906 is enabled")]
+    [TestCase(true, ExpectedResult = false, TestName = "ASSERT frame is rejected before EIP-7906")]
     public bool IsWellFormed_AssertFrame_IsGatedOnTheFork(bool beforeTheFork)
     {
         OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip7906Enabled = !beforeTheFork };
