@@ -22,7 +22,7 @@ on:
         description: Components to measure
         required: true
         type: choice
-        options: [blob, history, both, chain, receipt, native, bal, trie]
+        options: [blob, history, both, chain, receipt, native, bal, trie, trie-profile-report]
         default: both
       control_ref:
         description: Exact shared-master decoded API control SHA for chain measurements
@@ -41,11 +41,15 @@ on:
         required: false
         type: boolean
         default: false
+      profile_run_id:
+        description: Existing diagnostic run whose snapshot must be converted
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
   verify:
-    if: inputs.components != 'chain' && inputs.components != 'receipt' && inputs.components != 'native' && inputs.components != 'bal' && inputs.components != 'trie'
+    if: inputs.components != 'chain' && inputs.components != 'receipt' && inputs.components != 'native' && inputs.components != 'bal' && inputs.components != 'trie' && inputs.components != 'trie-profile-report'
     strategy:
       fail-fast: false
       matrix:
@@ -585,10 +589,10 @@ jobs:
           set -euo pipefail
           for source in baseline control candidate; do
             flags=()
-            if [[ "$source" == candidate ]]; then flags=(-p:BatchTrie=true); fi
+            if [[ -f "$source/src/Nethermind/Nethermind.Trie/PatriciaTree.WarmUp.cs" ]]; then flags=(-p:BatchTrie=true); fi
             dotnet build "$source/benchmarks/trie-prefetch/TriePrefetch.csproj" -c Release "${flags[@]}"
             mode=scalar
-            if [[ "$source" == candidate ]]; then mode=batch; fi
+            if [[ -f "$source/src/Nethermind/Nethermind.Trie/PatriciaTree.WarmUp.cs" ]]; then mode=batch; fi
             TRIE_MODE="$mode" dotnet run --project "$source/benchmarks/trie-prefetch/TriePrefetch.csproj" -c Release --no-build -- --verify | tee "results/$source-preflight.log"
           done
           python3 proof/benchmarks/storage-adoption/validate-chain.py packages
@@ -607,7 +611,7 @@ jobs:
             output="$GITHUB_WORKSPACE/results/trie/$round-$source"
             mkdir -p "$output"
             mode=scalar
-            if [[ "$source" == candidate ]]; then mode=batch; fi
+            if [[ -f "$source/src/Nethermind/Nethermind.Trie/PatriciaTree.WarmUp.cs" ]]; then mode=batch; fi
             TRIE_MODE="$mode" TRIE_OUTPUT="$output/results.json" dotnet run --project "$source/benchmarks/trie-prefetch/TriePrefetch.csproj" -c Release --no-build | tee "$output/measurement.log"
             python3 proof/benchmarks/storage-adoption/validate-trie.py results "$output/results.json"
           done
@@ -617,3 +621,50 @@ jobs:
         with:
           name: trie-prefetch-${{ matrix.os }}
           path: results
+  trie-profile-report:
+    if: inputs.components == 'trie-profile-report'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Validate diagnostic run ID
+        shell: pwsh
+        env:
+          PROFILE_RUN_ID: ${{ inputs.profile_run_id }}
+        run: |
+          if ($env:PROFILE_RUN_ID -notmatch '^[0-9]+$') { throw 'A numeric run ID is required' }
+      - uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ inputs.profile_run_id }}
+          github-token: ${{ github.token }}
+          pattern: dottrace-*
+          path: snapshots
+          merge-multiple: true
+      - name: Convert existing diagnostic snapshot
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -Uri 'https://www.nuget.org/api/v2/package/JetBrains.dotTrace.CommandLineTools.windows-x64/2026.1.0.1' -OutFile dottrace-clt.zip
+          Expand-Archive -Path dottrace-clt.zip -DestinationPath dottrace-clt
+          $reporter = Get-ChildItem dottrace-clt -Recurse -Filter Reporter.exe | Select-Object -First 1
+          if (-not $reporter) { throw 'Reporter.exe was not found' }
+          New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
+          '<Patterns><Pattern PrintCallstacks="Full">.*</Pattern></Patterns>' | Set-Content pattern.xml
+          Get-ChildItem snapshots -Filter '*.zip' | ForEach-Object {
+            Expand-Archive -Path $_.FullName -DestinationPath (Join-Path extracted $_.BaseName)
+          }
+          $snapshots = @(Get-ChildItem extracted -Recurse -Filter '*.dtp')
+          if ($snapshots.Count -eq 0) { throw 'No diagnostic snapshot was found' }
+          foreach ($snapshot in $snapshots) {
+            $output = Join-Path reports ($snapshot.BaseName + '-report.xml')
+            & $reporter.FullName report $snapshot.FullName --pattern=pattern.xml --save-to=$output
+            if ($LASTEXITCODE -ne 0) { throw "Reporter failed with exit code $LASTEXITCODE" }
+          }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: trie-diagnostic-reports-${{ inputs.profile_run_id }}
+          path: reports
+          if-no-files-found: error

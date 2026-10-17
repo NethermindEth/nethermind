@@ -30,6 +30,7 @@ if mode == "sources":
 elif mode == "results":
     rows = json.loads(Path(sys.argv[2]).read_text())
     expected = {(count, shape, cache) for count in (1, 8, 64, 65, 512) for shape in ("state", "storage", "shared") for cache in ("warm-db", "scalar-prewarmed", "retained-nodes", "cold-db")}
+    expected |= {(64, shape, f"retained-prefix-{prefix}") for shape in ("state", "storage", "shared") for prefix in (0, 1, 56, 57, 63)}
     assert len(rows) == len(expected) and {(r["count"], r["shape"], r["cache"]) for r in rows} == expected
     for row in rows:
         assert len(row["samples"]) == (12 if row["cache"] != "cold-db" else 8)
@@ -37,6 +38,6 @@ elif mode == "results":
             assert math.isfinite(sample["nanoseconds"]) and sample["nanoseconds"] > 0
             assert math.isfinite(sample["managedBytes"]) and sample["managedBytes"] >= 0
             assert sample["operations"] > 0
-    print("Verified all60 cases and every sample")
+    print("Verified all75 cases and every sample")
 else:
     raise SystemExit("Unknown validation mode")

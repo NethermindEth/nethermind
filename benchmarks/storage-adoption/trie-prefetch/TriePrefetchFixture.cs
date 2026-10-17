@@ -67,6 +67,8 @@ sealed class TriePrefetchFixture : IDisposable
 
     public Iteration Prepare(string cache, bool probe = false)
     {
+        int retainedPrefix = cache.StartsWith("retained-prefix-", StringComparison.Ordinal)
+            ? int.Parse(cache.AsSpan("retained-prefix-".Length)) : -1;
         if (cache == "cold-db")
         {
             _db.Dispose();
@@ -92,6 +94,8 @@ sealed class TriePrefetchFixture : IDisposable
 #endif
                 if (cache == "retained-nodes" && (counter.NativeCalls != 0 || counter.ScalarCalls != 0))
                     throw new InvalidOperationException("Retained-node control performed a persistence read");
+                if (retainedPrefix >= 0 && counter.NativeCalls == 0 && counter.ScalarCalls == 0)
+                    throw new InvalidOperationException("Partial retained-node control had no cold tail");
                 Console.WriteLine($"NativeProbe Count={_keys.Length} Cache={cache} Calls={counter.NativeCalls} ScalarCalls={counter.ScalarCalls} MaxKeys={counter.MaxKeys}");
             };
         }
@@ -104,10 +108,11 @@ sealed class TriePrefetchFixture : IDisposable
 #if BATCH_TRIE
         if (store is not IBatchTrieNodeResolver) throw new InvalidOperationException("Candidate warmer lacks batch resolver capability");
 #endif
-        if (cache == "retained-nodes") store = new RetainedNodeStore(store, checked(65 * _keys.Length + 1));
+        if (cache == "retained-nodes" || retainedPrefix >= 0) store = new RetainedNodeStore(store, checked(65 * _keys.Length + 1));
         PatriciaTree tree = new(store, LimboLogs.Instance) { RootHash = _root };
         Iteration iteration = new(bundle, tree, _keys, _updates, _expectedRoot, verifyProbe);
         if (cache is "scalar-prewarmed" or "retained-nodes") iteration.WarmScalar();
+        if (retainedPrefix >= 0) iteration.WarmScalar(retainedPrefix);
         probeCounter?.Reset();
         return iteration;
     }
@@ -159,9 +164,9 @@ sealed class TriePrefetchFixture : IDisposable
 #endif
         }
 
-        public void WarmScalar()
+        public void WarmScalar(int count = int.MaxValue)
         {
-            foreach (byte[] key in _keys) _tree.WarmUpPath(key);
+            for (int i = 0; i < Math.Min(count, _keys.Length); i++) _tree.WarmUpPath(_keys[i]);
         }
 
         public void Run()
