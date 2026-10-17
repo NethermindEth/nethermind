@@ -28,6 +28,8 @@ public static partial class StatelessExecutor
         {
             // Also installs the run's hash seed, which every hash-keyed container below depends on.
             payload = InputDecoder.Decode(data);
+            // The decoded payload holds copies, so nothing reads the input again.
+            KeccakHash.DonateConsumedInput(data);
         }
         catch (Exception ex)
         {
