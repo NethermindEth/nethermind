@@ -41,6 +41,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
     private readonly bool _isEip5920Enabled;
     private readonly bool _isEip8298Enabled;
+    // EIP-6780: SELFDESTRUCT deletes only an account created in the same transaction.
+    private readonly bool _isEip6780Enabled;
+    // EIP-8246: a self-destructed account that ends the transaction with a balance survives.
+    private readonly bool _isEip8246Enabled;
     private readonly bool _disableCode;
     private readonly bool _disableStorage;
 
@@ -65,6 +69,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _txHash = txHash;
         _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
         _isEip8298Enabled = releaseSpec?.IsEip8298Enabled == true;
+        _isEip6780Enabled = releaseSpec?.IsEip6780Enabled == true;
+        _isEip8246Enabled = releaseSpec?.IsEip8246Enabled == true;
         UInt256 instructionMask = CaptureMask;
         if (_isEip5920Enabled) instructionMask |= UInt256.One << (int)Instruction.PAY;
         if (_isEip8298Enabled) instructionMask |= UInt256.One << (int)Instruction.SETCODEFROM;
@@ -83,7 +89,13 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         LookupAccount(from!);
         if (transaction?.Frames is null)
-            LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        {
+            Address recipient = to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0);
+            LookupAccount(recipient);
+            // As in geth, a contract-creation transaction creates its recipient.
+            if (_diffMode && to is null)
+                _createdAccounts.Add(recipient);
+        }
         else
             LookupFrameTxState(from, transaction);
         LookupAccount(beneficiary ?? Address.Zero);
@@ -226,8 +238,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     address = stack.PeekAddress(0);
                     LookupAccount(address);
-                    if (_diffMode && _op == Instruction.SELFDESTRUCT)
-                        _deletedAccounts.Add(address);
+                    // As in geth, the executing account is deleted when the opcode runs, but after EIP-6780 only if
+                    // it was created in this transaction.
+                    if (_diffMode && _op == Instruction.SELFDESTRUCT
+                        && (!_isEip6780Enabled || _createdAccounts.Contains(_executingAccount!)))
+                        _deletedAccounts.Add(_executingAccount!);
                 }
                 break;
             // EIP-8298: SETCODEFROM reads the source account's code.
@@ -338,8 +353,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
         {
-            // If an account was deleted then don't show it in the postState trace
-            if (_deletedAccounts.Contains(addr))
+            // If an account was deleted then don't show it in the postState trace. Unlike geth, under EIP-8246 one
+            // that still exists kept its balance as a balance-only account, so it is a normal diff; EIP-161 removed
+            // it if the balance was zero.
+            if (_deletedAccounts.Contains(addr) && !(_isEip8246Enabled && _worldState!.AccountExists(addr)))
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
