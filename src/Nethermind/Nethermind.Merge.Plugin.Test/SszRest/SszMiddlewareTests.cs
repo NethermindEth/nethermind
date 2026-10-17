@@ -1446,19 +1446,28 @@ public class SszMiddlewareTests
         Assert.That(body, Does.Contain("request-too-large"));
     }
 
+    /// <remarks>
+    /// The query string accepts <c>from=0</c>; the engine handler then rejects <c>start &lt; 1</c> with -32602,
+    /// which the spec's error table maps to 422 invalid-body.
+    /// </remarks>
     [Test]
-    public async Task GetPayloadBodiesByRange_from_zero_is_valid()
+    public async Task GetPayloadBodiesByRange_from_zero_is_rejected_by_the_engine_as_invalid_body()
     {
+        GetPayloadBodiesByRangeV1Handler handler = new(Substitute.For<Blockchain.IBlockTree>(), Substitute.For<Blockchain.Blocks.IBlockStore>(), LimboLogs.Instance);
         _engineModule.engine_getPayloadBodiesByRangeV1(Arg.Any<ulong>(), Arg.Any<ulong>())
-            .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success([]));
+            .Returns(call => handler.Handle(call.ArgAt<ulong>(0), call.ArgAt<ulong>(1)));
 
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/bodies", fork: "shanghai");
         ctx.Request.QueryString = new QueryString("?from=0&count=1");
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status400BadRequest),
-            "from=0 (genesis block) must be accepted");
+        using (Assert.EnterMultipleScope())
+        {
+            await _engineModule.Received(1).engine_getPayloadBodiesByRangeV1(0, 1);
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status422UnprocessableEntity));
+            Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain("invalid-body"));
+        }
     }
 
     [Test]
@@ -1608,6 +1617,8 @@ public class SszMiddlewareTests
             .SetName("NewPayloadWithWitness_unsupported_fork_maps_to_400"),
         new TestCaseData(ErrorCodes.InternalError, "Something exploded", StatusCodes.Status500InternalServerError, "/engine-api/errors/internal")
             .SetName("NewPayloadWithWitness_internal_error_maps_to_500"),
+        new TestCaseData(ErrorCodes.InvalidParams, "Invalid requests", StatusCodes.Status422UnprocessableEntity, "/engine-api/errors/invalid-body")
+            .SetName("NewPayloadWithWitness_invalid_params_maps_to_422"),
     ];
 
     [TestCaseSource(nameof(WitnessEngineErrorCases))]
