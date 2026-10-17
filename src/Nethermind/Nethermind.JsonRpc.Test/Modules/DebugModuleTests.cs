@@ -499,14 +499,17 @@ public class DebugModuleTests
     [Test]
     public void DebugTraceBlockByNumber_PinsValidatedHeaderHash([Values] bool streaming, [Values] bool latest)
     {
-        Block validated = Build.A.Block.WithNumber(1).TestObject;
-        Block replacement = Build.A.Block.WithNumber(1).WithExtraData([0x01]).TestObject;
+        Block parent = Build.A.Block.WithNumber(0).TestObject;
+        Block validated = Build.A.Block.WithNumber(1).WithParent(parent).TestObject;
+        Block replacement = Build.A.Block.WithNumber(1).WithParent(parent).WithExtraData([0x01]).TestObject;
         BlockParameter selector = latest ? BlockParameter.Latest : new BlockParameter(1UL);
         _jsonRpcConfig.EnableTracingStreamMode = streaming;
         _blockFinder.Head.Returns(validated);
         _blockFinder.FindHeader(selector).Returns(validated.Header);
         _blockFinder.FindBlock(selector).Returns(replacement);
         _blockFinder.FindBlock(validated.Hash!, validated.Number).Returns(validated);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
+        _blockchainBridge.HasStateForBlock(parent.Header).Returns(true);
         _blockchainBridge.HasStateForBlock(validated.Header).Returns(true);
         _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(Array.Empty<GethLikeTxTrace>());
