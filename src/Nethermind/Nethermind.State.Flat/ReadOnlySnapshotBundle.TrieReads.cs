@@ -15,11 +15,16 @@ public sealed partial class ReadOnlySnapshotBundle
     {
         GuardDispose();
         ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, requests.Length, nameof(values));
+        if (recordDetailedMetrics || requests.Length < BatchTriePersistenceReaderExtensions.MinBatchSize)
+        {
+            for (int i = 0; i < requests.Length; i++)
+                values[i] = TryLoadStateRlp(in requests[i].Path, requests[i].Hash, ReadFlags.None);
+            return;
+        }
         using ArrayPoolListRef<int> misses = new(0);
         for (int i = 0; i < requests.Length; i++)
         {
-            if (recordDetailedMetrics) values[i] = TryLoadStateRlp(in requests[i].Path, requests[i].Hash, ReadFlags.None);
-            else if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStateRlp(in requests[i].Path, out byte[]? rlp)) values[i] = rlp;
+            if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStateRlp(in requests[i].Path, out byte[]? rlp)) values[i] = rlp;
             else misses.Add(i);
         }
         if (misses.Count < BatchTriePersistenceReaderExtensions.MinBatchSize)
@@ -47,11 +52,16 @@ public sealed partial class ReadOnlySnapshotBundle
     {
         GuardDispose();
         ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, requests.Length, nameof(values));
+        if (recordDetailedMetrics || requests.Length < BatchTriePersistenceReaderExtensions.MinBatchSize)
+        {
+            for (int i = 0; i < requests.Length; i++)
+                values[i] = TryLoadStorageRlp(address, in requests[i].Path, requests[i].Hash, ReadFlags.None);
+            return;
+        }
         using ArrayPoolListRef<int> misses = new(0);
         for (int i = 0; i < requests.Length; i++)
         {
-            if (recordDetailedMetrics) values[i] = TryLoadStorageRlp(address, in requests[i].Path, requests[i].Hash, ReadFlags.None);
-            else if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStorageRlp(address, in requests[i].Path, out byte[]? rlp)) values[i] = rlp;
+            if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStorageRlp(address, in requests[i].Path, out byte[]? rlp)) values[i] = rlp;
             else misses.Add(i);
         }
         if (misses.Count < BatchTriePersistenceReaderExtensions.MinBatchSize)

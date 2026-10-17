@@ -42,9 +42,75 @@ public partial class PatriciaTree
             }
             else
             {
-                WarmUpChunk(chunk, resolver, state, shouldStop);
+                int completed = 0;
+                while (completed < chunk.Length && TryWarmUpCachedPath(in chunk[completed]))
+                {
+                    completed++;
+                    if (shouldStop(state)) return;
+                }
+                ReadOnlySpan<WarmUpEntry> pending = chunk[completed..];
+                if (pending.Length >= MinWarmUpBatchSize) WarmUpChunk(pending, resolver, state, shouldStop);
+                else
+                {
+                    foreach (WarmUpEntry entry in pending)
+                    {
+                        if (shouldStop(state)) return;
+                        WarmUpPath(entry.Key.Bytes, entry.ForDelete);
+                    }
+                }
             }
         }
+    }
+
+    private bool TryWarmUpCachedPath(in WarmUpEntry entry)
+    {
+        TrieNode? node = RootRef;
+        if (node is null) return true;
+        if (node.NodeType == NodeType.Unknown && !node.HasRlp) return false;
+        TrieNode? parentBranch = null;
+        TreePath path = TreePath.Empty;
+        Span<byte> remainingKey = stackalloc byte[64];
+        Nibbles.BytesToNibbleBytes(entry.Key.Bytes, remainingKey);
+        while (node is not null)
+        {
+            if (!TryResolveCachedWarmUpNode(ref node, in path)) return false;
+            if (node.IsLeaf || node.IsExtension)
+            {
+                byte[] key = node.Key!;
+                if (Nibbles.CommonPrefixLength(remainingKey, key) != key.Length) return true;
+                if (node.IsLeaf)
+                {
+                    if (!entry.ForDelete || parentBranch is null) return true;
+                    int siblingNibble = parentBranch.FindOnlyChild(ignoredChild: path[path.Length - 1]);
+                    if (siblingNibble < 0) return true;
+                    path.TruncateOne();
+                    path.AppendMut(siblingNibble);
+                    TrieNode? sibling = parentBranch.GetChildWithChildPath(TrieStore, ref path, siblingNibble, keepChildRef: true);
+                    return sibling is null || TryResolveCachedWarmUpNode(ref sibling, in path);
+                }
+                path.AppendMut(key);
+                remainingKey = remainingKey[key.Length..];
+                node = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
+                parentBranch = null;
+            }
+            else
+            {
+                if (remainingKey.IsEmpty) return true;
+                int nibble = remainingKey[0];
+                path.AppendMut(nibble);
+                parentBranch = node;
+                node = node.GetChildWithChildPath(TrieStore, ref path, nibble, keepChildRef: true);
+                remainingKey = remainingKey[1..];
+            }
+        }
+        return true;
+    }
+
+    private bool TryResolveCachedWarmUpNode(ref TrieNode node, in TreePath path)
+    {
+        if (node.IsSealed && node.Keccak is not null && (path.Length & 1) != 0)
+            node = TrieStore.FindCachedOrUnknown(in path, node.Keccak);
+        return node.TryResolveNodeFromRlp(null);
     }
 
     private void WarmUpChunk<TState>(ReadOnlySpan<WarmUpEntry> entries, IBatchTrieNodeResolver resolver,

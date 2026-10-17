@@ -14,6 +14,103 @@ namespace Nethermind.Trie.Test;
 
 public partial class WarmUpPathForDeleteTests
 {
+    [TestCase(8, TestName = "WarmUpPaths_EightCachedPaths_AvoidsBatchResolution")]
+    [TestCase(64, TestName = "WarmUpPaths_FullCachedChunk_AvoidsBatchResolution")]
+    [TestCase(65, TestName = "WarmUpPaths_CachedTail_AvoidsBatchResolution")]
+    [TestCase(512, TestName = "WarmUpPaths_ManyCachedChunks_AvoidsBatchResolution")]
+    public void WarmUpPaths_WhenPathsAreCached_DoesNotInvokeBatchResolver(int count)
+    {
+        using CountingMemDb db = new();
+        PatriciaTree original = new(new RawScopedTrieStore(db), NullLogManager.Instance);
+        PatriciaTree.WarmUpEntry[] entries = new PatriciaTree.WarmUpEntry[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] key = new byte[32];
+            BinaryPrimitives.WriteInt32BigEndian(key.AsSpan(28), i + 1);
+            original.Set(key, Value);
+            entries[i] = new(new ValueHash256(key));
+        }
+        original.Commit();
+        PathCachingTrieStore store = new(db);
+        PatriciaTree tree = new(store, NullLogManager.Instance) { RootHash = original.RootHash };
+        foreach (PatriciaTree.WarmUpEntry entry in entries) tree.WarmUpPath(entry.Key.Bytes);
+        int reads = db.Reads;
+        Assert.That(reads, Is.GreaterThan(0), "precondition: scalar warmup must populate the cache");
+        tree.WarmUpPaths(entries);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.BatchSizes, Is.Empty, "cached paths must not request RLP batches");
+            Assert.That(db.Reads, Is.EqualTo(reads), "cached warmup must not read persistence");
+            Assert.That(tree.RootHash, Is.EqualTo(original.RootHash), "cached traversal must preserve the root");
+        }
+    }
+
+    [TestCase(false, TestName = "WarmUpPaths_CachedDeleteWithColdSibling_LoadsSibling")]
+    [TestCase(true, TestName = "WarmUpPaths_CachedDeleteWithWarmSibling_AvoidsBatchResolution")]
+    public void WarmUpPaths_WhenDeletePathIsCached_PreservesSiblingWarmup(bool siblingCached)
+    {
+        (CountingMemDb ownedDb, Hash256 root) = Commit(KeyA, KeyB, KeyC);
+        using CountingMemDb db = ownedDb;
+        PathCachingTrieStore store = new(db);
+        PatriciaTree tree = new(store, NullLogManager.Instance) { RootHash = root };
+        tree.WarmUpPath(KeyA, forDelete: siblingCached);
+        PatriciaTree.WarmUpEntry[] entries = Enumerable.Repeat(new PatriciaTree.WarmUpEntry(new ValueHash256(KeyA), true), 8).ToArray();
+        int beforeWarmup = db.Reads;
+        tree.WarmUpPaths(entries);
+        int beforeDelete = db.Reads;
+        tree.Set(KeyA, []);
+        tree.UpdateRootHash();
+        (CountingMemDb ownedExpected, Hash256 expected) = Commit(KeyB, KeyC);
+        using CountingMemDb expectedDb = ownedExpected;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(beforeDelete - beforeWarmup, Is.EqualTo(siblingCached ? 0 : 1), "only a cold collapse sibling may require a read");
+            Assert.That(db.Reads, Is.EqualTo(beforeDelete), "delete commit must find its collapse sibling warm");
+            Assert.That(tree.RootHash, Is.EqualTo(expected), "the cached path must preserve deletion behavior");
+            if (siblingCached) Assert.That(store.BatchSizes, Is.Empty, "a cached delete and sibling need no batch scratch");
+        }
+    }
+
+    [TestCase(8, TestName = "WarmUpPaths_CachedPrefixWithBatchTail_WarmsRemainingPaths")]
+    [TestCase(9, TestName = "WarmUpPaths_CachedPrefixWithScalarTail_WarmsRemainingPaths")]
+    public void WarmUpPaths_WhenOnlyPrefixIsCached_WarmsEveryRemainingPath(int cachedCount)
+    {
+        (CountingMemDb ownedDb, Hash256 root) = Commit(KeyA, KeyB, KeyC);
+        using CountingMemDb db = ownedDb;
+        PathCachingTrieStore store = new(db);
+        PatriciaTree tree = new(store, NullLogManager.Instance) { RootHash = root };
+        tree.WarmUpPath(KeyA);
+        PatriciaTree.WarmUpEntry[] entries = Enumerable.Range(0, 16)
+            .Select(i => new PatriciaTree.WarmUpEntry(new ValueHash256(i < cachedCount ? KeyA : (i % 2 == 0 ? KeyB : KeyC))))
+            .ToArray();
+        tree.WarmUpPaths(entries);
+        int reads = db.Reads;
+        Assert.That(tree.Get(KeyB).ToArray(), Is.EqualTo(Value), "the first unresolved tail must be warmed");
+        Assert.That(tree.Get(KeyC).ToArray(), Is.EqualTo(Value), "all paths after the first miss must be warmed");
+        Assert.That(db.Reads, Is.EqualTo(reads), "both batch and scalar tails must leave their paths cached");
+    }
+
+    [Test]
+    public void WarmUpPaths_WhenCancelledDuringCachedPrefix_DoesNotReadColdTail()
+    {
+        (CountingMemDb ownedDb, Hash256 root) = Commit(KeyA, KeyB, KeyC);
+        using CountingMemDb db = ownedDb;
+        PathCachingTrieStore store = new(db);
+        PatriciaTree tree = new(store, NullLogManager.Instance) { RootHash = root };
+        tree.WarmUpPath(KeyA);
+        PatriciaTree.WarmUpEntry[] entries = Enumerable.Range(0, 16)
+            .Select(i => new PatriciaTree.WarmUpEntry(new ValueHash256(i == 0 ? KeyA : KeyC))).ToArray();
+        int reads = db.Reads;
+        int checks = 0;
+        tree.WarmUpPaths(entries, false, _ => ++checks == 2);
+        Assert.That(checks, Is.EqualTo(2), "cancellation must be checked after the first cached path");
+        Assert.That(db.Reads, Is.EqualTo(reads), "cancellation must leave the cold tail unread");
+        tree.Get(KeyC);
+        Assert.That(db.Reads, Is.GreaterThan(reads), "precondition: the tail was actually cold before cancellation");
+    }
+
     [TestCase(8, false, TestName = "WarmUpPaths_SharedPrefix_ReadsIndependentLeavesTogether")]
     [TestCase(8, true, TestName = "WarmUpPaths_EmbeddedLeaves_DoNotLoadThemFromPersistence")]
     [TestCase(64, false, TestName = "WarmUpPaths_FullChunk_PreservesUpdateRoot")]
