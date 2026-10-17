@@ -279,6 +279,35 @@ public static class IlEvmSettings
     /// <remarks>The Adaptive rules ignore it: they JIT only between blocks, on the scheduler's workers, never on a frame's thread.</remarks>
     public static bool CompileSynchronously { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_SYNC") == "1";
 
+    /// <summary>Legacy only: the threads that run the background compiles, 1 unless <c>NETHERMIND_ILEVM_COMPILE_THREADS</c> says more.</summary>
+    /// <remarks>
+    /// Until a contract's layout or one of its chunks is compiled, the frames that need it run on the interpreter, and a
+    /// node that starts under load queues more of both than one thread drains while its CPUs serve calls. A change takes
+    /// effect at the next queued compile, or within a second for workers past a lower count, which leave once idle.
+    /// </remarks>
+    public static int CompileThreads { get; set; } =
+        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_COMPILE_THREADS"), out int compileThreads) && compileThreads >= 1 ? compileThreads : 1;
+
+    /// <summary>
+    /// Legacy only: the background compiler takes the queued compile with the most interpreted opcodes waiting on it, the
+    /// oldest of equals, rather than the oldest, with <c>NETHERMIND_ILEVM_COMPILE_ORDER=hot</c>.
+    /// </summary>
+    /// <remarks>
+    /// A layout waits by the opcodes its code ran on the interpreter since it was queued; a chunk by the frames that
+    /// reached it while it was not compiled, each of which handed the rest of its part to the interpreter, times the
+    /// opcodes a part of its code ran on average before the layout. Both count opcodes the missing code sends to the
+    /// interpreter, so either kind ranks against the other. Frames alone would rank a code that runs 50,000 opcodes a frame
+    /// with one that runs a hundred, and once the live-IL cap binds, the first compiled keep their place for good.
+    /// </remarks>
+    public static bool CompileOrderHot { get; set; } =
+        string.Equals(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_COMPILE_ORDER"), "hot", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Legacy only: a run-time layout also JITs the chunk where frames enter the code, at offset 0, before the contract is
+    /// published, with <c>NETHERMIND_ILEVM_ENTRY_CHUNK=1</c>; otherwise the first frames hand back there and queue it again.
+    /// </summary>
+    public static bool EntryChunk { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_ENTRY_CHUNK") == "1";
+
     /// <summary>Time each compiled contract against the interpreter on its own frames, and give back to the interpreter one compiled code does not speed up.</summary>
     /// <remarks>See <see cref="IlSelfCheck"/>.</remarks>
     public static bool SelfCheck { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_SELF_CHECK") != "0";
@@ -292,6 +321,19 @@ public static class IlEvmSettings
     public static int SelfCheckDelayMs { get; set; } =
         int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_SELF_CHECK_DELAY_MS"), out int checkDelayMs) && checkDelayMs >= 0 ? checkDelayMs : 5_000;
 
+    /// <summary>
+    /// Legacy only: a compiled frame under self-check that reaches a chunk not compiled yet starts the check over, dropping
+    /// the pairs it took, with <c>NETHERMIND_ILEVM_SELF_CHECK_COLD_RESTART=1</c>.
+    /// </summary>
+    /// <remarks>
+    /// Frames that reach a cold chunk are left out of the timing, so while many chunks are cold a contract's compiled
+    /// samples are the frames that stay within its compiled chunks, paired with interpreted frames of every kind. On the
+    /// replay, contracts measured 2 to 7 times slower that way, with a few of their chunks compiled, and won by 1.5 to 6
+    /// times once their chunks were compiled; when such checks ran during the compile backlog past the warm-up, the
+    /// contracts were given back. With the restart, a verdict rests on pairs none of whose compiled frames met a cold chunk.
+    /// </remarks>
+    public static bool SelfCheckColdRestart { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_SELF_CHECK_COLD_RESTART") == "1";
+
     /// <summary>How long a contract the self-check first finds slower runs on the interpreter before it is checked once more.</summary>
     /// <remarks>
     /// Only a second verdict against compiled code releases it. The first may come early in the process's life, while
@@ -301,6 +343,11 @@ public static class IlEvmSettings
         int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_SELF_CHECK_RECHECK_MS"), out int recheckMs) && recheckMs >= 0 ? recheckMs : 30_000;
 
     /// <summary>Compiled code must run a contract's opcodes in at most this share of the interpreter's time to keep it; 1 keeps whatever measures faster.</summary>
+    /// <remarks>
+    /// Above 1 it is a margin (<c>NETHERMIND_ILEVM_SELF_CHECK_RATIO=1.15</c>): a contract goes on probation only when compiled
+    /// code measures more than 15% slower. A contract whose time goes to state access measures within noise of 1 on either
+    /// path, and at 1 a coin decides whether it spends the next seconds on the interpreter.
+    /// </remarks>
     public static double SelfCheckKeepRatio { get; set; } =
         double.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_SELF_CHECK_RATIO"), System.Globalization.CultureInfo.InvariantCulture, out double keepRatio) && keepRatio > 0 ? keepRatio : 1.0;
 
@@ -727,6 +774,8 @@ public static unsafe partial class IlEvm
         public readonly IlSelfCheck Check = new();
         /// <summary>Chunks queued or compiled so far: a frame during which this moved waited on the JIT, and its time says nothing of the code.</summary>
         public int ChunkEvents;
+        /// <summary>The opcodes a part of the code ran on the interpreter on average before its layout: under the hot order, what each frame handed back at a cold chunk weighs.</summary>
+        public long OpsPerPart = 1;
         /// <summary>When the contract was laid out, in <see cref="Environment.TickCount64"/> milliseconds; its self-check waits <see cref="IlEvmSettings.SelfCheckDelayMs"/> from then.</summary>
         /// <remarks>A shipped contract is laid out at startup, long before it runs: its clock restarts on its first frame.</remarks>
         public long CompiledAt = Environment.TickCount64;
@@ -908,9 +957,16 @@ public static unsafe partial class IlEvm
             // JIT, or a test left it cold, and its frames hand back.
             if (mode == IlMode.Simple)
                 return null;
-            // Queued already: frames wait for the JIT without writing the shared counter again.
-            if (Volatile.Read(ref _states[chunk]) != ChunkCold)
+            // Queued already: frames wait for the JIT without writing the shared counter again, unless the Legacy queue
+            // ranks its compiles by what waits on them: then each frame handed back here counts, racily.
+            int chunkState = Volatile.Read(ref _states[chunk]);
+            if (chunkState != ChunkCold)
+            {
+                if (chunkState == ChunkQueued && IlEvmSettings.CompileOrderHot)
+                    _entries[chunk]++;
                 return null;
+            }
+
             if (Interlocked.Increment(ref _entries[chunk]) >= IlEvmSettings.ChunkThreshold &&
                 Interlocked.CompareExchange(ref _states[chunk], ChunkQueued, ChunkCold) == ChunkCold)
             {
@@ -921,7 +977,7 @@ public static unsafe partial class IlEvm
                 // leaves it to frames to ask again.
                 bool queued = IlEvmSettings.Mode == IlMode.Adaptive
                     ? IlScheduler.TryEnqueue(new ChunkJob(this, chunk))
-                    : IlCompileQueue.Enqueue(() => CompileChunk(chunk));
+                    : IlCompileQueue.Enqueue(() => CompileChunk(chunk), () => Volatile.Read(ref _entries[chunk]) * OpsPerPart);
                 if (!queued)
                 {
                     _entries[chunk] = 0;
@@ -932,7 +988,8 @@ public static unsafe partial class IlEvm
             return null;
         }
 
-        /// <summary>JIT-compiles <paramref name="chunk"/> and publishes its runner; one contract compiles one chunk at a time.</summary>
+        /// <summary>JIT-compiles <paramref name="chunk"/> and publishes its runner.</summary>
+        /// <remarks>Several compile threads may JIT chunks of one contract at once, each its own method; publishing takes the contract's lock.</remarks>
         public IlRunner? CompileChunk(int chunk)
         {
             IlRunner runner;
@@ -1539,11 +1596,14 @@ public static unsafe partial class IlEvm
         if (Interlocked.Exchange(ref state.Pending, 1) == 1)
             return null;
 
+        // Under the hot order a layout waits by the opcodes its code runs on the interpreter from now on (sampled frames
+        // count with their weight).
+        long queuedAt = state.OpCodesRun;
         if (!IlCompileQueue.Enqueue(() =>
             {
                 IlCompileInto(codeInfo, state, fork);
                 state.Pending = 0;
-            }))
+            }, () => state.OpCodesRun - queuedAt))
         {
             state.RetryAfter = Environment.TickCount64 + RetryDelayMs;
             state.Pending = 0;
@@ -1552,12 +1612,32 @@ public static unsafe partial class IlEvm
         return null;
     }
 
+    /// <summary>
+    /// The codes being laid out now, by content and fork, while several compile threads run (<see cref="IlEvmSettings.CompileThreads"/>):
+    /// two code states of the same code, as state overrides make, would otherwise both compile it.
+    /// </summary>
+    private static readonly ConcurrentDictionary<IlContractKey, byte> _ilCompiling = new();
+
     private static IlContract? IlCompileInto(CodeInfo codeInfo, IlCodeState state, IlFork fork)
     {
+        bool claimed = false;
+        IlContractKey key = default;
         try
         {
             if (IlShared(codeInfo, state, fork) is { } shared)
                 return shared;
+
+            if (IlEvmSettings.CompileThreads > 1)
+            {
+                // Another thread lays the same code out for another code state: this one leaves it to that compile, and
+                // its code finds the contract by content on a later frame.
+                key = new IlContractKey(state.ContentHash, codeInfo.CodeSpan.Length, fork);
+                if (!_ilCompiling.TryAdd(key, 0))
+                    return null;
+                claimed = true;
+                if (IlShared(codeInfo, state, fork) is { } raced)
+                    return raced;
+            }
 
             if (IlEvmSettings.LiveIlBytes >= IlEvmSettings.MaxLiveIlBytes)
             {
@@ -1576,7 +1656,26 @@ public static unsafe partial class IlEvm
                 return null;
             }
 
-            contract.MarkLive();
+            // One compile thread may overshoot the cap by the one contract that passed the check above; several could all
+            // pass it at once, so they admit a contract in one step while the cap is not reached yet (reserving its bytes
+            // as if as many were let go: at most one contract over, as with one thread).
+            if (!claimed)
+            {
+                contract.MarkLive();
+            }
+            else if (!contract.TryMarkLive(freed: contract.MemoryBytes))
+            {
+                state.RetryAfter = Environment.TickCount64 + RetryDelayMs;
+                IlEvmSettings.CountDeferred();
+                return null;
+            }
+
+            // The chunk frames enter at, compiled before the contract is published, so that its first frames run it
+            // rather than hand back there and queue it again.
+            if (IlEvmSettings.EntryChunk && contract.EntryChunk is { Length: > 0 } entries && entries[0] >= 0)
+                contract.CompileChunk(entries[0]);
+            // Both counts are sampled alike (IlEvm.OnInterpreted), so their ratio is the code's opcodes per part.
+            contract.OpsPerPart = Math.Max(1, state.OpCodesRun / Math.Max(1, state.Executions));
             // A contract the self-check gives back keeps its verdict, not its code.
             contract.Check.OnGivenBack = contract.Release;
             contract.Check.Name = contract.Name;
@@ -1591,6 +1690,11 @@ public static unsafe partial class IlEvm
             state.FailedFor = fork;
             IlEvmSettings.CountFailed(state.FailureReason);
             return null;
+        }
+        finally
+        {
+            if (claimed)
+                _ilCompiling.TryRemove(key, out _);
         }
     }
 
@@ -2560,14 +2664,32 @@ public static unsafe partial class IlEvm
         Unsafe.WriteUnaligned(ref destination, word.ByteSwap());
     }
 
-    /// <summary>Compiles one queued contract at a time on a background thread.</summary>
+    /// <summary>
+    /// The Legacy rules' background compiler: run-time layouts and chunk JITs, on <see cref="IlEvmSettings.CompileThreads"/>
+    /// threads, oldest first or, under <see cref="IlEvmSettings.CompileOrderHot"/>, the one most interpreted opcodes wait on first.
+    /// </summary>
     internal static class IlCompileQueue
     {
-        private static readonly BlockingCollection<Action> _work = [];
-        private static int _started;
+        /// <summary>A queued compile, with what tells how much interpreted work waits on it.</summary>
+        private sealed class Job(Action work, Func<long>? waiting)
+        {
+            public readonly Action Work = work;
+            public readonly Func<long>? Waiting = waiting;
+        }
+
+        /// <summary>Guards the jobs and the worker count; the workers wait on it.</summary>
+        private static readonly object _gate = new();
+        /// <summary>The queued jobs, oldest first.</summary>
+        private static readonly List<Job> _jobs = [];
+        private static int _pending;
+        private static int _workers;
+        /// <summary>The time the workers have spent on jobs, summed over them, in <see cref="System.Diagnostics.Stopwatch"/> ticks.</summary>
         public static long BusyTicks;
 
-        public static int Pending => _work.Count;
+        public static int Pending => Volatile.Read(ref _pending);
+
+        /// <summary>The worker threads running now.</summary>
+        public static int Workers => Volatile.Read(ref _workers);
 
         /// <summary>Whether the compiler thread runs under Linux's SCHED_IDLE, for diagnostics: null until it starts.</summary>
         public static bool? IdleScheduling;
@@ -2599,30 +2721,92 @@ public static unsafe partial class IlEvm
         }
 
         /// <summary>Queues <paramref name="work"/> for the background compiler, unless <see cref="IlEvmSettings.MaxPendingCompiles"/> wait already.</summary>
-        public static bool Enqueue(Action work)
+        public static bool Enqueue(Action work) => Enqueue(work, null);
+
+        /// <summary>As <see cref="Enqueue(Action)"/>, with the interpreted opcodes waiting on the compile, which the hot order ranks by.</summary>
+        /// <param name="waiting">Read under the queue's lock each time the hot order picks a job: a racy field read; null counts as none.</param>
+        public static bool Enqueue(Action work, Func<long>? waiting)
         {
-            if (_work.Count >= IlEvmSettings.MaxPendingCompiles)
-                return false;
-            _work.Add(work);
-            if (Interlocked.Exchange(ref _started, 1) == 0)
+            lock (_gate)
             {
-                Thread worker = new(Run) { IsBackground = true, Name = "EVM IL compiler", Priority = IlEvmSettings.CompilePriority };
-                worker.Start();
+                if (_jobs.Count >= IlEvmSettings.MaxPendingCompiles)
+                    return false;
+                _jobs.Add(new Job(work, waiting));
+                Volatile.Write(ref _pending, _jobs.Count);
+                // Started here, under the lock, so that the count and the threads agree; raising the setting adds threads.
+                int wanted = Math.Max(1, IlEvmSettings.CompileThreads);
+                while (_workers < wanted)
+                {
+                    int index = _workers;
+                    Volatile.Write(ref _workers, index + 1);
+                    Thread worker = new(Run) { IsBackground = true, Name = index == 0 ? "EVM IL compiler" : $"EVM IL compiler {index + 1}", Priority = IlEvmSettings.CompilePriority };
+                    worker.Start(index);
+                }
+
+                Monitor.Pulse(_gate);
             }
 
             return true;
         }
 
-        private static void Run()
+        /// <summary>The next job, under the lock: the oldest, or under the hot order the one most interpreted opcodes wait on, the oldest of equals.</summary>
+        private static Job Take()
         {
+            int index = 0;
+            if (IlEvmSettings.CompileOrderHot)
+            {
+                long most = long.MinValue;
+                for (int i = 0; i < _jobs.Count; i++)
+                {
+                    long waiting = _jobs[i].Waiting?.Invoke() ?? 0;
+                    if (waiting > most)
+                    {
+                        most = waiting;
+                        index = i;
+                    }
+                }
+            }
+
+            Job job = _jobs[index];
+            _jobs.RemoveAt(index);
+            Volatile.Write(ref _pending, _jobs.Count);
+            return job;
+        }
+
+        private static void Run(object? state)
+        {
+            int index = (int)state!;
             if (IlEvmSettings.CompileIdle && OperatingSystem.IsLinux())
                 IdleScheduling = SetIdleScheduling();
-            foreach (Action work in _work.GetConsumingEnumerable())
+            while (true)
             {
+                Job job;
+                lock (_gate)
+                {
+                    while (true)
+                    {
+                        // A worker past a lowered count leaves once it is idle, the last started first, so the rest keep
+                        // their numbers.
+                        if (index >= Math.Max(1, IlEvmSettings.CompileThreads) && index == _workers - 1)
+                        {
+                            Volatile.Write(ref _workers, index);
+                            // The wake-up it may have taken goes on to a worker that stays.
+                            Monitor.Pulse(_gate);
+                            return;
+                        }
+
+                        if (_jobs.Count > 0)
+                            break;
+                        Monitor.Wait(_gate, 1_000);
+                    }
+
+                    job = Take();
+                }
+
                 long started = System.Diagnostics.Stopwatch.GetTimestamp();
                 try
                 {
-                    work();
+                    job.Work();
                 }
                 catch (Exception exception)
                 {

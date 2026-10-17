@@ -600,7 +600,7 @@ public sealed class IlEvmStartupStep(
         AppDomain.CurrentDomain.ProcessExit += (_, _) => IlEvmStats.Dump(_logger, top);
         if (_logger.IsInfo)
             _logger.Info($"IL-EVM timing: every contract's frame parts are timed on the path they take, interpreted or compiled, " +
-                (config.Scope == IlEvmScope.All ? "in block processing and on the other threads" : $"in read-only queries only, of {DescribeSurfaces()} (block processing runs no runner with Scope=Rpc)") +
+                (config.Scope == IlEvmScope.All ? "in block processing and on the other threads" : $"in read-only queries only, of {DescribeSurfaces()} (the node's own block processing runs no runner with Scope=Rpc)") +
                 $"; the self-check is off; the {top} contracts with the most time, and every contract that ran compiled, are logged at shutdown, with each surface's parts offered and compiled in the header");
 
         // Replayed transactions run nothing on block processing: which ones are replayed depends on how far warming got,
@@ -669,8 +669,11 @@ public sealed class IlEvmStartupStep(
             rules = string.Create(CultureInfo.InvariantCulture,
                 $"{IlEvm.PrecompiledCount} precompiled, taken by {IlEvm.PrecompiledAttached} code states; " +
                 $"{IlEvmSettings.CompiledContracts} compiled at run time, {IlEvmSettings.FailedContracts} declined, {IlEvmSettings.DeferredCompiles} deferred; " +
-                $"self-check {kept} kept, {probation} probation, {givenBack} given back; compile thread busy " +
-                $"{IlEvmSettings.CompileBusyTicks / (double)Stopwatch.Frequency:F1} s, idle scheduling {IlEvm.IlCompileQueue.IdleScheduling?.ToString() ?? "not started"}");
+                $"self-check {kept} kept, {probation} probation, {givenBack} given back (keep ratio {IlEvmSettings.SelfCheckKeepRatio}); compile thread busy " +
+                $"{IlEvmSettings.CompileBusyTicks / (double)Stopwatch.Frequency:F1} s on {IlEvmSettings.CompileThreads} thread(s), " +
+                $"order {(IlEvmSettings.CompileOrderHot ? "hot" : "fifo")}, entry chunk {(IlEvmSettings.EntryChunk ? "on" : "off")}, " +
+                $"check cold restart {(IlEvmSettings.SelfCheckColdRestart ? "on" : "off")}, " +
+                $"idle scheduling {IlEvm.IlCompileQueue.IdleScheduling?.ToString() ?? "not started"}");
         }
 
         string line = common + rules + IlEvmSettings.DescribeCaught();

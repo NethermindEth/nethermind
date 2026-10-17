@@ -517,7 +517,12 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         // more than many frames run, and more still with threads running the same contract.
         if ((random >> 16) % IlSelfCheck.TimeCompiledEvery != 0)
         {
+            if (!IlEvmSettings.SelfCheckColdRestart)
+                return contract.Run(vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, cancelable);
+            IlEvm.IlContract.HitColdChunk = false;
             EvmExceptionType untimed = contract.Run(vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, cancelable);
+            if (untimed == Declined && IlEvm.IlContract.HitColdChunk)
+                check.Restart();
             return untimed;
         }
 
@@ -528,9 +533,14 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         EvmExceptionType result = contract.Run(vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, cancelable);
         if (result == Declined)
         {
-            // A chunk still waiting for the JIT handed it back: the interpreter's part says nothing of compiled code.
+            // A chunk still waiting for the JIT handed it back: the interpreter's part says nothing of compiled code. With
+            // the cold restart, neither do the pairs so far, which timed only frames that stayed within compiled chunks.
             if (IlEvm.IlContract.HitColdChunk)
+            {
+                if (IlEvmSettings.SelfCheckColdRestart)
+                    check.Restart();
                 return Declined;
+            }
 
             // The interpreter finishes what compiled code handed back, and that counts as compiled code's time.
             _sampleCheck = check;
@@ -739,15 +749,31 @@ internal sealed class IlSelfCheck
             if (Verdict != Probation)
                 return Verdict == Undecided;
             _second = true;
-            InterpretedSamples = 0;
-            _lastCompiled = 0;
-            Interlocked.Exchange(ref _interpretedBucket.Ops, 0);
-            Interlocked.Exchange(ref _interpretedBucket.Ticks, 0);
-            Interlocked.Exchange(ref _compiledBucket.Ops, 0);
-            Interlocked.Exchange(ref _compiledBucket.Ticks, 0);
+            DropPairs();
             Volatile.Write(ref Verdict, Undecided);
             return true;
         }
+    }
+
+    /// <summary>Starts a check without a verdict over, as when a chunk JIT changed the code it was timing.</summary>
+    public void Restart()
+    {
+        lock (this)
+        {
+            if (Verdict == Undecided)
+                DropPairs();
+        }
+    }
+
+    /// <summary>Drops the pairs and the half-filled samples, under the check's lock.</summary>
+    private void DropPairs()
+    {
+        InterpretedSamples = 0;
+        _lastCompiled = 0;
+        Interlocked.Exchange(ref _interpretedBucket.Ops, 0);
+        Interlocked.Exchange(ref _interpretedBucket.Ticks, 0);
+        Interlocked.Exchange(ref _compiledBucket.Ops, 0);
+        Interlocked.Exchange(ref _compiledBucket.Ticks, 0);
     }
 
     public void AddInterpreted(long ticks, int opCodes) => Add(_interpretedBucket, ticks, opCodes, interpreted: true);
