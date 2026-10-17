@@ -36,6 +36,7 @@ using NUnit.Framework;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
@@ -3744,5 +3745,571 @@ internal class BlockContextReadsTests : VirtualMachineTestsBase
             [(byte)Instruction.TIMESTAMP, (byte)Instruction.GASLIMIT, (byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.STOP]);
 
         Assert.That(Machine.BlockContextReads, Is.EqualTo(BlockContextReads.Timestamp | BlockContextReads.GasLimit));
+    }
+}
+
+[Parallelizable(ParallelScope.Self)]
+public sealed class VirtualMachineExtensionHooksTests
+{
+    private static readonly Address Child = new("0x00000000000000000000000000000000000000c7");
+    private static readonly ForkActivation Activation = (0, 1);
+    private const ulong BlockGasLimit = 8_000_000;
+    private IContainer _container = null!;
+    private ILifetimeScope _scope = null!;
+    private IDisposable _stateScope = null!;
+    private IWorldState _worldState = null!;
+    private ISpecProvider _specProvider = null!;
+    private HookedVirtualMachine _hookedMachine = null!;
+    private HookedTransactionProcessor _processor = null!;
+
+    [SetUp]
+    public void Setup()
+    {
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new OverridableReleaseSpec(Prague.Instance) { IsEip7708Enabled = true }))
+            .AddScoped<IVirtualMachine, HookedVirtualMachine>()
+            .AddScoped<ITransactionProcessor, HookedTransactionProcessor>()
+            .Build();
+        _scope = _container.BeginLifetimeScope(builder =>
+            builder.AddSingleton<IWorldStateScopeProvider>(_container.Resolve<IWorldStateManager>().GlobalWorldState));
+        _worldState = _scope.Resolve<IWorldState>();
+        _stateScope = _worldState.BeginScope(IWorldState.PreGenesis);
+        _specProvider = _scope.Resolve<ISpecProvider>();
+        _hookedMachine = (HookedVirtualMachine)_scope.Resolve<IVirtualMachine>();
+        _processor = (HookedTransactionProcessor)_scope.Resolve<ITransactionProcessor>();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _stateScope.Dispose();
+        _scope.Dispose();
+        _container.Dispose();
+    }
+
+    [Test]
+    public void Nested_success_calls_are_reported_before_the_child_frame_is_merged()
+    {
+        Deploy(Prepare.EvmCode.Op(Instruction.STOP).Done);
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 0, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.Initializations, Has.Count.EqualTo(3));
+            Assert.That(_hookedMachine.Completions, Is.EqualTo([(EvmExceptionType.None, false)]));
+        }
+    }
+
+    [Test]
+    public void Nested_reverts_are_observed_before_snapshot_restore()
+    {
+        Deploy(Prepare.EvmCode.SSTORE(0, [1]).REVERT(0, 0).Done);
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 0, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+        StorageCell cell = new(Child, UInt256.Zero);
+        _worldState.Get(in cell, out UInt256 valueAfterRestore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.Completions, Is.EqualTo([(EvmExceptionType.Revert, true)]));
+            Assert.That(_hookedMachine.RevertedStorageBeforeRestore, Is.EqualTo(UInt256.One));
+            Assert.That(valueAfterRestore, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Nested_exception_is_reported_without_being_treated_as_fatal()
+    {
+        Deploy([(byte)Instruction.INVALID]);
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 0, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.Completions, Is.EqualTo([(EvmExceptionType.BadInstruction, false)]));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Handled_frame_initialization_can_return_success_or_revert(bool shouldRevert)
+    {
+        Deploy(Prepare.EvmCode.SSTORE(0, [1]).Done);
+        _hookedMachine.HandleChildFrame = true;
+        _hookedMachine.HandledChildShouldRevert = shouldRevert;
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 0, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+        StorageCell cell = new(Child, UInt256.Zero);
+        _worldState.Get(in cell, out UInt256 valueAfterIntercept);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.Completions, Is.EqualTo([
+                (shouldRevert ? EvmExceptionType.Revert : EvmExceptionType.None, shouldRevert)]));
+            Assert.That(valueAfterIntercept, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Intercepted_value_call_preserves_action_trace_transfer_and_balance()
+    {
+        Deploy(Prepare.EvmCode.Op(Instruction.STOP).Done);
+        _hookedMachine.HandleChildFrame = true;
+        _hookedMachine.InterceptChildValueFrame = true;
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 7, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(code, value: 0);
+        ActionAndLogTracer tracer = new();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            Assert.That(tracer.Actions, Has.Count.EqualTo(tracer.ActionOutputs.Count));
+            Assert.That(tracer.Actions, Has.Some.Matches<TestAllTracerWithOutput.ActionTrace>(action =>
+                action.To == Child && action.Value == 7 && action.CallType == ExecutionType.CALL));
+            Assert.That(tracer.Logs, Is.EqualTo([
+                TransferLog.CreateTransfer(SenderRecipientAndMiner.Default.Recipient, Child, 7)]).UsingPropertiesComparer());
+            Assert.That(_worldState.GetBalance(Child), Is.EqualTo(1.Ether + 7));
+        }
+    }
+
+    [Test]
+    public void Value_transfer_precheck_runs_before_insufficient_balance_rejection()
+    {
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 101.Ether, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code, transactionValue: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.ValueTransferPrechecks, Is.EqualTo([
+                (SenderRecipientAndMiner.Default.Recipient, Child, (UInt256)101.Ether)]));
+            Assert.That(_hookedMachine.Initializations.Any(static state => !state.IsTopLevel && !state.IsContinuation), Is.False);
+        }
+    }
+
+    [TestCase(Instruction.CALL, 0, false)]
+    [TestCase(Instruction.CALL, 7, true)]
+    [TestCase(Instruction.CALLCODE, 7, false)]
+    [TestCase(Instruction.DELEGATECALL, 7, false)]
+    [TestCase(Instruction.STATICCALL, 7, false)]
+    public void Value_transfer_precheck_is_limited_to_nonzero_call(Instruction instruction, int value, bool expectedNotification)
+    {
+        Prepare code = Prepare.EvmCode;
+        code = instruction switch
+        {
+            Instruction.CALL => code.CALL(50_000, Child, (UInt256)value, 0, 0, 0, 0),
+            Instruction.CALLCODE => code.CALLCODE(50_000, Child, (UInt256)value, 0, 0, 0, 0),
+            Instruction.DELEGATECALL => code.DELEGATECODE(50_000, Child, 0, 0, 0, 0),
+            Instruction.STATICCALL => code.STATICCALL(50_000, Child, 0, 0, 0, 0),
+            _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null),
+        };
+        code.Op(Instruction.POP);
+
+        TestAllTracerWithOutput result = Execute(code.Done, transactionValue: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.ValueTransferPrechecks, Has.Count.EqualTo(expectedNotification ? 1 : 0));
+            if (expectedNotification)
+            {
+                Assert.That(_hookedMachine.ValueTransferPrechecks[0], Is.EqualTo(
+                    (SenderRecipientAndMiner.Default.Recipient, Child, (UInt256)value)));
+            }
+        }
+    }
+
+    [Test]
+    public void Value_transfer_precheck_storage_warmth_is_scoped_to_the_enclosing_frame()
+    {
+        _worldState.CreateAccount(TestItem.AddressF, 1.Ether);
+        Deploy(Prepare.EvmCode
+            .CALL(50_000, TestItem.AddressF, 101.Ether, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .CALL(50_000, TestItem.AddressF, 101.Ether, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .REVERT(0, 0)
+            .Done);
+        _hookedMachine.WarmValueTransferStorage = true;
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 0, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .CALL(50_000, TestItem.AddressF, 101.Ether, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code, transactionValue: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.ValueTransferStorageWasCold, Is.EqualTo([true, false, true]));
+        }
+    }
+
+    [TestCase((byte)Instruction.STOP, StatusCode.Success)]
+    [TestCase((byte)Instruction.INVALID, StatusCode.Failure)]
+    public void Top_level_completion_does_not_report_child_completion(byte instruction, byte expectedStatus)
+    {
+        TestAllTracerWithOutput result = Execute([instruction]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(expectedStatus));
+            Assert.That(_hookedMachine.Completions, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Selfdestruct_hook_can_replace_standard_execution()
+    {
+        _hookedMachine.HandleSelfDestruct = true;
+        byte[] code = Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(_hookedMachine.SelfDestructCalls, Is.EqualTo(1));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Eoa_fast_path_can_be_controlled_by_the_vm(bool skipFastPath)
+    {
+        _hookedMachine.SkipEoaCallFastPath = skipFastPath;
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, TestItem.AddressF, 0, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(code);
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)),
+            NullTxTracer.Instance);
+        bool nestedFrameEntered = _hookedMachine.Initializations.Any(static state => !state.IsTopLevel && !state.IsContinuation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(nestedFrameEntered, Is.EqualTo(skipFastPath),
+                $"states: {string.Join(", ", _hookedMachine.Initializations.Select(static state => $"top={state.IsTopLevel}/cont={state.IsContinuation}"))}");
+        }
+    }
+
+    [Test]
+    public void Delegated_code_resolution_hook_is_used()
+    {
+        Address delegatedTarget = Child;
+        _worldState.CreateAccount(delegatedTarget, 1.Ether);
+        _worldState.CreateAccount(TestItem.AddressB, 1.Ether);
+        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. delegatedTarget.Bytes];
+        _worldState.InsertCode(TestItem.AddressB, delegationCode, _specProvider.GenesisSpec);
+        byte[] delegatedCode = Prepare.EvmCode.SSTORE(0, [1]).Done;
+        _worldState.InsertCode(delegatedTarget, delegatedCode, _specProvider.GenesisSpec);
+
+        byte[] callerCode = Prepare.EvmCode
+            .CALL(50_000, TestItem.AddressB, 0, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+        SenderRecipientAndMiner actors = new() { RecipientKey = TestItem.PrivateKeyC };
+        (Block block, Transaction transaction) = PrepareTx(callerCode, actors);
+        TestAllTracerWithOutput result = new();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), result);
+
+        StorageCell cell = new(TestItem.AddressB, UInt256.Zero);
+        _worldState.Get(in cell, out UInt256 delegatedStorage);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(delegatedStorage, Is.EqualTo(UInt256.One));
+            Assert.That(_hookedMachine.DelegatedResolutions, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Fatal_execution_exception_escapes_the_vm_loop()
+    {
+        Deploy(Prepare.EvmCode.Op(Instruction.STOP).Done);
+        _hookedMachine.ThrowFatalOnChild = true;
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 0, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        Assert.That(() => Execute(code), Throws.TypeOf<OutOfGasException>());
+        Assert.That(_hookedMachine.Completions, Is.Empty);
+    }
+
+    [Test]
+    public void Transaction_processor_hooks_can_disable_the_simple_transfer_fast_path()
+    {
+        (_, Transaction transaction) = PrepareTx(null, value: 0);
+        TestAllTracerWithOutput result = Execute(transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_processor.SimpleTransferCandidates, Is.EqualTo(1));
+            Assert.That(_processor.TopLevelCodeResolutions, Is.EqualTo(1));
+        }
+    }
+
+    private void Deploy(byte[] code)
+    {
+        _worldState.CreateAccount(Child, 1.Ether);
+        _worldState.InsertCode(Child, code, _specProvider.GenesisSpec);
+    }
+
+    private TestAllTracerWithOutput Execute(params byte[] code) => ExecutePrepared(PrepareTx(code));
+
+    private TestAllTracerWithOutput Execute(byte[] code, int transactionValue) =>
+        ExecutePrepared(PrepareTx(code, value: transactionValue));
+
+    private TestAllTracerWithOutput Execute(Transaction transaction)
+    {
+        (Block block, _) = PrepareTx(null);
+        return ExecutePrepared((block, transaction));
+    }
+
+    private TestAllTracerWithOutput ExecutePrepared((Block Block, Transaction Transaction) prepared)
+    {
+        TestAllTracerWithOutput tracer = new();
+        _processor.Execute(prepared.Transaction, new BlockExecutionContext(prepared.Block.Header, _specProvider.GetSpec(prepared.Block.Header)), tracer);
+        return tracer;
+    }
+
+    private sealed class ActionAndLogTracer : TestAllTracerWithOutput
+    {
+        public override bool IsTracingLogs => true;
+
+        public List<LogEntry> Logs { get; } = [];
+
+        public override void ReportLog(LogEntry log) => Logs.Add(log);
+    }
+
+    private (Block Block, Transaction Transaction) PrepareTx(
+        byte[]? code,
+        SenderRecipientAndMiner? actors = null,
+        int value = 1)
+    {
+        actors ??= SenderRecipientAndMiner.Default;
+        if (!_worldState.AccountExists(actors.Sender))
+            _worldState.CreateAccount(actors.Sender, 100.Ether);
+        else
+            _worldState.AddToBalance(actors.Sender, 100.Ether, _specProvider.GenesisSpec);
+
+        if (!_worldState.AccountExists(actors.Recipient))
+            _worldState.CreateAccount(actors.Recipient, 100.Ether);
+        else
+            _worldState.AddToBalance(actors.Recipient, 100.Ether, _specProvider.GenesisSpec);
+
+        if (code is not null)
+            _worldState.InsertCode(actors.Recipient, code, _specProvider.GenesisSpec);
+
+        _worldState.Commit(_specProvider.GenesisSpec);
+        _worldState.CommitTree(0);
+        EthereumEcdsa ecdsa = new(_specProvider.ChainId);
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(100_000)
+            .WithGasPrice(1UL)
+            .WithValue(value)
+            .WithNonce(_worldState.GetNonce(actors.Sender))
+            .To(actors.Recipient)
+            .SignedAndResolved(ecdsa, actors.SenderKey)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(Activation.BlockNumber)
+            .WithTimestamp(Activation.Timestamp ?? 0)
+            .WithTransactions([transaction])
+            .WithGasLimit(BlockGasLimit)
+            .WithBeneficiary(actors.Miner)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakG)
+            .WithSlotNumber(0)
+            .TestObject;
+        return (block, transaction);
+    }
+
+    private sealed class HookedVirtualMachine(
+        IBlockhashProvider blockHashProvider,
+        ISpecProvider specProvider,
+        ILogManager logManager)
+        : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine
+    {
+        public List<(bool IsTopLevel, bool IsContinuation)> Initializations { get; } = [];
+        public List<(EvmExceptionType ExceptionType, bool ShouldRevert)> Completions { get; } = [];
+        public UInt256? RevertedStorageBeforeRestore { get; private set; }
+        public bool ThrowFatalOnChild { get; set; }
+        public bool HandleChildFrame { get; set; }
+        public bool InterceptChildValueFrame { get; set; }
+        public bool HandledChildShouldRevert { get; set; }
+        public bool SkipEoaCallFastPath { get; set; }
+        public bool HandleSelfDestruct { get; set; }
+        public int SelfDestructCalls { get; private set; }
+        public int DelegatedResolutions { get; private set; }
+        public List<(Address From, Address To, UInt256 Value)> ValueTransferPrechecks { get; } = [];
+        public List<bool> ValueTransferStorageWasCold { get; } = [];
+        public bool WarmValueTransferStorage { get; set; }
+
+        protected override bool TryExecuteFrameInitialization(VmState<EthereumGasPolicy> currentState, out CallResult result)
+        {
+            Initializations.Add((currentState.IsTopLevel, currentState.IsContinuation));
+            result = default;
+            if (ThrowFatalOnChild && !currentState.IsTopLevel && !currentState.IsContinuation)
+            {
+                throw new OutOfGasException();
+            }
+
+            if (HandleChildFrame && !currentState.IsTopLevel && !currentState.IsContinuation)
+            {
+                if (IsTracingActions) TraceTransactionActionStart(currentState);
+
+                if (InterceptChildValueFrame && !currentState.Env.Value.IsZero)
+                {
+                    WorldState.AddToBalanceAndCreateIfNotEmpty(
+                        currentState.Env.ExecutingAccount,
+                        currentState.ExecutionType,
+                        in currentState.Env.Value,
+                        Spec);
+                    AddTransferLog(currentState);
+                }
+
+                result = new(
+                    ReadOnlyMemory<byte>.Empty,
+                    precompileSuccess: null,
+                    shouldRevert: HandledChildShouldRevert,
+                    exceptionType: HandledChildShouldRevert ? EvmExceptionType.Revert : EvmExceptionType.None);
+                return true;
+            }
+
+            return false;
+        }
+
+        protected override bool IsFatalExecutionException(Exception exception) =>
+            ThrowFatalOnChild && exception is OutOfGasException;
+
+        protected internal override CodeInfo ResolveDelegatedCodeInfo(Address codeSource, Address delegated, IReleaseSpec spec)
+        {
+            DelegatedResolutions++;
+            return base.ResolveDelegatedCodeInfo(codeSource, delegated, spec);
+        }
+
+        protected internal override bool ShouldSkipEoaCallFastPath(
+            ExecutionType executionType,
+            Address caller,
+            Address target,
+            Address codeSource,
+            in UInt256 value) => SkipEoaCallFastPath;
+
+        protected internal override void OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value)
+        {
+            ValueTransferPrechecks.Add((from, to, value));
+            StorageCell cell = new(to, UInt256.One);
+            ValueTransferStorageWasCold.Add(VmState.AccessTracker.IsCold(in cell));
+            if (WarmValueTransferStorage)
+                VmState.AccessTracker.WarmUp(in cell);
+        }
+
+        protected internal override bool TryExecuteSelfDestruct(
+            ref EvmStack stack,
+            ref EthereumGasPolicy gas,
+            out EvmExceptionType result)
+        {
+            SelfDestructCalls++;
+            if (HandleSelfDestruct)
+                ReturnData = Array.Empty<byte>();
+            result = EvmExceptionType.Revert;
+            return HandleSelfDestruct;
+        }
+
+        protected override void OnChildFrameCompleted(
+            VmState<EthereumGasPolicy> childState,
+            EvmExceptionType exceptionType,
+            bool shouldRevert,
+            ReadOnlyMemory<byte> output)
+        {
+            Completions.Add((exceptionType, shouldRevert));
+            if (shouldRevert)
+            {
+                StorageCell cell = new(Child, UInt256.Zero);
+                WorldState.Get(in cell, out UInt256 value);
+                RevertedStorageBeforeRestore = value;
+            }
+        }
+    }
+
+    private sealed class HookedTransactionProcessor(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider specProvider,
+        IWorldState worldState,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
+        ILogManager logManager)
+        : EthereumTransactionProcessorBase(
+            blobBaseFeeCalculator,
+            specProvider,
+            worldState,
+            virtualMachine,
+            codeInfoRepository,
+            logManager)
+    {
+        public int SimpleTransferCandidates { get; private set; }
+        public int TopLevelCodeResolutions { get; private set; }
+
+        protected override bool IsSimpleTransferFastPathCandidate(Transaction tx)
+        {
+            SimpleTransferCandidates++;
+            return false;
+        }
+
+        protected override CodeInfo ResolveTopLevelCodeInfo(
+            ICodeInfoRepository codeInfoRepository,
+            Address codeSource,
+            bool followDelegation,
+            IReleaseSpec spec,
+            out Address? delegationAddress)
+        {
+            TopLevelCodeResolutions++;
+            return base.ResolveTopLevelCodeInfo(codeInfoRepository, codeSource, followDelegation, spec, out delegationAddress);
+        }
     }
 }

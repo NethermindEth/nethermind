@@ -378,6 +378,9 @@ public static partial class EvmInstructions
                 goto OutOfGas;
         }
 
+        if (vm.TryExecuteSelfDestruct(ref stack, ref gas, out EvmExceptionType customResult))
+            return customResult;
+
         // Pop the inheritor address from the stack; signal underflow if missing.
         Address? inheritor = stack.PopAddress(vm.AddressCache);
         if (inheritor is null)
