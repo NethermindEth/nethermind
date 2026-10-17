@@ -196,6 +196,18 @@ public class UserErrors
             "0000000000000000000000000000000000000000000000000000000000000100").SetName("bool with byte 30 set");
         yield return MalformedInput(boolean,
             "8000000000000000000000000000000000000000000000000000000000000001").SetName("bool with high bit and low bit set");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.BytesM(4)),
+            "deadbeef00000000000000000000000000000000000000000000000000000001").SetName("bytes4 with non-zero padding");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Bytes),
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the bytes
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of the bytes
+            "aa01000000000000000000000000000000000000000000000000000000000000"   // 0xaa followed by non-zero padding
+        ).SetName("bytes with non-zero padding");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.String),
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the string
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of the string
+            "6101000000000000000000000000000000000000000000000000000000000000"   // "a" followed by non-zero padding
+        ).SetName("string with non-zero padding");
     }
 
     private static TestCaseData MalformedInput<T>(AbiSignature<T> signature, string body) =>
