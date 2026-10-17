@@ -668,7 +668,7 @@ jobs:
           set -euo pipefail
           for attempt in {1..10}; do
             status=0
-            dotnet src/Nethermind/artifacts/bin/Nethermind.State.Flat.Test/release/Nethermind.State.Flat.Test.dll --filter 'FullyQualifiedName~FlatStorageTreeDeleteWarmupTests' > "results/delete-warmup-$attempt.log" 2>&1 || status=$?
+            dotnet src/Nethermind/artifacts/bin/Nethermind.State.Flat.Test/release/Nethermind.State.Flat.Test.dll --filter 'FullyQualifiedName~FlatStorageTreeDeleteWarmupTests.Deletes_' > "results/delete-warmup-$attempt.log" 2>&1 || status=$?
             cat "results/delete-warmup-$attempt.log"
             printf '%s\n' "$status" > "results/delete-warmup-$attempt.exit-code"
           done

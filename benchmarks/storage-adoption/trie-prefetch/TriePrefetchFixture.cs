@@ -281,6 +281,8 @@ sealed class TriePrefetchFixture : IDisposable
         , IBatchReadOnlyDb
 #endif
     {
+        private bool IsStorage { get; } = storage;
+
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             Interlocked.Increment(ref counter.ScalarCalls);
@@ -297,7 +299,7 @@ sealed class TriePrefetchFixture : IDisposable
             where TDecoder : IValueDecoder<T>
         {
             if (inner is not IBatchReadOnlyDb native) throw new InvalidOperationException("Snapshot column lacks native MultiGet");
-            counter.ObserveNative(keys, keyLength, values.Length, storage);
+            counter.ObserveNative(keys, keyLength, values.Length, IsStorage);
             native.GetMany(keys, keyLength, values, decoder);
         }
 #endif
