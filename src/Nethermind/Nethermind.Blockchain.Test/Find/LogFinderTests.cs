@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
@@ -25,6 +26,7 @@ using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
@@ -106,6 +108,7 @@ public class LogFinderTests
         Assert.That(logs.Length, Is.EqualTo(5));
         int[] indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         Assert.That(indexes, Is.EqualTo(new[] { 0, 1, 0, 1, 2 }));
+        AssertSerializedAsFilterLogs(_logFinder.FindLogs(logFilter));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -204,6 +207,18 @@ public class LogFinderTests
             Throws.TypeOf(exceptionType));
         Assert.That(throwing.SawParallelScanSlotHeld, Is.True,
             "the scan must have taken the parallel path, or this test cannot cover the AggregateException unwrap");
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Cancelled_scan_disposes_the_partly_filled_block()
+    {
+        using CancellationTokenSource cancellation = new();
+        DisposeTrackingLogFinder finder = new(_blockTree, _receiptStorage, _receiptsRecovery);
+        DisposeTrackingLogFinder.BlockLogs.Reset(cancellation);
+
+        Assert.That(() => finder.Scan(AllBlockFilter().Build(), [4], cancellation.Token).ToArray(), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(DisposeTrackingLogFinder.BlockLogs.Disposed, Is.EqualTo(1));
     }
 
     [Test]
@@ -416,6 +431,19 @@ public class LogFinderTests
             logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
+    [Test]
+    public void Indexed_logs_serialize_as_their_filter_logs_across_indexed_and_scanned_blocks()
+    {
+        ILogIndexStorage logIndexStorage = CreateLogIndexStorage(1, 3);
+        logIndexStorage.GetEnumerator(TestItem.AddressA, 1, 3).Returns(_ => new[] { 1 }.AsEnumerable().GetEnumerator());
+        LogFilter filter = FilterBuilder.New().FromBlock(0UL).ToBlock(4).WithAddresses(TestItem.AddressA, TestItem.AddressB).Build();
+
+        IEnumerable<FilterLog> logs = CreateIndexedLogFinder(logIndexStorage).FindLogs(filter, _blockTree.FindHeader(0)!, _blockTree.FindHeader(4)!);
+
+        Assert.That(logs.Select(static log => log.BlockNumber), Is.EqualTo(new ulong[] { 1, 1, 4 }));
+        AssertSerializedAsFilterLogs(logs);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void filter_throws_descriptive_exception_when_receipts_exist_in_compact_encoding_but_block_missing()
     {
@@ -455,6 +483,7 @@ public class LogFinderTests
         FilterBuilder builder = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA);
         if (filterByTopic) builder = builder.WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA));
 
+        AssertSerializedAsFilterLogs(finder.FindLogs(builder.Build()));
         FilterLog[] logs = finder.FindLogs(builder.Build()).ToArray();
         Array.Clear(encoded);
 
@@ -472,6 +501,29 @@ public class LogFinderTests
                 Assert.That(log.TransactionHash, Is.EqualTo(block.Transactions[0].Hash));
                 Assert.That(log.TransactionIndex, Is.Zero);
             }
+        }
+    }
+
+    [Test]
+    public void FindLogs_WhenCompactReceiptTxHashIsNotRecovered_Throws()
+    {
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled
+            .WithBlockHash(block.Hash)
+            .WithBlockNumber(block.Number)
+            .WithIndex(0)
+            .WithTransactionHash(block.Transactions[0].Hash)
+            .WithLogs(new LogEntry(TestItem.AddressA, [], [TestItem.KeccakA]))
+            .TestObject;
+        byte[] encoded = new ReceiptArrayStorageDecoder(true).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        LogFinder finder = new(_blockTree, new LegacyReceiptFinder(encoded, CompactReceiptStorageDecoder.Instance), _receiptStorage,
+            LimboLogs.Instance, _receiptsRecovery, _specProvider!);
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => finder.FindLogs(filter).ToArray(), Throws.ArgumentException);
+            Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.ArgumentException);
         }
     }
 
@@ -695,6 +747,33 @@ public class LogFinderTests
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
 
+    private static void AssertSerializedAsFilterLogs(IEnumerable<FilterLog> logs)
+    {
+        EthereumJsonSerializer serializer = new();
+        FilterLog[] filterLogs = logs.ToArray();
+        string[] expected = filterLogs.Select(log => serializer.Serialize(log)).ToArray();
+        List<string> serialized = [];
+        int serializedBlocks = 0;
+        foreach (SerializedLogs blockLogs in FoundLogs.Serialize(logs))
+        {
+            using (blockLogs)
+            {
+                serializedBlocks++;
+                for (int i = 0; i < blockLogs.Count; i++)
+                {
+                    serialized.Add(Encoding.UTF8.GetString(blockLogs[i]));
+                }
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs, Is.TypeOf<FoundLogs>());
+            Assert.That(serialized, Is.EqualTo(expected));
+            Assert.That(serializedBlocks, Is.EqualTo(filterLogs.DistinctBy(static log => log.BlockHash).Count()), "logs are serialized a block at a time");
+        }
+    }
+
     // NSubstitute cannot stub a method with a ref-struct out parameter, so the throwing finder is hand-rolled.
     private sealed class ThrowingReceiptFinder(Type exceptionType) : IReceiptFinder
     {
@@ -734,6 +813,39 @@ public class LogFinderTests
                 recoveryContextFactory,
                 decoder ?? new ReceiptStorageDecoder());
             return true;
+        }
+    }
+
+    private sealed class DisposeTrackingLogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, IReceiptsRecovery receiptsRecovery)
+        : LogFinder(blockFinder, receiptStorage, receiptStorage, LimboLogs.Instance, receiptsRecovery, MainnetSpecProvider.Instance)
+    {
+        public IEnumerable<FilterLog> Scan(LogFilter filter, IEnumerable<ulong> blockNumbers, CancellationToken cancellationToken) =>
+            FilterLogsInBlocksParallel<BlockLogs, FilterLog>(filter, blockNumbers, tryParallel: false, cancellationToken);
+
+        /// <summary>Cancels the scan on the first accepted log, so the block is left partly filled.</summary>
+        public struct BlockLogs : IBlockLogs<BlockLogs, FilterLog>
+        {
+            private static CancellationTokenSource? _cancellation;
+
+            public static int Disposed { get; private set; }
+
+            public static void Reset(CancellationTokenSource cancellation)
+            {
+                _cancellation = cancellation;
+                Disposed = 0;
+            }
+
+            public readonly void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics) =>
+                _cancellation!.Cancel();
+
+            public readonly IEnumerable<FilterLog> Complete() => [];
+
+            public readonly void Dispose() => Disposed++;
+
+            public static IEnumerable<FilterLog> From(IEnumerable<FilterLog> logs) => logs;
+
+            public static IEnumerable<FilterLog> FromBlock(IEnumerable<FilterLog> blockLogs) => blockLogs;
         }
     }
 
