@@ -79,6 +79,31 @@ public class ResourcePoolTests
         }
     }
 
+    /// <summary>Resources created before detailed metrics are enabled must still be counted once a warm pool only rents and returns.</summary>
+    [Test]
+    [NonParallelizable]
+    public void Test_CreatedPooledResource_IsPublished_WhenDetailedMetricsEnabledAfterCreation()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+        ResourcePool.PooledResourceLabel label = new(usage.ToString(), "SnapshotContent");
+        bool wasEnabled = Metrics.DetailedMetricsEnabled;
+        Metrics.CreatedPooledResource.TryRemove(label, out _);
+        try
+        {
+            Metrics.DetailedMetricsEnabled = false;
+            _resourcePool.ReturnSnapshotContent(usage, _resourcePool.GetSnapshotContent(usage));
+
+            Metrics.DetailedMetricsEnabled = true;
+            _resourcePool.ReturnSnapshotContent(usage, _resourcePool.GetSnapshotContent(usage));
+
+            Assert.That(Metrics.CreatedPooledResource.TryGetValue(label, out long created) ? created : (long?)null, Is.EqualTo(1));
+        }
+        finally
+        {
+            Metrics.DetailedMetricsEnabled = wasEnabled;
+        }
+    }
+
     [Test]
     public void Test_ReturnSnapshotContent_ReusedContentStartsEmpty_WhetherOrNotStorageNodesWereWritten()
     {

@@ -169,7 +169,7 @@ public class ResourcePool : IResourcePool
                 return snapshotContent;
             }
 
-            _snapshotMetrics.OnCreated();
+            _snapshotMetrics.OnCreated(_snapshotPool.PooledItemCount);
             return new SnapshotContent();
         }
 
@@ -187,7 +187,7 @@ public class ResourcePool : IResourcePool
                 return sortedContent;
             }
 
-            _sortedMetrics.OnCreated();
+            _sortedMetrics.OnCreated(_sortedPool.PooledItemCount);
             return new SortedSnapshotContent();
         }
 
@@ -205,7 +205,7 @@ public class ResourcePool : IResourcePool
                 return cachedResource;
             }
 
-            _cachedResourceMetrics.OnCreated();
+            _cachedResourceMetrics.OnCreated(_cachedResourcePool.PooledItemCount);
             return new TransientResource(_lastCachedResourceSize);
         }
 
@@ -233,15 +233,11 @@ public class ResourcePool : IResourcePool
             Publish(pooledCount);
         }
 
-        public void OnCreated()
+        public void OnCreated(double pooledCount)
         {
             Interlocked.Increment(ref _active);
             Interlocked.Increment(ref _created);
-            if (Metrics.DetailedMetricsEnabled)
-            {
-                Metrics.ActivePooledResource[_label] = Volatile.Read(ref _active);
-                Metrics.CreatedPooledResource[_label] = Volatile.Read(ref _created);
-            }
+            Publish(pooledCount);
         }
 
         public void OnReturned(double pooledCount)
@@ -256,6 +252,7 @@ public class ResourcePool : IResourcePool
 
             // Racing publishers may leave a gauge one operation stale until the next rent or return.
             Metrics.ActivePooledResource[_label] = Volatile.Read(ref _active);
+            Metrics.CreatedPooledResource[_label] = Volatile.Read(ref _created);
             Metrics.CachedPooledResource[_label] = (long)pooledCount;
         }
     }
