@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Collections.ObjectModel;
 using Nethermind.Core;
@@ -32,6 +33,13 @@ public sealed class HistoryAvailability
     private static ReadOnlySpan<byte> FormatVersionKey => "history:format"u8;
 
     private static ReadOnlySpan<byte> GlobalFloorKey => "history:floor:global"u8;
+
+    // The block an unwindowed history's snap-pivot image is recorded at: the pivot's checkpoint window start.
+    private static ReadOnlySpan<byte> PivotImageBlockKey => "history:pivot:image"u8;
+
+    // The image of a snap pivot still being written: [pivot | root | image block | done-partition bitmap].
+    private static ReadOnlySpan<byte> PivotImagePendingKey => "history:pivot:pending"u8;
+    private const int PendingPivotImageLength = BlockBytes + RootBytes + BlockBytes + PendingPivotImage.BitmapBytes;
 
     // Point scopes only: one record per address. A range scope would be a new kind under a different prefix.
     private static ReadOnlySpan<byte> ScopeRecordPrefix => "history:floor:scope:"u8;
@@ -218,6 +226,78 @@ public sealed class HistoryAvailability
         Metrics.FlatHistoryFloor = (long)floor;
     }
 
+    /// <summary>Publishes the floor of an unwindowed history started at a snap pivot. Keeps the v2 stamp: the rows
+    /// stay post-values, and a windowed stamp would switch the next start to the v3 reader over them.</summary>
+    public void PublishUnwindowedPivotFloor(ulong floor, ulong imageBlock)
+    {
+        lock (_floorLock)
+        {
+            WriteGlobalFloorUnderLock(floor, FormatVersion);
+            Span<byte> value = stackalloc byte[BlockBytes];
+            BinaryPrimitives.WriteUInt64BigEndian(value, imageBlock);
+            _availableBlocks.PutSpan(PivotImageBlockKey, value);
+        }
+
+        Metrics.FlatHistoryFloor = (long)floor;
+    }
+
+    /// <summary>Records the snap-pivot image that is being written, with the partitions already complete. Stamps the
+    /// unwindowed format too: the image rows are v2 rows, and a restart before the watermark publishes must open them.</summary>
+    public void WritePendingPivotImage(PendingPivotImage image)
+    {
+        Span<byte> value = stackalloc byte[PendingPivotImageLength];
+        BinaryPrimitives.WriteUInt64BigEndian(value, image.PivotBlock);
+        image.PivotStateRoot.Bytes.CopyTo(value[BlockBytes..]);
+        BinaryPrimitives.WriteUInt64BigEndian(value[(BlockBytes + RootBytes)..], image.ImageBlock);
+        image.CopyDoneTo(value[(BlockBytes + RootBytes + BlockBytes)..]);
+        _availableBlocks.PutSpan(PivotImagePendingKey, value);
+        _availableBlocks.PutSpan(FormatVersionKey, [FormatVersion]);
+    }
+
+    /// <summary>The snap-pivot image still being written; false when there is none.</summary>
+    public bool TryGetPendingPivotImage([NotNullWhen(true)] out PendingPivotImage? image)
+    {
+        byte[]? value = _availableBlocks.Get(PivotImagePendingKey);
+        if (value is not { Length: PendingPivotImageLength })
+        {
+            image = null;
+            return false;
+        }
+
+        ReadOnlySpan<byte> span = value;
+        image = new PendingPivotImage(
+            BinaryPrimitives.ReadUInt64BigEndian(span),
+            new ValueHash256(span.Slice(BlockBytes, RootBytes)),
+            BinaryPrimitives.ReadUInt64BigEndian(span[(BlockBytes + RootBytes)..]),
+            span[(BlockBytes + RootBytes + BlockBytes)..]);
+        return true;
+    }
+
+    public void ClearPendingPivotImage() => _availableBlocks.Remove(PivotImagePendingKey);
+
+    /// <summary>Forgets the watermark and floor observed so far, after the caller removed every record to restart the
+    /// history at a snap pivot; a cached watermark would keep covering reads that now have no rows.</summary>
+    public void ForgetObservedRecords()
+    {
+        Volatile.Write(ref _observedWatermark, -1);
+        Volatile.Write(ref _observedFloor, -1);
+        Volatile.Write(ref _cachedScopes, null);
+    }
+
+    /// <summary>The block an unwindowed history recorded its snap-pivot image at; false when it started at genesis.</summary>
+    public bool TryGetPivotImageBlock(out ulong block)
+    {
+        byte[]? value = _availableBlocks.Get(PivotImageBlockKey);
+        if (value is not { Length: BlockBytes })
+        {
+            block = 0;
+            return false;
+        }
+
+        block = BinaryPrimitives.ReadUInt64BigEndian(value);
+        return true;
+    }
+
     /// <summary>Raises the floor only if <paramref name="newFloor"/> is strictly above it.</summary>
     public bool TryRaiseGlobalFloor(ulong newFloor)
     {
@@ -235,7 +315,7 @@ public sealed class HistoryAvailability
         return raised;
     }
 
-    private void WriteGlobalFloorUnderLock(ulong floor)
+    private void WriteGlobalFloorUnderLock(ulong floor, byte formatVersion = WindowedFormatVersion)
     {
         if (TryGetWatermark(out ulong watermark) && floor > watermark)
         {
@@ -247,7 +327,7 @@ public sealed class HistoryAvailability
         Span<byte> value = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(value, floor);
         _availableBlocks.PutSpan(GlobalFloorKey, value);
-        _availableBlocks.PutSpan(FormatVersionKey, [WindowedFormatVersion]);
+        _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
     }
 
     /// <summary>Refuses on unwindowed v2 data, where a slice is meaningless and stamping would brick the v2 read

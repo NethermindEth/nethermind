@@ -4,7 +4,9 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -1138,14 +1140,331 @@ public class HistoryWriterTests
     }
 
     [Test]
-    public void SeedPivot_OnAnUnwindowedWriter_IsANoOp()
+    public async Task SeedPivot_OnAnUnwindowedWriter_WritesThePivotStateAsRows_InTheBackground_AtItsCheckpointWindowStart()
     {
-        _writer.SeedPivot(100, StateAt(100).StateRoot);
+        StateId pivot = StateAt(1000);
+        ListStateSource source = new((AddrA, new Account(5, 500)), (AddrB, new Account(1, 7)));
+        using PivotFixture fixture = CreatePivotFixture(source);
+
+        Span<byte> slotValueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+        int slotValueLength = BaseFlatPersistence.EncodeSlotValue(BaseFlatPersistence.DecodeSlotValue([0xAA]), RlpWrapSlots, slotValueBuffer);
+        _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), slotValueBuffer[..slotValueLength]);
+
+        fixture.Writer.SeedPivot(1000, pivot.StateRoot);
+        await Task.Delay(200);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL));
-            Assert.That(_reader.IsPrunedBelowFloor(50), Is.False);
+            Assert.That(fixture.Writer.HoldsFlatPersist, Is.True, "the flat persist must stay at the pivot until the image is written");
+            Assert.That(fixture.Availability.TryGetWatermark(out _), Is.False, "nothing is readable before the image is complete");
+            Assert.That(source.PartitionsRead, Is.Zero, "the rows are read only once the persisted state is the pivot");
+        }
+
+        source.PersistedState = pivot;
+        await fixture.Image.Released.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // A capture on top connects at the pivot's marker and lands above the image.
+        CommitBlock(1000, 1001, accountChanges: [(AddrA, new Account(6, 600))]);
+        fixture.Writer.CaptureUpTo(StateAt(1001), _repository, CancellationToken.None);
+
+        bool foundA = fixture.Reader.TryGetAccount(1000, AddrA, out AccountStruct atPivot);
+        bool foundB = fixture.Reader.TryGetAccount(1001, AddrB, out AccountStruct untouched);
+        fixture.Reader.TryGetAccount(1001, AddrA, out AccountStruct afterPivot);
+        bool foundSlot = fixture.Reader.TryGetStorage(1001, AddrA, Slot1, out UInt256 slot);
+        (_, HistoryRowFormat reopened) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, fixture.Config);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Writer.HoldsFlatPersist, Is.False);
+            Assert.That(source.PartitionsRead, Is.EqualTo(PendingPivotImage.Partitions));
+            Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(1001UL));
+            Assert.That(foundA && atPivot.Balance == 500, Is.True, "the pivot's account must read from its image row");
+            Assert.That(foundB && untouched.Balance == 7, Is.True, "an account untouched since the pivot must still read from its image row");
+            Assert.That(afterPivot.Balance, Is.EqualTo((UInt256)600));
+            Assert.That(foundSlot, Is.True, "the pivot's slots copy over from the flat storage column");
+            Assert.That(slot.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
+            Assert.That(fixture.Reader.IsAvailable(pivot), Is.True);
+            Assert.That(fixture.Reader.IsPrunedBelowFloor(999), Is.True, "nothing below the pivot may be served, the image included");
+            Assert.That(fixture.Availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock == 512, Is.True, "the image sits at the start of the pivot's 512-block checkpoint window");
+            Assert.That(fixture.Availability.TryGetPendingPivotImage(out _), Is.False, "a complete image leaves no pending record");
+            Assert.That(reopened.IsV3, Is.False, "the pivot floor must not stamp the database windowed");
+            Assert.That(HasMarker(512) && HasMarker(999) && fixture.Availability.RootMatches(700, pivot.StateRoot), Is.True, "every block from the image to the pivot carries the pivot's root for the walk");
+        }
+    }
+
+    [Test]
+    public void SeedPivot_OnAnUnwindowedWriter_WithHistoryPastGenesis_Throws()
+    {
+        using PivotFixture fixture = CreatePivotFixture(new ListStateSource());
+        fixture.Writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
+        fixture.Writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => fixture.Writer.SeedPivot(100, StateAt(100).StateRoot),
+                Throws.InvalidOperationException.With.Message.Contains("already holds history"));
+            Assert.That(fixture.Writer.HoldsFlatPersist, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task SeedPivot_OnAnUnwindowedWriter_DropsTheGenesisCapturedBeforeTheSync()
+    {
+        StateId pivot = StateAt(100);
+        ListStateSource source = new((AddrA, new Account(5, 500))) { PersistedState = pivot };
+        using PivotFixture fixture = CreatePivotFixture(source);
+
+        // Genesis knew AddrB; by the pivot it is gone, so the image has no row for it.
+        fixture.Writer.SeedGenesis([new(AddrB, new Account(0, 42))], StateAt(0).StateRoot);
+        FlatHistoryColumns[] otherColumns = [FlatHistoryColumns.StorageClears, FlatHistoryColumns.AccountCommitments, FlatHistoryColumns.StorageCommitments, FlatHistoryColumns.TransactionChangesets];
+        foreach (FlatHistoryColumns column in otherColumns) _historyColumns.GetColumnDb(column).PutSpan([0x01, 0x02], [0x03]);
+        Assert.That(fixture.Reader.TryGetAccount(0, AddrB, out _), Is.True, "precondition: genesis is readable before the sync");
+
+        fixture.Writer.SeedPivot(100, pivot.StateRoot);
+        Assert.That(fixture.Availability.IsCovered(0), Is.False, "the discarded genesis must not stay covered while the image is written");
+        await fixture.Image.Released.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Reader.TryGetAccount(100, AddrB, out _), Is.False, "a genesis row must not read through below the pivot image");
+            Assert.That(fixture.Reader.TryGetAccount(100, AddrA, out AccountStruct a) && a.Balance == 500, Is.True);
+            Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(100UL));
+            Assert.That(fixture.Reader.IsPrunedBelowFloor(0), Is.True);
+            foreach (FlatHistoryColumns column in otherColumns)
+            {
+                Assert.That(_historyColumns.GetColumnDb(column).GetAll(), Is.Empty, $"{column} must not keep rows from before the pivot");
+            }
+        }
+    }
+
+    [Test]
+    public void SeedPivot_OnAnUnwindowedWriter_OnANonFlatLayout_DisablesCaptureInsteadOfCopyingTheState()
+    {
+        using PivotFixture fixture = CreatePivotFixture(new ListStateSource((AddrA, new Account(5, 500))), FlatLayout.FlatInTrie);
+
+        fixture.Writer.SeedPivot(100, StateAt(100).StateRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Writer.CaptureHealthy, Is.False);
+            Assert.That(fixture.Writer.HoldsFlatPersist, Is.False, "nothing is written, so nothing may hold the flat persist");
+            Assert.That(fixture.Availability.TryGetWatermark(out _), Is.False, "nothing may be published over an image that was never written");
+        }
+    }
+
+    [Test]
+    public async Task A_pivot_image_left_unfinished_by_a_restart_holds_from_construction_and_writes_only_the_partitions_not_done()
+    {
+        StateId pivot = StateAt(1000);
+        byte partitionOfA = AddrA.ToAccountPath.Bytes[0];
+        byte partitionOfB = AddrB.ToAccountPath.Bytes[0];
+        Assume.That(partitionOfA, Is.Not.EqualTo(partitionOfB));
+
+        // AddrB's partition was done before the restart; its row is there, AddrA's is not.
+        PendingPivotImage pending = new(pivot.BlockNumber, pivot.StateRoot, 512);
+        for (int partition = 0; partition < PendingPivotImage.Partitions; partition++)
+        {
+            if (partition != partitionOfA) pending.MarkDone(partition);
+        }
+
+        _availability.WritePendingPivotImage(pending);
+        using (IWriteBatch batch = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).StartWriteBatch())
+        {
+            _accountHistory.RecordChange(512, AccountKey(AddrB), EncodedAccount(new Account(1, 7)), batch);
+        }
+
+        // After a restart the flat state pointer is at the pivot while no watermark exists yet: the image covers that.
+        BasePersistence.SetCurrentState(_db.GetColumnDb(FlatDbColumns.Metadata), pivot);
+        ListStateSource source = new((AddrA, new Account(5, 500)), (AddrB, new Account(1, 7))) { PersistedState = pivot };
+        using PivotFixture fixture = CreatePivotFixture(source, start: false);
+
+        Assert.That(fixture.Writer.HoldsFlatPersist, Is.True, "the hold must stand before any persist can run after the restart");
+
+        fixture.Image.Start();
+        await fixture.Image.Released.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.PartitionsRead, Is.EqualTo(1), "only the partition that was not done is read again");
+            Assert.That(fixture.Availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock == 512, Is.True, "the resumed image keeps the block it was recorded at");
+            Assert.That(HasMarker(512) && HasMarker(1000), Is.True);
+            Assert.That(fixture.Reader.TryGetAccount(1000, AddrA, out AccountStruct a) && a.Balance == 500, Is.True);
+            Assert.That(fixture.Reader.TryGetAccount(1000, AddrB, out AccountStruct b) && b.Balance == 7, Is.True);
+            Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(1000UL));
+        }
+
+        CommitBlock(1000, 1001, accountChanges: [(AddrA, new Account(6, 600))]);
+        fixture.Writer.CaptureUpTo(StateAt(1001), _repository, CancellationToken.None);
+        Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(1001UL), "capture goes on above the resumed image");
+    }
+
+    // The floor is published before the watermark, so a crash between them leaves reads below the pivot refused, and
+    // the restart writes the watermark from the pending record that is cleared last.
+    [Test]
+    public async Task A_crash_after_the_floor_and_before_the_watermark_refuses_old_reads_and_completes_on_restart()
+    {
+        StateId pivot = StateAt(1000);
+        PendingPivotImage pending = new(pivot.BlockNumber, pivot.StateRoot, 512);
+        for (int partition = 0; partition < PendingPivotImage.Partitions; partition++) pending.MarkDone(partition);
+        _availability.WritePendingPivotImage(pending);
+        _availability.PublishUnwindowedPivotFloor(pivot.BlockNumber, 512);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_availability.IsCovered(999), Is.False, "with no watermark yet, no read is served");
+            Assert.That(_reader.IsBelowGlobalFloor(999), Is.True, "and the floor already refuses reads below the pivot");
+        }
+
+        ListStateSource source = new() { PersistedState = pivot };
+        using PivotFixture fixture = CreatePivotFixture(source);
+        await fixture.Image.Released.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.PartitionsRead, Is.Zero);
+            Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(1000UL));
+            Assert.That(fixture.Availability.TryGetGlobalFloor(out ulong floor) && floor == 1000, Is.True);
+            Assert.That(fixture.Availability.TryGetPendingPivotImage(out _), Is.False);
+        }
+    }
+
+    // Capture runs before every flat persist, so a persisted state above the watermark is a gap no walk can fill.
+    [TestCase(false, 50UL, true, TestName = "Flat state above a missing history is reported at startup")]
+    [TestCase(true, 50UL, true, TestName = "Flat state above the watermark is reported at startup")]
+    [TestCase(true, 0UL, false, TestName = "Flat state at the watermark is not reported")]
+    public void A_flat_state_persisted_above_the_history_is_reported_at_startup(bool genesisHistory, ulong persistedBlock, bool expectReport)
+    {
+        if (genesisHistory) _writer.SeedGenesis([], StateAt(0).StateRoot);
+        BasePersistence.SetCurrentState(_db.GetColumnDb(FlatDbColumns.Metadata), StateAt(persistedBlock));
+        TestLogger log = new();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryWriter>().Returns(new ILogger(log));
+
+        _ = new HistoryWriter(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, logManager, commitments: null);
+
+        Assert.That(log.LogList.Any(static line => line.Contains("Flat history cannot follow this node")), Is.EqualTo(expectReport), string.Join("\n", log.LogList));
+    }
+
+    [Test]
+    public void A_flat_state_below_a_since_block_floor_is_not_reported()
+    {
+        BasePersistence.SetCurrentState(_db.GetColumnDb(FlatDbColumns.Metadata), StateAt(50));
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.SinceBlock, HistoryRetentionSinceBlock = 100 };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        TestLogger log = new();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryWriter>().Returns(new ILogger(log));
+
+        _ = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, logManager, commitments: null);
+
+        Assert.That(log.LogList.Any(static line => line.Contains("Flat history cannot follow this node")), Is.False, "below the floor the watermark follows the state without rows");
+    }
+
+    [Test]
+    public void A_pivot_image_left_by_a_sync_that_never_completed_is_dropped_without_a_hold()
+    {
+        _availability.WritePendingPivotImage(new PendingPivotImage(1000, StateAt(1000).StateRoot, 512));
+
+        // The crash came before the state pointer advanced; the sync runs again from scratch.
+        using PivotFixture fixture = CreatePivotFixture(new ListStateSource { PersistedState = StateAt(0) }, start: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Writer.HoldsFlatPersist, Is.False);
+            Assert.That(fixture.Image.Released.IsCompleted, Is.True);
+            Assert.That(fixture.Availability.TryGetPendingPivotImage(out _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task A_pivot_image_that_cannot_be_read_releases_the_hold_and_disables_capture()
+    {
+        StateId pivot = StateAt(100);
+        ListStateSource source = new() { PersistedState = pivot, Failure = new InvalidOperationException("missing trie node") };
+        using PivotFixture fixture = CreatePivotFixture(source);
+
+        fixture.Writer.SeedPivot(100, pivot.StateRoot);
+        await fixture.Image.Released.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Writer.HoldsFlatPersist, Is.False, "an image that cannot complete must not stall block processing");
+            Assert.That(fixture.Writer.CaptureHealthy, Is.False);
+            Assert.That(fixture.Availability.TryGetWatermark(out _), Is.False);
+            Assert.That(fixture.Availability.TryGetPendingPivotImage(out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void Stopping_while_a_pivot_image_is_written_keeps_its_record_for_the_next_start()
+    {
+        StateId pivot = StateAt(100);
+        // Partition 0 completes, partition 1 is still being read when the node stops.
+        ListStateSource source = new((AddrA, new Account(5, 500))) { PersistedState = pivot, BlockFromPartition = 1 };
+        PivotFixture fixture = CreatePivotFixture(source);
+        try
+        {
+            fixture.Writer.SeedPivot(100, pivot.StateRoot);
+            Assert.That(source.Blocked.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Availability.TryGetPendingPivotImage(out PendingPivotImage? pending), Is.True);
+            Assert.That(pending!.IsDone(0), Is.True, "a partition finished before the stop is not written again");
+            Assert.That(pending.DoneCount, Is.EqualTo(1));
+            Assert.That(fixture.Availability.TryGetWatermark(out _), Is.False);
+        }
+    }
+
+    private PivotFixture CreatePivotFixture(ListStateSource source, FlatLayout layout = FlatLayout.Flat, bool start = true)
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, Layout = layout };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        PivotHistoryImageWriter image = new(_db, _historyColumns, config, availability, rowFormat, new Lazy<IPivotStateSource>(source), LimboLogs.Instance, parallelism: 1);
+        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null, Proofs.CommitmentDepthPolicy.Default, image);
+        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
+        if (start) image.Start();
+        return new PivotFixture(config, availability, image, writer, reader);
+    }
+
+    private sealed record PivotFixture(FlatDbConfig Config, HistoryAvailability Availability, PivotHistoryImageWriter Image, HistoryWriter Writer, HistoryReader Reader) : IDisposable
+    {
+        public void Dispose() => Image.Dispose();
+    }
+
+    private sealed class ListStateSource(params (Address Address, Account Account)[] accounts) : IPivotStateSource
+    {
+        private int _partitionsRead;
+
+        public StateId PersistedState { get; set; } = StateId.PreGenesis;
+        public Exception? Failure { get; init; }
+        public int BlockFromPartition { get; init; } = int.MaxValue;
+        public ManualResetEventSlim Blocked { get; } = new();
+        public int PartitionsRead => Volatile.Read(ref _partitionsRead);
+
+        public void ForEachAccount(in ValueHash256 stateRoot, byte partition, Action<ValueHash256, Account> sink, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _partitionsRead);
+            if (Failure is not null) throw Failure;
+            if (partition >= BlockFromPartition)
+            {
+                Blocked.Set();
+                cancellationToken.WaitHandle.WaitOne();
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            foreach ((Address address, Account account) in accounts)
+            {
+                ValueHash256 path = address.ToAccountPath;
+                if (path.Bytes[0] == partition) sink(path, account);
+            }
         }
     }
 

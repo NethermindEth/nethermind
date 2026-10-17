@@ -150,10 +150,10 @@ public class FlatStateActivationPolicyTests
 
     [TestCase(true, HistoryRetentionMode.Rolling, FlatDbOnRepair.Resync, true)]
     [TestCase(true, HistoryRetentionMode.SinceBlock, FlatDbOnRepair.Resync, true)]
-    [TestCase(true, HistoryRetentionMode.None, FlatDbOnRepair.Resync, false)]
+    [TestCase(true, HistoryRetentionMode.None, FlatDbOnRepair.Resync, true)]
     [TestCase(false, HistoryRetentionMode.Rolling, FlatDbOnRepair.Resync, false)]
     [TestCase(true, HistoryRetentionMode.Rolling, FlatDbOnRepair.Ignore, false)]
-    public void Wipe_warns_to_wipe_flat_history_only_when_windowed(bool historyEnabled, HistoryRetentionMode retention, FlatDbOnRepair onRepair, bool expectWarn)
+    public void Wipe_warns_to_wipe_flat_history_whenever_history_is_enabled(bool historyEnabled, HistoryRetentionMode retention, FlatDbOnRepair onRepair, bool expectWarn)
     {
         TestLogger testLogger = new();
         PolicySetup setup = CreateSetup(Flags.Enabled | Flags.Repaired | Flags.FlatHasData, FlatLayout.Flat, 32.GiB,
