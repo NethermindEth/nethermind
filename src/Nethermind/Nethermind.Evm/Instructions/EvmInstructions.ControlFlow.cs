@@ -378,8 +378,6 @@ public static partial class EvmInstructions
                 goto OutOfGas;
         }
 
-        // Chain-specific SELFDESTRUCT policies run after the standard base charge. Ethereum VMs leave this
-        // hook unhandled.
         if (vm.TryExecuteSelfDestruct(ref stack, ref gas, out EvmExceptionType customResult))
             return customResult;
 

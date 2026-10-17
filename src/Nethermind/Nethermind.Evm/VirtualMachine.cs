@@ -363,7 +363,6 @@ public partial class VirtualMachine<TGasPolicy>(
             string? substateError = null;
             try
             {
-                // Give specialized VMs a chance to finish a frame before the regular EVM or precompile path runs.
                 bool frameInitialized = TryExecuteFrameInitialization(_currentState, out CallResult callResult);
                 if (!frameInitialized)
                 {
@@ -547,9 +546,11 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <param name="result">The result to process when the frame is intercepted.</param>
     /// <returns><c>true</c> when <paramref name="result"/> replaces normal frame execution.</returns>
     /// <remarks>
-    /// The hook runs on each frame loop iteration before precompile account credit and before the regular
-    /// transfer log. Implementations should inspect <see cref="VmState{TGasPolicy}.IsContinuation"/> when
-    /// they need to distinguish a newly entered frame. The default implementation preserves Ethereum execution exactly.
+    /// The hook runs on each frame loop iteration before standard frame-entry side effects. An implementation
+    /// that returns <c>true</c> for a newly entered frame owns the action-trace start needed to balance the
+    /// common completion callbacks, the EIP-7708 transfer log, and precompile value credit that normal
+    /// execution would perform. Use <see cref="VmState{TGasPolicy}.IsContinuation"/> to avoid repeating
+    /// entry-only effects on continuations. The default implementation preserves Ethereum execution exactly.
     /// </remarks>
     protected virtual bool TryExecuteFrameInitialization(VmState<TGasPolicy> currentState, out CallResult result)
     {
@@ -602,7 +603,9 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <returns>The code to execute for the delegated call.</returns>
     /// <remarks>
     /// Ethereum resolves the delegated account directly. Specialized VMs can use the original source
-    /// to preserve chain-specific code-repository decorators while retaining the same default behavior.
+    /// to preserve chain-specific code-repository decorators while retaining the same default behavior. This
+    /// hook applies to delegated code entered from an EVM frame; top-level transactions resolve their
+    /// delegated target in the transaction processor, and frame transactions resolve it directly.
     /// </remarks>
     protected internal virtual CodeInfo ResolveDelegatedCodeInfo(Address codeSource, Address delegated, IReleaseSpec spec) =>
         CodeInfoRepository.GetDelegatedCodeInfo(delegated, spec);
@@ -615,7 +618,11 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <param name="gas">The current frame gas policy.</param>
     /// <param name="result">The custom opcode result.</param>
     /// <returns><c>true</c> when the specialized implementation handled the opcode.</returns>
-    /// <remarks>The default preserves the standard Ethereum SELFDESTRUCT implementation.</remarks>
+    /// <remarks>
+    /// The default preserves the standard Ethereum SELFDESTRUCT implementation. When returning <c>true</c>
+    /// with <see cref="EvmExceptionType.Revert"/>, the implementation must stage <see cref="ReturnData"/>
+    /// as a byte array before returning so dispatch can stop at the opcode.
+    /// </remarks>
     protected internal virtual bool TryExecuteSelfDestruct(
         ref EvmStack stack,
         ref TGasPolicy gas,
@@ -1991,7 +1998,13 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    private unsafe void AddTransferLog(VmState<TGasPolicy> currentState) =>
+    /// <summary>Emits the standard EIP-7708 transfer log for a newly entered frame.</summary>
+    /// <param name="currentState">The frame whose value transfer should be logged.</param>
+    /// <remarks>
+    /// An implementation that intercepts frame initialization can call this for a non-continuation frame
+    /// when it takes responsibility for the normal frame-entry side effects.
+    /// </remarks>
+    protected unsafe void AddTransferLog(VmState<TGasPolicy> currentState) =>
         GetExecutionHandlers().TransferLog(this, currentState);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -11,13 +11,11 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using Autofac;
-using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Blockchain.Tracing;
@@ -3768,7 +3766,7 @@ public sealed class VirtualMachineExtensionHooksTests
     public void Setup()
     {
         _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new OverridableReleaseSpec(Prague.Instance)))
+            .AddModule(new TestNethermindModule(new OverridableReleaseSpec(Prague.Instance) { IsEip7708Enabled = true }))
             .AddScoped<IVirtualMachine, HookedVirtualMachine>()
             .AddScoped<ITransactionProcessor, HookedTransactionProcessor>()
             .Build();
@@ -3870,6 +3868,33 @@ public sealed class VirtualMachineExtensionHooksTests
             Assert.That(_hookedMachine.Completions, Is.EqualTo([
                 (shouldRevert ? EvmExceptionType.Revert : EvmExceptionType.None, shouldRevert)]));
             Assert.That(valueAfterIntercept, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Intercepted_value_call_preserves_action_trace_transfer_and_balance()
+    {
+        Deploy(Prepare.EvmCode.Op(Instruction.STOP).Done);
+        _hookedMachine.HandleChildFrame = true;
+        _hookedMachine.InterceptChildValueFrame = true;
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 7, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(code, value: 0);
+        ActionAndLogTracer tracer = new();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            Assert.That(tracer.Actions, Has.Count.EqualTo(tracer.ActionOutputs.Count));
+            Assert.That(tracer.Actions, Has.Some.Matches<TestAllTracerWithOutput.ActionTrace>(action =>
+                action.To == Child && action.Value == 7 && action.CallType == ExecutionType.CALL));
+            Assert.That(tracer.Logs, Is.EqualTo([
+                TransferLog.CreateTransfer(SenderRecipientAndMiner.Default.Recipient, Child, 7)]).UsingPropertiesComparer());
+            Assert.That(_worldState.GetBalance(Child), Is.EqualTo(1.Ether + 7));
         }
     }
 
@@ -4010,6 +4035,15 @@ public sealed class VirtualMachineExtensionHooksTests
         return tracer;
     }
 
+    private sealed class ActionAndLogTracer : TestAllTracerWithOutput
+    {
+        public override bool IsTracingLogs => true;
+
+        public List<LogEntry> Logs { get; } = [];
+
+        public override void ReportLog(LogEntry log) => Logs.Add(log);
+    }
+
     private (Block Block, Transaction Transaction) PrepareTx(
         byte[]? code,
         SenderRecipientAndMiner? actors = null,
@@ -4065,6 +4099,7 @@ public sealed class VirtualMachineExtensionHooksTests
         public UInt256? RevertedStorageBeforeRestore { get; private set; }
         public bool ThrowFatalOnChild { get; set; }
         public bool HandleChildFrame { get; set; }
+        public bool InterceptChildValueFrame { get; set; }
         public bool HandledChildShouldRevert { get; set; }
         public bool SkipEoaCallFastPath { get; set; }
         public bool HandleSelfDestruct { get; set; }
@@ -4082,6 +4117,18 @@ public sealed class VirtualMachineExtensionHooksTests
 
             if (HandleChildFrame && !currentState.IsTopLevel && !currentState.IsContinuation)
             {
+                if (IsTracingActions) TraceTransactionActionStart(currentState);
+
+                if (InterceptChildValueFrame && !currentState.Env.Value.IsZero)
+                {
+                    WorldState.AddToBalanceAndCreateIfNotEmpty(
+                        currentState.Env.ExecutingAccount,
+                        currentState.ExecutionType,
+                        in currentState.Env.Value,
+                        Spec);
+                    AddTransferLog(currentState);
+                }
+
                 result = new(
                     ReadOnlyMemory<byte>.Empty,
                     precompileSuccess: null,
@@ -4115,6 +4162,8 @@ public sealed class VirtualMachineExtensionHooksTests
             out EvmExceptionType result)
         {
             SelfDestructCalls++;
+            if (HandleSelfDestruct)
+                ReturnData = Array.Empty<byte>();
             result = EvmExceptionType.Revert;
             return HandleSelfDestruct;
         }

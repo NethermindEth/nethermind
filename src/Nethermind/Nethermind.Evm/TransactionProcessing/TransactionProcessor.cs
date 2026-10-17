@@ -374,7 +374,10 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <returns>The code information used to create the top-level execution environment.</returns>
         /// <remarks>
         /// This hook runs on the regular top-level frame path. Processors that need it for recipients that
-        /// may use the simple-transfer optimization must also disable that optimization.
+        /// may use the simple-transfer optimization must also disable that optimization. Under EIP-8037,
+        /// this hook resolves the delegation designator only; the delegated target is loaded after its
+        /// delayed access charge by a direct repository lookup. Frame transactions likewise resolve their
+        /// delegated target directly.
         /// </remarks>
         protected virtual CodeInfo ResolveTopLevelCodeInfo(
             ICodeInfoRepository codeInfoRepository,
