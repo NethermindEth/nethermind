@@ -7,6 +7,9 @@ public class NativePrestateTracerConfig
 {
     public bool DiffMode { get; init; }
 
+    /// <summary>Gets whether to include initially empty accounts. Defaults to false; cannot be combined with diff mode.</summary>
+    public bool IncludeEmpty { get; init; }
+
     /// <summary>Gets whether to omit contract code bytes. Defaults to false; code hashes remain included.</summary>
     public bool DisableCode { get; init; }
 

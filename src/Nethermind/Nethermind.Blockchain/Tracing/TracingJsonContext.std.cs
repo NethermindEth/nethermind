@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
@@ -25,6 +26,8 @@ namespace Nethermind.Blockchain.Tracing;
 /// </summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(GethLikeCustomTrace))]
+[JsonSerializable(typeof(GethLikeTxTrace))]
+[JsonSerializable(typeof(Dictionary<string, JsonElement>))]
 [JsonSerializable(typeof(GethLikeCustomTrace.EmptyValue))]
 [JsonSerializable(typeof(GethLikeTxTraceCollection))]
 [JsonSerializable(typeof(NativeCallTracerCallFrame))]

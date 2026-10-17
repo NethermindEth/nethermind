@@ -1532,7 +1532,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
-            nint shared = Entry(&ExecuteOpcode<TStoreOpcode, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<TStoreOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 

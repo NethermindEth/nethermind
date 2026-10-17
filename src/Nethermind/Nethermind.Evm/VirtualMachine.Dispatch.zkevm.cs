@@ -156,10 +156,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 stack.Head = head;
                 Instruction instruction = (Instruction)Unsafe.Add(ref code, pc);
-                state.Vm.StartInstructionTrace(instruction, gas, (int)pc, in stack);
+                state.Vm.StartInstructionTrace(instruction, gas, (int)pc, in stack,
+                    TOpcode.TraceGasCost ?? TOpcode.GetSpecTraceGasCost(state.Vm.Spec), TOpcode.StackInputs, TOpcode.StackGrowth);
             }
 
             pc++;
+            nint traceStackHead = head;
             EvmExceptionType exceptionType;
             if (TOpcode.HasCheckedBody)
             {
@@ -173,13 +175,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     // One unsigned test bounds the depth on both sides: below the inputs the difference wraps past the limit.
                     nint aboveInputs = head - TOpcode.StackInputs;
                     if ((nuint)aboveInputs >= (nuint)(EvmStack.MaxStackSize - TOpcode.StackGrowth - TOpcode.StackInputs))
-                        return ExitChain(ref state, gas, pc, head,
-                            aboveInputs < 0 ? EvmExceptionType.StackUnderflow : EvmExceptionType.StackOverflow);
+                    {
+                        EvmExceptionType stackFailure = aboveInputs < 0 ? EvmExceptionType.StackUnderflow : EvmExceptionType.StackOverflow;
+                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && stackFailure == EvmExceptionType.StackUnderflow)
+                            state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
+                        return ExitChain(ref state, gas, pc, head, stackFailure);
+                    }
                 }
                 else
                 {
                     if (TOpcode.StackInputs != 0 && head < TOpcode.StackInputs)
+                    {
+                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions)
+                            state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
                         return ExitChain(ref state, gas, pc, head, EvmExceptionType.StackUnderflow);
+                    }
                     if (TOpcode.StackGrowth > 0 && head >= EvmStack.MaxStackSize - TOpcode.StackGrowth)
                         return ExitChain(ref state, gas, pc, head, EvmExceptionType.StackOverflow);
                 }
@@ -223,6 +233,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head = stack.Head;
                 gas = GetExecutionGas(ref state.Gas);
             }
+
+            if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions &&
+                !TOpcode.HasCheckedBody && exceptionType == EvmExceptionType.StackUnderflow && TOpcode.StackInputs > 0)
+                state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
 
             if ((!TOpcode.HasCheckedBody && !TOpcode.StaysInline) || TOpcode.CallsOutOfLine)
             {
@@ -315,7 +329,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 stack.Head = head;
                 Instruction instruction = (Instruction)Unsafe.Add(ref code, pc);
-                vm.StartInstructionTrace(instruction, gas, (int)pc, in stack);
+                vm.StartInstructionTrace(instruction, gas, (int)pc, in stack,
+                    GasPolicy.JumpIGasCost.GasCost, stackInputs: 2);
             }
 
             pc++;

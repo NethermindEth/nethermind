@@ -342,7 +342,7 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public void JavaScript_input_abort_never_overrides_public_interrupt([Values(0, 1, 2)] int externalOrder)
+    public void JavaScript_input_abort_never_overrides_public_interrupt([Range(0, 2)] int externalOrder)
     {
         using Engine engine = new(Prague.Instance);
         engine.PrepareNullThrowCapture();
@@ -411,6 +411,30 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(engine.TryGetInputError(failure, out _), Is.False);
             Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors([Values] bool nested)
+    {
+        using Context ctx = await Context.Create();
+        const string script = "{fault:function(){},result:function(){throw Error('mux result failure');}}";
+        Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
+        object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceBlockByNumber", "latest",
+            new { tracer = "muxTracer", tracerConfig = config });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JArray entries = (JArray)json["result"]!;
+        Assert.That(entries, Is.Not.Empty);
+        foreach (JToken entry in entries)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)entry["error"] ?? "", Does.Contain("mux result failure"), response);
+                Assert.That(entry["result"], Is.Null, response);
+            }
         }
     }
 
@@ -893,15 +917,11 @@ public partial class DebugRpcModuleTests
                 "jsonrpc": "2.0",
                 "result": [
                     {
-                        "result": {
-                            "0x7f600060-73": 1
-                        },
+                        "result": {},
                         "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
                     },
                     {
-                        "result": {
-                            "0x60006000-33": 1
-                        },
+                        "result": {},
                         "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
                     }
                 ],
@@ -1008,17 +1028,8 @@ public partial class DebugRpcModuleTests
                                 "code": "0xabcd",
                                 "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
                             },
-                            "0x0ffd3e46594919c04bcfd4e146203c8255670828": {
-                                "balance": "0x0"
-                            },
                             "0x475674cb523a0a2736b7f7534390288fce16982c": {
                                 "balance": "0xf618"
-                            },
-                            "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837": {
-                                "balance": "0x0",
-                                "storage": {
-                                    "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000000000"
-                                }
                             }
                         },
                         "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
@@ -1030,9 +1041,6 @@ public partial class DebugRpcModuleTests
                                 "nonce": 4,
                                 "code": "0xabcd",
                                 "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
-                            },
-                            "0x6b5887043de753ecfa6269f947129068263ffbe2": {
-                                "balance": "0x0"
                             },
                             "0x475674cb523a0a2736b7f7534390288fce16982c": {
                                 "balance": "0x24cac"
