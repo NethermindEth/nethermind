@@ -256,7 +256,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="stackItem"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportStackPush(byte stackItem) => ReportStackPush(new[] { stackItem });
+    void ReportStackPush(byte stackItem) => ReportStackPush(new ReadOnlySpan<byte>(in stackItem));
 
     /// <summary>
     ///
@@ -308,7 +308,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="offset"></param>
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new[] { data });
+    void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new ReadOnlySpan<byte>(in data));
 
     /// <summary>
     /// Reports the slot key and new value written by SSTORE, for the vmTrace <c>store</c> entry.
