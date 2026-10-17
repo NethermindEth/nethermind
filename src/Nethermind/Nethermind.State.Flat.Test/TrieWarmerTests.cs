@@ -279,6 +279,18 @@ public class TrieWarmerTests
         Mpmc
     }
 
+    [TestCase(1, 1)]
+    [TestCase(2, 3)]
+    [TestCase(4, 6)]
+    [TestCase(8, 12)]
+    [TestCase(12, 12)]
+    [TestCase(16, 12)]
+    [TestCase(20, 15)]
+    [TestCase(30, 22)]
+    [TestCase(64, 48)]
+    public void DefaultWorkerCount_FollowsProcessorCount(int processorCount, int expected) =>
+        Assert.That(TrieWarmer.DefaultWorkerCount(processorCount), Is.EqualTo(expected));
+
     private static async Task WaitForConditionAsync(Func<bool> condition, string message, int timeoutMs = 1000)
     {
         int delay = 10;
