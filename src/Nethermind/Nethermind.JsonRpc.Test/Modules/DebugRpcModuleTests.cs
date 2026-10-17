@@ -1122,12 +1122,20 @@ public partial class DebugRpcModuleTests
         new TestCaseData(true, true, false, false, true).SetName("Prestate_diff_includes_storage_clear_without_code"),
         new TestCaseData(true, false, true, false, false).SetName("Prestate_diff_omits_disabled_storage_changes"),
         new TestCaseData(true, false, false, true, false).SetName("Prestate_diff_omits_reverted_storage_write"),
-        new TestCaseData(true, false, false, true, true).SetName("Prestate_diff_omits_reverted_storage_clear")
+        new TestCaseData(true, false, false, true, true).SetName("Prestate_diff_omits_reverted_storage_clear"),
+        new TestCaseData(false, false, false, false, false, """{"disableCode":null,"disableStorage":null}""").SetName("Prestate_null_field_options_default_false"),
+        new TestCaseData(false, true, true, false, false, """{"disableCode":true,"disableCode":null,"disableStorage":true,"disableStorage":null}""").SetName("Prestate_null_field_options_preserve_true"),
+        new TestCaseData(false, false, false, false, false, """{"disableCode":false,"disableCode":null,"disableStorage":false,"disableStorage":null}""").SetName("Prestate_null_field_options_preserve_false"),
+        new TestCaseData(false, true, true, false, false, """{"disableCode":false,"disableCode":null,"disableCode":true,"disableStorage":false,"disableStorage":null,"disableStorage":true}""").SetName("Prestate_field_options_last_true_wins"),
+        new TestCaseData(false, false, false, false, false, """{"disableCode":true,"disableCode":null,"disableCode":false,"disableStorage":true,"disableStorage":null,"disableStorage":false}""").SetName("Prestate_field_options_last_false_wins"),
+        new TestCaseData(false, true, false, false, false, """{"disableCode":"true","disableCode":null,"disableStorage":"false","disableStorage":null}""").SetName("Prestate_null_string_disableCode_preserves_true_with_storage"),
+        new TestCaseData(true, true, true, false, false, """{"diffMode":true,"disableCode":"true","disableCode":null,"disableStorage":"true","disableStorage":null}""").SetName("Prestate_diff_null_field_options_preserve_string_true"),
+        new TestCaseData(true, false, false, false, false, """{"diffMode":true,"disableCode":"false","disableCode":null,"disableStorage":"false","disableStorage":null}""").SetName("Prestate_diff_null_field_options_preserve_string_false")
     ];
 
     [TestCaseSource(nameof(PrestateFieldOptionCases))]
     public async Task Debug_traceCall_prestate_respects_field_options(
-        bool diffMode, bool disableCode, bool disableStorage, bool revert, bool clearStorage)
+        bool diffMode, bool disableCode, bool disableStorage, bool revert, bool clearStorage, string? config = null)
     {
         using Context ctx = await Context.Create();
         string sender = TestItem.AddressA.ToString();
@@ -1149,7 +1157,7 @@ public partial class DebugRpcModuleTests
             new
             {
                 tracer = "prestateTracer",
-                tracerConfig = new { diffMode, disableCode, disableStorage },
+                tracerConfig = JsonSerializer.Deserialize<JsonElement>(config ?? JsonSerializer.Serialize(new { diffMode, disableCode, disableStorage })),
                 stateOverrides = overrides,
                 blockOverrides = new { feeRecipient = beneficiary }
             });

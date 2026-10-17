@@ -36,8 +36,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// <summary>Error reported for a frame an unrolled atomic batch or a failed assertion never ran.</summary>
     private const string SkippedFrameError = "frame skipped";
 
-    private static readonly NativeCallTracerConfig DefaultConfig = new();
-
     private readonly ulong _gasLimit;
     private readonly Hash256? _txHash;
     private readonly bool _isEip8037Enabled;
@@ -48,7 +46,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
     private readonly BlockLogIndex? _blockLogIndex;
-    private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
+    private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack;
     private readonly ArrayPoolList<ulong>? _logIndexAtEntry;
 
     private EvmExceptionType? _error;
@@ -80,7 +78,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _frameTx = _isFrameTx ? tx : null;
         _frameTxSpec = _isFrameTx ? spec : null;
 
-        _config = TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? DefaultConfig;
+        _config = NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
+        _callStack = new(1024);
 
         if (_config.WithLog)
         {
