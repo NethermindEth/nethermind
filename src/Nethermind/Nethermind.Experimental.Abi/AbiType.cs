@@ -54,7 +54,12 @@ public static partial class AbiType
     public static readonly Abi<Boolean> Bool = new()
     {
         Name = "bool",
-        Read = (ref BinarySpanReader r) => UInt256.Read(ref r) != 0,
+        Read = (ref BinarySpanReader r) =>
+        {
+            UInt256 value = UInt256.Read(ref r);
+            if (value > 1) throw new AbiException();
+            return !value.IsZero;
+        },
         Write = (ref BinarySpanWriter w, Boolean v) => UInt256.Write(ref w, v ? 1u : 0u),
     };
 
