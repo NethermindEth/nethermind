@@ -14,6 +14,22 @@ GUEST_OBJECTS := mul.o
 
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
+
+# SP1 charges per executed instruction, so trade compile time and code size for
+# fewer of them (values in hex). Tracking every local is most of the gain: the
+# default 0x400 leaves locals of the largest methods out of register allocation.
+OPT_FLAGS += \
+	--codegenopt JitMaxLocalsToTrack=10000 \
+	--codegenopt JitInlineBudget=100 \
+	--codegenopt JitExtDefaultPolicyMaxIL=400 \
+	--codegenopt JitExtDefaultPolicyMaxILRoot=800 \
+	--codegenopt JitExtDefaultPolicyMaxBB=40 \
+	--codegenopt JitCloneLoopsSizeLimit=1000 \
+	--codegenopt JitLoopInversionSizeLimit=400 \
+	--codegenopt 'JitOptRepeat=*' \
+	--codegenopt JitOptRepeatCount=2 \
+	--codegenopt JitEnableHeadTailMerge=0
+
 # Execution harness. SP1 publishes no image that executes an arbitrary ELF, so
 # this is our own: NethermindEth/bflat-sp1 wraps sp1-sdk v6.6.0 to print the
 # cycle count and public values. SP1_RUNNER overrides it with a host binary.
