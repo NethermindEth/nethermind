@@ -461,6 +461,10 @@ public class DebugRpcModule(
         BlockHeader? header = TryGetHeaderAndCheckState(blockNumber, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
+            if (headerError.ErrorCode == ErrorCodes.ResourceNotFound
+                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound
+                && blockNumber.Type == BlockParameterType.BlockNumber)
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound, headerError.IsTemporary);
             return headerError;
         }
 
@@ -476,7 +480,9 @@ public class DebugRpcModule(
             Block? resolvedBlock = blockFinder.FindBlock(blockNumber);
             if (resolvedBlock is null)
             {
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockNumber}", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(
+                    blockNumber.Type == BlockParameterType.BlockNumber ? $"block #{blockNumber.BlockNumber} not found" : $"Block body not found for {blockNumber}",
+                    ErrorCodes.ResourceNotFound);
             }
 
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
@@ -498,6 +504,12 @@ public class DebugRpcModule(
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+        }
+        // TraceBlockImpl signals a missing body with ThrowIfNull(block). Keep the selector overload
+        // rather than pre-resolving a Block, which would disable indexed replay.
+        catch (ArgumentNullException exception) when (exception.ParamName == "block" && blockNumber.Type == BlockParameterType.BlockNumber)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
         }
         catch (ArgumentNullException)
         {

@@ -321,6 +321,74 @@ public class DebugModuleTests
         Assert.That(JToken.Parse(JsonSerializer.Serialize(debugTraceCall.Data)), Is.EqualTo(JToken.Parse(JsonSerializer.Serialize(expected.Data))).Using(JToken.EqualityComparer));
     }
 
+    [TestCase(null, false, false)]
+    [TestCase("missingTracer", false, false)]
+    [TestCase(null, true, false)]
+    [TestCase("noopTracer", true, false)]
+    [TestCase(null, true, true)]
+    public async Task Debug_traceBlockByNumber_missing_numeric_block_uses_geth_error(string? tracer, bool headerRetained, bool streaming)
+    {
+        const ulong number = 26236007;
+        BlockParameter selector = new(number);
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        if (headerRetained)
+        {
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(number - 1).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+            _blockFinder.FindHeader(selector).Returns(header);
+            _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+            _blockchainBridge.HasStateForBlock(parent).Returns(true);
+            _blockchainBridge.HasStateForBlock(header).Returns(true);
+            _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+                .Returns(_ => throw new ArgumentNullException("block"));
+        }
+        string response = await SerializedRequest("debug_traceBlockByNumber", selector, new { tracer });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"block #{number} not found"), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public void Debug_traceBlockByNumber_missing_numeric_block_preserves_temporary_status([Values] bool isTemporary)
+    {
+        const ulong number = 26236007;
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(isTemporary);
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(new BlockParameter(number));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(response.Result.Error, Is.EqualTo($"block #{number} not found"));
+            Assert.That(response.IsTemporary, Is.EqualTo(isTemporary));
+        }
+    }
+
+    [TestCase(false, ErrorCodes.InternalError, "Incorrect head block")]
+    [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block")]
+    public void Debug_traceBlockByNumber_preserves_non_lookup_failures(bool hasHead, int errorCode, string message)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        if (hasHead)
+        {
+            _blockFinder.Head.Returns(block);
+            _blockFinder.FindHeader(new BlockParameter(1UL)).Returns(block.Header);
+            _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        }
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(new BlockParameter(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(errorCode));
+            Assert.That(response.Result.Error, Does.StartWith(message));
+        }
+    }
+
     [Test]
     public void DebugStandardTraceBlockToFile_WhenStateAvailable_ReturnsFileNames([Values] bool isBadBlock)
     {
