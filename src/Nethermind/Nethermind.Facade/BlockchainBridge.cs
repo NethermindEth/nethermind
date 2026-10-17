@@ -11,6 +11,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -817,6 +818,9 @@ namespace Nethermind.Facade
         int overridableEnvPoolSize
     ) : IBlockchainBridgeFactory
     {
+        // Read once: the root scope's registrations do not change after it is built.
+        private IReadOnlyQueryModule[]? _readOnlyQueryModules;
+
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = new(
@@ -840,6 +844,7 @@ namespace Nethermind.Facade
         internal IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
         {
             IOverridableEnv env = envFactory.Create();
+            IReadOnlyQueryModule[] readOnlyQueryModules = _readOnlyQueryModules ??= rootLifetimeScope.Resolve<IReadOnlyQueryModule[]>();
             // Only SETCODEFROM writes code past the code repository, so the extra world-state layer is skipped otherwise.
             bool adoptsCode = rootLifetimeScope.Resolve<ISpecProvider>().GetFinalSpec().IsEip8298Enabled;
             ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) =>
@@ -854,7 +859,9 @@ namespace Nethermind.Facade
                     .AddScoped<ResolvedCodeMemo>()
                     .AddDecorator<ICodeInfoRepository, MemoizingCodeInfoRepository>()
                     .AddDecorator<ITransactionProcessor, ResolvedCodeClearingTransactionProcessor>()
-                    .Add<BlockchainBridge.BlockProcessingComponents>();
+                    .Add<BlockchainBridge.BlockProcessingComponents>()
+                    // Calls with state, block or blob overrides run here rather than in the shared read-only envs.
+                    .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Call);
                 if (adoptsCode)
                 {
                     builder.AddDecorator<IWorldState, ResolvedCodeForgettingWorldState>();

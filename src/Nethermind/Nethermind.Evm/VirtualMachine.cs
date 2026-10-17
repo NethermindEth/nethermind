@@ -29,12 +29,19 @@ namespace Nethermind.Evm;
 
 using Int256;
 
+[method: Experimental("NMEVM0001")]
 public sealed class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager
-) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine
+    ILogManager? logManager,
+    FrameCodeRunner<EthereumGasPolicy>? frameCodeRunner
+) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager, frameCodeRunner), IVirtualMachine
 {
+    /// <summary>A machine without a frame code runner.</summary>
+    public EthereumVirtualMachine(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager)
+        : this(blockHashProvider, specProvider, logManager, null)
+    {
+    }
 }
 
 /// <summary>
@@ -159,12 +166,23 @@ internal struct ReturnDataScratch
     internal int GetLength(byte[] output) => ReferenceEquals(output, _staged) ? _stagedLength : output.Length;
 }
 
+[method: Experimental("NMEVM0001")]
 public partial class VirtualMachine<TGasPolicy>(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager) : IVirtualMachine<TGasPolicy>, IDisposable
+    ILogManager? logManager,
+    FrameCodeRunner<TGasPolicy>? frameCodeRunner) : IVirtualMachine<TGasPolicy>, IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+    /// <summary>A machine without a frame code runner.</summary>
+    public VirtualMachine(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager)
+        : this(blockHashProvider, specProvider, logManager, null)
+    {
+    }
+
+    /// <summary>Offered every frame the machine runs without an instruction tracer, when set; see <see cref="FrameCodeRunner{TGasPolicy}"/>.</summary>
+    private readonly FrameCodeRunner<TGasPolicy>? _frameCodeRunner = frameCodeRunner;
+
     private readonly UInt256 _chainId = (specProvider ?? throw new ArgumentNullException(nameof(specProvider))).ChainId;
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
@@ -299,6 +317,11 @@ public partial class VirtualMachine<TGasPolicy>(
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
+
+    /// <summary>Adds <paramref name="count"/> opcodes to <see cref="OpCodeCount"/>, for a frame code runner reporting the opcodes it ran.</summary>
+    [Experimental("NMEVM0001")]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AddOpCodes(int count) => OpCodeCount += count;
     internal ExecutionMetricsCounters MetricsCounters;
 
     public void FlushMetricsCounters() => MetricsCounters.Flush();
@@ -1724,7 +1747,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // May not be zero when resuming after a call.
         nint programCounter = VmState.ProgramCounter;
         EvmExceptionType exceptionType =
-            RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+            RunFrameCode<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
 
         if (TTracingInst.IsActive
             && exceptionType == EvmExceptionType.None
@@ -1920,7 +1943,16 @@ public partial class VirtualMachine<TGasPolicy>(
 /// <summary>
 /// Non-generic VirtualMachine for backward compatibility with EthereumGasPolicy.
 /// </summary>
+[method: Experimental("NMEVM0001")]
 public sealed class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine;
+    ILogManager? logManager,
+    FrameCodeRunner<EthereumGasPolicy>? frameCodeRunner) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager, frameCodeRunner), IVirtualMachine
+{
+    /// <summary>A machine without a frame code runner.</summary>
+    public VirtualMachine(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager)
+        : this(blockHashProvider, specProvider, logManager, null)
+    {
+    }
+}

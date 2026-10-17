@@ -426,7 +426,7 @@ public partial class DebugRpcModuleTests
             inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
     }
 
-    private static void IndexThroughTheCapture(TestRpcBlockchain chain, TransactionChangesetIndex index, Block block, BlockHeader parent)
+    internal static void IndexThroughTheCapture(TestRpcBlockchain chain, TransactionChangesetIndex index, Block block, BlockHeader parent)
     {
         using TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number);
         using IDisposable scope = chain.MainWorldState.BeginScope(parent);
