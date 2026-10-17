@@ -450,7 +450,9 @@ namespace Nethermind.Blockchain.Receipts
                         }
 
                         _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: recoverSender);
-                        _receiptsCache.Set(blockHash, receipts);
+                        // Without sender recovery, creations in a block decoded from the database (no tx senders) get
+                        // no contract address; caching that would serve it to full reads.
+                        if (recoverSender) _receiptsCache.Set(blockHash, receipts);
                     }
 
                     return receipts;

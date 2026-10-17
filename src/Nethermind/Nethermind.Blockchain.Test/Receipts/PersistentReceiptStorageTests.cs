@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -533,6 +534,23 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         {
             Assert.That(tx.SenderAddress, Is.Null);
         }
+    }
+
+    // A read by block hash (a peer's GetReceipts) recovers without senders. On a block decoded from the database,
+    // whose transactions carry none, a creation's contract address then stays unset, so those receipts must not
+    // serve a later read that asks for full recovery (eth_getBlockReceipts).
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Get_by_block_hash_does_not_cache_receipts_recovered_without_senders()
+    {
+        Transaction creation = Build.A.Transaction.WithTo(null).WithCode([0x00]).SignedAndResolved().TestObject;
+        Address deployed = ContractAddress.From(creation.SenderAddress, creation.Nonce);
+        (Block block, _) = InsertBlock(Build.A.Block.WithNumber(1).WithTransactions(creation).WithReceiptsRoot(TestItem.KeccakA).TestObject);
+
+        _storage.ClearCache();
+        creation.SenderAddress = null;
+        _storage.Get(block.Hash!);
+
+        Assert.That(_storage.Get(block)[0].ContractAddress, Is.EqualTo(deployed));
     }
 
     [Test]
