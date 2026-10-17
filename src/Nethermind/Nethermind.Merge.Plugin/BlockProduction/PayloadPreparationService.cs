@@ -40,6 +40,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
     public const int SlotsPerOldPayloadCleanup = 6;
     public static readonly TimeSpan GetPayloadWaitForNonEmptyBlockMillisecondsDelay = TimeSpan.FromMilliseconds(50);
+    public static readonly TimeSpan GetPayloadWaitForMissingBlockMillisecondsDelay = TimeSpan.FromMilliseconds(300);
 
     /// <summary>
     /// Delay between block improvements
@@ -418,16 +419,19 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             try
             {
                 // A null best block means no valid empty build exists yet, so wait for the improvement like an empty one.
-                bool currentBestBlockIsEmpty = blockContext.Best.CurrentBestBlock is null or { Transactions.Length: 0 };
+                Block? currentBestBlock = blockContext.Best.CurrentBestBlock;
+                bool noBlock = currentBestBlock is null;
+                bool currentBestBlockIsEmpty = currentBestBlock is null or { Transactions.Length: 0 };
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                 {
-                    // Inform current improvement that we need results now
                     if (!skipCancel)
                     {
-                        blockContext.CancelOngoingImprovements();
+                        // Inform current improvement that we need results now. With no block to fall back on,
+                        // cancelling turns an existing build into -38001, so let it finish instead.
+                        if (!noBlock) blockContext.CancelOngoingImprovements();
 
                         using CancellationTokenSource cts = new();
-                        Task timeout = Task.Delay(GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);
+                        Task timeout = Task.Delay(noBlock ? GetPayloadWaitForMissingBlockMillisecondsDelay : GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);
                         Task completedTask = await Task.WhenAny(blockContext.ImprovementTask, timeout);
                         if (completedTask != timeout)
                         {

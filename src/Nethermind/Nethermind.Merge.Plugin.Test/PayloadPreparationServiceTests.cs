@@ -344,7 +344,7 @@ public class PayloadPreparationServiceTests
 
     [Test]
     [CancelAfter(30000)]
-    public async Task GetPayload_waits_for_the_improvement_when_there_is_no_empty_block()
+    public async Task GetPayload_waits_for_the_improvement_when_there_is_no_empty_block([Values] bool skipCancel)
     {
         using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
         TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -353,12 +353,14 @@ public class PayloadPreparationServiceTests
         IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
         context.Best.Returns(_ => best);
         context.ImprovementTask.Returns(improvement.Task);
+        // Cancelling would fail the build, as it does when the improvement is waiting on the producer lock.
+        context.When(c => c.CancelOngoingImprovements()).Do(_ => improvement.TrySetCanceled());
         service.Store("payload", context);
 
-        ValueTask<IBlockProductionContext?> payload = service.GetPayload("payload", skipCancel: true);
+        ValueTask<IBlockProductionContext?> payload = service.GetPayload("payload", skipCancel);
         bool returnedEarly = payload.IsCompleted;
         best = new(improved, UInt256.One);
-        improvement.SetResult(improved);
+        improvement.TrySetResult(improved);
 
         using (Assert.EnterMultipleScope())
         {

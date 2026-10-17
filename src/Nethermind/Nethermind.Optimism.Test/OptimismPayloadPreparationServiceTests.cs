@@ -101,7 +101,7 @@ public class OptimismPayloadPreparationServiceTests
             logManager: TestLogManager.Instance,
             blocksConfig: Substitute.For<IBlocksConfig>()
         );
-        OptimismPayloadPreparationService service = new(
+        using OptimismPayloadPreparationService service = new(
             blockProducer: blockProducer,
             txPool: Substitute.For<ITxPool>(),
             blockImprovementContextFactory: new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(10)),
@@ -141,7 +141,7 @@ public class OptimismPayloadPreparationServiceTests
             .Returns(ci => Task.FromResult<Block?>(ci.ArgAt<IBlockProducer.Flags>(3) == IBlockProducer.Flags.PrepareEmptyBlock ? null : improved));
 
         CapturingBlockImprovementContextFactory factory = new(new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(10)));
-        OptimismPayloadPreparationService service = new(
+        using OptimismPayloadPreparationService service = new(
             blockProducer: blockProducer,
             txPool: Substitute.For<ITxPool>(),
             blockImprovementContextFactory: factory,
