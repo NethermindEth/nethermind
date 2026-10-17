@@ -61,6 +61,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private readonly bool _parallelExecutionEnabled;
     private readonly BlockCodeCache? _blockCodeCache;
     private readonly bool _handoff;
+    private readonly bool _earlyStart;
+    private readonly bool _transactionWorkersFirst;
     private BlockFootprints? _footprints;
 
     private const int MaxDiscoveryCandidates = 16;
@@ -122,7 +124,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         logManager,
         blocksConfig.MempoolPreWarmConcurrency,
         senderRecovery,
-        handoff: envFactory.RecordsFootprints)
+        handoff: envFactory.RecordsFootprints,
+        earlyStart: blocksConfig.PreWarmEarlyStart,
+        transactionWorkersFirst: blocksConfig.PreWarmTransactionWorkersFirst)
     {
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
         _blockCodeCache = blockCodeCache;
@@ -140,10 +144,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         ILogManager logManager,
         int speculativeConcurrency = 0,
         ISenderRecoveryTracker? senderRecovery = null,
-        bool handoff = false)
+        bool handoff = false,
+        bool earlyStart = true,
+        bool transactionWorkersFirst = true)
     {
         _senderRecovery = senderRecovery;
         _handoff = handoff;
+        _earlyStart = earlyStart;
+        _transactionWorkersFirst = transactionWorkersFirst;
         _concurrencyLevel = concurrency == 0 ? Environment.ProcessorCount - 1 : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -211,17 +219,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         try
         {
             CancellationToken token = session.Token;
-            BlockFootprints? footprints = _handoff && BlockFootprints.AppliesTo(suggestedBlock, spec) ? new BlockFootprints(suggestedBlock) : null;
+            BlockFootprints? footprints = _handoff && BlockFootprints.AppliesTo(suggestedBlock, spec)
+                ? new BlockFootprints(suggestedBlock, seedsAlongsideWarms: _earlyStart)
+                : null;
             // Transactions the mempool pass warmed run again unless a footprint it recorded holds in the block; those are
-            // stored on the session before any warm starts. Where the caches did not carry over they run again to refill
-            // them, and a footprint they record replaces the seeded one.
-            HashSet<Hash256>? seeded = footprints is not null && recorded is not null ? [] : null;
+            // stored on the session before any warm starts, or with the early start alongside the warms. Where the caches
+            // did not carry over they run again to refill them, and a footprint they record replaces the seeded one.
+            bool seeds = footprints is not null && recorded is not null;
+            HashSet<Hash256>? seeded = seeds && !_earlyStart ? [] : null;
             (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(
                 suggestedBlock, spec, footprints is null || speculativelyWarmed is null ? speculativelyWarmed : seeded, recovery, _concurrencyLevel, token, warmSystemAccessLists: true,
                 warmCalldataAddresses: true, handColdChainsToDiscovery: true);
             if (footprints is not null)
             {
                 blockState.Footprints = footprints;
+                // Seeded alongside the warms, a worker skips what the seeded set skips above as far as it is seeded when
+                // the worker takes it; a run that stores a footprint first keeps it.
+                blockState.SkipsSeeded = seeds && _earlyStart && speculativelyWarmed is not null;
                 Volatile.Write(ref _footprints, footprints);
             }
             // A block access list already enumerates the block's reads; discovery adds nothing.
@@ -229,11 +243,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 ? null
                 : SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
             blockState.UpFrontDiscovery = discoveryCandidates;
+            if (_earlyStart && _transactionWorkersFirst && !addressWarmer.HasBal)
+            {
+                // The sender and recipient fan-out is held until the transaction workers are queued, so they take the
+                // worker budget ahead of it; the coinbase, withdrawals and system access lists are warmed at once.
+                addressWarmer.HoldFanOut();
+                blockState.FanOutAfterWorkers = addressWarmer;
+            }
             session.Start(() =>
             {
-                if (seeded is not null) Seed(recorded!, suggestedBlock, spec, footprints!, seeded);
+                if (seeded is not null)
+                {
+                    Seed(recorded!, suggestedBlock, spec, footprints!, seeded);
+                    Seeded?.Invoke();
+                }
                 // The coordinator owns the caller slot; all nested fan-outs share the remaining workers.
                 using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
+                using ParallelUnbalancedWork.BackgroundWork? seedWork = seeds && _earlyStart
+                    ? ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions, _ => SeedWhereEmpty(recorded!, suggestedBlock, spec, footprints!, token))
+                    : null;
                 using ParallelUnbalancedWork.BackgroundWork addressWork = ParallelUnbalancedWork.BackgroundFor(
                     0, 1, HelperOptions, _ => ((IThreadPoolWorkItem)addressWarmer).Execute());
                 using ParallelUnbalancedWork.BackgroundWork? discoveryWork = discoveryCandidates is null ? null
@@ -241,8 +269,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         _ => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, spec, recovery, token));
                 try
                 {
+                    BeforeTransactionWorkers?.Invoke();
                     PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
                         suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
+                    // The seeding belongs to the warm pass: a refresh worker that ends with the pass must have seen every
+                    // invalidation a seed causes.
+                    seedWork?.WaitForCompletion();
                     if (footprints is not null)
                     {
                         footprints.EndWarmPass();
@@ -254,6 +286,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 }
                 finally
                 {
+                    // A fan-out held for the transaction workers is let go before the address warmer is joined, however the
+                    // pass left the try.
+                    addressWarmer.ReleaseFanOut();
                     try
                     {
                         // Every warm has returned, so nothing queues behind this: the session must not end with discovery still writing.
@@ -287,6 +322,26 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             _logger.DebugError($"Error taking the mempool footprints for block {block.Number}", ex);
         }
     }
+
+    private void SeedWhereEmpty(MempoolFootprints recorded, Block block, IReleaseSpec spec, BlockFootprints footprints, CancellationToken token)
+    {
+        try
+        {
+            Blockchain.Metrics.PrewarmMempoolRunsStored += recorded.SeedWhereEmpty(block, spec, footprints, token);
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugError($"Error taking the mempool footprints for block {block.Number}", ex);
+        }
+
+        Seeded?.Invoke();
+    }
+
+    /// <summary>For tests: runs on the thread that took the mempool pass's runs over, once it has stored them.</summary>
+    internal Action? Seeded { get; set; }
+
+    /// <summary>For tests: runs on a block's warm pass before it groups the transactions and starts their workers.</summary>
+    internal Action? BeforeTransactionWorkers { get; set; }
 
     private void DiscoverAndWarmStorageSafely(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery,
         CancellationToken cancellationToken, StrongBox<int>? sharedCells = null)
@@ -1098,6 +1153,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
         finally
         {
+            // A fan-out held for transaction workers that never started is not held any longer.
+            addressWarmer.ReleaseFanOut();
             // Don't complete the task until address warmer is also done.
             if (addressWork is null)
             {
@@ -1722,9 +1779,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         private readonly ReadOnlyBlockAccessList? Bal = bal;
         private readonly bool WarmWithdrawals = bal is null && spec.WithdrawalsEnabled && block.Withdrawals?.Length > 0;
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
+        // Set when the sender and recipient fan-out may start; null when it is not held.
+        private ManualResetEventSlim? _fanOutReleased;
         private bool _systemAccessListsWarmed;
 
         public bool HasBal => Bal is not null;
+
+        /// <summary>Holds the sender and recipient fan-out until <see cref="ReleaseFanOut"/>; called before the warmer is queued.</summary>
+        public void HoldFanOut() => _fanOutReleased = new ManualResetEventSlim(initialState: false);
+
+        public void ReleaseFanOut() => _fanOutReleased?.Set();
 
         /// <summary>The coinbase whose account is warmed; the block's unless set.</summary>
         public Address? Beneficiary { get; set; } = block.Header.GasBeneficiary;
@@ -1735,7 +1799,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         public void Wait() => _doneEvent.Wait();
 
-        public void Dispose() => _doneEvent.Dispose();
+        public void Dispose()
+        {
+            _doneEvent.Dispose();
+            _fanOutReleased?.Dispose();
+        }
 
         void IThreadPoolWorkItem.Execute()
         {
@@ -1811,6 +1879,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     // In ranges, as WarmDiscoveredStorage does: an iteration per transaction would put one interlocked
                     // increment per transaction on the fan-out's shared index, which on a dense block is thousands of
                     // contended writes to one cache line for a few nanoseconds of work each.
+                    _fanOutReleased?.Wait(parallelOptions.CancellationToken);
                     int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
                     int rangeSize = Math.Max(16, count / (parallelOptions.MaxDegreeOfParallelism * 4));
                     WarmingState<(Block Block, int RangeSize, int Count)> baseState = new(envPool, (block, rangeSize, count), block.Header);
@@ -2010,6 +2079,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         public BlockFootprints? Footprints { get; set; }
 
+        /// <summary>
+        /// Whether a transaction a mempool run is seeded for by the time a worker takes it is left to that run: a job
+        /// whose every transaction is, and such a late transaction.
+        /// </summary>
+        public bool SkipsSeeded { get; set; }
+
+        /// <summary>The address warmer whose sender and recipient fan-out waits for the transaction workers to be queued.</summary>
+        public AddressWarmer? FanOutAfterWorkers { get; set; }
+
         /// <summary>For a mempool pass, where its runs' footprints go.</summary>
         public MempoolFootprints? Recording { get; set; }
 
@@ -2106,6 +2184,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         public int Degree { get; private set; }
         private Transaction[] _txs = [];
         private ISet<Hash256>? _speculativelyWarmed;
+        // Where a transaction found with a footprint before it was warmed was seeded one; null when those are warmed.
+        private BlockFootprints? _seeded;
         private int[] _claimed = [];
         private int _txCount;
         // Jobs taken from the front in the low half, from the back in the high half; see TryClaimJob.
@@ -2136,6 +2216,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             Degree = maxDegree > 0 ? maxDegree : PreWarmer._concurrencyLevel;
             _txs = blockState.Block.Transactions;
             _speculativelyWarmed = blockState.SpeculativelyWarmed;
+            _seeded = blockState.SkipsSeeded ? blockState.Footprints : null;
             _claimed = claimed;
             _txCount = txCount;
             _jobsTaken = 0;
@@ -2151,6 +2232,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             if (count == 1)
             {
+                BlockState.FanOutAfterWorkers?.ReleaseFanOut();
                 RunWorker(0);
                 return;
             }
@@ -2162,6 +2244,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             {
                 using ParallelUnbalancedWork.BackgroundWork workers = ParallelUnbalancedWork.BackgroundFor(
                     1, count, options, _runWorker, _workersCompleted);
+                // Queued behind the workers, the sender and recipient fan-out takes what of the budget they leave.
+                BlockState.FanOutAfterWorkers?.ReleaseFanOut();
                 RunWorker(0);
                 // The caller must assist late helpers before joining the initial workers: those workers can
                 // still be busy while a helper needs the caller's otherwise idle share of the budget.
@@ -2211,8 +2295,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             Tracer = null!;
             _txs = [];
             _speculativelyWarmed = null;
+            _seeded = null;
             _claimed = [];
             Volatile.Write(ref _inUse, 0);
+        }
+
+        /// <summary>
+        /// Whether a mempool run is seeded for every transaction of <paramref name="job"/>, which the job's own warm would
+        /// otherwise be the first to store a footprint for.
+        /// </summary>
+        public bool IsSeeded(in WarmupJob job)
+        {
+            if (_seeded is not { } seeded) return false;
+            foreach ((int index, Transaction _) in job.Transactions.AsSpan())
+            {
+                if (seeded.Get(index) is null) return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -2278,6 +2378,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 if (overtaken) continue;
                 // Already warmed speculatively — a job for it would do no work.
                 if (tx.Hash is Hash256 hash && _speculativelyWarmed?.Contains(hash) == true) continue;
+                // Seeded by now: the transaction is left to the mempool run, as the seeded set leaves it.
+                if (_seeded?.Get(i) is not null) continue;
 
                 sender ??= txSender;
                 run.Add((i, tx));
@@ -2579,6 +2681,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 CancellationToken token = queue.Token;
                 while (!token.IsCancellationRequested && queue.TryTakeJob(far, out WarmupJob job))
                 {
+                    // Seeded by now: the job is left to the mempool runs, as grouping leaves one the seeded set covers.
+                    if (queue.IsSeeded(in job)) continue;
                     Warm(job.Transactions.AsSpan(), job.LastIndex);
                 }
 
