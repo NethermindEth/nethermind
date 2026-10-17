@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
@@ -19,6 +20,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
@@ -97,7 +99,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(transactionHash, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, WithBufferedLimit(options));
         if (transactionTrace is null)
@@ -134,7 +136,9 @@ public class DebugRpcModule(
             }
         }
 
-        Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
+        // The call converts against the fork it runs in, which a block override can change.
+        IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
+        Result<Transaction> txResult = call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -152,7 +156,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(tx, blockParameter, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         GethLikeTxTrace? transactionTrace;
@@ -280,7 +284,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(blockHash, index, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, timeout.Token, WithBufferedLimit(options));
         if (transactionTrace is null)
         {
@@ -307,7 +311,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(block!, transactionHash, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
         if (transactionTrace is null)
@@ -340,7 +344,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(block, targetTxHash!, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, WithBufferedLimit(options));
 
@@ -426,7 +430,7 @@ public class DebugRpcModule(
                     debugBridge.GetBlockTrace(block!, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
         try
         {
@@ -478,7 +482,7 @@ public class DebugRpcModule(
                     debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         try
@@ -525,7 +529,7 @@ public class DebugRpcModule(
                     debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         try
@@ -553,7 +557,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         IReadOnlyCollection<Hash256> roots;
@@ -689,10 +693,10 @@ public class DebugRpcModule(
 
     public ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter)
     {
-        Block? block = debugBridge.GetBlock(blockParameter);
-        return block is null
+        BlockHeader? header = blockFinder.FindHeader(blockParameter);
+        return header is null
             ? ResultWrapper<ArrayPoolList<byte>>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound)
-            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoderOrThrow<BlockHeader>().EncodeToArrayPoolList(block.Header));
+            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoderOrThrow<BlockHeader>().EncodeToArrayPoolList(header));
     }
 
     public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage() => ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
@@ -705,7 +709,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         IEnumerable<string>? files = debugBridge.TraceBlockToFile(blockHash, cancellationToken, options);
@@ -723,7 +727,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        using CancellationTokenSource cancellationTokenSource = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout cancellationTokenSource = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         IEnumerable<string>? files = debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
@@ -733,10 +737,68 @@ public class DebugRpcModule(
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
 
-    public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks()
+    private const string ExistingFileError = "location would overwrite an existing file";
+
+    public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null)
     {
         IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
-        return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
+        if (file is null)
+        {
+            return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
+        }
+
+        // Non-string arguments arrive as their raw JSON text, so a relative path could be "123" or "{}".
+        // Two leading separators make a UNC or device path on Windows, which would open a connection to another host.
+        if (!Path.IsPathFullyQualified(file) || file is ['/' or '\\', '/' or '\\', ..])
+        {
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail("file path must be an absolute local path", ErrorCodes.InvalidParams);
+        }
+
+        // Checked up front to fail before serializing, and so an existing directory fails the same way on every
+        // platform; the move below stays the final guard.
+        if (Path.Exists(file))
+        {
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail(ExistingFileError, ErrorCodes.Default);
+        }
+
+        // Written next to the target and moved into place, so the target never holds a partial file and a failed
+        // write only removes the file this call created.
+        string temporaryFile = $"{file}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            using FileStream stream = new(temporaryFile, FileMode.CreateNew, FileAccess.Write);
+            EthereumJsonSerializer.SerializeToStream(stream, badBlocks);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"{nameof(debug_getBadBlocks)} failed to write {file}: {e.Message}");
+            DeleteTemporaryFile(temporaryFile);
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail(e.Message, ErrorCodes.Default);
+        }
+
+        try
+        {
+            File.Move(temporaryFile, file, overwrite: false);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            DeleteTemporaryFile(temporaryFile);
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail(e is IOException && Path.Exists(file) ? ExistingFileError : e.Message, ErrorCodes.Default);
+        }
+
+        return ResultWrapper<IEnumerable<BadBlock>>.Success(null);
+
+        void DeleteTemporaryFile(string path)
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(debug_getBadBlocks)} failed to remove temporary file {path}: {e.Message}");
+            }
+        }
     }
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
@@ -822,7 +884,8 @@ public class DebugRpcModule(
                 timeoutCts,
                 _logger)
             {
-                Spec = specProvider.GetSpec(header)
+                // Bundles without their own block overrides run on the header with the trace options' overrides applied.
+                Spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header)
             };
         }
         catch
@@ -881,8 +944,6 @@ public class DebugRpcModule(
 
         BlockParameter concreteBlockParameter = new(header.Number);
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> simulationResult =
             new SimulateTxExecutor<GethLikeTxTrace>(
                 blockchainBridge,
@@ -890,7 +951,11 @@ public class DebugRpcModule(
                 jsonRpcConfig,
                 specProvider,
                 new GethStyleSimulateBlockTracerFactory(options: WithBufferedLimit(options)),
-                _secondsPerSlot
+                _secondsPerSlot,
+                // These are calls, not a simulation, so a lone blob fee cap is rejected as it is without overrides.
+                readLoneBlobFeeCapAsAbsent: false,
+                // A bundle call runs as eth_call does: the block gas limit does not bound it, which FillOmittedGas relies on.
+                callSemantics: true
             ).Execute(simulatePayload, concreteBlockParameter);
 
         if (simulationResult.ErrorCode != 0)

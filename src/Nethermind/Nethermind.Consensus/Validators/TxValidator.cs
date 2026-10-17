@@ -226,20 +226,9 @@ public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool>? validate = 
         IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        !(validate?.Invoke(releaseSpec) ?? IsEnabled(transaction.Type, releaseSpec))
+        !(validate?.Invoke(releaseSpec) ?? releaseSpec.IsTxTypeEnabled(transaction.Type))
             ? TxErrorMessages.InvalidTxType(releaseSpec.Name)
             : ValidationResult.Success;
-
-    private static bool IsEnabled(TxType type, IReleaseSpec releaseSpec) => type switch
-    {
-        TxType.AccessList => releaseSpec.IsEip2930Enabled,
-        TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
-        TxType.Blob => releaseSpec.IsEip4844Enabled,
-        TxType.SetCode => releaseSpec.IsEip7702Enabled,
-        // Without this arm a pooled frame transaction is the one type that survives a head not enabling EIP-8141.
-        TxType.FrameTx => releaseSpec.IsEip8141Enabled,
-        _ => true,
-    };
 }
 
 public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator
@@ -633,13 +622,11 @@ public abstract class BaseSignatureTxValidator : ITxValidator
 
 public sealed class LegacySignatureTxValidator(ulong chainId) : BaseSignatureTxValidator
 {
-    protected override ValidationResult ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        ulong v = transaction.Signature!.V;
-        return releaseSpec.IsEip155Enabled && (v == chainId * 2 + 35ul || v == chainId * 2 + 36ul)
+    // Signature.ChainId derives the chain id from v without overflow, unlike 2 * chainId + 35.
+    protected override ValidationResult ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec) =>
+        releaseSpec.IsEip155Enabled && transaction.Signature!.ChainId == chainId
             ? ValidationResult.Success
             : base.ValidateChainId(transaction, releaseSpec);
-    }
 }
 
 public sealed class SignatureTxValidator : BaseSignatureTxValidator

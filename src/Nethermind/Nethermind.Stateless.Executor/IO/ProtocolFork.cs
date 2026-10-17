@@ -30,7 +30,7 @@ public enum ProtocolFork : byte
 
 public static class ProtocolForkExtensions
 {
-    private static readonly Dictionary<string, ProtocolFork> _forksByName = new(StringComparer.Ordinal)
+    private static Dictionary<string, ProtocolFork> _forksByName => field ??= new(StringComparer.Ordinal)
     {
         [Cancun.Instance.Name] = ProtocolFork.Cancun,
         [Prague.Instance.Name] = ProtocolFork.Prague,

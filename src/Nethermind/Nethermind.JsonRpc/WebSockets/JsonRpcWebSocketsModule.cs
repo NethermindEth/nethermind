@@ -23,7 +23,8 @@ public class JsonRpcWebSocketsModule(IJsonRpcProcessor jsonRpcProcessor,
     IJsonRpcUrlCollection jsonRpcUrlCollection,
     IRpcAuthentication rpcAuthentication,
     long? maxBatchResponseBodySize,
-    int processingConcurrency) : IWebSocketsModule
+    int processingConcurrency,
+    long? maxRequestBodySize = null) : IWebSocketsModule
 {
     private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
 
@@ -35,6 +36,7 @@ public class JsonRpcWebSocketsModule(IJsonRpcProcessor jsonRpcProcessor,
     private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection = jsonRpcUrlCollection;
     private readonly IRpcAuthentication _rpcAuthentication = rpcAuthentication;
     private readonly long? _maxBatchResponseBodySize = maxBatchResponseBodySize;
+    private readonly long? _maxRequestBodySize = maxRequestBodySize;
     private readonly int _processingConcurrency = processingConcurrency;
 
     public string Name { get; } = "json-rpc";
@@ -62,7 +64,10 @@ public class JsonRpcWebSocketsModule(IJsonRpcProcessor jsonRpcProcessor,
             _jsonSerializer,
             jsonRpcUrl,
             _maxBatchResponseBodySize,
-            JsonRpcProcessingConcurrency.ForUrl(jsonRpcUrl, _processingConcurrency));
+            JsonRpcProcessingConcurrency.ForUrl(jsonRpcUrl, _processingConcurrency),
+            jsonRpcUrl.MaxRequestBodySize ?? _maxRequestBodySize,
+            context.Connection.RemoteIpAddress,
+            context.Request.Headers["X-Forwarded-For"]);
 
         _clients.TryAdd(socketsClient.Id, socketsClient);
 

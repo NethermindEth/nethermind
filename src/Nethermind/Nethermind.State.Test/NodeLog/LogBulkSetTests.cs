@@ -195,6 +195,64 @@ internal class LogBulkSetTests
     }
 
     [Test]
+    public void Delete_warming_loads_only_the_sibling_needed_by_a_collapsing_branch([Values] bool forDelete, [Values] bool threeChildren, [Values] bool inlineDeletedLeaf)
+    {
+        Hash256 keyA = new("0x1000000000000000000000000000000000000000000000000000000000000001");
+        Hash256 keyB = new("0x1000000000000000000000000000000000000000000000000000000000000002");
+        Hash256 keyC = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+        Hash256 keyD = new("0x1000000000000000000000000000000000000000000000000000000000000003");
+        List<(Hash256 key, byte[] value)> items = [(keyA, inlineDeletedLeaf ? [1] : ExistingValue), (keyB, ExistingValue), (keyC, ExistingValue)];
+        if (threeChildren) items.Add((keyD, ExistingValue));
+        using TrieNodeLog original = new(0, SmallGenerationBytes);
+        using TrieNodeLogRetain retain = original.RetainActive();
+        using WrittenNodes written = new();
+        TrieRoot root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), null), null, TrieRoot.Empty, items, written, false);
+        DictionaryNodeSource source = new(Rlps(original, written), new WarmedNodes(1024), null);
+        using TrieNodeLog log = new(0, SmallGenerationBytes);
+        using TrieNodeLogRetain newRetain = log.RetainActive();
+        TrieRoot persistedRoot = new(root.Hash, 0);
+
+        LogBulkSet.WarmUp(log, source, null, persistedRoot, keyA.ValueHash256, forDelete);
+        int before = source.FetchCount;
+        using WrittenNodes changed = new();
+        TrieRoot updated = BulkSet(log, source, null, persistedRoot, [(keyA, null)], changed, false);
+        PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        foreach ((Hash256 key, byte[] value) in items.Where(item => item.key != keyA)) expected.Set(key.Bytes, value);
+        expected.UpdateRootHash();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(3 + (inlineDeletedLeaf ? 0 : 1) + (forDelete && !threeChildren ? 1 : 0)), "only a collapsing branch needs a node beyond the path");
+            Assert.That(source.FetchCount - before, Is.EqualTo(forDelete || threeChildren ? 0 : 1), "only a path-only warm-up leaves the collapse sibling unread");
+            Assert.That(updated.Hash, Is.EqualTo(expected.RootHash.ValueHash256));
+        }
+    }
+
+    [Test]
+    public void Delete_warming_of_a_missing_key_loads_no_sibling([Values] bool divergingLeaf)
+    {
+        Hash256 keyA = new("0x1000000000000000000000000000000000000000000000000000000000000001");
+        Hash256 keyB = new("0x2000000000000000000000000000000000000000000000000000000000000002");
+        Hash256 missing = new(divergingLeaf
+            ? "0x1000000000000000000000000000000000000000000000000000000000000004"
+            : "0x3000000000000000000000000000000000000000000000000000000000000004");
+        using TrieNodeLog original = new(0, SmallGenerationBytes);
+        using TrieNodeLogRetain retain = original.RetainActive();
+        using WrittenNodes written = new();
+        TrieRoot root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), null), null, TrieRoot.Empty,
+            [(keyA, ExistingValue), (keyB, ExistingValue)], written, false);
+        Dictionary<TreePath, byte[]> nodes = Rlps(original, written);
+        DictionaryNodeSource pathSource = new(nodes, new WarmedNodes(1024), null);
+        DictionaryNodeSource deleteSource = new(nodes, new WarmedNodes(1024), null);
+        using TrieNodeLog log = new(0, SmallGenerationBytes);
+        TrieRoot persistedRoot = new(root.Hash, 0);
+
+        LogBulkSet.WarmUp(log, pathSource, null, persistedRoot, missing.ValueHash256);
+        LogBulkSet.WarmUp(log, deleteSource, null, persistedRoot, missing.ValueHash256, forDelete: true);
+
+        Assert.That(deleteSource.FetchCount, Is.EqualTo(pathSource.FetchCount));
+    }
+
+    [Test]
     public void Compaction_drops_rewritten_paths_and_keeps_unchanged_subtrees_reachable_by_pointer()
     {
         const ulong compressedBudget = 1UL << 20;

@@ -132,12 +132,12 @@ public sealed class FlatStorageTree(
     // (~30-40% of accesses per @weiihann's analysis) never need their trie path warmed because
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
     // path instead.
-    public void HintSet(in UInt256 index) => WarmUpSlot(index);
+    public void HintSet(in UInt256 index) => WarmUpSlot(index, isDelete: false);
 
     /// <inheritdoc/>
     public void HintSet(in UInt256 index, in UInt256 value)
     {
-        WarmUpSlot(index);
+        WarmUpSlot(index, isDelete: value.IsZero);
         if (!_scope.AppliesStorageWritesEarly || Volatile.Read(ref _earlyState) >= EarlyClaimed) return;
 
         OnEarlyHintAccepted?.Invoke();
@@ -231,20 +231,22 @@ public sealed class FlatStorageTree(
         }
     }
 
-    private void WarmUpSlot(UInt256 index)
+    private void WarmUpSlot(UInt256 index, bool isDelete)
     {
-        if (_scope.WarmsTries && _bundle.ShouldQueuePrewarm(_address, index))
+        // A delete skips the dedupe: the slot's path was most likely queued already, by the prewarmer or by an
+        // earlier write, but only a delete needs the branch sibling its leaf leaves behind.
+        if (_scope.WarmsTries && (isDelete || _bundle.ShouldQueuePrewarm(_address, index)))
         {
-            // ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
+            // For a non-delete, ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
             _scope.IncrementOutstandingWarmups();
-            if (!_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId)
-                && !_trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId))
+            if (!_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId, isDelete)
+                && !_trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId, isDelete))
                 _scope.DecrementOutstandingWarmups();
         }
     }
 
     // Called by trie warmer.
-    public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
+    public bool WarmUpStorageTrie(UInt256 index, int sequenceId, bool isDelete)
     {
         try
         {
@@ -265,7 +267,7 @@ public sealed class FlatStorageTree(
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
-                _bundle.WarmUp(AddressHash, PreBlockRoot, key);
+                _bundle.WarmUp(AddressHash, PreBlockRoot, key, forDelete: isDelete);
                 return true;
             }
             finally

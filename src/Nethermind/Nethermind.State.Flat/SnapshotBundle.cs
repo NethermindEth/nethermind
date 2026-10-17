@@ -378,14 +378,15 @@ public sealed class SnapshotBundle : IDisposable
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="root">The trie's root before the block, as <see cref="LogBulkSet.ResolveRoot"/> returns it.</param>
-    internal void WarmUp(Hash256? address, TrieRoot root, in ValueHash256 key)
+    /// <param name="forDelete">Also warms the sibling needed when deleting the leaf collapses its branch.</param>
+    internal void WarmUp(Hash256? address, TrieRoot root, in ValueHash256 key, bool forDelete = false)
     {
         TransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null) return;
 
         try
         {
-            LogBulkSet.WarmUp(_trieNodeLog!, new WarmUpRecordSource(this, transientResource, address), address, root, key);
+            LogBulkSet.WarmUp(_trieNodeLog!, new WarmUpRecordSource(this, transientResource, address), address, root, key, forDelete);
         }
         finally
         {
