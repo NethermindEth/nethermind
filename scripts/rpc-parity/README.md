@@ -27,7 +27,7 @@ The output records the selected reference SHA separately from the historical cor
 
 - Compare result values, gas, state, error codes and causes without normalization.
 - Only the eleven explicitly identified JavaScript error cases permit differences in source coordinates/engine annotations. Their error code, cause, bounds and callback are checked even when both responses are identical.
-- Only expired JavaScript timeout cases 22–24 (`-1s`, `0`, `1ns`) allow the observed Geth initialization/step alternatives: bare `execution timeout`, that cause with a server-side `step` annotation and optional `step (<eval>:line:column(pc))` frame, or `execution timeout at Integer (bigInt:line:column(pc))`. Both codes remain `-32000` and the candidate message remains exactly `execution timeout`. Other callbacks, source names, library functions and extra text are rejected; the eight bounds-error allowances remain unchanged.
+- Only expired JavaScript timeout cases 22–24 (`-1s`, `0`, `1ns`) allow the observed Geth initialization/step alternatives: bare `execution timeout`, that cause with a server-side `step` annotation and optional `step (<eval>:line:column(pc))` frame, or `execution timeout at Integer (bigInt:line:column(pc))`. Both codes remain `-32000` and the candidate message remains exactly `execution timeout`. Other callbacks, source names, library functions and extra text are rejected.
 - Recompute BLOCKHASH, prefix-nonce/override, helper-catchability and native direct/mux equivalence oracles; do not trust stored pass labels.
 - Results must retain the expected result/error kind. State-unavailability errors are never a matched-error pass.
 

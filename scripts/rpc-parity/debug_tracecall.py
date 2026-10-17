@@ -288,7 +288,7 @@ def main():
     try:
         run(args, evidence)
     except BaseException as error:
-        evidence.update(status="failed", failure=str(error))
+        evidence.update(status="failed", failure=str(error) or type(error).__name__)
         raise
     finally:
         evidence["finishedAt"] = datetime.now(timezone.utc).isoformat()
