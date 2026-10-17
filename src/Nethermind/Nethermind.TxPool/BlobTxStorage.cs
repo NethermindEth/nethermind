@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -24,6 +25,7 @@ namespace Nethermind.TxPool;
 
 public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage
 {
+    private const int MaxPooledKeys = 128;
     private const int TransactionLockCount = 64;
     private const int ProcessedTransactionKeyLength = sizeof(ulong) + sizeof(int);
     private const int ProcessedBlockIndexLength = 1 + sizeof(int);
@@ -36,7 +38,9 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private static ReadOnlySpan<byte> SpecChangeValidationMarkerKey => "spec-change-validation"u8;
     private static readonly Lock[] _transactionLocks = CreateTransactionLocks();
+    private readonly ConcurrentQueue<byte[]> _keyPool = new();
     private readonly Lock _processedTransactionsLock = new();
+    private int _pooledKeyCount;
     private readonly IColumnsDb<BlobTxsColumns> _database = database;
     private readonly IDb _fullBlobTxsDb = database.GetColumnDb(BlobTxsColumns.FullBlobTxs);
     private readonly IDb _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
@@ -81,28 +85,36 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     {
         if (count == 0) return 0;
 
-        ReadOnlySpan<TxLookupKey> lookups = keys.AsSpan(0, count);
-        Span<Transaction?> transactions = results.AsSpan(0, count);
-        using ArrayPoolSpan<byte> dbKeys = new(checked(count * FullTxKeyLength));
-        Span<byte> keyBuffer = dbKeys;
-        for (int i = 0; i < count; i++)
+        // Outer array must be exact-size for the IDb indexer (uses keys.Length).
+        // Inner full-transaction keys are pooled via ConcurrentQueue to avoid per-call allocations.
+        byte[][] dbKeys = new byte[count][];
+        int rentedKeyCount = 0;
+        try
         {
-            GetHashPrefixedByTimestamp(lookups[i].Timestamp, lookups[i].Hash,
-                keyBuffer.Slice(i * FullTxKeyLength, FullTxKeyLength));
+            for (int i = 0; i < dbKeys.Length; i++)
+            {
+                byte[] key = RentKey();
+                dbKeys[i] = key;
+                rentedKeyCount++;
+                GetHashPrefixedByTimestamp(keys[i].Timestamp, keys[i].Hash, key);
+            }
+
+            KeyValuePair<byte[], byte[]?>[] dbResults = _fullBlobTxsDb[dbKeys];
+
+            int found = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (TryDecodeFullTx(dbResults[i].Value, keys[i].Sender, keys[i].Timestamp, out results[i]))
+                    found++;
+            }
+
+            return found;
         }
-
-        _fullBlobTxsDb.GetMany<Transaction?, FullTransactionDecoder>(keyBuffer, FullTxKeyLength,
-            transactions, default);
-
-        int found = 0;
-        for (int i = 0; i < count; i++)
+        finally
         {
-            if (transactions[i] is not { } transaction) continue;
-            transaction.SenderAddress = lookups[i].Sender;
-            transaction.Timestamp = lookups[i].Timestamp;
-            found++;
+            for (int i = 0; i < rentedKeyCount; i++)
+                ReturnKey(dbKeys[i]);
         }
-        return found;
     }
 
     /// <summary>Enumerates all stored light blob transactions.</summary>
@@ -553,12 +565,26 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         return false;
     }
 
-    private readonly struct FullTransactionDecoder : IValueDecoder<Transaction?>
+    private byte[] RentKey()
     {
-        public Transaction? Decode(ReadOnlySpan<byte> buffer)
+        if (_keyPool.TryDequeue(out byte[]? key))
         {
-            RlpReader reader = new(buffer);
-            return Rlp.Decode<Transaction>(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+            Interlocked.Decrement(ref _pooledKeyCount);
+            return key;
+        }
+
+        return new byte[FullTxKeyLength];
+    }
+
+    private void ReturnKey(byte[] key)
+    {
+        if (Interlocked.Increment(ref _pooledKeyCount) <= MaxPooledKeys)
+        {
+            _keyPool.Enqueue(key);
+        }
+        else
+        {
+            Interlocked.Decrement(ref _pooledKeyCount);
         }
     }
 
