@@ -1273,7 +1273,8 @@ public partial class EngineModuleTests
         {
             OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
             Task<ResultWrapper<PayloadStatusV2>> timingOut = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, inclusionList);
-            // Out of budget only once its copy is queued, so the request leaves that copy behind with its list.
+            // Out of budget only once its copy is queued, so the request leaves that copy behind with its list. The
+            // clock fires only the last timer it created, which here is this request's timeout.
             await firstCopyQueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
             clock.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
             ResultWrapper<PayloadStatusV2> timedOut = await timingOut.WaitAsync(TimeSpan.FromSeconds(10));
