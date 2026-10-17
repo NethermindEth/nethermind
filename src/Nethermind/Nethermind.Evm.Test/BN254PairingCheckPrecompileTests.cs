@@ -120,7 +120,11 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
     private const string G1Generator = "00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002";
     private const string G1Infinity = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
     // on the twist but outside the r-torsion subgroup
-    private const string G2NotInSubgroup = "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010d1271953ed9ea0836846e70a1934187998c7f790cb4d7511b7f8da82de048a42869111d5381f072f8e2728fdb825a51aadd70e52c9830e9ab4b871c0531f1bb";
+    internal const string G2NotInSubgroup = "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010d1271953ed9ea0836846e70a1934187998c7f790cb4d7511b7f8da82de048a42869111d5381f072f8e2728fdb825a51aadd70e52c9830e9ab4b871c0531f1bb";
+    // on the twist with order 10069, a factor of the cofactor 2p - r
+    internal const string G2OfOrder10069 = "1e886f363bc5e215dc6e408aab8084dab5b267715c653f8da73bf2caf7a62117006e57a4170f1712829fe5d637187aedc7d122ce488b136622891b1cec682a0b1aa2cdb3379ca38a1731bfb68796529aa11e51cc06a704a6d6064f14268a5a542762ba11a4e39fec3e3c3d90b9c6c1b3ab89dd3e73f64d6d586f76b9b641b946";
+    // a G2 point plus G2OfOrder10069
+    private const string G2ShiftedByOrder10069 = "252c343b5e7de6fa12fef1c7997741bf1fcfdde22f5863a50a55605eb5aacca42dd604a01c34df59d1ccee9a7f05479eb498bea85faf140be0e5ff032ca1c92814b98c3e05bd4ed14ce3d708c8206ffc5ddc1d7745b31321f044b06eaf722af50341fbb86de9391b67dbd746d8e2d9f4404cb20b722d065e503034cd66101d56";
 
     // The reasons go-ethereum gives for these inputs.
     // G1 (1, 3) with the G2 generator
@@ -136,5 +140,7 @@ public class BN254PairingCheckPrecompileTests : PrecompileTests<BN254PairingChec
     // the subgroup check must not be skipped when the paired G1 point is at infinity, nor in the multi-pair path
     [TestCase(G1Infinity + G2NotInSubgroup, "point is not in correct subgroup")]
     [TestCase(TwoPairsProductOne + G1Generator + G2NotInSubgroup, "point is not in correct subgroup")]
+    [TestCase(G1Generator + G2OfOrder10069, "point is not in correct subgroup")]
+    [TestCase(G1Generator + G2ShiftedByOrder10069, "point is not in correct subgroup")]
     public void Rejects_input_with_the_go_ethereum_reason(string input, string error) => RunFailureTest(input, error);
 }
